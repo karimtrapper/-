@@ -3,7 +3,7 @@
  "mode": "check",
  "url": "http://127.0.0.1:59104/crm?section=documents",
  "design": "/Users/karimamirov/Desktop/untitled folder/outputs/calccrm-redesign/DESIGN.md",
- "generated": "2026-10-14T20:23:43",
+ "generated": "2026-10-14T21:04:51",
  "widths_requested": [
   375,
   768,
@@ -483,13 +483,13 @@
    "notes": [],
    "shots": {
     "375": {
-     "after": "/private/tmp/calccrm-wave4a/outputs/calccrm-redesign/wave4a/machine-crm-documents/after-karim-375.png",
-     "before": "/private/tmp/calccrm-wave4a/outputs/calccrm-redesign/wave4a/machine-crm-documents/before-karim-375.png",
+     "after": "outputs/calccrm-redesign/wave4a/machine-crm-documents/after-karim-375.png",
+     "before": "outputs/calccrm-redesign/wave4a/machine-crm-documents/before-karim-375.png",
      "identical": false
     },
     "1280": {
-     "after": "/private/tmp/calccrm-wave4a/outputs/calccrm-redesign/wave4a/machine-crm-documents/after-karim-1280.png",
-     "before": "/private/tmp/calccrm-wave4a/outputs/calccrm-redesign/wave4a/machine-crm-documents/before-karim-1280.png",
+     "after": "outputs/calccrm-redesign/wave4a/machine-crm-documents/after-karim-1280.png",
+     "before": "outputs/calccrm-redesign/wave4a/machine-crm-documents/before-karim-1280.png",
      "identical": false
     }
    },
@@ -998,7 +998,7 @@
    "texts": 31,
    "contrast_checked": 32,
    "contrast_unknown": 0,
-   "primaries": 0,
+   "primaries": 1,
    "addresses": 0,
    "controls": 4
   },
@@ -1008,7 +1008,7 @@
    "texts": 26,
    "contrast_checked": 27,
    "contrast_unknown": 0,
-   "primaries": 0,
+   "primaries": 1,
    "addresses": 0,
    "controls": 4
   },
@@ -1018,7 +1018,7 @@
    "texts": 31,
    "contrast_checked": 32,
    "contrast_unknown": 0,
-   "primaries": 0,
+   "primaries": 1,
    "addresses": 0,
    "controls": 4
   },
@@ -1028,7 +1028,7 @@
    "texts": 31,
    "contrast_checked": 32,
    "contrast_unknown": 0,
-   "primaries": 0,
+   "primaries": 1,
    "addresses": 0,
    "controls": 4
   }

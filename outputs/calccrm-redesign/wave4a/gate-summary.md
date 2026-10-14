@@ -31,9 +31,12 @@
 |---|---|---|
 | Калькулятор — результат | [до](machine-calculator-result/before-karim-375.png) / [после](machine-calculator-result/after-karim-375.png) | [до](machine-calculator-result/before-karim-1280.png) / [после](machine-calculator-result/after-karim-1280.png) |
 | Сделки | [до](machine-crm-deals/before-karim-375.png) / [после](machine-crm-deals/after-karim-375.png) | [до](machine-crm-deals/before-karim-1280.png) / [после](machine-crm-deals/after-karim-1280.png) |
+| Документы | [до](machine-crm-documents/before-karim-375.png) / [после](machine-crm-documents/after-karim-375.png) | [до](machine-crm-documents/before-karim-1280.png) / [после](machine-crm-documents/after-karim-1280.png) |
 | Аналитика CRM | [до](machine-crm-dashboard/before-karim-375.png) / [после](machine-crm-dashboard/after-karim-375.png) | [до](machine-crm-dashboard/before-karim-1280.png) / [после](machine-crm-dashboard/after-karim-1280.png) |
 | Обменники | [до](machine-crm-exchangers/before-karim-375.png) / [после](machine-crm-exchangers/after-karim-375.png) | [до](machine-crm-exchangers/before-karim-1280.png) / [после](machine-crm-exchangers/after-karim-1280.png) |
 
 На снимках «Сделок» сохранена одна и та же тестовая запись `#2`: исходно `$140242.69` и зелёная `$1000.00`, после — `140 242,69 USDT` и нейтральная `$1 000,00`; заголовки таблицы в обычном регистре. На «Аналитике» графики используют navy-палитру, суммы и заголовки таблиц приведены к общему стилю. В рассчитанном состоянии калькулятора одна главная кнопка, карточка результата белая и контрастная.
+
+После исправления селектора у «Документов» кнопка «Новый договор» окрашена в `#C2410C`; повторный `check` показал ровно одну главную кнопку на 375, 768, 1280 и 1920px.
 
 Автоматический PASS не отменяет ручных оговорок по данным стенда и существующему поведению редактора: см. [ручной QA](manual-qa.md).

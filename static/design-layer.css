@@ -232,7 +232,7 @@ body.wave4a :is(.button-primary, .calculate-btn, #deals .nav-create-btn,
                 #transactions .btn-primary, #managers .btn-primary,
                 #admins .btn-primary, #kyc .btn-primary,
                 #partners .btn-primary, #referrers .btn-primary,
-                #documents > .docs-head .btn-primary,
+                #documents .docs-head .btn-primary,
                 #exchangers .btn-primary, #balance .btn-primary:first-of-type,
                 #verification .btn-primary:first-of-type) {
   background: var(--action-coral) !important;
@@ -245,7 +245,7 @@ body.wave4a :is(.button-primary, .calculate-btn, #deals .nav-create-btn,
                 #transactions .btn-primary, #managers .btn-primary,
                 #admins .btn-primary, #kyc .btn-primary,
                 #partners .btn-primary, #referrers .btn-primary,
-                #documents > .docs-head .btn-primary,
+                #documents .docs-head .btn-primary,
                 #exchangers .btn-primary, #balance .btn-primary:first-of-type,
                 #verification .btn-primary:first-of-type) * { color: var(--surface-white) !important; }
 body.wave4a :is(.button-primary, .calculate-btn, #deals .nav-create-btn,
@@ -254,7 +254,7 @@ body.wave4a :is(.button-primary, .calculate-btn, #deals .nav-create-btn,
                 #transactions .btn-primary, #managers .btn-primary,
                 #admins .btn-primary, #kyc .btn-primary,
                 #partners .btn-primary, #referrers .btn-primary,
-                #documents > .docs-head .btn-primary,
+                #documents .docs-head .btn-primary,
                 #exchangers .btn-primary, #balance .btn-primary:first-of-type,
                 #verification .btn-primary:first-of-type):hover {
   background: var(--action-coral-hover) !important;
