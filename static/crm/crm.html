@@ -128,15 +128,12 @@ body {
 }
 .nav-tabs {
     overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none;
-    margin-right: 180px; /* Полоса прокрутки заканчивается до кнопки создания */
 }
 .nav-tabs::-webkit-scrollbar { display: none; }
-.nav-create-btn {
-    position: absolute; right: 16px; top: 50%; transform: translateY(-50%);
-    padding: 8px 16px !important; min-height: 40px !important; white-space: nowrap;
-    z-index: 2;
-}
-@media (max-width: 640px) { .nav-create-btn { display: none; } .nav-tabs { margin-right: 0; } #dashboard > div[style*="grid-template-columns"] { grid-template-columns: 1fr !important; } }
+.crm-section-head { display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:16px; }
+.crm-section-head h1 { margin:0;color:var(--navy-800);font-size:22px;font-weight:700; }
+.crm-section-head .btn { min-height:44px;border-radius:8px;white-space:nowrap; }
+@media (max-width: 640px) { #dashboard > div[style*="grid-template-columns"] { grid-template-columns: 1fr !important; } }
 .period-btn { padding:8px 16px;border-radius:20px;border:1px solid #e5e7eb;background:#fff;cursor:pointer;font-size:13px;font-weight:500;color:#666;transition:all .2s }
 .period-btn.active { background:#FF6B35;color:#fff;border-color:#FF6B35 }
 .period-btn:hover:not(.active) { border-color:#FF6B35;color:#FF6B35 }
@@ -816,7 +813,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 .docs-money-cell { font-variant-numeric:tabular-nums; font-weight:600; white-space:nowrap; }
 
 </style>
-    <link rel="stylesheet" href="/static/nav-shell.css?v=4">
+    <link rel="stylesheet" href="/static/nav-shell.css?v=5">
 </head>
 
 <body>
@@ -860,7 +857,6 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             <button class="nav-tab" data-section="admins" data-shell-label="Сотрудники">🔐 Админы</button>
             <button class="nav-tab stand-only" data-section="myTelegram" data-shell-label="Мой Telegram" style="display:none;">Мой Telegram</button>
         </div>
-        <button class="btn btn-primary nav-create-btn" onclick="showSection('create')">+ Создать сделку</button>
     </nav>
 
     <div class="container">
@@ -1072,6 +1068,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         </section>
 
         <section id="deals" class="section">
+            <div class="crm-section-head"><h1>Сделки</h1><button class="btn btn-primary nav-create-btn" onclick="showSection('create')">+ Создать сделку</button></div>
             <div class="card">
                 <div class="card-title">Фильтры</div>
                 <div class="form-row">
@@ -5986,7 +5983,8 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 bottomNav.querySelectorAll('.bottom-nav-item').forEach(b => b.classList.remove('active'));
                 bottomNav.querySelector(`[data-nav-section="${sectionName}"]`)?.classList.add('active');
             }
-            if (window.NavShell) NavShell.update({active:sectionName === 'dashboard' ? 'panel' : 'crm',section:sectionName});
+            if (window.NavShell) NavShell.update({active:sectionName === 'dashboard' ? 'panel' : 'crm',
+                section:sectionName === 'create' ? 'deals' : sectionName});
         }
 
         async function loadManagersForSelect() {
