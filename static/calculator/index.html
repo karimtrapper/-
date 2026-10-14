@@ -8,6 +8,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="styles.css?v=16">
     <link rel="stylesheet" href="/static/nav-shell.css?v=6">
+    <link rel="stylesheet" href="/static/design-layer.css?v=1">
     <style>
         .top-nav {
             background: #1E293B;
@@ -28,7 +29,7 @@
             border-radius: 8px;
             font-weight: 600;
             font-size: 14px;
-            transition: all 0.2s;
+            transition: color 0.2s;
         }
         .top-nav a:hover {
             background: rgba(255,255,255,0.08);
@@ -48,7 +49,7 @@
             font-weight: 600;
             font-size: 14px;
             text-decoration: none;
-            transition: all 0.2s;
+            transition: color 0.2s;
         }
         .top-nav .instruction-btn:hover {
             background: rgba(139, 92, 246, 0.35);
@@ -57,37 +58,37 @@
         }
     </style>
 </head>
-<body>
+<body class="wave4a">
     <!-- Global Navigation -->
     <nav class="top-nav">
-        <a href="/" class="active">🧮 Калькулятор</a>
-        <a href="/crm">📊 CRM</a>
-        <a href="/docs/instruction.html" class="instruction-btn" target="_blank">📋 Инструкция</a>
+        <a href="/" class="active">Калькулятор</a>
+        <a href="/crm">CRM</a>
+        <a href="/docs/instruction.html" class="instruction-btn" target="_blank">Инструкция</a>
     </nav>
 
     <div class="container">
         <header class="header">
             <div class="logo">
-                <span class="logo-icon">🧮</span>
+                <span class="logo-icon"></span>
                 <h1>Калькулятор обмена</h1>
             </div>
-            <div class="subtitle">RUB ↔ THB ↔ USDT | v5 ТОЧНЫЕ КУРСЫ</div>
+            <div class="subtitle">RUB · THB · USDT</div>
         </header>
 
         <!-- Тип сделки -->
         <div class="switcher-caption">Тип сделки</div>
         <div class="dealtype-switcher">
             <button class="dealtype-btn active" data-category="exchange" onclick="switchDealCategory('exchange')">
-                💱 Обмен
+                Обмен
             </button>
             <button class="dealtype-btn" data-category="property_freehold" onclick="switchDealCategory('property_freehold')">
-                🏠 Фрихолд
+                Фрихолд
             </button>
             <button class="dealtype-btn" data-category="property_leasehold" onclick="switchDealCategory('property_leasehold')">
-                📜 Лизхолд
+                Лизхолд
             </button>
             <button class="dealtype-btn" data-category="other" onclick="switchDealCategory('other')">
-                ✏️ Другое
+                Другое
             </button>
         </div>
 
@@ -95,40 +96,40 @@
         <div class="switcher-caption" id="methodCaption">Метод обмена</div>
         <div class="method-switcher" id="methodSwitcher">
             <button class="method-btn active" data-method="doverka" onclick="switchMethod('doverka')">
-                🏦 СБП
+                СБП
             </button>
             <button class="method-btn" data-method="broker" onclick="switchMethod('broker')">
-                💼 Брокер
+                Брокер
             </button>
             <button class="method-btn" data-method="custom" onclick="switchMethod('custom')">
-                🎨 Кастом
+                Кастом
             </button>
         </div>
 
         <!-- Кастомный курс (только для брокера/кастома) - ПЕРЕНЕСЕНО ВВЕРХ -->
         <div id="customRateSection" class="custom-rate-top" style="display: none;">
             <div class="custom-rate-card">
-                <label class="input-label" id="customRateLabel">💼 УСТАНОВИТЬ КУРС БРОКЕРА RUB-USDT</label>
+                <label class="input-label" id="customRateLabel">УСТАНОВИТЬ КУРС БРОКЕРА RUB-USDT</label>
                 <div class="input-wrapper">
                     <input type="text" id="customRubUsdt" class="amount-input" placeholder="Введите курс RUB/USDT" oninput="updateCustomRate(); hideResults()">
                     <span class="input-currency">₽</span>
                 </div>
-                <div id="customRateHint" class="custom-rate-hint">⚠️ Введите курс для начала расчёта</div>
+                <div id="customRateHint" class="custom-rate-hint">Введите курс для начала расчёта</div>
             </div>
             <div class="custom-rate-card" id="customUsdtThbCard" style="display: none; margin-top: 10px;">
-                <label class="input-label">🎨 УСТАНОВИТЬ КУРС THB-USDT</label>
+                <label class="input-label">УСТАНОВИТЬ КУРС THB-USDT</label>
                 <div class="input-wrapper">
                     <input type="text" id="customUsdtThb" class="amount-input" placeholder="Введите курс THB/USDT" oninput="updateCustomRate(); hideResults()">
                     <span class="input-currency">฿</span>
                 </div>
-                <div id="customUsdtThbHint" class="custom-rate-hint">⚠️ Введите курс для начала расчёта</div>
+                <div id="customUsdtThbHint" class="custom-rate-hint">Введите курс для начала расчёта</div>
             </div>
         </div>
 
         <!-- Актуальные курсы -->
         <div class="rates-card" id="ratesCard">
             <div class="rates-header">
-                <span class="rates-title">📊 Актуальные курсы</span>
+                <span class="rates-title">Актуальные курсы</span>
                 <div class="rate-source-toggle" id="rateSourceToggle">
                     <button class="src-btn active" id="srcBitazza" onclick="setRateSource('bitazza')">Bitazza</button>
                     <button class="src-btn" id="srcBinance" onclick="setRateSource('binance')">Binance</button>
@@ -161,37 +162,37 @@
         <div class="scenarios-grid">
             <!-- Doverka сценарии -->
             <button class="scenario-btn active" data-method="doverka" data-scenario="rub-to-thb" onclick="switchScenario('rub-to-thb')">
-                <span class="scenario-icon">💰</span>
+                <span class="scenario-icon"></span>
                 <div class="scenario-title">RUB → THB</div>
             </button>
             <button class="scenario-btn" data-method="doverka" data-scenario="thb-to-rub" onclick="switchScenario('thb-to-rub')">
-                <span class="scenario-icon">💸</span>
+                <span class="scenario-icon"></span>
                 <div class="scenario-title">THB ← RUB</div>
             </button>
             <button class="scenario-btn" data-method="doverka" data-scenario="rub-to-usdt" onclick="switchScenario('rub-to-usdt')">
-                <span class="scenario-icon">💵</span>
+                <span class="scenario-icon"></span>
                 <div class="scenario-title">RUB → USDT</div>
             </button>
             <button class="scenario-btn" data-method="doverka" data-scenario="usdt-from-rub" onclick="switchScenario('usdt-from-rub')">
-                <span class="scenario-icon">💎</span>
+                <span class="scenario-icon"></span>
                 <div class="scenario-title">USDT ← RUB</div>
             </button>
 
             <!-- Broker сценарии -->
             <button class="scenario-btn" data-method="broker" data-scenario="rub-to-thb" style="display: none;" onclick="switchScenario('rub-to-thb')">
-                <span class="scenario-icon">💰</span>
+                <span class="scenario-icon"></span>
                 <div class="scenario-title">RUB → THB</div>
             </button>
             <button class="scenario-btn" data-method="broker" data-scenario="thb-to-usdt" style="display: none;" onclick="switchScenario('thb-to-usdt')">
-                <span class="scenario-icon">💎</span>
+                <span class="scenario-icon"></span>
                 <div class="scenario-title">THB → USDT</div>
             </button>
             <button class="scenario-btn" data-method="broker" data-scenario="usdt-to-thb" style="display: none;" onclick="switchScenario('usdt-to-thb')">
-                <span class="scenario-icon">🔄</span>
+                <span class="scenario-icon"></span>
                 <div class="scenario-title">USDT → THB</div>
             </button>
             <button class="scenario-btn" data-method="broker" data-scenario="rub-to-usdt" style="display: none;" onclick="switchScenario('rub-to-usdt')">
-                <span class="scenario-icon">💵</span>
+                <span class="scenario-icon"></span>
                 <div class="scenario-title">RUB → USDT</div>
             </button>
         </div>
@@ -199,11 +200,11 @@
         <!-- Недвижимость / другое: оплата инвойса с доп-комиссиями -->
         <!-- Доп-поля недвижимости (надстройка над обменом, не заменяет его) -->
         <div class="property-extra" id="propertyExtra" style="display: none;">
-            <div class="property-badge" id="propertyBadge">🏠 Фрихолд — доп-расход на перевод застройщику</div>
+            <div class="pill property-badge" id="propertyBadge">Фрихолд — доп-расход на перевод застройщику</div>
 
             <!-- Только «Другое»: что за сделка -->
             <div id="propertyNoteWrapper" style="display: none; margin-bottom: 14px;">
-                <label class="input-label">✏️ Что за сделка</label>
+                <label class="input-label">Что за сделка</label>
                 <div class="input-wrapper">
                     <input type="text" id="propertyNote" class="amount-input" placeholder="Например: оплата за мебель" style="font-size: 15px; height: 44px;">
                 </div>
@@ -245,7 +246,7 @@
                 <!-- Значения тарифа читает applyPropertyFee(); выставляет setPropTariff() -->
                 <input type="hidden" id="propFeePercent" value="0.8">
                 <input type="hidden" id="propFeeFixed" value="50">
-                <div class="fee-hint" id="propFeeHint">⚙️ Тариф IPPS — расход на перевод в USD, ляжет в расчёт ниже. Банк: обычный FET-платёж от компании. Софт-счёт: платёж от имени клиента.</div>
+                <div class="fee-hint" id="propFeeHint">Тариф IPPS — расход на перевод в USD, ляжет в расчёт ниже. Банк: обычный FET-платёж от компании. Софт-счёт: платёж от имени клиента.</div>
             </div>
         </div>
 
@@ -254,13 +255,13 @@
             <div class="input-section">
                 <!-- Тип операции (показывается только для Брокера) -->
                 <div class="direction-switcher" id="directionSwitcher" style="display: none; margin-bottom: 20px;">
-                    <div class="direction-header">🎯 Тип операции</div>
+                    <div class="direction-header">Тип операции</div>
                     <div class="direction-buttons">
                         <button class="direction-btn active" data-direction="amount" onclick="setDirection('amount')">
-                            💰 Вношу сумму
+                            Вношу сумму
                         </button>
                         <button class="direction-btn" data-direction="target" onclick="setDirection('target')">
-                            🎯 Хочу получить
+                            Хочу получить
                         </button>
                     </div>
                 </div>
@@ -282,14 +283,14 @@
 
                 <div class="calculate-action">
                     <button class="calculate-btn" id="calculateBtn" onclick="calculate()">
-                        🚀 РАССЧИТАТЬ
+                        Рассчитать
                     </button>
 
                     <!-- Индикатор автозапроса точного курса (показывается во время Playwright) -->
                     <div id="preciseRateStatus" style="display: none; margin-top: 10px; padding: 10px 14px;
                          background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 8px;
                          color: #0369a1; font-size: 0.9rem; text-align: center;">
-                        <span id="preciseRateStatusText">⏳ Получаем точный курс Binance...</span>
+                        <span id="preciseRateStatusText">Получаем точный курс Binance...</span>
                         <span id="preciseRateTime" style="font-size: 0.85em; opacity: 0.8; display: none;"></span>
                     </div>
 
@@ -298,23 +299,23 @@
                             style="display: none; margin-top: 10px; width: 100%; padding: 10px 14px;
                                    background: #fef3c7; border: 1px solid #fbbf24; border-radius: 8px;
                                    color: #92400e; font-size: 0.9rem; font-weight: 600; cursor: pointer;">
-                        ⚡ Binance-парсер недоступен — использовать быстрый курс (~0.2% погрешность)
+                        Binance-парсер недоступен — использовать быстрый курс (~0.2% погрешность)
                     </button>
                 </div>
 
-                <!-- Блок настроек (Скидки и Партнер) ПОД кнопкой РАССЧИТАТЬ -->
+                <!-- Блок настроек (Скидки и Партнер) ПОД кнопкой Рассчитать -->
                 <div class="calculator-settings" style="margin-top: 25px; border-top: 1px solid #e2e8f0; padding-top: 20px;">
                     <!-- Скидки -->
                     <div id="commissionLevelSection" class="commission-level-section">
                         <div class="discount-header">
                             <label class="checkbox-label">
                                 <input type="checkbox" id="applyDiscount" onchange="toggleDiscount()">
-                                <span class="checkbox-text">🎁 Сделать скидку (изменить прибыль)</span>
+                                <span class="checkbox-text">Сделать скидку (изменить прибыль)</span>
                             </label>
                         </div>
                         
                         <div id="profitMarginWrapper" style="display: none; margin-top: 15px;">
-                            <label class="input-label">💰 Желаемая прибыль</label>
+                            <label class="input-label">Желаемая прибыль</label>
                             <div class="commission-buttons profit-steps">
                                 <button class="commission-btn" data-profit="1.5" onclick="setProfitMargin(1.5)">1.5%</button>
                                 <button class="commission-btn" data-profit="2.0" onclick="setProfitMargin(2.0)">2%</button>
@@ -324,7 +325,7 @@
                                 <button class="commission-btn" data-profit="4.0" onclick="setProfitMargin(4.0)">4%</button>
                                 <button class="commission-btn" data-profit="4.5" onclick="setProfitMargin(4.5)">4.5%</button>
                                 <button class="commission-btn" data-profit="5.0" onclick="setProfitMargin(5.0)">5%</button>
-                                <button class="commission-btn" id="customProfitBtn" data-profit="custom" onclick="toggleCustomProfit()">✏️ Своё</button>
+                                <button class="commission-btn" id="customProfitBtn" data-profit="custom" onclick="toggleCustomProfit()">Своё</button>
                             </div>
                             <div id="customProfitWrapper" style="display: none; margin-top: 10px;">
                                 <div class="input-wrapper small">
@@ -340,7 +341,7 @@
                     <div class="partner-section" style="margin-top: 20px;">
                         <label class="checkbox-label">
                             <input type="checkbox" id="hasPartner" onchange="togglePartner()">
-                            <span class="checkbox-text">👥 Есть партнер?</span>
+                            <span class="checkbox-text">Есть партнер?</span>
                         </label>
                         <div id="partnerPercentWrapper" style="display: none; margin-top: 15px;">
                             <label class="input-label">Модель вознаграждения</label>
@@ -352,7 +353,7 @@
                                     <input type="radio" name="partnerModel" value="markup" onchange="onPartnerModelChange()"> Markup (+% к курсу)
                                 </label>
                             </div>
-                            <label class="input-label" id="partnerPercentLabel">🤝 % партнера (от прибыли)</label>
+                            <label class="input-label" id="partnerPercentLabel">% партнера (от прибыли)</label>
                             <div class="input-wrapper small">
                                 <input type="text" id="partnerPercent" class="amount-input" value="50" oninput="hideResults()">
                                 <span class="input-currency">%</span>
@@ -381,14 +382,14 @@
                     <div style="background: #1E293B; border: 1px solid #334155; border-radius: 12px; padding: 16px; position: relative;">
                         <div id="clientCopyText" style="font-size: 15px; line-height: 1.6; color: #E2E8F0; white-space: pre-line;"></div>
                         <button onclick="copyClientMessage()" id="copyClientBtn" style="position: absolute; top: 12px; right: 12px; background: #4F46E5; border: none; border-radius: 8px; padding: 6px 14px; color: white; font-size: 13px; cursor: pointer; display: flex; align-items: center; gap: 4px;">
-                            📋 Копировать
+                            Копировать
                         </button>
                     </div>
                 </div>
 
                 <!-- Поле для комментария -->
                 <div class="comment-section" style="margin-bottom: 20px;">
-                    <label class="input-label">💬 Комментарий к платежу (необязательно)</label>
+                    <label class="input-label" for="paymentComment">Комментарий к платежу (необязательно)</label>
                     <div class="input-wrapper">
                         <input type="text" id="paymentComment" class="amount-input" placeholder="Имя клиента, номер заказа и т.д." style="font-size: 16px; height: 45px;">
                     </div>
@@ -399,41 +400,41 @@
                     <!-- Кнопка создания платежа (только для Doverka) -->
                     <div id="paymentActionSection" style="display: none; flex: 1; min-width: 200px;">
                         <button class="calculate-btn" id="createPaymentBtn" onclick="createPayment()" style="background: linear-gradient(135deg, #4F46E5 0%, #3730A3 100%); width: 100%;">
-                            💳 СОЗДАТЬ ПЛАТЕЖ
+                            Создать платёж
                         </button>
                     </div>
                     <!-- Кнопка создания сделки в CRM (всегда видна после расчёта) -->
                     <div id="createDealSection" style="flex: 1; min-width: 200px;">
                         <button class="calculate-btn" id="createDealBtn" onclick="createDealFromCalc()" style="background: linear-gradient(135deg, #10B981 0%, #059669 100%); width: 100%;">
-                            📊 СОЗДАТЬ СДЕЛКУ В CRM
+                            Создать сделку в CRM
                         </button>
                     </div>
                 </div>
                 <div id="paymentResult" style="margin-bottom: 20px; display: none;">
                     <div class="info-note" style="background: #F0FDF4; border: 1px solid #BBF7D0; color: #166534; display: flex; align-items: flex-start; gap: 12px;">
                         <div style="flex: 1;">
-                            <strong>✅ Ссылка на оплату создана:</strong><br>
+                            <strong>Ссылка на оплату создана:</strong><br>
                             <a id="paymentLink" href="#" target="_blank" style="word-break: break-all; color: #4F46E5; font-weight: 600; text-decoration: underline;"></a>
                         </div>
                         <button onclick="copyPaymentLink()" class="refresh-btn" style="background: #10B981; padding: 6px 12px; font-size: 12px; margin-top: 4px;">
-                            📋 Копировать
+                            Копировать
                         </button>
                     </div>
                     <!-- Прямая ссылка СБП (НСПК) — та же, что за QR на странице оплаты -->
                     <div id="sbpLinkBox" class="info-note" style="display: none; margin-top: 10px; background: #EEF2FF; border: 1px solid #C7D2FE; color: #3730A3; align-items: flex-start; gap: 12px;">
                         <div style="flex: 1;">
-                            <strong>🏦 Прямая ссылка СБП (QR):</strong><br>
+                            <strong>Прямая ссылка СБП (QR):</strong><br>
                             <a id="sbpLink" href="#" target="_blank" style="word-break: break-all; color: #4F46E5; font-weight: 600; text-decoration: underline;"></a>
                         </div>
                         <button onclick="copySbpLink()" class="refresh-btn" style="background: #6366F1; padding: 6px 12px; font-size: 12px; margin-top: 4px;">
-                            📋 Копировать
+                            Копировать
                         </button>
                     </div>
                 </div>
 
                 <div class="details-section">
                     <div class="details-header" onclick="toggleDetails()">
-                        <span>📋 Детали расчета</span>
+                        <span>Детали расчета</span>
                         <span class="toggle-icon" id="toggleIcon">▼</span>
                     </div>
                     <div class="details-content" id="detailsContent">
@@ -446,7 +447,7 @@
         <!-- Информация -->
         <div class="info-card">
             <div class="info-header" onclick="toggleInfo()">
-                <span>ℹ️ Информация</span>
+                <span>Информация</span>
                 <span class="toggle-icon" id="infoToggleIcon">▼</span>
             </div>
             <div class="info-content" id="infoContent">
@@ -470,18 +471,19 @@
     <script>NavShell.boot('calc');</script>
     <script>
         // Диагностика загрузки
-        console.log('🔍 Проверка функций:');
+        console.log('Проверка функций:');
         console.log('switchMethod:', typeof switchMethod);
         console.log('switchScenario:', typeof switchScenario);
         console.log('updateCustomRate:', typeof updateCustomRate);
         
         // Тест кнопок при загрузке
         document.addEventListener('DOMContentLoaded', () => {
-            console.log('✅ DOM загружен');
+            console.log('DOM загружен');
             console.log('Кнопки метода:', document.querySelectorAll('.method-btn').length);
             console.log('Кнопки сценариев:', document.querySelectorAll('.scenario-btn').length);
             console.log('Кнопки комиссий:', document.querySelectorAll('.commission-btn').length);
         });
     </script>
+    <script src="/static/visual-format.js?v=1"></script>
 </body>
 </html>

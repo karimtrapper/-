@@ -1561,7 +1561,7 @@ function displayResult(result) {
     }
 
     document.getElementById('resultValue').textContent = resultValue;
-    document.getElementById('finalRate').textContent = rateValue;
+    document.getElementById('finalRate').textContent = String(rateValue).replace('.', ',');
     document.getElementById('rateCurrency').textContent = rateCurrency;
 
     // Показываем процент прибыли
@@ -1644,7 +1644,6 @@ function displayDetailedSteps(result) {
     if (levelName !== '-') {
         const levelClass = profitPercent >= 5 ? 'level-high' : profitPercent >= 4 ? 'level-medium' : 'level-low';
         html += `<div class="commission-indicator ${levelClass}">`;
-        html += `<span class="indicator-icon">📊</span>`;
         html += `<div class="indicator-content">`;
         html += `<div class="indicator-title">${levelName}</div>`;
         html += `<div class="indicator-subtitle">% прибыли: ${profitPercent.toFixed(2)}%</div>`;

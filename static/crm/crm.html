@@ -69,7 +69,7 @@ body {
 .top-nav a {
     color: var(--navy-300); text-decoration: none;
     padding: 8px 20px; border-radius: var(--r-sm);
-    font-weight: 600; font-size: 14px; transition: all 0.2s;
+    font-weight: 600; font-size: 14px; transition: color 0.2s;
 }
 .top-nav a:hover { background: rgba(255,255,255,0.08); color: white; }
 .top-nav a.active {
@@ -84,7 +84,7 @@ body {
     font-weight: 600;
     font-size: 14px;
     text-decoration: none;
-    transition: all 0.2s;
+    transition: color 0.2s;
 }
 .top-nav .instruction-btn:hover {
     background: rgba(139, 92, 246, 0.35);
@@ -115,7 +115,7 @@ body {
     font-size: 15px; font-weight: 700; cursor: pointer;
     display: flex; align-items: center; gap: 6px;
     box-shadow: 0 4px 12px rgba(249,115,22,0.3);
-    transition: all 0.15s;
+    transition: color 0.15s;
 }
 .crm-header .btn-create:hover { background: var(--coral-hover); transform: translateY(-1px); }
 
@@ -134,7 +134,7 @@ body {
 .crm-section-head h1 { margin:0;color:var(--navy-800);font-size:22px;font-weight:700; }
 .crm-section-head .btn { min-height:44px;border-radius:8px;white-space:nowrap; }
 @media (max-width: 640px) { #dashboard > div[style*="grid-template-columns"] { grid-template-columns: 1fr !important; } }
-.period-btn { padding:8px 16px;border-radius:20px;border:1px solid #e5e7eb;background:#fff;cursor:pointer;font-size:13px;font-weight:500;color:#666;transition:all .2s }
+.period-btn { padding:8px 16px;border-radius:20px;border:1px solid #e5e7eb;background:#fff;cursor:pointer;font-size:13px;font-weight:500;color:#666;transition:color .2s }
 .period-btn.active { background:#FF6B35;color:#fff;border-color:#FF6B35 }
 .period-btn:hover:not(.active) { border-color:#FF6B35;color:#FF6B35 }
 /* Таблица юнит-экономики в формате шаблона Красинского */
@@ -157,7 +157,7 @@ body {
     background: none; border: none; color: var(--text-sec);
     padding: 10px 16px; border-radius: var(--r-sm);
     font-size: 14px; font-weight: 500; cursor: pointer;
-    white-space: nowrap; transition: all 0.15s;
+    white-space: nowrap; transition: color 0.15s;
 }
 .nav-tab:hover { background: var(--navy-100); color: var(--text); }
 .nav-tab.active {
@@ -290,7 +290,7 @@ tr:hover { background: var(--navy-50); }
     border: 1.5px solid var(--border);
     border-radius: var(--r-sm); font-size: 15px;
     font-family: inherit; background: var(--bg);
-    color: var(--text); transition: all 0.15s;
+    color: var(--text); transition: color 0.15s;
     min-height: 48px;
 }
 .form-control:focus {
@@ -316,7 +316,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
     border: 1.5px solid var(--border); border-radius: var(--r-sm);
     font-size: 15px; font-family: inherit; background: var(--bg);
     color: var(--text); cursor: pointer; text-align: left;
-    min-height: 48px; transition: all 0.15s;
+    min-height: 48px; transition: color 0.15s;
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='%2364748B' viewBox='0 0 16 16'%3E%3Cpath d='M4.646 5.646a.5.5 0 0 1 .708 0L8 8.293l2.646-2.647a.5.5 0 0 1 .708.708l-3 3a.5.5 0 0 1-.708 0l-3-3a.5.5 0 0 1 0-.708z'/%3E%3C/svg%3E");
     background-repeat: no-repeat; background-position: right 12px center;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -395,7 +395,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
     display: inline-flex; align-items: center; justify-content: center;
     padding: 12px 20px; border: none; border-radius: var(--r-sm);
     font-size: 14px; font-weight: 600; cursor: pointer;
-    transition: all 0.15s; min-height: 48px;
+    transition: color 0.15s; min-height: 48px;
     font-family: inherit; gap: 6px;
 }
 .btn-primary { background: var(--coral); color: white; }
@@ -471,7 +471,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
     display: flex; justify-content: space-between; align-items: center;
     padding: 14px 16px; background: var(--navy-50);
     border-radius: var(--r-sm); margin-bottom: 8px;
-    cursor: pointer; transition: all 0.15s;
+    cursor: pointer; transition: color 0.15s;
     border: 1px solid var(--border-light);
 }
 .tx-item:hover { background: var(--navy-100); border-color: var(--navy-300); }
@@ -488,7 +488,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 .wallet-card {
     background: var(--bg); border-radius: var(--r);
     padding: 16px; border: 1.5px solid var(--border);
-    cursor: pointer; transition: all 0.15s;
+    cursor: pointer; transition: color 0.15s;
 }
 .wallet-card:hover { border-color: var(--coral); box-shadow: 0 4px 12px rgba(249,115,22,0.1); }
 .wallet-card.selected { border-color: var(--coral); background: var(--coral-light); }
@@ -814,9 +814,10 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 
 </style>
     <link rel="stylesheet" href="/static/nav-shell.css?v=6">
+    <link rel="stylesheet" href="/static/design-layer.css?v=1">
 </head>
 
-<body>
+<body class="wave4a">
     <!-- Global Navigation -->
     <nav class="top-nav">
         <a href="/">🧮 Калькулятор</a>
@@ -1034,7 +1035,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                                 <th>ID</th>
                                 <th>Дата</th>
                                 <th>Клиент</th>
-                                <th>Pay-In</th>
+                                <th>Pay-In USDT</th>
                                 <th>Pay-Out</th>
                                 <th>Прибыль</th>
                                 <th>Статус</th>
@@ -1128,6 +1129,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         </tbody>
                     </table>
                 </div>
+                <p id="dealsEmpty" class="empty-state">Сделки не найдены. Измените фильтры или <button class="btn-link" onclick="showSection('create')">создайте сделку</button>.</p>
                 <!-- Пагинация -->
                 <div id="dealsPagination" style="display:none; padding:16px 0; display:flex; align-items:center; justify-content:center; gap:8px; flex-wrap:wrap;">
                     <button class="btn btn-sm btn-secondary" id="prevPage" onclick="changePage(-1)">← Назад</button>
@@ -1155,7 +1157,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         <div class="form-group" style="position:relative;">
                             <label class="form-label">Клиент</label>
                             <input type="hidden" name="client_id" id="clientIdHidden">
-                            <input type="text" class="form-control" id="clientSearchInput" name="client_name" placeholder="Поиск или новый клиент..." autocomplete="off">
+                            <input type="text" class="form-control" id="clientSearchInput" name="client_name" placeholder="Клиент" autocomplete="off">
                             <div id="clientDropdown" class="client-dropdown" style="display:none;"></div>
                             <!-- Старый select скрыт для совместимости -->
                             <select class="form-control" name="_client_id_old" id="clientSelect" style="display:none;">
@@ -1292,7 +1294,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 
                         <div style="margin-top: 1rem; padding: 0.75rem; background: #f0fdf4; border-radius: 8px; border: 1px solid #bbf7d0;">
                             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px;">
-                                <strong style="color:#166534;">👥 Агенты сделки</strong>
+                                <strong style="color:#166534;">Агенты сделки</strong>
                                 <div style="display:flex;gap:6px;">
                                     <button type="button" id="caPreCascade" onclick="customAgentsPreset('cascade')" class="ca-preset">⬇️ Каскадом</button>
                                     <button type="button" id="caPreFlat" onclick="customAgentsPreset('flat')" class="ca-preset">🟰 В долю</button>
@@ -1441,7 +1443,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                                     <div>
                                         <label class="form-label" for="payinManualHash">Ручной TxHash</label>
                                         <input type="text" class="form-control" id="payinManualHash" name="payin_tx_hash"
-                                            placeholder="Вставьте полный хэш транзакции">
+                                            placeholder="Хэш транзакции">
                                     </div>
                                 </div>
                                 <small style="display:block;color:#64748b;margin-top:6px;">При ручном вводе сеть выбирается явно: TRC-20 проверяется через TronScan, ERC-20 — через Etherscan.</small>
@@ -1461,19 +1463,19 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         <!-- Сбер (реквизиты): пул приходов + части оплаты -->
                         <div id="sberReqsGroup" style="display:none; margin-bottom: 1rem; padding: 0.75rem; background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 8px;">
                             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; gap:6px;">
-                                <strong style="color:#0369a1;">🏦 Приходы Сбера</strong>
+                                <strong style="color:#0369a1;">Приходы Сбера</strong>
                                 <div style="display:flex; gap:6px; align-items:center;">
                                     <select id="sberKindSelect" class="form-control" style="max-width:180px;padding:4px 8px;font-size:12px;" onchange="sberKindChanged(this.value)">
                                         <option value="">Все приходы</option>
                                         <option value="acquiring">СБП (эквайринг)</option>
                                         <option value="transfer">Реквизиты</option>
                                     </select>
-                                    <button type="button" class="btn btn-secondary btn-sm" onclick="sberLoadIncomes()">🔄</button>
+                                    <button type="button" class="btn btn-secondary btn-sm" onclick="sberLoadIncomes()">Обновить</button>
                                 </div>
                             </div>
                             <div id="sberIncomesAvail" style="max-height:180px; overflow-y:auto; margin-bottom:8px;"></div>
                             <div style="display:flex; gap:6px; align-items:center; margin-bottom:8px;">
-                                <input type="number" step="any" id="sberManualAmount" class="form-control" placeholder="Сумма ₽ вручную" style="max-width:170px;">
+                                <input type="number" step="any" id="sberManualAmount" class="form-control" placeholder="Сумма ₽" style="max-width:170px;">
                                 <input type="text" id="sberManualNote" class="form-control" placeholder="Комментарий" style="max-width:200px;">
                                 <button type="button" class="btn btn-secondary btn-sm" onclick="sberAddManual()" style="white-space:nowrap;">＋ Добавить</button>
                             </div>
@@ -1873,7 +1875,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         <p style="color: #666; font-size: 0.9rem; margin-bottom: 1rem;">Если партнер помог со сделкой и
                             получает часть прибыли</p>
 
-                        <div style="padding: 0.75rem; background: #f0fdf4; border-radius: 8px; border: 1px solid #bbf7d0;">
+                        <div class="agents-card" style="padding: 0.75rem; background: #f0fdf4; border-radius: 8px; border: 1px solid #bbf7d0;">
                             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px;">
                                 <strong style="color:#166534;">👥 Агенты сделки</strong>
                                 <div style="display:flex;gap:6px;">
@@ -2613,9 +2615,9 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     </button>
                 </div>
                 <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:12px;">
-                    <input id="refSearch" placeholder="Поиск: имя, код, Telegram" oninput="renderReferrers()"
+                    <input id="refSearch" placeholder="Поиск реферера" aria-label="Поиск по имени, коду или Telegram" oninput="renderReferrers()"
                         style="flex:1;min-width:200px;padding:7px 12px;border:1px solid #e2e8f0;border-radius:8px;font-size:13px;">
-                    <input id="refMinPending" type="number" placeholder="Долг от $" oninput="renderReferrers()"
+                    <input id="refMinPending" type="number" placeholder="От, $" aria-label="Долг от, доллары" oninput="renderReferrers()"
                         style="width:120px;padding:7px 12px;border:1px solid #e2e8f0;border-radius:8px;font-size:13px;">
                     <select id="refSort" onchange="renderReferrers()"
                         style="padding:7px 12px;border:1px solid #e2e8f0;border-radius:8px;font-size:13px;">
@@ -2684,13 +2686,13 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 <select id="rxFltMer" class="rx-inp" onchange="rxApplyFilter()"><option value="">Все мерчанты</option></select>
                 <select id="rxFltStt" class="rx-inp" onchange="rxApplyFilter()"><option value="">Все статусы</option><option value="paid">💰 Оплачено</option><option value="requested">📤 В заявке</option><option value="closed">✅ Закрыто</option><option value="advance">⚠️ Аванс</option></select>
                 <select id="rxFltSort" class="rx-inp" onchange="rxApplyFilter()"><option value="new">↓ новые</option><option value="old">↑ старые</option></select>
-                <input id="rxFltSf" class="rx-inp num" style="width:90px" placeholder="USDT от" oninput="rxApplyFilter()">
-                <input id="rxFltSt" class="rx-inp num" style="width:90px" placeholder="USDT до" oninput="rxApplyFilter()">
+                <input id="rxFltSf" class="rx-inp num" style="width:90px" placeholder="От" aria-label="Сумма USDT от" oninput="rxApplyFilter()">
+                <input id="rxFltSt" class="rx-inp num" style="width:90px" placeholder="До" aria-label="Сумма USDT до" oninput="rxApplyFilter()">
                 <button class="btn btn-secondary btn-sm" onclick="rxResetFilter()">Сброс</button>
                 <span id="rxFltCnt" class="rx-muted" style="font-size:12px;margin-left:auto"></span>
               </div>
               <div class="rx-scroll"><table>
-                <thead><tr><th>WL</th><th>Дата</th><th>Мерчант</th><th style="text-align:right">Сумма ₽</th><th style="text-align:right">Отдали клиенту</th><th style="text-align:right">Получили</th><th style="text-align:right">Маржа $ (%)</th><th>Конвертация</th><th>Статус</th></tr></thead>
+                <thead><tr><th>WL</th><th>Дата</th><th>Мерчант</th><th style="text-align:right">Сумма ₽</th><th style="text-align:right">Отдали клиенту USDT</th><th style="text-align:right">Получили USDT</th><th style="text-align:right">Маржа $ (%)</th><th>Конвертация</th><th>Статус</th></tr></thead>
                 <tbody id="rx-deals-body"></tbody>
               </table></div>
             </div>
@@ -2780,7 +2782,11 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
       realty:{t:'🏠 Недвижка',bg:'#FEF3C7',c:'#92400E'},
       rejected:{t:'❌ Отклонён',bg:'#FEF2F2',c:'#991B1B'},
     };
-    const rxBadge = s => { const x=RX_ST[s]||{t:s||'—',bg:'#F1F5F9',c:'#64748B'}; return `<span class="rx-pill" style="background:${x.bg};color:${x.c}">${x.t}</span>`; };
+    const rxBadge = s => {
+      const x = RX_ST[s] || {t:s||'—'};
+      const signal = ['paid', 'covered', 'received'].includes(s) ? ' pill-money' : s === 'expired' ? ' pill-late' : '';
+      return `<span class="pill rx-pill${signal}">${x.t}</span>`;
+    };
 
     async function rxLoad(force){
       const btn=document.getElementById('rxSyncBtn');
@@ -2803,10 +2809,10 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
       const owe=rxData.merchants.reduce((s,m)=>s+(m.owe||0),0);
       const margin=rxData.deals.filter(d=>d.mKnown!==false).reduce((s,d)=>s+(d.margin||0),0);
       document.getElementById('rxSummary').innerHTML=`
-        <div class="rx-card"><div class="lbl">Оплачено всего</div><div class="val num">${rxFmt(paid)}</div><div class="sub">${rxData.deals.length} сделок</div></div>
+        <div class="rx-card"><div class="lbl">Оплачено всего</div><div class="val num">${rxFmt(paid)} USDT</div><div class="sub">${rxData.deals.length} сделок</div></div>
         <div class="rx-card"><div class="lbl">Кошельки</div><div class="val" style="color:var(--green-dark)">${rxData.wallets.length}</div><div class="sub">из TRON</div></div>
-        <div class="rx-card"><div class="lbl">Должны мерчантам</div><div class="val num" style="color:var(--amber)">${rxFmt(owe)}</div><div class="sub">в заявках + накоплено</div></div>
-        <div class="rx-card"><div class="lbl">Маржа</div><div class="val num" style="color:var(--green-dark)">+ ${rxFmt(margin)}</div><div class="sub">по известным</div></div>`;
+        <div class="rx-card"><div class="lbl">Должны мерчантам</div><div class="val num" style="color:var(--amber)">${rxFmt(owe)} USDT</div><div class="sub">в заявках + накоплено</div></div>
+        <div class="rx-card"><div class="lbl">Маржа</div><div class="val num" style="color:var(--green-dark)">$${rxFmt(margin)}</div><div class="sub">по известным</div></div>`;
     }
 
     function rxSubtab(name){
@@ -2948,7 +2954,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
       const target=ch[0].closest('tr'); let sum=0,hashes=[];
       ch.forEach(c=>{ sum+=parseFloat(c.dataset.got||'0')||0; const h=(c.dataset.h||'').split(',')[0].trim(); if(h&&h!=='—')hashes.push(h.slice(0,10)+'…'); });
       const tn=target.querySelector('td').textContent.trim(); const tds=target.querySelectorAll('td');
-      tds[4].innerHTML=hashes.join(' + ')+` <span class="rx-pill" style="background:#EFF6FF;color:#1E40AF">🔗 ${ch.length} этапа</span>`; tds[5].textContent=rxFmt(sum);
+      tds[4].innerHTML=hashes.join(' + ')+` <span class="pill rx-pill" style="background:#EFF6FF;color:#1E40AF">🔗 ${ch.length} этапа</span>`; tds[5].textContent=rxFmt(sum);
       ch.slice(1).forEach(c=>{ const row=c.closest('tr'); const ex=row.nextElementSibling; if(ex&&ex.classList.contains('rx-prov'))ex.style.display='none'; row.classList.remove('rx-row'); row.onclick=null; row.innerHTML=`<td colspan="8" class="rx-muted" style="padding:8px 12px">↪ объединён в приход ${tn} (один перевод в ${ch.length} этапа)</td>`; });
       target.querySelector('.rx-bchk').checked=false; rxUpdMergeBtn();
     }
@@ -3148,7 +3154,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         <div class="rx-card">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
             <div style="font-weight:700;font-size:16px">${m.name}</div>
-            <span class="rx-pill" style="background:${m.owe>0?'#FEF3C7':'#D1FAE5'};color:${m.owe>0?'#92400E':'#065F46'}">должны ${rxFmt(m.owe)}</span>
+            <span class="pill rx-pill" style="background:${m.owe>0?'#FEF3C7':'#D1FAE5'};color:${m.owe>0?'#92400E':'#065F46'}">должны ${rxFmt(m.owe)}</span>
           </div>
           <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;text-align:center">
             <div><div class="num" style="font-size:17px;font-weight:700">${rxFmt(m.free)}</div><div class="rx-muted" style="font-size:11px">накоплено</div></div>
@@ -3162,7 +3168,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
       document.getElementById('rx-wallets-body').innerHTML=rxData.wallets.map(w=>`<tr>
         <td class="num"><a class="rx-tx" href="${rxTronAddr(w.addr)}" target="_blank">${(w.addr||'').slice(0,10)}…${(w.addr||'').slice(-6)} ↗</a></td>
         <td>${w.use||''}</td><td class="rx-muted">${w.link||''}</td><td class="num" style="text-align:right;font-weight:600">${rxFmt(w.bal)}</td>
-        <td class="num rx-muted">${w.last||''}</td><td><span class="rx-pill" style="background:#D1FAE5;color:#065F46">✅ активный</span></td></tr>`).join('');
+        <td class="num rx-muted">${w.last||''}</td><td><span class="pill rx-pill" style="background:#D1FAE5;color:#065F46">✅ активный</span></td></tr>`).join('');
     }
     </script>
 
@@ -3688,9 +3694,6 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             transition: transform 0.2s;
         }
 
-        .kyc-review-photo img:hover {
-            transform: scale(1.02);
-        }
 
         .kyc-review-actions {
             display: flex;
@@ -3944,7 +3947,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             return html;
         }
 
-        function showConfirm(message, confirmLabel = 'OK', danger = false) {
+        function showConfirm(message, confirmLabel = 'Подтвердить', danger = false) {
             return new Promise(resolve => {
                 const overlay = document.createElement('div');
                 overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:10000;display:flex;align-items:center;justify-content:center';
@@ -3952,7 +3955,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     <div style="font-size:15px;line-height:1.5;margin-bottom:20px">${escapeHtml(message).replace(/\n/g, '<br>')}</div>
                     <div style="display:flex;gap:12px;justify-content:flex-end">
                         <button class="confirm-cancel" style="padding:10px 20px;border-radius:10px;border:1px solid #ddd;background:#fff;cursor:pointer;font-size:14px">Отмена</button>
-                        <button class="confirm-ok" style="padding:10px 20px;border-radius:10px;border:none;background:${danger ? 'var(--red)' : '#FF6B35'};color:#fff;cursor:pointer;font-size:14px;font-weight:600">${confirmLabel}</button>
+                        <button class="confirm-ok${danger ? ' is-danger' : ''}" style="padding:10px 20px;border-radius:10px;border:none;background:${danger ? 'var(--red)' : 'var(--action-coral)'};color:#fff;cursor:pointer;font-size:14px;font-weight:600">${confirmLabel}</button>
                     </div></div>`;
                 document.body.appendChild(overlay);
                 const finish = value => { overlay.remove(); resolve(value); };
@@ -4257,7 +4260,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                                         ? '$' + formatNumber(deal.transfer_sent_usd)
                                         : '-')))}</td>
                             <td style="color: ${profitUnknown ? '#f59e0b' : ((deal.net_profit_usdt || deal.profit_usdt) > 0 ? '#10b981' : '#ef4444')}; font-weight: 600;">${profitUnknown ? '⏳ ожид.' : (deal.net_profit_usdt != null ? '$' + deal.net_profit_usdt.toFixed(2) : (deal.profit_usdt != null ? '$' + deal.profit_usdt.toFixed(2) : '-'))}</td>
-                            <td><span class="badge badge-${deal.status}">${getStatusLabel(deal.status)}</span></td>
+                            <td><span class="pill badge badge-${deal.status}">${getStatusLabel(deal.status)}</span></td>
                         </tr>
                     `}).join('');
                 }
@@ -4313,8 +4316,8 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         <td>${escapeHtml(l.client_name) || '-'}</td>
                         <td>${escapeHtml(l.lose_reason) || '-'}</td>
                         <td>${l.revived_by_deal_id
-                            ? `<span class="badge badge-completed">🔄 ожил → #${l.revived_by_deal_id}</span>`
-                            : '<span class="badge badge-cancelled">потерян</span>'}</td>
+                            ? `<span class="pill badge badge-completed">🔄 ожил → #${l.revived_by_deal_id}</span>`
+                            : '<span class="pill badge badge-cancelled">потерян</span>'}</td>
                     </tr>`).join('') || '<tr><td colspan="5" style="color:#999">Пусто</td></tr>';
             } catch (e) {
                 console.error('Error loading conversion:', e);
@@ -4558,8 +4561,8 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         }
 
         function renderCharts(charts) {
-            const chartFont = { family: 'Inter, sans-serif', size: 11 };
-            const gridColor = '#f0f0f0';
+            const chartFont = { family: 'Inter, sans-serif', size: 12 };
+            const gridColor = '#E2E8F0';
 
             // Уничтожаем старые
             Object.values(chartInstances).forEach(c => c.destroy());
@@ -4574,17 +4577,17 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         datasets: [{
                             label: 'Прибыль $',
                             data: charts.daily.map(d => d.profit),
-                            backgroundColor: '#FF6B35',
-                            borderRadius: 4,
+                            backgroundColor: '#334155',
+                            borderRadius: 8,
                             maxBarThickness: 24
                         }]
                     },
                     options: {
                         responsive: true, maintainAspectRatio: false,
-                        plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => `$${ctx.raw.toFixed(2)}` } } },
+                        plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => formatDisplayMoney(ctx.raw, '$') } } },
                         scales: {
                             x: { grid: { display: false }, ticks: { font: chartFont, maxRotation: 0, autoSkip: true, maxTicksLimit: 8 } },
-                            y: { grid: { color: gridColor }, ticks: { font: chartFont, callback: v => '$' + v } }
+                            y: { grid: { color: gridColor }, ticks: { font: chartFont, callback: v => formatDisplayMoney(v, '$', 0) } }
                         }
                     }
                 });
@@ -4597,9 +4600,9 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         datasets: [{
                             label: 'Сделок',
                             data: charts.daily.map(d => d.count),
-                            borderColor: '#3b82f6',
-                            backgroundColor: 'rgba(59,130,246,0.1)',
-                            fill: true, tension: 0.3, pointRadius: 3, pointHoverRadius: 6
+                            borderColor: '#64748B',
+                            backgroundColor: '#F1F5F9',
+                            fill: true, tension: 0.3, pointRadius: 3, pointHoverRadius: 3
                         }]
                     },
                     options: {
@@ -4616,7 +4619,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             // Методы (doughnut)
             if (charts.methods) {
                 const entries = Object.entries(charts.methods);
-                const colors = ['#FF6B35', '#3b82f6', '#22c55e', '#f59e0b', '#a855f7'];
+                const colors = ['#334155', '#64748B', '#94A3B8', '#CBD5E1', '#E2E8F0'];
                 chartInstances.methods = new Chart(document.getElementById('methodsChart'), {
                     type: 'doughnut',
                     data: {
@@ -4715,7 +4718,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                             <td style="color: ${profitUnknown ? '#f59e0b' : ((deal.net_profit_usdt || deal.profit_usdt) > 0 ? '#10b981' : '#ef4444')}; font-weight: 600;">
                                 ${profitUnknown ? '⏳ ожид.' : (deal.net_profit_usdt != null ? '$' + deal.net_profit_usdt.toFixed(2) : (deal.profit_usdt != null ? '$' + deal.profit_usdt.toFixed(2) : '-'))}
                             </td>
-                            <td><span class="badge badge-${deal.status}">${getStatusLabel(deal.status)}</span></td>
+                            <td><span class="pill badge badge-${deal.status}">${getStatusLabel(deal.status)}</span></td>
                             <td>
                                 <button class="btn btn-sm btn-secondary" onclick="showDealDetails(${deal.id}, this)">Детали</button>
                             </td>
@@ -4845,7 +4848,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     document.getElementById('dealModalContent').innerHTML = `
                         <div class="form-row">
                             <div><strong>ID:</strong> #${deal.id}</div>
-                            <div><strong>Статус:</strong> <span class="badge badge-${deal.status}">${getStatusLabel(deal.status)}</span></div>
+                            <div><strong>Статус:</strong> <span class="pill badge badge-${deal.status}">${getStatusLabel(deal.status)}</span></div>
                         </div>
                         <hr style="margin: 1rem 0;">
                         
@@ -5725,11 +5728,11 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         ? 'сейчас уведомления получает только Карим'
                         : 'уведомления включены для сотрудников с галкой');
                 box.innerHTML = data.admins.map(a => `
-                    <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border:1px solid #E2E8F0;border-radius:10px;margin-bottom:8px;gap:12px;flex-wrap:wrap;">
+                    <div class="admin-row" style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border:1px solid #E2E8F0;border-radius:10px;margin-bottom:8px;gap:12px;flex-wrap:wrap;">
                         <div>
                             <div style="font-weight:600;">${a.display_name}
-                                ${STAND_ROLES ? `<span style="font-size:12px;font-weight:600;color:#C2410C;background:#FFF7ED;border-radius:999px;padding:2px 8px;margin-left:6px;">${STAND_ROLES[a.role] || a.role || 'admin'}</span>` : ''}</div>
-                            <div style="font-size:12px;color:#64748b;">${STAND_ROLES ? 'логин <b>' + escapeHtml(a.username) + '</b> · ' : ''}${escapeHtml(a.telegram || '—')} ${STAND_ROLES ? (a.bound ? '· 🟢 Telegram ID задан' : '· ⚪ Telegram ID не задан') : (a.bound ? '· 🟢 привязан' : '· ⚪ ждёт входа')}</div>
+                                ${STAND_ROLES ? `<span class="pill" style="font-size:12px;font-weight:600;color:#C2410C;background:#FFF7ED;border-radius:999px;padding:2px 8px;margin-left:6px;">${STAND_ROLES[a.role] || a.role || 'admin'}</span>` : ''}</div>
+                            <div style="font-size:12px;color:#64748b;">${STAND_ROLES ? 'логин <b>' + escapeHtml(a.username) + '</b> · ' : ''}${escapeHtml(a.telegram || '—')} ${STAND_ROLES ? (a.bound ? '· Telegram ID задан' : '· Telegram ID не задан') : (a.bound ? '· привязан' : '· ждёт входа')}</div>
                         </div>
                         <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
                             ${STAND_ROLES ? `<select class="form-control" style="width:auto;padding:6px 10px;" onchange="setAdminRole(${a.id}, this.value)">
@@ -5829,7 +5832,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 if (sel) sel.innerHTML = Object.keys(STAND_ROLES)
                     .map(r => `<option value="${r}">${STAND_ROLES[r]}</option>`).join('');
                 const tg = document.getElementById('adminTelegram');
-                if (tg) { tg.required = false; tg.placeholder = '@username (не обязателен)'; }
+                if (tg) { tg.required = false; tg.placeholder = '@username'; }
             } catch (e) {}
         }
 
@@ -10031,7 +10034,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     tbody.innerHTML = data.operations.map(op => `
                         <tr>
                             <td>${formatDate(op.created_at)}</td>
-                            <td><span class="badge badge-${op.type === 'income' ? 'success' : 'danger'}">${op.type === 'income' ? 'Плюс' : 'Минус'}</span></td>
+                            <td><span class="pill badge badge-${op.type === 'income' ? 'success' : 'danger'}">${op.type === 'income' ? 'Плюс' : 'Минус'}</span></td>
                             <td style="color: ${op.type === 'income' ? '#10b981' : '#ef4444'}; font-weight: 600;">${op.type === 'income' ? '+' : '-'}$${op.amount.toFixed(2)}</td>
                             <td>
                                 <div>${op.description || '-'}</div>
@@ -12763,7 +12766,7 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                                     </div>
                                 </div>
                                 <div style="text-align: right; margin-top: 1rem;">
-                                    <span class="badge badge-pending" style="margin-bottom: 0.5rem; display: inline-block;">Ожидает</span><br>
+                                    <span class="pill badge badge-pending" style="margin-bottom: 0.5rem; display: inline-block;">Ожидает</span><br>
                                     <button class="btn btn-sm btn-success" onclick="confirmDoverka(${deal.id})">
                                         Подтвердить получение
                                     </button>
@@ -12828,31 +12831,31 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                     document.getElementById('walletsInfo').innerHTML = `
                         <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 1rem;">
                             ${walletsData.wallets.map(w => `
-                                <div style="padding: 0.75rem 2rem 0.75rem 0.75rem; background: #f0fdf4; border-radius: 8px; position: relative;">
+                                <div class="wallet-card" style="padding: 0.75rem 2rem 0.75rem 0.75rem; background: #f0fdf4; border-radius: 8px; position: relative;">
                                     <input type="text" value="${escapeHtml(w.label || '')}"
-                                        placeholder="Подпись — чей это кошелёк?"
+                                        placeholder="Название" aria-label="Название кошелька"
                                         onchange="saveWalletLabel(${w.id}, this.value)"
                                         onkeydown="if (event.key === 'Enter') this.blur();"
                                         style="width: 100%; border: none; background: transparent; font-weight: 600; font-size: 0.9rem; color: #065f46; padding: 0 0 4px 0; outline: none; border-bottom: 1px dashed #a7f3d0;">
                                     <div style="display: flex; align-items: center; gap: 6px; margin-top: 0.5rem;">
-                                        <span style="font-family: monospace; font-size: 0.78rem; color: #475569; word-break: break-all; line-height: 1.35;">${w.address}</span>
+                                        <span class="wallet-address" style="font-family: monospace; font-size: 0.78rem; color: #475569; word-break: break-all; line-height: 1.35;">${w.address}</span>
                                         <span onclick="copyHash('${w.address}')" title="Скопировать адрес"
-                                            style="cursor: pointer; flex-shrink: 0;">📋</span>
+                                            style="cursor: pointer; flex-shrink: 0;">Копировать</span>
                                     </div>
                                     <div style="margin-top: 0.5rem;">
                                         ${w.balance_unavailable
                                           ? '<span style="color: #94a3b8;">нет данных</span>'
-                                          : `<strong style="color: #10b981;">$${w.usdt_balance.toFixed(2)} USDT</strong>
+                                          : `<strong style="color: #10b981;">${w.usdt_balance.toFixed(2)} USDT</strong>
                                         <span style="color: #666; font-size: 0.85rem;"> | ${w.trx_balance.toFixed(2)} TRX</span>`}
                                     </div>
                                     <!-- Единый реестр кошельков: эти флаги решают, покажется ли
                                          кошелёк в дропдауне «куда клиент платит USDT» на стенде. -->
                                     <div style="margin-top: 0.5rem; display: flex; gap: 4px; flex-wrap: wrap;">
-                                        ${w.is_multisig ? '<span class="badge" style="background:#fef3c7;color:#92400e;">мультисиг</span>' : ''}
-                                        ${w.accepts_payin ? '<span class="badge" style="background:#dbeafe;color:#1e40af;">приём оплаты</span>' : ''}
+                                        ${w.is_multisig ? '<span class="pill badge" style="background:#fef3c7;color:#92400e;">мультисиг</span>' : ''}
+                                        ${w.accepts_payin ? '<span class="pill badge" style="background:#dbeafe;color:#1e40af;">приём оплаты</span>' : ''}
                                     </div>
                                     <input type="text" value="${escapeHtml(w.owner || '')}"
-                                        placeholder="Владелец"
+                                        placeholder="Владелец" aria-label="Владелец кошелька"
                                         onchange="saveWalletRegistryField(${w.id}, 'owner', this.value)"
                                         onkeydown="if (event.key === 'Enter') this.blur();"
                                         style="width: 100%; border: none; background: transparent; font-size: 0.8rem; color: #475569; padding: 4px 0 0 0; outline: none; border-bottom: 1px dashed #a7f3d0; margin-top: 0.35rem;">
@@ -12868,7 +12871,7 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                                             Принимаем оплату от клиентов
                                         </label>
                                     </div>
-                                    <button class="btn btn-sm btn-danger" onclick="deleteWallet(${w.id})" style="position: absolute; top: 5px; right: 5px; padding: 2px 5px; font-size: 0.7rem;">×</button>
+                                    <button class="btn btn-sm btn-danger" onclick="deleteWallet(${w.id})" style="position: absolute; top: 5px; right: 5px; padding: 2px 5px; font-size: 0.7rem;">Удалить</button>
                                 </div>
                             `).join('')}
                         </div>
@@ -12952,7 +12955,7 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                                     <div class="tx-hash">${tx.tx_hash.substring(0, 30)}...</div>
                                     <div class="tx-time">Использовано в сделке | ${formatDate(tx.timestamp)}</div>
                                 </div>
-                                <span class="badge">Использовано</span>
+                                <span class="pill badge">Использовано</span>
                             </div>
                         `).join('')
                         : '<p style="color: #666; text-align: center; padding: 1rem;">Нет использованных транзакций</p>';
@@ -14887,7 +14890,7 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                 <span class="docs-money-cell" style="text-align:right">${outAmt!=null?docsFmt(outAmt,2)+' '+p.out:'—'}</span>
                 <span class="docs-money-cell" style="text-align:right">${rate!=null?rate.toFixed(6):'—'}<br><small>${docsRateUnit(p.k)}</small></span>
                 <span class="docs-num">${docsEsc(a.number)}</span>
-                <span><span class="badge ${badge}">${label}</span>
+                <span><span class="pill badge ${badge}">${label}</span>
                       <span class="docs-num" style="margin-left:6px;color:var(--text-sec)">${a.payments_count} пл.</span></span>
                 <span class="docs-deal-actions">
                     <button class="btn btn-primary docs-btn-sm" onclick="docsOpenAndPay(${a.id})">+ Платёж</button>
@@ -14903,7 +14906,7 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                 const r = await fetch('/api/docs/agreements?q='+encodeURIComponent(q));
                 const d = await r.json();
                 const rows = d.agreements||[];
-                if(!rows.length){ box.innerHTML = '<div class="docs-empty">Договоров пока нет. Первый создаётся кнопкой «Новый договор».</div>'; return; }
+                if(!rows.length){ box.innerHTML = '<div class="docs-empty empty-state">Договоров пока нет. <button class="btn-link" onclick="docsOpenNew()">Создать договор</button></div>'; return; }
                 box.innerHTML = docsGroupByClient(rows).map(g=>`
                     <div class="docs-client">
                         <div class="docs-client-head">
@@ -15144,7 +15147,7 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                 const file = docsState.provenance[k];
                 const slot = (docsState.slots||{})[k];
                 // ярлык слота читается за секунду, имя файла — нет; файл оставляем в подсказке
-                const chip = file ? `<span class="docs-src" title="${docsEsc(file)}">${DOCS_SRC_LABEL[slot]||docsEsc(file)}</span>` : '';
+                const chip = file ? `<span class="pill docs-src" title="${docsEsc(file)}">${DOCS_SRC_LABEL[slot]||docsEsc(file)}</span>` : '';
                 return `<div class="docs-field${wide?' is-wide':''}">
                     <label for="docf_${k}">${label}${chip}</label>
                     <input class="form-input" id="docf_${k}" value="${docsEsc(val)}"
@@ -15419,6 +15422,7 @@ ${Math.abs(c.debits_delta_rub) < 0.01
     </nav>
     <script src="/static/nav-shell.js?v=6"></script>
     <script>NavShell.boot('crm');</script>
+    <script src="/static/visual-format.js?v=1"></script>
 </body>
 
 </html>

@@ -1,0 +1,536 @@
+/* Wave 4a: shared visual layer for the CRM and calculator.
+   Values and component names follow DESIGN.md. Business state remains in the existing UI. */
+:root {
+  --action-coral: #C2410C;
+  --action-coral-hover: #9A3412;
+  --ink-navy: #0F172A;
+  --navy-700: #334155;
+  --navy-600: #475569;
+  --navy-500: #64748B;
+  --navy-400: #94A3B8;
+  --navy-300: #CBD5E1;
+  --navy-200: #E2E8F0;
+  --navy-100: #F1F5F9;
+  --page-mist: #F8FAFC;
+  --surface-white: #FFFFFF;
+  --money-surface: #F0FDF4;
+  --money-border: #BBF7D0;
+  --money-ink: #065F46;
+  --decision-surface: #FFFBEB;
+  --decision-border: #FDE68A;
+  --decision-ink: #92400E;
+  --blocker-surface: #FEF2F2;
+  --blocker-border: #FECACA;
+  --blocker-ink: #991B1B;
+  --card-shadow: 0 1px 3px rgba(15,23,42,.05), 0 1px 2px rgba(15,23,42,.04);
+
+  /* Existing CRM and calculator selectors consume these legacy aliases. */
+  --navy-900: var(--ink-navy);
+  --navy-800: var(--ink-navy);
+  --navy-50: var(--page-mist);
+  --coral: var(--action-coral);
+  --coral-hover: var(--action-coral-hover);
+  --coral-light: var(--page-mist);
+  --green: var(--money-ink);
+  --green-dark: var(--money-ink);
+  --green-darker: var(--money-ink);
+  --green-light: var(--money-surface);
+  --red: var(--blocker-ink);
+  --red-light: var(--blocker-surface);
+  --amber: var(--decision-ink);
+  --amber-light: var(--decision-surface);
+  --blue: var(--navy-600);
+  --blue-light: var(--navy-100);
+  --indigo: var(--navy-600);
+  --indigo-light: var(--navy-100);
+  --bg: var(--surface-white);
+  --bg-page: var(--page-mist);
+  --text: var(--ink-navy);
+  --text-sec: var(--navy-600);
+  --text-muted: var(--navy-500);
+  --border: var(--navy-200);
+  --border-light: var(--navy-100);
+  --r: 12px;
+  --r-sm: 8px;
+  --r-lg: 12px;
+}
+
+body.wave4a {
+  background: var(--page-mist) !important;
+  color: var(--ink-navy) !important;
+  font-family: Inter, system-ui, sans-serif !important;
+  font-size: 14px !important;
+  font-weight: 400 !important;
+  font-feature-settings: "tnum" 1, "cv11" 1;
+}
+body.wave4a *, body.wave4a *::before, body.wave4a *::after {
+  font-family: Inter, system-ui, sans-serif !important;
+  font-size: 14px !important;
+  font-weight: 400 !important;
+  font-feature-settings: "tnum" 1, "cv11" 1;
+  text-transform: none !important;
+  color: var(--ink-navy) !important;
+  border-color: var(--navy-200) !important;
+  border-radius: 8px !important;
+  box-shadow: none !important;
+  background-image: none !important;
+  animation: none !important;
+  transition: none !important;
+}
+body.wave4a :is(h1, .crm-section-head h1, .header h1, .stat-value, .result-value) {
+  font-size: 22px !important;
+  font-weight: 700 !important;
+  line-height: 1.25 !important;
+}
+body.wave4a :is(h2, h3, h4, .card-title, .section-header, .rates-title, .batch-info h4) {
+  font-size: 16px !important;
+  font-weight: 600 !important;
+  line-height: 1.4 !important;
+}
+body.wave4a :is(strong, b, th, label, .form-label, .input-label, .docs-field > label) {
+  font-weight: 600 !important;
+}
+body.wave4a :is(.stat-label, .rate-label, .rate-sub, .subtitle, .docs-hint, .docs-note, .docs-status, .docs-client-meta, .docs-empty, .empty-state) {
+  font-size: 12px !important;
+  color: var(--navy-600) !important;
+}
+body.wave4a :is(.docs-empty, .empty-state) { font-size: 14px !important; }
+body.wave4a :is(code, pre, .address, .tx-hash, .wallet-address, .docs-num) {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace !important;
+  font-size: 14px !important;
+  font-weight: 400 !important;
+  white-space: nowrap !important;
+  overflow-wrap: normal !important;
+  word-break: normal !important;
+}
+body.wave4a :is(.num, .money, .amount, .stat-value, .result-value, .docs-money-cell, td.number-cell, th.number-cell) {
+  font-variant-numeric: tabular-nums !important;
+  white-space: nowrap;
+}
+body.wave4a :is(a, .btn-link, .button-link) { color: var(--navy-600) !important; }
+
+/* Shared card and figure surfaces. */
+body.wave4a :is(.card, .stat-card, .rx-card, .rates-card, .calculator-card, .custom-rate-card, .property-card, .wallet-card, .docs-client, .docs-fold) {
+  background: var(--surface-white) !important;
+  border: 1px solid var(--navy-200) !important;
+  border-radius: 12px !important;
+  box-shadow: var(--card-shadow) !important;
+}
+body.wave4a :is(.result-main, #clientCopyBlock > div) {
+  background: var(--surface-white) !important;
+  border: 1px solid var(--navy-200) !important;
+  border-radius: 12px !important;
+  box-shadow: var(--card-shadow) !important;
+}
+body.wave4a :is(.result-label, .result-value, .result-rate, #clientCopyText) {
+  color: var(--ink-navy) !important;
+  opacity: 1 !important;
+}
+body.wave4a .result-profit {
+  color: var(--navy-700) !important;
+  background: var(--navy-100) !important;
+  border: 1px solid var(--navy-200) !important;
+  border-radius: 8px !important;
+}
+body.wave4a #clientCopyText { font-size: 14px !important; }
+body.wave4a #resultsSection { padding-top: 24px !important; }
+body.wave4a #resultsSection :is(#clientCopyBlock, .comment-section, #paymentResult),
+body.wave4a #resultsSection > div[style*="margin-bottom: 20px"] { margin-bottom: 16px !important; }
+body.wave4a #resultsSection > div[style*="gap: 10px"],
+body.wave4a #resultsSection :is(.commission-indicator, .detail-section h4) { gap: 8px !important; }
+body.wave4a #resultsSection .details-header { padding: 16px !important; }
+body.wave4a #resultsSection .commission-indicator {
+  margin-bottom: 16px !important;
+  padding: 12px 16px !important;
+}
+body.wave4a #resultsSection .indicator-title { margin-bottom: 0 !important; }
+body.wave4a #copyClientBtn {
+  position: static !important;
+  min-height: 44px !important;
+  margin-top: 12px !important;
+  padding: 0 16px !important;
+  background: var(--surface-white) !important;
+  border: 1px solid var(--navy-300) !important;
+  border-radius: 8px !important;
+  color: var(--navy-700) !important;
+  font-size: 16px !important;
+  font-weight: 600 !important;
+}
+body.wave4a [role="dialog"] {
+  background: var(--surface-white) !important;
+  border: 1px solid var(--navy-200) !important;
+  border-radius: 12px !important;
+  box-shadow: var(--card-shadow) !important;
+}
+body.wave4a :is(.confirm-cancel, .confirm-ok) {
+  min-height: 44px !important;
+  padding: 0 16px !important;
+  border-radius: 8px !important;
+  font-size: 16px !important;
+  font-weight: 600 !important;
+}
+body.wave4a .confirm-cancel {
+  background: var(--surface-white) !important;
+  border: 1px solid var(--navy-300) !important;
+  color: var(--navy-700) !important;
+}
+body.wave4a .confirm-ok {
+  background: var(--action-coral) !important;
+  border: 1px solid transparent !important;
+  color: var(--surface-white) !important;
+}
+body.wave4a .confirm-ok:hover { background: var(--action-coral-hover) !important; }
+body.wave4a .confirm-ok.is-danger,
+body.wave4a .confirm-ok.is-danger:hover { background: var(--blocker-ink) !important; }
+body.wave4a :is(.stat-card, .rx-card, .rate-item, .figure-tile) {
+  border-left: 1px solid var(--navy-200) !important;
+}
+body.wave4a :is(.stat-card.warning, .stat-card.success, .stat-card.info, .stat-card.danger) .stat-value,
+body.wave4a :is(.deal-profit, .profit-value, .highlight-final, .unit-econ-table .ue-val.good,
+                .batch-amount .thb, .wallet-card .balance, .tx-amount) {
+  color: var(--ink-navy) !important;
+}
+
+/* Primary is reserved for the next action; tabs and filters remain neutral. */
+body.wave4a :is(.btn, .period-btn, .refresh-btn, .dealtype-btn, .method-btn, .scenario-btn,
+                .direction-btn, .commission-btn, .src-btn, .subtab-btn, .rx-subtab,
+                .docs-pair, .docs-pick, .docs-relink, .calculate-btn, .precise-rate-btn,
+                .custom-select-btn, .site-shell-scroll) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 16px;
+  background: var(--surface-white) !important;
+  border: 1px solid var(--navy-300) !important;
+  border-radius: 8px !important;
+  color: var(--navy-700) !important;
+  font-size: 16px !important;
+  font-weight: 600 !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+body.wave4a :is(.btn, .calculate-btn, .refresh-btn, .period-btn, .dealtype-btn, .method-btn, .scenario-btn,
+                .direction-btn, .commission-btn, .src-btn, .docs-pair):hover {
+  background: var(--navy-100) !important;
+}
+body.wave4a :is(.period-btn.active, .dealtype-btn.active, .method-btn.active,
+                .scenario-btn.active, .direction-btn.active, .commission-btn.active,
+                .src-btn.active, .subtab-btn.active, .rx-subtab.active, .docs-pair[aria-pressed="true"]) {
+  background: var(--ink-navy) !important;
+  border-color: var(--ink-navy) !important;
+  color: var(--surface-white) !important;
+}
+body.wave4a :is(.period-btn.active, .dealtype-btn.active, .method-btn.active,
+                .scenario-btn.active, .direction-btn.active, .commission-btn.active,
+                .src-btn.active, .subtab-btn.active, .rx-subtab.active, .docs-pair[aria-pressed="true"]) * {
+  color: var(--surface-white) !important;
+}
+body.wave4a :is(.button-primary, .calculate-btn, #deals .nav-create-btn,
+                #create button[type="submit"].btn-primary,
+                #incomes .btn-primary, #conversions .btn-primary,
+                #transactions .btn-primary, #managers .btn-primary,
+                #admins .btn-primary, #kyc .btn-primary,
+                #partners .btn-primary, #referrers .btn-primary,
+                #documents > .docs-head .btn-primary,
+                #exchangers .btn-primary, #balance .btn-primary:first-of-type,
+                #verification .btn-primary:first-of-type) {
+  background: var(--action-coral) !important;
+  border-color: transparent !important;
+  color: var(--surface-white) !important;
+}
+body.wave4a :is(.button-primary, .calculate-btn, #deals .nav-create-btn,
+                #create button[type="submit"].btn-primary,
+                #incomes .btn-primary, #conversions .btn-primary,
+                #transactions .btn-primary, #managers .btn-primary,
+                #admins .btn-primary, #kyc .btn-primary,
+                #partners .btn-primary, #referrers .btn-primary,
+                #documents > .docs-head .btn-primary,
+                #exchangers .btn-primary, #balance .btn-primary:first-of-type,
+                #verification .btn-primary:first-of-type) * { color: var(--surface-white) !important; }
+body.wave4a :is(.button-primary, .calculate-btn, #deals .nav-create-btn,
+                #create button[type="submit"].btn-primary,
+                #incomes .btn-primary, #conversions .btn-primary,
+                #transactions .btn-primary, #managers .btn-primary,
+                #admins .btn-primary, #kyc .btn-primary,
+                #partners .btn-primary, #referrers .btn-primary,
+                #documents > .docs-head .btn-primary,
+                #exchangers .btn-primary, #balance .btn-primary:first-of-type,
+                #verification .btn-primary:first-of-type):hover {
+  background: var(--action-coral-hover) !important;
+  border-color: transparent !important;
+}
+body.wave4a #resultsSection :is(#createPaymentBtn, #createDealBtn) {
+  background: var(--surface-white) !important;
+  border: 1px solid var(--navy-300) !important;
+  color: var(--navy-700) !important;
+}
+body.wave4a #resultsSection :is(#createPaymentBtn, #createDealBtn):hover,
+body.wave4a #copyClientBtn:hover { background: var(--navy-100) !important; }
+body.wave4a :is(.btn, .button-primary, .calculate-btn):disabled {
+  background: var(--navy-200) !important;
+  border-color: var(--navy-200) !important;
+  color: var(--navy-600) !important;
+}
+body.wave4a :is(button, input, select, textarea, a):focus-visible {
+  outline: 2px solid var(--action-coral) !important;
+  outline-offset: 2px;
+}
+
+/* Field-input applies without replacing native select values or date controls. */
+body.wave4a :is(input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="hidden"]),
+                select, textarea, .form-control, .form-input, .amount-input, .rx-inp, .custom-select-btn) {
+  min-height: 44px !important;
+  padding: 0 12px !important;
+  border: 1px solid var(--navy-300) !important;
+  border-radius: 8px !important;
+  background: var(--surface-white) !important;
+  color: var(--ink-navy) !important;
+  font-size: 16px !important;
+  font-weight: 600 !important;
+  box-shadow: none !important;
+}
+body.wave4a textarea { padding: 12px !important; }
+body.wave4a :is(input, textarea)::placeholder { color: var(--navy-600) !important; opacity: 1 !important; }
+body.wave4a select { appearance: auto !important; background-image: none !important; }
+
+/* Tables and status facts. */
+body.wave4a table { border-collapse: collapse; font-variant-numeric: tabular-nums; }
+body.wave4a th {
+  background: var(--page-mist) !important;
+  color: var(--navy-700) !important;
+  font-size: 14px !important;
+  font-weight: 600 !important;
+  text-transform: none !important;
+  letter-spacing: normal !important;
+  border-bottom: 1px solid var(--navy-200) !important;
+}
+body.wave4a td { color: var(--ink-navy) !important; border-bottom: 1px solid var(--navy-100) !important; }
+body.wave4a #deals:has(#dealsTable tr) #dealsEmpty { display: none; }
+body.wave4a #rx-postup > .card > div:first-child { padding: 12px 16px !important; }
+body.wave4a #channelsCard > div:last-child { margin-top: 8px !important; }
+body.wave4a #dashboard .card > details { margin-top: 8px !important; }
+body.wave4a #dashboard > .card > div[style*="margin-top:10px"] { margin-top: 8px !important; }
+body.wave4a :is(td.num, td.number-cell, th.number-cell, .docs-money-cell) { text-align: right !important; font-variant-numeric: tabular-nums !important; }
+body.wave4a :is(.pill, .badge, .rx-pill, .property-badge, .docs-src) {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--navy-200) !important;
+  border-radius: 999px !important;
+  padding: 4px 8px !important;
+  background: var(--navy-100) !important;
+  color: var(--navy-600) !important;
+  font-size: 12px !important;
+  font-weight: 400 !important;
+}
+body.wave4a :is(.pill-late, .badge-pending) {
+  background: var(--decision-surface) !important;
+  border-color: var(--decision-border) !important;
+  color: var(--decision-ink) !important;
+}
+body.wave4a :is(.pill-money, .signal-money) {
+  background: var(--money-surface) !important;
+  border-color: var(--money-border) !important;
+  color: var(--money-ink) !important;
+}
+body.wave4a :is(.alert, .signal-decision, .signal-blocker, .signal-money) {
+  border: 1px solid var(--navy-200) !important;
+  border-radius: 8px !important;
+}
+body.wave4a :is(.alert-warning, .signal-decision) {
+  background: var(--decision-surface) !important;
+  border-color: var(--decision-border) !important;
+  color: var(--decision-ink) !important;
+}
+body.wave4a :is(.alert-error, .signal-blocker) {
+  background: var(--blocker-surface) !important;
+  border-color: var(--blocker-border) !important;
+  color: var(--blocker-ink) !important;
+}
+
+/* The shared shell is part of both pages. */
+body.wave4a :is(.site-shell-top, .site-shell-top *, .site-shell-section-list a.on,
+                .site-shell-section-list a.on *) { color: var(--surface-white) !important; }
+body.wave4a .site-shell-top { background: var(--ink-navy) !important; border-radius: 0 !important; }
+body.wave4a :is(.site-shell-sections, .site-shell-mobile-head, .site-shell-bottom, .site-shell-menu) {
+  background: var(--surface-white) !important;
+  border-radius: 0 !important;
+}
+body.wave4a .site-shell-section-list a.on { background: var(--ink-navy) !important; }
+body.wave4a .site-shell-count { background: var(--action-coral) !important; color: var(--surface-white) !important; }
+body.wave4a .site-shell-scroll { font-family: Inter, system-ui, sans-serif !important; }
+body.wave4a .site-shell-avatar { background: var(--navy-700) !important; border-radius: 999px !important; color: var(--surface-white) !important; }
+body.wave4a .site-shell .ico { color: inherit !important; }
+
+/* Calculator: the amount and action stay together above the rate reference. */
+body.wave4a .container:has(> #ratesCard) { display: flex; flex-direction: column; }
+body.wave4a #ratesCard { order: 1; }
+body.wave4a .container:has(> #ratesCard) > :is(.info-card, .footer) { order: 2; }
+body.wave4a .scenario-icon, body.wave4a .logo-icon { display: none !important; }
+body.wave4a .rate-item.highlight { background: var(--surface-white) !important; }
+body.wave4a .rate-item.highlight :is(.rate-label, .rate-value) { color: var(--ink-navy) !important; }
+body.wave4a :is(.site-shell-bell a, .site-shell-bell button) { padding: 8px !important; }
+body.wave4a :is(.logo, .rates-header, .rates-grid, .scenarios-grid) { gap: 8px !important; }
+body.wave4a :is(#ratesCard, .rate-item, .calculator-settings) { padding: 12px !important; }
+body.wave4a :is(.switcher-caption, #usdtThbSub) { margin-top: 4px !important; margin-bottom: 4px !important; }
+body.wave4a #rateSourceToggle { padding: 4px !important; gap: 4px !important; }
+body.wave4a .calculator-settings { margin-top: 24px !important; }
+body.wave4a :is(.button-primary, .calculate-btn) { border-color: transparent !important; }
+body.wave4a.nav-shell-crm .container { padding: 24px !important; }
+body.wave4a.nav-shell-crm :is(.card, .form-group) { margin-bottom: 16px !important; }
+body.wave4a.nav-shell-crm .card { padding: 24px !important; }
+body.wave4a.nav-shell-crm th { padding: 12px !important; }
+body.wave4a.nav-shell-crm button { gap: 8px !important; }
+body.wave4a.nav-shell-crm :is(#deals .nav-create-btn, #create .btn-primary) { border-color: transparent !important; }
+body.wave4a .container:has(> #ratesCard) { padding: 16px !important; }
+body.wave4a :is(.checkbox-label, .direction-header) { gap: 8px !important; }
+body.wave4a .partner-section { margin-top: 24px !important; }
+body.wave4a .info-header { padding: 12px !important; }
+body.wave4a.nav-shell-crm .form-label { margin-bottom: 8px !important; }
+body.wave4a.nav-shell-crm :is(.alert, .docs-empty) { padding: 12px 16px !important; gap: 8px !important; }
+body.wave4a.nav-shell-crm .alert-success {
+  background: var(--navy-100) !important;
+  border-color: var(--navy-200) !important;
+  color: var(--navy-700) !important;
+}
+body.wave4a.nav-shell-crm .docs-lede { margin-top: 8px !important; margin-bottom: 8px !important; }
+body.wave4a.nav-shell-crm #docsList { margin-top: 16px !important; }
+body.wave4a.nav-shell-crm #exchangers .rx-card { padding: 12px !important; }
+body.wave4a.nav-shell-crm #exchangers .rx-card .sub { margin-top: 4px !important; }
+body.wave4a.nav-shell-crm #exchangers .rx-subtabs { margin-bottom: 16px !important; }
+body.wave4a.nav-shell-crm #exchangers .rx-subtab { min-height: 44px; padding: 0 16px !important; }
+body.wave4a.nav-shell-crm #exchangers :is(#rxFltSf, #rxFltSt) { width: 120px !important; }
+body.wave4a.nav-shell-crm :is(#incomes, #conversions) .card:has(> table.table) {
+  max-width: 100%; min-width: 0; overflow-x: auto;
+}
+body.wave4a.nav-shell-crm #incomes .card > div { gap: 8px !important; }
+body.wave4a.nav-shell-crm #incomes label { gap: 8px !important; }
+body.wave4a.nav-shell-crm #incomes .btn-secondary { padding: 8px 12px !important; }
+body.wave4a.nav-shell-crm #payoutRequests .card-title > div { gap: 8px !important; }
+body.wave4a.nav-shell-crm #referrers label { gap: 8px !important; }
+body.wave4a #deals:has(#dealsTable tr) #dealsEmpty { display: none; }
+body.wave4a :is(.btn-link, .button-link) {
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  border-radius: 0 !important;
+  color: var(--navy-700) !important;
+  font: 600 14px Inter, system-ui, sans-serif !important;
+  text-decoration: underline !important;
+  cursor: pointer;
+}
+body.wave4a.nav-shell-crm #verification > .card:nth-of-type(2) .btn-primary,
+body.wave4a.nav-shell-crm #verification > .card:nth-of-type(2) .btn-primary:hover {
+  background: var(--surface-white) !important;
+  border-color: var(--navy-300) !important;
+  color: var(--navy-700) !important;
+}
+body.wave4a.nav-shell-crm #walletsInfo .wallet-card {
+  min-width: 0;
+  padding: 12px !important;
+  background: var(--surface-white) !important;
+  border: 1px solid var(--navy-200) !important;
+  border-radius: 12px !important;
+  box-shadow: var(--card-shadow) !important;
+}
+body.wave4a.nav-shell-crm #walletsInfo .wallet-card > input:first-child {
+  width: calc(100% - 104px) !important;
+}
+body.wave4a.nav-shell-crm #walletsInfo .wallet-card input[placeholder="Владелец"] { margin-top: 8px !important; }
+body.wave4a.nav-shell-crm #walletsInfo .wallet-card > div { gap: 8px !important; }
+body.wave4a.nav-shell-crm #walletsInfo .wallet-card > div { margin-top: 8px !important; }
+body.wave4a.nav-shell-crm #addWalletForm .form-group { gap: 8px !important; }
+body.wave4a.nav-shell-crm #walletsInfo .wallet-address {
+  display: block;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-x: auto;
+  white-space: nowrap !important;
+  word-break: normal !important;
+  overflow-wrap: normal !important;
+}
+body.wave4a.nav-shell-crm #walletsInfo .wallet-card .btn-danger {
+  top: 12px !important;
+  right: 12px !important;
+  padding: 0 12px !important;
+}
+body.wave4a.nav-shell-crm #adminsList .admin-row {
+  padding: 12px !important;
+  background: var(--surface-white) !important;
+  border: 1px solid var(--navy-200) !important;
+  border-radius: 12px !important;
+  box-shadow: var(--card-shadow) !important;
+}
+body.wave4a.nav-shell-crm #adminsList .admin-row > div { gap: 8px !important; }
+body.wave4a.nav-shell-crm #adminsList .btn { padding: 0 12px !important; }
+body.wave4a.nav-shell-crm #standNotifyMode { padding: 12px !important; }
+body.wave4a.nav-shell-crm td { padding: 12px !important; }
+body.wave4a.nav-shell-crm #dashboard :is(.stat-card, .rx-card) { padding: 16px !important; }
+body.wave4a.nav-shell-crm #dashboard :is(#statsGrid, #periodSelector) { gap: 8px !important; }
+body.wave4a.nav-shell-crm #dashboard #statsGrid { margin-top: 24px !important; margin-bottom: 24px !important; }
+body.wave4a.nav-shell-crm #dashboard :is(#marginsNote, .ue-sub) { margin-top: 4px !important; margin-bottom: 4px !important; }
+body.wave4a.nav-shell-crm #dashboard #unitEconFormula { margin-top: 8px !important; margin-bottom: 8px !important; }
+body.wave4a.nav-shell-crm #create #sberReqsGroup {
+  background: var(--navy-100) !important;
+  border-color: var(--navy-200) !important;
+  padding: 12px !important;
+  max-width: 100%;
+  min-width: 0;
+}
+body.wave4a.nav-shell-crm #create #sberReqsGroup > div,
+body.wave4a.nav-shell-crm #create #sberReqsGroup > div > div { flex-wrap: wrap !important; gap: 8px !important; }
+body.wave4a.nav-shell-crm #create #sberReqsGroup :is(#sberManualAmount, #sberManualNote) {
+  flex: 1 1 140px;
+  min-width: 140px;
+  max-width: 100% !important;
+}
+body.wave4a.nav-shell-crm #create #payinTxHashGroup small { margin-top: 8px !important; margin-bottom: 8px !important; }
+body.wave4a.nav-shell-crm #create #payinExtraBox > button { margin-top: 8px !important; }
+body.wave4a.nav-shell-crm #create .agents-card {
+  padding: 12px !important;
+  background: var(--surface-white) !important;
+  border: 1px solid var(--navy-200) !important;
+  border-radius: 12px !important;
+  box-shadow: var(--card-shadow) !important;
+}
+body.wave4a.nav-shell-crm #create .agents-card > div:first-child { margin-bottom: 8px !important; gap: 8px !important; }
+body.wave4a.nav-shell-crm #create .agents-card > div:first-child > div { gap: 8px !important; }
+body.wave4a.nav-shell-crm #create .agents-card :is(.ca-preset, button[onclick="stdAgentsAdd()"] ) {
+  min-height: 44px;
+  padding: 0 12px !important;
+  background: var(--surface-white) !important;
+  border: 1px solid var(--navy-300) !important;
+  border-radius: 8px !important;
+  color: var(--navy-700) !important;
+}
+body.wave4a.nav-shell-crm #create #agentsBlockStdNet { margin-top: 8px !important; }
+body.wave4a .toast-container { gap: 8px !important; }
+body.wave4a .toast { padding: 16px !important; }
+body.wave4a .toast.error {
+  background: var(--blocker-surface) !important;
+  border: 1px solid var(--blocker-border) !important;
+  color: var(--blocker-ink) !important;
+}
+@media (max-width: 700px) {
+  body.wave4a.nav-shell-crm #create button[type="submit"].btn-primary {
+    position: fixed;
+    left: 16px;
+    right: 16px;
+    bottom: calc(61px + env(safe-area-inset-bottom) + 8px);
+    width: auto !important;
+    z-index: 221;
+  }
+  body.wave4a.nav-shell-crm #create::after { content: ""; display: block; height: 72px; }
+  body.wave4a.nav-shell-crm #admins #addAdminForm .form-row {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px !important;
+  }
+  body.wave4a.nav-shell-crm #admins #addAdminForm .form-group { min-width: 0; margin-bottom: 0 !important; }
+  body.wave4a.nav-shell-crm #admins #addAdminForm .form-group:nth-last-child(-n+2) { grid-column: 1 / -1; }
+  body.wave4a.nav-shell-crm #admins #addAdminForm .form-group:last-child button { width: 100%; }
+}
+@media (max-width: 700px) {
+  body.wave4a.nav-shell-crm .container { padding: 16px !important; }
+  body.wave4a.nav-shell-crm .card { padding: 16px !important; }
+}

@@ -1,0 +1,1397 @@
+{
+ "tool": "design-gate",
+ "mode": "check",
+ "url": "http://127.0.0.1:59104/crm?section=verification",
+ "design": "/Users/karimamirov/Desktop/untitled folder/outputs/calccrm-redesign/DESIGN.md",
+ "generated": "2026-10-14T20:33:25",
+ "widths_requested": [
+  375,
+  768,
+  1280,
+  1920
+ ],
+ "widths_required": [
+  375,
+  768,
+  1280,
+  1920
+ ],
+ "widths_blocked": {},
+ "verdict": "PASS",
+ "reasons": [],
+ "role": "karim",
+ "label": "after",
+ "tokens": {
+  "sizes": [
+   12.0,
+   14.0,
+   16.0,
+   22.0
+  ],
+  "weights": [
+   400,
+   600,
+   700
+  ],
+  "families": [
+   "inter",
+   "ui-monospace"
+  ],
+  "radii": [
+   8.0,
+   12.0,
+   999.0
+  ],
+  "spacing": [
+   4.0,
+   8.0,
+   12.0,
+   16.0,
+   24.0
+  ],
+  "colors": 22,
+  "de_tolerance": 2.0,
+  "shadow_source": "/Users/karimamirov/Desktop/untitled folder/outputs/calccrm-redesign/.impeccable/design.json",
+  "problems": []
+ },
+ "gates": {
+  "1": {
+   "id": 1,
+   "name": "Токены",
+   "by_width": {
+    "375": "PASS",
+    "768": "PASS",
+    "1280": "PASS",
+    "1920": "PASS"
+   },
+   "verdict": "PASS",
+   "findings": [],
+   "warnings": [],
+   "scope": "авто полностью"
+  },
+  "2": {
+   "id": 2,
+   "name": "Гардрейлы",
+   "by_width": {
+    "375": "PASS",
+    "768": "PASS",
+    "1280": "PASS",
+    "1920": "PASS"
+   },
+   "verdict": "PASS",
+   "findings": [],
+   "warnings": [
+    {
+     "gate": 2,
+     "rule": "G4-icononly",
+     "sev": "WARN",
+     "title": "кнопка-иконка без видимой подписи (есть aria-label)",
+     "value": "‹",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "nav.site-shell-sections > button.site-shell-scroll",
+       "t": "Предыдущие разделы"
+      }
+     ],
+     "gr": 4,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "768": 1,
+      "1280": 1,
+      "1920": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "nav.site-shell-sections > button.site-shell-scroll",
+        "t": "Предыдущие разделы"
+       }
+      ],
+      "768": [
+       {
+        "sel": "nav.site-shell-sections > button.site-shell-scroll",
+        "t": "Предыдущие разделы"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "nav.site-shell-sections > button.site-shell-scroll",
+        "t": "Предыдущие разделы"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "nav.site-shell-sections > button.site-shell-scroll",
+        "t": "Предыдущие разделы"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G4-icononly",
+     "sev": "WARN",
+     "title": "кнопка-иконка без видимой подписи (есть aria-label)",
+     "value": "›",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "nav.site-shell-sections > button.site-shell-scroll",
+       "t": "Следующие разделы"
+      }
+     ],
+     "gr": 4,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "768": 1,
+      "1280": 1,
+      "1920": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "nav.site-shell-sections > button.site-shell-scroll",
+        "t": "Следующие разделы"
+       }
+      ],
+      "768": [
+       {
+        "sel": "nav.site-shell-sections > button.site-shell-scroll",
+        "t": "Следующие разделы"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "nav.site-shell-sections > button.site-shell-scroll",
+        "t": "Следующие разделы"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "nav.site-shell-sections > button.site-shell-scroll",
+        "t": "Следующие разделы"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G9-ph-nolabel",
+     "sev": "WARN",
+     "title": "у поля нет подписи (label/aria-label) — плейсхолдер вместо подписи?",
+     "value": "https://your-n8n.com/webhook/xxx",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "input#webhookUrl",
+       "t": "https://your-n8n.com/webhook/xxx"
+      }
+     ],
+     "gr": 9,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "768": 1,
+      "1280": 1,
+      "1920": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "input#webhookUrl",
+        "t": "https://your-n8n.com/webhook/xxx"
+       }
+      ],
+      "768": [
+       {
+        "sel": "input#webhookUrl",
+        "t": "https://your-n8n.com/webhook/xxx"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "input#webhookUrl",
+        "t": "https://your-n8n.com/webhook/xxx"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "input#webhookUrl",
+        "t": "https://your-n8n.com/webhook/xxx"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G18-outline-none",
+     "sev": "WARN",
+     "title": "outline:none — проверь кольцо фокуса",
+     "value": ".form-control:focus",
+     "n": 1,
+     "ex": [
+      {
+       "sel": ".form-control:focus",
+       "t": ""
+      }
+     ],
+     "gr": 18,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "768": 1,
+      "1280": 1,
+      "1920": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": ".form-control:focus",
+        "t": ""
+       }
+      ],
+      "768": [
+       {
+        "sel": ".form-control:focus",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": ".form-control:focus",
+        "t": ""
+       }
+      ],
+      "1920": [
+       {
+        "sel": ".form-control:focus",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G18-outline-none",
+     "sev": "WARN",
+     "title": "outline:none — проверь кольцо фокуса",
+     "value": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
+     "n": 1,
+     "ex": [
+      {
+       "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
+       "t": ""
+      }
+     ],
+     "gr": 18,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "768": 1,
+      "1280": 1,
+      "1920": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
+        "t": ""
+       }
+      ],
+      "768": [
+       {
+        "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
+        "t": ""
+       }
+      ],
+      "1920": [
+       {
+        "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G18-outline-none",
+     "sev": "WARN",
+     "title": "outline:none — проверь кольцо фокуса",
+     "value": ".docs-amount input:focus",
+     "n": 1,
+     "ex": [
+      {
+       "sel": ".docs-amount input:focus",
+       "t": ""
+      }
+     ],
+     "gr": 18,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "768": 1,
+      "1280": 1,
+      "1920": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": ".docs-amount input:focus",
+        "t": ""
+       }
+      ],
+      "768": [
+       {
+        "sel": ".docs-amount input:focus",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": ".docs-amount input:focus",
+        "t": ""
+       }
+      ],
+      "1920": [
+       {
+        "sel": ".docs-amount input:focus",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G18-outline-none",
+     "sev": "WARN",
+     "title": "outline:none — проверь кольцо фокуса",
+     "value": ".docs-purpose textarea:focus",
+     "n": 1,
+     "ex": [
+      {
+       "sel": ".docs-purpose textarea:focus",
+       "t": ""
+      }
+     ],
+     "gr": 18,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "768": 1,
+      "1280": 1,
+      "1920": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": ".docs-purpose textarea:focus",
+        "t": ""
+       }
+      ],
+      "768": [
+       {
+        "sel": ".docs-purpose textarea:focus",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": ".docs-purpose textarea:focus",
+        "t": ""
+       }
+      ],
+      "1920": [
+       {
+        "sel": ".docs-purpose textarea:focus",
+        "t": ""
+       }
+      ]
+     }
+    }
+   ],
+   "note": "Гардрейлы 1–2, 7, 8, 11 дублируют гейты 1, 3, 4, 5 — находки смотри там.",
+   "scope": "авто для пунктов auto/partial; manual — глазами"
+  },
+  "3": {
+   "id": 3,
+   "name": "Контраст WCAG AA",
+   "by_width": {
+    "375": "PASS",
+    "768": "PASS",
+    "1280": "PASS",
+    "1920": "PASS"
+   },
+   "verdict": "PASS",
+   "findings": [],
+   "warnings": [],
+   "scope": "авто (расчёт по computed-цветам)"
+  },
+  "4": {
+   "id": 4,
+   "name": "Ширины",
+   "by_width": {
+    "375": "PASS",
+    "768": "PASS",
+    "1280": "PASS",
+    "1920": "PASS"
+   },
+   "verdict": "PASS",
+   "findings": [],
+   "warnings": [],
+   "scope": "авто"
+  },
+  "5": {
+   "id": 5,
+   "name": "Текст",
+   "by_width": {
+    "375": "PASS",
+    "768": "PASS",
+    "1280": "PASS",
+    "1920": "PASS"
+   },
+   "verdict": "PASS",
+   "findings": [],
+   "warnings": [],
+   "scope": "авто: внутренние слова, повтор сумм; глагол/фразы из переписки — глазами"
+  },
+  "6": {
+   "id": 6,
+   "name": "Снимки",
+   "by_width": {
+    "375": "PASS",
+    "768": "PASS",
+    "1280": "PASS",
+    "1920": "PASS"
+   },
+   "verdict": "PASS",
+   "notes": [],
+   "shots": {
+    "375": {
+     "after": "/private/tmp/calccrm-wave4a/outputs/calccrm-redesign/wave4a/machine-crm-verification/after-karim-375.png",
+     "before": "/private/tmp/calccrm-wave4a/outputs/calccrm-redesign/wave4a/machine-crm-verification/before-karim-375.png",
+     "identical": false
+    },
+    "1280": {
+     "after": "/private/tmp/calccrm-wave4a/outputs/calccrm-redesign/wave4a/machine-crm-verification/after-karim-1280.png",
+     "before": "/private/tmp/calccrm-wave4a/outputs/calccrm-redesign/wave4a/machine-crm-verification/before-karim-1280.png",
+     "identical": false
+    }
+   },
+   "findings": [],
+   "warnings": [],
+   "scope": "авто: наличие и непустота пар «до/после»; сравнение — глазами"
+  }
+ },
+ "guardrails": {
+  "1": {
+   "id": 1,
+   "title": "Один шрифт + моно, 4 кегля, 3 веса",
+   "coverage": "auto",
+   "verdict": "PASS",
+   "findings": [],
+   "warnings": []
+  },
+  "2": {
+   "id": 2,
+   "title": "Цвета/отступы/радиусы/тени только из токенов",
+   "coverage": "auto",
+   "verdict": "PASS",
+   "findings": [],
+   "warnings": []
+  },
+  "3": {
+   "id": 3,
+   "title": "Сосиски, градиенты, hover-зум, анимации появления",
+   "coverage": "partial",
+   "verdict": "PASS",
+   "findings": [],
+   "warnings": []
+  },
+  "4": {
+   "id": 4,
+   "title": "Кнопки без глагола, две главные, иконка без подписи",
+   "coverage": "partial",
+   "verdict": "PASS",
+   "findings": [],
+   "warnings": [
+    {
+     "gate": 2,
+     "rule": "G4-icononly",
+     "sev": "WARN",
+     "title": "кнопка-иконка без видимой подписи (есть aria-label)",
+     "value": "‹",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "nav.site-shell-sections > button.site-shell-scroll",
+       "t": "Предыдущие разделы"
+      }
+     ],
+     "gr": 4,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "768": 1,
+      "1280": 1,
+      "1920": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "nav.site-shell-sections > button.site-shell-scroll",
+        "t": "Предыдущие разделы"
+       }
+      ],
+      "768": [
+       {
+        "sel": "nav.site-shell-sections > button.site-shell-scroll",
+        "t": "Предыдущие разделы"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "nav.site-shell-sections > button.site-shell-scroll",
+        "t": "Предыдущие разделы"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "nav.site-shell-sections > button.site-shell-scroll",
+        "t": "Предыдущие разделы"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G4-icononly",
+     "sev": "WARN",
+     "title": "кнопка-иконка без видимой подписи (есть aria-label)",
+     "value": "›",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "nav.site-shell-sections > button.site-shell-scroll",
+       "t": "Следующие разделы"
+      }
+     ],
+     "gr": 4,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "768": 1,
+      "1280": 1,
+      "1920": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "nav.site-shell-sections > button.site-shell-scroll",
+        "t": "Следующие разделы"
+       }
+      ],
+      "768": [
+       {
+        "sel": "nav.site-shell-sections > button.site-shell-scroll",
+        "t": "Следующие разделы"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "nav.site-shell-sections > button.site-shell-scroll",
+        "t": "Следующие разделы"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "nav.site-shell-sections > button.site-shell-scroll",
+        "t": "Следующие разделы"
+       }
+      ]
+     }
+    }
+   ]
+  },
+  "5": {
+   "id": 5,
+   "title": "Эмодзи вместо иконок; один размер иконок",
+   "coverage": "partial",
+   "verdict": "PASS",
+   "findings": [],
+   "warnings": []
+  },
+  "6": {
+   "id": 6,
+   "title": "Цветные полосы слева, синие подсказки, оранжевый вне кнопки",
+   "coverage": "partial",
+   "verdict": "PASS",
+   "findings": [],
+   "warnings": []
+  },
+  "7": {
+   "id": 7,
+   "title": "Адрес/хеш в одну строку; ничего шире экрана",
+   "coverage": "auto",
+   "verdict": "PASS",
+   "findings": [],
+   "warnings": []
+  },
+  "8": {
+   "id": 8,
+   "title": "Внутренние названия и коды на экране",
+   "coverage": "partial",
+   "verdict": "PASS",
+   "findings": [],
+   "warnings": []
+  },
+  "9": {
+   "id": 9,
+   "title": "Плейсхолдер вместо подписи / обрезанный плейсхолдер",
+   "coverage": "partial",
+   "verdict": "PASS",
+   "findings": [],
+   "warnings": [
+    {
+     "gate": 2,
+     "rule": "G9-ph-nolabel",
+     "sev": "WARN",
+     "title": "у поля нет подписи (label/aria-label) — плейсхолдер вместо подписи?",
+     "value": "https://your-n8n.com/webhook/xxx",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "input#webhookUrl",
+       "t": "https://your-n8n.com/webhook/xxx"
+      }
+     ],
+     "gr": 9,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "768": 1,
+      "1280": 1,
+      "1920": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "input#webhookUrl",
+        "t": "https://your-n8n.com/webhook/xxx"
+       }
+      ],
+      "768": [
+       {
+        "sel": "input#webhookUrl",
+        "t": "https://your-n8n.com/webhook/xxx"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "input#webhookUrl",
+        "t": "https://your-n8n.com/webhook/xxx"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "input#webhookUrl",
+        "t": "https://your-n8n.com/webhook/xxx"
+       }
+      ]
+     }
+    }
+   ]
+  },
+  "10": {
+   "id": 10,
+   "title": "Ряды «подпись — поле — кнопка» выровнены",
+   "coverage": "partial",
+   "verdict": "PASS",
+   "findings": [],
+   "warnings": []
+  },
+  "11": {
+   "id": 11,
+   "title": "Контраст WCAG AA",
+   "coverage": "auto",
+   "verdict": "PASS",
+   "findings": [],
+   "warnings": []
+  },
+  "12": {
+   "id": 12,
+   "title": "Повтор одной цифры на экране",
+   "coverage": "partial",
+   "verdict": "PASS",
+   "findings": [],
+   "warnings": []
+  },
+  "13": {
+   "id": 13,
+   "title": "Кликабельное vs статичное",
+   "coverage": "manual",
+   "verdict": "MANUAL",
+   "findings": [],
+   "warnings": []
+  },
+  "14": {
+   "id": 14,
+   "title": "Независимые вертикальные стеки вместо строк",
+   "coverage": "manual",
+   "verdict": "MANUAL",
+   "findings": [],
+   "warnings": []
+  },
+  "15": {
+   "id": 15,
+   "title": "Больше двух текстовых ролей в компактном контроле",
+   "coverage": "auto",
+   "verdict": "PASS",
+   "findings": [],
+   "warnings": []
+  },
+  "16": {
+   "id": 16,
+   "title": "Микротекст, который надо читать",
+   "coverage": "partial",
+   "verdict": "PASS",
+   "findings": [],
+   "warnings": []
+  },
+  "17": {
+   "id": 17,
+   "title": "Пустоты и завышенные строки",
+   "coverage": "manual",
+   "verdict": "MANUAL",
+   "findings": [],
+   "warnings": []
+  },
+  "18": {
+   "id": 18,
+   "title": "Состояния, анимации transform/opacity, ошибки консоли",
+   "coverage": "partial",
+   "verdict": "PASS",
+   "findings": [],
+   "warnings": [
+    {
+     "gate": 2,
+     "rule": "G18-outline-none",
+     "sev": "WARN",
+     "title": "outline:none — проверь кольцо фокуса",
+     "value": ".form-control:focus",
+     "n": 1,
+     "ex": [
+      {
+       "sel": ".form-control:focus",
+       "t": ""
+      }
+     ],
+     "gr": 18,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "768": 1,
+      "1280": 1,
+      "1920": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": ".form-control:focus",
+        "t": ""
+       }
+      ],
+      "768": [
+       {
+        "sel": ".form-control:focus",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": ".form-control:focus",
+        "t": ""
+       }
+      ],
+      "1920": [
+       {
+        "sel": ".form-control:focus",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G18-outline-none",
+     "sev": "WARN",
+     "title": "outline:none — проверь кольцо фокуса",
+     "value": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
+     "n": 1,
+     "ex": [
+      {
+       "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
+       "t": ""
+      }
+     ],
+     "gr": 18,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "768": 1,
+      "1280": 1,
+      "1920": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
+        "t": ""
+       }
+      ],
+      "768": [
+       {
+        "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
+        "t": ""
+       }
+      ],
+      "1920": [
+       {
+        "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G18-outline-none",
+     "sev": "WARN",
+     "title": "outline:none — проверь кольцо фокуса",
+     "value": ".docs-amount input:focus",
+     "n": 1,
+     "ex": [
+      {
+       "sel": ".docs-amount input:focus",
+       "t": ""
+      }
+     ],
+     "gr": 18,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "768": 1,
+      "1280": 1,
+      "1920": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": ".docs-amount input:focus",
+        "t": ""
+       }
+      ],
+      "768": [
+       {
+        "sel": ".docs-amount input:focus",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": ".docs-amount input:focus",
+        "t": ""
+       }
+      ],
+      "1920": [
+       {
+        "sel": ".docs-amount input:focus",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G18-outline-none",
+     "sev": "WARN",
+     "title": "outline:none — проверь кольцо фокуса",
+     "value": ".docs-purpose textarea:focus",
+     "n": 1,
+     "ex": [
+      {
+       "sel": ".docs-purpose textarea:focus",
+       "t": ""
+      }
+     ],
+     "gr": 18,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "768": 1,
+      "1280": 1,
+      "1920": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": ".docs-purpose textarea:focus",
+        "t": ""
+       }
+      ],
+      "768": [
+       {
+        "sel": ".docs-purpose textarea:focus",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": ".docs-purpose textarea:focus",
+        "t": ""
+       }
+      ],
+      "1920": [
+       {
+        "sel": ".docs-purpose textarea:focus",
+        "t": ""
+       }
+      ]
+     }
+    }
+   ]
+  }
+ },
+ "extras": [],
+ "stats": {
+  "375": {
+   "elements": 69,
+   "groups": 36,
+   "texts": 37,
+   "contrast_checked": 38,
+   "contrast_unknown": 0,
+   "primaries": 1,
+   "addresses": 0,
+   "controls": 8
+  },
+  "768": {
+   "elements": 67,
+   "groups": 35,
+   "texts": 32,
+   "contrast_checked": 33,
+   "contrast_unknown": 0,
+   "primaries": 1,
+   "addresses": 0,
+   "controls": 8
+  },
+  "1280": {
+   "elements": 72,
+   "groups": 37,
+   "texts": 37,
+   "contrast_checked": 38,
+   "contrast_unknown": 0,
+   "primaries": 1,
+   "addresses": 0,
+   "controls": 8
+  },
+  "1920": {
+   "elements": 72,
+   "groups": 37,
+   "texts": 37,
+   "contrast_checked": 38,
+   "contrast_unknown": 0,
+   "primaries": 1,
+   "addresses": 0,
+   "controls": 8
+  }
+ },
+ "limits": [],
+ "human_todo": [
+  "п.3 Сосиски, градиенты, hover-зум, анимации появления",
+  "п.4 Кнопки без глагола, две главные, иконка без подписи",
+  "п.5 Эмодзи вместо иконок; один размер иконок",
+  "п.6 Цветные полосы слева, синие подсказки, оранжевый вне кнопки",
+  "п.8 Внутренние названия и коды на экране",
+  "п.9 Плейсхолдер вместо подписи / обрезанный плейсхолдер",
+  "п.10 Ряды «подпись — поле — кнопка» выровнены",
+  "п.12 Повтор одной цифры на экране",
+  "п.13 Кликабельное vs статичное",
+  "п.14 Независимые вертикальные стеки вместо строк",
+  "п.16 Микротекст, который надо читать",
+  "п.17 Пустоты и завышенные строки",
+  "п.18 Состояния, анимации transform/opacity, ошибки консоли"
+ ],
+ "all_warnings": [
+  {
+   "gate": 2,
+   "rule": "G4-icononly",
+   "sev": "WARN",
+   "title": "кнопка-иконка без видимой подписи (есть aria-label)",
+   "value": "‹",
+   "n": 1,
+   "ex": [
+    {
+     "sel": "nav.site-shell-sections > button.site-shell-scroll",
+     "t": "Предыдущие разделы"
+    }
+   ],
+   "gr": 4,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 1,
+    "768": 1,
+    "1280": 1,
+    "1920": 1
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "nav.site-shell-sections > button.site-shell-scroll",
+      "t": "Предыдущие разделы"
+     }
+    ],
+    "768": [
+     {
+      "sel": "nav.site-shell-sections > button.site-shell-scroll",
+      "t": "Предыдущие разделы"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "nav.site-shell-sections > button.site-shell-scroll",
+      "t": "Предыдущие разделы"
+     }
+    ],
+    "1920": [
+     {
+      "sel": "nav.site-shell-sections > button.site-shell-scroll",
+      "t": "Предыдущие разделы"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 2,
+   "rule": "G4-icononly",
+   "sev": "WARN",
+   "title": "кнопка-иконка без видимой подписи (есть aria-label)",
+   "value": "›",
+   "n": 1,
+   "ex": [
+    {
+     "sel": "nav.site-shell-sections > button.site-shell-scroll",
+     "t": "Следующие разделы"
+    }
+   ],
+   "gr": 4,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 1,
+    "768": 1,
+    "1280": 1,
+    "1920": 1
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "nav.site-shell-sections > button.site-shell-scroll",
+      "t": "Следующие разделы"
+     }
+    ],
+    "768": [
+     {
+      "sel": "nav.site-shell-sections > button.site-shell-scroll",
+      "t": "Следующие разделы"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "nav.site-shell-sections > button.site-shell-scroll",
+      "t": "Следующие разделы"
+     }
+    ],
+    "1920": [
+     {
+      "sel": "nav.site-shell-sections > button.site-shell-scroll",
+      "t": "Следующие разделы"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 2,
+   "rule": "G9-ph-nolabel",
+   "sev": "WARN",
+   "title": "у поля нет подписи (label/aria-label) — плейсхолдер вместо подписи?",
+   "value": "https://your-n8n.com/webhook/xxx",
+   "n": 1,
+   "ex": [
+    {
+     "sel": "input#webhookUrl",
+     "t": "https://your-n8n.com/webhook/xxx"
+    }
+   ],
+   "gr": 9,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 1,
+    "768": 1,
+    "1280": 1,
+    "1920": 1
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "input#webhookUrl",
+      "t": "https://your-n8n.com/webhook/xxx"
+     }
+    ],
+    "768": [
+     {
+      "sel": "input#webhookUrl",
+      "t": "https://your-n8n.com/webhook/xxx"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "input#webhookUrl",
+      "t": "https://your-n8n.com/webhook/xxx"
+     }
+    ],
+    "1920": [
+     {
+      "sel": "input#webhookUrl",
+      "t": "https://your-n8n.com/webhook/xxx"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 2,
+   "rule": "G18-outline-none",
+   "sev": "WARN",
+   "title": "outline:none — проверь кольцо фокуса",
+   "value": ".form-control:focus",
+   "n": 1,
+   "ex": [
+    {
+     "sel": ".form-control:focus",
+     "t": ""
+    }
+   ],
+   "gr": 18,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 1,
+    "768": 1,
+    "1280": 1,
+    "1920": 1
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": ".form-control:focus",
+      "t": ""
+     }
+    ],
+    "768": [
+     {
+      "sel": ".form-control:focus",
+      "t": ""
+     }
+    ],
+    "1280": [
+     {
+      "sel": ".form-control:focus",
+      "t": ""
+     }
+    ],
+    "1920": [
+     {
+      "sel": ".form-control:focus",
+      "t": ""
+     }
+    ]
+   }
+  },
+  {
+   "gate": 2,
+   "rule": "G18-outline-none",
+   "sev": "WARN",
+   "title": "outline:none — проверь кольцо фокуса",
+   "value": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
+   "n": 1,
+   "ex": [
+    {
+     "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
+     "t": ""
+    }
+   ],
+   "gr": 18,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 1,
+    "768": 1,
+    "1280": 1,
+    "1920": 1
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
+      "t": ""
+     }
+    ],
+    "768": [
+     {
+      "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
+      "t": ""
+     }
+    ],
+    "1280": [
+     {
+      "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
+      "t": ""
+     }
+    ],
+    "1920": [
+     {
+      "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
+      "t": ""
+     }
+    ]
+   }
+  },
+  {
+   "gate": 2,
+   "rule": "G18-outline-none",
+   "sev": "WARN",
+   "title": "outline:none — проверь кольцо фокуса",
+   "value": ".docs-amount input:focus",
+   "n": 1,
+   "ex": [
+    {
+     "sel": ".docs-amount input:focus",
+     "t": ""
+    }
+   ],
+   "gr": 18,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 1,
+    "768": 1,
+    "1280": 1,
+    "1920": 1
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": ".docs-amount input:focus",
+      "t": ""
+     }
+    ],
+    "768": [
+     {
+      "sel": ".docs-amount input:focus",
+      "t": ""
+     }
+    ],
+    "1280": [
+     {
+      "sel": ".docs-amount input:focus",
+      "t": ""
+     }
+    ],
+    "1920": [
+     {
+      "sel": ".docs-amount input:focus",
+      "t": ""
+     }
+    ]
+   }
+  },
+  {
+   "gate": 2,
+   "rule": "G18-outline-none",
+   "sev": "WARN",
+   "title": "outline:none — проверь кольцо фокуса",
+   "value": ".docs-purpose textarea:focus",
+   "n": 1,
+   "ex": [
+    {
+     "sel": ".docs-purpose textarea:focus",
+     "t": ""
+    }
+   ],
+   "gr": 18,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 1,
+    "768": 1,
+    "1280": 1,
+    "1920": 1
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": ".docs-purpose textarea:focus",
+      "t": ""
+     }
+    ],
+    "768": [
+     {
+      "sel": ".docs-purpose textarea:focus",
+      "t": ""
+     }
+    ],
+    "1280": [
+     {
+      "sel": ".docs-purpose textarea:focus",
+      "t": ""
+     }
+    ],
+    "1920": [
+     {
+      "sel": ".docs-purpose textarea:focus",
+      "t": ""
+     }
+    ]
+   }
+  }
+ ]
+}

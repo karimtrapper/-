@@ -1,0 +1,1033 @@
+{
+ "tool": "design-gate",
+ "mode": "inventory",
+ "url": "http://127.0.0.1:59104/crm",
+ "widths_requested": [
+  375,
+  1280
+ ],
+ "widths": {
+  "375": {
+   "vw": 375,
+   "vh": 812,
+   "elements": 160,
+   "hscroll": false,
+   "scroll_width": 375,
+   "fonts": [
+    [
+     "inter",
+     70
+    ],
+    [
+     "arial",
+     8
+    ],
+    [
+     "monospace",
+     4
+    ]
+   ],
+   "sizes": [
+    [
+     11.2,
+     4
+    ],
+    [
+     12,
+     10
+    ],
+    [
+     12.48,
+     12
+    ],
+    [
+     12.8,
+     4
+    ],
+    [
+     13,
+     7
+    ],
+    [
+     13.6,
+     3
+    ],
+    [
+     14,
+     22
+    ],
+    [
+     14.4,
+     2
+    ],
+    [
+     15,
+     2
+    ],
+    [
+     16,
+     14
+    ],
+    [
+     22,
+     2
+    ]
+   ],
+   "weights": [
+    [
+     "400",
+     29
+    ],
+    [
+     "500",
+     7
+    ],
+    [
+     "600",
+     37
+    ],
+    [
+     "700",
+     9
+    ]
+   ],
+   "combos": [
+    [
+     [
+      "inter",
+      14,
+      "600"
+     ],
+     22
+    ],
+    [
+     [
+      "inter",
+      12,
+      "600"
+     ],
+     9
+    ],
+    [
+     [
+      "inter",
+      16,
+      "700"
+     ],
+     8
+    ],
+    [
+     [
+      "inter",
+      12.48,
+      "400"
+     ],
+     8
+    ],
+    [
+     [
+      "inter",
+      13,
+      "500"
+     ],
+     7
+    ],
+    [
+     [
+      "inter",
+      16,
+      "400"
+     ],
+     6
+    ],
+    [
+     [
+      "monospace",
+      12.48,
+      "400"
+     ],
+     4
+    ],
+    [
+     [
+      "arial",
+      12.8,
+      "400"
+     ],
+     4
+    ],
+    [
+     [
+      "inter",
+      11.2,
+      "600"
+     ],
+     4
+    ],
+    [
+     [
+      "inter",
+      13.6,
+      "400"
+     ],
+     3
+    ],
+    [
+     [
+      "arial",
+      22,
+      "400"
+     ],
+     2
+    ],
+    [
+     [
+      "arial",
+      14.4,
+      "600"
+     ],
+     2
+    ]
+   ],
+   "text_colors": [
+    [
+     "#475569",
+     43
+    ],
+    [
+     "#0F172A",
+     12
+    ],
+    [
+     "#FFFFFF",
+     7
+    ],
+    [
+     "#334155",
+     5
+    ],
+    [
+     "#666666",
+     4
+    ],
+    [
+     "#1E40AF",
+     4
+    ],
+    [
+     "#10B981",
+     3
+    ],
+    [
+     "#065F46",
+     2
+    ],
+    [
+     "#94A3B8",
+     1
+    ],
+    [
+     "#92400E",
+     1
+    ]
+   ],
+   "bg_colors": [
+    [
+     "#FFFFFF",
+     14
+    ],
+    [
+     "#F0FDF4",
+     4
+    ],
+    [
+     "#DBEAFE",
+     4
+    ],
+    [
+     "#EF4444",
+     4
+    ],
+    [
+     "#F1F5F9",
+     2
+    ],
+    [
+     "#334155",
+     1
+    ],
+    [
+     "#0F172A",
+     1
+    ],
+    [
+     "#F97316",
+     1
+    ],
+    [
+     "#FEF3C7",
+     1
+    ]
+   ],
+   "border_colors": [
+    [
+     "#E2E8F0",
+     27
+    ],
+    [
+     "#F1F5F9",
+     12
+    ],
+    [
+     "#A7F3D0",
+     8
+    ]
+   ],
+   "radii": [
+    [
+     "8px",
+     35
+    ],
+    [
+     "пилл/круг (20px)",
+     5
+    ],
+    [
+     "12px",
+     3
+    ],
+    [
+     "пилл/круг (14px)",
+     1
+    ]
+   ],
+   "shadows": [
+    [
+     "rgba(0, 0, 0, 0.04) 0px 1px 3px 0px",
+     3
+    ]
+   ],
+   "stripes": [],
+   "uppercase": [],
+   "gradients": [],
+   "animations": [],
+   "transitions": [
+    [
+     "all",
+     13
+    ]
+   ],
+   "spacing": [
+    [
+     "2px",
+     4
+    ],
+    [
+     "4px",
+     31
+    ],
+    [
+     "5px",
+     4
+    ],
+    [
+     "5.6px",
+     8
+    ],
+    [
+     "6px",
+     19
+    ],
+    [
+     "8px",
+     15
+    ],
+    [
+     "10px",
+     9
+    ],
+    [
+     "12px",
+     38
+    ],
+    [
+     "14px",
+     21
+    ],
+    [
+     "16px",
+     15
+    ],
+    [
+     "20px",
+     3
+    ],
+    [
+     "24px",
+     1
+    ],
+    [
+     "32px",
+     4
+    ],
+    [
+     "36px",
+     1
+    ],
+    [
+     "120px",
+     1
+    ]
+   ],
+   "buttons": [
+    {
+     "bg": "#EF4444",
+     "border": "без рамки",
+     "radius": "8px",
+     "font": "11.2px/600",
+     "n": 4,
+     "ex": [
+      "×",
+      "×",
+      "×"
+     ]
+    },
+    {
+     "bg": "#FFFFFF",
+     "border": "без рамки",
+     "radius": "0px",
+     "font": "22px/400",
+     "n": 2,
+     "ex": [
+      "‹",
+      "›"
+     ]
+    },
+    {
+     "bg": "#F1F5F9",
+     "border": "без рамки",
+     "radius": "8px",
+     "font": "14px/600",
+     "n": 2,
+     "ex": [
+      "Проверить",
+      "⌛ Загрузка..."
+     ]
+    },
+    {
+     "bg": "#F97316",
+     "border": "без рамки",
+     "radius": "8px",
+     "font": "14px/600",
+     "n": 1,
+     "ex": [
+      "Добавить"
+     ]
+    }
+   ],
+   "primary_count": 1,
+   "primaries": [
+    {
+     "sel": "div.form-row > div.form-group > button.btn.btn-primary",
+     "t": "Добавить"
+    }
+   ],
+   "emoji_interactive": [
+    {
+     "sel": "div > div > span",
+     "t": "📋",
+     "emoji": "📋",
+     "ctx": "span"
+    },
+    {
+     "sel": "div > div > span",
+     "t": "📋",
+     "emoji": "📋",
+     "ctx": "span"
+    },
+    {
+     "sel": "div > div > span",
+     "t": "📋",
+     "emoji": "📋",
+     "ctx": "span"
+    },
+    {
+     "sel": "div > div > span",
+     "t": "📋",
+     "emoji": "📋",
+     "ctx": "span"
+    },
+    {
+     "sel": "div.form-row > div.form-group > button.btn.btn-secondary",
+     "t": "⌛ Загрузка...",
+     "emoji": "⌛",
+     "ctx": "button"
+    }
+   ],
+   "emoji_other": [],
+   "wide": [],
+   "addr_wrapped": [
+    {
+     "sel": "div > div > span",
+     "t": "TWBgeUo74DehAPgw5cKTdYUTXtJELqwwqn",
+     "lines": 2,
+     "ff": "monospace"
+    },
+    {
+     "sel": "div > div > span",
+     "t": "0x68aEA0F5386a57b48953F6fFF2f22D29D00D9ba9",
+     "lines": 2,
+     "ff": "monospace"
+    },
+    {
+     "sel": "div > div > span",
+     "t": "TVmgzMQ2zwV2DVPscBf98WRRdhrcpf5x5p",
+     "lines": 2,
+     "ff": "monospace"
+    },
+    {
+     "sel": "div > div > span",
+     "t": "TKkeEVf2zySaWTLyX2qPwvi6kcdHRuPxkJ",
+     "lines": 2,
+     "ff": "monospace"
+    }
+   ],
+   "addr_total": 4,
+   "addr_anywhere": [
+    {
+     "sel": "div > div > span",
+     "t": "TWBgeUo74DehAPgw5cKTdYUTXtJELq"
+    },
+    {
+     "sel": "div > div > span",
+     "t": "0x68aEA0F5386a57b48953F6fFF2f2"
+    },
+    {
+     "sel": "div > div > span",
+     "t": "TVmgzMQ2zwV2DVPscBf98WRRdhrcpf"
+    },
+    {
+     "sel": "div > div > span",
+     "t": "TKkeEVf2zySaWTLyX2qPwvi6kcdHRu"
+    }
+   ],
+   "icons": [
+    [
+     "20×20",
+     6
+    ]
+   ],
+   "console_errors": []
+  },
+  "1280": {
+   "vw": 1280,
+   "vh": 800,
+   "elements": 163,
+   "hscroll": false,
+   "scroll_width": 1280,
+   "fonts": [
+    [
+     "inter",
+     70
+    ],
+    [
+     "arial",
+     8
+    ],
+    [
+     "monospace",
+     4
+    ]
+   ],
+   "sizes": [
+    [
+     11.2,
+     4
+    ],
+    [
+     12,
+     6
+    ],
+    [
+     12.48,
+     12
+    ],
+    [
+     12.8,
+     4
+    ],
+    [
+     13,
+     7
+    ],
+    [
+     13.6,
+     3
+    ],
+    [
+     14,
+     26
+    ],
+    [
+     14.4,
+     2
+    ],
+    [
+     15,
+     2
+    ],
+    [
+     16,
+     14
+    ],
+    [
+     22,
+     2
+    ]
+   ],
+   "weights": [
+    [
+     "400",
+     29
+    ],
+    [
+     "500",
+     7
+    ],
+    [
+     "600",
+     37
+    ],
+    [
+     "700",
+     9
+    ]
+   ],
+   "combos": [
+    [
+     [
+      "inter",
+      14,
+      "600"
+     ],
+     26
+    ],
+    [
+     [
+      "inter",
+      16,
+      "700"
+     ],
+     8
+    ],
+    [
+     [
+      "inter",
+      12.48,
+      "400"
+     ],
+     8
+    ],
+    [
+     [
+      "inter",
+      13,
+      "500"
+     ],
+     7
+    ],
+    [
+     [
+      "inter",
+      16,
+      "400"
+     ],
+     6
+    ],
+    [
+     [
+      "inter",
+      12,
+      "600"
+     ],
+     5
+    ],
+    [
+     [
+      "monospace",
+      12.48,
+      "400"
+     ],
+     4
+    ],
+    [
+     [
+      "arial",
+      12.8,
+      "400"
+     ],
+     4
+    ],
+    [
+     [
+      "inter",
+      11.2,
+      "600"
+     ],
+     4
+    ],
+    [
+     [
+      "inter",
+      13.6,
+      "400"
+     ],
+     3
+    ],
+    [
+     [
+      "arial",
+      22,
+      "400"
+     ],
+     2
+    ],
+    [
+     [
+      "arial",
+      14.4,
+      "600"
+     ],
+     2
+    ]
+   ],
+   "text_colors": [
+    [
+     "#475569",
+     40
+    ],
+    [
+     "#FFFFFF",
+     10
+    ],
+    [
+     "#0F172A",
+     10
+    ],
+    [
+     "#334155",
+     4
+    ],
+    [
+     "#666666",
+     4
+    ],
+    [
+     "#1E40AF",
+     4
+    ],
+    [
+     "#CBD5E1",
+     3
+    ],
+    [
+     "#10B981",
+     3
+    ],
+    [
+     "#065F46",
+     2
+    ],
+    [
+     "#94A3B8",
+     1
+    ],
+    [
+     "#92400E",
+     1
+    ]
+   ],
+   "bg_colors": [
+    [
+     "#FFFFFF",
+     12
+    ],
+    [
+     "#F0FDF4",
+     4
+    ],
+    [
+     "#DBEAFE",
+     4
+    ],
+    [
+     "#EF4444",
+     4
+    ],
+    [
+     "#0F172A",
+     2
+    ],
+    [
+     "#F1F5F9",
+     2
+    ],
+    [
+     "#475569",
+     1
+    ],
+    [
+     "#334155",
+     1
+    ],
+    [
+     "#F97316",
+     1
+    ],
+    [
+     "#FEF3C7",
+     1
+    ]
+   ],
+   "border_colors": [
+    [
+     "#E2E8F0",
+     25
+    ],
+    [
+     "#F1F5F9",
+     12
+    ],
+    [
+     "#A7F3D0",
+     8
+    ],
+    [
+     "#FFFFFF",
+     1
+    ]
+   ],
+   "radii": [
+    [
+     "8px",
+     36
+    ],
+    [
+     "пилл/круг (20px)",
+     5
+    ],
+    [
+     "12px",
+     3
+    ],
+    [
+     "пилл/круг (14px)",
+     1
+    ]
+   ],
+   "shadows": [
+    [
+     "rgba(0, 0, 0, 0.04) 0px 1px 3px 0px",
+     3
+    ]
+   ],
+   "stripes": [],
+   "uppercase": [],
+   "gradients": [],
+   "animations": [],
+   "transitions": [
+    [
+     "all",
+     13
+    ]
+   ],
+   "spacing": [
+    [
+     "2px",
+     4
+    ],
+    [
+     "4px",
+     27
+    ],
+    [
+     "5px",
+     4
+    ],
+    [
+     "5.6px",
+     8
+    ],
+    [
+     "6px",
+     19
+    ],
+    [
+     "8px",
+     18
+    ],
+    [
+     "10px",
+     9
+    ],
+    [
+     "12px",
+     42
+    ],
+    [
+     "14px",
+     17
+    ],
+    [
+     "16px",
+     14
+    ],
+    [
+     "20px",
+     6
+    ],
+    [
+     "24px",
+     4
+    ],
+    [
+     "32px",
+     5
+    ],
+    [
+     "36px",
+     1
+    ],
+    [
+     "60px",
+     1
+    ]
+   ],
+   "buttons": [
+    {
+     "bg": "#EF4444",
+     "border": "без рамки",
+     "radius": "8px",
+     "font": "11.2px/600",
+     "n": 4,
+     "ex": [
+      "×",
+      "×",
+      "×"
+     ]
+    },
+    {
+     "bg": "#FFFFFF",
+     "border": "без рамки",
+     "radius": "0px",
+     "font": "22px/400",
+     "n": 2,
+     "ex": [
+      "‹",
+      "›"
+     ]
+    },
+    {
+     "bg": "#F1F5F9",
+     "border": "без рамки",
+     "radius": "8px",
+     "font": "14px/600",
+     "n": 2,
+     "ex": [
+      "Проверить",
+      "⌛ Загрузка..."
+     ]
+    },
+    {
+     "bg": "#F97316",
+     "border": "без рамки",
+     "radius": "8px",
+     "font": "14px/600",
+     "n": 1,
+     "ex": [
+      "Добавить"
+     ]
+    }
+   ],
+   "primary_count": 1,
+   "primaries": [
+    {
+     "sel": "div.form-row > div.form-group > button.btn.btn-primary",
+     "t": "Добавить"
+    }
+   ],
+   "emoji_interactive": [
+    {
+     "sel": "div > div > span",
+     "t": "📋",
+     "emoji": "📋",
+     "ctx": "span"
+    },
+    {
+     "sel": "div > div > span",
+     "t": "📋",
+     "emoji": "📋",
+     "ctx": "span"
+    },
+    {
+     "sel": "div > div > span",
+     "t": "📋",
+     "emoji": "📋",
+     "ctx": "span"
+    },
+    {
+     "sel": "div > div > span",
+     "t": "📋",
+     "emoji": "📋",
+     "ctx": "span"
+    },
+    {
+     "sel": "div.form-row > div.form-group > button.btn.btn-secondary",
+     "t": "⌛ Загрузка...",
+     "emoji": "⌛",
+     "ctx": "button"
+    }
+   ],
+   "emoji_other": [],
+   "wide": [],
+   "addr_wrapped": [
+    {
+     "sel": "div > div > span",
+     "t": "0x68aEA0F5386a57b48953F6fFF2f22D29D00D9ba9",
+     "lines": 2,
+     "ff": "monospace"
+    }
+   ],
+   "addr_total": 4,
+   "addr_anywhere": [
+    {
+     "sel": "div > div > span",
+     "t": "TWBgeUo74DehAPgw5cKTdYUTXtJELq"
+    },
+    {
+     "sel": "div > div > span",
+     "t": "0x68aEA0F5386a57b48953F6fFF2f2"
+    },
+    {
+     "sel": "div > div > span",
+     "t": "TVmgzMQ2zwV2DVPscBf98WRRdhrcpf"
+    },
+    {
+     "sel": "div > div > span",
+     "t": "TKkeEVf2zySaWTLyX2qPwvi6kcdHRu"
+    }
+   ],
+   "icons": [
+    [
+     "20×20",
+     6
+    ]
+   ],
+   "console_errors": []
+  }
+ },
+ "blocked": {},
+ "coverage_note": "",
+ "complete": true,
+ "generated": "2026-10-14T18:55:24"
+}

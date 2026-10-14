@@ -1,0 +1,5713 @@
+{
+ "tool": "design-gate",
+ "mode": "check",
+ "url": "http://127.0.0.1:59104/crm",
+ "design": "/Users/karimamirov/Desktop/untitled folder/outputs/calccrm-redesign/DESIGN.md",
+ "generated": "2026-10-14T19:14:13",
+ "widths_requested": [
+  375,
+  768,
+  1280,
+  1920
+ ],
+ "widths_required": [
+  375,
+  768,
+  1280,
+  1920
+ ],
+ "widths_blocked": {},
+ "verdict": "FAIL",
+ "reasons": [
+  "FAIL в гейтах: 1. Токены, 2. Гардрейлы, 3. Контраст WCAG AA",
+  "375px: снимок «после» не снят",
+  "1280px: снимок «после» не снят"
+ ],
+ "role": "karim",
+ "label": "before",
+ "tokens": {
+  "sizes": [
+   12.0,
+   14.0,
+   16.0,
+   22.0
+  ],
+  "weights": [
+   400,
+   600,
+   700
+  ],
+  "families": [
+   "inter",
+   "ui-monospace"
+  ],
+  "radii": [
+   8.0,
+   12.0,
+   999.0
+  ],
+  "spacing": [
+   4.0,
+   8.0,
+   12.0,
+   16.0,
+   24.0
+  ],
+  "colors": 22,
+  "de_tolerance": 2.0,
+  "shadow_source": "/Users/karimamirov/Desktop/untitled folder/outputs/calccrm-redesign/.impeccable/design.json",
+  "problems": []
+ },
+ "gates": {
+  "1": {
+   "id": 1,
+   "name": "Токены",
+   "by_width": {
+    "375": "FAIL",
+    "768": "FAIL",
+    "1280": "FAIL",
+    "1920": "FAIL"
+   },
+   "verdict": "FAIL",
+   "findings": [
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "padding 6px",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div.site-shell.site-shell-mobile-head > span.site-shell-bell > a",
+       "t": ""
+      },
+      {
+       "sel": "div.site-shell-right > span.site-shell-bell > a",
+       "t": ""
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "768": 1,
+      "1280": 1,
+      "1920": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.site-shell.site-shell-mobile-head > span.site-shell-bell > a",
+        "t": ""
+       }
+      ],
+      "768": [
+       {
+        "sel": "div.site-shell-right > span.site-shell-bell > a",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.site-shell-right > span.site-shell-bell > a",
+        "t": ""
+       }
+      ],
+      "1920": [
+       {
+        "sel": "div.site-shell-right > span.site-shell-bell > a",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-family",
+     "sev": "FAIL",
+     "title": "шрифт вне токенов",
+     "value": "arial",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "nav.site-shell-sections > button.site-shell-scroll",
+       "t": "‹"
+      },
+      {
+       "sel": "nav.site-shell-sections > button.site-shell-scroll",
+       "t": "›"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "768": 2,
+      "1280": 2,
+      "1920": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "nav.site-shell-sections > button.site-shell-scroll",
+        "t": "‹"
+       },
+       {
+        "sel": "nav.site-shell-sections > button.site-shell-scroll",
+        "t": "›"
+       }
+      ],
+      "768": [
+       {
+        "sel": "nav.site-shell-sections > button.site-shell-scroll",
+        "t": "‹"
+       },
+       {
+        "sel": "nav.site-shell-sections > button.site-shell-scroll",
+        "t": "›"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "nav.site-shell-sections > button.site-shell-scroll",
+        "t": "‹"
+       },
+       {
+        "sel": "nav.site-shell-sections > button.site-shell-scroll",
+        "t": "›"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "nav.site-shell-sections > button.site-shell-scroll",
+        "t": "‹"
+       },
+       {
+        "sel": "nav.site-shell-sections > button.site-shell-scroll",
+        "t": "›"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "padding 120px",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div.container",
+       "t": ""
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.container",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "padding 14px",
+     "n": 6,
+     "ex": [
+      {
+       "sel": "div.container",
+       "t": ""
+      },
+      {
+       "sel": "input#adminName",
+       "t": ""
+      },
+      {
+       "sel": "input#adminTelegram",
+       "t": ""
+      },
+      {
+       "sel": "input#adminLogin",
+       "t": ""
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 6,
+      "768": 5,
+      "1280": 5,
+      "1920": 5
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.container",
+        "t": ""
+       },
+       {
+        "sel": "input#adminName",
+        "t": ""
+       },
+       {
+        "sel": "input#adminTelegram",
+        "t": ""
+       },
+       {
+        "sel": "input#adminLogin",
+        "t": ""
+       }
+      ],
+      "768": [
+       {
+        "sel": "input#adminName",
+        "t": ""
+       },
+       {
+        "sel": "input#adminTelegram",
+        "t": ""
+       },
+       {
+        "sel": "input#adminLogin",
+        "t": ""
+       },
+       {
+        "sel": "input#adminPassword",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": "input#adminName",
+        "t": ""
+       },
+       {
+        "sel": "input#adminTelegram",
+        "t": ""
+       },
+       {
+        "sel": "input#adminLogin",
+        "t": ""
+       },
+       {
+        "sel": "input#adminPassword",
+        "t": ""
+       }
+      ],
+      "1920": [
+       {
+        "sel": "input#adminName",
+        "t": ""
+       },
+       {
+        "sel": "input#adminTelegram",
+        "t": ""
+       },
+       {
+        "sel": "input#adminLogin",
+        "t": ""
+       },
+       {
+        "sel": "input#adminPassword",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-shadow",
+     "sev": "FAIL",
+     "title": "тень вне словаря",
+     "value": "rgba(0, 0, 0, 0.04) 0px 1px 3px 0px",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "section#admins > div.card",
+       "t": ""
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "768": 1,
+      "1280": 1,
+      "1920": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "section#admins > div.card",
+        "t": ""
+       }
+      ],
+      "768": [
+       {
+        "sel": "section#admins > div.card",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": "section#admins > div.card",
+        "t": ""
+       }
+      ],
+      "1920": [
+       {
+        "sel": "section#admins > div.card",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "margin-вертикаль 14px",
+     "n": 7,
+     "ex": [
+      {
+       "sel": "section#admins > div.card",
+       "t": ""
+      },
+      {
+       "sel": "form#addAdminForm > div.form-row > div.form-group",
+       "t": ""
+      },
+      {
+       "sel": "form#addAdminForm > div.form-row > div.form-group.stand-only",
+       "t": ""
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 7,
+      "768": 6,
+      "1280": 6,
+      "1920": 6
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "section#admins > div.card",
+        "t": ""
+       },
+       {
+        "sel": "form#addAdminForm > div.form-row > div.form-group",
+        "t": ""
+       },
+       {
+        "sel": "form#addAdminForm > div.form-row > div.form-group.stand-only",
+        "t": ""
+       }
+      ],
+      "768": [
+       {
+        "sel": "form#addAdminForm > div.form-row > div.form-group",
+        "t": ""
+       },
+       {
+        "sel": "form#addAdminForm > div.form-row > div.form-group.stand-only",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": "form#addAdminForm > div.form-row > div.form-group",
+        "t": ""
+       },
+       {
+        "sel": "form#addAdminForm > div.form-row > div.form-group.stand-only",
+        "t": ""
+       }
+      ],
+      "1920": [
+       {
+        "sel": "form#addAdminForm > div.form-row > div.form-group",
+        "t": ""
+       },
+       {
+        "sel": "form#addAdminForm > div.form-row > div.form-group.stand-only",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-size",
+     "sev": "FAIL",
+     "title": "кегль вне шкалы",
+     "value": "13px",
+     "n": 6,
+     "ex": [
+      {
+       "sel": "section#admins > div.card > p",
+       "t": "Каждому свой логин, пароль и роль. Роль решает, какие задачи"
+      },
+      {
+       "sel": "div.form-row > div.form-group > label.form-label",
+       "t": "Имя"
+      },
+      {
+       "sel": "div.form-row > div.form-group > label.form-label",
+       "t": "Telegram"
+      },
+      {
+       "sel": "div.form-row > div.form-group.stand-only > label.form-label",
+       "t": "Логин"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 6,
+      "768": 6,
+      "1280": 6,
+      "1920": 6
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "section#admins > div.card > p",
+        "t": "Каждому свой логин, пароль и роль. Роль решает, какие задачи"
+       },
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Имя"
+       },
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Telegram"
+       },
+       {
+        "sel": "div.form-row > div.form-group.stand-only > label.form-label",
+        "t": "Логин"
+       }
+      ],
+      "768": [
+       {
+        "sel": "section#admins > div.card > p",
+        "t": "Каждому свой логин, пароль и роль. Роль решает, какие задачи"
+       },
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Имя"
+       },
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Telegram"
+       },
+       {
+        "sel": "div.form-row > div.form-group.stand-only > label.form-label",
+        "t": "Логин"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "section#admins > div.card > p",
+        "t": "Каждому свой логин, пароль и роль. Роль решает, какие задачи"
+       },
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Имя"
+       },
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Telegram"
+       },
+       {
+        "sel": "div.form-row > div.form-group.stand-only > label.form-label",
+        "t": "Логин"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "section#admins > div.card > p",
+        "t": "Каждому свой логин, пароль и роль. Роль решает, какие задачи"
+       },
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Имя"
+       },
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Telegram"
+       },
+       {
+        "sel": "div.form-row > div.form-group.stand-only > label.form-label",
+        "t": "Логин"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-weight",
+     "sev": "FAIL",
+     "title": "вес вне шкалы",
+     "value": "500",
+     "n": 5,
+     "ex": [
+      {
+       "sel": "div.form-row > div.form-group > label.form-label",
+       "t": "Имя"
+      },
+      {
+       "sel": "div.form-row > div.form-group > label.form-label",
+       "t": "Telegram"
+      },
+      {
+       "sel": "div.form-row > div.form-group.stand-only > label.form-label",
+       "t": "Логин"
+      },
+      {
+       "sel": "div.form-row > div.form-group.stand-only > label.form-label",
+       "t": "Пароль"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 5,
+      "768": 5,
+      "1280": 5,
+      "1920": 5
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Имя"
+       },
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Telegram"
+       },
+       {
+        "sel": "div.form-row > div.form-group.stand-only > label.form-label",
+        "t": "Логин"
+       },
+       {
+        "sel": "div.form-row > div.form-group.stand-only > label.form-label",
+        "t": "Пароль"
+       }
+      ],
+      "768": [
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Имя"
+       },
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Telegram"
+       },
+       {
+        "sel": "div.form-row > div.form-group.stand-only > label.form-label",
+        "t": "Логин"
+       },
+       {
+        "sel": "div.form-row > div.form-group.stand-only > label.form-label",
+        "t": "Пароль"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Имя"
+       },
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Telegram"
+       },
+       {
+        "sel": "div.form-row > div.form-group.stand-only > label.form-label",
+        "t": "Логин"
+       },
+       {
+        "sel": "div.form-row > div.form-group.stand-only > label.form-label",
+        "t": "Пароль"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Имя"
+       },
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Telegram"
+       },
+       {
+        "sel": "div.form-row > div.form-group.stand-only > label.form-label",
+        "t": "Логин"
+       },
+       {
+        "sel": "div.form-row > div.form-group.stand-only > label.form-label",
+        "t": "Пароль"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "margin-вертикаль 6px",
+     "n": 5,
+     "ex": [
+      {
+       "sel": "div.form-row > div.form-group > label.form-label",
+       "t": "Имя"
+      },
+      {
+       "sel": "div.form-row > div.form-group > label.form-label",
+       "t": "Telegram"
+      },
+      {
+       "sel": "div.form-row > div.form-group.stand-only > label.form-label",
+       "t": "Логин"
+      },
+      {
+       "sel": "div.form-row > div.form-group.stand-only > label.form-label",
+       "t": "Пароль"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 5,
+      "768": 5,
+      "1280": 5,
+      "1920": 5
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Имя"
+       },
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Telegram"
+       },
+       {
+        "sel": "div.form-row > div.form-group.stand-only > label.form-label",
+        "t": "Логин"
+       },
+       {
+        "sel": "div.form-row > div.form-group.stand-only > label.form-label",
+        "t": "Пароль"
+       }
+      ],
+      "768": [
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Имя"
+       },
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Telegram"
+       },
+       {
+        "sel": "div.form-row > div.form-group.stand-only > label.form-label",
+        "t": "Логин"
+       },
+       {
+        "sel": "div.form-row > div.form-group.stand-only > label.form-label",
+        "t": "Пароль"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Имя"
+       },
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Telegram"
+       },
+       {
+        "sel": "div.form-row > div.form-group.stand-only > label.form-label",
+        "t": "Логин"
+       },
+       {
+        "sel": "div.form-row > div.form-group.stand-only > label.form-label",
+        "t": "Пароль"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Имя"
+       },
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Telegram"
+       },
+       {
+        "sel": "div.form-row > div.form-group.stand-only > label.form-label",
+        "t": "Логин"
+       },
+       {
+        "sel": "div.form-row > div.form-group.stand-only > label.form-label",
+        "t": "Пароль"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-size",
+     "sev": "FAIL",
+     "title": "кегль вне шкалы",
+     "value": "15px",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "select#adminRole",
+       "t": "Админ"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "768": 1,
+      "1280": 1,
+      "1920": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "select#adminRole",
+        "t": "Админ"
+       }
+      ],
+      "768": [
+       {
+        "sel": "select#adminRole",
+        "t": "Админ"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "select#adminRole",
+        "t": "Админ"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "select#adminRole",
+        "t": "Админ"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "padding 36px",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "select#adminRole",
+       "t": "Админ"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "768": 1,
+      "1280": 1,
+      "1920": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "select#adminRole",
+        "t": "Админ"
+       }
+      ],
+      "768": [
+       {
+        "sel": "select#adminRole",
+        "t": "Админ"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "select#adminRole",
+        "t": "Админ"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "select#adminRole",
+        "t": "Админ"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-bg",
+     "sev": "FAIL",
+     "title": "фон вне палитры",
+     "value": "#F97316 (ближайший action-coral #C2410C, ΔE 18.0)",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div.form-row > div.form-group > button.btn.btn-primary",
+       "t": "Добавить"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "768": 1,
+      "1280": 1,
+      "1920": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.form-row > div.form-group > button.btn.btn-primary",
+        "t": "Добавить"
+       }
+      ],
+      "768": [
+       {
+        "sel": "div.form-row > div.form-group > button.btn.btn-primary",
+        "t": "Добавить"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.form-row > div.form-group > button.btn.btn-primary",
+        "t": "Добавить"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "div.form-row > div.form-group > button.btn.btn-primary",
+        "t": "Добавить"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "padding 20px",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div.form-row > div.form-group > button.btn.btn-primary",
+       "t": "Добавить"
+      },
+      {
+       "sel": "div.container",
+       "t": ""
+      },
+      {
+       "sel": "section#admins > div.card",
+       "t": ""
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "768": 3,
+      "1280": 2,
+      "1920": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.form-row > div.form-group > button.btn.btn-primary",
+        "t": "Добавить"
+       }
+      ],
+      "768": [
+       {
+        "sel": "div.container",
+        "t": ""
+       },
+       {
+        "sel": "section#admins > div.card",
+        "t": ""
+       },
+       {
+        "sel": "div.form-row > div.form-group > button.btn.btn-primary",
+        "t": "Добавить"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "section#admins > div.card",
+        "t": ""
+       },
+       {
+        "sel": "div.form-row > div.form-group > button.btn.btn-primary",
+        "t": "Добавить"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "section#admins > div.card",
+        "t": ""
+       },
+       {
+        "sel": "div.form-row > div.form-group > button.btn.btn-primary",
+        "t": "Добавить"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "gap 6px",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div.form-row > div.form-group > button.btn.btn-primary",
+       "t": "Добавить"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "768": 1,
+      "1280": 1,
+      "1920": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.form-row > div.form-group > button.btn.btn-primary",
+        "t": "Добавить"
+       }
+      ],
+      "768": [
+       {
+        "sel": "div.form-row > div.form-group > button.btn.btn-primary",
+        "t": "Добавить"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.form-row > div.form-group > button.btn.btn-primary",
+        "t": "Добавить"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "div.form-row > div.form-group > button.btn.btn-primary",
+        "t": "Добавить"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "padding 10px",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div#standNotifyMode",
+       "t": ""
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "768": 1,
+      "1280": 1,
+      "1920": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#standNotifyMode",
+        "t": ""
+       }
+      ],
+      "768": [
+       {
+        "sel": "div#standNotifyMode",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#standNotifyMode",
+        "t": ""
+       }
+      ],
+      "1920": [
+       {
+        "sel": "div#standNotifyMode",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "padding 100px",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div.container",
+       "t": ""
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "768": 1
+     },
+     "ex_by_width": {
+      "768": [
+       {
+        "sel": "div.container",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "padding 32px",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div.container",
+       "t": ""
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 1,
+      "1920": 1
+     },
+     "ex_by_width": {
+      "1280": [
+       {
+        "sel": "div.container",
+        "t": ""
+       }
+      ],
+      "1920": [
+       {
+        "sel": "div.container",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "padding 60px",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div.container",
+       "t": ""
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 1,
+      "1920": 1
+     },
+     "ex_by_width": {
+      "1280": [
+       {
+        "sel": "div.container",
+        "t": ""
+       }
+      ],
+      "1920": [
+       {
+        "sel": "div.container",
+        "t": ""
+       }
+      ]
+     }
+    }
+   ],
+   "warnings": [],
+   "scope": "авто полностью"
+  },
+  "2": {
+   "id": 2,
+   "name": "Гардрейлы",
+   "by_width": {
+    "375": "FAIL",
+    "768": "FAIL",
+    "1280": "FAIL",
+    "1920": "FAIL"
+   },
+   "verdict": "FAIL",
+   "findings": [
+    {
+     "gate": 2,
+     "rule": "G1-кеглей",
+     "sev": "FAIL",
+     "title": "кеглей на экране больше 4",
+     "value": "6: 12, 13, 14, 15, 16, 22",
+     "n": 1,
+     "ex": [],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "768": 1,
+      "1280": 1,
+      "1920": 1
+     },
+     "ex_by_width": {
+      "375": [],
+      "768": [],
+      "1280": [],
+      "1920": []
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G1-весов",
+     "sev": "FAIL",
+     "title": "весов на экране больше 3",
+     "value": "4: 400, 500, 600, 700",
+     "n": 1,
+     "ex": [],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "768": 1,
+      "1280": 1,
+      "1920": 1
+     },
+     "ex_by_width": {
+      "375": [],
+      "768": [],
+      "1280": [],
+      "1920": []
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G1-fonts",
+     "sev": "FAIL",
+     "title": "больше одного текстового шрифта",
+     "value": "inter, arial",
+     "n": 1,
+     "ex": [],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "768": 1,
+      "1280": 1,
+      "1920": 1
+     },
+     "ex_by_width": {
+      "375": [],
+      "768": [],
+      "1280": [],
+      "1920": []
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G18-transition-all-computed",
+     "sev": "FAIL",
+     "title": "transition: all",
+     "value": "all",
+     "n": 6,
+     "ex": [
+      {
+       "sel": "input#adminName",
+       "t": ""
+      },
+      {
+       "sel": "input#adminTelegram",
+       "t": ""
+      },
+      {
+       "sel": "input#adminLogin",
+       "t": ""
+      },
+      {
+       "sel": "input#adminPassword",
+       "t": ""
+      }
+     ],
+     "gr": 18,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 6,
+      "768": 6,
+      "1280": 6,
+      "1920": 6
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "input#adminName",
+        "t": ""
+       },
+       {
+        "sel": "input#adminTelegram",
+        "t": ""
+       },
+       {
+        "sel": "input#adminLogin",
+        "t": ""
+       },
+       {
+        "sel": "input#adminPassword",
+        "t": ""
+       }
+      ],
+      "768": [
+       {
+        "sel": "input#adminName",
+        "t": ""
+       },
+       {
+        "sel": "input#adminTelegram",
+        "t": ""
+       },
+       {
+        "sel": "input#adminLogin",
+        "t": ""
+       },
+       {
+        "sel": "input#adminPassword",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": "input#adminName",
+        "t": ""
+       },
+       {
+        "sel": "input#adminTelegram",
+        "t": ""
+       },
+       {
+        "sel": "input#adminLogin",
+        "t": ""
+       },
+       {
+        "sel": "input#adminPassword",
+        "t": ""
+       }
+      ],
+      "1920": [
+       {
+        "sel": "input#adminName",
+        "t": ""
+       },
+       {
+        "sel": "input#adminTelegram",
+        "t": ""
+       },
+       {
+        "sel": "input#adminLogin",
+        "t": ""
+       },
+       {
+        "sel": "input#adminPassword",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G18-console",
+     "sev": "FAIL",
+     "title": "ошибка в консоли",
+     "value": "{'column': 35, 'line': 11225, 'text': 'TypeError: Failed to fetch\\n    at loadIncomes (http://127.0.0.1:59104/crm:11226:",
+     "n": 1,
+     "ex": [],
+     "gr": 18,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "768": 1,
+      "1280": 1,
+      "1920": 1
+     },
+     "ex_by_width": {
+      "375": [],
+      "768": [],
+      "1280": [],
+      "1920": []
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G18-console",
+     "sev": "FAIL",
+     "title": "ошибка в консоли",
+     "value": "{'column': 35, 'line': 11452, 'text': 'TypeError: Failed to fetch\\n    at loadConversions (http://127.0.0.1:59104/crm:11",
+     "n": 1,
+     "ex": [],
+     "gr": 18,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "768": 1,
+      "1280": 1,
+      "1920": 1
+     },
+     "ex_by_width": {
+      "375": [],
+      "768": [],
+      "1280": [],
+      "1920": []
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G18-console",
+     "sev": "FAIL",
+     "title": "ошибка в консоли",
+     "value": "Не удалось обновить счётчик заявок на выплату: {stack: \"TypeError: Failed to fetch\n    at refreshPayoutAttention (http:/",
+     "n": 6,
+     "ex": [],
+     "gr": 18,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 6,
+      "768": 6,
+      "1280": 6,
+      "1920": 6
+     },
+     "ex_by_width": {
+      "375": [],
+      "768": [],
+      "1280": [],
+      "1920": []
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G18-console",
+     "sev": "FAIL",
+     "title": "ошибка в консоли",
+     "value": "{stack: \"TypeError: Failed to fetch\n    at rxLoad (http://1….0.0.1:59104/crm:3772:40)\n    at <anonymous>:1:55\", message:",
+     "n": 1,
+     "ex": [],
+     "gr": 18,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "768": 1,
+      "1280": 1,
+      "1920": 1
+     },
+     "ex_by_width": {
+      "375": [],
+      "768": [],
+      "1280": [],
+      "1920": []
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G18-console",
+     "sev": "FAIL",
+     "title": "ошибка в консоли",
+     "value": "Не удалось загрузить курс: {stack: \"TypeError: Failed to fetch\n    at loadCurrentRate (http://127.0.0.1:59104/crm:3720:3",
+     "n": 3,
+     "ex": [],
+     "gr": 18,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 3,
+      "768": 3,
+      "1280": 3,
+      "1920": 3
+     },
+     "ex_by_width": {
+      "375": [],
+      "768": [],
+      "1280": [],
+      "1920": []
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G18-console",
+     "sev": "FAIL",
+     "title": "ошибка в консоли",
+     "value": "Error loading transactions: {stack: \"TypeError: Failed to fetch\n    at loadTransactions….0.0.1:59104/crm:3764:42)\n    at",
+     "n": 1,
+     "ex": [],
+     "gr": 18,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "768": 1,
+      "1280": 1,
+      "1920": 1
+     },
+     "ex_by_width": {
+      "375": [],
+      "768": [],
+      "1280": [],
+      "1920": []
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G18-console",
+     "sev": "FAIL",
+     "title": "ошибка в консоли",
+     "value": "Error loading managers: {stack: \"TypeError: Failed to fetch\n    at loadManagers (ht….0.0.1:59104/crm:3765:38)\n    at <an",
+     "n": 1,
+     "ex": [],
+     "gr": 18,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "768": 1,
+      "1280": 1,
+      "1920": 1
+     },
+     "ex_by_width": {
+      "375": [],
+      "768": [],
+      "1280": [],
+      "1920": []
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G18-console",
+     "sev": "FAIL",
+     "title": "ошибка в консоли",
+     "value": "Ошибка загрузки KYC: {stack: \"TypeError: Failed to fetch\n    at loadKYCSection (….0.0.1:59104/crm:3766:33)\n    at <anony",
+     "n": 1,
+     "ex": [],
+     "gr": 18,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "768": 1,
+      "1280": 1,
+      "1920": 1
+     },
+     "ex_by_width": {
+      "375": [],
+      "768": [],
+      "1280": [],
+      "1920": []
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G18-console",
+     "sev": "FAIL",
+     "title": "ошибка в консоли",
+     "value": "Ошибка загрузки партнёров: {stack: \"TypeError: Failed to fetch\n    at loadPartners (ht….0.0.1:59104/crm:3768:38)\n    at ",
+     "n": 1,
+     "ex": [],
+     "gr": 18,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "768": 1,
+      "1280": 1,
+      "1920": 1
+     },
+     "ex_by_width": {
+      "375": [],
+      "768": [],
+      "1280": [],
+      "1920": []
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G18-console",
+     "sev": "FAIL",
+     "title": "ошибка в консоли",
+     "value": "Ошибка загрузки рефереров: {stack: \"TypeError: Failed to fetch\n    at loadReferrers (h….0.0.1:59104/crm:3769:39)\n    at ",
+     "n": 1,
+     "ex": [],
+     "gr": 18,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "768": 1,
+      "1280": 1,
+      "1920": 1
+     },
+     "ex_by_width": {
+      "375": [],
+      "768": [],
+      "1280": [],
+      "1920": []
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G3-hover-zoom",
+     "sev": "FAIL",
+     "title": "hover-зум",
+     "value": ".kyc-review-photo img:hover",
+     "n": 1,
+     "ex": [
+      {
+       "sel": ".kyc-review-photo img:hover",
+       "t": ""
+      }
+     ],
+     "gr": 3,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "768": 1,
+      "1280": 1,
+      "1920": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": ".kyc-review-photo img:hover",
+        "t": ""
+       }
+      ],
+      "768": [
+       {
+        "sel": ".kyc-review-photo img:hover",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": ".kyc-review-photo img:hover",
+        "t": ""
+       }
+      ],
+      "1920": [
+       {
+        "sel": ".kyc-review-photo img:hover",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G9-ph-cut",
+     "sev": "FAIL",
+     "title": "плейсхолдер не помещается в поле (обрезан)",
+     "value": "@username (не обязателен)",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "input#adminTelegram",
+       "t": "@username (не обязателен)"
+      }
+     ],
+     "gr": 9,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "768": 1,
+      "1280": 1,
+      "1920": 1
+     },
+     "ex_by_width": {
+      "768": [
+       {
+        "sel": "input#adminTelegram",
+        "t": "@username (не обязателен)"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "input#adminTelegram",
+        "t": "@username (не обязателен)"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "input#adminTelegram",
+        "t": "@username (не обязателен)"
+       }
+      ]
+     }
+    }
+   ],
+   "warnings": [
+    {
+     "gate": 2,
+     "rule": "G4-icononly",
+     "sev": "WARN",
+     "title": "кнопка-иконка без видимой подписи (есть aria-label)",
+     "value": "‹",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "nav.site-shell-sections > button.site-shell-scroll",
+       "t": "Предыдущие разделы"
+      }
+     ],
+     "gr": 4,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "768": 1,
+      "1280": 1,
+      "1920": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "nav.site-shell-sections > button.site-shell-scroll",
+        "t": "Предыдущие разделы"
+       }
+      ],
+      "768": [
+       {
+        "sel": "nav.site-shell-sections > button.site-shell-scroll",
+        "t": "Предыдущие разделы"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "nav.site-shell-sections > button.site-shell-scroll",
+        "t": "Предыдущие разделы"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "nav.site-shell-sections > button.site-shell-scroll",
+        "t": "Предыдущие разделы"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G4-icononly",
+     "sev": "WARN",
+     "title": "кнопка-иконка без видимой подписи (есть aria-label)",
+     "value": "›",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "nav.site-shell-sections > button.site-shell-scroll",
+       "t": "Следующие разделы"
+      }
+     ],
+     "gr": 4,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "768": 1,
+      "1280": 1,
+      "1920": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "nav.site-shell-sections > button.site-shell-scroll",
+        "t": "Следующие разделы"
+       }
+      ],
+      "768": [
+       {
+        "sel": "nav.site-shell-sections > button.site-shell-scroll",
+        "t": "Следующие разделы"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "nav.site-shell-sections > button.site-shell-scroll",
+        "t": "Следующие разделы"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "nav.site-shell-sections > button.site-shell-scroll",
+        "t": "Следующие разделы"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G9-ph-nolabel",
+     "sev": "WARN",
+     "title": "у поля нет подписи (label/aria-label) — плейсхолдер вместо подписи?",
+     "value": "Валера",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "input#adminName",
+       "t": "Валера"
+      }
+     ],
+     "gr": 9,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "768": 1,
+      "1280": 1,
+      "1920": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "input#adminName",
+        "t": "Валера"
+       }
+      ],
+      "768": [
+       {
+        "sel": "input#adminName",
+        "t": "Валера"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "input#adminName",
+        "t": "Валера"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "input#adminName",
+        "t": "Валера"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G9-ph-nolabel",
+     "sev": "WARN",
+     "title": "у поля нет подписи (label/aria-label) — плейсхолдер вместо подписи?",
+     "value": "@username (не обязателен)",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "input#adminTelegram",
+       "t": "@username (не обязателен)"
+      }
+     ],
+     "gr": 9,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "768": 1,
+      "1280": 1,
+      "1920": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "input#adminTelegram",
+        "t": "@username (не обязателен)"
+       }
+      ],
+      "768": [
+       {
+        "sel": "input#adminTelegram",
+        "t": "@username (не обязателен)"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "input#adminTelegram",
+        "t": "@username (не обязателен)"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "input#adminTelegram",
+        "t": "@username (не обязателен)"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G9-ph-nolabel",
+     "sev": "WARN",
+     "title": "у поля нет подписи (label/aria-label) — плейсхолдер вместо подписи?",
+     "value": "valera",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "input#adminLogin",
+       "t": "valera"
+      }
+     ],
+     "gr": 9,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "768": 1,
+      "1280": 1,
+      "1920": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "input#adminLogin",
+        "t": "valera"
+       }
+      ],
+      "768": [
+       {
+        "sel": "input#adminLogin",
+        "t": "valera"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "input#adminLogin",
+        "t": "valera"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "input#adminLogin",
+        "t": "valera"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G9-ph-nolabel",
+     "sev": "WARN",
+     "title": "у поля нет подписи (label/aria-label) — плейсхолдер вместо подписи?",
+     "value": "придумайте",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "input#adminPassword",
+       "t": "придумайте"
+      }
+     ],
+     "gr": 9,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "768": 1,
+      "1280": 1,
+      "1920": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "input#adminPassword",
+        "t": "придумайте"
+       }
+      ],
+      "768": [
+       {
+        "sel": "input#adminPassword",
+        "t": "придумайте"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "input#adminPassword",
+        "t": "придумайте"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "input#adminPassword",
+        "t": "придумайте"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G18-outline-none",
+     "sev": "WARN",
+     "title": "outline:none — проверь кольцо фокуса",
+     "value": ".form-control:focus",
+     "n": 1,
+     "ex": [
+      {
+       "sel": ".form-control:focus",
+       "t": ""
+      }
+     ],
+     "gr": 18,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "768": 1,
+      "1280": 1,
+      "1920": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": ".form-control:focus",
+        "t": ""
+       }
+      ],
+      "768": [
+       {
+        "sel": ".form-control:focus",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": ".form-control:focus",
+        "t": ""
+       }
+      ],
+      "1920": [
+       {
+        "sel": ".form-control:focus",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G18-outline-none",
+     "sev": "WARN",
+     "title": "outline:none — проверь кольцо фокуса",
+     "value": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
+     "n": 1,
+     "ex": [
+      {
+       "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
+       "t": ""
+      }
+     ],
+     "gr": 18,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "768": 1,
+      "1280": 1,
+      "1920": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
+        "t": ""
+       }
+      ],
+      "768": [
+       {
+        "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
+        "t": ""
+       }
+      ],
+      "1920": [
+       {
+        "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G18-outline-none",
+     "sev": "WARN",
+     "title": "outline:none — проверь кольцо фокуса",
+     "value": ".docs-amount input:focus",
+     "n": 1,
+     "ex": [
+      {
+       "sel": ".docs-amount input:focus",
+       "t": ""
+      }
+     ],
+     "gr": 18,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "768": 1,
+      "1280": 1,
+      "1920": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": ".docs-amount input:focus",
+        "t": ""
+       }
+      ],
+      "768": [
+       {
+        "sel": ".docs-amount input:focus",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": ".docs-amount input:focus",
+        "t": ""
+       }
+      ],
+      "1920": [
+       {
+        "sel": ".docs-amount input:focus",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G18-outline-none",
+     "sev": "WARN",
+     "title": "outline:none — проверь кольцо фокуса",
+     "value": ".docs-purpose textarea:focus",
+     "n": 1,
+     "ex": [
+      {
+       "sel": ".docs-purpose textarea:focus",
+       "t": ""
+      }
+     ],
+     "gr": 18,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "768": 1,
+      "1280": 1,
+      "1920": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": ".docs-purpose textarea:focus",
+        "t": ""
+       }
+      ],
+      "768": [
+       {
+        "sel": ".docs-purpose textarea:focus",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": ".docs-purpose textarea:focus",
+        "t": ""
+       }
+      ],
+      "1920": [
+       {
+        "sel": ".docs-purpose textarea:focus",
+        "t": ""
+       }
+      ]
+     }
+    }
+   ],
+   "note": "Гардрейлы 1–2, 7, 8, 11 дублируют гейты 1, 3, 4, 5 — находки смотри там.",
+   "scope": "авто для пунктов auto/partial; manual — глазами"
+  },
+  "3": {
+   "id": 3,
+   "name": "Контраст WCAG AA",
+   "by_width": {
+    "375": "FAIL",
+    "768": "FAIL",
+    "1280": "FAIL",
+    "1920": "FAIL"
+   },
+   "verdict": "FAIL",
+   "findings": [
+    {
+     "gate": 3,
+     "rule": "C-unknown",
+     "sev": "BLOCKED",
+     "title": "фон под текстом — картинка/градиент, контраст не посчитать",
+     "value": "#0F172A",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "select#adminRole",
+       "t": "Админ"
+      }
+     ],
+     "gr": null,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "768": 1,
+      "1280": 1,
+      "1920": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "select#adminRole",
+        "t": "Админ"
+       }
+      ],
+      "768": [
+       {
+        "sel": "select#adminRole",
+        "t": "Админ"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "select#adminRole",
+        "t": "Админ"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "select#adminRole",
+        "t": "Админ"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 3,
+     "rule": "C-low",
+     "sev": "FAIL",
+     "title": "контраст ниже 4.5:1",
+     "value": "#FFFFFF на #F97316 = 2.80:1 (14px/600)",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div.form-row > div.form-group > button.btn.btn-primary",
+       "t": "Добавить"
+      }
+     ],
+     "gr": 11,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "768": 1,
+      "1280": 1,
+      "1920": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.form-row > div.form-group > button.btn.btn-primary",
+        "t": "Добавить"
+       }
+      ],
+      "768": [
+       {
+        "sel": "div.form-row > div.form-group > button.btn.btn-primary",
+        "t": "Добавить"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.form-row > div.form-group > button.btn.btn-primary",
+        "t": "Добавить"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "div.form-row > div.form-group > button.btn.btn-primary",
+        "t": "Добавить"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 3,
+     "rule": "C-low",
+     "sev": "FAIL",
+     "title": "контраст ниже 4.5:1",
+     "value": "#94A3B8 на #FFFFFF = 2.56:1 (16px/400)",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div#adminsList > p",
+       "t": "Ошибка сети"
+      }
+     ],
+     "gr": 11,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "768": 1,
+      "1280": 1,
+      "1920": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#adminsList > p",
+        "t": "Ошибка сети"
+       }
+      ],
+      "768": [
+       {
+        "sel": "div#adminsList > p",
+        "t": "Ошибка сети"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#adminsList > p",
+        "t": "Ошибка сети"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "div#adminsList > p",
+        "t": "Ошибка сети"
+       }
+      ]
+     }
+    }
+   ],
+   "warnings": [],
+   "scope": "авто (расчёт по computed-цветам)"
+  },
+  "4": {
+   "id": 4,
+   "name": "Ширины",
+   "by_width": {
+    "375": "PASS",
+    "768": "PASS",
+    "1280": "PASS",
+    "1920": "PASS"
+   },
+   "verdict": "PASS",
+   "findings": [],
+   "warnings": [],
+   "scope": "авто"
+  },
+  "5": {
+   "id": 5,
+   "name": "Текст",
+   "by_width": {
+    "375": "PASS",
+    "768": "PASS",
+    "1280": "PASS",
+    "1920": "PASS"
+   },
+   "verdict": "PASS",
+   "findings": [],
+   "warnings": [],
+   "scope": "авто: внутренние слова, повтор сумм; глагол/фразы из переписки — глазами"
+  },
+  "6": {
+   "id": 6,
+   "name": "Снимки",
+   "by_width": {
+    "375": "PASS",
+    "768": "PASS",
+    "1280": "PASS",
+    "1920": "PASS"
+   },
+   "verdict": "BLOCKED",
+   "notes": [
+    "375px: снимок «после» не снят",
+    "1280px: снимок «после» не снят"
+   ],
+   "shots": {
+    "375": {
+     "after": null,
+     "before": "/private/tmp/calccrm-wave4a/outputs/calccrm-redesign/wave4a/machine-crm-admins/before-karim-375.png"
+    },
+    "1280": {
+     "after": null,
+     "before": "/private/tmp/calccrm-wave4a/outputs/calccrm-redesign/wave4a/machine-crm-admins/before-karim-1280.png"
+    }
+   },
+   "findings": [],
+   "warnings": [],
+   "scope": "авто: наличие и непустота пар «до/после»; сравнение — глазами"
+  }
+ },
+ "guardrails": {
+  "1": {
+   "id": 1,
+   "title": "Один шрифт + моно, 4 кегля, 3 веса",
+   "coverage": "auto",
+   "verdict": "FAIL",
+   "findings": [
+    {
+     "gate": 1,
+     "rule": "T-family",
+     "sev": "FAIL",
+     "title": "шрифт вне токенов",
+     "value": "arial",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "nav.site-shell-sections > button.site-shell-scroll",
+       "t": "‹"
+      },
+      {
+       "sel": "nav.site-shell-sections > button.site-shell-scroll",
+       "t": "›"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "768": 2,
+      "1280": 2,
+      "1920": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "nav.site-shell-sections > button.site-shell-scroll",
+        "t": "‹"
+       },
+       {
+        "sel": "nav.site-shell-sections > button.site-shell-scroll",
+        "t": "›"
+       }
+      ],
+      "768": [
+       {
+        "sel": "nav.site-shell-sections > button.site-shell-scroll",
+        "t": "‹"
+       },
+       {
+        "sel": "nav.site-shell-sections > button.site-shell-scroll",
+        "t": "›"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "nav.site-shell-sections > button.site-shell-scroll",
+        "t": "‹"
+       },
+       {
+        "sel": "nav.site-shell-sections > button.site-shell-scroll",
+        "t": "›"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "nav.site-shell-sections > button.site-shell-scroll",
+        "t": "‹"
+       },
+       {
+        "sel": "nav.site-shell-sections > button.site-shell-scroll",
+        "t": "›"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-size",
+     "sev": "FAIL",
+     "title": "кегль вне шкалы",
+     "value": "13px",
+     "n": 6,
+     "ex": [
+      {
+       "sel": "section#admins > div.card > p",
+       "t": "Каждому свой логин, пароль и роль. Роль решает, какие задачи"
+      },
+      {
+       "sel": "div.form-row > div.form-group > label.form-label",
+       "t": "Имя"
+      },
+      {
+       "sel": "div.form-row > div.form-group > label.form-label",
+       "t": "Telegram"
+      },
+      {
+       "sel": "div.form-row > div.form-group.stand-only > label.form-label",
+       "t": "Логин"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 6,
+      "768": 6,
+      "1280": 6,
+      "1920": 6
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "section#admins > div.card > p",
+        "t": "Каждому свой логин, пароль и роль. Роль решает, какие задачи"
+       },
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Имя"
+       },
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Telegram"
+       },
+       {
+        "sel": "div.form-row > div.form-group.stand-only > label.form-label",
+        "t": "Логин"
+       }
+      ],
+      "768": [
+       {
+        "sel": "section#admins > div.card > p",
+        "t": "Каждому свой логин, пароль и роль. Роль решает, какие задачи"
+       },
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Имя"
+       },
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Telegram"
+       },
+       {
+        "sel": "div.form-row > div.form-group.stand-only > label.form-label",
+        "t": "Логин"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "section#admins > div.card > p",
+        "t": "Каждому свой логин, пароль и роль. Роль решает, какие задачи"
+       },
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Имя"
+       },
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Telegram"
+       },
+       {
+        "sel": "div.form-row > div.form-group.stand-only > label.form-label",
+        "t": "Логин"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "section#admins > div.card > p",
+        "t": "Каждому свой логин, пароль и роль. Роль решает, какие задачи"
+       },
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Имя"
+       },
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Telegram"
+       },
+       {
+        "sel": "div.form-row > div.form-group.stand-only > label.form-label",
+        "t": "Логин"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-weight",
+     "sev": "FAIL",
+     "title": "вес вне шкалы",
+     "value": "500",
+     "n": 5,
+     "ex": [
+      {
+       "sel": "div.form-row > div.form-group > label.form-label",
+       "t": "Имя"
+      },
+      {
+       "sel": "div.form-row > div.form-group > label.form-label",
+       "t": "Telegram"
+      },
+      {
+       "sel": "div.form-row > div.form-group.stand-only > label.form-label",
+       "t": "Логин"
+      },
+      {
+       "sel": "div.form-row > div.form-group.stand-only > label.form-label",
+       "t": "Пароль"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 5,
+      "768": 5,
+      "1280": 5,
+      "1920": 5
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Имя"
+       },
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Telegram"
+       },
+       {
+        "sel": "div.form-row > div.form-group.stand-only > label.form-label",
+        "t": "Логин"
+       },
+       {
+        "sel": "div.form-row > div.form-group.stand-only > label.form-label",
+        "t": "Пароль"
+       }
+      ],
+      "768": [
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Имя"
+       },
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Telegram"
+       },
+       {
+        "sel": "div.form-row > div.form-group.stand-only > label.form-label",
+        "t": "Логин"
+       },
+       {
+        "sel": "div.form-row > div.form-group.stand-only > label.form-label",
+        "t": "Пароль"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Имя"
+       },
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Telegram"
+       },
+       {
+        "sel": "div.form-row > div.form-group.stand-only > label.form-label",
+        "t": "Логин"
+       },
+       {
+        "sel": "div.form-row > div.form-group.stand-only > label.form-label",
+        "t": "Пароль"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Имя"
+       },
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Telegram"
+       },
+       {
+        "sel": "div.form-row > div.form-group.stand-only > label.form-label",
+        "t": "Логин"
+       },
+       {
+        "sel": "div.form-row > div.form-group.stand-only > label.form-label",
+        "t": "Пароль"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-size",
+     "sev": "FAIL",
+     "title": "кегль вне шкалы",
+     "value": "15px",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "select#adminRole",
+       "t": "Админ"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "768": 1,
+      "1280": 1,
+      "1920": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "select#adminRole",
+        "t": "Админ"
+       }
+      ],
+      "768": [
+       {
+        "sel": "select#adminRole",
+        "t": "Админ"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "select#adminRole",
+        "t": "Админ"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "select#adminRole",
+        "t": "Админ"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G1-кеглей",
+     "sev": "FAIL",
+     "title": "кеглей на экране больше 4",
+     "value": "6: 12, 13, 14, 15, 16, 22",
+     "n": 1,
+     "ex": [],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "768": 1,
+      "1280": 1,
+      "1920": 1
+     },
+     "ex_by_width": {
+      "375": [],
+      "768": [],
+      "1280": [],
+      "1920": []
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G1-весов",
+     "sev": "FAIL",
+     "title": "весов на экране больше 3",
+     "value": "4: 400, 500, 600, 700",
+     "n": 1,
+     "ex": [],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "768": 1,
+      "1280": 1,
+      "1920": 1
+     },
+     "ex_by_width": {
+      "375": [],
+      "768": [],
+      "1280": [],
+      "1920": []
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G1-fonts",
+     "sev": "FAIL",
+     "title": "больше одного текстового шрифта",
+     "value": "inter, arial",
+     "n": 1,
+     "ex": [],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "768": 1,
+      "1280": 1,
+      "1920": 1
+     },
+     "ex_by_width": {
+      "375": [],
+      "768": [],
+      "1280": [],
+      "1920": []
+     }
+    }
+   ],
+   "warnings": []
+  },
+  "2": {
+   "id": 2,
+   "title": "Цвета/отступы/радиусы/тени только из токенов",
+   "coverage": "auto",
+   "verdict": "FAIL",
+   "findings": [
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "padding 6px",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div.site-shell.site-shell-mobile-head > span.site-shell-bell > a",
+       "t": ""
+      },
+      {
+       "sel": "div.site-shell-right > span.site-shell-bell > a",
+       "t": ""
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "768": 1,
+      "1280": 1,
+      "1920": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.site-shell.site-shell-mobile-head > span.site-shell-bell > a",
+        "t": ""
+       }
+      ],
+      "768": [
+       {
+        "sel": "div.site-shell-right > span.site-shell-bell > a",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.site-shell-right > span.site-shell-bell > a",
+        "t": ""
+       }
+      ],
+      "1920": [
+       {
+        "sel": "div.site-shell-right > span.site-shell-bell > a",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-family",
+     "sev": "FAIL",
+     "title": "шрифт вне токенов",
+     "value": "arial",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "nav.site-shell-sections > button.site-shell-scroll",
+       "t": "‹"
+      },
+      {
+       "sel": "nav.site-shell-sections > button.site-shell-scroll",
+       "t": "›"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "768": 2,
+      "1280": 2,
+      "1920": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "nav.site-shell-sections > button.site-shell-scroll",
+        "t": "‹"
+       },
+       {
+        "sel": "nav.site-shell-sections > button.site-shell-scroll",
+        "t": "›"
+       }
+      ],
+      "768": [
+       {
+        "sel": "nav.site-shell-sections > button.site-shell-scroll",
+        "t": "‹"
+       },
+       {
+        "sel": "nav.site-shell-sections > button.site-shell-scroll",
+        "t": "›"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "nav.site-shell-sections > button.site-shell-scroll",
+        "t": "‹"
+       },
+       {
+        "sel": "nav.site-shell-sections > button.site-shell-scroll",
+        "t": "›"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "nav.site-shell-sections > button.site-shell-scroll",
+        "t": "‹"
+       },
+       {
+        "sel": "nav.site-shell-sections > button.site-shell-scroll",
+        "t": "›"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "padding 120px",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div.container",
+       "t": ""
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.container",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "padding 14px",
+     "n": 6,
+     "ex": [
+      {
+       "sel": "div.container",
+       "t": ""
+      },
+      {
+       "sel": "input#adminName",
+       "t": ""
+      },
+      {
+       "sel": "input#adminTelegram",
+       "t": ""
+      },
+      {
+       "sel": "input#adminLogin",
+       "t": ""
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 6,
+      "768": 5,
+      "1280": 5,
+      "1920": 5
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.container",
+        "t": ""
+       },
+       {
+        "sel": "input#adminName",
+        "t": ""
+       },
+       {
+        "sel": "input#adminTelegram",
+        "t": ""
+       },
+       {
+        "sel": "input#adminLogin",
+        "t": ""
+       }
+      ],
+      "768": [
+       {
+        "sel": "input#adminName",
+        "t": ""
+       },
+       {
+        "sel": "input#adminTelegram",
+        "t": ""
+       },
+       {
+        "sel": "input#adminLogin",
+        "t": ""
+       },
+       {
+        "sel": "input#adminPassword",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": "input#adminName",
+        "t": ""
+       },
+       {
+        "sel": "input#adminTelegram",
+        "t": ""
+       },
+       {
+        "sel": "input#adminLogin",
+        "t": ""
+       },
+       {
+        "sel": "input#adminPassword",
+        "t": ""
+       }
+      ],
+      "1920": [
+       {
+        "sel": "input#adminName",
+        "t": ""
+       },
+       {
+        "sel": "input#adminTelegram",
+        "t": ""
+       },
+       {
+        "sel": "input#adminLogin",
+        "t": ""
+       },
+       {
+        "sel": "input#adminPassword",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-shadow",
+     "sev": "FAIL",
+     "title": "тень вне словаря",
+     "value": "rgba(0, 0, 0, 0.04) 0px 1px 3px 0px",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "section#admins > div.card",
+       "t": ""
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "768": 1,
+      "1280": 1,
+      "1920": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "section#admins > div.card",
+        "t": ""
+       }
+      ],
+      "768": [
+       {
+        "sel": "section#admins > div.card",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": "section#admins > div.card",
+        "t": ""
+       }
+      ],
+      "1920": [
+       {
+        "sel": "section#admins > div.card",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "margin-вертикаль 14px",
+     "n": 7,
+     "ex": [
+      {
+       "sel": "section#admins > div.card",
+       "t": ""
+      },
+      {
+       "sel": "form#addAdminForm > div.form-row > div.form-group",
+       "t": ""
+      },
+      {
+       "sel": "form#addAdminForm > div.form-row > div.form-group.stand-only",
+       "t": ""
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 7,
+      "768": 6,
+      "1280": 6,
+      "1920": 6
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "section#admins > div.card",
+        "t": ""
+       },
+       {
+        "sel": "form#addAdminForm > div.form-row > div.form-group",
+        "t": ""
+       },
+       {
+        "sel": "form#addAdminForm > div.form-row > div.form-group.stand-only",
+        "t": ""
+       }
+      ],
+      "768": [
+       {
+        "sel": "form#addAdminForm > div.form-row > div.form-group",
+        "t": ""
+       },
+       {
+        "sel": "form#addAdminForm > div.form-row > div.form-group.stand-only",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": "form#addAdminForm > div.form-row > div.form-group",
+        "t": ""
+       },
+       {
+        "sel": "form#addAdminForm > div.form-row > div.form-group.stand-only",
+        "t": ""
+       }
+      ],
+      "1920": [
+       {
+        "sel": "form#addAdminForm > div.form-row > div.form-group",
+        "t": ""
+       },
+       {
+        "sel": "form#addAdminForm > div.form-row > div.form-group.stand-only",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-size",
+     "sev": "FAIL",
+     "title": "кегль вне шкалы",
+     "value": "13px",
+     "n": 6,
+     "ex": [
+      {
+       "sel": "section#admins > div.card > p",
+       "t": "Каждому свой логин, пароль и роль. Роль решает, какие задачи"
+      },
+      {
+       "sel": "div.form-row > div.form-group > label.form-label",
+       "t": "Имя"
+      },
+      {
+       "sel": "div.form-row > div.form-group > label.form-label",
+       "t": "Telegram"
+      },
+      {
+       "sel": "div.form-row > div.form-group.stand-only > label.form-label",
+       "t": "Логин"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 6,
+      "768": 6,
+      "1280": 6,
+      "1920": 6
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "section#admins > div.card > p",
+        "t": "Каждому свой логин, пароль и роль. Роль решает, какие задачи"
+       },
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Имя"
+       },
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Telegram"
+       },
+       {
+        "sel": "div.form-row > div.form-group.stand-only > label.form-label",
+        "t": "Логин"
+       }
+      ],
+      "768": [
+       {
+        "sel": "section#admins > div.card > p",
+        "t": "Каждому свой логин, пароль и роль. Роль решает, какие задачи"
+       },
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Имя"
+       },
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Telegram"
+       },
+       {
+        "sel": "div.form-row > div.form-group.stand-only > label.form-label",
+        "t": "Логин"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "section#admins > div.card > p",
+        "t": "Каждому свой логин, пароль и роль. Роль решает, какие задачи"
+       },
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Имя"
+       },
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Telegram"
+       },
+       {
+        "sel": "div.form-row > div.form-group.stand-only > label.form-label",
+        "t": "Логин"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "section#admins > div.card > p",
+        "t": "Каждому свой логин, пароль и роль. Роль решает, какие задачи"
+       },
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Имя"
+       },
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Telegram"
+       },
+       {
+        "sel": "div.form-row > div.form-group.stand-only > label.form-label",
+        "t": "Логин"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-weight",
+     "sev": "FAIL",
+     "title": "вес вне шкалы",
+     "value": "500",
+     "n": 5,
+     "ex": [
+      {
+       "sel": "div.form-row > div.form-group > label.form-label",
+       "t": "Имя"
+      },
+      {
+       "sel": "div.form-row > div.form-group > label.form-label",
+       "t": "Telegram"
+      },
+      {
+       "sel": "div.form-row > div.form-group.stand-only > label.form-label",
+       "t": "Логин"
+      },
+      {
+       "sel": "div.form-row > div.form-group.stand-only > label.form-label",
+       "t": "Пароль"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 5,
+      "768": 5,
+      "1280": 5,
+      "1920": 5
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Имя"
+       },
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Telegram"
+       },
+       {
+        "sel": "div.form-row > div.form-group.stand-only > label.form-label",
+        "t": "Логин"
+       },
+       {
+        "sel": "div.form-row > div.form-group.stand-only > label.form-label",
+        "t": "Пароль"
+       }
+      ],
+      "768": [
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Имя"
+       },
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Telegram"
+       },
+       {
+        "sel": "div.form-row > div.form-group.stand-only > label.form-label",
+        "t": "Логин"
+       },
+       {
+        "sel": "div.form-row > div.form-group.stand-only > label.form-label",
+        "t": "Пароль"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Имя"
+       },
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Telegram"
+       },
+       {
+        "sel": "div.form-row > div.form-group.stand-only > label.form-label",
+        "t": "Логин"
+       },
+       {
+        "sel": "div.form-row > div.form-group.stand-only > label.form-label",
+        "t": "Пароль"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Имя"
+       },
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Telegram"
+       },
+       {
+        "sel": "div.form-row > div.form-group.stand-only > label.form-label",
+        "t": "Логин"
+       },
+       {
+        "sel": "div.form-row > div.form-group.stand-only > label.form-label",
+        "t": "Пароль"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "margin-вертикаль 6px",
+     "n": 5,
+     "ex": [
+      {
+       "sel": "div.form-row > div.form-group > label.form-label",
+       "t": "Имя"
+      },
+      {
+       "sel": "div.form-row > div.form-group > label.form-label",
+       "t": "Telegram"
+      },
+      {
+       "sel": "div.form-row > div.form-group.stand-only > label.form-label",
+       "t": "Логин"
+      },
+      {
+       "sel": "div.form-row > div.form-group.stand-only > label.form-label",
+       "t": "Пароль"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 5,
+      "768": 5,
+      "1280": 5,
+      "1920": 5
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Имя"
+       },
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Telegram"
+       },
+       {
+        "sel": "div.form-row > div.form-group.stand-only > label.form-label",
+        "t": "Логин"
+       },
+       {
+        "sel": "div.form-row > div.form-group.stand-only > label.form-label",
+        "t": "Пароль"
+       }
+      ],
+      "768": [
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Имя"
+       },
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Telegram"
+       },
+       {
+        "sel": "div.form-row > div.form-group.stand-only > label.form-label",
+        "t": "Логин"
+       },
+       {
+        "sel": "div.form-row > div.form-group.stand-only > label.form-label",
+        "t": "Пароль"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Имя"
+       },
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Telegram"
+       },
+       {
+        "sel": "div.form-row > div.form-group.stand-only > label.form-label",
+        "t": "Логин"
+       },
+       {
+        "sel": "div.form-row > div.form-group.stand-only > label.form-label",
+        "t": "Пароль"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Имя"
+       },
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Telegram"
+       },
+       {
+        "sel": "div.form-row > div.form-group.stand-only > label.form-label",
+        "t": "Логин"
+       },
+       {
+        "sel": "div.form-row > div.form-group.stand-only > label.form-label",
+        "t": "Пароль"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-size",
+     "sev": "FAIL",
+     "title": "кегль вне шкалы",
+     "value": "15px",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "select#adminRole",
+       "t": "Админ"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "768": 1,
+      "1280": 1,
+      "1920": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "select#adminRole",
+        "t": "Админ"
+       }
+      ],
+      "768": [
+       {
+        "sel": "select#adminRole",
+        "t": "Админ"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "select#adminRole",
+        "t": "Админ"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "select#adminRole",
+        "t": "Админ"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "padding 36px",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "select#adminRole",
+       "t": "Админ"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "768": 1,
+      "1280": 1,
+      "1920": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "select#adminRole",
+        "t": "Админ"
+       }
+      ],
+      "768": [
+       {
+        "sel": "select#adminRole",
+        "t": "Админ"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "select#adminRole",
+        "t": "Админ"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "select#adminRole",
+        "t": "Админ"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-bg",
+     "sev": "FAIL",
+     "title": "фон вне палитры",
+     "value": "#F97316 (ближайший action-coral #C2410C, ΔE 18.0)",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div.form-row > div.form-group > button.btn.btn-primary",
+       "t": "Добавить"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "768": 1,
+      "1280": 1,
+      "1920": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.form-row > div.form-group > button.btn.btn-primary",
+        "t": "Добавить"
+       }
+      ],
+      "768": [
+       {
+        "sel": "div.form-row > div.form-group > button.btn.btn-primary",
+        "t": "Добавить"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.form-row > div.form-group > button.btn.btn-primary",
+        "t": "Добавить"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "div.form-row > div.form-group > button.btn.btn-primary",
+        "t": "Добавить"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "padding 20px",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div.form-row > div.form-group > button.btn.btn-primary",
+       "t": "Добавить"
+      },
+      {
+       "sel": "div.container",
+       "t": ""
+      },
+      {
+       "sel": "section#admins > div.card",
+       "t": ""
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "768": 3,
+      "1280": 2,
+      "1920": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.form-row > div.form-group > button.btn.btn-primary",
+        "t": "Добавить"
+       }
+      ],
+      "768": [
+       {
+        "sel": "div.container",
+        "t": ""
+       },
+       {
+        "sel": "section#admins > div.card",
+        "t": ""
+       },
+       {
+        "sel": "div.form-row > div.form-group > button.btn.btn-primary",
+        "t": "Добавить"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "section#admins > div.card",
+        "t": ""
+       },
+       {
+        "sel": "div.form-row > div.form-group > button.btn.btn-primary",
+        "t": "Добавить"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "section#admins > div.card",
+        "t": ""
+       },
+       {
+        "sel": "div.form-row > div.form-group > button.btn.btn-primary",
+        "t": "Добавить"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "gap 6px",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div.form-row > div.form-group > button.btn.btn-primary",
+       "t": "Добавить"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "768": 1,
+      "1280": 1,
+      "1920": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.form-row > div.form-group > button.btn.btn-primary",
+        "t": "Добавить"
+       }
+      ],
+      "768": [
+       {
+        "sel": "div.form-row > div.form-group > button.btn.btn-primary",
+        "t": "Добавить"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.form-row > div.form-group > button.btn.btn-primary",
+        "t": "Добавить"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "div.form-row > div.form-group > button.btn.btn-primary",
+        "t": "Добавить"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "padding 10px",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div#standNotifyMode",
+       "t": ""
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "768": 1,
+      "1280": 1,
+      "1920": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#standNotifyMode",
+        "t": ""
+       }
+      ],
+      "768": [
+       {
+        "sel": "div#standNotifyMode",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#standNotifyMode",
+        "t": ""
+       }
+      ],
+      "1920": [
+       {
+        "sel": "div#standNotifyMode",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "padding 100px",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div.container",
+       "t": ""
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "768": 1
+     },
+     "ex_by_width": {
+      "768": [
+       {
+        "sel": "div.container",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "padding 32px",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div.container",
+       "t": ""
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 1,
+      "1920": 1
+     },
+     "ex_by_width": {
+      "1280": [
+       {
+        "sel": "div.container",
+        "t": ""
+       }
+      ],
+      "1920": [
+       {
+        "sel": "div.container",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "padding 60px",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div.container",
+       "t": ""
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 1,
+      "1920": 1
+     },
+     "ex_by_width": {
+      "1280": [
+       {
+        "sel": "div.container",
+        "t": ""
+       }
+      ],
+      "1920": [
+       {
+        "sel": "div.container",
+        "t": ""
+       }
+      ]
+     }
+    }
+   ],
+   "warnings": []
+  },
+  "3": {
+   "id": 3,
+   "title": "Сосиски, градиенты, hover-зум, анимации появления",
+   "coverage": "partial",
+   "verdict": "FAIL",
+   "findings": [
+    {
+     "gate": 2,
+     "rule": "G3-hover-zoom",
+     "sev": "FAIL",
+     "title": "hover-зум",
+     "value": ".kyc-review-photo img:hover",
+     "n": 1,
+     "ex": [
+      {
+       "sel": ".kyc-review-photo img:hover",
+       "t": ""
+      }
+     ],
+     "gr": 3,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "768": 1,
+      "1280": 1,
+      "1920": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": ".kyc-review-photo img:hover",
+        "t": ""
+       }
+      ],
+      "768": [
+       {
+        "sel": ".kyc-review-photo img:hover",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": ".kyc-review-photo img:hover",
+        "t": ""
+       }
+      ],
+      "1920": [
+       {
+        "sel": ".kyc-review-photo img:hover",
+        "t": ""
+       }
+      ]
+     }
+    }
+   ],
+   "warnings": []
+  },
+  "4": {
+   "id": 4,
+   "title": "Кнопки без глагола, две главные, иконка без подписи",
+   "coverage": "partial",
+   "verdict": "PASS",
+   "findings": [],
+   "warnings": [
+    {
+     "gate": 2,
+     "rule": "G4-icononly",
+     "sev": "WARN",
+     "title": "кнопка-иконка без видимой подписи (есть aria-label)",
+     "value": "‹",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "nav.site-shell-sections > button.site-shell-scroll",
+       "t": "Предыдущие разделы"
+      }
+     ],
+     "gr": 4,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "768": 1,
+      "1280": 1,
+      "1920": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "nav.site-shell-sections > button.site-shell-scroll",
+        "t": "Предыдущие разделы"
+       }
+      ],
+      "768": [
+       {
+        "sel": "nav.site-shell-sections > button.site-shell-scroll",
+        "t": "Предыдущие разделы"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "nav.site-shell-sections > button.site-shell-scroll",
+        "t": "Предыдущие разделы"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "nav.site-shell-sections > button.site-shell-scroll",
+        "t": "Предыдущие разделы"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G4-icononly",
+     "sev": "WARN",
+     "title": "кнопка-иконка без видимой подписи (есть aria-label)",
+     "value": "›",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "nav.site-shell-sections > button.site-shell-scroll",
+       "t": "Следующие разделы"
+      }
+     ],
+     "gr": 4,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "768": 1,
+      "1280": 1,
+      "1920": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "nav.site-shell-sections > button.site-shell-scroll",
+        "t": "Следующие разделы"
+       }
+      ],
+      "768": [
+       {
+        "sel": "nav.site-shell-sections > button.site-shell-scroll",
+        "t": "Следующие разделы"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "nav.site-shell-sections > button.site-shell-scroll",
+        "t": "Следующие разделы"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "nav.site-shell-sections > button.site-shell-scroll",
+        "t": "Следующие разделы"
+       }
+      ]
+     }
+    }
+   ]
+  },
+  "5": {
+   "id": 5,
+   "title": "Эмодзи вместо иконок; один размер иконок",
+   "coverage": "partial",
+   "verdict": "PASS",
+   "findings": [],
+   "warnings": []
+  },
+  "6": {
+   "id": 6,
+   "title": "Цветные полосы слева, синие подсказки, оранжевый вне кнопки",
+   "coverage": "partial",
+   "verdict": "PASS",
+   "findings": [],
+   "warnings": []
+  },
+  "7": {
+   "id": 7,
+   "title": "Адрес/хеш в одну строку; ничего шире экрана",
+   "coverage": "auto",
+   "verdict": "PASS",
+   "findings": [],
+   "warnings": []
+  },
+  "8": {
+   "id": 8,
+   "title": "Внутренние названия и коды на экране",
+   "coverage": "partial",
+   "verdict": "PASS",
+   "findings": [],
+   "warnings": []
+  },
+  "9": {
+   "id": 9,
+   "title": "Плейсхолдер вместо подписи / обрезанный плейсхолдер",
+   "coverage": "partial",
+   "verdict": "FAIL",
+   "findings": [
+    {
+     "gate": 2,
+     "rule": "G9-ph-cut",
+     "sev": "FAIL",
+     "title": "плейсхолдер не помещается в поле (обрезан)",
+     "value": "@username (не обязателен)",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "input#adminTelegram",
+       "t": "@username (не обязателен)"
+      }
+     ],
+     "gr": 9,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "768": 1,
+      "1280": 1,
+      "1920": 1
+     },
+     "ex_by_width": {
+      "768": [
+       {
+        "sel": "input#adminTelegram",
+        "t": "@username (не обязателен)"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "input#adminTelegram",
+        "t": "@username (не обязателен)"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "input#adminTelegram",
+        "t": "@username (не обязателен)"
+       }
+      ]
+     }
+    }
+   ],
+   "warnings": [
+    {
+     "gate": 2,
+     "rule": "G9-ph-nolabel",
+     "sev": "WARN",
+     "title": "у поля нет подписи (label/aria-label) — плейсхолдер вместо подписи?",
+     "value": "Валера",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "input#adminName",
+       "t": "Валера"
+      }
+     ],
+     "gr": 9,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "768": 1,
+      "1280": 1,
+      "1920": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "input#adminName",
+        "t": "Валера"
+       }
+      ],
+      "768": [
+       {
+        "sel": "input#adminName",
+        "t": "Валера"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "input#adminName",
+        "t": "Валера"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "input#adminName",
+        "t": "Валера"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G9-ph-nolabel",
+     "sev": "WARN",
+     "title": "у поля нет подписи (label/aria-label) — плейсхолдер вместо подписи?",
+     "value": "@username (не обязателен)",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "input#adminTelegram",
+       "t": "@username (не обязателен)"
+      }
+     ],
+     "gr": 9,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "768": 1,
+      "1280": 1,
+      "1920": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "input#adminTelegram",
+        "t": "@username (не обязателен)"
+       }
+      ],
+      "768": [
+       {
+        "sel": "input#adminTelegram",
+        "t": "@username (не обязателен)"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "input#adminTelegram",
+        "t": "@username (не обязателен)"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "input#adminTelegram",
+        "t": "@username (не обязателен)"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G9-ph-nolabel",
+     "sev": "WARN",
+     "title": "у поля нет подписи (label/aria-label) — плейсхолдер вместо подписи?",
+     "value": "valera",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "input#adminLogin",
+       "t": "valera"
+      }
+     ],
+     "gr": 9,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "768": 1,
+      "1280": 1,
+      "1920": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "input#adminLogin",
+        "t": "valera"
+       }
+      ],
+      "768": [
+       {
+        "sel": "input#adminLogin",
+        "t": "valera"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "input#adminLogin",
+        "t": "valera"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "input#adminLogin",
+        "t": "valera"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G9-ph-nolabel",
+     "sev": "WARN",
+     "title": "у поля нет подписи (label/aria-label) — плейсхолдер вместо подписи?",
+     "value": "придумайте",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "input#adminPassword",
+       "t": "придумайте"
+      }
+     ],
+     "gr": 9,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "768": 1,
+      "1280": 1,
+      "1920": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "input#adminPassword",
+        "t": "придумайте"
+       }
+      ],
+      "768": [
+       {
+        "sel": "input#adminPassword",
+        "t": "придумайте"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "input#adminPassword",
+        "t": "придумайте"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "input#adminPassword",
+        "t": "придумайте"
+       }
+      ]
+     }
+    }
+   ]
+  },
+  "10": {
+   "id": 10,
+   "title": "Ряды «подпись — поле — кнопка» выровнены",
+   "coverage": "partial",
+   "verdict": "PASS",
+   "findings": [],
+   "warnings": []
+  },
+  "11": {
+   "id": 11,
+   "title": "Контраст WCAG AA",
+   "coverage": "auto",
+   "verdict": "FAIL",
+   "findings": [
+    {
+     "gate": 3,
+     "rule": "C-low",
+     "sev": "FAIL",
+     "title": "контраст ниже 4.5:1",
+     "value": "#FFFFFF на #F97316 = 2.80:1 (14px/600)",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div.form-row > div.form-group > button.btn.btn-primary",
+       "t": "Добавить"
+      }
+     ],
+     "gr": 11,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "768": 1,
+      "1280": 1,
+      "1920": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.form-row > div.form-group > button.btn.btn-primary",
+        "t": "Добавить"
+       }
+      ],
+      "768": [
+       {
+        "sel": "div.form-row > div.form-group > button.btn.btn-primary",
+        "t": "Добавить"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.form-row > div.form-group > button.btn.btn-primary",
+        "t": "Добавить"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "div.form-row > div.form-group > button.btn.btn-primary",
+        "t": "Добавить"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 3,
+     "rule": "C-low",
+     "sev": "FAIL",
+     "title": "контраст ниже 4.5:1",
+     "value": "#94A3B8 на #FFFFFF = 2.56:1 (16px/400)",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div#adminsList > p",
+       "t": "Ошибка сети"
+      }
+     ],
+     "gr": 11,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "768": 1,
+      "1280": 1,
+      "1920": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#adminsList > p",
+        "t": "Ошибка сети"
+       }
+      ],
+      "768": [
+       {
+        "sel": "div#adminsList > p",
+        "t": "Ошибка сети"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#adminsList > p",
+        "t": "Ошибка сети"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "div#adminsList > p",
+        "t": "Ошибка сети"
+       }
+      ]
+     }
+    }
+   ],
+   "warnings": []
+  },
+  "12": {
+   "id": 12,
+   "title": "Повтор одной цифры на экране",
+   "coverage": "partial",
+   "verdict": "PASS",
+   "findings": [],
+   "warnings": []
+  },
+  "13": {
+   "id": 13,
+   "title": "Кликабельное vs статичное",
+   "coverage": "manual",
+   "verdict": "MANUAL",
+   "findings": [],
+   "warnings": []
+  },
+  "14": {
+   "id": 14,
+   "title": "Независимые вертикальные стеки вместо строк",
+   "coverage": "manual",
+   "verdict": "MANUAL",
+   "findings": [],
+   "warnings": []
+  },
+  "15": {
+   "id": 15,
+   "title": "Больше двух текстовых ролей в компактном контроле",
+   "coverage": "auto",
+   "verdict": "PASS",
+   "findings": [],
+   "warnings": []
+  },
+  "16": {
+   "id": 16,
+   "title": "Микротекст, который надо читать",
+   "coverage": "partial",
+   "verdict": "PASS",
+   "findings": [],
+   "warnings": []
+  },
+  "17": {
+   "id": 17,
+   "title": "Пустоты и завышенные строки",
+   "coverage": "manual",
+   "verdict": "MANUAL",
+   "findings": [],
+   "warnings": []
+  },
+  "18": {
+   "id": 18,
+   "title": "Состояния, анимации transform/opacity, ошибки консоли",
+   "coverage": "partial",
+   "verdict": "FAIL",
+   "findings": [
+    {
+     "gate": 2,
+     "rule": "G18-transition-all-computed",
+     "sev": "FAIL",
+     "title": "transition: all",
+     "value": "all",
+     "n": 6,
+     "ex": [
+      {
+       "sel": "input#adminName",
+       "t": ""
+      },
+      {
+       "sel": "input#adminTelegram",
+       "t": ""
+      },
+      {
+       "sel": "input#adminLogin",
+       "t": ""
+      },
+      {
+       "sel": "input#adminPassword",
+       "t": ""
+      }
+     ],
+     "gr": 18,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 6,
+      "768": 6,
+      "1280": 6,
+      "1920": 6
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "input#adminName",
+        "t": ""
+       },
+       {
+        "sel": "input#adminTelegram",
+        "t": ""
+       },
+       {
+        "sel": "input#adminLogin",
+        "t": ""
+       },
+       {
+        "sel": "input#adminPassword",
+        "t": ""
+       }
+      ],
+      "768": [
+       {
+        "sel": "input#adminName",
+        "t": ""
+       },
+       {
+        "sel": "input#adminTelegram",
+        "t": ""
+       },
+       {
+        "sel": "input#adminLogin",
+        "t": ""
+       },
+       {
+        "sel": "input#adminPassword",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": "input#adminName",
+        "t": ""
+       },
+       {
+        "sel": "input#adminTelegram",
+        "t": ""
+       },
+       {
+        "sel": "input#adminLogin",
+        "t": ""
+       },
+       {
+        "sel": "input#adminPassword",
+        "t": ""
+       }
+      ],
+      "1920": [
+       {
+        "sel": "input#adminName",
+        "t": ""
+       },
+       {
+        "sel": "input#adminTelegram",
+        "t": ""
+       },
+       {
+        "sel": "input#adminLogin",
+        "t": ""
+       },
+       {
+        "sel": "input#adminPassword",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G18-console",
+     "sev": "FAIL",
+     "title": "ошибка в консоли",
+     "value": "{'column': 35, 'line': 11225, 'text': 'TypeError: Failed to fetch\\n    at loadIncomes (http://127.0.0.1:59104/crm:11226:",
+     "n": 1,
+     "ex": [],
+     "gr": 18,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "768": 1,
+      "1280": 1,
+      "1920": 1
+     },
+     "ex_by_width": {
+      "375": [],
+      "768": [],
+      "1280": [],
+      "1920": []
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G18-console",
+     "sev": "FAIL",
+     "title": "ошибка в консоли",
+     "value": "{'column': 35, 'line': 11452, 'text': 'TypeError: Failed to fetch\\n    at loadConversions (http://127.0.0.1:59104/crm:11",
+     "n": 1,
+     "ex": [],
+     "gr": 18,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "768": 1,
+      "1280": 1,
+      "1920": 1
+     },
+     "ex_by_width": {
+      "375": [],
+      "768": [],
+      "1280": [],
+      "1920": []
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G18-console",
+     "sev": "FAIL",
+     "title": "ошибка в консоли",
+     "value": "Не удалось обновить счётчик заявок на выплату: {stack: \"TypeError: Failed to fetch\n    at refreshPayoutAttention (http:/",
+     "n": 6,
+     "ex": [],
+     "gr": 18,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 6,
+      "768": 6,
+      "1280": 6,
+      "1920": 6
+     },
+     "ex_by_width": {
+      "375": [],
+      "768": [],
+      "1280": [],
+      "1920": []
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G18-console",
+     "sev": "FAIL",
+     "title": "ошибка в консоли",
+     "value": "{stack: \"TypeError: Failed to fetch\n    at rxLoad (http://1….0.0.1:59104/crm:3772:40)\n    at <anonymous>:1:55\", message:",
+     "n": 1,
+     "ex": [],
+     "gr": 18,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "768": 1,
+      "1280": 1,
+      "1920": 1
+     },
+     "ex_by_width": {
+      "375": [],
+      "768": [],
+      "1280": [],
+      "1920": []
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G18-console",
+     "sev": "FAIL",
+     "title": "ошибка в консоли",
+     "value": "Не удалось загрузить курс: {stack: \"TypeError: Failed to fetch\n    at loadCurrentRate (http://127.0.0.1:59104/crm:3720:3",
+     "n": 3,
+     "ex": [],
+     "gr": 18,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 3,
+      "768": 3,
+      "1280": 3,
+      "1920": 3
+     },
+     "ex_by_width": {
+      "375": [],
+      "768": [],
+      "1280": [],
+      "1920": []
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G18-console",
+     "sev": "FAIL",
+     "title": "ошибка в консоли",
+     "value": "Error loading transactions: {stack: \"TypeError: Failed to fetch\n    at loadTransactions….0.0.1:59104/crm:3764:42)\n    at",
+     "n": 1,
+     "ex": [],
+     "gr": 18,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "768": 1,
+      "1280": 1,
+      "1920": 1
+     },
+     "ex_by_width": {
+      "375": [],
+      "768": [],
+      "1280": [],
+      "1920": []
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G18-console",
+     "sev": "FAIL",
+     "title": "ошибка в консоли",
+     "value": "Error loading managers: {stack: \"TypeError: Failed to fetch\n    at loadManagers (ht….0.0.1:59104/crm:3765:38)\n    at <an",
+     "n": 1,
+     "ex": [],
+     "gr": 18,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "768": 1,
+      "1280": 1,
+      "1920": 1
+     },
+     "ex_by_width": {
+      "375": [],
+      "768": [],
+      "1280": [],
+      "1920": []
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G18-console",
+     "sev": "FAIL",
+     "title": "ошибка в консоли",
+     "value": "Ошибка загрузки KYC: {stack: \"TypeError: Failed to fetch\n    at loadKYCSection (….0.0.1:59104/crm:3766:33)\n    at <anony",
+     "n": 1,
+     "ex": [],
+     "gr": 18,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "768": 1,
+      "1280": 1,
+      "1920": 1
+     },
+     "ex_by_width": {
+      "375": [],
+      "768": [],
+      "1280": [],
+      "1920": []
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G18-console",
+     "sev": "FAIL",
+     "title": "ошибка в консоли",
+     "value": "Ошибка загрузки партнёров: {stack: \"TypeError: Failed to fetch\n    at loadPartners (ht….0.0.1:59104/crm:3768:38)\n    at ",
+     "n": 1,
+     "ex": [],
+     "gr": 18,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "768": 1,
+      "1280": 1,
+      "1920": 1
+     },
+     "ex_by_width": {
+      "375": [],
+      "768": [],
+      "1280": [],
+      "1920": []
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G18-console",
+     "sev": "FAIL",
+     "title": "ошибка в консоли",
+     "value": "Ошибка загрузки рефереров: {stack: \"TypeError: Failed to fetch\n    at loadReferrers (h….0.0.1:59104/crm:3769:39)\n    at ",
+     "n": 1,
+     "ex": [],
+     "gr": 18,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "768": 1,
+      "1280": 1,
+      "1920": 1
+     },
+     "ex_by_width": {
+      "375": [],
+      "768": [],
+      "1280": [],
+      "1920": []
+     }
+    }
+   ],
+   "warnings": [
+    {
+     "gate": 2,
+     "rule": "G18-outline-none",
+     "sev": "WARN",
+     "title": "outline:none — проверь кольцо фокуса",
+     "value": ".form-control:focus",
+     "n": 1,
+     "ex": [
+      {
+       "sel": ".form-control:focus",
+       "t": ""
+      }
+     ],
+     "gr": 18,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "768": 1,
+      "1280": 1,
+      "1920": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": ".form-control:focus",
+        "t": ""
+       }
+      ],
+      "768": [
+       {
+        "sel": ".form-control:focus",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": ".form-control:focus",
+        "t": ""
+       }
+      ],
+      "1920": [
+       {
+        "sel": ".form-control:focus",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G18-outline-none",
+     "sev": "WARN",
+     "title": "outline:none — проверь кольцо фокуса",
+     "value": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
+     "n": 1,
+     "ex": [
+      {
+       "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
+       "t": ""
+      }
+     ],
+     "gr": 18,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "768": 1,
+      "1280": 1,
+      "1920": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
+        "t": ""
+       }
+      ],
+      "768": [
+       {
+        "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
+        "t": ""
+       }
+      ],
+      "1920": [
+       {
+        "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G18-outline-none",
+     "sev": "WARN",
+     "title": "outline:none — проверь кольцо фокуса",
+     "value": ".docs-amount input:focus",
+     "n": 1,
+     "ex": [
+      {
+       "sel": ".docs-amount input:focus",
+       "t": ""
+      }
+     ],
+     "gr": 18,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "768": 1,
+      "1280": 1,
+      "1920": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": ".docs-amount input:focus",
+        "t": ""
+       }
+      ],
+      "768": [
+       {
+        "sel": ".docs-amount input:focus",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": ".docs-amount input:focus",
+        "t": ""
+       }
+      ],
+      "1920": [
+       {
+        "sel": ".docs-amount input:focus",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G18-outline-none",
+     "sev": "WARN",
+     "title": "outline:none — проверь кольцо фокуса",
+     "value": ".docs-purpose textarea:focus",
+     "n": 1,
+     "ex": [
+      {
+       "sel": ".docs-purpose textarea:focus",
+       "t": ""
+      }
+     ],
+     "gr": 18,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "768": 1,
+      "1280": 1,
+      "1920": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": ".docs-purpose textarea:focus",
+        "t": ""
+       }
+      ],
+      "768": [
+       {
+        "sel": ".docs-purpose textarea:focus",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": ".docs-purpose textarea:focus",
+        "t": ""
+       }
+      ],
+      "1920": [
+       {
+        "sel": ".docs-purpose textarea:focus",
+        "t": ""
+       }
+      ]
+     }
+    }
+   ]
+  }
+ },
+ "extras": [],
+ "stats": {
+  "375": {
+   "elements": 72,
+   "groups": 36,
+   "texts": 36,
+   "contrast_checked": 40,
+   "contrast_unknown": 1,
+   "primaries": 0,
+   "addresses": 0,
+   "controls": 8
+  },
+  "768": {
+   "elements": 70,
+   "groups": 36,
+   "texts": 31,
+   "contrast_checked": 35,
+   "contrast_unknown": 1,
+   "primaries": 0,
+   "addresses": 0,
+   "controls": 8
+  },
+  "1280": {
+   "elements": 75,
+   "groups": 40,
+   "texts": 36,
+   "contrast_checked": 40,
+   "contrast_unknown": 1,
+   "primaries": 0,
+   "addresses": 0,
+   "controls": 8
+  },
+  "1920": {
+   "elements": 75,
+   "groups": 40,
+   "texts": 36,
+   "contrast_checked": 40,
+   "contrast_unknown": 1,
+   "primaries": 0,
+   "addresses": 0,
+   "controls": 8
+  }
+ },
+ "limits": [],
+ "human_todo": [
+  "п.3 Сосиски, градиенты, hover-зум, анимации появления",
+  "п.4 Кнопки без глагола, две главные, иконка без подписи",
+  "п.5 Эмодзи вместо иконок; один размер иконок",
+  "п.6 Цветные полосы слева, синие подсказки, оранжевый вне кнопки",
+  "п.8 Внутренние названия и коды на экране",
+  "п.9 Плейсхолдер вместо подписи / обрезанный плейсхолдер",
+  "п.10 Ряды «подпись — поле — кнопка» выровнены",
+  "п.12 Повтор одной цифры на экране",
+  "п.13 Кликабельное vs статичное",
+  "п.14 Независимые вертикальные стеки вместо строк",
+  "п.16 Микротекст, который надо читать",
+  "п.17 Пустоты и завышенные строки",
+  "п.18 Состояния, анимации transform/opacity, ошибки консоли"
+ ],
+ "all_warnings": [
+  {
+   "gate": 2,
+   "rule": "G4-icononly",
+   "sev": "WARN",
+   "title": "кнопка-иконка без видимой подписи (есть aria-label)",
+   "value": "‹",
+   "n": 1,
+   "ex": [
+    {
+     "sel": "nav.site-shell-sections > button.site-shell-scroll",
+     "t": "Предыдущие разделы"
+    }
+   ],
+   "gr": 4,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 1,
+    "768": 1,
+    "1280": 1,
+    "1920": 1
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "nav.site-shell-sections > button.site-shell-scroll",
+      "t": "Предыдущие разделы"
+     }
+    ],
+    "768": [
+     {
+      "sel": "nav.site-shell-sections > button.site-shell-scroll",
+      "t": "Предыдущие разделы"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "nav.site-shell-sections > button.site-shell-scroll",
+      "t": "Предыдущие разделы"
+     }
+    ],
+    "1920": [
+     {
+      "sel": "nav.site-shell-sections > button.site-shell-scroll",
+      "t": "Предыдущие разделы"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 2,
+   "rule": "G4-icononly",
+   "sev": "WARN",
+   "title": "кнопка-иконка без видимой подписи (есть aria-label)",
+   "value": "›",
+   "n": 1,
+   "ex": [
+    {
+     "sel": "nav.site-shell-sections > button.site-shell-scroll",
+     "t": "Следующие разделы"
+    }
+   ],
+   "gr": 4,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 1,
+    "768": 1,
+    "1280": 1,
+    "1920": 1
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "nav.site-shell-sections > button.site-shell-scroll",
+      "t": "Следующие разделы"
+     }
+    ],
+    "768": [
+     {
+      "sel": "nav.site-shell-sections > button.site-shell-scroll",
+      "t": "Следующие разделы"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "nav.site-shell-sections > button.site-shell-scroll",
+      "t": "Следующие разделы"
+     }
+    ],
+    "1920": [
+     {
+      "sel": "nav.site-shell-sections > button.site-shell-scroll",
+      "t": "Следующие разделы"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 2,
+   "rule": "G9-ph-nolabel",
+   "sev": "WARN",
+   "title": "у поля нет подписи (label/aria-label) — плейсхолдер вместо подписи?",
+   "value": "Валера",
+   "n": 1,
+   "ex": [
+    {
+     "sel": "input#adminName",
+     "t": "Валера"
+    }
+   ],
+   "gr": 9,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 1,
+    "768": 1,
+    "1280": 1,
+    "1920": 1
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "input#adminName",
+      "t": "Валера"
+     }
+    ],
+    "768": [
+     {
+      "sel": "input#adminName",
+      "t": "Валера"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "input#adminName",
+      "t": "Валера"
+     }
+    ],
+    "1920": [
+     {
+      "sel": "input#adminName",
+      "t": "Валера"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 2,
+   "rule": "G9-ph-nolabel",
+   "sev": "WARN",
+   "title": "у поля нет подписи (label/aria-label) — плейсхолдер вместо подписи?",
+   "value": "@username (не обязателен)",
+   "n": 1,
+   "ex": [
+    {
+     "sel": "input#adminTelegram",
+     "t": "@username (не обязателен)"
+    }
+   ],
+   "gr": 9,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 1,
+    "768": 1,
+    "1280": 1,
+    "1920": 1
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "input#adminTelegram",
+      "t": "@username (не обязателен)"
+     }
+    ],
+    "768": [
+     {
+      "sel": "input#adminTelegram",
+      "t": "@username (не обязателен)"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "input#adminTelegram",
+      "t": "@username (не обязателен)"
+     }
+    ],
+    "1920": [
+     {
+      "sel": "input#adminTelegram",
+      "t": "@username (не обязателен)"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 2,
+   "rule": "G9-ph-nolabel",
+   "sev": "WARN",
+   "title": "у поля нет подписи (label/aria-label) — плейсхолдер вместо подписи?",
+   "value": "valera",
+   "n": 1,
+   "ex": [
+    {
+     "sel": "input#adminLogin",
+     "t": "valera"
+    }
+   ],
+   "gr": 9,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 1,
+    "768": 1,
+    "1280": 1,
+    "1920": 1
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "input#adminLogin",
+      "t": "valera"
+     }
+    ],
+    "768": [
+     {
+      "sel": "input#adminLogin",
+      "t": "valera"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "input#adminLogin",
+      "t": "valera"
+     }
+    ],
+    "1920": [
+     {
+      "sel": "input#adminLogin",
+      "t": "valera"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 2,
+   "rule": "G9-ph-nolabel",
+   "sev": "WARN",
+   "title": "у поля нет подписи (label/aria-label) — плейсхолдер вместо подписи?",
+   "value": "придумайте",
+   "n": 1,
+   "ex": [
+    {
+     "sel": "input#adminPassword",
+     "t": "придумайте"
+    }
+   ],
+   "gr": 9,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 1,
+    "768": 1,
+    "1280": 1,
+    "1920": 1
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "input#adminPassword",
+      "t": "придумайте"
+     }
+    ],
+    "768": [
+     {
+      "sel": "input#adminPassword",
+      "t": "придумайте"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "input#adminPassword",
+      "t": "придумайте"
+     }
+    ],
+    "1920": [
+     {
+      "sel": "input#adminPassword",
+      "t": "придумайте"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 2,
+   "rule": "G18-outline-none",
+   "sev": "WARN",
+   "title": "outline:none — проверь кольцо фокуса",
+   "value": ".form-control:focus",
+   "n": 1,
+   "ex": [
+    {
+     "sel": ".form-control:focus",
+     "t": ""
+    }
+   ],
+   "gr": 18,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 1,
+    "768": 1,
+    "1280": 1,
+    "1920": 1
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": ".form-control:focus",
+      "t": ""
+     }
+    ],
+    "768": [
+     {
+      "sel": ".form-control:focus",
+      "t": ""
+     }
+    ],
+    "1280": [
+     {
+      "sel": ".form-control:focus",
+      "t": ""
+     }
+    ],
+    "1920": [
+     {
+      "sel": ".form-control:focus",
+      "t": ""
+     }
+    ]
+   }
+  },
+  {
+   "gate": 2,
+   "rule": "G18-outline-none",
+   "sev": "WARN",
+   "title": "outline:none — проверь кольцо фокуса",
+   "value": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
+   "n": 1,
+   "ex": [
+    {
+     "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
+     "t": ""
+    }
+   ],
+   "gr": 18,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 1,
+    "768": 1,
+    "1280": 1,
+    "1920": 1
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
+      "t": ""
+     }
+    ],
+    "768": [
+     {
+      "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
+      "t": ""
+     }
+    ],
+    "1280": [
+     {
+      "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
+      "t": ""
+     }
+    ],
+    "1920": [
+     {
+      "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
+      "t": ""
+     }
+    ]
+   }
+  },
+  {
+   "gate": 2,
+   "rule": "G18-outline-none",
+   "sev": "WARN",
+   "title": "outline:none — проверь кольцо фокуса",
+   "value": ".docs-amount input:focus",
+   "n": 1,
+   "ex": [
+    {
+     "sel": ".docs-amount input:focus",
+     "t": ""
+    }
+   ],
+   "gr": 18,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 1,
+    "768": 1,
+    "1280": 1,
+    "1920": 1
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": ".docs-amount input:focus",
+      "t": ""
+     }
+    ],
+    "768": [
+     {
+      "sel": ".docs-amount input:focus",
+      "t": ""
+     }
+    ],
+    "1280": [
+     {
+      "sel": ".docs-amount input:focus",
+      "t": ""
+     }
+    ],
+    "1920": [
+     {
+      "sel": ".docs-amount input:focus",
+      "t": ""
+     }
+    ]
+   }
+  },
+  {
+   "gate": 2,
+   "rule": "G18-outline-none",
+   "sev": "WARN",
+   "title": "outline:none — проверь кольцо фокуса",
+   "value": ".docs-purpose textarea:focus",
+   "n": 1,
+   "ex": [
+    {
+     "sel": ".docs-purpose textarea:focus",
+     "t": ""
+    }
+   ],
+   "gr": 18,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 1,
+    "768": 1,
+    "1280": 1,
+    "1920": 1
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": ".docs-purpose textarea:focus",
+      "t": ""
+     }
+    ],
+    "768": [
+     {
+      "sel": ".docs-purpose textarea:focus",
+      "t": ""
+     }
+    ],
+    "1280": [
+     {
+      "sel": ".docs-purpose textarea:focus",
+      "t": ""
+     }
+    ],
+    "1920": [
+     {
+      "sel": ".docs-purpose textarea:focus",
+      "t": ""
+     }
+    ]
+   }
+  }
+ ]
+}

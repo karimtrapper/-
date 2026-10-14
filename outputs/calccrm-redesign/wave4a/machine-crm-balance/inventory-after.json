@@ -1,0 +1,625 @@
+{
+ "tool": "design-gate",
+ "mode": "inventory",
+ "url": "http://127.0.0.1:59104/crm",
+ "widths_requested": [
+  375,
+  1280
+ ],
+ "widths": {
+  "375": {
+   "vw": 375,
+   "vh": 812,
+   "elements": 56,
+   "hscroll": false,
+   "scroll_width": 375,
+   "fonts": [
+    [
+     "inter",
+     30
+    ],
+    [
+     "arial",
+     2
+    ]
+   ],
+   "sizes": [
+    [
+     12,
+     5
+    ],
+    [
+     13,
+     3
+    ],
+    [
+     14,
+     20
+    ],
+    [
+     16,
+     2
+    ],
+    [
+     22,
+     2
+    ]
+   ],
+   "weights": [
+    [
+     "400",
+     2
+    ],
+    [
+     "600",
+     27
+    ],
+    [
+     "700",
+     3
+    ]
+   ],
+   "combos": [
+    [
+     [
+      "inter",
+      14,
+      "600"
+     ],
+     20
+    ],
+    [
+     [
+      "inter",
+      12,
+      "600"
+     ],
+     4
+    ],
+    [
+     [
+      "inter",
+      13,
+      "600"
+     ],
+     3
+    ],
+    [
+     [
+      "inter",
+      16,
+      "700"
+     ],
+     2
+    ],
+    [
+     [
+      "arial",
+      22,
+      "400"
+     ],
+     2
+    ],
+    [
+     [
+      "inter",
+      12,
+      "700"
+     ],
+     1
+    ]
+   ],
+   "text_colors": [
+    [
+     "#475569",
+     20
+    ],
+    [
+     "#FFFFFF",
+     4
+    ],
+    [
+     "#0F172A",
+     3
+    ],
+    [
+     "#334155",
+     3
+    ],
+    [
+     "#000000",
+     2
+    ]
+   ],
+   "bg_colors": [
+    [
+     "#FFFFFF",
+     6
+    ],
+    [
+     "#F97316",
+     2
+    ],
+    [
+     "#EFEFEF",
+     2
+    ],
+    [
+     "#334155",
+     1
+    ],
+    [
+     "#0F172A",
+     1
+    ],
+    [
+     "#F1F5F9",
+     1
+    ]
+   ],
+   "border_colors": [
+    [
+     "#F1F5F9",
+     4
+    ],
+    [
+     "#E2E8F0",
+     3
+    ]
+   ],
+   "radii": [
+    [
+     "8px",
+     22
+    ],
+    [
+     "пилл/круг (14px)",
+     1
+    ],
+    [
+     "12px",
+     1
+    ],
+    [
+     "10px",
+     1
+    ]
+   ],
+   "shadows": [
+    [
+     "rgba(0, 0, 0, 0.04) 0px 1px 3px 0px",
+     1
+    ]
+   ],
+   "stripes": [],
+   "uppercase": [],
+   "gradients": [],
+   "animations": [],
+   "transitions": [
+    [
+     "all",
+     4
+    ]
+   ],
+   "spacing": [
+    [
+     "4px",
+     6
+    ],
+    [
+     "6px",
+     5
+    ],
+    [
+     "8px",
+     8
+    ],
+    [
+     "12px",
+     20
+    ],
+    [
+     "14px",
+     5
+    ],
+    [
+     "16px",
+     4
+    ],
+    [
+     "20px",
+     1
+    ],
+    [
+     "24px",
+     2
+    ],
+    [
+     "120px",
+     1
+    ]
+   ],
+   "buttons": [
+    {
+     "bg": "#FFFFFF",
+     "border": "без рамки",
+     "radius": "0px",
+     "font": "22px/400",
+     "n": 2,
+     "ex": [
+      "‹",
+      "›"
+     ]
+    },
+    {
+     "bg": "#EFEFEF",
+     "border": "без рамки",
+     "radius": "8px",
+     "font": "13px/600",
+     "n": 2,
+     "ex": [
+      "Наличные (THB)",
+      "Карты (THB)"
+     ]
+    },
+    {
+     "bg": "#F97316",
+     "border": "без рамки",
+     "radius": "8px",
+     "font": "13px/600",
+     "n": 1,
+     "ex": [
+      "Binance (USDT)"
+     ]
+    },
+    {
+     "bg": "#F97316",
+     "border": "без рамки",
+     "radius": "8px",
+     "font": "14px/600",
+     "n": 1,
+     "ex": [
+      "+ Добавить кошелек"
+     ]
+    }
+   ],
+   "primary_count": 2,
+   "primaries": [
+    {
+     "sel": "button#btnSubBinance",
+     "t": "Binance (USDT)"
+    },
+    {
+     "sel": "div#subtabBinance > div > button.btn.btn-primary",
+     "t": "+ Добавить кошелек"
+    }
+   ],
+   "emoji_interactive": [],
+   "emoji_other": [],
+   "wide": [],
+   "addr_wrapped": [],
+   "addr_total": 0,
+   "addr_anywhere": [],
+   "icons": [
+    [
+     "20×20",
+     6
+    ]
+   ],
+   "console_errors": []
+  },
+  "1280": {
+   "vw": 1280,
+   "vh": 800,
+   "elements": 59,
+   "hscroll": false,
+   "scroll_width": 1280,
+   "fonts": [
+    [
+     "inter",
+     30
+    ],
+    [
+     "arial",
+     2
+    ]
+   ],
+   "sizes": [
+    [
+     12,
+     1
+    ],
+    [
+     13,
+     3
+    ],
+    [
+     14,
+     24
+    ],
+    [
+     16,
+     2
+    ],
+    [
+     22,
+     2
+    ]
+   ],
+   "weights": [
+    [
+     "400",
+     2
+    ],
+    [
+     "600",
+     27
+    ],
+    [
+     "700",
+     3
+    ]
+   ],
+   "combos": [
+    [
+     [
+      "inter",
+      14,
+      "600"
+     ],
+     24
+    ],
+    [
+     [
+      "inter",
+      13,
+      "600"
+     ],
+     3
+    ],
+    [
+     [
+      "inter",
+      16,
+      "700"
+     ],
+     2
+    ],
+    [
+     [
+      "arial",
+      22,
+      "400"
+     ],
+     2
+    ],
+    [
+     [
+      "inter",
+      12,
+      "700"
+     ],
+     1
+    ]
+   ],
+   "text_colors": [
+    [
+     "#475569",
+     17
+    ],
+    [
+     "#FFFFFF",
+     7
+    ],
+    [
+     "#CBD5E1",
+     3
+    ],
+    [
+     "#334155",
+     2
+    ],
+    [
+     "#000000",
+     2
+    ],
+    [
+     "#0F172A",
+     1
+    ]
+   ],
+   "bg_colors": [
+    [
+     "#FFFFFF",
+     4
+    ],
+    [
+     "#0F172A",
+     2
+    ],
+    [
+     "#F97316",
+     2
+    ],
+    [
+     "#EFEFEF",
+     2
+    ],
+    [
+     "#475569",
+     1
+    ],
+    [
+     "#334155",
+     1
+    ],
+    [
+     "#F1F5F9",
+     1
+    ]
+   ],
+   "border_colors": [
+    [
+     "#F1F5F9",
+     4
+    ],
+    [
+     "#FFFFFF",
+     1
+    ],
+    [
+     "#E2E8F0",
+     1
+    ]
+   ],
+   "radii": [
+    [
+     "8px",
+     23
+    ],
+    [
+     "пилл/круг (14px)",
+     1
+    ],
+    [
+     "12px",
+     1
+    ],
+    [
+     "10px",
+     1
+    ]
+   ],
+   "shadows": [
+    [
+     "rgba(0, 0, 0, 0.04) 0px 1px 3px 0px",
+     1
+    ]
+   ],
+   "stripes": [],
+   "uppercase": [],
+   "gradients": [],
+   "animations": [],
+   "transitions": [
+    [
+     "all",
+     4
+    ]
+   ],
+   "spacing": [
+    [
+     "4px",
+     2
+    ],
+    [
+     "6px",
+     5
+    ],
+    [
+     "8px",
+     11
+    ],
+    [
+     "12px",
+     24
+    ],
+    [
+     "14px",
+     3
+    ],
+    [
+     "16px",
+     3
+    ],
+    [
+     "20px",
+     2
+    ],
+    [
+     "24px",
+     5
+    ],
+    [
+     "32px",
+     1
+    ],
+    [
+     "60px",
+     1
+    ]
+   ],
+   "buttons": [
+    {
+     "bg": "#FFFFFF",
+     "border": "без рамки",
+     "radius": "0px",
+     "font": "22px/400",
+     "n": 2,
+     "ex": [
+      "‹",
+      "›"
+     ]
+    },
+    {
+     "bg": "#EFEFEF",
+     "border": "без рамки",
+     "radius": "8px",
+     "font": "13px/600",
+     "n": 2,
+     "ex": [
+      "Наличные (THB)",
+      "Карты (THB)"
+     ]
+    },
+    {
+     "bg": "#F97316",
+     "border": "без рамки",
+     "radius": "8px",
+     "font": "13px/600",
+     "n": 1,
+     "ex": [
+      "Binance (USDT)"
+     ]
+    },
+    {
+     "bg": "#F97316",
+     "border": "без рамки",
+     "radius": "8px",
+     "font": "14px/600",
+     "n": 1,
+     "ex": [
+      "+ Добавить кошелек"
+     ]
+    }
+   ],
+   "primary_count": 2,
+   "primaries": [
+    {
+     "sel": "button#btnSubBinance",
+     "t": "Binance (USDT)"
+    },
+    {
+     "sel": "div#subtabBinance > div > button.btn.btn-primary",
+     "t": "+ Добавить кошелек"
+    }
+   ],
+   "emoji_interactive": [],
+   "emoji_other": [],
+   "wide": [],
+   "addr_wrapped": [],
+   "addr_total": 0,
+   "addr_anywhere": [],
+   "icons": [
+    [
+     "20×20",
+     6
+    ]
+   ],
+   "console_errors": []
+  }
+ },
+ "blocked": {},
+ "coverage_note": "",
+ "complete": true,
+ "generated": "2026-10-14T18:54:33"
+}

@@ -124,7 +124,7 @@ body {
     cursor: pointer;
     text-align: center;
     min-height: 48px;
-    transition: all 0.2s;
+    transition: color 0.2s;
     font-family: inherit;
 }
 .method-btn:hover { border-color: var(--navy-800); }
@@ -232,7 +232,7 @@ body {
     align-items: center;
     gap: 4px;
     min-height: 36px;
-    transition: all 0.2s;
+    transition: color 0.2s;
     font-family: inherit;
 }
 .refresh-btn:hover {
@@ -322,7 +322,7 @@ body {
     font-weight: 600;
     color: var(--text-sec);
     min-height: 44px;
-    transition: all 0.2s;
+    transition: color 0.2s;
     font-family: inherit;
     text-align: left;
     justify-content: flex-start;
@@ -379,7 +379,7 @@ body {
     font-weight: 600;
     color: var(--text-sec);
     cursor: pointer;
-    transition: all 0.2s;
+    transition: color 0.2s;
     font-family: inherit;
     text-align: center;
 }
@@ -413,8 +413,7 @@ body {
     font-weight: 700;
     border: 2px solid var(--border);
     border-radius: var(--r);
-    outline: none;
-    transition: all 0.2s;
+    transition: color 0.2s;
     font-family: 'Inter', sans-serif;
     color: var(--text);
     background: var(--bg);
@@ -452,7 +451,7 @@ body {
     font-size: 16px;
     font-weight: 700;
     cursor: pointer;
-    transition: all 0.2s;
+    transition: color 0.2s;
     box-shadow: 0 4px 12px rgba(249,115,22,0.25);
     display: flex;
     align-items: center;
@@ -491,7 +490,7 @@ body {
     gap: 8px;
     min-height: 48px;
     box-shadow: 0 4px 12px rgba(99,102,241,0.25) !important;
-    transition: all 0.2s;
+    transition: color 0.2s;
     font-family: inherit;
 }
 .precise-rate-btn:hover {
@@ -550,7 +549,7 @@ body {
     cursor: pointer;
     font-size: 13px;
     font-weight: 600;
-    transition: all 0.15s;
+    transition: color 0.15s;
     color: var(--text-sec);
     text-align: center;
     min-height: 40px;
@@ -908,7 +907,7 @@ body {
     cursor: pointer;
     text-align: center;
     min-height: 48px;
-    transition: all 0.2s;
+    transition: color 0.2s;
     font-family: inherit;
     white-space: nowrap;
 }
@@ -938,7 +937,7 @@ body {
     font-weight: 600;
     color: var(--text-sec);
     cursor: pointer;
-    transition: all 0.15s;
+    transition: color 0.15s;
     font-family: inherit;
 }
 .src-btn.active {
@@ -1005,7 +1004,7 @@ body {
     font-size: 13px;
     font-weight: 500;
     color: var(--text-sec);
-    transition: all 0.15s;
+    transition: color 0.15s;
 }
 .partner-model-opt:has(input:checked) {
     border-color: var(--coral);
