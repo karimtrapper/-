@@ -3,6 +3,7 @@
 body.nav-shell-tasks .task-list { --task-list-shadow:0 1px 3px rgba(15,23,42,.05),0 1px 2px rgba(15,23,42,.04);max-width:1200px;margin:0 auto;color:var(--navy-900);font-variant-numeric:tabular-nums; }
 .task-list-head { display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:18px; }
 .task-list-head h1 { font-size:24px;font-weight:800;line-height:1.25;letter-spacing:-.015em; }
+.task-list-create-bar { margin-left:auto; }
 .task-list .task-list-create { min-height:44px;padding:0 18px;border-radius:10px;font-size:14.5px;font-weight:700;white-space:nowrap; }
 .task-list-cols { display:grid;grid-template-columns:minmax(0,1.55fr) minmax(0,1fr);gap:24px;align-items:start; }
 .task-list-panel { min-width:0;padding:0;overflow:hidden;border:1px solid var(--navy-200);border-radius:12px;box-shadow:var(--task-list-shadow); }
@@ -28,8 +29,10 @@ body.nav-shell-tasks .task-list { --task-list-shadow:0 1px 3px rgba(15,23,42,.05
 .task-list-seg { display:none; }
 @media(max-width:700px){
   body.nav-shell-tasks .container:has(.task-list) { padding:16px 14px calc(110px + env(safe-area-inset-bottom)); }
-  .task-list-head { margin-bottom:12px; }
+  body.nav-shell-tasks .container:has(.task-list-create-bar) { padding-bottom:calc(150px + env(safe-area-inset-bottom)); }
+  .task-list-head { height:0;margin:0; }
   .task-list-head h1 { display:none; }
+  .task-list-create-bar { position:fixed;left:0;right:0;bottom:calc(61px + env(safe-area-inset-bottom));z-index:219;margin:0;padding:10px 14px;background:rgba(255,255,255,.97);border-top:1px solid var(--navy-200);backdrop-filter:blur(10px); }
   .task-list .task-list-create { width:100%;min-height:50px;font-size:16px; }
   .task-list-seg { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:3px;padding:3px;margin-bottom:12px;border-radius:10px;background:var(--navy-100); }
   .task-list-seg button { display:flex;align-items:center;justify-content:center;gap:6px;min-width:0;min-height:40px;padding:4px 6px;border:0;border-radius:8px;background:transparent;color:var(--navy-600);font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap; }

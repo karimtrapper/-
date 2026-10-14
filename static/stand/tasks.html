@@ -609,7 +609,7 @@ a.hash:hover{background:#BAE6FD}
 }
 </style>
 <link rel="stylesheet" href="/static/nav-shell.css?v=1">
-<link rel="stylesheet" href="/static/task-list.css?v=1">
+<link rel="stylesheet" href="/static/task-list.css?v=2">
 </head>
 <body>
 
@@ -4791,7 +4791,7 @@ function viewTasks(){
   const mine=myTasks(S.role),others=waitingOn(S.role);
   const section=taskListSection||(mine.length?'mine':others.length?'wait':'mine');
   let h=`<div class="task-list"><div class="task-list-head"><h1>Задачник</h1>
-    ${S.role==='manager'||S.role==='admin'?`<button class="btn btn-primary task-list-create" onclick="startCreate()">+ Новая задача</button>`:''}</div>`;
+    ${S.role==='manager'||S.role==='admin'?`<div class="task-list-create-bar"><button class="btn btn-primary task-list-create" onclick="startCreate()">+ Новая задача</button></div>`:''}</div>`;
   const pend=pendingEx(null);
   if(pend.length&&(S.role==='operator'||S.role==='admin')){
     const conv=mine.filter(d=>d.step==='s18');
