@@ -20897,6 +20897,49 @@ def _notify_reimbursed(deals):
             print(f'[Webhook] Error on reimbursement: {wh_err}')
 
 
+@app.route('/api/verification/summary', methods=['GET'])
+def get_verification_summary():
+    """Read-only CRM reconciliation summary for the selected creation dates."""
+    query = get_session()
+    try:
+        deals = query.query(Deal).filter(
+            Deal.status.in_((DealStatus.PENDING, DealStatus.COMPLETED, DealStatus.VERIFIED)),
+            Deal.is_test.isnot(True))
+        for key, boundary in (('date_from', False), ('date_to', True)):
+            value = request.args.get(key)
+            if not value:
+                continue
+            try:
+                date = datetime.strptime(value, '%Y-%m-%d')
+            except ValueError:
+                return jsonify({'success': False, 'error': 'Invalid date format, expected YYYY-MM-DD'}), 400
+            deals = deals.filter(Deal.created_at < date + timedelta(days=1) if boundary
+                                 else Deal.created_at >= date)
+        rows = deals.all()
+        completed = [deal for deal in rows if deal.status in (DealStatus.COMPLETED, DealStatus.VERIFIED)]
+        stats = {
+            'total': len(rows),
+            'pending': sum(deal.status == DealStatus.PENDING for deal in rows),
+            'completed': sum(deal.status == DealStatus.COMPLETED for deal in rows),
+            'verified': sum(deal.status == DealStatus.VERIFIED for deal in rows),
+            'total_profit_usdt': round(sum(deal.net_profit_usdt if deal.net_profit_usdt is not None
+                                           else (deal.profit_usdt or 0) for deal in completed), 2),
+            'needs_attention': [{'deal_id': deal.id, 'client': deal.client_name or '—',
+                                 'issues': ['Ожидает завершения']}
+                                for deal in rows if deal.status == DealStatus.PENDING],
+            'unreimbursed_founders': [
+                {'deal_id': deal.id, 'founder': deal.payout_founder_name,
+                 'amount_usdt': round(deal.payout_amount_usdt or 0, 2)}
+                for deal in completed
+                if (deal.payout_source == PayOutSource.FOUNDER_PERSONAL
+                    and deal.reimbursement_id is None and deal.payout_founder_name
+                    and deal.needs_reimbursement is not False)],
+        }
+        return jsonify({'success': True, 'stats': stats})
+    finally:
+        query.close()
+
+
 @app.route('/api/reimbursements/pending', methods=['GET'])
 def get_pending_reimbursements():
     """Get deals awaiting reimbursement, grouped by founder"""

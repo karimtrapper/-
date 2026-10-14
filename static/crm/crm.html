@@ -3741,44 +3741,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         // ==================== Navigation ====================
         document.querySelectorAll('.nav-tab[data-section]').forEach(tab => {
             tab.addEventListener('click', () => {
-                document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
-                document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
-
-                tab.classList.add('active');
-                document.getElementById(tab.dataset.section).classList.add('active');
-
-                // Load section data
-                switch (tab.dataset.section) {
-                    case 'dashboard': loadDashboard(); break;
-                    case 'deals': loadDeals(); break;
-                case 'closing': loadBitrixDeals(); break;
-                    case 'create':
-                        // Клик по вкладке «Создать» при активном редактировании —
-                        // сбрасываем остатки чужой сделки (поля, sberParts, PUT вместо POST)
-                        if (editingDealId !== null) cancelEditMode();
-                        loadCreateForm();
-                        break;
-                    case 'incomes': loadIncomes(); break;
-                case 'conversions': loadConversions(); break;
-                case 'reimbursements': loadReimbursements(); break;
-                    case 'transactions': loadTransactions(); break;
-                    case 'managers': loadManagers(); loadWebhookConfig(); break;
-                    case 'kyc': loadKYCSection(); break;
-                case 'documents': loadDocuments(); break;
-                    case 'partners': loadPartners(); break;
-                    case 'referrers': loadReferrers(); break;
-                case 'payoutRequests': loadPayoutRequests(); break;
-                case 'admins': loadStandRoles().then(loadAdmins); break;
-                    case 'exchangers': rxLoad(); break;
-                }
-
-                // Update bottom nav highlight
-                const bottomNav = document.getElementById('bottomNav');
-                if (bottomNav) {
-                    bottomNav.querySelectorAll('.bottom-nav-item').forEach((b) => b.classList.remove('active'));
-                    bottomNav.querySelector(`[data-nav-section="${tab.dataset.section}"]`)?.classList.add('active');
-                }
-                if (window.NavShell) NavShell.update({active:tab.dataset.section === 'dashboard' ? 'panel' : 'crm'});
+                showSection(tab.dataset.section);
             });
         });
 
@@ -5960,15 +5923,21 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             switch (sectionName) {
                 case 'dashboard': loadDashboard(); break;
                 case 'deals': loadDeals(); break;
+                case 'documents': loadDocuments(); break;
+                case 'closing': loadBitrixDeals(); break;
                 case 'create':
                     // Пришли в «Создать» навигацией при активном редактировании —
                     // сбрасываем остатки чужой сделки (поля, sberParts, PUT вместо POST)
                     if (editingDealId !== null && !_openingEditor) cancelEditMode();
                     loadCreateForm();
                     break;
+                case 'balance': switchBalanceSubTab('binance'); break;
+                case 'incomes': loadIncomes(); break;
+                case 'conversions': loadConversions(); break;
                 case 'reimbursements': loadReimbursements(); break;
                 case 'transactions': loadTransactions(); break;
                 case 'managers': loadManagers(); loadWebhookConfig(); break;
+                case 'verification': loadVerificationSummary(); break;
                 case 'kyc': loadKYCSection(); break;
                 case 'partners': loadPartners(); break;
                 case 'referrers': loadReferrers(); break;

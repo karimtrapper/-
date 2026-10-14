@@ -4,7 +4,9 @@
 Без --browser явно SKIPPED, отсутствие Chromium при --browser — ERROR.
 """
 import json
+import re
 import threading
+from pathlib import Path
 from urllib.parse import urlsplit
 
 import pytest
@@ -25,6 +27,7 @@ def crm_server(monkeypatch):
     """Настоящие auth/routes/БД; только границы внешних систем подменены."""
     assert 'calccrm-pytest-' in str(A.engine.url), 'Разрешена только pytest-БД'
     A.Session.remove()
+    A.Base.metadata.create_all(A.engine)
     with A.engine.begin() as conn:
         for table in reversed(A.Base.metadata.sorted_tables):
             conn.execute(table.delete())
@@ -61,7 +64,8 @@ def crm_server(monkeypatch):
 @pytest.fixture(scope='module')
 def chromium():
     with sync_playwright() as p:
-        browser = p.chromium.launch()
+        browser = (p.chromium.launch() if Path(p.chromium.executable_path).exists()
+                   else p.chromium.launch(channel='chrome'))
         yield browser
         browser.close()
 
@@ -106,11 +110,111 @@ def test_tab_opens_without_javascript_crash(ui, section):
     assert not errors, errors
 
 
+SHELL_SECTIONS = [
+    ('deals', 'loadDeals', '#dealsTable'),
+    ('documents', 'loadDocuments', '#docsList'),
+    ('closing', 'loadBitrixDeals', '#bitrixDealsList'),
+    ('exchangers', 'rxLoad', '#rxSummary'),
+    ('balance', 'switchBalanceSubTab', '#walletsSummaryGrid'),
+    ('incomes', 'loadIncomes', '#incomesTable'),
+    ('conversions', 'loadConversions', '#conversionsTable'),
+    ('reimbursements', 'loadReimbursements', '#reimbursementsList'),
+    ('transactions', 'loadTransactions', '#walletsInfo'),
+    ('managers', 'loadManagers', '#managersList'),
+    ('verification', 'loadVerificationSummary', '#verificationSummary'),
+    ('kyc', 'loadKYCSection', '#kycPendingList'),
+    ('partners', 'loadPartners', '#partnersList'),
+    ('referrers', 'loadReferrers', '#referrersList'),
+    ('payoutRequests', 'loadPayoutRequests', '#payoutRequestsList'),
+    ('admins', 'loadStandRoles', '#adminsList'),
+]
+
+
+@pytest.fixture
+def stand_ui(chromium, crm_server, monkeypatch):
+    """Настоящая панель стенда и реальные локальные API на SQLite."""
+    monkeypatch.setattr(A, 'STAND_MODE', True)
+    monkeypatch.setattr(A, '_tronscan_fetch_incoming', lambda *a, **k: ([], [], []))
+    monkeypatch.setattr(A.stand_notify, 'notify_profile', lambda: 'disabled')
+    monkeypatch.setattr(A.stand_notify, 'mode', lambda: 'all')
+    db = A.get_session()
+    db.add(A.Deal(client_name='QA Deal Client', deal_type=A.DealType.PAY_IN,
+                  payin_amount_usdt=100, payout_amount_usdt=97))
+    db.add(A.Wallet(address='TQA_LOCAL_WALLET', label='QA Wallet', is_balance=True))
+    db.add(A.Agreement(client_name='QA Document Client', client_key='991122',
+                       route_key='RUB_THB:bank', deal_type='leasehold',
+                       number='MF-QA-1', status='signed'))
+    db.commit()
+    db.close()
+    base, cookie = crm_server
+    context = chromium.new_context(viewport={'width': 1440, 'height': 900})
+    context.add_cookies([{'name': 'session', 'value': cookie, 'url': base,
+                         'httpOnly': True, 'sameSite': 'Lax'}])
+    context.route('**/*', lambda route: route.continue_()
+                  if urlsplit(route.request.url).hostname == '127.0.0.1'
+                  else route.abort())
+    page = context.new_page()
+    errors = []
+    page.on('pageerror', lambda error: errors.append(str(error)))
+    page.goto(base + '/crm?section=deals')
+    expect(page.locator('.site-shell-section-list')).to_be_visible()
+    yield page, errors
+    context.close()
+
+
+@pytest.mark.parametrize('section,loader,rendered', SHELL_SECTIONS)
+def test_shared_section_click_loads_and_renders(stand_ui, section, loader, rendered):
+    page, errors = stand_ui
+    # Observe the real loader while leaving its fetch and rendering intact.
+    page.evaluate('''loader => {
+        window.__sectionLoaderCalls = 0;
+        const original = window[loader];
+        if (typeof original !== 'function') throw Error('Missing loader: ' + loader);
+        window[loader] = function(...args) {
+            window.__sectionLoaderCalls++;
+            return original.apply(this, args);
+        };
+    }''', loader)
+    responses = []
+    page.on('response', lambda response: responses.append(response)
+            if '/api/' in response.url else None)
+    page.locator(f'.site-shell-section-list [data-shell-section="{section}"]').click()
+    expect(page.locator(f'#{section}')).to_be_visible()
+    page.wait_for_load_state('networkidle')
+    assert page.evaluate('window.__sectionLoaderCalls') == 1, section
+    assert responses, f'{section}: loader made no API request'
+    assert not [r for r in responses if r.status >= 500], [
+        (r.status, r.url) for r in responses if r.status >= 500]
+    assert page.locator(rendered).inner_text().strip(), f'{section}: no rendered data or empty state'
+    assert not errors, errors
+    if section == 'documents':
+        assert any(urlsplit(r.url).path == '/api/docs/agreements' and r.status == 200
+                   for r in responses)
+        expect(page.locator('#docsList')).to_contain_text('QA Document Client')
+        assert not page.locator('#docsList').get_by_text('Загрузка…').count()
+    if section == 'deals':
+        expect(page.locator('#dealsTable')).to_contain_text('QA Deal Client')
+    if section == 'managers':
+        expect(page.locator('#managersList')).to_contain_text('QA Manager')
+    if section == 'verification':
+        expect(page.locator('#verificationSummary')).to_contain_text('Всего сделок')
+        expect(page.locator('#verificationSummary .stat-value').first).to_have_text('1')
+
+
+@pytest.mark.parametrize('section,path', [('tasks', '/tasks'),
+                                          ('analytics', '/tasks?section=analytics')])
+def test_shared_section_click_opens_task_pages(stand_ui, section, path):
+    page, errors = stand_ui
+    page.locator(f'.site-shell-section-list [data-shell-section="{section}"]').click()
+    expect(page).to_have_url(re.compile(re.escape(path) + '$'))
+    expect(page.locator(f'.site-shell-section-list [data-shell-section="{section}"]')).to_have_attribute(
+        'aria-current', 'page')
+    assert not errors, errors
+
+
 @pytest.mark.parametrize('section,path', [
     ('documents', '/api/docs/agreements'), ('conversions', '/api/conversions'),
     ('incomes', '/api/sber-incomes'), ('closing', '/api/bitrix/active-deals')])
-@pytest.mark.xfail(strict=True, raises=AssertionError,
-                   reason='UI-01: showSection при восстановлении вкладки не загружает данные')
 def test_reload_restores_tab_and_fetches_its_data(ui, section, path):
     page, _, _, _ = ui
     page.locator(f'.nav-tab[data-section="{section}"]').click()
@@ -163,6 +267,7 @@ def choose(page, selector, label):
 
 def test_custom_deal_create_edit_reload_preserves_money(ui):
     page, errors, _, base = ui
+    page.locator('.nav-tab[data-section="deals"]').click()
     page.locator('.nav-create-btn').click()
     expect(page.locator('#create')).to_be_visible()
     page.wait_for_load_state('networkidle')
