@@ -50,9 +50,9 @@ body.nav-shell-on.nav-shell-tasks > nav.nav { display:none !important; }
   body.nav-shell-on { padding-bottom:calc(61px + env(safe-area-inset-bottom)); }
   .site-shell-top { display:none; }
   .site-shell-mobile-head { position:sticky;top:0;z-index:210;height:52px;display:flex;align-items:center;gap:8px;padding:0 16px;background:rgba(255,255,255,.97);border-bottom:1px solid #E2E8F0;backdrop-filter:blur(10px);font:700 16px Inter,system-ui,sans-serif;color:#0F172A; }
-  .site-shell-mobile-head .site-shell-profile { margin-left:auto; }
-  .site-shell-mobile-head .site-shell-profile>summary { color:#334155; }
-  .site-shell-mobile-head .site-shell-profile-name { display:block;max-width:clamp(52px,calc(100vw - 230px),160px);overflow:hidden;text-overflow:ellipsis; }
+  .site-shell-mobile-head .site-shell-profile { margin-left:auto;min-width:0;flex:0 1 auto; }
+  .site-shell-mobile-head .site-shell-profile>summary { min-width:0;color:#334155; }
+  .site-shell-mobile-head .site-shell-profile-name { display:block;min-width:0;max-width:160px;overflow:hidden;text-overflow:ellipsis; }
   .site-shell-mobile-head .site-shell-bell { margin-left:auto;color:#475569; }
   .site-shell-mobile-head .site-shell-bell:has(+ .site-shell-profile) { margin-left:auto; }
   .site-shell-mobile-head .site-shell-bell .bellbtn .c { border:2px solid #fff; }
