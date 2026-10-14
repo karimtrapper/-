@@ -13356,9 +13356,18 @@ def _stand_sync_crm_conversions(db, previous, state):
 def _clear_conversion_payin_uses(db, conv):
     """Снять доли PayinTxUse, проставленные этой пачкой (перед пересчётом/удалением)."""
     tx_ids = [t.payin_tx_id for t in conv.txs]
-    if not tx_ids:
+    deal_ids = _conversion_deal_ids(db, conv)
+    if not tx_ids or not deal_ids:
         return
-    db.query(PayinTxUse).filter(PayinTxUse.tx_id.in_(tx_ids)).delete(synchronize_session=False)
+    # A hash can fund several conversions. Its uses belong to deals, not to
+    # the hash as a whole. Legacy rows have no conversion provenance: refuse
+    # an ambiguous shared deal instead of erasing another conversion's money.
+    others = db.query(Conversion).join(ConversionTx).filter(
+        ConversionTx.payin_tx_id.in_(tx_ids), Conversion.id != conv.id).all()
+    if any(set(deal_ids) & set(_conversion_deal_ids(db, other)) for other in others):
+        raise ValueError('Доля сделки относится к нескольким пачкам — нужен разбор происхождения')
+    db.query(PayinTxUse).filter(PayinTxUse.tx_id.in_(tx_ids),
+                               PayinTxUse.deal_id.in_(deal_ids)).delete(synchronize_session=False)
     db.flush()
 
 
