@@ -81,7 +81,7 @@ def test_cash_payin_requires_persisted_basis(
         with requests.Session() as t:
             deal_id = 8100 + int(claimed_usdt) % 97
             deal = {'id': deal_id, 'code': f'СД-{deal_id}', 'client': 'T24 MF probe',
-                    'type': 'Обмен валюты', 'step': 's6', 'closed': False,
+                    'type': 'Обмен валюты', 'step': 's5', 'closed': False,
                     'crmDealId': None, 'sentToClient': False, 'payType': 'Наличные',
                     'pay': {}, 'log': []}
             r1 = t.put(base + '/state', json={'version': 1,
@@ -98,6 +98,12 @@ def test_cash_payin_requires_persisted_basis(
                 d['rates'] = {'broker': broker_rate}
             d['files'] = {'receipt': [{'file': 'receipt.pdf', 'mime': 'application/pdf',
                                        'data': 'data:application/pdf;base64,JVBERi0='}]}
+            # Seed the completed cash workflow; the HTTP assertions below test
+            # close-evidence and money admission, not a skipped workflow.
+            with m.SessionLocal() as db:
+                row = db.get(m.StandState, 1)
+                row.data = json.dumps(advanced)
+                db.commit()
             r2 = t.put(base + '/state', json={'version': r1.json()['version'],
                        'data': advanced}, headers=mgr_headers, timeout=10)
             log.append(('advance_s27_cash_rub_only', r2.status_code, r2.json().get('error')))
@@ -127,6 +133,11 @@ def test_cash_payin_requires_persisted_basis(
             payout_evidence_admitted = r5.status_code == 200
 
             close_version = r5.json().get('version', r4.json()['version'])
+            sent = t.post(base + f'/deals/{deal_id}/close-evidence',
+                          json={'version': close_version, 'kind': 'sent'},
+                          headers=mgr_headers, timeout=10)
+            assert sent.status_code == 200, sent.json()
+            close_version = sent.json()['version']
             crm = {'deal_kind': 'exchange', 'client_name': 'T24 MF probe',
                    'manager_name': 'QA', 'payin_method': 'partners_cash',
                    'payin_amount_usdt': claimed_usdt, 'payin_amount_rub': rub_amount,

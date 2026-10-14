@@ -24,7 +24,7 @@ const ctx = {
   Math, JSON,
 };
 vm.createContext(ctx);
-vm.runInContext(constants+'\n'+['exchangeSpec','amountField','hashSum','payinParts','crmNet','crmPayload'].map(fn).join('\n'),ctx);
+vm.runInContext(constants+'\n'+['payCur','exchangeSpec','amountField','hashSum','payinParts','crmNet','crmPayload'].map(fn).join('\n'),ctx);
 const base = {
   client:'synthetic',manager:'Елизавета',type:'Оплата недвижимости',kind:'Аренда',
   payType:'По реквизитам',amountRub:100000,amountUsdt:1000,incomeAmount:100000,

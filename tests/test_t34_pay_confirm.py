@@ -222,7 +222,7 @@ def test_freehold_ipps_send_gated_same_as_s26(board):
     send['pay']['ippsSent'] = True
     denied = _put(client, before, send)
     assert denied.status_code == 409
-    assert 'подтверждени' in denied.json['error'].lower()
+    assert 'отключена' in denied.json['error'].lower()
 
     role['value'] = 'manager'
     state = _get(client)
@@ -235,5 +235,5 @@ def test_freehold_ipps_send_gated_same_as_s26(board):
     send = copy.deepcopy(ready['data']['deals'][0])
     send['pay']['ippsSent'] = True
     sent = _put(client, ready, send)
-    assert sent.status_code == 200, sent.json
-    assert sent.json['data']['deals'][0]['pay']['ippsSent'] is True
+    assert sent.status_code == 409, sent.json
+    assert 'отключена' in sent.json['error'].lower()

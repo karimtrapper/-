@@ -245,7 +245,7 @@ def test_webhook_disables_poll_and_notify_test_requires_admin(dm, monkeypatch):
 
 def test_double_put_and_poll_do_not_resend(dm, monkeypatch):
     calls, ids, board = dm
-    board([])
+    board([note(8)])
     monkeypatch.setattr(appmod, 'current_role', lambda: 'admin')
     with appmod.app.test_client() as client:
         # После gate стенда (T2) обхода LOCAL_NO_AUTH нет — входим сессией админа.

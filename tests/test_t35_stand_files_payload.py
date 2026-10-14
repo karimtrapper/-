@@ -2,7 +2,20 @@ import json
 import pytest
 from app import app, get_session, StandState, _stand_strip_files, _stand_restore_files
 
-def test_stand_files_payload(monkeypatch):
+
+@pytest.fixture
+def users():
+    import secrets
+    from app import AdminUser
+    with get_session() as db:
+        records = {role: AdminUser(username='files-' + secrets.token_hex(8),
+                                  role=role, password_hash='unused')
+                   for role in ('manager', 'operator')}
+        db.add_all(records.values())
+        db.commit()
+        return {role: user.id for role, user in records.items()}
+
+def test_stand_files_payload(monkeypatch, users):
     monkeypatch.setitem(app.config, 'TESTING', True)
     monkeypatch.setitem(app.config, 'STAND_MODE', True)
     import app as m
@@ -11,23 +24,18 @@ def test_stand_files_payload(monkeypatch):
     
     manager = app.test_client()
     with manager.session_transaction() as sess:
-        sess['user_id'] = 1
+        sess['user_id'] = users['manager']
         sess['role'] = 'manager'
         sess['display_name'] = 'Manager'
 
     operator = app.test_client()
     with operator.session_transaction() as sess:
-        sess['user_id'] = 2
+        sess['user_id'] = users['operator']
         sess['role'] = 'operator'
         sess['display_name'] = 'Operator'
 
     with get_session() as db:
         m._stand_migrate()
-        from app import AdminUser
-        if not db.query(AdminUser).get(1):
-            db.add(AdminUser(id=1, username='mgr', role='manager', password_hash=''))
-        if not db.query(AdminUser).get(2):
-            db.add(AdminUser(id=2, username='opr', role='operator', password_hash=''))
         state_data = {
             "deals": [
                 {
@@ -108,7 +116,7 @@ def test_stand_files_payload(monkeypatch):
     resp401 = no_auth.get('/api/stand/file/1472/receipt/0')
     assert resp401.status_code == 401
 
-def test_identical_files_identity(monkeypatch):
+def test_identical_files_identity(monkeypatch, users):
     monkeypatch.setitem(app.config, 'TESTING', True)
     monkeypatch.setitem(app.config, 'STAND_MODE', True)
     import app as m
@@ -117,7 +125,7 @@ def test_identical_files_identity(monkeypatch):
     
     manager = app.test_client()
     with manager.session_transaction() as sess:
-        sess['user_id'] = 1
+        sess['user_id'] = users['manager']
         sess['role'] = 'manager'
         sess['display_name'] = 'Manager'
 
@@ -168,7 +176,7 @@ def test_identical_files_identity(monkeypatch):
     assert xss_resp.status_code == 400
     assert b'Invalid MIME type' in xss_resp.data
 
-def test_manual_deal_drop_guard(monkeypatch):
+def test_manual_deal_drop_guard(monkeypatch, users):
     monkeypatch.setitem(app.config, 'TESTING', True)
     monkeypatch.setitem(app.config, 'STAND_MODE', True)
     import app as m
@@ -177,7 +185,7 @@ def test_manual_deal_drop_guard(monkeypatch):
     
     manager = app.test_client()
     with manager.session_transaction() as sess:
-        sess['user_id'] = 1
+        sess['user_id'] = users['manager']
         sess['role'] = 'manager'
 
     with get_session() as db:
@@ -226,7 +234,7 @@ def test_manual_deal_drop_guard(monkeypatch):
     put_resp = manager.put('/api/stand/state', json={'version': 1, 'data': state})
     assert put_resp.status_code == 200
 
-def test_put_erases_files_protection(monkeypatch):
+def test_put_erases_files_protection(monkeypatch, users):
     monkeypatch.setitem(app.config, 'TESTING', True)
     monkeypatch.setitem(app.config, 'STAND_MODE', True)
     import app as m
@@ -235,7 +243,7 @@ def test_put_erases_files_protection(monkeypatch):
     
     manager = app.test_client()
     with manager.session_transaction() as sess:
-        sess['user_id'] = 1
+        sess['user_id'] = users['manager']
         sess['role'] = 'manager'
 
     with get_session() as db:
@@ -247,7 +255,7 @@ def test_put_erases_files_protection(monkeypatch):
                     "id": 1472,
                     "step": "s27",
                     "files": {
-                        "receipt": [
+                        "inv": [
                             {"file": "test.pdf", "bytes": 100, "data": "data:application/pdf;base64," + "A"*100, "mime": "application/pdf"}
                         ]
                     }
@@ -269,18 +277,18 @@ def test_put_erases_files_protection(monkeypatch):
     with get_session() as db:
         row = db.query(StandState).get(1)
         db_state = json.loads(row.data)
-        assert db_state['deals'][0]['files']['receipt'][0]['storageId']
+        assert db_state['deals'][0]['files']['inv'][0]['storageId']
 
     # Send files explicitly empty (intentional deletion)
-    state['deals'][0]['files'] = {'receipt': []}
+    state['deals'][0]['files'] = {'inv': []}
     put_resp = manager.put('/api/stand/state', json={'fileStorageVersion': 1, 'version': 2, 'data': state})
     assert put_resp.status_code == 200
     with get_session() as db:
         row = db.query(StandState).get(1)
         db_state = json.loads(row.data)
-        assert len(db_state['deals'][0]['files']['receipt']) == 0
+        assert len(db_state['deals'][0]['files']['inv']) == 0
 
-def test_truly_empty_manual_draft_guard(monkeypatch):
+def test_truly_empty_manual_draft_guard(monkeypatch, users):
     monkeypatch.setitem(app.config, 'TESTING', True)
     monkeypatch.setitem(app.config, 'STAND_MODE', True)
     import app as m
@@ -289,7 +297,7 @@ def test_truly_empty_manual_draft_guard(monkeypatch):
     
     manager = app.test_client()
     with manager.session_transaction() as sess:
-        sess['user_id'] = 1
+        sess['user_id'] = users['manager']
         sess['role'] = 'manager'
 
     with get_session() as db:

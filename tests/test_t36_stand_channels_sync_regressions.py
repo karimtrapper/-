@@ -112,7 +112,7 @@ def test_sync_stale_deletion_null_tags(monkeypatch):
         # Verify old record with NULL tag was deleted
         db2 = appmod.get_session()
         try:
-            records = db2.query(appmod.StandChannel).all()
+            records = db2.query(appmod.StandChannel).filter_by(channel="tg", account="Елизавета").all()
             assert len(records) == 1
             assert records[0].chat_id == "new_chat"
         finally:

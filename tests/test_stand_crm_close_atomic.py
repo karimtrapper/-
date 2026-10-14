@@ -202,12 +202,17 @@ def test_board_reset_rotates_origin_generation(monkeypatch):
         db.close()
     state = admin_client.get('/api/stand/state').json
     fresh = _board()
-    fresh['deals'][0].update(step='s6', sentToClient=False)
+    fresh['deals'][0].update(step='s5', sentToClient=False)
     put = admin_client.put('/api/stand/state',
                            json={'version': state['version'], 'data': fresh})
     assert put.status_code == 200, put.json
     advanced = copy.deepcopy(put.json['data'])
     advanced['deals'][0].update(step='s27', sentToClient=True)
+    # This test covers reset generation, not the intervening workflow.
+    with m.SessionLocal() as db:
+        row = db.get(m.StandState, 1)
+        row.data = json.dumps(advanced)
+        db.commit()
     saved = admin_client.put('/api/stand/state',
                              json={'version': put.json['version'], 'data': advanced})
     assert saved.status_code == 200, saved.json
@@ -914,7 +919,7 @@ def test_new_workflow_cannot_start_at_late_or_manual_stage(monkeypatch, step):
     assert _post(client).status_code == 404
 
 
-def test_legal_workflow_entry_can_advance_to_s27_then_close(monkeypatch):
+def test_workflow_entry_cannot_skip_to_s27_then_close(monkeypatch):
     uid = _setup(monkeypatch)
     db = m.get_session()
     try:
@@ -927,7 +932,7 @@ def test_legal_workflow_entry_can_advance_to_s27_then_close(monkeypatch):
         db.close()
     client = _client(uid)
     deal = copy.deepcopy(_board()['deals'][0])
-    deal.update(step='s6', sentToClient=False)
+    deal.update(step='s5', sentToClient=False)
     initial = client.put('/api/stand/state', json={'version': 1,
                          'data': {'deals': [deal], 'notes': []}})
     assert initial.status_code == 200, initial.json
@@ -935,10 +940,11 @@ def test_legal_workflow_entry_can_advance_to_s27_then_close(monkeypatch):
     advanced['deals'][0].update(step='s27', sentToClient=True)
     saved = client.put('/api/stand/state', json={'version': initial.json['version'],
                                                 'data': advanced})
-    assert saved.status_code == 200, saved.json
+    assert saved.status_code == 409, saved.json
+    assert 'Действие шага s5' in saved.json['error']
     closed = _post(client, version=saved.json['version'])
     assert closed.status_code == 409, closed.json
-    assert closed.json['error'] == 'close_evidence_missing'
+    assert closed.json['error'] == 'stage_or_receipt_missing'
 
 
 @pytest.mark.parametrize('property_deal,route', [
@@ -965,7 +971,7 @@ def test_staged_http_workflow_cannot_fabricate_completion(monkeypatch, property_
     base = f'http://127.0.0.1:{port}/api/stand'
     headers = {'Cookie': 'session=' + cookie}
     deal = copy.deepcopy(_board()['deals'][0])
-    deal.update(step='s8' if property_deal else 's6', sentToClient=False)
+    deal.update(step='s8' if property_deal else 's5', sentToClient=False)
     if property_deal:
         deal.update(type='Оплата недвижимости', kind='Фрихолд',
                     postConv=route, payType='Крипта', invoiceUsd=100,
@@ -991,21 +997,9 @@ def test_staged_http_workflow_cannot_fabricate_completion(monkeypatch, property_
             advanced = transport.put(base + '/state',
                 json={'version': start.json()['version'], 'data': forged},
                 headers=headers, timeout=10)
-            assert advanced.status_code == 200, advanced.json()
-            if property_deal and route != 'ipps_swift':
-                attestation = transport.post(base + '/deals/1474/close-evidence',
-                    json={'version': advanced.json()['version'], 'kind': 'payout'},
-                    headers=headers, timeout=10)
-                assert attestation.status_code == 409, attestation.json()
-                assert attestation.json()['error'] == 'freehold_route_invalid'
-            close = transport.post(base + '/deals/1474/crm-close',
-                json={'version': advanced.json()['version'], 'crm': crm},
-                headers=headers, timeout=10)
-            print('STAGED_PROBE', 'freehold' if property_deal else 'exchange',
-                  start.status_code, advanced.status_code, close.status_code,
-                  close.json().get('error'))
-            assert close.status_code == 409, close.json()
+            assert advanced.status_code == 409, advanced.json()
             assert _counts() == baseline
+            assert requests.get(base + '/state', headers=headers, timeout=10).json()['data']['deals'][0]['step'] == deal['step']
     finally:
         server.shutdown()
         thread.join(timeout=5)
@@ -1693,16 +1687,16 @@ def test_wrong_role_and_stale_note_edit(monkeypatch):
     client = _client(uid)
     board = client.get('/api/stand/state').json
     changed = copy.deepcopy(board['data'])
-    changed['notes'].append({'id': 50, 'text': 'Synthetic concurrent note'})
+    changed['deals'][0]['log'].append({'text': 'Synthetic concurrent note'})
     saved = client.put('/api/stand/state', json={'version': board['version'],
                                                 'data': changed})
     assert saved.status_code == 200, saved.json
     conflict = _post(client, version=board['version'])
     assert conflict.status_code == 409
     assert conflict.json['error'] == 'conflict'
-    assert conflict.json['data']['notes'][-1]['text'] == 'Synthetic concurrent note'
+    assert conflict.json['data']['deals'][0]['log'][-1]['text'].endswith('Synthetic concurrent note')
     assert _post(client, version=saved.json['version']).status_code == 201
-    assert client.get('/api/stand/state').json['data']['notes'][-1]['text'] == 'Synthetic concurrent note'
+    assert any(isinstance(e, dict) and e['text'].endswith('Synthetic concurrent note') for e in client.get('/api/stand/state').json['data']['deals'][0]['log'])
     assert _post(_client(operator_id), version=saved.json['version']).status_code == 403
 
 
@@ -1875,6 +1869,9 @@ def test_freehold_ipps_server_settlement_receipt_sent_then_close(monkeypatch, co
                                  'net': 'TRC20', 'amount': 39373,
                                  'status': 'pending'}]})
         deal['pay'].update(usdt=39533.77, invoicePaid=True)
+        deal['transfer']['net'] = 'TRC-20'
+        deal['ippsPayoutOrder'] = {'confirmedAt': '2026-10-13T12:00:00Z', 'amount': 39373,
+            'network': 'TRC-20', 'address': deal['transfer']['addr']}
         board['wallets'] = [{'id': 'synthetic',
                              'addr': 'TWBgeUo74DehAPgw5cKTdYUTXtJELqwwqn',
                              'multisig': True}]
@@ -1959,7 +1956,7 @@ def test_freehold_ipps_server_settlement_receipt_sent_then_close(monkeypatch, co
         assert verified.status_code == 200, verified.json
         proved_deal = verified.json['data']['deals'][0]
     assert proved_deal['serverTransferComplete'] is True
-    assert proved_deal['step'] == 's25'
+    assert proved_deal['step'] == 's26'
     assert proved_deal['transfer']['sends'][0]['from']
     assert proved_deal['transfer']['sends'][0]['to']
     db = m.get_session()

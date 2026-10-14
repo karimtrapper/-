@@ -34,6 +34,9 @@ def board(monkeypatch):
                             **(extra or {})}],
                  'convs': [], 'wallets': [], 'incomes': [], 'notes': []}
         state.update(state_extra or {})
+        if step == 's23':
+            state['deals'][0].setdefault('transfer', {'amount': 100, 'sends': [
+                {'ref': 'synthetic-prepared', 'amount': 100, 'status': 'pending'}]})
         db = m.get_session()
         try:
             row = m._stand_row(db)

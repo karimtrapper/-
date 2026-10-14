@@ -141,7 +141,7 @@ assert.equal(calls.at(-1)[1].statementVerified, undefined);
     console.log('manual bank receipt UI tests: PASS (Chromium check skipped: Playwright unavailable)');
     return;
   }
-  const browser=await chromium.launch({headless:true});
+  const browser=await chromium.launch({headless:true,executablePath:process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH||undefined});
   try{
     const page=await browser.newPage();
     await page.setContent(`<script>window.__qaPwn=0;window.copyAsk=v=>window.__copied=v;</script>${goalMarkup}${tgMarkup}`);

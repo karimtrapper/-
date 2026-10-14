@@ -30,7 +30,7 @@ function fn(name) {
   throw new Error(`не нашли конец функции ${name}`);
 }
 function run(names, context) {
-  names=['exchangeSpec','amountField',...names];
+  names=['payCur','exchangeSpec','amountField',...names];
   const source = names.map(fn).join('\n');
   vm.createContext(context);
   vm.runInContext(source, context);

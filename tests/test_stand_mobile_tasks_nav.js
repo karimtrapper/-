@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const http = require('node:http');
 const path = require('node:path');
-const { chromium, webkit, devices } = require(path.resolve(__dirname, '../../../node_modules/playwright'));
+const { chromium, webkit, devices } = require('playwright');
 
 const root = path.resolve(__dirname, '..');
 const mime = { '.html': 'text/html; charset=utf-8', '.json': 'application/json; charset=utf-8', '.js': 'text/javascript; charset=utf-8' };
@@ -24,15 +24,16 @@ const server = http.createServer((req, res) => {
 });
 
 async function main() {
-  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  await new Promise(resolve => server.listen(Number(process.env.CALCCRM_FENCE_PORT_START)||0, '127.0.0.1', resolve));
   const base = `http://127.0.0.1:${server.address().port}`;
   const browserType = process.env.BROWSER === 'webkit' ? webkit : chromium;
-  const browser = await browserType.launch({ headless: true });
+  const browser = await browserType.launch({ headless: true, executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH||undefined });
   let apiMode = 'prod';
   const writes = [];
   try {
     const context = await browser.newContext({ ...devices['iPhone 15'] });
     const page = await context.newPage();
+    await page.route('**/*', route => new URL(route.request().url()).origin === base ? route.continue() : route.abort());
     await page.setViewportSize({ width: 375, height: 812 });
     await page.route('**/api/**', async route => {
       const req = route.request();

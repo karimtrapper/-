@@ -7,7 +7,8 @@ let match;
 while ((match = scriptRegex.exec(html)) !== null) {
     scripts.push(match[1]);
 }
-let jsCode = scripts.join('\n');
+// Exercise real functions without the unrelated background boot/polling loop.
+let jsCode = scripts.join('\n').replace('else if(STAND&&!SCREEN){ standBoot(); }', 'else if(STAND&&!SCREEN){ /* isolated harness */ }');
 
 jsCode = jsCode.replace(/window\.location\.reload\(\)/g, "undefined")
                .replace(/location\.search/g, "''")
@@ -38,6 +39,7 @@ global.window = { addEventListener: () => {}, setTimeout: (f) => f(), history: {
 const assertions = `
 (async () => {
 try {
+  const actualSave=save;save=()=>{}; // Pure client-picker checks must not leave pending PUTs.
   fetchResponses['/api/clients'] = {
     success: true,
     clients: [
@@ -221,6 +223,7 @@ const foundWithCrm = clientFind(S.draft.cq, S.draft.searchCrm);
       throw new Error("Selecting a searched chat did not collapse the picker");
   }
 
+  save=actualSave;
   // Fake state-save response separates operator delivery from the admin copy.
   const previousRender=render, previousTyping=standTyping;
   render=()=>{};standTyping=()=>false;

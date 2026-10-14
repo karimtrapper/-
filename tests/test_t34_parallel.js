@@ -100,17 +100,17 @@ function run(names, context) {
     SOURCES: {test: 'Тест'}, stepWho: () => 'operator',
     stepTitle: () => 'Подготовить договор', progress: () => ({i: 4, n: 12}),
     stepCard: () => 'REQ_FORM', managerEarlyDocsBlock: () => 'DOC_FORM',
-    docSide: () => '', pathCard: () => '', overview: () => '', quotesCard: () => '',
+    prepayPanel: () => '', docSide: () => '', pathCard: () => '', overview: () => '', quotesCard: () => '',
     needsPayConfirm: () => false, payToConfirmBlock: () => 'CONFIRM_BLOCK',
   });
   const manager = ctx.viewDeal(d);
-  assert.match(manager, /Сейчас: Операционист — Подготовить договор/);
-  assert.match(manager, /Ваши задачи по этой сделке — можно заполнить заранее/);
+  assert.match(manager, /Сейчас задача Операционист: Подготовить договор/);
+  assert.match(manager, /Ваша параллельная задача — реквизиты для оплаты/);
   assert.match(manager, /REQ_FORM/);
   S.role = 'operator';
   ctx.stepWho = () => 'manager';
   const operator = ctx.viewDeal(d);
-  assert.match(operator, /Сейчас: Менеджер — Подготовить договор/);
+  assert.match(operator, /Сейчас задача Менеджер: Подготовить договор/);
   assert.doesNotMatch(operator, /Ваши задачи по этой сделке|Переключите роль/);
 }
 
@@ -147,14 +147,18 @@ function run(names, context) {
   assert.equal(ctx.payGateStep(d), null, 'gate closes once actually paid');
 }
 
-// Freehold gate opens at s25 (IPPS send) instead of s26.
+// Freehold confirmation belongs to s22; the obsolete s25 send is disabled.
 {
   const d = {id: 52, kind: 'Фрихолд', type: 'Оплата недвижимости', step: 's25', pay: {},
     payTo: {dev: 'Developer', bank: 'Bank', swift: 'TESTTHBK', acc: '123',
       purpose: 'INV-1', ippsTariff: 'bank'}, ippsTariff: 'bank'};
   const ctx = run(['payGateStep', 'payToReady', 'needsPayConfirm', 'payToConfirmed'], {});
-  assert.equal(ctx.payGateStep(d), 's25');
+  assert.equal(ctx.payGateStep(d), null);
+  assert.equal(ctx.needsPayConfirm(d), false);
+  d.step = 's22';
+  assert.equal(ctx.payGateStep(d), 's22');
   assert.equal(ctx.needsPayConfirm(d), true);
+  d.step = 's25';
   d.pay.ippsSent = true;
   assert.equal(ctx.payGateStep(d), null, 'once sent, the s25 gate is done — s26 only confirms MT103');
 }

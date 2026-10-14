@@ -668,7 +668,7 @@ def test_admin_as_assignee_gets_single_send_no_role_fanout(lk, monkeypatch):
     sent = []
     monkeypatch.setattr(notify.stand_egress, 'lk_call', lambda p: sent.append(p['chat_id']) or {'ok': True})
 
-    board([], deals=[{'id': 7, 'code': 'T7', 'client': 'Иван', 'step': 's4', 'assigneeAdminId': None}])
+    board([{'id': 'admin-assignee-note', 'dealId': 7, 'role': 'manager', 'text': 'Server task'}], deals=[{'id': 7, 'code': 'T7', 'client': 'Иван', 'step': 's4', 'assigneeAdminId': None}])
     with appmod.app.test_client() as c:
         _login(c, ids['karim'])
         state = c.get('/api/stand/state').get_json()
@@ -694,7 +694,7 @@ def test_disabled_assignee_preserved_on_put_not_cleared_to_role_fallback(lk, mon
     sent = []
     monkeypatch.setattr(notify.stand_egress, 'lk_call', lambda p: sent.append(p['chat_id']) or {'ok': True})
 
-    board([], deals=[{'id': 7, 'code': 'T7', 'client': 'Иван', 'step': 's4',
+    board([{'id': 'disabled-assignee-note', 'dealId': 7, 'role': 'manager', 'text': 'Server task'}], deals=[{'id': 7, 'code': 'T7', 'client': 'Иван', 'step': 's4',
                       'assigneeAdminId': ids['offduty']}])
     with appmod.app.test_client() as c:
         _login(c, ids['karim'])
@@ -727,7 +727,7 @@ def test_assignee_cleared_when_step_owner_changes(lk, start, end, owner, client_
     else:
         address = 'TQgQCBXkewuW4RoieDKFP9Ko2SopBh8jso'
         deal.update(type='Оплата недвижимости', postConv='ipps_swift',
-                    invoiceUsd=10000, ippsTariff='bank',
+                    invoiceUsd=10000, ippsTariff='bank', serverTransferComplete=True,
                     payTo={'dev': 'Synthetic Ltd', 'bank': 'Synthetic Bank',
                            'acc': 'SYNTHETIC-ACCOUNT', 'swift': 'SYNTHXX1',
                            'purpose': 'Invoice', 'amount': 10000},

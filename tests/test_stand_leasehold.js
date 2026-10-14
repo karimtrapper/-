@@ -7,18 +7,20 @@ const vm = require('node:vm');
 const html = fs.readFileSync(path.join(__dirname, '../static/stand/tasks.html'), 'utf8');
 function functions(names) {
   return names.map(name => {
-    const found = html.match(new RegExp(`^function ${name}\\([^]*?^}`, 'm'));
+    const found = html.match(new RegExp(`^(?:async )?function ${name}\\([^]*?^}`, 'm'));
     assert.ok(found, `Функция ${name} отсутствует`);
     return found[0];
   }).join('\n');
 }
 function run(names, context) {
+  Object.assign(context,{STAND:false,demoAllowed:()=>true});
   vm.createContext(context);
   vm.runInContext(functions(names), context);
   return context;
 }
 const round2 = x => Math.round(x * 100) / 100;
 
+(async()=>{
 // Предвыбранное назначение Coins не означает, что конвертация уже прошла.
 {
   const d = {id: 1, step: 's15', closed: false, postConv: 'coins',
@@ -36,11 +38,11 @@ const round2 = x => Math.round(x * 100) / 100;
     go: (x, step) => { x.step = step; }, log: (x, t) => x.log.push(t),
     toast: () => {}, money: String, Math,
   });
-  ctx.act(1, 's15');
+  await ctx.act(1, 's15');
   assert.equal(d.step, 's18');
   d.step = 's15';
   d.invoiceDetailsReturn = true;
-  ctx.act(1, 's15');
+  await ctx.act(1, 's15');
   assert.equal(d.step, 's26');
   assert.ok(!d.invoiceDetailsReturn);
 }
@@ -92,7 +94,7 @@ const round2 = x => Math.round(x * 100) / 100;
     money: String, usd: String, pcOut: () => 0, now: () => '24.09, 17:00',
     Math, Number, String,
   });
-  ctx.act(1, 's18w');
+  await ctx.act(1, 's18w');
   assert.equal(deals[0].step, 's22');
   assert.equal(conv.status, 'received');
   for (let i = 0; i < conv.txs.length; i++) {
@@ -156,37 +158,37 @@ const round2 = x => Math.round(x * 100) / 100;
   });
   // bal() в настоящем состоянии возвращает объект по ссылке.
   ctx.bal = () => ({get scb() {return scb;}, set scb(v) {scb = v;}});
-  ctx.act(1, 's25');
+  await ctx.act(1, 's25');
   assert.equal(d.step, 's25');
   assert.equal(d.pay.coinsNotified, true);
   assert.equal(scb, 2100000);
   inputs.coins_thb = '353000'; inputs.coins_ref = 'SCB-QA-1';
   inputs.coins_gap = 'Комиссия Coins 500 THB';
   // расхождение с заявкой шаг не запирает — пишется в журнал (Карим, 25.09)
-  ctx.act(1, 's25');
+  await ctx.act(1, 's25');
   assert.equal(d.step, 's26');
   assert.ok(d.log.some(l => String(l.text || l).includes('расхождение с заявкой')), 'расхождение записано');
   assert.equal(scb, 2453000);
   assert.equal(d.pay.coinsCredit.thb, 353000);
-  ctx.act(1, 's26');
+  await ctx.act(1, 's26');
   assert.equal(d.step, 's26', 'без чека нельзя списать инвойс');
   assert.equal(scb, 2453000);
   d.docs.receipt = true;
   // назначение для банка застройщика вносит менеджер в реквизитах; без него не платим,
   // а поле на оплате операционист не правит — только копирует (Карим, 27.09)
   inputs.pay_purp = 'операционист вписал сам';
-  ctx.act(1, 's26');
+  await ctx.act(1, 's26');
   assert.equal(d.step, 's26', 'без назначения от менеджера не платим');
   assert.ok(toasts.some(t => t.includes('Менеджер не указал назначение')), 'просим вернуть с вопросом');
   assert.equal(scb, 2453000);
   d.payTo.purpose = 'Payment for unit A-101, invoice INV-1';
-  ctx.act(1, 's26');
+  await ctx.act(1, 's26');
   assert.equal(d.payTo.purpose, 'Payment for unit A-101, invoice INV-1', 'назначение на оплате не переписывается');
   assert.equal(d.step, 's27');
   assert.equal(scb, 2103000);
   assert.equal(d.payout.usdt, 11217.95);
   assert.equal(d.payout.invoice.thb, 350000);
-  ctx.act(1, 's26');
+  await ctx.act(1, 's26');
   assert.equal(scb, 2103000, 'повторное действие не списывает деньги');
 }
 
@@ -238,3 +240,5 @@ const round2 = x => Math.round(x * 100) / 100;
 }
 
 console.log('stand leasehold: send statuses, cents, economics, Coins/SCB, реквизиты, ФИО PASS');
+
+})().catch(e=>{console.error(e);process.exitCode=1;});

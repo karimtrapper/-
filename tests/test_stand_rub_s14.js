@@ -57,7 +57,8 @@ assert.match(run('manualBankReceiptBlock('+JSON.stringify(legacy)+')'), /Т-Ба
 assert.doesNotMatch(operator, /<option value="sber"|<option value="acquiring"/);
 assert.match(run("manualBankActualWarning(S.deals[0], 'flowsole')"), /Выпущенные документы содержат другие реквизиты/);
 assert.equal(run("manualBankActualWarning(S.deals[0], 'sber')"), '');
-assert.match(operator, /mbr_deviation_1485/);
+assert.doesNotMatch(operator, /mbr_deviation_1485/);
+assert.match(operator, /Пришло на другой счёт/);
 assert.match(run("manualBankActualFields(1485, 'custom')"), /Корреспондентский счёт/);
 
 (async () => {
@@ -65,7 +66,7 @@ assert.match(run("manualBankActualFields(1485, 'custom')"), /Корреспон�
   assert.equal(calls[0][1].handoff, true);
   await run('manualBankReceiptConfirm(1485)');
   assert.equal(calls[1][0], '/api/stand/manual-bank-receipt/1485/confirm');
-  assert.equal(calls[1][1].actualMode, 'flowsole');
-  assert.equal(calls[1][1].deviationAcknowledged, true);
+  assert.equal(calls[1][1].actualMode, undefined);
+  assert.equal(calls[1][1].deviationAcknowledged, undefined);
   console.log('rub s14 role flow: PASS');
 })().catch(error => {console.error(error); process.exitCode = 1;});

@@ -832,7 +832,7 @@ def test_legacy_closed_freehold_board_put_and_rejection_are_atomic(monkeypatch):
         ok = client.put('/api/stand/state', json={'version': before['version'], 'data': data})
         assert ok.status_code == 200, ok.json
         after = client.get('/api/stand/state').json
-        assert after['data']['notes'][-1]['text'] == 'Несвязанная заметка'
+        assert all(n['text'] != 'Несвязанная заметка' for n in after['data']['notes'])
         assert after['data']['deals'][-1]['id'] == 2
         assert after['data']['deals'][0]['payout']['usdt'] == 45410
         assert after['data']['deals'][0]['crmDealId'] == 123

@@ -10,7 +10,7 @@ import app as appmod
 import stand_notify as notify
 
 
-def test_missing_version_overwrites_newer_money(board_server):
+def test_missing_version_cannot_overwrite_newer_money(board_server):
     base = board_server['BOARD_RACE_URL'] + '/api/stand/state'
     manager, operator = [
         {'Cookie': cookie} for cookie in json.loads(board_server['BOARD_RACE_COOKIES'])
@@ -54,7 +54,7 @@ def test_missing_version_overwrites_newer_money(board_server):
     assert after['data']['deals'][0]['amountRub'] == 120000
 
 
-def test_operator_can_skip_tasks_by_direct_put(board_server):
+def test_operator_cannot_skip_tasks_by_direct_put(board_server):
     base = board_server['BOARD_RACE_URL'] + '/api/stand/state'
     manager, operator = [
         {'Cookie': cookie} for cookie in json.loads(board_server['BOARD_RACE_COOKIES'])
@@ -108,7 +108,7 @@ def test_notification_suppressed_before_bind_is_not_retried(dm):
     assert not [x for x in sends(calls) if x['chat_id'] == 103]
 
 
-def test_manager_can_forge_operator_notification(dm):
+def test_manager_cannot_forge_operator_notification(dm):
     calls, ids, board = dm
     board([])
     client = appmod.app.test_client()
@@ -135,7 +135,7 @@ def test_manager_can_forge_operator_notification(dm):
     assert not any(n['id'] == 'api-audit-forged-98504' for n in result.json['data']['notes'])
 
 
-def test_operator_can_erase_server_journal_event(board_server):
+def test_operator_cannot_erase_server_journal_event(board_server):
     root = board_server['BOARD_RACE_URL']
     manager, operator = [
         {'Cookie': cookie} for cookie in json.loads(board_server['BOARD_RACE_COOKIES'])
@@ -197,7 +197,7 @@ def test_second_application_with_unchanged_first_s5_is_accepted(board_server):
     assert added.status_code == 200, added.text
 
 
-def test_second_application_rejected_if_browser_normalizes_first_s5(board_server):
+def test_second_application_accepted_if_browser_adds_exact_defaults(board_server):
     base = board_server['BOARD_RACE_URL'] + '/api/stand/state'
     manager = {'Cookie': json.loads(board_server['BOARD_RACE_COOKIES'])[0]}
     first = {'id': 98513, 'code': 'СД-98513', 'client': 'Synthetic A',

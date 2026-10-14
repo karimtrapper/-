@@ -1,6 +1,5 @@
 """Прокси курсов банков-застройщиков для THB-инвойса фрихолда (Карим, 06.10):
-GET /api/stand/thb-bank-rates читает ExGreen через единственный разрешённый
-канал egress (exgreen_thb_bank_rates), кэширует 10 минут в памяти, отдаёт
+GET /api/stand/thb-bank-rates читает локальную таблицу bank_rates, кэширует 10 минут в памяти, отдаёт
 stale=True при ошибке, если есть что отдавать из кэша.
 """
 import pytest
@@ -53,84 +52,69 @@ def test_requires_login(client_with_user):
     assert res.get_json()['success'] is False
 
 
-def test_success_uses_only_allowed_channel(client_with_user, monkeypatch):
-    client, user_id = client_with_user
-    _login(client, user_id)
+def fake_bank_database(monkeypatch, rows=None, error=False):
+    from contextlib import contextmanager
+    from types import SimpleNamespace
     calls = []
-
-    def read_get(op, params=None, _base_url=None):
-        calls.append((op, params))
-        return (200, {'success': True,
-                      'rates': {'Kasikornbank': 32.91, 'SCB': 32.9, 'Bangkok Bank': 32.9},
-                      'source_updated_at': {'SCB': '2026-10-06 08:28:28'},
-                      'updated_at': '2026-10-06T13:33:49+07:00'}, None)
-
-    monkeypatch.setattr(stand_egress, 'read_get', read_get)
-    res = client.get('/api/stand/thb-bank-rates')
-    assert res.status_code == 200
-    body = res.get_json()
-    assert body['success'] is True
-    assert body['rates']['SCB'] == 32.9
-    assert body['stale'] is False
-    assert calls == [('exgreen_thb_bank_rates', {})]
+    class Connection:
+        def execute(self, statement):
+            calls.append(str(statement))
+            if error:
+                raise RuntimeError('synthetic database unavailable')
+            return SimpleNamespace(fetchall=lambda: rows or [])
+    @contextmanager
+    def connect():
+        yield Connection()
+    monkeypatch.setattr(appmod, 'engine', SimpleNamespace(connect=connect))
+    return calls
 
 
-def test_cache_avoids_second_network_call_within_ttl(client_with_user, monkeypatch):
+def test_success_reads_bank_rates_without_external_channel(client_with_user, monkeypatch):
+    from datetime import datetime
     client, user_id = client_with_user
     _login(client, user_id)
-    calls = []
-
-    def read_get(op, params=None, _base_url=None):
-        calls.append(op)
-        return (200, {'success': True, 'rates': {'SCB': 33.0}, 'updated_at': 't'}, None)
-
-    monkeypatch.setattr(stand_egress, 'read_get', read_get)
-    first = client.get('/api/stand/thb-bank-rates').get_json()
-    second = client.get('/api/stand/thb-bank-rates').get_json()
-    assert first == second
-    assert len(calls) == 1  # второй запрос обслужен из кэша, не из сети
+    calls = fake_bank_database(monkeypatch, [('SCB', 32.9, 'source time', datetime.now())])
+    body = client.get('/api/stand/thb-bank-rates').json
+    assert body['success'] and body['rates']['SCB'] == 32.9 and not body['stale']
+    assert len(calls) == 1 and 'FROM bank_rates' in calls[0]
+    assert 'ROW_NUMBER() OVER (PARTITION BY bank ORDER BY fetched_at DESC)' in calls[0]
+    assert 'exgreen_thb_bank_rates' not in stand_egress._READ_CHANNELS
 
 
-def test_network_error_returns_stale_cached_value(client_with_user, monkeypatch):
+def test_cache_avoids_second_query_within_ttl(client_with_user, monkeypatch):
+    from datetime import datetime
     client, user_id = client_with_user
     _login(client, user_id)
-
-    def read_get_ok(op, params=None, _base_url=None):
-        return (200, {'success': True, 'rates': {'SCB': 33.1}, 'updated_at': 't1'}, None)
-
-    monkeypatch.setattr(stand_egress, 'read_get', read_get_ok)
-    first = client.get('/api/stand/thb-bank-rates').get_json()
-    assert first['success'] is True and first['stale'] is False
-
-    # Кэш остыл — следующий вызов обязан снова дёргать сеть, которая теперь падает.
-    appmod._THB_BANK_RATES_CACHE['ts'] = 0.0
-
-    def read_get_fail(op, params=None, _base_url=None):
-        return (None, None, 'network_error')
-
-    monkeypatch.setattr(stand_egress, 'read_get', read_get_fail)
-    second = client.get('/api/stand/thb-bank-rates').get_json()
-    assert second['success'] is True
-    assert second['stale'] is True
-    assert second['rates']['SCB'] == 33.1
+    calls = fake_bank_database(monkeypatch, [('SCB', 33, None, datetime.now())])
+    first = client.get('/api/stand/thb-bank-rates').json
+    assert client.get('/api/stand/thb-bank-rates').json == first
+    assert first['success'] and len(calls) == 1
 
 
-def test_no_cache_and_network_error_is_explicit_failure(client_with_user, monkeypatch):
+def test_database_error_returns_stale_cached_value(client_with_user, monkeypatch):
+    from datetime import datetime
     client, user_id = client_with_user
     _login(client, user_id)
-
-    def read_get_fail(op, params=None, _base_url=None):
-        return (None, None, 'network_error')
-
-    monkeypatch.setattr(stand_egress, 'read_get', read_get_fail)
-    res = client.get('/api/stand/thb-bank-rates').get_json()
-    assert res['success'] is False
-    assert res['stale'] is False
+    fake_bank_database(monkeypatch, [('SCB', 33.1, None, datetime.now())])
+    assert client.get('/api/stand/thb-bank-rates').json['success']
+    appmod._THB_BANK_RATES_CACHE['ts'] = 0
+    fake_bank_database(monkeypatch, error=True)
+    body = client.get('/api/stand/thb-bank-rates').json
+    assert body['success'] and body['stale'] and body['rates']['SCB'] == 33.1
 
 
-def test_channel_whitelisted_host_and_path_exact():
-    spec = stand_egress._READ_CHANNELS['exgreen_thb_bank_rates']
-    assert spec['host'] == 'api.exgreen.pro'
-    assert spec['path'] == '/api/thb-bank-rates'
-    assert spec['params'] == {}
-    assert spec['required'] == set()
+def test_no_cache_and_database_error_is_explicit_failure(client_with_user, monkeypatch):
+    client, user_id = client_with_user
+    _login(client, user_id)
+    fake_bank_database(monkeypatch, error=True)
+    body = client.get('/api/stand/thb-bank-rates').json
+    assert not body['success'] and not body['stale']
+
+
+def test_old_database_rows_are_stale(client_with_user, monkeypatch):
+    from datetime import datetime, timedelta
+    client, user_id = client_with_user
+    _login(client, user_id)
+    fake_bank_database(monkeypatch, [('SCB', 33, None, datetime.now()-timedelta(hours=4))])
+    body = client.get('/api/stand/thb-bank-rates').json
+    assert body['success'] and body['stale']

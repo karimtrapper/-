@@ -224,7 +224,7 @@ def test_ipps_application_requires_published_requisites_at_s25(board):
     send['pay']['ippsSent'] = True
     denied = _put(client, before, send)
     assert denied.status_code == 409
-    assert 'реквизит' in denied.json['error'].lower()
+    assert 'отключена' in denied.json['error'].lower()
     assert _get(client) == before
 
     role['value'] = 'manager'
@@ -248,7 +248,7 @@ def test_ipps_application_requires_published_requisites_at_s25(board):
     send['pay']['ippsSent'] = True
     still_denied = _put(client, unconfirmed, send)
     assert still_denied.status_code == 409
-    assert 'подтверждени' in still_denied.json['error'].lower()
+    assert 'отключена' in still_denied.json['error'].lower()
 
     role['value'] = 'manager'
     ready_to_confirm = _get(client)
@@ -261,20 +261,20 @@ def test_ipps_application_requires_published_requisites_at_s25(board):
     send = copy.deepcopy(ready['data']['deals'][0])
     send['step'] = 's26'
     send['pay']['ippsSent'] = True
-    assert _put(client, ready, send).status_code == 200
+    assert _put(client, ready, send).status_code == 409  # obsolete s25 application cannot be resurrected
 
 
 def test_client_documents_publish_at_s8_and_later_correction_remains_available(board):
     client, role, seed = board
     deal = _deal('s5')
-    deal['_managerDraft'] = {'files': {'pass': [{'file': 'PRIVATE_PASS.pdf'}],
-                                       'inv': [{'file': 'PRIVATE_INV.pdf'}]},
+    deal['_managerDraft'] = {'files': {'pass': [{'file': 'PRIVATE_PASS.pdf', 'mime': 'application/pdf', 'data': 'data:application/pdf;base64,JVBERi0xLjQKc3ludGhldGlj'}],
+                                       'inv': [{'file': 'PRIVATE_INV.pdf', 'mime': 'application/pdf', 'data': 'data:application/pdf;base64,JVBERi0xLjQKc3ludGhldGlj'}]},
                              'docs': {'pass': True, 'inv': True},
                              'comment': 'PRIVATE_DOC_COMMENT'}
     seed(deal)
     early = _get(client)
     illicit = copy.deepcopy(early['data']['deals'][0])
-    illicit['files'] = {'pass': [{'file': 'PRIVATE_PASS.pdf'}]}
+    illicit['files'] = {'pass': [{'file': 'PRIVATE_PASS.pdf', 'mime': 'application/pdf', 'data': 'data:application/pdf;base64,JVBERi0xLjQKc3ludGhldGlj'}]}
     assert _put(client, early, illicit).status_code == 409
     role['value'] = 'operator'
     assert 'PRIVATE_PASS' not in json.dumps(_get(client))

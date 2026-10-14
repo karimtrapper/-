@@ -22,6 +22,7 @@ def board(amount=98800, step='s8', *, legacy=None, manual=False):
         'docFields': {'fio': 'Тестовый Клиент', 'passNo': '123456789',
                       'invNo': 'SYN-INV-1', 'amountThb': '97500',
                       'amountPay': str(amount or ''), 'rate': ''},
+        'files': {k: [{'file': k+'.pdf', 'mime': 'application/pdf', 'data': 'data:application/pdf;base64,JVBERi0xLjQKc3ludGhldGlj'}] for k in ('pass', 'inv')},
         'log': [], 'closed': False,
     }
     if legacy is not None:

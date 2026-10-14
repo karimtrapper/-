@@ -30,7 +30,7 @@ function consts(names) {
 function run(fnNames, constNames, context) {
   context.SIGN={rub:'₽',thb:'฿',usdt:'USDT'};
   vm.createContext(context);
-  vm.runInContext(consts(constNames) + '\n' + functions(['exchangeSpec','amountField','exchangeSync','quoteDirs',...fnNames]), context);
+  vm.runInContext(consts(constNames) + '\n' + functions(['payCur','exchangeSpec','amountField','exchangeSync','quoteDirs',...fnNames]), context);
   return context;
 }
 function divTree(markup) {
@@ -613,7 +613,7 @@ console.log('test_stand_freehold.js: OK');
     docReq:()=>[],fioHint:()=>'',payinWalletSelect:()=>'',htmlText:x=>String(x),
     money:(x,c)=>`${Number(x).toFixed(2)} ${c}`};
   vm.createContext(ctx);
-  vm.runInContext(functions(['freeholdFee','freeholdSend','freeholdLossFingerprint','payinS11Fields'])+'\n'+s11,ctx);
+  vm.runInContext(functions(['exchangeSpec','freeholdFee','freeholdSend','freeholdLossFingerprint','payinS11Fields'])+'\n'+s11,ctx);
   let rendered=ctx.renderS11();
   assert.match(rendered,/id="df_amountPay"[^>]*onchange="freeholdDocAmountSave/);
   assert.match(rendered,/Курс сделки<\/label><input class="fc" readonly value="—"/);

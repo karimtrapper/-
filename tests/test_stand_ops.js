@@ -7,18 +7,20 @@ const vm = require('node:vm');
 const html = fs.readFileSync(path.join(__dirname, '../static/stand/tasks.html'), 'utf8');
 function functions(names) {
   return names.map(name => {
-    const found = html.match(new RegExp(`^function ${name}\\([^]*?^}`, 'm'));
+    const found = html.match(new RegExp(`^(?:async )?function ${name}\\([^]*?^}`, 'm'));
     assert.ok(found, `Функция ${name} отсутствует`);
     return found[0];
   }).join('\n');
 }
 function run(names, context, extra) {
+  Object.assign(context,{STAND:false});
   vm.createContext(context);
   vm.runInContext((extra || '') + '\n' + functions(names), context);
   return context;
 }
 const num = x => (x == null || x === '') ? null : parseFloat(String(x).replace(',', '.'));
 
+(async()=>{
 // Брокер по умолчанию — тот, чей курс взят в расчёт, а не Tradex; смена брокера
 // подставляет его курс, а без ответа оставляет поле пустым.
 {
@@ -28,7 +30,7 @@ const num = x => (x == null || x === '') ? null : parseFloat(String(x).replace('
     {cpId: 'coins', name: 'Coins.co.th', dir: 'thb', rate: '31,20'},
   ]};
   const ctx = run(['brokerName', 'brokerOpts', 'brokerQuote', 'brokerPicked', 'brokerRate',
-    'brokerPickSet', 'brokerDraft', 'quotes', 'quoteBest', 'quoteUsed'], {
+    'brokerPickSet', 'brokerDraft', 'exchangeSpec', 'quoteBuy', 'quotes', 'quoteBest', 'quoteUsed'], {
     deal: () => d, num, save: () => {}, render: () => {},
     cleanNum: v => String(v == null ? '' : v).replace(/[^\d.,]/g, ''),
     cps: () => [{id: 'kripta', name: 'Крипта-Платежи · Екатерина', dirs: ['rub']},
@@ -79,12 +81,12 @@ const num = x => (x == null || x === '') ? null : parseFloat(String(x).replace('
     packSettle: () => {}, flowOf: () => ['s22', 's23'], POST_CONV: [], usd: String, pcOut: () => 100,
     Number, String, Math,
   }, "const ADDR_RE={'TRC-20':/^T[1-9A-HJ-NP-Za-km-z]{33}$/,'ERC-20':/^0x[0-9a-fA-F]{40}$/};");
-  ctx.act(1, 's22');
+  await ctx.act(1, 's22');
   assert.equal(d.step, 's22', 'невалидный адрес не пропускает');
   assert.ok(toasts.at(-1).includes('не адрес TRC-20'), toasts.at(-1));
   assert.ok(marked.includes('cad_1:bad'));
   d.transfer.addr = 'TZG8xz2sSvtge3WXaD5acYvVBN1t9kjpcX';
-  ctx.act(1, 's22');
+  await ctx.act(1, 's22');
   assert.equal(d.step, 's23');
 }
 
@@ -160,7 +162,7 @@ console.log('stand ops: broker default, address validation, sendDel log, numeric
     payTo: {purpose: 'Lease payment'}, companyPct: 1, payinHashes: [], agents: []};
   const ctx = run(['crmPayload'], {
     econ: () => E, payinParts: () => [{usdt: E.payin}],
-    isCrypto: () => false, num, mfList: () => [], crmNet: n => n,
+    isCrypto: () => false, payCur: () => 'rub', num, mfList: () => [], crmNet: n => n,
   }, "const PAYIN_CRM={}; const PAYOUT_CRM={};");
   const p = ctx.crmPayload(Object.assign({}, base, {postConv: 'coins', transfer: {rate: '31,5'}}));
   assert.equal(p.company_sent_thb, 655000, 'факт SCB уходит в CRM');
@@ -173,3 +175,5 @@ console.log('stand ops: broker default, address validation, sendDel log, numeric
   assert.equal(q.buy_rate_thb_usdt, 31.2);
   assert.ok(!('company_sent_thb' in q));
 }
+
+})().catch(e=>{console.error(e);process.exitCode=1;});
