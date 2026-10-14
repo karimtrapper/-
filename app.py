@@ -13808,12 +13808,22 @@ def _stand_conversion_income_shares(db, conv, amount):
     shares = incoming_shares([Decimal(str(src['rub'])) for src in sources], Decimal(str(amount)))
     bank = {inc.uuid: (src.sber_income_id, Decimal(str(src.amount_rub)))
             for src in conv.sources for inc in [db.query(SberIncome).get(src.sber_income_id)] if inc}
+    bank_by_id = {sid: (uuid, amount) for uuid, (sid, amount) in bank.items()}
     deals = {d['id']: d for d in state.get('deals') or []}
     result = {}
     for src, share in zip(sources, shares):
-        keys = ([str(src.get('incomeId'))] if src.get('dealId') is None else
-                [str(p.get('incId')) for p in deals.get(src['dealId'], {}).get('payinParts') or []])
-        receipts = [bank[key[5:]] for key in keys if key.startswith('sber:') and key[5:] in bank]
+        parts = ([{'incId': src.get('incomeId')}] if src.get('dealId') is None else
+                 deals.get(src['dealId'], {}).get('payinParts') or [])
+        receipts = []
+        for part in parts:
+            key = str(part.get('incId'))
+            if key.startswith('sber:') and key[5:] in bank:
+                receipts.append(bank[key[5:]])
+            elif isinstance(part.get('crmIncomeId'), int) and part['crmIncomeId'] in bank_by_id:
+                income_uuid, amount = bank_by_id[part['crmIncomeId']]
+                if part.get('uuid') != income_uuid:
+                    raise ValueError('Ручной приход не совпадает с общим реестром')
+                receipts.append((part['crmIncomeId'], amount))
         if not receipts:
             raise ValueError('Нет связи доли пачки с поступлениями CRM')
         for (sid, _), part in zip(receipts, incoming_shares([r[1] for r in receipts], share)):
