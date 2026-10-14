@@ -272,3 +272,38 @@ with m.app.test_client() as client:
             'id','display_name','role','login_disabled'}
         assert '@private_user' not in response.get_data(as_text=True)
 ''', tmp_path)
+
+
+def test_stand_panel_role_gate_and_nav_count(tmp_path):
+    _run('''
+import json
+import app as m
+
+db=m.get_session()
+people={}
+for role in ('admin','manager','operator','findir','teodor'):
+    user=m.AdminUser(username='nav_'+role, role=role, display_name=role,
+                     password_hash='unused')
+    db.add(user); db.flush(); people[role]=user.id
+row=m._stand_row(db)
+row.data=json.dumps({'deals':[{'id':1,'step':'s6','closed':False},
+                             {'id':2,'step':'s5','closed':False},
+                             {'id':3,'step':'s6','closed':True}],
+                     'notes':[{'role':'manager','read':False},
+                              {'role':'operator','read':True}]})
+db.commit(); db.close()
+
+with m.app.test_client() as client:
+    for role in people:
+        with client.session_transaction() as session:
+            session['user_id']=people[role]
+        panel=client.get('/panel')
+        if role in ('admin','findir','teodor'):
+            assert panel.status_code == 200, (role,panel.status_code)
+        else:
+            assert panel.status_code == 302 and panel.location.endswith('/crm')
+        count=client.get('/api/stand/nav-count')
+        assert count.status_code == 200, (role,count.json)
+        assert count.json['count'] == (1 if role in ('manager','operator') else 0)
+        assert count.json['notifications'] == (1 if role == 'manager' else 0)
+''', tmp_path)

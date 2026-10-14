@@ -5381,6 +5381,72 @@ def stand_state_get():
         db.close()
 
 
+@app.route('/api/stand/nav-count')
+def stand_nav_count():
+    """Small read-only badge for the shared navigation on CRM and calculator."""
+    if not STAND_MODE:
+        return jsonify({'success': False, 'error': 'stand_only'}), 404
+    role = current_role()
+    db = get_session()
+    try:
+        state = json.loads(_stand_row(db).data or '{}')
+    finally:
+        db.close()
+
+    def has_task(deal):
+        if deal.get('closed'):
+            return False
+        step = deal.get('step')
+        if step in _STAND_STEP_ROLE and _stand_current_step_role(state, deal) == role:
+            return True
+        prepay = deal.get('prepay') or {}
+        if prepay:
+            if role == 'operator' and prepay.get('brokerStep') != 'done':
+                return True
+            if (deal.get('serverTransferComplete') and prepay.get('brokerStep') == 'done'
+                    and not (deal.get('payout') or {}).get('reimbursement')):
+                conv = next((c for c in state.get('convs', [])
+                             if c.get('id') == deal.get('cnvId')), {})
+                wallet = next((w for w in state.get('wallets', [])
+                               if w.get('id') == conv.get('walletId')), {})
+                if wallet.get('addr') != (prepay.get('wallet') or {}).get('addr'):
+                    refund_role = 'findir' if wallet.get('multisig') else wallet.get('role', 'teodor')
+                    if role == refund_role:
+                        return True
+        if role == 'manager':
+            if deal.get('reqTask') == 'open':
+                return True
+            payto = deal.get('payTo') or {}
+            ready = all(str(payto.get(k) or '').strip() for k in ('dev', 'bank', 'acc', 'purpose'))
+            if deal.get('kind') == 'Фрихолд':
+                ready = ready and bool(str(payto.get('swift') or '').strip())
+                ready = ready and (deal.get('ippsTariff', 'bank') != 'soft' or bool(str(payto.get('pobo') or '').strip()))
+            else:
+                try:
+                    ready = ready and float(payto.get('amount') or 0) > 0
+                except (TypeError, ValueError):
+                    ready = False
+            gate = (deal.get('type') == 'Оплата недвижимости' and
+                    ((deal.get('kind') == 'Фрихолд' and step in ('s22', 's23', 's24')) or
+                     (step == 's26' and not (deal.get('pay') or {}).get('invoicePaid'))))
+            if gate and ready and not _stand_payto_confirmed(deal):
+                return True
+        if role == 'operator':
+            if step == 's27' and deal.get('type') == 'Оплата недвижимости':
+                return True
+            receipt = deal.get('manualBankReceipt')
+            if step == 's14' and ((receipt or {}).get('status') == 'pending' or
+                                  (not receipt and (deal.get('rubReceivingAccount') or {}).get('mode', 'sber') != 'sber')):
+                return True
+        return False
+
+    unread = sum(note.get('role') == role and not note.get('read')
+                 for note in state.get('notes', []))
+    return jsonify({'success': True,
+                    'count': sum(has_task(d) for d in state.get('deals', [])),
+                    'notifications': unread})
+
+
 
 def _stand_externalize_files(db, row, state, *, migration=False, actor=None, previous=None):
     # Сам перенос байтов не отменяет уже данные подтверждения чека/отправки.
@@ -11930,6 +11996,16 @@ def crm_index():
     response.headers['Pragma'] = 'no-cache'
     response.headers['Expires'] = '0'
     return response
+
+
+@app.route('/panel')
+def panel_index():
+    """Stand dashboard in the existing CRM page, for the roles that use it."""
+    if not STAND_MODE:
+        return redirect('/crm')
+    if current_role() not in ('admin', 'findir', 'teodor'):
+        return redirect('/crm')
+    return crm_index()
 
 # ==================== CALCULATOR API ====================
 

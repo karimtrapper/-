@@ -608,6 +608,7 @@ a.hash:hover{background:#BAE6FD}
   .btn-sm{min-height:40px}
 }
 </style>
+<link rel="stylesheet" href="/static/nav-shell.css?v=1">
 </head>
 <body>
 
@@ -635,6 +636,7 @@ a.hash:hover{background:#BAE6FD}
 <script src="/tasks/screens-data.js?v=2609241212"></script>
 <script src="/tasks/crm-draft-core.js?v=1"></script>
 <script src="/tasks/crm-draft-adapter.js?v=1"></script>
+<script src="/static/nav-shell.js?v=1"></script>
 <script>
 const KEY='grusha_proto_v2';
 /* ===== Стенд: состояние общее, лежит на сервере =====
@@ -4436,6 +4438,7 @@ function seedEx(){
 
 /* ============ рендер ============ */
 function render(){
+  document.body.classList.toggle('shell-deal-open',!!S.open);
   document.getElementById('who').textContent=ROLES[S.role].n+' · '+ROLES[S.role].t.toLowerCase();
   /* На стенде роль даёт логин. Переключатель оставлен админу — Кариму нужно
      смотреть чужими глазами, остальным подменять себя незачем. */
@@ -4472,6 +4475,7 @@ function render(){
     ['analytics','Аналитика',0]];
   document.getElementById('bell').innerHTML=bellHtml();
   document.getElementById('market').innerHTML=marketWidget();
+  if(window.NavShell) NavShell.update({count:myTasks(S.role).length});
   document.getElementById('tabs').innerHTML=tabs.map(([k,t,c])=>
     `<button class="nav-tab ${S.tab===k?'active':''}" onclick="setTab('${k}')">${t}${c?`<span class="cnt">${c}</span>`:''}</button>`).join('');
   const app=document.getElementById('app');
@@ -10897,6 +10901,8 @@ async function standBoot(){
     standMe=me.user.role||'admin';
     standMeId=me.user.id||null;
     if(standMe!=='admin')S.role=standMe;
+    NavShell.mount({stand:true,page:'tasks',active:'tasks',role:standMe,
+      name:me.user.display_name||me.user.username,count:0});
     document.querySelector('.proto .lab').textContent='Тестовый стенд · '+(me.user.display_name||'');
     try{
       const staff=await (await fetch(standMe==='admin'?'/api/admins':'/api/stand/employees',
@@ -10915,6 +10921,7 @@ async function standBoot(){
   if(!refs().some(r=>r.prod)) refsSync(true);
   setInterval(()=>fetchMarket().then(ok=>{if(ok&&!standTyping())render();}),300000);
   /* Доска как в проде: пустая, без примеров (Карим, 25.09) */
+  if(new URLSearchParams(location.search).has('notifications')) S.notesOpen=true;
   render();
   standOpenFromLink();
   setInterval(()=>standPull(false),2500);

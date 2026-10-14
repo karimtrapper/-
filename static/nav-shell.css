@@ -1,0 +1,62 @@
+/* Shared stand navigation, adapted from redesign/mockups/m.css. */
+body.nav-shell-on { --shell-ink:#0F172A; --shell-muted:#64748B; }
+.site-shell, .site-shell * { box-sizing:border-box; }
+.site-shell a { text-decoration:none; }
+.site-shell .ico { width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none; }
+.site-shell-top { position:sticky;top:0;z-index:210;background:#0F172A;color:#fff;height:56px;display:flex;align-items:center;gap:24px;padding:0 24px;font-family:Inter,system-ui,sans-serif; }
+.site-shell-brand { font-size:15px;font-weight:800;letter-spacing:-.01em;display:flex;align-items:center;gap:8px;white-space:nowrap; }
+.site-shell-brand i { width:22px;height:22px;border-radius:6px;background:#475569;display:inline-block; }
+.site-shell-links { display:flex;gap:4px;height:100%;min-width:0; }
+.site-shell-links a { display:flex;align-items:center;gap:8px;padding:0 14px;color:#CBD5E1;font-size:14px;font-weight:600;border-bottom:2px solid transparent;height:100%;white-space:nowrap; }
+.site-shell-links a:hover { color:#fff; }
+.site-shell-links a.on { color:#fff;border-bottom-color:#fff; }
+.site-shell-count { min-width:20px;height:20px;padding:0 6px;border-radius:999px;background:#F97316;color:#fff;font-size:11px;font-weight:700;display:inline-flex;align-items:center;justify-content:center; }
+.site-shell-count[hidden] { display:none; }
+.site-shell-right { margin-left:auto;display:flex;align-items:center;gap:16px;min-width:0; }
+.site-shell-bell { position:relative;display:inline-flex;align-items:center;color:#CBD5E1; }
+.site-shell-bell button { border:0;background:none;color:inherit;cursor:pointer;padding:6px;display:inline-flex;align-items:center; }
+.site-shell-bell .bellbtn .bl { display:none; }
+.site-shell-bell .bellbtn svg { width:18px;height:18px; }
+.site-shell-bell .bellbtn .c { background:#475569;color:#fff; }
+.site-shell-bell .badge { position:absolute;top:-4px;right:-7px;min-width:16px;height:16px;padding:0 4px;border-radius:999px;background:#475569;color:#fff;font-size:10px;display:inline-flex;align-items:center;justify-content:center; }
+.site-shell-profile { position:relative; }
+.site-shell-profile>summary { list-style:none;display:flex;align-items:center;gap:8px;color:#fff;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap; }
+.site-shell-profile>summary::-webkit-details-marker { display:none; }
+.site-shell-avatar { width:28px;height:28px;border-radius:50%;background:#334155;display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex:none; }
+.site-shell-menu { position:absolute;top:calc(100% + 14px);right:0;width:230px;max-height:calc(100dvh - 120px);overflow-y:auto;background:#fff;color:#0F172A;border:1px solid #E2E8F0;border-radius:10px;padding:8px;box-shadow:0 8px 24px rgba(15,23,42,.14);z-index:300; }
+.site-shell-profile:has([data-shell-market]) .site-shell-menu { width:min(320px,calc(100vw - 28px)); }
+.site-shell-menu [data-shell-market] .chip { display:flex;flex-wrap:wrap;gap:6px;align-items:center;white-space:normal; }
+.site-shell-menu button, .site-shell-menu a { display:block;width:100%;padding:9px 10px;border:0;border-radius:6px;background:none;color:#334155;text-align:left;font:600 13px Inter,system-ui,sans-serif;cursor:pointer; }
+.site-shell-menu button:hover, .site-shell-menu a:hover { background:#F1F5F9; }
+.site-shell-menu .site-shell-menu-title { padding:8px 10px 4px;color:#64748B;font-size:11px;font-weight:700; }
+.site-shell-menu [data-shell-roles] { display:block; }
+.site-shell-menu [data-shell-roles] .rolebtn { background:none;color:#334155;border:0;border-radius:6px;width:100%;text-align:left;padding:9px 10px; }
+.site-shell-menu [data-shell-roles] .rolebtn.on { background:#F1F5F9;color:#0F172A; }
+.site-shell-menu [data-shell-roles] .rolebtn .c { background:#E2E8F0;color:#334155; }
+.site-shell-menu [data-shell-admin-tools] { display:block; }
+.site-shell-menu [data-shell-admin-tools] .ghost { display:block;width:100%;color:#334155;border:0;text-align:left;padding:9px 10px;background:none; }
+.site-shell-menu [data-shell-build] .build { display:block;margin:6px 10px;padding:6px 0;border:0;color:#64748B;font-size:11px;line-height:1.35;white-space:normal; }
+.site-shell-mobile-head, .site-shell-bottom { display:none; }
+body.nav-shell-on .top-nav, body.nav-shell-on .proto { display:none !important; }
+body.nav-shell-on #bottomNav { display:none !important; }
+body.nav-shell-on .crm-header { display:none !important; }
+body.nav-shell-on .nav-tab[data-section="dashboard"], body.nav-shell-on .nav-tab[href="/tasks"] { display:none !important; }
+body.nav-shell-on .nav { top:56px; }
+@media(max-width:1100px) and (min-width:701px) { .site-shell-top { gap:10px;padding:0 12px; }.site-shell-links a { padding:0 8px; }.site-shell-brand { font-size:0; }.site-shell-profile-name { max-width:120px;overflow:hidden;text-overflow:ellipsis; } }
+@media(max-width:700px) {
+  body.nav-shell-on { padding-bottom:calc(61px + env(safe-area-inset-bottom)); }
+  .site-shell-top { display:none; }
+  .site-shell-mobile-head { position:sticky;top:0;z-index:210;height:52px;display:flex;align-items:center;gap:10px;padding:0 14px;background:rgba(255,255,255,.97);border-bottom:1px solid #E2E8F0;backdrop-filter:blur(8px);font:700 16px Inter,system-ui,sans-serif;color:#0F172A; }
+  .site-shell-mobile-head .site-shell-profile { margin-left:auto; }
+  .site-shell-mobile-head .site-shell-profile>summary { color:#334155; }
+  .site-shell-mobile-head .site-shell-bell { margin-left:auto;color:#475569; }
+  .site-shell-mobile-head .site-shell-bell:has(+ .site-shell-profile) { margin-left:auto; }
+  .site-shell-mobile-head .site-shell-bell .bellbtn .c { border:2px solid #fff; }
+  .site-shell-bottom { display:grid;grid-template-columns:repeat(var(--shell-columns,4),minmax(0,1fr));position:fixed;left:0;right:0;bottom:0;z-index:220;background:#fff;border-top:1px solid #E2E8F0;padding:6px 4px calc(6px + env(safe-area-inset-bottom));font-family:Inter,system-ui,sans-serif; }
+  .site-shell-bottom a { display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;min-width:0;min-height:48px;color:#64748B;font-size:11px;font-weight:600;position:relative; }
+  .site-shell-bottom a.on { color:#0F172A; }
+  .site-shell-bottom .ico { width:22px;height:22px; }
+  .site-shell-bottom .site-shell-count { position:absolute;top:0;left:calc(50% + 6px);height:18px;min-width:18px;border:2px solid #fff;font-size:10px; }
+  body.nav-shell-on .nav { top:52px; }
+  body.nav-shell-on.shell-deal-open .site-shell-bottom { display:none; }
+}

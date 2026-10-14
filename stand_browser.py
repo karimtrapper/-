@@ -62,7 +62,7 @@ _LOGIN_WIDGET_CONDITION = 'if (!(window.Telegram && window.Telegram.Login)) {'
 def page_kind(path):
     if path in ('/', '/calculator/index.html', '/static/calculator/index.html'):
         return 'calculator'
-    if path in ('/crm', '/crm/crm.html', '/static/crm/crm.html'):
+    if path in ('/crm', '/panel', '/crm/crm.html', '/static/crm/crm.html'):
         return 'crm'
     if path in ('/login', '/auth/login.html', '/static/auth/login.html'):
         return 'login'

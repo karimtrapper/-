@@ -816,6 +816,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 .docs-money-cell { font-variant-numeric:tabular-nums; font-weight:600; white-space:nowrap; }
 
 </style>
+    <link rel="stylesheet" href="/static/nav-shell.css?v=1">
 </head>
 
 <body>
@@ -3778,6 +3779,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     bottomNav.querySelectorAll('.bottom-nav-item').forEach((b) => b.classList.remove('active'));
                     bottomNav.querySelector(`[data-nav-section="${tab.dataset.section}"]`)?.classList.add('active');
                 }
+                if (window.NavShell) NavShell.update({active:tab.dataset.section === 'dashboard' ? 'panel' : 'crm'});
             });
         });
 
@@ -5982,6 +5984,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 bottomNav.querySelectorAll('.bottom-nav-item').forEach(b => b.classList.remove('active'));
                 bottomNav.querySelector(`[data-nav-section="${sectionName}"]`)?.classList.add('active');
             }
+            if (window.NavShell) NavShell.update({active:sectionName === 'dashboard' ? 'panel' : 'crm'});
         }
 
         async function loadManagersForSelect() {
@@ -15271,6 +15274,8 @@ ${Math.abs(c.debits_delta_rub) < 0.01
         <button class="bottom-nav-item" data-nav-section="kyc" onclick="showSection('kyc')"><span class="icon">🛡</span><span>KYC</span></button>
         <button class="bottom-nav-item" onclick="toggleMorePanel()" id="moreBtn"><span class="icon">⋯</span><span>Ещё</span></button>
     </nav>
+    <script src="/static/nav-shell.js?v=1"></script>
+    <script>NavShell.boot('crm');</script>
 </body>
 
 </html>
