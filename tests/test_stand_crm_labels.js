@@ -5,7 +5,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 
 const html = fs.readFileSync(path.join(__dirname, '../static/crm/crm.html'), 'utf8');
-assert.match(html, /<button class="nav-tab" data-section="admins">🔐 Админы<\/button>/);
+assert.match(html, /<button class="nav-tab" data-section="admins" data-shell-label="Сотрудники">🔐 Админы<\/button>/);
 
 const start = html.indexOf('async function loadAdmins() {');
 const end = html.indexOf('/* Роли живут только на стенде:', start);

@@ -15,7 +15,7 @@ jsCode = jsCode.replace(/window\.location\.reload\(\)/g, "undefined")
                .replace(/localStorage\.setItem/g, "(() => {})")
                .replace(/localStorage\.getItem/g, "(() => null)")
                .replace(/document\.title/g, "dummy")
-               .replace(/document\.body/g, "({ classList: { add: ()=>{} } })");
+               .replace(/document\.body/g, "({ classList: { add: ()=>{}, toggle: ()=>{} } })");
 
 const evalPrefix = `
 let fetchResponses = {};

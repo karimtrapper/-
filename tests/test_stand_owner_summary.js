@@ -217,6 +217,9 @@ async function checkOwnerRole(role) {
     throw new Error(`Неожиданный запрос ${url}`);
   };
   ctx.document = {querySelector: () => ({textContent: ''})};
+  ctx.URLSearchParams = URLSearchParams;
+  ctx.location = {search: ''};
+  ctx.NavShell = {mount: () => {}};
   ctx.fetchChannels = async () => {};
   ctx.fetchCrmClients = async () => {};
   ctx.standPull = async () => {};

@@ -645,7 +645,7 @@ a.hash:hover{background:#BAE6FD}
 .deal-screen .task-action>.card:last-child{margin-bottom:0}
 .deal-screen .task-action .goal{border-left:0}
 .deal-screen .task-action .goalt{font-size:var(--ds-display)!important;font-weight:var(--ds-bold)!important;line-height:1.25;margin-bottom:var(--ds-lg)}
-.deal-screen .task-action .goalnums{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--ds-md)}
+.deal-screen .task-action .goalnums{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:var(--ds-md)}
 .deal-screen .task-action .goalnums>div{background:var(--ds-page);padding:var(--ds-md) var(--ds-lg);border-radius:var(--ds-control);min-width:0}
 .deal-screen .task-action .goalnums .k{font-size:var(--ds-caption)!important;font-weight:var(--ds-regular)!important;text-transform:none;letter-spacing:normal;color:var(--ds-muted)}
 .deal-screen .task-action .goalnums .v{font-size:var(--ds-emphasis)!important;font-weight:var(--ds-semibold)!important;overflow:hidden}
@@ -750,6 +750,8 @@ body.deal-task-mode .top-nav .who{border:0;color:var(--navy-300);font-size:var(-
 .task-grid .li .av{background:var(--navy-700);color:var(--ds-surface)}
 .task-inspect{display:inline-flex;align-items:center;gap:var(--ds-sm);font-size:var(--ds-body);font-weight:var(--ds-semibold);margin-left:var(--ds-lg)}
 .task-inspect .fc{font-size:var(--ds-emphasis);min-height:44px;border-radius:var(--ds-control)}
+.task-inspect-bar{display:flex;align-items:center;margin-bottom:var(--ds-md)}
+.task-inspect-bar .task-inspect{margin-left:0}
 .task-create{margin-left:var(--ds-lg)}
 .task-grid .waiting-section .li:has(>button){grid-template-columns:24px minmax(0,1fr) auto auto}
 .proto .rolebtn.on,.top-nav a.active{background:var(--navy-700)}
@@ -5063,8 +5065,8 @@ function viewTasks(){
   const mineCount=mine.length?`<span class="task-list-count mine">${mine.length}</span>`:'';
   const waitCount=others.length?`<span class="task-list-count">${others.length}</span>`:'';
   let h=`<div class="task-list"><div class="task-list-head"><h1>Задачник</h1>
-    ${S.role==='admin'?`<label class="task-inspect">Смотреть как <select class="fc" onchange="setInspectRole(this.value)">${['manager','operator','findir','teodor'].map(r=>`<option value="${r}" ${r===role?'selected':''}>${ROLES[r].n}</option>`).join('')}</select></label>`:''}
-    ${S.role==='manager'||S.role==='admin'?`<div class="task-list-create-bar"><button class="btn btn-primary task-list-create" onclick="startCreate()">+ Новая задача</button></div>`:''}</div>`;
+    ${S.role==='manager'||S.role==='admin'?`<div class="task-list-create-bar"><button class="btn btn-primary task-list-create" onclick="startCreate()">+ Новая задача</button></div>`:''}</div>
+    ${S.role==='admin'?`<div class="task-inspect-bar"><label class="task-inspect">Смотреть как <select class="fc" onchange="setInspectRole(this.value)">${['manager','operator','findir','teodor'].map(r=>`<option value="${r}" ${r===role?'selected':''}>${ROLES[r].n}</option>`).join('')}</select></label></div>`:''}`;
   const pend=pendingEx(null);
   if(pend.length&&role==='operator'){
     const conv=mine.filter(d=>d.step==='s18');
