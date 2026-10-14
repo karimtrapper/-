@@ -6,6 +6,7 @@ const ctx={S:{role:'operator',view:'task'},STEPS:{s27:{title:'Закрытие',
  ROLES:{manager:{t:'Менеджер'},operator:{t:'Операционист'},admin:{t:'Админ'},teodor:{t:'Теодор'}},
  SOURCES:{none:'Без переписки'},stepWho:()=> 'manager',stepTitle:()=> 'Закрытие',progress:()=>({i:13,n:13}),
  needsPayConfirm:()=>false,prepayPanel:()=>'',docSide:()=>'',assigneeBlock:()=>'',goalCard:()=>'',ctxCard:()=>'',
+ dealTaskPath:()=>({steps:[],active:'s27',index:0}),dealTaskPathCard:()=>'',htmlText:String,
  stepCard:()=>'<button onclick="crmEvidence(1484,\'receipt\')">Оплата инвойса</button><button>Сохранить в CRM</button>',
  crmEvidencePanel:()=>'<button onclick="crmEvidence(1484,\'receipt\')">Оплата инвойса</button>',
 };

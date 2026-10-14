@@ -76,5 +76,5 @@ for (const role of ['manager', 'operator', 'admin', 'teodor']) {
 }
 
 assert.match(html, /\$\{view==='deal'\?payToCard\(d\):''\}\s*<div class="cols">/);
-assert.match(html, /view==='task'&&S\.role==='operator'&&\['s22','s23','s24','s25','s26'\]\.includes\(d\.step\)\?payToCard\(d,true\)/);
+assert.match(html, /view==='task'&&S\.role==='operator'&&\['s22','s23','s24','s25','s26'\]\.includes\(d\.step\)&&branch!=='conversion'\?payToCard\(d,true\)/);
 console.log('payTo card: roles, full fields, status, old deals, copy and placement OK');

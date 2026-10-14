@@ -607,6 +607,166 @@ a.hash:hover{background:#BAE6FD}
   .chip{min-height:40px}
   .btn-sm{min-height:40px}
 }
+/* Wave 3 · deal cards. Values come from the final DESIGN.md. */
+:root{
+  --ds-display:22px;--ds-emphasis:16px;--ds-body:14px;--ds-caption:12px;
+  --ds-regular:400;--ds-semibold:600;--ds-bold:700;
+  --ds-control:8px;--ds-card:12px;--ds-pill:999px;
+  --ds-xs:4px;--ds-sm:8px;--ds-md:12px;--ds-lg:16px;--ds-xl:24px;
+  --ds-ink:#0F172A;--ds-muted:#475569;--ds-border:#E2E8F0;--ds-page:#F8FAFC;--ds-surface:#FFFFFF;
+  --ds-glass:rgba(255,255,255,.97);
+  --ds-shadow:0 1px 3px rgba(15,23,42,.05),0 1px 2px rgba(15,23,42,.04);
+  --ds-decision:#FFFBEB;--ds-decision-border:#FDE68A;--ds-decision-ink:#92400E;
+  --ds-blocker:#FEF2F2;--ds-blocker-border:#FECACA;--ds-blocker-ink:#991B1B;
+  --ds-money:#F0FDF4;--ds-money-border:#BBF7D0;--ds-money-ink:#065F46;
+}
+.deal-screen{min-width:0;color:var(--ds-ink);font-size:var(--ds-body);font-weight:var(--ds-regular);
+  font-feature-settings:"tnum" 1,"cv11" 1;
+  --text-muted:var(--ds-muted);--text-sec:var(--ds-muted);--navy-400:var(--ds-muted);--navy-500:var(--ds-muted)}
+.deal-screen *{min-width:0}
+.deal-screen .cols{grid-template-columns:minmax(0,1fr) 300px;gap:var(--ds-xl)}
+.deal-screen .card{border:1px solid var(--ds-border);border-radius:var(--ds-card);box-shadow:var(--ds-shadow)}
+.deal-screen .deal-breadcrumb,.deal-screen .deal-code{font-size:var(--ds-caption);color:var(--ds-muted)}
+.deal-screen .deal-breadcrumb{margin-bottom:var(--ds-md)}
+.deal-screen .deal-head{background:var(--ds-surface);border-radius:var(--ds-card);padding:var(--ds-xl);display:flex;align-items:center;justify-content:space-between;gap:var(--ds-xl);margin-bottom:var(--ds-md)}
+.deal-screen .deal-head h1{font-size:var(--ds-emphasis);font-weight:var(--ds-semibold);margin:var(--ds-xs) 0}
+.deal-screen .deal-head p{color:var(--ds-muted)}
+.deal-screen .deal-progress{width:240px;flex:none;display:grid;gap:var(--ds-xs);font-size:var(--ds-caption)}
+.deal-screen .deal-progress b{font-size:var(--ds-body);font-weight:var(--ds-semibold)}
+.deal-screen .deal-progress i{height:4px;background:var(--ds-border);border-radius:var(--ds-pill);overflow:hidden}
+.deal-screen .deal-progress i span{height:100%;display:block;background:var(--navy-700)}
+.deal-screen .branch-tabs{display:flex;gap:var(--ds-xs);padding:var(--ds-xs);background:var(--navy-100);border-radius:var(--ds-control);margin-bottom:var(--ds-md)}
+.deal-screen .branch-tabs button{flex:1;border:0;background:transparent;color:var(--ds-muted);font:var(--ds-semibold) var(--ds-body) Inter,system-ui,sans-serif;min-height:44px;padding:var(--ds-sm);border-radius:var(--ds-control);cursor:pointer}
+.deal-screen .branch-tabs button.on{background:var(--ds-surface);color:var(--ds-ink)}
+.deal-screen .vtabs{margin:0 0 var(--ds-md)}
+.deal-screen .vtab{border-radius:var(--ds-control);font-size:var(--ds-body);min-height:44px;display:inline-flex;align-items:center}
+.deal-screen .task-action{background:var(--ds-surface);border:1px solid var(--ds-border);border-radius:var(--ds-card);padding:var(--ds-xl);margin-bottom:var(--ds-md)}
+.deal-screen .task-action>.card{border:0;box-shadow:none;padding:0;margin:0 0 var(--ds-lg)}
+.deal-screen .task-action>.card:last-child{margin-bottom:0}
+.deal-screen .task-action .goal{border-left:0}
+.deal-screen .task-action .goalt{font-size:var(--ds-display)!important;font-weight:var(--ds-bold)!important;line-height:1.25;margin-bottom:var(--ds-lg)}
+.deal-screen .task-action .goalnums{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--ds-md)}
+.deal-screen .task-action .goalnums>div{background:var(--ds-page);padding:var(--ds-md) var(--ds-lg);border-radius:var(--ds-control);min-width:0}
+.deal-screen .task-action .goalnums .k{font-size:var(--ds-caption)!important;font-weight:var(--ds-regular)!important;text-transform:none;letter-spacing:normal;color:var(--ds-muted)}
+.deal-screen .task-action .goalnums .v{font-size:var(--ds-emphasis)!important;font-weight:var(--ds-semibold)!important;overflow:hidden}
+.deal-screen .task-action .goalnums .v.big{font-size:var(--ds-display)!important;font-weight:var(--ds-bold)!important}
+.deal-screen .task-action .goalnums .addr-value{display:flex;flex-direction:column;align-items:flex-start;font:var(--ds-regular) var(--ds-body) ui-monospace,SFMono-Regular,Menlo,monospace!important;white-space:nowrap}
+.deal-screen .addr-value>span{max-width:100%;overflow:hidden;text-overflow:ellipsis;cursor:pointer}
+.deal-screen .addr-value>span.full,.deal-screen .tx-hash.full{overflow-x:auto;text-overflow:clip}
+.deal-screen .addr-value .btn{margin-top:var(--ds-xs)}
+.deal-screen .prepay-notice{background:var(--ds-decision);border:1px solid var(--ds-decision-border);color:var(--ds-decision-ink)!important;padding:var(--ds-sm) var(--ds-md);border-radius:var(--ds-control);font-size:var(--ds-body)!important;margin-bottom:var(--ds-lg)}
+.deal-screen .btn{border-radius:var(--ds-control);min-height:44px;font-size:var(--ds-emphasis);font-weight:var(--ds-semibold)}
+.deal-screen .btn-sm{font-size:var(--ds-body);min-height:44px}
+.deal-screen .deal-main-button{background:var(--coral)!important;color:var(--ds-ink)!important;border-color:var(--coral)!important}
+.deal-screen .deal-main-button:hover{background:var(--coral-hover)!important}
+.deal-screen .deal-main-button:disabled{background:var(--navy-200)!important;color:var(--navy-600)!important;border-color:var(--navy-200)!important;opacity:1}
+.deal-screen .deal-secondary-button{background:var(--ds-surface)!important;color:var(--navy-700)!important;border:1px solid var(--ds-border)!important}
+.deal-screen .fc{font-size:var(--ds-emphasis)!important;min-height:44px;border:1px solid var(--navy-300);border-radius:var(--ds-control)}
+.deal-screen .fl{font-size:var(--ds-body)!important;font-weight:var(--ds-semibold);color:var(--navy-700)}
+.deal-screen .fh,.deal-screen small,.deal-screen .sub{font-size:var(--ds-caption)!important;color:var(--ds-muted)}
+.deal-screen .card-title,.deal-screen .side h4{font-size:var(--ds-emphasis)!important;font-weight:var(--ds-semibold)!important}
+.deal-screen .addr,.deal-screen .tx-hash{font:var(--ds-regular) var(--ds-body) ui-monospace,SFMono-Regular,Menlo,monospace!important;white-space:nowrap;word-break:normal;overflow-wrap:normal;max-width:100%;overflow:hidden;text-overflow:ellipsis}
+.deal-screen .alert{font-size:var(--ds-body)!important;border:1px solid var(--ds-border);border-radius:var(--ds-control);padding:var(--ds-sm) var(--ds-md)}
+.deal-screen .a-info{background:var(--navy-100);color:var(--navy-700);border-color:var(--ds-border)}
+.deal-screen .a-warn{background:var(--ds-decision);color:var(--ds-decision-ink);border-color:var(--ds-decision-border)}
+.deal-screen .a-ok{background:var(--ds-money);color:var(--ds-money-ink);border-color:var(--ds-money-border)}
+.deal-screen .goalrows,.deal-screen .goal>.fh{display:none}
+.deal-screen .deal-path ol{list-style:none;margin:var(--ds-lg) 0 0;padding:0}
+.deal-screen .deal-path li{display:grid;grid-template-columns:16px minmax(0,1fr);gap:var(--ds-md);position:relative;padding-bottom:var(--ds-lg);font-size:var(--ds-body)}
+.deal-screen .deal-path li:not(:last-child):before{content:"";position:absolute;left:7px;top:16px;bottom:0;border-left:1px solid var(--ds-border)}
+.deal-screen .path-dot{width:16px;height:16px;border:1px solid var(--navy-300);border-radius:50%;background:var(--ds-surface);position:relative;z-index:1}
+.deal-screen .deal-path .done .path-dot,.deal-screen .deal-path .current .path-dot{background:var(--navy-700);border-color:var(--navy-700)}
+.deal-screen .deal-path .current .path-dot{box-shadow:0 0 0 3px var(--navy-100)}
+.deal-screen .deal-path b{font-weight:var(--ds-regular)}
+.deal-screen .deal-path .current b{font-weight:var(--ds-semibold)}
+.deal-screen .deal-path small{display:block;margin-top:var(--ds-xs)}
+.deal-screen .branch-other{padding:var(--ds-md) var(--ds-lg);border:1px dashed var(--navy-300);border-radius:var(--ds-control);margin-bottom:var(--ds-md)}
+.deal-screen .branch-other button{background:none;border:0;color:var(--navy-700);font:var(--ds-semibold) var(--ds-body) Inter,system-ui,sans-serif;text-decoration:underline;cursor:pointer;min-height:44px}
+.deal-screen .outgoing-choice{display:grid;gap:var(--ds-md)}
+.deal-screen .reimburse-tx-select{width:100%}
+.deal-screen .tx-selected-row{display:flex;align-items:center;gap:var(--ds-sm);flex-wrap:wrap;padding:var(--ds-sm) 0;border-bottom:1px solid var(--ds-border)}
+.deal-screen .tx-hash{cursor:pointer}
+.deal-screen .tx-selected-row a{color:var(--navy-700);text-decoration:underline}
+.deal-screen .tx-fee-row{display:flex;align-items:center;gap:var(--ds-sm);min-height:44px;font-size:var(--ds-body)}
+.deal-screen .tx-hidden summary,.deal-screen details summary{cursor:pointer;min-height:44px;display:flex;align-items:center}
+.deal-screen .doc-side{margin-top:var(--ds-md)}
+.deal-screen :focus-visible{outline:2px solid var(--coral);outline-offset:2px}
+@media(max-width:700px){.deal-screen .cols{grid-template-columns:minmax(0,1fr)}.deal-screen .deal-path{display:none}}
+@media(max-width:700px){
+  body.deal-task-mode .nav{display:none}
+  .deal-screen .task-action .card>.row:has(>.btn-primary,>.btn-success){position:static!important;-webkit-backdrop-filter:none!important;backdrop-filter:none!important}
+  .deal-screen .deal-breadcrumb{display:none}
+  .deal-screen .deal-head{padding:var(--ds-lg);display:block}
+  .deal-screen .deal-progress{width:100%;margin-top:var(--ds-md)}
+  .deal-screen .task-action{padding:var(--ds-lg)}
+  .deal-screen .task-action .goalnums{grid-template-columns:minmax(0,1fr)}
+  .deal-screen .task-action .goalnums>div{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);align-items:center}
+  .deal-screen .task-action .goalnums .v{text-align:right}
+  .deal-screen .task-action .goalnums .addr-value{align-items:flex-end}
+  .deal-screen .task-action .goalnums>div:has(.addr-value){grid-template-columns:minmax(0,1fr)}
+  .deal-screen .task-action .goalnums .addr-value{align-items:flex-start;text-align:left;max-width:100%}
+  .deal-screen .task-action .goalnums .addr-value .btn{max-width:100%;white-space:normal;text-align:left}
+  .deal-screen .task-action .goalnums>div:first-child{grid-column:auto}
+  .deal-screen .task-action .deal-main-button{position:fixed;left:var(--ds-lg);right:var(--ds-lg);bottom:calc(var(--ds-md) + env(safe-area-inset-bottom));width:calc(100% - 2 * var(--ds-lg));min-height:50px;z-index:100}
+  .deal-screen .fr{grid-template-columns:minmax(0,1fr)}
+  .deal-screen{padding-bottom:calc(50px + var(--ds-xl) + env(safe-area-inset-bottom))}
+  body.deal-task-mode::after{content:"";position:fixed;left:0;right:0;bottom:0;height:calc(50px + var(--ds-xl) + env(safe-area-inset-bottom));background:var(--ds-glass);backdrop-filter:blur(10px);pointer-events:none;z-index:99}
+}
+body.deal-task-mode .proto,body.deal-task-mode .nav{display:none}
+body.deal-task-mode .top-nav{height:56px;padding:0 var(--ds-xl);background:var(--ds-ink);border:0}
+body.deal-task-mode .top-nav a{height:56px;display:inline-flex;align-items:center;padding:0 var(--ds-lg);border-radius:0;background:none;color:var(--navy-300);font-size:var(--ds-body)}
+body.deal-task-mode .top-nav a.active{color:var(--ds-surface);border-bottom:2px solid var(--ds-surface)}
+body.deal-task-mode .top-nav .who{border:0;color:var(--navy-300);font-size:var(--ds-body)}
+.top-nav .deal-back,.top-nav .deal-top-title{display:none}
+@media(max-width:700px){
+  body.deal-task-mode .top-nav{height:52px;padding:0 var(--ds-lg);display:grid;grid-template-columns:1fr auto 1fr;background:var(--ds-glass);backdrop-filter:blur(10px);color:var(--ds-ink);border-bottom:1px solid var(--ds-border)}
+  body.deal-task-mode .top-nav>a,body.deal-task-mode .top-nav .who{display:none}
+  body.deal-task-mode .top-nav .deal-back,body.deal-task-mode .top-nav .deal-top-title{display:inline-flex}
+  body.deal-task-mode .top-nav .deal-back{align-items:center;min-height:44px;border:0;background:none;color:var(--navy-700);font:var(--ds-semibold) var(--ds-body) Inter,system-ui,sans-serif;padding:0;cursor:pointer}
+  body.deal-task-mode .top-nav .deal-top-title{margin:auto;font-size:var(--ds-emphasis);font-weight:var(--ds-semibold)}
+}
+.deal-screen *:not(svg):not(path){font-size:var(--ds-body)!important;font-weight:var(--ds-regular)!important}
+.deal-screen b,.deal-screen strong,.deal-screen .fl,.deal-screen .card-title,.deal-screen .deal-path .current b{font-weight:var(--ds-semibold)!important}
+.deal-screen .goalt,.deal-screen .goalnums .v.big{font-size:var(--ds-display)!important;font-weight:var(--ds-bold)!important}
+.deal-screen .deal-head h1,.deal-screen .goalnums .v,.deal-screen .card-title,.deal-screen .side h4,.deal-screen .vtab,.deal-screen .branch-tabs button,.deal-screen .btn,.deal-screen .fc{font-size:var(--ds-emphasis)!important;font-weight:var(--ds-semibold)!important}
+.deal-screen .deal-code,.deal-screen .deal-breadcrumb,.deal-screen small,.deal-screen .sub,.deal-screen .goalnums .k{font-size:var(--ds-caption)!important}
+.deal-screen .addr,.deal-screen .addr-value,.deal-screen .tx-hash{font-size:var(--ds-body)!important;font-weight:var(--ds-regular)!important}
+.deal-screen .fh,.deal-screen .alert,.deal-screen .prepay-notice,.deal-screen .fl,.deal-screen .btn-sm{font-size:var(--ds-body)!important}
+.deal-screen .sec,.deal-screen .k,.deal-screen .side h4,.deal-screen th{text-transform:none!important;letter-spacing:normal!important}
+.deal-screen .keybox,.deal-screen .checktop,.deal-screen .paybox{border-left:1px solid var(--ds-border)!important}
+.deal-screen .rq,.deal-screen .checklab{color:var(--navy-700)!important}
+.deal-screen .checktop{border-color:var(--ds-border)!important}
+.deal-screen .li.on{background:var(--navy-100)!important;box-shadow:none!important}
+.deal-screen .li.on .av,.deal-screen .av{background:var(--navy-700)!important;color:var(--ds-surface)!important}
+.deal-screen [style*="dashed var(--coral)"]{border:1px solid var(--ds-border)!important}
+.deal-screen .psec{color:var(--ds-ink)!important}
+.deal-screen [style*="color:var(--red)"]{color:var(--ds-blocker-ink)!important}
+.task-grid{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(0,1fr);gap:var(--ds-xl);align-items:start;font-feature-settings:"tnum" 1,"cv11" 1}
+.task-grid>section{min-width:0}
+.task-grid .card-title{font-size:var(--ds-emphasis);font-weight:var(--ds-semibold);margin-bottom:var(--ds-sm)}
+.task-grid .li{display:grid;grid-template-columns:24px minmax(0,1fr) auto;gap:var(--ds-md);align-items:center;min-height:56px;padding:var(--ds-lg) var(--ds-xl)}
+.task-grid .li .t1,.task-grid .li .t3{font-size:var(--ds-emphasis);font-weight:var(--ds-semibold)}
+.task-grid .li .t2{font-size:var(--ds-caption);color:var(--ds-muted)}
+.task-grid .li .av{background:var(--navy-700);color:var(--ds-surface)}
+.task-inspect{display:inline-flex;align-items:center;gap:var(--ds-sm);font-size:var(--ds-body);font-weight:var(--ds-semibold);margin-left:var(--ds-lg)}
+.task-inspect .fc{font-size:var(--ds-emphasis);min-height:44px;border-radius:var(--ds-control)}
+.task-create{margin-left:var(--ds-lg)}
+.task-grid .waiting-section .li:has(>button){grid-template-columns:24px minmax(0,1fr) auto auto}
+.proto .rolebtn.on,.top-nav a.active{background:var(--navy-700)}
+.proto .build{display:none}
+.proto .lab{font-size:var(--ds-caption);font-weight:var(--ds-regular);text-transform:none;letter-spacing:normal;color:var(--navy-300)}
+.proto .rolebtn{font-size:var(--ds-body);font-weight:var(--ds-semibold);border-radius:var(--ds-control);min-height:44px}
+.proto .ghost{font-size:var(--ds-caption);font-weight:var(--ds-regular);min-height:44px}
+.proto .rolebtn .c{font-size:var(--ds-caption)}
+.nav-tab .cnt,.nav-tab.active .cnt{background:var(--coral);color:var(--ds-ink)}
+.nav-more{border:1px solid var(--ds-border);border-radius:var(--ds-control);background:var(--ds-surface);color:var(--navy-700);font-size:var(--ds-body);min-height:44px;padding:0 var(--ds-lg)}
+.task-grid .li:focus-visible{outline:2px solid var(--coral);outline-offset:2px}
+@media(max-width:700px){.task-grid{grid-template-columns:minmax(0,1fr);gap:var(--ds-xl)}
+  .task-grid .li{grid-template-columns:24px minmax(0,1fr);padding:var(--ds-md) var(--ds-lg)}
+  .task-grid .li .t3{grid-column:2;text-align:left}
+  .task-grid .waiting-section .li:has(>button){grid-template-columns:24px minmax(0,1fr)}
+  .task-grid .waiting-section .li>button{grid-column:2;justify-self:start}
+  .task-grid.mine-empty .waiting-section{order:-1}}
 </style>
 <link rel="stylesheet" href="/static/nav-shell.css?v=3">
 <link rel="stylesheet" href="/static/task-list.css?v=3">
@@ -624,9 +784,10 @@ a.hash:hover{background:#BAE6FD}
 </div>
 
 <nav class="top-nav">
-  <a href="/">🧮 Калькулятор</a>
-  <a href="/crm">📊 CRM</a>
-  <a href="/tasks" class="active">✅ Задачник</a>
+  <button class="deal-back" onclick="back()">‹ Задачи</button><span class="deal-top-title">Сделка</span>
+  <a href="/">Калькулятор</a>
+  <a href="/crm">CRM</a>
+  <a href="/tasks" class="active">Задачник</a>
   <span class="who" id="who"></span>
 </nav>
 <nav class="nav"><div class="nav-tabs" id="tabs"></div></nav>
@@ -1611,7 +1772,12 @@ function econ(d){
   if(d.type==='Оплата недвижимости'&&d.kind==='Фрихолд'){
     const t=ippsTariff(d), X=d.invoiceUsd||0;
     r.invoiceUsd=X;
-    if(X){r.feePercent=t.percent;r.feeFixed=t.fixed;r.bankFee=freeholdFee(X,t);r.sentUsd=d.serverTransferComplete&&d.payout?.usdt>0?d.payout.usdt:freeholdSend(X,t);r.cost=r.sentUsd;}
+    if(X){
+      r.feePercent=t.percent;r.feeFixed=t.fixed;r.bankFee=freeholdFee(X,t);
+      r.sentUsd=d.serverTransferComplete&&d.payout?.usdt>0?d.payout.usdt:freeholdSend(X,t);
+      const networkFees=d.prepay?(d.commissionSends||[]).reduce((sum,tx)=>sum+num(tx.amount),0):0;
+      r.cost=r.sentUsd+networkFees;
+    }
   }
   if(!payin) return r;
   if(d.type!=='Оплата недвижимости'){
@@ -2232,53 +2398,127 @@ async function outgoingReviewAction(id,action,hash){
 }
 function outgoingPickState(d){
   S.outgoingPicks=S.outgoingPicks||{};
-  return S.outgoingPicks[d.id]||(S.outgoingPicks[d.id]={hashes:sendList(d).filter(t=>t.status==='confirmed').map(t=>t.hash||t.ref)});
+  const confirmed=sendList(d).filter(t=>t.status==='confirmed').map(t=>t.hash||t.ref);
+  return S.outgoingPicks[d.id]||(S.outgoingPicks[d.id]={
+    hashes:confirmed,
+    commissionHashes:(d.commissionSends||[]).map(t=>t.hash).concat(
+      (d.outgoingReview?.candidates||[]).filter(t=>t.networkFee&&confirmed.includes(t.hash)&&!t.claimedBy)
+        .map(t=>t.hash)),commissionTouched:false});
 }
 function outgoingPickSet(id,hash,checked){
-  const p=outgoingPickState(deal(id));
+  const d=deal(id), p=outgoingPickState(d);
   p.hashes=checked?[...new Set(p.hashes.concat(hash))]:p.hashes.filter(h=>h!==hash);
+  const hasFee=(d.outgoingReview?.candidates||[]).some(t=>t.hash===hash&&t.networkFee&&!t.claimedBy);
+  p.commissionHashes=checked&&hasFee?[...new Set(p.commissionHashes.concat(hash))]:p.commissionHashes.filter(h=>h!==hash);
+  render();
+}
+function outgoingCommissionSet(id,hash,checked){
+  const p=outgoingPickState(deal(id));
+  p.commissionHashes=checked?[...new Set(p.commissionHashes.concat(hash))]:p.commissionHashes.filter(h=>h!==hash);
+  p.commissionTouched=true;
   render();
 }
 async function outgoingPickSubmit(id){
   const p=outgoingPickState(deal(id));
   const checked=name=>document.getElementById(name+'_'+id)?.checked===true;
   const j=await standAction('/api/stand/transfers/review',{dealId:id,action:'select',version:standVer,
-    hashes:p.hashes,confirmBeforeOrder:checked('pick_before'),confirmOverpay:checked('pick_over'),confirmMissingTime:checked('pick_time')});
+    hashes:p.hashes,commissionHashes:p.commissionHashes,
+    confirmBeforeOrder:checked('pick_before'),confirmOverpay:checked('pick_over'),confirmMissingTime:checked('pick_time')});
   if(j){delete S.outgoingPicks[id];toast('Выбранные переводы проверены и сохранены');}
+}
+async function outgoingReturn(id){
+  const reason=prompt('Почему возвращаем отправителю?');
+  if(!reason?.trim()){toast('Укажите причину возврата');return;}
+  const j=await standAction('/api/stand/transfers/review',{
+    dealId:id,action:'return',version:standVer,reason:reason.trim()});
+  if(j)toast('Задача возвращена отправителю');
+}
+function outgoingExpand(id){S.outgoingExpanded=S.outgoingExpanded||{};S.outgoingExpanded[id]=true;render();}
+function selectOutgoingTx(id,control){
+  const value=control.value;
+  control.value='';
+  if(!value)return;
+  if(value.startsWith('fee:'))outgoingCommissionSet(id,value.slice(4),true);
+  else outgoingPickSet(id,value,true);
+}
+function txShort(value){
+  const s=String(value||'');return s.length>20?s.slice(0,8)+'…'+s.slice(-8):s;
 }
 function outgoingPickList(d){
   const r=d.outgoingReview, p=outgoingPickState(d), rows=r.candidates||[], target=Number(d.transfer?.amount||0);
+  const usdt=value=>moneyKop(value,'USDT');
   const allowed=new Set(rows.filter(t=>t.selectable).map(t=>t.hash));
   p.hashes=p.hashes.filter(h=>allowed.has(h));
+  p.commissionHashes=p.commissionHashes.filter(h=>p.hashes.includes(h));
   const selected=rows.filter(t=>t.selectable&&p.hashes.includes(t.hash));
   const total=selected.reduce((sum,t)=>sum+Number(t.amount||0),0), extra=total-target;
   const time=t=>t.timestamp_ms?new Date(t.timestamp_ms).toLocaleString('ru-RU',{timeZone:'Europe/Moscow'}):'Время не получено';
-  const row=t=>`<div class="paybox" ${t.networkFee?'style="background:#f1f3f5;color:#737b86"':''}>
-    ${t.selectable?`<label><input type="checkbox" ${p.hashes.includes(t.hash)?'checked':''} onchange="outgoingPickSet(${d.id},'${htmlText(t.hash)}',this.checked)"> Выбрать</label>`:'<span>Не учитывается в платеже</span>'}
-    <div><a class="addr" href="https://tronscan.org/#/transaction/${encodeURIComponent(t.hash)}" target="_blank" rel="noopener noreferrer">${htmlText(t.hash)}</a></div>
-    <div>${htmlText(time(t))} МСК · <b>${Number(t.amount).toLocaleString('ru-RU',{maximumFractionDigits:6})} USDT</b></div>
-    <div>Получатель: <span class="addr">${htmlText(t.to)}</span></div>
-    ${t.networkFee?'<b>Комиссия сети</b>':t.claimedBy?'<b>Уже используется: '+htmlText(t.claimedBy)+'</b>':t.reason?htmlText(t.reason):''}
-  </div>`;
-  const matching=rows.filter(t=>t.to===d.transfer?.addr&&!t.networkFee), other=rows.filter(t=>t.to!==d.transfer?.addr||t.networkFee);
+  const matching=rows.filter(t=>t.to===d.transfer?.addr&&!t.networkFee&&t.selectable);
+  const fees=rows.filter(t=>t.networkFee&&!t.claimedBy&&matching.some(x=>x.hash===t.hash));
+  const other=rows.filter(t=>!matching.includes(t)&&!fees.includes(t));
+  const feeTotal=fees.filter(t=>p.commissionHashes.includes(t.hash)).reduce((sum,t)=>sum+Number(t.amount||0),0);
+  const option=t=>`${htmlText(time(t))} · ${usdt(Number(t.amount))} · ${htmlText(txShort(t.hash))}${t.likelyDeal?' · похоже на '+htmlText(t.likelyDeal):''}`;
+  const hashLine=(t,full=false)=>`<span class="tx-hash${full?' full':''}" title="${htmlText(t.hash)}" onclick="this.textContent=this.title;this.classList.add('full')">${htmlText(full?t.hash:txShort(t.hash))}</span>
+    <button class="btn btn-outline btn-sm" onclick="copyAsk(${jsLiteralAttr(t.hash)})">Копировать</button>
+    <a href="https://tronscan.org/#/transaction/${encodeURIComponent(t.hash)}" target="_blank" rel="noopener noreferrer">TronScan</a>`;
   const errors={fetch_error:'TronScan недоступен. Повторите позже или добавьте хеш вручную.',
     malformed_page:'TronScan вернул неполные данные. Можно проверить хеш вручную.',
     truncated_page:'Список сети получен не полностью. Выбранные хеши будут проверены отдельно.',
     unordered_page:'Порядок данных сети нарушен. Проверьте хеш вручную.',
     conflicting_hash:'Сеть вернула противоречивые данные о переводе. Проверьте хеш вручную.',
     page_limit:'Достигнут предел поиска. Можно добавить хеш вручную.'};
-  return `<div class="card"><div class="card-title">Выбрать исходящие переводы</div>
-    <p>Семь дней до поручения и более поздние переводы. Время московское; список обновляется с кэшем до 20 секунд.</p>
+  if(selected.length===1&&matching.length===1&&Math.abs(extra)<=.005&&!S.outgoingExpanded?.[d.id]){
+    const t=selected[0];
+    return `<div class="outgoing-choice"><div class="tx-selected-row">
+      <span>${htmlText(time(t))} · ${usdt(Number(t.amount))}</span>${hashLine(t)}</div>
+      <div class="tx-selected-row">Откуда: <span class="addr" title="${htmlText(t.from)}">${htmlText(txShort(t.from))}</span>
+        <button class="btn btn-outline btn-sm" onclick="copyAsk(${jsLiteralAttr(t.from)})">Копировать адрес</button></div>
+      <div class="tx-selected-row">Куда: <span class="addr" title="${htmlText(t.to)}">${htmlText(txShort(t.to))}</span>
+        <button class="btn btn-outline btn-sm" onclick="copyAsk(${jsLiteralAttr(t.to)})">Копировать адрес</button></div>
+      ${fees.filter(f=>f.hash===t.hash).map(f=>`<label class="tx-fee-row"><input type="checkbox" ${p.commissionHashes.includes(f.hash)?'checked':''}
+        onchange="outgoingCommissionSet(${d.id},'${htmlText(f.hash)}',this.checked)"> +${usdt(Number(f.amount))} комиссия сети</label>`).join('')}
+      <p><b>В IPPS ${usdt(total)} из ${usdt(target)}</b> · себестоимость с комиссиями ${usdt(total+feeTotal)}</p>
+      ${t.beforeOrder?`<label class="check"><input id="pick_before_${d.id}" type="checkbox"> Перевод сделан до поручения — подтверждаю</label>`:''}
+      <button class="btn btn-primary" onclick="outgoingPickSubmit(${d.id})">Засчитать этот перевод</button>
+      <button class="btn btn-outline" onclick="outgoingExpand(${d.id})">Это не он — показать все переводы</button></div>`;
+  }
+  return `<div class="outgoing-choice"><label class="fl" for="outgoing_tx_${d.id}">Переводы на адрес IPPS</label>
+    <select class="fc reimburse-tx-select" id="outgoing_tx_${d.id}" onchange="selectOutgoingTx(${d.id},this)">
+      <option value="">— Выбрать перевод или ввести хеш вручную —</option>
+      ${matching.map(t=>`<option value="${htmlText(t.hash)}">${option(t)}</option>`).join('')}
+      ${fees.map(t=>`<option value="fee:${htmlText(t.hash)}" ${p.hashes.includes(t.hash)?'':'disabled'}>Комиссия сети · ${option(t)}</option>`).join('')}
+    </select>
+    ${!matching.length?'<p class="fh">Переводов пока нет. Обновите список или введите хеш вручную.</p>':''}
     <button class="btn btn-outline" onclick="outgoingReviewAction(${d.id},'list')">Обновить список переводов</button>
     ${r.error?`<div class="alert a-warn">${htmlText(errors[r.error]||r.error)}</div>`:''}
-    <h4>На адрес заявки</h4>${matching.length?matching.map(row).join(''):'<p>Переводов пока не найдено. Обновите список или добавьте хеш вручную.</p>'}
-    ${other.length?'<h4>Прочие исходящие</h4>'+other.map(row).join(''):''}
-    <p><b>Выбрано ${total.toLocaleString('ru-RU',{maximumFractionDigits:6})} USDT из ${target.toLocaleString('ru-RU')} USDT.</b></p>
+    ${other.length?`<details class="tx-hidden" ${S.outgoingExpanded?.[d.id]?'open':''}><summary>Все остальные переводы · ${other.length}</summary>
+      ${other.map(t=>`<div class="tx-selected-row"><span>${htmlText(time(t))} · ${usdt(Number(t.amount))}</span>
+        <span>Откуда <span class="addr" title="${htmlText(t.from)}">${htmlText(txShort(t.from))}</span></span>
+        <button class="btn btn-outline btn-sm" onclick="copyAsk(${jsLiteralAttr(t.from)})">Копировать адрес</button>
+        <span>Куда <span class="addr" title="${htmlText(t.to)}">${htmlText(txShort(t.to))}</span></span>
+        <button class="btn btn-outline btn-sm" onclick="copyAsk(${jsLiteralAttr(t.to)})">Копировать адрес</button>
+        ${hashLine(t,true)}${t.claimedBy?`<span>${htmlText(t.claimedBy)}</span>`:''}</div>`).join('')}
+      <p class="fh">Переводы на другой адрес или уже занятые нельзя засчитать в IPPS.</p></details>`:''}
+    <div class="tx-selected">${selected.length?selected.map(t=>`<div class="tx-selected-row">
+      <span>${htmlText(time(t))} · ${usdt(Number(t.amount))}</span>${hashLine(t)}
+      <button class="btn btn-outline btn-sm" onclick="outgoingPickSet(${d.id},'${htmlText(t.hash)}',false)" aria-label="Убрать перевод">Убрать</button>
+    </div>`).join(''):'<p class="fh">Выберите один или несколько переводов.</p>'}</div>
+    ${fees.filter(t=>p.hashes.includes(t.hash)).map(t=>`<label class="tx-fee-row"><input type="checkbox" ${p.commissionHashes.includes(t.hash)?'checked':''}
+      onchange="outgoingCommissionSet(${d.id},'${htmlText(t.hash)}',this.checked)">
+      +${usdt(Number(t.amount))} комиссия сети · ${htmlText(txShort(t.hash))}</label>`).join('')}
+    <p><b>В IPPS ${usdt(total)} из ${usdt(target)}</b></p>
+    <p>Себестоимость с комиссиями ${usdt(total+feeTotal)}</p>
+    <details><summary>Ввести хеш вручную</summary>
+      <div class="fr"><div class="fg"><label class="fl" for="sh_${d.id}">Полный хеш</label><input class="fc addr" id="sh_${d.id}" autocomplete="off"></div>
+      <div class="fg"><label class="fl" for="sa_${d.id}">Сумма перевода, USDT</label><input class="fc" id="sa_${d.id}" inputmode="decimal"></div></div>
+      <button class="btn btn-outline" onclick="sendAdd(${d.id},false)">Добавить хеш для проверки</button>
+    </details>
     ${selected.some(t=>t.beforeOrder)?`<label class="check"><input id="pick_before_${d.id}" type="checkbox"> Перевод сделан до поручения — подтверждаю</label>`:''}
     ${selected.some(t=>!t.timestamp_ms)?`<label class="check"><input id="pick_time_${d.id}" type="checkbox"> Время перевода не получено — подтверждаю вручную</label>`:''}
     ${extra>0.005?`<div class="alert a-warn"><label><input id="pick_over_${d.id}" type="checkbox"> Переплата ${extra.toFixed(6).replace(/0+$/,'').replace(/\.$/,'')} USDT — засчитать</label><br>Переплата увеличит себестоимость сделки.</div>`:''}
     ${selected.length&&extra<-.005?`<p>Недоплата ${(-extra).toFixed(6).replace(/0+$/,'').replace(/\.$/,'')} USDT — ждём остальные части.</p>`:''}
     <button class="btn btn-primary" ${selected.length?'':'disabled'} onclick="outgoingPickSubmit(${d.id})">Засчитать выбранные</button>
+    ${!selected.length?`<button class="btn btn-outline" onclick="outgoingReturn(${d.id})">Перевода нет — вернуть отправителю</button>`:''}
   </div>`;
 }
 function outgoingReviewBlock(d){
@@ -2288,16 +2528,16 @@ function outgoingReviewBlock(d){
   const missingTime=sends.some(t=>t.status==='confirmed'&&t.timeUnverified);
   const early=sends.some(t=>t.status==='confirmed'&&t.beforeOrder);
   return `<div class="card"><div class="card-title">Проверить отправку · ${htmlText(d.code||'')}</div>
-    <p>Найдено и подтверждено ${usd(actual)} из ${usd(target)}.</p>
+    ${d.demoTransfers?`<p>Найдено и подтверждено ${usd(actual)} из ${usd(target)}.</p>`:''}
     ${missingTime?'<div class="alert a-warn">Сеть подтвердила адреса и сумму, но не вернула время перевода. Проверьте, что он относится к этому поручению; автоматическое закрытие остановлено.</div>':''}
     ${r.legacyTime?'<p>У старого поручения нет точного времени. Автопоиск начат с «Отправил»; более ранний перевод добавьте хешем после проверки.</p>':''}
     ${r.scanStatus!=='complete'&&!r.error?`<div class="alert a-warn">Поиск ещё не завершён: ${htmlText(r.error||'проверяем сеть')}. Можно добавить хеш вручную и проверить.</div>`:''}
     ${!d.demoTransfers?outgoingPickList(d):''}
     ${early?`<label><input type="checkbox" id="review_before_${d.id}"> Перевод сделан до поручения — подтверждаю</label>`:''}
-    ${extra>0.005?`<div class="alert a-warn"><b>Переплата ${usd(extra)} — проверьте возврат излишка.</b> Засчитанная переплата увеличит себестоимость сделки.</div>`:''}
-    ${extra<-.005?`<p>Недоплата ${usd(-extra)} — ждём следующие части или добавьте хеш.</p>`:''}
+    ${d.demoTransfers&&extra>0.005?`<div class="alert a-warn"><b>Переплата ${usd(extra)} — проверьте возврат излишка.</b> Засчитанная переплата увеличит себестоимость сделки.</div>`:''}
+    ${d.demoTransfers&&extra<-.005?`<p>Недоплата ${usd(-extra)} — ждём следующие части или добавьте хеш.</p>`:''}
     <button class="btn btn-outline" onclick="checkSends(${d.id})">Проверить переводы сейчас</button>
-    ${actual>0&&extra>=-.005?`<button class="btn btn-primary" onclick="outgoingReviewAction(${d.id},'accept')">${extra>0.005?'Переплата '+usd(extra)+' — засчитать':(missingTime?'Время не получено — засчитать вручную':'Засчитать проверенные переводы')}</button>`:''}
+    ${d.demoTransfers&&actual>0&&extra>=-.005?`<button class="btn btn-primary" onclick="outgoingReviewAction(${d.id},'accept')">${extra>0.005?'Переплата '+usd(extra)+' — засчитать':(missingTime?'Время не получено — засчитать вручную':'Засчитать проверенные переводы')}</button>`:''}
   </div>`;
 }
 async function checkSends(id){const j=await standAction('/api/stand/transfers/check',{dealId:id});if(j)toast('Статусы переводов обновлены');}
@@ -3496,6 +3736,22 @@ function prepayPanel(d){
       <button class="btn btn-primary" onclick="prepayReimburse(${d.id})">Проверить и закрыть возмещение</button>`:''}
     </div>`;
 }
+function prepayRefundCard(d){
+  const sender=walletById(convOf(d)?.walletId)?.addr||'';
+  const recipient=d.prepay?.wallet?.addr||'';
+  const due=d.payout?.usdt||0;
+  const address=(label,value)=>`<div><span class="k">${label}</span><span class="v addr-value">
+    <span title="${htmlText(value)}" onclick="this.textContent=this.title;this.classList.add('full')">${htmlText(txShort(value))}</span>
+    <button class="btn btn-outline btn-sm" onclick="copyAsk(${jsLiteralAttr(value)})">Копировать адрес</button></span></div>`;
+  return `<div class="card"><p class="fl">${htmlText(ROLES[S.role]?.n||'Владелец кошелька')}, сейчас ваш шаг</p>
+    <div class="goalt">Возместите оплату с кошелька</div>
+    <p class="prepay-notice">Оплата наперёд · USDT брокера получены, верните сумму на кошелёк оплаты IPPS.</p>
+    <div class="goalnums"><div><span class="k">К возврату</span><span class="v big">${moneyKop(due,'USDT')}</span></div>
+      ${address('Кому',recipient)}${address('С кошелька',sender)}</div>
+    <div class="fg"><label class="fl" for="prepay_refund_${d.id}">Хеш перевода возмещения · TRC-20</label>
+      <input class="fc addr" id="prepay_refund_${d.id}" autocomplete="off" placeholder="Полный хеш транзакции"></div>
+    <div class="row"><button class="btn btn-primary" onclick="prepayReimburse(${d.id})">Проверить и закрыть возмещение</button></div></div>`;
+}
 function reqOpen(d){return !!d&&!d.closed&&d.reqTask==='open';}
 function afterPayin(d,text,persist=true){
   const F=flowOf(d), nxt=F[F.indexOf('s14')+1]||(isCrypto(d)?'s22':'s18');
@@ -4458,12 +4714,12 @@ function render(){
      Задачник добавлен первым: он и есть то, что мы прототипируем, остальное — как было. */
   const tabs=[['tasks','Задачник',myTasks(S.role).length],
     ['deals','Сделки',0],
-    ['documents','📄 Документы',0],
-    ['closing','🔒 Закрытие',0],
-    ['exchangers','🔁 Обменники',0],
+    ['documents','Документы',0],
+    ['closing','Закрытие',0],
+    ['exchangers','Обменники',0],
     ['balance','Баланс',0],
-    ['income','💵 Поступления',incomes().filter(x=>!x.excluded&&!x.cnvId).length],
-    ['convs','🔄 Конвертации',(S.convs||[]).filter(c=>c.status!=='received').length],
+    ['income','Поступления',incomes().filter(x=>!x.excluded&&!x.cnvId).length],
+    ['convs','Конвертации',(S.convs||[]).filter(c=>c.status!=='received').length],
     ['reimb','Возмещения',0],
     ['transactions','Транзакции',0],
     ['managers','Менеджеры',0],
@@ -4472,7 +4728,7 @@ function render(){
     ['partners','Партнёры',0],
     ['refs','Рефереры',refs().filter(r=>refStat(r).pending>0).length],
     ['payouts','Заявки на выплату',0],
-    ['admins','🔐 Админы',0],
+    ['admins','Админы',0],
     ['analytics','Аналитика',0]];
   document.getElementById('bell').innerHTML=bellHtml();
   document.getElementById('market').innerHTML=marketWidget();
@@ -4488,14 +4744,27 @@ function render(){
   if(S.edit) crmDraftCapture();
   else crmDraftActive=null;
   app.innerHTML=main+(S.modal?viewModal():'')+(S.doc?viewDoc():'')+(S.cnv?viewCnv():'')+(S.refEdit?viewRefEdit():'');
+  document.body.classList?.toggle?.('deal-task-mode',!!S.open&&S.view==='task');
+  if(S.open&&S.view==='task')polishDealActions();
   draftsRestore();
   restoreFocus();
   if(S.edit) crmDraftMount(S.edit);
 }
+function polishDealActions(){
+  const screen=document.querySelector('.deal-screen'),action=screen?.querySelector('.task-action');
+  if(!screen)return;
+  const actions=[...(action?.querySelectorAll('button.btn-primary,button.btn-success')||[])];
+  const main=actions.filter(b=>!b.disabled).at(-1)||actions.at(-1);
+  screen.querySelectorAll('button.btn-primary,button.btn-success').forEach(button=>{
+    button.classList.toggle('deal-main-button',button===main);
+    button.classList.toggle('deal-secondary-button',button!==main);
+  });
+}
 function setRole(r){S.role=r;S.open=null;S.draft=null;S.modal=null;S.tab='tasks';save();render();}
 function setTab(t){S.tab=t;S.open=null;S.draft=null;S.modal=null;save();render();}
 function openDeal(id){S.open=id;S.view='deal';save();render();}
-function openTask(id){S.open=id;S.view='task';save();render();}
+function openTask(id,branch){S.open=id;S.view='task';S.taskBranch=branch||null;save();render();}
+function setInspectRole(role){S.inspectRole=role;save();render();}
 function setView(v){S.view=v;save();render();}
 function back(){S.open=null;S.draft=null;save();render();}
 /* Черновики полей, которые читаются только по кнопке: комментарии, ответ курса, хеш.
@@ -4788,19 +5057,21 @@ function showTaskListSection(section){
     panel.classList.toggle('on',panel.dataset.section===section));
 }
 function viewTasks(){
-  const mine=myTasks(S.role),others=waitingOn(S.role);
+  const role=S.role==='admin'?(S.inspectRole||'manager'):S.role;
+  const mine=myTasks(role),others=waitingOn(role);
   const section=taskListSection||(mine.length?'mine':others.length?'wait':'mine');
   const mineCount=mine.length?`<span class="task-list-count mine">${mine.length}</span>`:'';
   const waitCount=others.length?`<span class="task-list-count">${others.length}</span>`:'';
   let h=`<div class="task-list"><div class="task-list-head"><h1>Задачник</h1>
+    ${S.role==='admin'?`<label class="task-inspect">Смотреть как <select class="fc" onchange="setInspectRole(this.value)">${['manager','operator','findir','teodor'].map(r=>`<option value="${r}" ${r===role?'selected':''}>${ROLES[r].n}</option>`).join('')}</select></label>`:''}
     ${S.role==='manager'||S.role==='admin'?`<div class="task-list-create-bar"><button class="btn btn-primary task-list-create" onclick="startCreate()">+ Новая задача</button></div>`:''}</div>`;
   const pend=pendingEx(null);
-  if(pend.length&&(S.role==='operator'||S.role==='admin')){
+  if(pend.length&&role==='operator'){
     const conv=mine.filter(d=>d.step==='s18');
     h+=`<div class="card task-list-pending" style="margin-bottom:16px">
       <div class="card-title">Ждут конвертации
         <span class="sub">${pend.length} ${plural(pend.length,'мелкий обмен','мелких обмена','мелких обменов')} · ${money(exSum(pend),'₽')} · наценка ≈ ${money(exMargin(pend),'₽')}</span>
-        ${conv.length?`<button class="btn btn-primary btn-sm" onclick="openDeal(${conv[0].id})">Добавить в обмен ${conv[0].code}</button>`:''}</div>
+        ${conv.length?`<button class="btn btn-outline btn-sm" onclick="openDeal(${conv[0].id})">Добавить в обмен ${conv[0].code}</button>`:''}</div>
       <div class="list">${pend.map(x=>`<div class="li" onclick="openDeal(${x.id})"><span class="av">₽</span>
         <div><div class="t1">${x.code} · ${x.client}</div>
         <div class="t2">без шагов · ${x.payType} · ждёт ${since(x.readyAt)}</div></div>
@@ -4816,7 +5087,7 @@ function viewTasks(){
     <div class="task-list-panel-head"><h2>На мне сейчас</h2>${mineCount}</div>`;
   if(!mine.length){
     h+=`<div class="task-list-empty"><strong>Задач на вас нет</strong>
-      ${S.role==='manager'
+      ${role==='manager'
       ?'Нажмите «+ Новая задача» — заявка сразу уйдёт операционисту за курсом.'
       :(STAND&&!canSwitchRole()
         ?'Задачи прилетают, когда предыдущая роль передаёт работу. Как только менеджер доведёт сделку до вас, уведомление придёт в чат.'
@@ -4824,32 +5095,45 @@ function viewTasks(){
   }else{
     h+=mine.map(d=>{
       const a=approx(d);
-      const side=S.role==='manager'&&stepWho(d)!=='manager';
+      const side=role==='manager'&&stepWho(d)!=='manager';
       const taskTitle=side?(needsPayConfirm(d)?'Ваша задача: подтвердить реквизиты перед оплатой':
         reqOpen(d)?'Ваша параллельная задача: реквизиты для оплаты':stepTitle(d)):stepTitle(d);
-      const pay=apMoney(a,'pay');
-      return `<button type="button" class="task-list-row" onclick="openTask(${d.id})">
-        <span class="task-list-row-main"><strong>${taskTitle}</strong>
-          <span class="task-list-meta">${d.code} · ${d.client} · ${d.type}${d.kind?' · '+d.kind:''}</span>
-          ${side?`<span class="task-list-meta">Параллельно: ${stepTitle(d)} · ${(ROLES[stepWho(d)]||{}).t||'—'}</span>`:''}</span>
-        <span class="task-list-amount num">${pay==='посчитаем после курса'?apMoney(a,'thb'):pay}</span>
-        <span class="task-list-arrow" aria-hidden="true">›</span></button>`;
+      const branches=d.prepay
+        ?[...(role==='operator'&&d.prepay.brokerStep!=='done'||prepayRefundRole(d)===role?['conversion']:[]),
+           ...(stepWho(d)===role?['payment']:[])]:[null];
+      if(!branches.length)branches.push('payment');
+      return branches.map(branch=>{
+        const title=branch==='conversion'?'Конвертация · '+(prepayRefundRole(d)===role?'возместить оплату':STEPS[d.prepay.brokerStep]?.title||'ждём USDT'):
+          branch==='payment'?'Оплата застройщику · '+(d.outgoingReview?'засчитать перевод':STEPS[d.step]?.title||'проверить оплату'):taskTitle;
+        const path=dealTaskPath(d,branch);
+        const amount=branch==='conversion'&&prepayRefundRole(d)===role?moneyKop(d.payout?.usdt||0,'USDT'):
+          branch==='conversion'?moneyKop(d.amountRub||d.incomeAmount||0,'₽'):
+          d.prepay?usd(d.prepay.amount):apMoney(a,'pay');
+        return `<button type="button" class="task-list-row" title="шаг ${path.index+1} из ${path.steps.length}"
+          onclick="openTask(${d.id},${branch?`'${branch}'`:'null'})">
+          <span class="task-list-row-main"><strong>${htmlText(title)}</strong>
+            <span class="task-list-meta">${htmlText(d.code)} · ${htmlText(d.client)} · ${d.prepay?'Оплата наперёд · ':''}${htmlText(d.kind||d.type)}</span>
+            ${side&&!branch?`<span class="task-list-meta">Параллельно: ${stepTitle(d)} · ${(ROLES[stepWho(d)]||{}).t||'—'}</span>`:''}</span>
+          <span class="task-list-amount num">${amount==='посчитаем после курса'?apMoney(a,'thb'):amount}</span>
+          <span class="task-list-arrow" aria-hidden="true">›</span></button>`;
+      }).join('');
     }).join('');
   }
   h+=`</section><section class="card task-list-panel ${section==='wait'?'on':''}" data-section="wait">
     <div class="task-list-panel-head"><h2>Жду других</h2>${waitCount}</div>`;
   if(!others.length) h+=`<div class="task-list-empty"><strong>Ожиданий нет</strong>Задачи других участников появятся здесь.</div>`;
-  else Object.keys(ROLES).forEach(role=>{
-    const group=others.filter(d=>stepWho(d)===role);
+  else Object.keys(ROLES).forEach(waitRole=>{
+    const group=others.filter(d=>stepWho(d)===waitRole);
     if(!group.length)return;
-    h+=`<div class="task-list-person"><span class="task-list-avatar">${ROLES[role].n.charAt(0)}</span>${ROLES[role].n}<span class="task-list-person-count">· ${group.length}</span></div>`;
+    h+=`<div class="task-list-person"><span class="task-list-avatar">${ROLES[waitRole].n.charAt(0)}</span>${ROLES[waitRole].n}<span class="task-list-person-count">· ${group.length}</span></div>`;
     h+=group.map(d=>{
       const a=approx(d),pay=apMoney(a,'pay');
       return `<button type="button" class="task-list-row task-list-wait-row" onclick="openDeal(${d.id})">
         <span class="task-list-row-main"><strong>${stepTitle(d)}</strong>
           <span class="task-list-meta">${d.code} · ${d.client} · ${d.type}${d.kind?' · '+d.kind:''}</span></span>
         <span class="task-list-amount num">${pay==='посчитаем после курса'?apMoney(a,'thb'):pay}</span>
-        <span class="task-list-arrow" aria-hidden="true">›</span></button>`;
+        <span class="task-list-arrow" aria-hidden="true">›</span></button>
+        ${role==='manager'&&d.step==='s14'?`<button class="btn btn-outline btn-sm" onclick="s14Ping(${d.id})">Напомнить</button>`:''}`;
     }).join('');
   });
   return h+`</section></div></div>`;
@@ -5644,16 +5928,46 @@ function managerEarlyDocsBlock(d){
       <textarea class="fc" id="md_comment">${htmlText(draft.comment||'')}</textarea></div>
     <div class="row"><button class="btn btn-secondary" onclick="managerDraftCommentSave(${d.id})">Сохранить комментарий</button></div>`:''}</div>`;
 }
+function dealTaskPath(d,branch){
+  let steps=flowOf(d);
+  if(d.prepay)steps=steps.filter(k=>branch==='conversion'?['s18','s18w'].includes(k):
+    ['s22','s23','s24','s26','s27'].includes(k));
+  const refundPending=d.prepay&&branch==='conversion'&&!!prepayRefundRole(d);
+  if(refundPending)steps.push('refund');
+  const active=refundPending?'refund':d.prepay&&branch==='conversion'?d.prepay.brokerStep:d.step;
+  const index=steps.indexOf(FLOW_ALIAS[active]||active);
+  return {steps,active,index:index<0?Math.max(0,steps.length-1):index,
+    done:d.prepay&&branch==='conversion'&&active==='done'};
+}
+function dealTaskPathCard(d,branch){
+  const path=dealTaskPath(d,branch);
+  return `<div class="card side deal-path"><h4>Путь сделки</h4><ol>${path.steps.map((k,i)=>
+    `<li class="${i<path.index||path.done?'done':i===path.index?'current':'next'}"><span class="path-dot"></span>
+      <div><b>${htmlText(k==='refund'?'Возместить оплату':STEPS[k]?.title||k)}</b><small>${i===path.index&&!path.done?'Сейчас · ':''}${htmlText(k==='refund'?(ROLES[prepayRefundRole(d)]||{}).t:(ROLES[stepWho(d,k)]||{}).t||'')}</small></div></li>`).join('')}</ol></div>`;
+}
+function taskBranchSet(branch){S.taskBranch=branch;render();}
 function viewDeal(d){
   if(!d)return '<div class="card">Сделка не найдена. <button class="btn btn-sm btn-outline" onclick="back()">Назад</button></div>';
   const st=STEPS[d.step]||{title:(d.manual?'внесена вручную':d.step),n:'',who:null};
   const who=stepWho(d);
   const mine=!d.closed&&(who===S.role||(S.role==='admin'&&d.step==='s27'));
   const p=progress(d), view=S.view||'deal';
+  const branch=d.prepay?(S.taskBranch==='conversion'?'conversion':'payment'):null;
+  const branchPath=view==='task'?dealTaskPath(d,branch):null;
   let body='';
   if(view==='path') body=pathCard(d);
   else if(view==='task'){
-    if(d.manual) body=`<div class="card"><div class="alert a-info">Сделка внесена вручную — задач по ней нет.
+    if(branch==='conversion'){
+      const current=d.prepay.brokerStep;
+      if(current==='done'&&prepayRefundRole(d)===S.role)
+        body=`<section class="task-action">${prepayRefundCard(d)}</section>`;
+      else if(current==='done')body='<div class="card">Конвертация завершена: USDT брокера получены.</div>';
+      else if(S.role==='operator'||S.role==='admin'){
+        const side=Object.assign({},d,{step:current,_prepayBroker:true});
+        body=`<section class="task-action">${assigneeBlock(side,'operator')}${goalCard(side)}${stepCard(side)}</section>${ctxCard(d)}`;
+      }else body=`<div class="card">Конвертацией занимается операционист: ${htmlText(STEPS[current]?.title||'ожидаем результат')}.</div>`;
+    }
+    else if(d.manual) body=`<div class="card"><div class="alert a-info">Сделка внесена вручную — задач по ней нет.
       Всё, что о ней известно, в карточке; поправить можно через «Редактировать».</div>
       <button class="btn btn-outline" onclick="setView('deal')">К карточке сделки</button></div>`;
     else if(d.closed) body=`<div class="card"><div class="alert ${d.closeReason==='Успешно завершена'?'a-ok':'a-warn'}">Сделка закрыта ${d.closedAt} — <b>${d.closeReason}</b></div>
@@ -5665,16 +5979,16 @@ function viewDeal(d){
       const managerSide=S.role==='manager'&&d.type==='Оплата недвижимости'&&!(d.pay||{}).invoicePaid;
       const confirmGate=managerSide&&needsPayConfirm(d);
       const canDraft=managerSide&&d.reqTask!=='done';
-      const own=(managerSide&&!confirmGate&&canDraft)?`<div class="card-title" style="margin:10px 0">Ваша параллельная задача — реквизиты для оплаты</div>`:'';
       const side=Object.assign({},d,{step:'s15',_side:true});
+      const parallelAction=confirmGate||canDraft?`<section class="task-action">
+        ${goalCard(side)}${confirmGate?payToConfirmBlock(d):stepCard(side)}</section>`:'';
       const manualReceiptSide=S.role==='operator'&&d.step==='s14'&&!isCrypto(d)?manualBankReceiptBlock(d):'';
-      body=status+((S.role==='manager'||S.role==='admin')&&d.step==='s14'?s14PingBlock(d,true):'')+(S.role==='manager'&&d.step==='s14'?`<div class="card"><div class="card-title">Ждём деньги — сверяет операционист</div><p>${isCrypto(d)
+      body=parallelAction+status+((S.role==='manager'||S.role==='admin')&&d.step==='s14'?s14PingBlock(d,true):'')+(S.role==='manager'&&d.step==='s14'?`<div class="card"><div class="card-title">Ждём деньги — сверяет операционист</div><p>${isCrypto(d)
         ?`Ожидаем ${money(approx(d).pay,'USDT')} на ${htmlText((payinWallet(d)||{}).addr||'кошелёк из договора')}.`
         :`Ожидаем ${money(expectOf(d).amount,'₽')} на ${htmlText(expectOf(d).acc||'счёт из договора')}.`} Прикреплённые клиентом чеки видны ниже; приход подтверждает операционист.</p></div>`:'')+
         (d.step==='s14'&&(S.role==='operator'||S.role==='manager')?clientPayinBlock(d):'')+manualReceiptSide+
         (S.role==='operator'&&d.step==='s27'?crmEvidencePanel(d):'')+
-        (S.role==='admin'&&d.step==='s23'&&personalSend(d)?stepCard(d):'')+(confirmGate?payToConfirmBlock(d):'')+
-        own+(canDraft?stepCard(side):'')+
+        (S.role==='admin'&&d.step==='s23'&&personalSend(d)?stepCard(d):'')+
         (managerSide?managerEarlyDocsBlock(d):'')+
         (managerSide&&!confirmGate&&d.reqTask==='done'&&d.payTo&&d.payTo.acc
           ?`<button class="btn btn-secondary" onclick="reqReopen(${d.id},'правка менеджера')">Изменить реквизиты для оплаты</button>`:'');
@@ -5682,23 +5996,28 @@ function viewDeal(d){
     /* На s12 документы для клиента — первым делом, выше сводки сделки: менеджер не
        должен их искать (Карим, 25.09 — «в самом видном месте»). Дальше цель, сам шаг с
        полями и кнопкой, а сводка «Что это за сделка» — в самом низу свёрнутой (Карим, 27.09). */
-    else body=(who?assigneeBlock(d,who):'')+(S.role==='operator'&&d.step==='s14'?s14PingBlock(d,false):'')+(d.step==='s12'?`<div class="card" style="margin-bottom:16px">${docSendBlock(d)}</div>`:'')+goalCard(d)+stepCard(d)+ctxCard(d);
+    else body=`<section class="task-action">${who?assigneeBlock(d,who):''}${d.step==='s12'?docSendBlock(d):''}${goalCard(d)}${stepCard(d)}</section>`+
+      (S.role==='operator'&&d.step==='s14'?s14PingBlock(d,false):'')+ctxCard(d);
   }
   else body=overview(d,st,mine,p,who)+quotesCard(d);
-  body=(view==='task'&&S.role==='operator'&&['s22','s23','s24','s25','s26'].includes(d.step)?payToCard(d,true):'')+prepayPanel(d)+body;
-  if(view==='task'&&['s23','s24'].includes(d.step)&&['teodor','findir','admin'].includes(S.role))body=ownerSummary(d)+body;
+  if(view==='task'&&branch){
+    const other=branch==='conversion'?'payment':'conversion';
+    const title=other==='conversion'?'Конвертация':'Оплата застройщику';
+    body+=`<div class="branch-other">Ещё задача по сделке: <button onclick="taskBranchSet('${other}')">${title} →</button></div>`;
+  }
+  body+=view==='task'&&S.role==='operator'&&['s22','s23','s24','s25','s26'].includes(d.step)&&branch!=='conversion'?payToCard(d,true):'';
+  body+=!d.prepay?prepayPanel(d):'';
+  if(view==='task'&&branch!=='conversion'&&['s23','s24'].includes(d.step)&&['teodor','findir','admin'].includes(S.role))body+=`<details class="card"><summary>Деньги по сделке</summary>${ownerSummary(d)}</details>`;
   if(d.demoTransfers&&!demoAllowed())body='<div class="alert a-warn">В истории есть DEMO-приходы или переводы. Автоматически снять флаг и продолжить нельзя: требуется сверка реальных платежей операционистом.</div>'+body;
-  if(view==='task'&&d.prepay&&S.role==='operator'&&d.prepay.brokerStep!=='done')
-    body=stepCard(Object.assign({},d,{step:d.prepay.brokerStep,_prepayBroker:true}))+body;
   const tab=(v,label)=>`<span class="vtab ${view===v?'on':''}" onclick="setView('${v}')">${label}</span>`;
-  return `<div class="strip"><span class="id">${d.code}</span><span class="nm">${d.client}</span>
-    <span class="sp"></span><span class="it">${d.type}${d.kind?' · '+d.kind:''}${d.pair?' · '+d.pair:''}${d.object?' · '+d.object:''}${d.partial?' · <b>часть '+(d.partNo||'')+'</b>':''}</span>
-    <span class="sp"></span><span class="it">Источник <b>${SOURCES[d.source]}</b></span>
-    <span style="margin-left:auto">${d.closed?`<span class="badge b-done">закрыта</span>`:
-      `<span class="badge b-work">${stepTitle(d)}</span>
-      ${p.i?`<span class="prog" title="Номера шагов 4-27 — строки доски Section 8, поэтому идут не подряд">
-        <span class="bar"><span style="width:${Math.round(p.i/p.n*100)}%"></span></span>
-        <span class="pt">${p.i} из ${p.n}${st.n?' · строка '+st.n:''}</span></span>`:''}`}</span></div>
+  return `<div class="deal-screen"><div class="deal-breadcrumb">Задачник / ${htmlText(d.code)}</div>
+  <header class="deal-head"><div><p class="deal-code">${htmlText(d.code)} · ${htmlText(d.kind||d.type)}${d.prepay?' · оплата наперёд':''}</p>
+    <h1>${htmlText(d.client)}</h1><p>${htmlText([d.object,d.dev,d.manager?'менеджер '+d.manager:''].filter(Boolean).join(' · '))}</p></div>
+    ${view==='task'&&branchPath?`<div class="deal-progress"><span>${htmlText(branchPath.active==='refund'?'Возместить оплату':STEPS[branchPath.active]?.title||'Конвертация завершена')}</span>
+      <b>Шаг ${branchPath.index+1} из ${branchPath.steps.length}</b><i><span style="width:${Math.round((branchPath.index+1)/Math.max(1,branchPath.steps.length)*100)}%"></span></i></div>`:''}</header>
+  ${view==='task'&&d.prepay?`<nav class="branch-tabs" aria-label="Ветка сделки">
+    <button class="${branch==='conversion'?'on':''}" onclick="taskBranchSet('conversion')">Конвертация</button>
+    <button class="${branch==='payment'?'on':''}" onclick="taskBranchSet('payment')">Оплата застройщику</button></nav>`:''}
   ${(function(){
     /* Вкладка задачника появляется только если по сделке были задачи: у внесённой
        руками смотреть нечего, и лишняя вкладка сбивает (Карим, 23.09). */
@@ -5708,12 +6027,8 @@ function viewDeal(d){
       had?tab('path','<span class="lg">Задачник — </span>история'):''}</div>`;})()}
   ${view==='deal'&&['teodor','findir','admin'].includes(S.role)?ownerSummary(d):''}
   ${view==='deal'?payToCard(d):''}
-  <div class="cols"><div>${body}</div>
-  <div><div class="card side"><h4>Коротко о пути</h4>
-  ${d.closed?'':`<p style="font-size:12px;color:var(--text-muted);margin:-4px 0 12px;line-height:1.5">Этап ${p.i} из ${p.n}. Номера шагов 4-27 — строки доски Section 8, они идут не подряд.</p>`}
-  <ul class="tl">${d.log.slice().reverse().slice(0,6).map((l,i)=>
-    `<li><span class="dot ${i===0?'now':'done'}"></span><div><div class="t">${htmlText(l.text)}</div><div class="s">${logWhen(l)} · ${ROLES[l.role]?ROLES[l.role].t:'Система'}</div></div></li>`).join('')}</ul>
-  ${d.log.length>6?`<button class="btn btn-outline btn-sm" style="margin-top:10px" onclick="setView('path')">Весь путь — ${d.log.length} ${plural(d.log.length,'событие','события','событий')}</button>`:''}</div>
+  <div class="cols"><main>${body}</main>
+  <aside>${dealTaskPathCard(d,branch)}
   ${view==='deal'?'':docSide(d)}
   <div style="margin-top:14px"><button class="btn btn-outline btn-sm" onclick="back()">К списку</button>
   ${d.manual&&!d.closed&&(S.role==='manager'||S.role==='admin')
@@ -5722,7 +6037,7 @@ function viewDeal(d){
         onclick="crmPushClose(${d.id})">Сохранить в CRM</button>
       ${!d.manualNew&&d.originMode!=='manual'?'<span class="fh">Не подтверждено сервером происхождение ручного черновика; финальное сохранение недоступно.</span>':''}`:''}
   ${!d.closed&&!d.manual?`<button class="btn btn-outline btn-sm" onclick="askClose(${d.id})">Закрыть сделку</button>`:''}</div>
-  </div></div>`;
+  </aside></div></div>`;
 }
 
 /* Карточка сделки: всё, что о ней известно, одним экраном. Задача — только строкой,
@@ -6617,12 +6932,12 @@ function docSide(d){
   const {issued,client}=docListRows(d,true);
   const wait=!d.docPack&&!d.closed;
   if(!issued.length&&!client.length&&!wait)return '';
-  return `<div class="card side" style="margin-top:14px"><h4>Документы</h4>
+  return `<details class="card side doc-side"><summary>Документы · ${issued.length+client.length}</summary>
     ${issued.length?`<div class="list">${issued.join('')}</div>`
       :wait?`<p style="font-size:12.5px;color:var(--text-muted);margin:0 0 10px">Договор, приложение и счёт появятся после «Создать договор» у операциониста.</p>`:''}
     ${issued.length&&d.docPack?`<p style="font-size:12px;color:var(--text-muted);margin:8px 0 10px">Пакет версии ${d.docPack.version} · <a href="javascript:void(0)" onclick="docDownloadAll(${d.id})">скачать всё</a></p>`:''}
     ${client.length?`<div class="list">${client.join('')}</div>`:''}
-    ${S.role==='manager'?signedBlock(d,true):''}</div>`;
+    ${S.role==='manager'?signedBlock(d,true):''}</details>`;
 }
 
 /* Редактирование сделки. Реферал меняется только здесь и на экране создания —
@@ -8024,7 +8339,7 @@ function expectOf(d){
   const custom=receiving.mode==='custom', flowsole=receiving.mode==='flowsole', sber=receiving.mode==='sber';
   return {
     amount:(e.amount!=null?e.amount:(ap.pay||'')),
-    acc:custom?'custom':flowsole?'…0261 · СГБ (Flow Sole)':sber?'…0286 · Сбер':(e.acc||'…0286 · Сбер'),
+    acc:custom?([receiving.bank||'Другой счёт',receiving.account||'счёт не указан'].join(' · ')):flowsole?'Flow Sole (СГБ) …0261':sber?'…0286 · Сбер':(e.acc||'…0286 · Сбер'),
     bank:custom?receiving.bank:flowsole?FLOWSOLE.bank:sber?MF.bank:(e.bank||''),
     account:custom?receiving.account:flowsole?FLOWSOLE.acc:sber?MF.acc:(e.account||''),
     tol:(e.tol!=null?e.tol:1000),
@@ -8525,7 +8840,7 @@ function stepGoal(d){
         nums:[['Ждём USDT',plan!=null?usd(plan):'—'],['Курс заявки',d.rates.broker||'—'],
               ['Ушло брокеру',(c&&c.sent?moneyKop(c.sent,'₽'):money2(rub,'₽'))+(n>1?' · '+n+' '+plural(n,'сделка','сделки','сделок'):'')]],
         sub:c&&c.sent?'пришло от клиента '+money2(rub,'₽')+' · удержано '+moneyKop(c.held,'₽'):''};})();
-    case 's22': if(d.prepay)return {t:'Согласовать заявку IPPS',nums:[['В IPPS',usd(d.prepay.amount)],['Источник',d.prepay.wallet.name]],sub:'Оплата идёт параллельно с конвертацией у брокера'};
+    case 's22': if(d.prepay)return {t:'Согласовать заявку IPPS',nums:[['В IPPS',usd(d.prepay.amount)],['Источник',d.prepay.wallet.addr||'—'],['Застройщику',usd(d.invoiceUsd||0)]],sub:'Оплата идёт параллельно с конвертацией у брокера'};
       return {t:'Решить, куда уходят пришедшие USDT',
       nums:[['На кошельке',(function(){const c=convOf(d);const g=c?hashSum(c.txs):d.pay.usdt;return g?usd(g):'—';})()],
             ['Кошелёк',(dealWallet(d)||{}).name||'не выбран'],
@@ -8537,9 +8852,9 @@ function stepGoal(d){
         sub:(dealWallet(d)&&dealWallet(d).multisig)
         ?(n>1?'Подписать '+n+' перевода — дальше их одобрит Теодор':'Подписать перевод — дальше его одобрит Теодор')
         :(d.outgoingReview?'Проверить найденные переводы; при расхождении уточнить части и сумму':'Отправить деньги и нажать «Отправил» — хеши найдёт система'),
-      nums:[['К отправке',usd(pcOut(d))],
-            ['Переводов',String(n)],
-            ['С кошелька',(dealWallet(d)||{}).name||'не выбран']]};}
+      nums:[['К отправке',moneyKop(pcOut(d),'USDT')],
+            ['Куда',d.ippsPayoutOrder?.address||d.transfer?.addr||'не указан'],
+            ['С кошелька',(dealWallet(d)||{}).addr||'не выбран']]};}
     case 's24': {
       const n=cnvMembers(d).filter(x=>pcSends(x)).length;
       return {t:'Проверить суть сделки и подписать перевод в кошельке',
@@ -8577,20 +8892,22 @@ function stepGoal(d){
 }
 function goalCard(d){
   const g=stepGoal(d); if(!g) return '';
-  /* «Что заполняет» переехало сюда из свёрнутой сводки: это часть цели шага, её надо
-     видеть сразу, а не искать (Карим, 27.09) */
-  const fl=FILLS[d.step];
+  const titles={s4:'Запросите курс',s5:'Ответьте курсом',s6:'Отдайте расчёт клиенту',
+    s8:'Соберите документы',s11:'Подготовьте договор',s11b:'Проверьте пакет документов',
+    s12:'Отправьте документы клиенту',s14:'Сверьте приход клиента',s14m:'Разберите поступление',
+    s15:'Подтвердите реквизиты',s18:'Отправьте рубли брокеру',s18w:'Сверьте USDT от брокера',
+    s22:d.kind==='Фрихолд'?'Согласуйте заявку IPPS':'Выберите назначение USDT',
+    s23:d.outgoingReview&&['operator','admin'].includes(S.role)?'Засчитайте перевод':
+      'Отправьте USDT с кошелька',s24:'Одобрите перевод',s25:d.pay?.coinsNotified?'Сверьте баты на SCB':'Известите Coins',
+    s26:d.kind==='Фрихолд'?'Приложите MT103':'Оплатите инвойс',s27:'Закройте сделку'};
+  const machine=v=>/^(T[A-Za-z0-9]{32,}|0x[A-Fa-f0-9]{40,})$/.test(String(v||''));
   return `<div class="card goal" style="margin-bottom:16px">
-    <div class="goalh">Что должно получиться на этом шаге</div>
-    <div class="goalt">${htmlText(g.t)}</div>
-    ${fl?`<p class="goalfill">Эта задача заполняет в сделке: <b>${htmlText(fl.b)}</b> — ${htmlText(
-      (d.step==='s5'&&d.kind==='Фрихолд'&&!isCrypto(d))?'курс RUB→USDT у брокера — батов и Coins в фрихолде нет'
-      :(d.step==='s5'&&isCrypto(d))?'курс USDT→THB у Coins или Bitazza — рублей в сделке нет'
-      :(d.step==='s22'&&d.kind==='Фрихолд')?'маршрут один — IPPS SWIFT в USD, без выбора'
-      :(d.step==='s25'&&d.kind==='Фрихолд')?'заявка IPPS с суммой USD и подтверждённым хешем перевода'
-      :fl.w)}</p>`:''}
-    ${(d.docComment&&(d.step==='s11'||d.step==='s11b'))?`<div class="alert a-info" style="margin:0 0 12px"><div><b>Комментарий менеджера:</b> ${htmlText(d.docComment)}</div></div>`:''}
-    <div class="goalnums">${(g.nums||[]).map((n,i)=>`<div><span class="k">${htmlText(n[0])}</span><span class="v${i===0?' big':''}">${htmlText(n[1])}</span></div>`).join('')}</div>
+    <div class="goalt">${htmlText(titles[d.step]||g.t)}</div>
+    ${d.prepay?`<p class="prepay-notice"><b>Оплата наперёд.</b> ${S.role==='teodor'?'USDT брокера ещё не пришли; возмещение вам после конвертации.':
+      'Оплата застройщику и конвертация идут параллельно; возмещение после получения USDT.'}</p>`:''}
+    <div class="goalnums">${(g.nums||[]).slice(0,3).map((n,i)=>`<div><span class="k">${htmlText(n[0])}</span><span class="v${i===0?' big':''}${machine(n[1])?' addr-value':''}">${machine(n[1])
+      ?`<span title="${htmlText(n[1])}" onclick="this.textContent=this.title;this.classList.add('full')">${htmlText(txShort(n[1]))}</span><button class="btn btn-outline btn-sm" onclick="copyAsk(${jsLiteralAttr(n[1])})">Копировать адрес</button>`
+      :htmlText(n[1])}</span></div>`).join('')}</div>
     ${g.sub?`<p class="fh" style="margin-top:8px">${htmlText(g.sub)}</p>`:''}
     ${(g.rows||[]).filter(r=>r[1]).length?`<div class="goalrows">${g.rows.filter(r=>r[1]).map(r=>`<div class="payrow">
       <div><div class="k">${htmlText(r[0])}</div><div class="v">${htmlText(r[1])}</div></div>
@@ -8602,12 +8919,12 @@ function goalCard(d){
    ни скопировать, а именно это с ним и делают. */
 function walletLine(w){
   return `<div class="derived" style="margin-top:12px">
-    <span><b>${w.name}</b> · ${w.owner} · <span class="addr">${w.addr}</span>
+    <span><span class="addr" title="${htmlText(w.addr)}">${htmlText(w.addr)}</span><small>${htmlText(w.name)} · ${htmlText(w.owner)}</small>
     <span style="color:var(--text-muted)"> — ${w.multisig
       ? 'мультисиг: подписывает фин дир, одобряет Теодор'
       : 'личный: владелец отправляет сам, шаг второй подписи пропускается'}</span></span>
     <button class="btn btn-outline btn-sm" style="margin-left:auto;white-space:nowrap"
-      onclick="copyAsk(${JSON.stringify(w.addr).replace(/"/g,'&quot;')})">копировать адрес</button></div>`;
+      onclick="copyAsk(${JSON.stringify(w.addr).replace(/"/g,'&quot;')})">Копировать адрес</button></div>`;
 }
 /* Выбранный кошелёк уже виден в карточках выбора — строку с ним не дублируем (27.09) */
 function walletBlock(d,key){
@@ -8869,6 +9186,8 @@ function signSummary(d){
   }).join('');
 }
 function stepCard(d){
+  if(d.step==='s23'&&d.outgoingReview&&['operator','admin'].includes(S.role))
+    return outgoingReviewBlock(d);
   const ap=approx(d),F=fake(d);
   const f={
   s4:()=>`<div class="card"><div class="card-title">${d.self?'Курс и расчёт — без операциониста':'Задача операционисту — запрос курса'}</div>
@@ -9595,9 +9914,14 @@ function stepCard(d){
     const got=c?c.txs.reduce((s,x)=>s+(x.amount||0),0):null;
     const mine=c?(c.sources.find(x=>x.dealId===d.id)||{}):{};
     const cost=sObj.cur==='usdt'?need/rate:null;
-    return `<div class="card"><div class="card-title">${htmlText(sendHead(d))}<span class="sub">${(dealWallet(d)||{}).name?'с кошелька '+htmlText(dealWallet(d).name):''}</span></div>
+    const foundTx=(d.outgoingReview?.candidates||[]).find(t=>t.to===d.transfer?.addr&&!t.networkFee&&t.hash);
+    return `<div class="card"><div class="card-title">${htmlText(sendHead(d))}</div>
+    ${foundTx&&S.role==='teodor'?`<div class="alert a-warn">В сети уже есть перевод · ${new Date(foundTx.timestamp_ms).toLocaleString('ru-RU',{timeZone:'Europe/Moscow'})} МСК ·
+      <a href="https://tronscan.org/#/transaction/${encodeURIComponent(foundTx.hash)}" target="_blank" rel="noopener noreferrer">${htmlText(txShort(foundTx.hash))} · TronScan</a>
+      <button class="btn btn-outline btn-sm" onclick="copyAsk(${jsLiteralAttr(foundTx.hash)})">Копировать хеш</button></div>`:''}
     ${d.kind==='Фрихолд'&&d.ippsPayoutOrder?`<div class="alert a-info"><div><b>Поручение операциониста · IPPS</b><br>${usd(d.ippsPayoutOrder.amount)} · ${htmlText(d.ippsPayoutOrder.network)} · <span class="addr">${htmlText(d.ippsPayoutOrder.address)}</span><br>Используйте этот подтверждённый снимок при подготовке исходящего перевода.</div></div>`:''}
 
+    <details class="card deal-detail"><summary>Деньги и переводы пачки</summary>
     ${d.prepay?`<div class="alert a-info"><div>${htmlText(prepayFundingText(d))}</div></div>`:c?`<div class="card" style="background:var(--navy-50);box-shadow:none;margin-bottom:16px">
       <div class="sec snd" style="margin:0 0 10px">ОТКУДА ДЕНЬГИ · ${htmlText(c.name)} · ${c.broker}${c.requestNo?' · заявка '+c.requestNo:''}</div>
       <table class="tbl">
@@ -9614,6 +9938,7 @@ function stepCard(d){
 
     ${transferModeBlock(d)}
     ${packTasks(d,!personalSend(d)||(['operator','admin'].includes(S.role)&&!!d.outgoingReview))}
+    </details>
     ${cnvMembers(d).map(outgoingReviewBlock).join('')}
     ${(function(){const w=dealWallet(d);
       return (w&&w.multisig)?`
@@ -9638,6 +9963,7 @@ function stepCard(d){
     ${sObj&&sObj.debt?`<div class="box box-amber"><b>Это возмещение вам.</b> Вы выдали баты со своего кошелька,
       сейчас подписываете возврат ${usd(d.pay.usdt)} себе же на <span class="addr">${((d.transfer||{}).addr)||'адрес не указан'}</span>.</div>`:''}
     <div class="alert a-ok"><div><b>Фин дир проверил:</b> ${d.pay.check?htmlText(d.pay.check):'комментарий не оставлен'}</div></div>
+    <div class="row"><button class="btn btn-primary" onclick="act(${d.id},'s24')">Подписал — проверить перевод</button></div>
     ${packTasks(d,false)}
     </div>`;},
 

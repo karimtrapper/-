@@ -50,7 +50,8 @@ def network(monkeypatch):
         assert op == 'tron_trc20_transfers'
         return 200, {'token_transfers': sorted(rows, key=lambda t: -t['block_ts']), 'total':len(rows)}, None
     def verify(ref, net, sender, recipient, amount, **kw):
-        t=next((t for t in rows if t['transaction_id']==ref), None)
+        t=next((t for t in rows if t['transaction_id']==ref
+                and t['from_address']==sender and t['to_address']==recipient), None)
         if not t or t['from_address']!=sender or t['to_address']!=recipient:
             return {'status':'mismatch','checkError':'адрес не совпал'}
         return {'status':'confirmed','verifiedAmount':float(Decimal(t['quant'])/1000000),
@@ -264,6 +265,132 @@ def test_custom_personal_trc_wallet_uses_same_review(api, network):
     r = action(api)
     assert r.status_code == 200, r.json
     assert r.json['data']['deals'][0]['step'] == 's25'
+
+
+def test_prepay_commission_changes_cost_not_ipps_reconciliation(api, network):
+    state = setup_send(api)
+    d = state['deals'][0]
+    d['payinHashes'] = [{'hash': 'b'*64, 'amount': 11000}]
+    d['pay']['usdt'] = 11000
+    seed(state)
+    api[1][0] = 'teodor'
+    assert action(api).status_code == 200
+    fee_address = 'TLntW9Z59LYY5KEi9cmwk3PKjQga828ird'
+    network.extend([tx(11, 10130), tx(11, 1.5, to=fee_address)])
+    api[1][0] = 'operator'
+    listed = action(api, 'list').json['data']['deals'][0]['outgoingReview']['candidates']
+    assert any(t['networkFee'] and t['hash'] == f'{11:064x}' for t in listed)
+    selected = action(api, 'select', hashes=[f'{11:064x}'], commissionHashes=[f'{11:064x}'])
+    assert selected.status_code == 200, selected.json
+    d = selected.json['data']['deals'][0]
+    assert d['payout']['usdt'] == 10130
+    assert d['mfPayout'][0]['amount'] == 10130
+    assert d['commissionSends'][0]['amount'] == 1.5
+    assert m._stand_outgoing_cost(d) == 10131.5
+    no_fees = copy.deepcopy(d)
+    no_fees.pop('commissionSends')
+    assert m._stand_outgoing_cost(no_fees) == 10130
+    assert m._stand_main_profit(d)[0] == m._stand_main_profit(no_fees)[0] - 1.5
+
+
+def test_prepay_fee_requires_explicit_choice_before_auto_settlement(api, network):
+    setup_send(api)
+    fee_address = 'TLntW9Z59LYY5KEi9cmwk3PKjQga828ird'
+    network.extend([tx(40, 10130), tx(40, 1.5, to=fee_address)])
+    api[1][0] = 'teodor'
+    sent = action(api)
+    assert sent.status_code == 200, sent.json
+    d = sent.json['data']['deals'][0]
+    assert d['step'] == 's23' and not d.get('serverTransferComplete')
+    assert not d.get('commissionSends')
+    api[1][0] = 'operator'
+    snap = api[0].get('/api/stand/state').json
+    snap['data']['deals'][0]['commissionSends'] = [{'hash': f'{40:064x}', 'amount': 1.5}]
+    forged = api[0].put('/api/stand/state', json={'version': snap['version'], 'data': snap['data']})
+    assert forged.status_code == 409
+    assert 'комиссии' in forged.json['error']
+
+
+def test_prepay_multiple_commissions_can_be_removed_before_settlement(api, network):
+    setup_send(api)
+    api[1][0] = 'teodor'
+    assert action(api).status_code == 200
+    fee_address = 'TLntW9Z59LYY5KEi9cmwk3PKjQga828ird'
+    network.extend([tx(21, 2000), tx(21, 1.5, to=fee_address),
+                    tx(22, 3000), tx(22, 1.5, to=fee_address), tx(23, 5130)])
+    api[1][0] = 'operator'
+    assert action(api, 'list').status_code == 200
+    selected = action(api, 'select', hashes=[f'{21:064x}', f'{22:064x}'],
+                      commissionHashes=[f'{21:064x}', f'{22:064x}'])
+    assert selected.status_code == 200, selected.json
+    d = selected.json['data']['deals'][0]
+    assert d['step'] == 's23' and m._stand_outgoing_cost(d) == 5003
+    selected = action(api, 'select', hashes=[f'{21:064x}', f'{22:064x}', f'{23:064x}'],
+                      commissionHashes=[f'{21:064x}'])
+    assert selected.status_code == 200, selected.json
+    d = selected.json['data']['deals'][0]
+    assert d['payout']['usdt'] == 10130
+    assert m._stand_outgoing_cost(d) == 10131.5
+    assert [x['hash'] for x in d['commissionSends']] == [f'{21:064x}']
+
+
+def test_crm_prepay_fee_keeps_ipps_reconciliation_and_reduces_profit():
+    def crm():
+        deal = m.Deal(deal_kind=m.MF_FREEHOLD_KIND, payin_amount_usdt=11000)
+        m._apply_mf_freehold(deal, {'invoice_amount_usd': 10000,
+                                   'transfer_sent_usd': 10130,
+                                   'transfer_fee_percent': 0.8,
+                                   'transfer_fee_fixed_usd': 50})
+        return deal
+
+    baseline = crm()
+    assert baseline.transfer_sent_usd == 10130
+    assert baseline.payout_amount_usdt == 10130
+    assert baseline.profit_usdt == 870
+
+    board = {'prepay': {'startedAt': 'now'}, 'commissionSends': [{'amount': 1.5}]}
+    with_fee = crm()
+    m._stand_apply_prepay_fees_to_crm(None, with_fee, board, [])
+    assert with_fee.transfer_sent_usd == baseline.transfer_sent_usd
+    assert with_fee.transfer_arrive_usd == baseline.transfer_arrive_usd
+    assert with_fee.prepay_network_fee_usdt == 1.5
+    assert with_fee.payout_amount_usdt == 10131.5
+    assert with_fee.profit_usdt == baseline.profit_usdt - 1.5
+    assert with_fee.net_profit_usdt == with_fee.profit_usdt
+
+    # A later CRM recalculation must preserve the separate fee.
+    m._apply_mf_freehold(with_fee, {})
+    assert with_fee.transfer_sent_usd == 10130
+    assert with_fee.profit_usdt == 868.5
+
+    board['commissionSends'].append({'amount': 1.5})
+    two = crm()
+    m._stand_apply_prepay_fees_to_crm(None, two, board, [])
+    assert two.profit_usdt == 867
+    board['commissionSends'].pop()
+    one = crm()
+    m._stand_apply_prepay_fees_to_crm(None, one, board, [])
+    assert one.profit_usdt == 868.5
+
+    ordinary_freehold = crm()
+    m._stand_apply_prepay_fees_to_crm(None, ordinary_freehold,
+                                      {'commissionSends': [{'amount': 1.5}]}, [])
+    assert ordinary_freehold.prepay_network_fee_usdt is None
+    assert ordinary_freehold.profit_usdt == baseline.profit_usdt
+
+
+def test_prepay_empty_search_returns_to_sender_with_reason(api, network):
+    setup_send(api)
+    api[1][0] = 'teodor'
+    assert action(api).status_code == 200
+    api[1][0] = 'operator'
+    assert action(api, 'return', reason='').status_code == 400
+    result = action(api, 'return', reason='Перевода в сети нет; проверьте отправку')
+    assert result.status_code == 200, result.json
+    d = result.json['data']['deals'][0]
+    assert d['step'] == 's23' and 'outgoingReview' not in d
+    assert m._stand_current_step_role(result.json['data'], d) == 'teodor'
+    assert any('Перевода в сети нет' in x['text'] for x in d['log'])
 
 
 def test_changed_requisites_during_review_block_poll_and_manual_check(api, network):

@@ -23,6 +23,7 @@ const ctx = {
   demoAllowed: () => false, stepTitle: () => 'Ждём приход', plural: () => 'событие',
   approx: () => ({pay: 100, thb: 0}), apMoney: () => '100', isCrypto: () => false,
   rateUnit: () => '₽', money: n => String(n), dur: () => '2 мин', flowOf: () => [],
+  dealTaskPathCard: () => '',
 };
 vm.createContext(ctx);
 vm.runInContext(source, ctx);
@@ -31,7 +32,7 @@ function escaped(label, rendered) {
   assert.ok(!rendered.includes(payload), label + ': executable HTML present');
 }
 escaped('список задач', ctx.logMeta(entry));
-escaped('Коротко о пути', ctx.viewDeal(deal));
+assert.ok(!ctx.viewDeal(deal).includes(payload), 'Карточка сделки: executable HTML present');
 const pathHtml = ctx.pathCard(deal);
 escaped('Хронология и Весь путь', pathHtml);
 assert.equal((pathHtml.match(/&lt;img/g) || []).length, 2, 'table and longest-wait alert');

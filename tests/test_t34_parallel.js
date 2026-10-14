@@ -99,14 +99,18 @@ function run(names, context) {
     ROLES: {manager: {t: 'Менеджер'}, operator: {t: 'Операционист'}},
     SOURCES: {test: 'Тест'}, stepWho: () => 'operator',
     stepTitle: () => 'Подготовить договор', progress: () => ({i: 4, n: 12}),
-    stepCard: () => 'REQ_FORM', managerEarlyDocsBlock: () => 'DOC_FORM',
+    stepCard: () => 'REQ_FORM', goalCard: () => 'MANAGER_GOAL',
+    managerEarlyDocsBlock: () => 'DOC_FORM',
     prepayPanel: () => '', docSide: () => '', pathCard: () => '', overview: () => '', quotesCard: () => '',
+    dealTaskPath: () => ({steps:[],active:'s11',index:0}),dealTaskPathCard: () => '',htmlText:String,
     needsPayConfirm: () => false, payToConfirmBlock: () => 'CONFIRM_BLOCK',
   });
   const manager = ctx.viewDeal(d);
   assert.match(manager, /Сейчас задача Операционист: Подготовить договор/);
-  assert.match(manager, /Ваша параллельная задача — реквизиты для оплаты/);
+  assert.match(manager, /MANAGER_GOAL/);
   assert.match(manager, /REQ_FORM/);
+  assert.ok(manager.indexOf('MANAGER_GOAL') < manager.indexOf('Сейчас задача Операционист'),
+    'manager action precedes the current owner status');
   S.role = 'operator';
   ctx.stepWho = () => 'manager';
   const operator = ctx.viewDeal(d);

@@ -163,7 +163,12 @@ def test_list_cache_and_offline_manual_fallback(api,chain,monkeypatch):
     d = post(api,'operator','/api/stand/transfers/check',dealId=id)['data']['deals'][0]
     assert d['transfer']['sends'][0]['beforeOrder'] and d['step'] == 's23'
     assert act(api,id,'accept',fingerprint=d['outgoingReview']['selectionFingerprint']).status_code == 409
-    assert act(api,id,'accept',fingerprint=d['outgoingReview']['selectionFingerprint'],confirmBeforeOrder=True).json['data']['deals'][0]['step'] == 's26'
+    # A network fee shares this transaction: the operator must decide whether
+    # to include it in cost, even when the IPPS payment itself was verified.
+    assert act(api,id,'accept',fingerprint=d['outgoingReview']['selectionFingerprint'],confirmBeforeOrder=True).json['data']['deals'][0]['step'] == 's23'
+    chosen = act(api,id,'select',hashes=[ref],commissionHashes=[ref],confirmBeforeOrder=True)
+    assert chosen.status_code == 200, chosen.json
+    assert chosen.json['data']['deals'][0]['step'] == 's26'
 
 
 def test_claimed_hash_displays_deal_and_cannot_be_selected(api,chain):
@@ -212,12 +217,16 @@ def test_registered_wrong_address_cannot_bypass_network_check(api,chain):
     assert r.status_code==409 and 'не совпали' in r.json['error']
 
 
-def test_newer_payment_with_energy_event_keeps_automatic_settlement(api,chain):
+def test_newer_payment_with_energy_event_waits_for_fee_choice(api,chain):
     id,ref=snapshot(api,chain)
     for row in chain:row['block_ts']=stamp(CASES[0][3])+1000
     api[1][0]='teodor'
     d=act(api,id,'sent').json['data']['deals'][0]
-    assert d['step']=='s26' and d['payout']['usdt']==2234.76
+    assert d['step']=='s23' and not d.get('serverTransferComplete')
+    api[1][0]='operator'
+    chosen=act(api,id,'select',hashes=[ref],commissionHashes=[],confirmBeforeOrder=True)
+    assert chosen.status_code==200,chosen.json
+    assert chosen.json['data']['deals'][0]['step']=='s26'
 
 
 def test_seven_day_window_and_conflicting_same_recipient(api,chain):

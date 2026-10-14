@@ -1646,6 +1646,7 @@ class Deal(Base):
     transfer_fee_fixed_usd = Column(Float)             # фикс за платёж, $
     transfer_fee_usd = Column(Float)                   # производная: вся комиссия за перевод
     transfer_arrive_usd = Column(Float)                # производная: дойдёт до застройщика
+    prepay_network_fee_usdt = Column(Float)            # отдельные подтверждённые комиссии TRC-20
     doc_invoice_url = Column(String(500))
     doc_contract_url = Column(String(500))
     doc_payment_url = Column(String(500))
@@ -1701,6 +1702,7 @@ class Deal(Base):
             'transfer_fee_fixed_usd': self.transfer_fee_fixed_usd,
             'transfer_fee_usd': self.transfer_fee_usd,
             'transfer_arrive_usd': self.transfer_arrive_usd,
+            'prepay_network_fee_usdt': self.prepay_network_fee_usdt,
             'doc_invoice_url': self.doc_invoice_url,
             'doc_contract_url': self.doc_contract_url,
             'doc_payment_url': self.doc_payment_url,
@@ -3186,6 +3188,7 @@ _MF_REALTY_COLUMNS = [
     ('invoice_amount_usd', 'DOUBLE PRECISION'), ('transfer_sent_usd', 'DOUBLE PRECISION'),
     ('transfer_fee_percent', 'DOUBLE PRECISION'), ('transfer_fee_fixed_usd', 'DOUBLE PRECISION'),
     ('transfer_fee_usd', 'DOUBLE PRECISION'), ('transfer_arrive_usd', 'DOUBLE PRECISION'),
+    ('prepay_network_fee_usdt', 'DOUBLE PRECISION'),
 ]
 try:
     with engine.connect() as conn:
@@ -6945,6 +6948,8 @@ def stand_crm_close(stand_deal_id):
             return response, status
         crm_id = created['deal']['id']
         crm_row = db.query(Deal).filter_by(id=crm_id).one()
+        _stand_apply_prepay_fees_to_crm(db, crm_row, stand_deal,
+                                       crm_data.get('agents'))
         for field in ('doc_invoice_url', 'doc_contract_url', 'doc_payment_url'):
             if field in crm_data:
                 setattr(crm_row, field, crm_data[field])
@@ -7308,6 +7313,12 @@ def stand_s14_ping():
 def _stand_send_complete(deal):
     if deal.get('outgoingReview'):
         from stand_outgoing_review import complete
+        if (deal.get('kind') == 'Фрихолд' and deal.get('prepay')
+                and not deal['outgoingReview'].get('selectionMode')):
+            hashes = {s.get('hash') or s.get('ref') for s in (deal.get('transfer') or {}).get('sends') or []}
+            if any(c.get('networkFee') and c.get('hash') in hashes
+                   for c in deal['outgoingReview'].get('candidates') or []):
+                return False
         return complete(deal)
     sends = (deal.get('transfer') or {}).get('sends') or []
     if not sends:
@@ -7821,7 +7832,7 @@ def _stand_crm_fact_problem(board, crm, kind):
 
 
 def _stand_main_profit(deal):
-    """Прибыль лизхолда при закрытии по фактическим переводам."""
+    """Прибыль по фактическим переводам, включая выбранные комиссии наперёд."""
     payin_hashes = sum(_stand_number(h.get('amount')) for h in deal.get('payinHashes') or [])
     payin_extra = sum(
         sum(_stand_number(h.get('amount')) for h in x.get('hashes') or [])
@@ -7830,7 +7841,8 @@ def _stand_main_profit(deal):
     payin = payin_hashes + payin_extra or _stand_number((deal.get('pay') or {}).get('usdt'))
     invoice = _stand_number(deal.get('amountThb'))
     buy = _stand_number((deal.get('rates') or {}).get('usdtThb'))
-    if not payin or not invoice or not buy:
+    prepay_freehold = deal.get('kind') == 'Фрихолд' and bool(deal.get('prepay'))
+    if not payin or (not prepay_freehold and (not invoice or not buy)):
         return None
     pct = _stand_number(deal.get('companyPct')) if deal.get('companyPct') is not None else 1
     sent_thb = round(invoice * (1 + pct / 100))
@@ -7839,11 +7851,12 @@ def _stand_main_profit(deal):
     if deal.get('postConv') == 'coins':
         sent_thb = (_stand_number(((deal.get('pay') or {}).get('coinsCredit') or {}).get('thb'))
                     or _stand_number(transfer.get('thb')) or sent_thb)
-    fee_usd = (sent_thb - invoice) / (rate or buy)
+    fee_usd = 0 if prepay_freehold else (sent_thb - invoice) / (rate or buy)
     payout = deal.get('payout') or {}
-    cost = (sum(_stand_number(x.get('amount')) for x in deal.get('mfPayout') or [])
-            or sum(_stand_number(x.get('amount')) for x in payout.get('hashes') or [])
-            or sent_thb / buy)
+    cost = (_stand_outgoing_cost(deal) if prepay_freehold else
+            (sum(_stand_number(x.get('amount')) for x in deal.get('mfPayout') or [])
+             or sum(_stand_number(x.get('amount')) for x in payout.get('hashes') or [])
+             or sent_thb / buy))
     crypto = payin - cost
     gross = crypto + fee_usd
     # crypto_share учитывает только прибыль в крипте.
@@ -7859,6 +7872,37 @@ def _stand_main_profit(deal):
         previous = payout_agent
         total += payout_agent
     return round(gross, 2), round(gross - total, 2)
+
+
+def _stand_outgoing_cost(deal):
+    """IPPS-платёж и отдельно подтверждённые комиссии; поручение не меняем."""
+    payout = deal.get('payout') or {}
+    payment = (sum(_stand_number(x.get('amount')) for x in deal.get('mfPayout') or [])
+               or sum(_stand_number(x.get('amount')) for x in payout.get('hashes') or [])
+               or _stand_number(payout.get('usdt'))
+               or sum(_stand_number(s.get('verifiedAmount'))
+                      for s in (deal.get('transfer') or {}).get('sends') or []
+                      if s.get('status') == 'confirmed'))
+    fees = (sum(_stand_number(x.get('amount')) for x in deal.get('commissionSends') or [])
+            if deal.get('kind') == 'Фрихолд' and deal.get('prepay') else 0)
+    return round(payment + fees, 6)
+
+
+def _stand_apply_prepay_fees_to_crm(session, crm_deal, board, agents):
+    """Carry selected network fees to CRM without changing the IPPS payment."""
+    if crm_deal.deal_kind != MF_FREEHOLD_KIND or not board.get('prepay'):
+        return
+    fee = round(sum(_stand_number(tx.get('amount'))
+                    for tx in board.get('commissionSends') or []), 2)
+    if not fee:
+        return
+    crm_deal.prepay_network_fee_usdt = fee
+    crm_deal.payout_amount_usdt = round((crm_deal.transfer_sent_usd or 0) + fee, 2)
+    crm_deal.profit_usdt = round((crm_deal.payin_amount_usdt or 0)
+                                   - crm_deal.payout_amount_usdt, 2)
+    crm_deal.profit_percent = round(crm_deal.profit_usdt /
+                                    crm_deal.payout_amount_usdt * 100, 2)
+    _apply_deal_agents(session, crm_deal, agents or [])
 
 
 def _stand_valid_receipt(deal):
@@ -8748,6 +8792,8 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
         before = old.get(deal.get('id')) or {}
         if before.get('s14Ping') != deal.get('s14Ping'):
             return 'Пинг операционисту отправляет только сервер'
+        if (before.get('commissionSends') or []) != (deal.get('commissionSends') or []):
+            return 'Подтверждённые комиссии сети меняет только проверка отправки'
     if db is not None and actor_id is not None and actor != 'admin':
         for deal in new_state.get('deals') or []:
             before = old.get(deal.get('id'))
@@ -9720,6 +9766,13 @@ def _stand_outgoing_pick(data, actor):
             or any(not isinstance(h, str) or normalize_ref(h, 'trc20') != h or h.startswith('demo:') for h in hashes)
             or len(set(hashes)) != len(hashes)):
         return jsonify(success=False, error='Выберите уникальные хеши из списка'), 400
+    commission_hashes = data.get('commissionHashes', [])
+    prepay_freehold = deal.get('kind') == 'Фрихолд' and bool(deal.get('prepay'))
+    if (not isinstance(commission_hashes, list) or len(commission_hashes) > 100
+            or any(not isinstance(h, str) or normalize_ref(h, 'trc20') != h for h in commission_hashes)
+            or len(set(commission_hashes)) != len(commission_hashes)
+            or (commission_hashes and (not prepay_freehold or not set(commission_hashes) <= set(hashes)))):
+        return jsonify(success=False, error='Комиссии можно выбрать только вместе с переводом IPPS'), 400
     tracking = deal['outgoingReview']
     if normalize_network((deal.get('transfer') or {}).get('net')) != 'trc20':
         return jsonify(success=False, error='Список исходящих доступен только для USDT TRC-20'), 409
@@ -9732,6 +9785,12 @@ def _stand_outgoing_pick(data, actor):
     eligible.update(s.get('hash') or s.get('ref') for s in (deal.get('transfer') or {}).get('sends') or [])
     if not set(hashes) <= eligible:
         return jsonify(success=False, error='Выберите перевод на адрес заявки из списка или добавьте хеш вручную'), 409
+    fee_recipient = 'TLntW9Z59LYY5KEi9cmwk3PKjQga828ird'
+    fee_candidates = {t['hash']: t for t in tracking.get('candidates') or []
+                      if t.get('networkFee') and t.get('from') == sender
+                      and t.get('to') == fee_recipient and not t.get('claimedBy')}
+    if not set(commission_hashes) <= set(fee_candidates):
+        return jsonify(success=False, error='Комиссия не найдена в той же транзакции'), 409
     sends = []
     for ref in hashes:
         # Сумму читаем заново из transaction-info, только события нужного получателя.
@@ -9743,6 +9802,13 @@ def _stand_outgoing_pick(data, actor):
         elif not tracking.get('legacyTime') and proof['timestampMs'] < tracking['afterTs']:
             proof['beforeOrder'] = True
         sends.append(dict(ref=ref, hash=ref, amount=proof['verifiedAmount'], net='TRC-20', **proof))
+    commission_sends = []
+    for ref in commission_hashes:
+        proof = verify_transfer(ref, 'trc20', sender, fee_recipient, None)
+        if proof.get('status') != 'confirmed' or _stand_number(proof.get('verifiedAmount')) <= 0:
+            return jsonify(success=False, error='Сеть не подтвердила выбранную комиссию'), 409
+        commission_sends.append({'hash': ref, 'amount': proof['verifiedAmount'],
+                                 'net': 'TRC-20', 'to': fee_recipient})
     early = any(s.get('beforeOrder') for s in sends)
     missing = any(s.get('timeUnverified') for s in sends)
     if early and data.get('confirmBeforeOrder') is not True:
@@ -9771,6 +9837,8 @@ def _stand_outgoing_pick(data, actor):
         tracking = deal['outgoingReview']
         previous = [s.get('hash') or s.get('ref') for s in deal['transfer'].get('sends') or []]
         deal['transfer']['sends'] = sends
+        if prepay_freehold:
+            deal['commissionSends'] = commission_sends
         tracking.update(selectionMode=True, acceptedBy=actor)
         tracking.pop('accepted', None)
         tracking['selectionFingerprint'] = review.fingerprint(deal)
@@ -9951,7 +10019,23 @@ def stand_outgoing_review_action():
                 or not (deal.get('ippsPayoutOrder') or {}).get('confirmedAt')):
             return jsonify(success=False, error='Ждём подтверждения реквизитов и поручения IPPS'), 409
         stamp = datetime.utcnow().isoformat()+'Z'
-        if action == 'sent':
+        if action == 'return':
+            reason = str(data.get('reason') or '').strip()
+            if (not deal.get('prepay') or deal.get('kind') != 'Фрихолд'
+                    or not deal.get('outgoingReview') or review.total(deal) > 0):
+                return jsonify(success=False, error='Вернуть можно только отправку без подтверждённых переводов'), 409
+            if not reason or len(reason) > 500:
+                return jsonify(success=False, error='Укажите причину возврата (до 500 символов)'), 400
+            deal.pop('outgoingReview', None)
+            deal.setdefault('transfer', {})['sends'] = []
+            deal['commissionSends'] = []
+            deal.setdefault('log', []).append({'at': int(time.time()*1000), 'role': actor,
+                'text': 'Операционист вернул отправку владельцу кошелька: '+reason})
+            sender_role = _stand_current_step_role(state, deal)
+            _stand_note(state, f"stand:outgoing-return:{deal['id']}:{row.version}", sender_role, deal,
+                        'Проверить отправку в IPPS: '+reason)
+            main['assigneeAdminId'] = None
+        elif action == 'sent':
             for member in _stand_members(state, main['id']):
                 if not _amount((member.get('transfer') or {}).get('amount')):
                     continue
@@ -18360,9 +18444,12 @@ def _apply_mf_freehold(deal, data):
     deal.transfer_arrive_usd = r['arrive_usd']
     deal.transfer_fee_usd = r['fee_usd']
     # С нашей стороны ушла вся отправка — она и есть себестоимость сделки
-    deal.payout_amount_usdt = r['sent_usd']
-    deal.profit_usdt = r['gross_profit_usdt']
-    deal.profit_percent = r['profit_percent']
+    # The prepay network fee is a separate verified expense. It never changes
+    # transfer_sent_usd, which must still reconcile to the IPPS instruction.
+    cost = round(r['sent_usd'] + (deal.prepay_network_fee_usdt or 0), 2)
+    deal.payout_amount_usdt = cost
+    deal.profit_usdt = round((deal.payin_amount_usdt or 0) - cost, 2)
+    deal.profit_percent = round(deal.profit_usdt / cost * 100, 2) if cost else 0
     # Платим со своего кошелька, а не из кармана фаундера — возмещать нечего
     deal.needs_reimbursement = False
     return r

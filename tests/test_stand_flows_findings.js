@@ -5,7 +5,8 @@ function fn(name){return html.match(new RegExp(`^(?:async )?function ${name}\\([
 (async()=>{
   const notices=[];
   const ctx={toast:s=>notices.push(s),standWaitSaved:async()=>({ok:false,error:'Причина от сервера'}),
-    S:{role:'operator'},sendList:d=>d.transfer.sends,htmlText:String,usd:String};
+    S:{role:'operator'},sendList:d=>d.transfer.sends,htmlText:String,usd:String,
+    moneyKop:(n,s)=>`${Number(n)} ${s}`};
   vm.createContext(ctx);
   for(const n of ['standSaveError','standRequireSaved','outgoingPickState','outgoingPickList','outgoingReviewBlock'])vm.runInContext(fn(n),ctx);
   assert.equal(await ctx.standRequireSaved('Общая ошибка'),false);
@@ -19,7 +20,8 @@ function fn(name){return html.match(new RegExp(`^(?:async )?function ${name}\\([
   assert.equal(await ctx.standRequireSaved(),true);
   const d={id:1,outgoingReview:{scanStatus:'complete'},transfer:{amount:100,sends:[{
     status:'confirmed',verifiedAmount:100,timeUnverified:true}]}};
-  assert.match(ctx.outgoingReviewBlock(d),/Время не получено — засчитать вручную/);
+  assert.match(ctx.outgoingReviewBlock(d),/Сеть подтвердила адреса и сумму, но не вернула время перевода/);
+  assert.match(ctx.outgoingReviewBlock(d),/Ввести хеш вручную/);
   assert.match(ctx.outgoingReviewBlock(d),/автоматическое закрытие остановлено/);
   ctx.S.role='teodor';assert.equal(ctx.outgoingReviewBlock(d),'');
   // После отказа сохранения ни одно зависимое действие не вызывает API.

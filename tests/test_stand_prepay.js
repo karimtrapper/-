@@ -11,7 +11,7 @@ function fn(name) {
 const ctx={demoAllowed:()=>false,walletBlock:()=>'',S:{role:'operator',deals:[]},STAND:false,
   convOf:d=>d.cnvId?ctx.batch:null,isCrypto:d=>d.payType==='Крипта',
   walletById:id=>ctx.walletList.find(w=>w.id===id),wallets:()=>ctx.walletList,
-  addrValid:()=>true,htmlText:String,usd:x=>'$'+x,
+  addrValid:()=>true,htmlText:String,usd:x=>'$'+x,moneyKop:(n,s)=>`${n} ${s}`,
   ippsTariff:()=>({label:'Банк 0,8% + 50$',percent:.8,fixed:50}),
   needsPayConfirm:()=>false,expectOf:()=>({}),save:()=>{},render:()=>{},
   log:(d,text)=>d.log.push({text}),stepWho:d=>d.step==='s22'?'manager':d.step==='s23'?'teodor':'operator',

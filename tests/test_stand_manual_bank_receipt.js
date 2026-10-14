@@ -75,7 +75,7 @@ const expectEnd=html.indexOf('function expectSet(',expectStart);
 const expectCtx=vm.createContext({approx:()=>({pay:10000}),docFields:()=>({purpose:'payment'})});
 vm.runInContext(html.slice(expectStart,expectEnd),expectCtx);
 const expected=vm.runInContext(`expectOf({expect:{acc:'…0286 · Сбер',bank:'Old Bank',account:'00000000000000000000'},rubReceivingAccount:{mode:'custom',bank:'Test Bank',account:'40702810900000012345'}})`,expectCtx);
-assert.equal(expected.acc,'custom');
+assert.equal(expected.acc,'Test Bank · 40702810900000012345');
 assert.equal(expected.bank,'Test Bank');
 assert.equal(expected.account,'40702810900000012345');
 

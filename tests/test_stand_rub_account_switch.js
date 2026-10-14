@@ -29,7 +29,7 @@ const run = source => vm.runInContext(source, ctx);
 
 // Старая сделка получает актуальные реквизиты без миграции JSON и потери ручных полей.
 assert.match(run('docFields(S.deals[0]).payTo'), /ФЛОУ СОЛЕ КО., ЛТД.*40807810819000000261.*044525094/);
-assert.equal(run('expectOf(S.deals[0]).acc'), '…0261 · СГБ (Flow Sole)');
+assert.equal(run('expectOf(S.deals[0]).acc'), 'Flow Sole (СГБ) …0261');
 assert.equal(run('expectOf(S.deals[0]).account'), '40807810819000000261');
 assert.equal(run('expectOf(S.deals[0]).bank'), 'Московский филиал "БАНК СГБ" г. Москва');
 assert.equal(run('expectOf(S.deals[0]).purpose'), 'Назначение из выписки');
@@ -47,7 +47,7 @@ Object.assign(fields, {rub_bank_1: 'Банк Тест', rub_account_1: '40702810
   rub_recip_name_1: 'ООО ТЕСТ', rub_recip_inn_1: '7700000000', rub_recip_kpp_1: '770101001'});
 run("rubReceivingAccountSave(1, 'custom')");
 assert.match(run('docFields(S.deals[0]).payTo'), /ООО ТЕСТ.*Банк Тест.*40702810900000012345/);
-assert.equal(run('expectOf(S.deals[0]).acc'), 'custom');
+assert.equal(run('expectOf(S.deals[0]).acc'), 'Банк Тест · 40702810900000012345');
 assert.equal(run('expectOf(S.deals[0]).account'), '40702810900000012345');
 assert.equal(run('expectOf(S.deals[0]).purpose'), 'Назначение из выписки');
 assert.equal(run('docFields(S.deals[0]).fio'), 'Ручная правка');
