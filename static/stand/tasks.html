@@ -609,6 +609,7 @@ a.hash:hover{background:#BAE6FD}
 }
 </style>
 <link rel="stylesheet" href="/static/nav-shell.css?v=1">
+<link rel="stylesheet" href="/static/task-list.css?v=1">
 </head>
 <body>
 
@@ -4775,21 +4776,26 @@ function viewModal(){
 }
 
 /* ---------- задачник ---------- */
+let taskListSection=null;
+function showTaskListSection(section){
+  taskListSection=section;
+  document.querySelectorAll('.task-list-seg button').forEach(button=>{
+    const selected=button.dataset.section===section;
+    button.classList.toggle('on',selected);
+    button.setAttribute('aria-pressed',selected?'true':'false');
+  });
+  document.querySelectorAll('.task-list-panel').forEach(panel=>
+    panel.classList.toggle('on',panel.dataset.section===section));
+}
 function viewTasks(){
   const mine=myTasks(S.role),others=waitingOn(S.role);
-  const tasksOnly=S.deals.filter(d=>d.isTask&&!d.closed).length;
-  let h=`<div class="page-h">Задачник · ${ROLES[S.role].t}
-    ${S.role==='manager'||S.role==='admin'?`<button class="btn btn-primary btn-sm" style="margin-left:14px" onclick="startCreate()">+ Новая задача</button>`:''}</div>
-  <div class="stats-grid">
-    <div class="stat-card ${mine.length?'info':''}"><div class="stat-value num">${mine.length}</div><div class="stat-label">на мне</div></div>
-    <div class="stat-card"><div class="stat-value num">${others.length}</div><div class="stat-label">жду от других</div></div>
-    <div class="stat-card success"><div class="stat-value num">${S.deals.filter(d=>d.closed&&d.closeReason==='Успешно завершена').length}</div><div class="stat-label">завершено</div></div>
-    <div class="stat-card danger"><div class="stat-value num">${S.deals.filter(d=>d.closed&&d.closeReason!=='Успешно завершена').length}</div><div class="stat-label">закрыто отказом</div></div>
-  </div>`;
+  const section=taskListSection||(mine.length?'mine':others.length?'wait':'mine');
+  let h=`<div class="task-list"><div class="task-list-head"><h1>Задачник</h1>
+    ${S.role==='manager'||S.role==='admin'?`<button class="btn btn-primary task-list-create" onclick="startCreate()">+ Новая задача</button>`:''}</div>`;
   const pend=pendingEx(null);
   if(pend.length&&(S.role==='operator'||S.role==='admin')){
     const conv=mine.filter(d=>d.step==='s18');
-    h+=`<div class="card" style="margin-bottom:16px">
+    h+=`<div class="card task-list-pending" style="margin-bottom:16px">
       <div class="card-title">Ждут конвертации
         <span class="sub">${pend.length} ${plural(pend.length,'мелкий обмен','мелких обмена','мелких обменов')} · ${money(exSum(pend),'₽')} · наценка ≈ ${money(exMargin(pend),'₽')}</span>
         ${conv.length?`<button class="btn btn-primary btn-sm" onclick="openDeal(${conv[0].id})">Добавить в обмен ${conv[0].code}</button>`:''}</div>
@@ -4801,40 +4807,50 @@ function viewTasks(){
         'Эти деньги можно влить в текущую конвертацию — курс возьмётся на общий объём, наценка по каждой посчитается сама.':
         'Никуда не денутся: следующая конвертация сама предложит их добрать.'}</p></div>`;
   }
+  h+=`<nav class="task-list-seg" aria-label="Разделы задачника">
+    <button type="button" data-section="mine" class="${section==='mine'?'on':''}" aria-pressed="${section==='mine'}" onclick="showTaskListSection('mine')">На мне <span class="task-list-count mine">${mine.length}</span></button>
+    <button type="button" data-section="wait" class="${section==='wait'?'on':''}" aria-pressed="${section==='wait'}" onclick="showTaskListSection('wait')">Жду других <span class="task-list-count">${others.length}</span></button>
+  </nav><div class="task-list-cols"><section class="card task-list-panel ${section==='mine'?'on':''}" data-section="mine">
+    <div class="task-list-panel-head"><h2>На мне сейчас</h2><span class="task-list-count mine">${mine.length}</span></div>`;
   if(!mine.length){
-    h+=`<div class="card"><div class="empty"><div class="big">Задач на вас нет</div>
+    h+=`<div class="task-list-empty"><strong>Задач на вас нет</strong>
       ${S.role==='manager'
       ?'Нажмите «+ Новая задача» — заявка сразу уйдёт операционисту за курсом.'
       :(STAND&&!canSwitchRole()
         ?'Задачи прилетают, когда предыдущая роль передаёт работу. Как только менеджер доведёт сделку до вас, уведомление придёт в чат.'
-        :'Задачи прилетают, когда предыдущая роль передаёт работу. Переключитесь на менеджера и проведите сделку дальше.')}</div></div>`;
+        :'Задачи прилетают, когда предыдущая роль передаёт работу. Переключитесь на менеджера и проведите сделку дальше.')}</div>`;
   }else{
-    h+=`<div class="card" style="padding:0;overflow:hidden">`+mine.map(d=>{
-      const st=STEPS[d.step],p=progress(d),a=approx(d),last=d.log[d.log.length-1];
+    h+=mine.map(d=>{
+      const a=approx(d);
       const side=S.role==='manager'&&stepWho(d)!=='manager';
       const taskTitle=side?(needsPayConfirm(d)?'Ваша задача: подтвердить реквизиты перед оплатой':
         reqOpen(d)?'Ваша параллельная задача: реквизиты для оплаты':stepTitle(d)):stepTitle(d);
-      return `<div class="li" onclick="openTask(${d.id})">
-        <span class="av" title="этап ${p.i} из ${p.n}">${p.i}</span>
-        <div><div class="t1">${taskTitle} — ${d.client}</div>
-        ${side?`<div class="t2">Основной шаг «${stepTitle(d)}» у роли «${(ROLES[stepWho(d)]||{}).t||'—'}»</div>`:''}
-        <div class="t2">${d.code} · ${d.type}${d.kind?' · '+d.kind:''} · ${apMoney(a,'thb')} / ${apMoney(a,'pay')}${d.object?' · '+d.object:''}</div>
-        <div class="t2">${last?logMeta(last):SOURCES[d.source]}</div></div>
-        <button class="btn btn-primary btn-sm" onclick="event.stopPropagation();openTask(${d.id})">Открыть задачу</button></div>`;
-    }).join('')+`</div>`;
+      const pay=apMoney(a,'pay');
+      return `<button type="button" class="task-list-row" onclick="openTask(${d.id})">
+        <span class="task-list-row-main"><strong>${taskTitle}</strong>
+          <span class="task-list-meta">${d.code} · ${d.client} · ${d.type}${d.kind?' · '+d.kind:''}</span>
+          ${side?`<span class="task-list-meta">Параллельно: ${stepTitle(d)} · ${(ROLES[stepWho(d)]||{}).t||'—'}</span>`:''}</span>
+        <span class="task-list-amount num">${pay==='посчитаем после курса'?apMoney(a,'thb'):pay}</span>
+        <span class="task-list-arrow" aria-hidden="true">›</span></button>`;
+    }).join('');
   }
-  if(others.length){
-    h+=`<div class="card" style="margin-top:16px"><div class="card-title">Жду от других<span class="sub">${others.length}</span></div>
-    <div class="list">`+others.map(d=>{
-      const st=STEPS[d.step],p=progress(d);
-      const a=approx(d);
-      return `<div class="li" onclick="openDeal(${d.id})"><span class="av">${p.i||'—'}</span>
-      <div><div class="t1">${d.client} · ${d.code}</div>
-      <div class="t2">${stepTitle(d)} · у роли «${(stepWho(d)&&ROLES[stepWho(d)])?ROLES[stepWho(d)].t:'—'}»</div>
-      <div class="t2">${d.type}${d.kind?' · '+d.kind:''} · ${apMoney(a,'thb')} / ${apMoney(a,'pay')}${d.object?' · '+d.object:''}</div></div>
-      <span class="badge b-wait">ждём</span></div>`}).join('')+`</div></div>`;
-  }
-  return h;
+  h+=`</section><section class="card task-list-panel ${section==='wait'?'on':''}" data-section="wait">
+    <div class="task-list-panel-head"><h2>Жду других</h2><span class="task-list-count">${others.length}</span></div>`;
+  if(!others.length) h+=`<div class="task-list-empty"><strong>Ожиданий нет</strong>Задачи других участников появятся здесь.</div>`;
+  else Object.keys(ROLES).forEach(role=>{
+    const group=others.filter(d=>stepWho(d)===role);
+    if(!group.length)return;
+    h+=`<div class="task-list-person"><span class="task-list-avatar">${ROLES[role].n.charAt(0)}</span>${ROLES[role].n}<span class="task-list-person-count">· ${group.length}</span></div>`;
+    h+=group.map(d=>{
+      const a=approx(d),pay=apMoney(a,'pay');
+      return `<button type="button" class="task-list-row task-list-wait-row" onclick="openDeal(${d.id})">
+        <span class="task-list-row-main"><strong>${stepTitle(d)}</strong>
+          <span class="task-list-meta">${d.code} · ${d.client} · ${d.type}${d.kind?' · '+d.kind:''}</span></span>
+        <span class="task-list-amount num">${pay==='посчитаем после курса'?apMoney(a,'thb'):pay}</span>
+        <span class="task-list-arrow" aria-hidden="true">›</span></button>`;
+    }).join('');
+  });
+  return h+`</section></div></div>`;
 }
 
 /* ---------- сделки ---------- */
