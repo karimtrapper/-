@@ -8991,8 +8991,8 @@ function stepCard(d){
             (Карим, 23.09). */
         docRow(d,'pass','Загранпаспорт',d.isOld?'не обязателен':'обязательно')}
       ${docRow(d,'inv','Инвойс','обязательно')}
-      ${docRow(d,'spa',doctOf(d,'spa'),'если есть')}
-      ${docRow(d,'ipds','Анкета ИПДС','если есть')}
+      ${d.type==='Оплата недвижимости'?docRow(d,'spa',doctOf(d,'spa'),'если есть'):''}
+      ${d.type==='Оплата недвижимости'?docRow(d,'ipds','Анкета ИПДС','если есть'):''}
     </div>
     ${docParseLine(d)}
     ${fioHint(d)}

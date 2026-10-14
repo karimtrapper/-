@@ -165,3 +165,7 @@ def test_fresh_and_reset_board_counterparties_are_server_owned(board, reset):
         'dealId': 1474, 'dir': 'rub', 'cpId': broker['id'], 'rate': '85'})
     assert result.status_code == 200, result.json
     assert result.json['data']['deals'][0]['step'] == 's6'
+
+
+def test_document_form_depends_on_deal_type():
+    subprocess.run(['node', 'tests/test_wave_a_documents.js'], check=True)
