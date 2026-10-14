@@ -720,11 +720,39 @@ a.hash:hover{background:#BAE6FD}
   .deal-screen .task-action .goalnums .addr-value .btn{max-width:100%;white-space:normal;text-align:left}
   .deal-screen .task-action .goalnums>div:first-child{grid-column:auto}
   .deal-screen .task-action .deal-main-button{position:fixed;left:var(--ds-lg);right:var(--ds-lg);bottom:calc(var(--ds-md) + env(safe-area-inset-bottom));width:calc(100% - 2 * var(--ds-lg));min-height:50px;z-index:100}
+  /* On s18 the wallet is required. Keep the header short enough to expose its
+     selector above the fixed action. The gap before optional sections gives the
+     panel its own space on the first screen; the deal padding permits scrolling. */
+  .deal-screen:has(.s18-action-fields) .deal-head{padding:var(--ds-sm) var(--ds-lg);margin-bottom:var(--ds-sm)}
+  .deal-screen:has(.s18-action-fields) .deal-head p:not(.deal-code),
+  .deal-screen:has(.s18-action-fields) .deal-progress{display:none}
+  .deal-screen:has(.s18-action-fields) .vtabs{margin-bottom:var(--ds-sm)}
+  .deal-screen:has(.s18-action-fields) .task-action{padding:var(--ds-md)}
+  .deal-screen:has(.s18-action-fields) .task-action>.goal{margin-bottom:var(--ds-sm)}
+  .deal-screen:has(.s18-action-fields) .task-action .goalt{margin-bottom:var(--ds-sm)}
+  .deal-screen:has(.s18-action-fields) .task-action .goalnums{gap:var(--ds-sm)}
+  .deal-screen:has(.s18-action-fields) .task-action .goalnums>div{padding:var(--ds-sm) var(--ds-md)}
+  .deal-screen .s18-action-fields>details:first-of-type{margin-top:calc(50px + var(--ds-xl) + var(--ds-md) + env(safe-area-inset-bottom))}
+  .deal-screen .s18-action-fields select[name^="b2w_"]{scroll-margin-bottom:calc(50px + var(--ds-xl) + var(--ds-md) + env(safe-area-inset-bottom))}
   .deal-screen .fr{grid-template-columns:minmax(0,1fr)}
   .deal-screen{padding-bottom:calc(50px + var(--ds-xl) + var(--ds-xl) + env(safe-area-inset-bottom))}
   .container:has(.deal-screen){padding-bottom:0}
   .deal-screen .vtabs .lg{display:none}
   body.deal-task-mode::after{content:"";position:fixed;left:0;right:0;bottom:0;height:calc(50px + var(--ds-xl) + env(safe-area-inset-bottom));background:var(--ds-glass);backdrop-filter:blur(10px);pointer-events:none;z-index:99}
+}
+@media(max-width:700px){
+  .analytics-view .analytics-source-table,
+  .analytics-view .analytics-source-table tbody{display:block;overflow:visible;white-space:normal}
+  .analytics-view .analytics-source-table thead{display:none}
+  .analytics-view .analytics-source-table tr{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--ds-sm) var(--ds-md);padding:var(--ds-md) 0;border-bottom:1px solid var(--ds-border)}
+  .analytics-view .analytics-source-table tr:last-child{border-bottom:0}
+  .analytics-view .analytics-source-table td{display:flex;flex-direction:column;align-items:flex-start;gap:var(--ds-xs);width:100%;padding:0;text-align:left;white-space:normal}
+  .analytics-view .analytics-source-table td:first-child{display:block;grid-column:1/-1;padding-bottom:var(--ds-xs)}
+  .analytics-view .analytics-source-table td:nth-child(2)::before{content:"Сделок"}
+  .analytics-view .analytics-source-table td:nth-child(3)::before{content:"Завершено"}
+  .analytics-view .analytics-source-table td:nth-child(4)::before{content:"Закрыто отказом"}
+  .analytics-view .analytics-source-table td:nth-child(5)::before{content:"Оборот"}
+  .analytics-view .analytics-source-table td::before{color:var(--ds-muted);font-weight:var(--ds-regular);text-align:left}
 }
 body.deal-task-mode .proto,body.deal-task-mode .nav{display:none}
 body.deal-task-mode .top-nav{height:56px;padding:0 var(--ds-xl);background:var(--ds-ink);border:0}
@@ -10739,7 +10767,7 @@ function viewAnalytics(){
     <div class="stat-card info"><div class="stat-value num">${turnover?turnover.toLocaleString('ru-RU'):'—'}</div><div class="stat-label">оборот, ₽</div></div>
   </div>
   <div class="card"><div class="card-title">По источникам</div>
-  <table><thead><tr><th>Источник</th><th>Сделок</th><th>Завершено</th><th>Закрыто отказом</th><th>Оборот</th></tr></thead><tbody>
+  <table class="analytics-source-table"><thead><tr><th>Источник</th><th>Сделок</th><th>Завершено</th><th>Закрыто отказом</th><th>Оборот</th></tr></thead><tbody>
   ${Object.keys(SOURCES).map(k=>`<tr><td><b>${SOURCES[k]}</b></td><td class="num">${bySrc[k].all}</td>
     <td class="num">${bySrc[k].won}</td><td class="num">${bySrc[k].lost}</td><td class="num">${money(bySrc[k].sum,'₽')}</td></tr>`).join('')}
   </tbody></table></div>
