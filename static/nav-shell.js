@@ -33,15 +33,15 @@
     return `<span class="site-shell-bell" data-shell-bell><a href="/tasks?notifications=1" aria-label="Уведомления" style="color:inherit;display:inline-flex;padding:6px">${svg('bell')}</a></span>`;
   }
   const sections = [
-    ['tasks','Задачник','/tasks'],['deals','Сделки','/crm?section=deals'],
+    ['deals','Сделки','/crm?section=deals'],
     ['documents','Документы','/crm?section=documents'],['closing','Закрытие','/crm?section=closing'],
     ['exchangers','Обменники','/crm?section=exchangers'],['balance','Баланс','/crm?section=balance'],
-    ['incomes','Поступления','/crm?section=incomes'],['conversions','Конвертации','/crm?section=conversions'],
+    ['conversions','Конвертации','/crm?section=conversions'],
     ['reimbursements','Возмещения','/crm?section=reimbursements'],['transactions','Транзакции','/crm?section=transactions'],
     ['managers','Менеджеры','/crm?section=managers'],['verification','Сверка','/crm?section=verification'],
     ['kyc','KYC','/crm?section=kyc'],['partners','Партнёры','/crm?section=partners'],
     ['referrers','Рефереры','/crm?section=referrers'],['payoutRequests','Заявки на выплату','/crm?section=payoutRequests'],
-    ['admins','Сотрудники','/crm?section=admins'],['analytics','Аналитика','/tasks?section=analytics']
+    ['admins','Админы','/crm?section=admins'],['analytics','Аналитика','/tasks?section=analytics']
   ];
   function sectionNav() {
     return `<nav class="site-shell-sections" aria-label="Разделы работы"><button type="button" class="site-shell-scroll" data-shell-scroll="-1" aria-label="Предыдущие разделы">‹</button><div class="site-shell-section-list">${sections.map(([key,label,href])=>`<a href="${href}" data-shell-section="${key}">${label}</a>`).join('')}</div><button type="button" class="site-shell-scroll" data-shell-scroll="1" aria-label="Следующие разделы">›</button></nav>`;
@@ -90,10 +90,8 @@
     }));
     document.querySelectorAll('[data-shell-section]').forEach(link=>link.addEventListener('click',event=>{
       const section=link.dataset.shellSection;
-      if (state.page==='crm' && section!=='tasks' && section!=='analytics' && typeof showSection==='function') {
+      if (state.page==='crm' && section!=='analytics' && typeof showSection==='function') {
         event.preventDefault();showSection(section);history.replaceState(null,'','/crm?section='+encodeURIComponent(section));activateSection(section);
-      } else if(state.page==='tasks' && section==='tasks' && typeof setTab==='function') {
-        event.preventDefault();setTab('tasks');history.replaceState(null,'','/tasks');activateSection('tasks');
       } else if(state.page==='tasks' && section==='analytics' && typeof setTab==='function') {
         event.preventDefault();setTab('analytics');history.replaceState(null,'','/tasks?section=analytics');activateSection('analytics');
       }
