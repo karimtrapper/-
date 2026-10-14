@@ -4694,6 +4694,15 @@ function s18Sber(d){
   const parts=d.payinParts||[];
   return !!parts.length&&parts.every(p=>incomes().some(i=>String(i.id)===String(p.incId)&&i.source==='sber'));
 }
+function s18AccountKey(d){
+  const parts=d?.payinParts||[];
+  if(!parts.length)return null;
+  const keys=parts.map(p=>{const i=incomes().find(x=>String(x.id)===String(p.incId));
+    return i?(i.accountKey||i.source==='sber'&&'sber'||null):null;});
+  return keys[0]&&keys.every(k=>k===keys[0])?keys[0]:null;
+}
+function s18AccountLabel(key){return key==='sber'?'Сбер':key==='flow_sole'?'Flow Sole':
+  key?.startsWith('other:')?'Другой счёт · '+key.slice(6):'Счёт не указан';}
 function s18Rub(d){
   const parts=d.payinParts||[];
   if(!parts.length)return Number(d.incomeAmount||d.amountRub||0);
@@ -4705,9 +4714,11 @@ function s18Rub(d){
 }
 function s18CrmRows(d){
   if(s18SelectedDealId!==d.id){s18Selected.clear();s18SelectedDealId=d.id;}
-  if(!s18Sber(d))return [];
+  const accountKey=s18AccountKey(d);
+  if(!accountKey)return [];
   const own=new Set((d.payinParts||[]).map(p=>String(p.incId)));
   return s18Candidates.filter(x=>!own.has('sber:'+x.uuid)&&
+    (x.accountKey||'sber')===accountKey&&
     !incomes().some(i=>i.id==='sber:'+x.uuid&&(i.cnvId||i.dealId)));
 }
 function s18ToggleCrm(id){
@@ -4743,7 +4754,7 @@ function rubBatchReady(x){
 function exSum(l){return l.reduce((s,x)=>s+(x.amountRub||0),0);}
 function exSpread(x){return x.spread==null?0.3:x.spread;}
 function exMargin(l){return Math.round(l.reduce((s,x)=>s+(x.amountRub||0)*exSpread(x)/100,0));}
-function convAll(id){const d=deal(id);d.conv=pendingEx(id).filter(x=>s18Sber(d)&&s18Sber(x)&&rubBatchReady(x)).map(x=>x.id);
+function convAll(id){const d=deal(id);d.conv=pendingEx(id).filter(x=>s18AccountKey(d)&&s18AccountKey(d)===s18AccountKey(x)&&rubBatchReady(x)).map(x=>x.id);
   log(d,'В обмен добраны мелкие: '+d.conv.length+' на '+money(exSum(d.conv.map(deal)),'₽'));
   save();render();toast('Взяли '+d.conv.length+' '+plural(d.conv.length,'мелкий обмен','мелких обмена','мелких обменов'));}
 function convNone(id){const d=deal(id);d.conv=[];save();render();toast('Мелкие обмены сняты');}
@@ -6485,7 +6496,8 @@ function crmPayload(d){
   const hx=l=>(l||[]).filter(h=>h&&h.hash).map(h=>({hash:h.hash,network:crmNet(h.network||h.net),amount_usdt:h.amount??h.amount_usdt??null}));
   const p={client_name:d.client, client_id:typeof d.clientId==='string'&&d.clientId.startsWith('crm:')?parseInt(d.clientId.slice(4)):(d.crmClientId??null),
     manager_name:d.manager||'Елизавета', status:'completed', skip_sync:true,
-    payin_method:PAYIN_CRM[d.payType]||'sber_reqs',
+    payin_method:d.payType==='По реквизитам'&&d.rubReceivingAccount?.mode==='flowsole'
+      ?'flow_sole_reqs':PAYIN_CRM[d.payType]||'sber_reqs',
     payin_amount_rub:rub?(d.incomeAmount||d.amountRub||null):null,
     /* API _apply_payin_extra прибавит дополнительные части само. Основной
        приход берём из первого payinParts: extra может быть задан только RUB
@@ -6580,7 +6592,7 @@ function crmPayload(d){
    поправить и сохранить»). Значения — из crmPayload(); правка поля кладётся в
    d.crmEdit и накрывает payload поверх, формулы сделки не трогает. Прибыль CRM всё
    равно считает сама по тем же правилам. */
-const PAYIN_LABEL={sber_reqs:'Сбер (реквизиты)',sber_wl:'СБП',crypto_direct:'Крипта',partners_cash:'Партнеры (наличные)'};
+const PAYIN_LABEL={sber_reqs:'Сбер (реквизиты)',flow_sole_reqs:'Flow Sole (СГБ, реквизиты)',sber_wl:'СБП',crypto_direct:'Крипта',partners_cash:'Партнеры (наличные)'};
 const PAYOUT_LABEL={cash_batch:'Касса',bank_card:'Карта банка',binance:'Binance',founder_personal:'Личные фаундера'};
 const CRM_NUM=['payin_amount_rub','payin_amount_usdt','payin_rate_rub_usdt','invoice_amount_thb','buy_rate_thb_usdt',
   'company_percent','company_sent_thb','invoice_amount_usd','transfer_sent_usd','transfer_fee_percent','transfer_fee_fixed_usd',
@@ -8417,7 +8429,7 @@ function toggleDoc(id,k){
   fileAdd(id,k);
 }
 function toggleConv(id,xid){const d=deal(id),x=deal(xid);d.conv=d.conv||[];
-  if(!s18Sber(d)||!s18Sber(x)){toast('Поступления с разных счетов нельзя отправить одной пачкой');return;}
+  if(!s18AccountKey(d)||s18AccountKey(d)!==s18AccountKey(x)){toast('Поступления с разных счетов нельзя отправить одной пачкой');return;}
   if(!d.conv.includes(xid)&&!rubBatchReady(x)){toast('Нужен положительный RUB приход, привязанный к этой сделке и подтверждённый в поступлениях');return;}
   d.conv.includes(xid)?d.conv=d.conv.filter(v=>v!==xid):d.conv.push(xid);save();render();}
 function setSrc(id,k){const d=deal(id);d.paySrc=k;save();render();}
@@ -9782,7 +9794,8 @@ function stepCard(d){
     <div class="alert a-info" style="margin-top:14px"><div>Заполняет менеджер: операционист платит по этим реквизитам и не ищет их в переписке. Назначение здесь — то, что требует банк получателя, а не назначение входящего платежа клиента по договору.</div></div></div>`;},
 
   s18:()=>{
-    const bankSber=s18Sber(d), extra=bankSber?pendingEx(d.id).filter(s18Sber):[];
+    const accountKey=s18AccountKey(d), bankSber=!!accountKey,
+      extra=bankSber?pendingEx(d.id).filter(x=>s18AccountKey(x)===accountKey):[];
     const sel=(d.conv||[]).filter(x=>deal(x));
     const selD=sel.map(deal);
     const free=extra.filter(x=>sel.indexOf(x.id)<0);
@@ -9794,7 +9807,7 @@ function stepCard(d){
     const total=base+selD.reduce((sum,x)=>sum+s18Rub(x),0)+crmSel.reduce((sum,x)=>sum+x.rub,0);
     const bp=brokerPicked(d), bq=brokerQuote(d,bp), used=quoteUsed(d,'rub');
     const batch=brokerSend(total), rate=num(brokerRate(d)||d.rates.broker||d.rates.rubUsdt);
-    return `<div class="card s18-action-fields"><div class="fr">
+    return `<div class="card s18-action-fields"><div class="card-title">Пачка · ${htmlText(s18AccountLabel(accountKey))}</div><div class="fr">
       <div class="fg"><label class="fl">Брокер<span class="rq">*</span></label>
         <select class="fc" id="b0" onchange="brokerPickSet(${d.id},this.value)">
           <option value="">— выбрать брокера —</option>
@@ -9836,7 +9849,7 @@ function stepCard(d){
           sel.indexOf(x.id)<0?'отметить в этот перевод':'идёт этим переводом'}</span></span></div>`).join(''):''}
       ${bankSber?crmRows.length?
         s18CrmSection(crmLinked,'crm','Сделки CRM',sh)+s18CrmSection(crmUnlinked,'unlinked','Поступления без сделки',sh)
-        :(!extra.length?'<div class="li">Свободных поступлений Сбера нет</div>':''):''}`;})()}
+        :(!extra.length?'<div class="li">Свободных поступлений на этом счёте нет</div>':''):''}`;})()}
     </div>
     </details>
     ${transferModeBlock(d)}
@@ -10376,7 +10389,8 @@ async function act(id,step){
     const rate=num(b1);
     if(!Number.isFinite(rate)||rate<=0){toast('Курс брокера должен быть больше нуля');return;}
     const members=[d].concat((d.conv||[]).map(deal).filter(Boolean));
-    if((d.conv||[]).some(xid=>!s18Sber(d)||!s18Sber(deal(xid)))){
+    const accountKey=s18AccountKey(d);
+    if(!accountKey||(d.conv||[]).some(xid=>s18AccountKey(deal(xid))!==accountKey)){
       toast('Поступления с разных счетов нельзя отправить одной пачкой');return;}
     const crmExtras=s18CrmRows(d).filter(x=>s18Selected.has(x.id));
     const unready=members.find(x=>!rubBatchReady(x));
@@ -10385,13 +10399,13 @@ async function act(id,step){
     const rubTotal=members.reduce((s,x)=>s+s18Rub(x),0)+crmExtras.reduce((s,x)=>s+x.rub,0);
     const bs=brokerSend(rubTotal);
     const cn={id:S.cseq,name:'CNV-'+String(S.cseq).padStart(4,'0'),broker:b0,
-      requestNo:String(40+S.cseq),rate:b1,status:'sent',at:now(),
+      requestNo:String(40+S.cseq),rate:b1,status:'sent',at:now(),accountKey,
       walletId:b2,
       rubTotal:rubTotal,held:bs.held,sent:bs.sent,feePct:bs.pct,feeFix:bs.fix,
       feeCtrl:bs.ctrl,feeOurs:bs.ours,feeCtrlPct:bs.ctrlPct,feeOursPct:bs.oursPct,
       sources:members.map(x=>{const share=rubTotal?s18Rub(x)/rubTotal:0;
         return {dealId:x.id,payer:x.client,date:now().slice(0,5),
-          rub:s18Rub(x),bankNet:s18Sber(x),
+          rub:s18Rub(x),bankNet:s18Sber(x),accountKey,
           usdt:rate?Math.round(bs.sent*share/rate*100)/100:null};}).concat(crmExtras.map(x=>({
             dealId:null,crmDealId:x.dealId,crmClient:x.client,incomeId:'sber:'+x.uuid,payer:x.payer,date:x.date,
             rub:x.rub,usdt:rate?Math.round(bs.sent*x.rub/rubTotal/rate*100)/100:null}))),
@@ -10401,7 +10415,8 @@ async function act(id,step){
     crmExtras.forEach(x=>{
       const key='sber:'+x.uuid;
       let income=incomes().find(i=>i.id===key);
-      if(!income){income={id:key,uuid:x.uuid,source:'sber',rub:x.rub,grossRub:x.rub,
+      if(!income){income={id:key,uuid:x.uuid,source:accountKey==='sber'?'sber':'registry',
+        accountKey,rub:x.rub,grossRub:x.rub,
         date:x.date,payer:x.payer,dealId:null,excluded:false};incomes().push(income);}
       income.batchRub=x.rub;
       income.cnvId=cn.id;

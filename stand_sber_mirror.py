@@ -79,7 +79,11 @@ def _bridge(appmod, db):
     """Добавить свежую историю один раз, сохранив решения людей в доске."""
     cutoff = (datetime.utcnow() - timedelta(days=_days())).date().isoformat()
     rows = db.query(appmod.SberIncome).filter(
-        appmod.SberIncome.operation_date >= cutoff).order_by(
+        appmod.SberIncome.operation_date >= cutoff,
+        ((appmod.SberIncome.account_key == 'sber') |
+         appmod.SberIncome.account_key.is_(None)),
+        ((appmod.SberIncome.source_tag.is_(None)) |
+         (~appmod.SberIncome.source_tag.in_(['manual_stand', 'manual_crm'])))).order_by(
         appmod.SberIncome.operation_date, appmod.SberIncome.id).all()
     if not rows:
         return 0

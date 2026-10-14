@@ -27,6 +27,13 @@ def main():
         profile.write_text(profile_text(range(start, start + PORT_COUNT), work))
         env = {key: os.environ[key] for key in ('PATH', 'LANG', 'LC_ALL', 'TZ')
                if key in os.environ}
+        if os.environ.get('NODE_PATH'):
+            env['NODE_PATH'] = os.environ['NODE_PATH']
+        if os.environ.get('PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH'):
+            env['PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH'] = os.environ['PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH']
+        if os.environ.get('PLAYWRIGHT_BROWSERS_PATH'):
+            env['PLAYWRIGHT_BROWSERS_PATH'] = os.environ['PLAYWRIGHT_BROWSERS_PATH']
+        env['CALCCRM_FENCE_PORT_START'] = str(start)
         env.update(HOME=work, TMPDIR=work, PYTHON_DOTENV_DISABLED='1')
         results = []
         for path in paths:

@@ -148,6 +148,25 @@ def test_sber_crm_and_unlinked_in_one_batch(sber_board):
     assert not {r['id'] for r in rows} & {r['id'] for r in after}
 
 
+def test_s18_rejects_mixed_accounts(sber_board):
+    client, rows = sber_board
+    db = m.get_session()
+    try:
+        db.query(m.SberIncome).filter_by(id=rows[1]['id']).update(
+            {'account_key': 'flow_sole'})
+        db.commit()
+    finally:
+        db.close()
+    before = client.get('/api/stand/state').json
+    proposal = _proposal(before['data'], rows)
+    proposal['incomes'][1]['source'] = 'registry'
+    proposal['incomes'][1]['accountKey'] = 'flow_sole'
+    response = client.put('/api/stand/state', json={
+        'version': before['version'], 'data': proposal})
+    assert response.status_code == 409, response.json
+    assert 'разных счет' in response.json['error'].lower()
+
+
 def test_reuse_rejected_after_other_tab_took_income(sber_board):
     client, rows = sber_board
     before = client.get('/api/stand/state').json

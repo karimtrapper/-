@@ -472,6 +472,7 @@ class PayInMethod(str, Enum):
     CRYPTO_DIRECT = "crypto_direct"
     SBER_WL = "sber_wl"
     SBER_REQS = "sber_reqs"
+    FLOW_SOLE_REQS = "flow_sole_reqs"
 
 
 PAYIN_METHOD_LABELS = {
@@ -483,6 +484,7 @@ PAYIN_METHOD_LABELS = {
     'partners_cash': 'наличные',
     'sber_wl': 'СБП',
     'sber_reqs': 'сбер реквизиты',
+    'flow_sole_reqs': 'Flow Sole (СГБ, реквизиты)',
 }
 
 PAYOUT_METHOD_LABELS = {
@@ -1360,8 +1362,11 @@ class Conversion(Base):
         return round(self.received_usdt() - self.expected_usdt(), 4)
 
     def to_dict(self):
+        account_keys = {_income_account_key(src.income) for src in (self.sources or [])}
+        account_key = next(iter(account_keys)) if len(account_keys) == 1 else None
         return {
             'id': self.id, 'display_name': self.display_name,
+            'account_key': account_key, 'account_label': _account_label(account_key) if account_key else None,
             'broker': self.broker, 'request_no': self.request_no,
             'sent_at': self.sent_at.isoformat() if self.sent_at else None,
             'held_percent': self.held_percent, 'held_fixed_rub': self.held_fixed_rub,
@@ -1399,6 +1404,7 @@ class ConversionSource(Base):
     amount_rub = Column(Float, nullable=False, default=0)
     created_at = Column(DateTime, default=datetime.utcnow)
     conversion = relationship('Conversion', back_populates='sources')
+    income = relationship('SberIncome')
 
 
 class ConversionTx(Base):
@@ -2098,6 +2104,8 @@ class SberIncome(Base):
     # Индекс: списки всегда сортируются по дате, а отсечка истории фильтрует по ней
     operation_date = Column(String(40), index=True)   # ISO-дата операции из выписки Сбера
     amount_rub = Column(Float, nullable=False)
+    # Историческое имя таблицы сохранено для FK пачек. Банк определяется здесь.
+    account_key = Column(String(80), nullable=True, default='sber', server_default='sber')
     payer = Column(String(255))             # плательщик (rurTransfer.payerName)
     purpose = Column(Text)                  # назначение платежа
     doc_number = Column(String(40))
@@ -2154,6 +2162,7 @@ class SberIncome(Base):
             'id': self.id, 'uuid': self.uuid,
             'operation_date': self.operation_date,
             'amount_rub': self.amount_rub,           # зачислено на счёт (net)
+            'account_key': self.account_key or 'sber',
             'payer': self.payer, 'purpose': self.purpose,
             'doc_number': self.doc_number,
             'claimed_deal_id': self.claimed_deal_id,
@@ -2172,6 +2181,30 @@ class SberIncome(Base):
             # Сколько заплатил клиент: у реквизитов = зачислено, у СБП = +комиссия
             'gross_rub': round(net + acq['fee_rub'], 2),
         }
+
+
+def _income_account_key(income):
+    return (income.account_key or 'sber') if income else None
+
+
+def _account_label(key):
+    if key == 'sber':
+        return 'Сбер'
+    if key == 'flow_sole':
+        return 'Flow Sole'
+    if key and key.startswith('other:'):
+        return 'Другой счёт · ' + key[6:]
+    return 'Счёт не указан'
+
+
+def _stand_manual_account_key(receipt):
+    """For another account, use the existing 20-digit requisites ID (account number)."""
+    mode = receipt.get('actualMode')
+    if mode == 'flowsole':
+        return 'flow_sole'
+    if mode == 'custom':
+        return 'other:' + str(receipt['account'])
+    return 'sber'
 
 
 _FEE_PURPOSE_RE = re.compile(r'комисси', re.IGNORECASE)
@@ -2669,6 +2702,7 @@ try:
             conn.execute(text("ALTER TABLE sber_incomes ADD COLUMN IF NOT EXISTS note TEXT"))
             conn.execute(text("ALTER TABLE sber_incomes ADD COLUMN IF NOT EXISTS source_tag VARCHAR(30)"))
             conn.execute(text("ALTER TABLE sber_incomes ADD COLUMN IF NOT EXISTS keep_active BOOLEAN DEFAULT FALSE"))
+            conn.execute(text("ALTER TABLE sber_incomes ADD COLUMN IF NOT EXISTS account_key VARCHAR(80) DEFAULT 'sber'"))
             conn.execute(text("ALTER TABLE agreements ADD COLUMN IF NOT EXISTS client_key VARCHAR(20)"))
             conn.execute(text("ALTER TABLE agreements ADD COLUMN IF NOT EXISTS route_key VARCHAR(60) NOT NULL DEFAULT 'legacy'"))
             # Уникальность переехала с имени на паспорт: имя приходит то капсом,
@@ -2698,7 +2732,8 @@ try:
                          "ALTER TABLE sber_incomes ADD COLUMN excluded BOOLEAN DEFAULT 0",
                          "ALTER TABLE sber_incomes ADD COLUMN note TEXT",
                          "ALTER TABLE sber_incomes ADD COLUMN source_tag VARCHAR(30)",
-                         "ALTER TABLE sber_incomes ADD COLUMN keep_active BOOLEAN DEFAULT 0"):
+                         "ALTER TABLE sber_incomes ADD COLUMN keep_active BOOLEAN DEFAULT 0",
+                         "ALTER TABLE sber_incomes ADD COLUMN account_key VARCHAR(80) DEFAULT 'sber'"):
                 try: conn.execute(text(_sql))
                 except: pass
         # Выдача с карты (THB-счёта): какой картой закрыли сделку
@@ -2954,7 +2989,8 @@ if 'postgresql' in DATABASE_URL:
         with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as ac:
             ac.execute(text("ALTER TYPE payinmethod ADD VALUE IF NOT EXISTS 'SBER_WL'"))
             ac.execute(text("ALTER TYPE payinmethod ADD VALUE IF NOT EXISTS 'SBER_REQS'"))
-        print("✅ SBER_WL/SBER_REQS enum values added")
+            ac.execute(text("ALTER TYPE payinmethod ADD VALUE IF NOT EXISTS 'FLOW_SOLE_REQS'"))
+        print("✅ SBER_WL/SBER_REQS/FLOW_SOLE_REQS enum values added")
     except Exception as e:
         print(f"ℹ️ SBER_WL enum: {e}")
     try:
@@ -7648,7 +7684,10 @@ def _stand_crm_fact_problem(board, crm, kind):
         return 'recipient_mismatch'
     payin_method = {'По реквизитам': 'sber_reqs', 'СБП': 'sber_wl',
                     'Крипта': 'crypto_direct', 'Наличные': 'partners_cash'}
-    if board.get('payType') and crm.get('payin_method') != payin_method.get(board['payType']):
+    expected_payin_method = ('flow_sole_reqs' if board.get('payType') == 'По реквизитам'
+        and (board.get('rubReceivingAccount') or {}).get('mode') == 'flowsole'
+        else payin_method.get(board.get('payType')))
+    if board.get('payType') and crm.get('payin_method') != expected_payin_method:
         return 'payin_method_mismatch'
     broker_rate = (board.get('rates') or {}).get('broker')
     if board.get('custom') is not True:
@@ -8921,6 +8960,7 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
            for income in new_state.get('incomes') or []):
         return 'Ручной приход подтверждается только оператором'
     protected_income_keys = ('id', 'source', 'dealId', 'manualReceiptId',
+        'accountKey', 'crmIncomeId', 'uuid',
         'rub', 'grossRub', 'date', 'payer', 'kind', 'acc', 'purpose',
         'statementDate', 'statementRef', 'confirmedBy', 'confirmedRole',
         'confirmedAt', 'demo', 'excluded', 'status', 'files')
@@ -11482,6 +11522,18 @@ def stand_manual_bank_receipt_confirm(deal_id):
         stamp = datetime.utcnow().isoformat(timespec='seconds') + 'Z'
         receipt.update({'status': 'confirmed', 'confirmedBy': flask_session.get('user_id'),
                         'confirmedRole': actor, 'confirmedAt': stamp})
+        account_key = _stand_manual_account_key(receipt)
+        manual_uuid = 'manual:' + receipt['id']
+        registry_income = db.query(SberIncome).filter_by(uuid=manual_uuid).with_for_update().first()
+        if registry_income:
+            return jsonify({'success': False, 'error': 'Ручной приход уже есть в реестре'}), 409
+        registry_income = SberIncome(
+            uuid=manual_uuid, account_key=account_key,
+            operation_date=receipt['statementDate'], amount_rub=receipt['actualAmount'],
+            payer=receipt.get('payer') or '', purpose=receipt.get('bankPurpose') or '',
+            doc_number=receipt.get('statementRef') or '', source_tag='manual_stand')
+        db.add(registry_income)
+        db.flush()
         display_date = datetime.strptime(receipt['statementDate'], '%Y-%m-%d').strftime('%d.%m')
         income = {'id': income_id, 'date': display_date,
             'payer': receipt['payer'], 'rub': receipt['actualAmount'], 'grossRub': receipt['actualAmount'],
@@ -11489,12 +11541,14 @@ def stand_manual_bank_receipt_confirm(deal_id):
             'purpose': receipt['bankPurpose'], 'dealId': deal_id, 'cnvId': None,
             'excluded': False, 'demo': False, 'source': 'manual_confirmed',
             'manualReceiptId': receipt['id'], 'confirmedBy': receipt['confirmedBy'],
+            'accountKey': account_key, 'crmIncomeId': registry_income.id, 'uuid': manual_uuid,
             'confirmedRole': actor, 'confirmedAt': stamp,
             'statementDate': receipt['statementDate'], 'statementRef': receipt['statementRef']}
         state.setdefault('incomes', []).append(income)
         deal.setdefault('payinParts', []).append({'amountRub': receipt['actualAmount'],
             'payer': receipt['payer'], 'date': display_date, 'kind': 'bank',
             'net': None, 'fee': None, 'incId': income_id, 'acc': income['acc'],
+            'accountKey': account_key, 'crmIncomeId': registry_income.id, 'uuid': manual_uuid,
             'purpose': receipt['bankPurpose'], 'demo': False, 'manualReceiptId': receipt['id']})
         deal['incomeAmount'] = receipt['actualAmount']
         deal.setdefault('log', []).append({'at': int(time.time() * 1000), 'ts': stamp,
@@ -13176,6 +13230,78 @@ def _refresh_deal_agents(session, deal):
 
 # ==================== ПРИХОДЫ СБЕРА (реквизиты) ====================
 
+@app.route('/api/deals/<int:deal_id>/manual-rub-income', methods=['POST'])
+def create_manual_rub_income(deal_id):
+    """Register a Flow Sole bank credit only with its amount and statement file."""
+    from decimal import Decimal, InvalidOperation
+    from zoneinfo import ZoneInfo
+    try:
+        amount = Decimal(str(request.form.get('amount_rub') or ''))
+        if not amount.is_finite() or amount <= 0 or amount > 10**12 or amount != amount.quantize(Decimal('0.01')):
+            raise InvalidOperation
+        day = str(request.form.get('operation_date') or
+                  datetime.now(ZoneInfo('Europe/Moscow')).date().isoformat())
+        if datetime.strptime(day, '%Y-%m-%d').date().isoformat() != day:
+            raise ValueError
+        upload = request.files.get('file')
+        if not upload or not upload.filename:
+            raise ValueError('Приложите файл выписки')
+        raw = upload.read(stand_file_storage.FILE_LIMIT + 1)
+        name = stand_file_storage.safe_name(upload.filename)
+        stand_file_storage.validate(raw, upload.mimetype, name)
+    except (ValueError, InvalidOperation, TypeError):
+        return jsonify(success=False, error='Укажите положительную сумму до копеек, дату и файл выписки'), 400
+    db = get_session()
+    try:
+        deal = db.query(Deal).filter_by(id=deal_id).with_for_update().first()
+        if not deal or deal.payin_method != PayInMethod.FLOW_SOLE_REQS:
+            return jsonify(success=False, error='Сделка Flow Sole не найдена'), 404
+        if db.query(SberIncome).filter_by(claimed_deal_id=deal_id, account_key='flow_sole').first():
+            return jsonify(success=False, error='Ручной приход по сделке уже зарегистрирован'), 409
+        file_id = 'sf_' + secrets.token_hex(16)
+        object_key = 'stand-files/' + secrets.token_hex(16)
+        import hashlib
+        file_row = StandFile(id=file_id, deal_id=deal_id, kind='crmBankCreditEvidence',
+            filename=name, mime=upload.mimetype, size=len(raw), sha256=hashlib.sha256(raw).hexdigest(),
+            object_key=object_key, content_valid=True,
+            uploaded_by=flask_session.get('username') or 'crm')
+        income = SberIncome(uuid='crm-manual:' + secrets.token_hex(16),
+            operation_date=day, amount_rub=float(amount), account_key='flow_sole',
+            payer='', purpose='', doc_number=file_id, source_tag='manual_crm',
+            claimed_deal_id=deal_id, claimed_at=datetime.utcnow())
+        db.add(file_row)
+        db.add(income)
+        db.flush()
+        deal.payin_parts = json.dumps([{'uuid': income.uuid, 'amount_rub': float(amount),
+            'date': day}], ensure_ascii=False)
+        deal.payin_amount_rub = float(amount)
+        stand_object_store.storage().put(object_key, raw, upload.mimetype)
+        db.commit()
+        return jsonify(success=True, income=income.to_dict())
+    except (ValueError, stand_object_store.StorageUnavailable) as exc:
+        db.rollback()
+        return jsonify(success=False, error=str(exc)), 400
+    finally:
+        db.close()
+
+
+@app.route('/api/deals/<int:deal_id>/manual-rub-income/statement', methods=['GET'])
+def get_manual_rub_statement(deal_id):
+    db = get_session()
+    try:
+        inc = db.query(SberIncome).filter_by(claimed_deal_id=deal_id,
+            account_key='flow_sole', source_tag='manual_crm').first()
+        file_row = db.query(StandFile).filter_by(id=inc.doc_number, deal_id=deal_id,
+            kind='crmBankCreditEvidence').first() if inc else None
+        if not file_row:
+            return jsonify(success=False, error='Файл выписки не найден'), 404
+        raw = stand_object_store.read_verified(file_row.object_key, file_row.size, file_row.sha256)
+        from io import BytesIO
+        return send_file(BytesIO(raw), mimetype=file_row.mime, as_attachment=True,
+                         download_name=file_row.filename)
+    finally:
+        db.close()
+
 @app.route('/api/sber-incomes/ingest', methods=['POST'])
 def ingest_sber_incomes():
     """Приём приходов Сбера от SberNotifier (VPS). Идемпотентный upsert по uuid.
@@ -13404,6 +13530,11 @@ def _attach_sources(db, conv, sources_req, force=False):
     это не проходит: без флага пачка не создастся.
     """
     sources_req = _conversion_parts(sources_req, 'sber_income_id')
+    incoming = db.query(SberIncome).filter(SberIncome.id.in_(
+        [item['sber_income_id'] for item in sources_req])).with_for_update().all()
+    keys = {_income_account_key(inc) for inc in incoming}
+    if len(keys) > 1:
+        raise ValueError('Поступления с разных счетов нельзя отправить одной пачкой')
     db.query(ConversionSource).filter(ConversionSource.conversion_id == conv.id).delete()
     db.flush()
 
@@ -13446,6 +13577,8 @@ def stand_s18_sber_candidates():
     db = get_session()
     try:
         board = json.loads(_stand_row(db).data or '{}')
+        board_income_ids = {i.get('crmIncomeId') for i in board.get('incomes') or []
+                            if i.get('crmIncomeId') and i.get('dealId') is not None}
         busy = {str(i.get('id')) for i in board.get('incomes') or [] if i.get('cnvId')}
         rows = db.query(SberIncome).filter(SberIncome.excluded.isnot(True)).order_by(
             SberIncome.operation_date.desc(), SberIncome.id.desc()).all()
@@ -13456,11 +13589,13 @@ def stand_s18_sber_candidates():
         for inc in rows:
             free = inc.free_rub(used)
             deal = linked.get(inc.claimed_deal_id)
-            if (free <= .01 or 'sber:' + inc.uuid in busy
+            if (free <= .01 or inc.id in board_income_ids or 'sber:' + inc.uuid in busy
                     or ((inc.operation_date or '') < CONVERSIONS_LAUNCH_DATE and not inc.keep_active)
                     or (deal and deal.payin_amount_usdt)):
                 continue
             result.append({'id': inc.id, 'uuid': inc.uuid, 'date': inc.operation_date,
+                           'accountKey': _income_account_key(inc),
+                           'accountLabel': _account_label(_income_account_key(inc)),
                            'payer': inc.payer or '', 'rub': free,
                            'dealId': inc.claimed_deal_id,
                            'client': deal.client_name if deal else None,
@@ -13486,8 +13621,16 @@ def _stand_restore_crm_candidates(db, state):
             row = db.query(SberIncome).filter_by(uuid=key[5:]).first()
             if not row:
                 continue
-            from stand_sber_mirror import _board_income
-            income = _board_income(row)
+            if _income_account_key(row) == 'sber':
+                from stand_sber_mirror import _board_income
+                income = _board_income(row)
+            else:
+                income = {'id': key, 'uuid': row.uuid, 'source': 'registry',
+                    'accountKey': _income_account_key(row),
+                    'acc': _account_label(_income_account_key(row)),
+                    'date': row.operation_date, 'rub': row.amount_rub,
+                    'grossRub': row.amount_rub, 'payer': row.payer or '',
+                    'dealId': None, 'excluded': False}
             income['cnvId'] = conv.get('id')
             income['batchRub'] = source.get('rub')
             state.setdefault('incomes', []).append(income)
@@ -13550,7 +13693,8 @@ def _stand_sync_crm_conversions(db, previous, state):
         board_deals = {d.get('id'): d for d in state.get('deals') or []}
         parts = [part for source in item.get('sources') or [] if source.get('dealId') is not None
                  for part in (board_deals.get(source['dealId']) or {}).get('payinParts') or []]
-        if not extras and (not parts or not all(str(p.get('incId')).startswith('sber:') for p in parts)):
+        if not extras and (not parts or not all(
+                str(p.get('incId')).startswith('sber:') or p.get('crmIncomeId') for p in parts)):
             continue
         members = {s.get('dealId') for s in item['sources'] if s.get('dealId') is not None}
         if not members or item.get('status') != 'sent':
@@ -13560,19 +13704,27 @@ def _stand_sync_crm_conversions(db, previous, state):
             if source.get('dealId') is None:
                 key = str(source.get('incomeId'))
                 if not key.startswith('sber:'):
-                    raise ValueError('В пачку можно добавить только поступление Сбера')
+                    raise ValueError('Поступление реестра не найдено')
                 ids_by_uuid[key[5:]] = source
                 continue
             deal = board_deals.get(source['dealId']) or {}
             for part in deal.get('payinParts') or []:
                 key = str(part.get('incId'))
-                if not key.startswith('sber:'):
-                    raise ValueError('Поступления Сбера нельзя смешивать с другим счётом')
-                ids_by_uuid.setdefault(key[5:], None)
+                if key.startswith('sber:'):
+                    ids_by_uuid.setdefault(key[5:], None)
+                elif part.get('crmIncomeId'):
+                    registry = db.query(SberIncome).get(part['crmIncomeId'])
+                    if not registry or registry.uuid != 'manual:' + str(part.get('manualReceiptId')):
+                        raise ValueError('Ручной приход не найден в реестре')
+                    ids_by_uuid.setdefault(registry.uuid, None)
+                else:
+                    raise ValueError('Поступление не найдено в общем реестре')
         rows = db.query(SberIncome).filter(SberIncome.uuid.in_(sorted(ids_by_uuid))).order_by(
             SberIncome.id).with_for_update().all()
         if len(rows) != len(ids_by_uuid):
             raise ValueError('Поступление Сбера не найдено в CRM')
+        if len({_income_account_key(row) for row in rows}) != 1:
+            raise ValueError('Поступления с разных счетов нельзя отправить одной пачкой')
         used = _converted_by_income(db, [r.id for r in rows])
         if abs(sum(r.free_rub(used) for r in rows) - float(item.get('rubTotal') or 0)) > .01:
             raise ValueError('Сумма поступлений CRM не совпадает с отправленной пачкой')
@@ -13590,9 +13742,12 @@ def _stand_sync_crm_conversions(db, previous, state):
                     and not row.keep_active):
                 raise ValueError('Поступление Сбера уже сконвертировано или исключено')
             key = 'sber:' + row.uuid
-            mirror = board_incomes.get(key) or {}
-            if mirror.get('source') != 'sber' or mirror.get('cnvId') != item.get('id'):
-                raise ValueError('Поступление Сбера не привязано к пачке на доске')
+            mirror = board_incomes.get(key) or next((i for i in board_incomes.values()
+                if i.get('crmIncomeId') == row.id), {})
+            if (mirror.get('source') not in ('sber', 'manual_confirmed', 'registry')
+                    or mirror.get('cnvId') != item.get('id')
+                    or (mirror.get('accountKey') or 'sber') != _income_account_key(row)):
+                raise ValueError('Поступление не привязано к пачке на своём счёте')
             if ids_by_uuid[row.uuid] is not None:
                 source = ids_by_uuid[row.uuid]
                 formerly = previous_incomes.get(key) or {}
@@ -14356,6 +14511,11 @@ def _attach_debits(db, conv, debits_req, force=False):
     иначе расход учтётся дважды, как это было с приходами USDT.
     """
     debits_req = _conversion_parts(debits_req, 'sber_debit_id')
+    if debits_req and db.query(SberIncome.account_key).join(
+            ConversionSource, ConversionSource.sber_income_id == SberIncome.id).filter(
+            ConversionSource.conversion_id == conv.id,
+            SberIncome.account_key != 'sber').first():
+        raise ValueError('Списания Сбера нельзя привязать к пачке другого счёта')
     db.query(ConversionDebit).filter(ConversionDebit.conversion_id == conv.id).delete()
     db.flush()
     for item in debits_req:
@@ -14502,6 +14662,8 @@ def get_conversion(conv_id):
                 'amount_rub': round(src.amount_rub or 0, 2),
                 'usdt': shares.get(src.sber_income_id, 0.0),
                 'payer': inc.payer if inc else None,
+                'account_key': _income_account_key(inc),
+                'account_label': _account_label(_income_account_key(inc)),
                 'operation_date': inc.operation_date if inc else None,
                 'deal_id': deal.id if deal else None,
                 'client_name': (deal.client_name if deal else None),

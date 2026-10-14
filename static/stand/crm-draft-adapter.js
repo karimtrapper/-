@@ -145,7 +145,8 @@ function crmDraftLayout(active) {
 }
 function crmDraftFill(active,d) {
   const {root}=active;
-  const method=PAYIN_CRM[d.payType]||'sber_reqs';
+  const method=d.payType==='По реквизитам'&&d.rubReceivingAccount?.mode==='flowsole'
+    ?'flow_sole_reqs':PAYIN_CRM[d.payType]||'sber_reqs';
   const kind=dealKind(d);
   crmDraftValue(root,'managerSelect',d.manager||'');
   crmDraftValue(root,'clientSearchInput',d.client||'');
@@ -722,7 +723,7 @@ function crmDraftCommitCustom(a,d,before) {
     payinTxHash:crmDraftRead(r,'customPayinTxHash').trim(),
     date:crmDraftRead(r,'customDealDate'),notes:crmDraftRead(r,'customNotes')};
   d.customData=c;
-  const methods={sber_reqs:'По реквизитам',sber_wl:'СБП',crypto_direct:'Крипта',partners_cash:'Наличные'};
+  const methods={sber_reqs:'По реквизитам',flow_sole_reqs:'По реквизитам',sber_wl:'СБП',crypto_direct:'Крипта',partners_cash:'Наличные'};
   d.payType=methods[c.payinMethod]||d.payType;
   d.amountRub=payinCurrency==='RUB'?payinAmount:null;
   d.amountUsdt=payinUsdt;
@@ -802,7 +803,7 @@ function crmDraftCommit(id) {
     }
     d.clientId=local.id;
   }
-  const methods={sber_reqs:'По реквизитам',sber_wl:'СБП',crypto_direct:'Крипта',partners_cash:'Наличные'};
+  const methods={sber_reqs:'По реквизитам',flow_sole_reqs:'По реквизитам',sber_wl:'СБП',crypto_direct:'Крипта',partners_cash:'Наличные'};
   d.payType=methods[crmDraftRead(r,'payinMethod')]||d.payType;
   d.amountRub=crmDraftNum(crmDraftRead(r,'payin_amount_rub'));
   if(kind==='mf_freehold'&&d.payType==='Крипта'){

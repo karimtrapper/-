@@ -35,7 +35,7 @@ const ctx = {S: {deals: [main], incomes}, d: main, ap: {rub: 10000},
   htmlText: String, num: Number, pct: String,
   avgUsdt: () => 33, approx: () => ({thb: 0}), econ: () => ({sentUsd: 0})};
 vm.createContext(ctx);
-vm.runInContext(['pendingEx', 's18Sber', 's18Rub', 's18CrmRows',
+vm.runInContext(['pendingEx', 's18Sber', 's18AccountKey', 's18AccountLabel', 's18Rub', 's18CrmRows',
   's18DateKey', 's18DateLabel', 's18FilteredRows', 's18CrmSection',
   'convMargin', 'convMarginBlock'].map(fn).join('\n')+
   '\nlet s18Candidates=[], s18Selected=new Set(), s18SelectedDealId=null;'+
@@ -91,15 +91,21 @@ assert.match(section, /Свернуть до 10/);
 main.payinParts = [{incId: 'manual:1', amountRub: 10000}];
 main.manualBankReceipt = {bank: 'БАНК СГБ', account: '40807810819000000261'};
 incomes[0] = {id: 'manual:1', source: 'manual_confirmed', dealId: 100,
-  rub: 10000, grossRub: 10000};
+  accountKey: 'flow_sole', rub: 10000, grossRub: 10000};
+vm.runInContext(`s18Candidates.push({id:4,uuid:'flow4',accountKey:'flow_sole',
+  rub:20000,dealId:44,client:'Flow CRM',date:'2026-10-14T12:00:00',
+  dealRub:20000,payoutUsdt:150});s18Selected=new Set([4])`, ctx);
 rendered = vm.runInContext('stepS18()', ctx);
 assert.match(rendered, /СД-100 · Клиент/);
-assert.doesNotMatch(rendered, /поступления Сбера сюда не добавить|Первая строка|Отметьте поступления/);
+assert.match(rendered, /Пачка · Flow Sole/);
+assert.match(rendered, /Сделка #44 · Flow CRM/);
+assert.match(rendered, /Состав пачки · 2 поступл\./);
 assert.doesNotMatch(rendered, /Сделка #42|Поступление без сделки/);
 main.manualBankReceipt = {bank: 'Банк клиента', account: '40702810123456789012'};
+incomes[0].accountKey = 'other:40702810123456789012';
 rendered = vm.runInContext('stepS18()', ctx);
-assert.doesNotMatch(rendered, /Банк клиента · 40702810123456789012|Отметьте поступления/);
-assert.doesNotMatch(rendered, /Сделка #42|Поступление без сделки/);
+assert.match(rendered, /Пачка · Другой счёт · 40702810123456789012/);
+assert.doesNotMatch(rendered, /Сделка #42|Сделка #44|Поступление без сделки/);
 incomes[0] = {id: 'sber:main', source: 'sber', dealId: 100, rub: 9930,
   grossRub: 10000};
 main.payinParts = [{incId: 'sber:main', amountRub: 10000}];

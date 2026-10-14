@@ -73,17 +73,19 @@ def check_batch(state, conv, *, dispatch=False, independent_id=None):
     if not ids or any(type(i) is not int for i in ids) or len(set(ids)) != len(ids):
         return 'В пачке дублируется или отсутствует источник'
     used_income = set()
+    account_keys = set()
     for source in sources:
         if source.get('dealId') is None:
             key = str(source.get('incomeId'))
             income = incomes.get(key)
             rub = money(source.get('rub'), positive=True)
-            if (not key.startswith('sber:') or not income or income.get('source') != 'sber'
+            if (not key.startswith('sber:') or not income or income.get('source') not in ('sber', 'registry')
                     or income.get('dealId') is not None or income.get('excluded')
                     or income.get('cnvId') != conv.get('id') or rub is None
                     or money(income.get('batchRub') or income.get('rub'), positive=True) != rub
                     or key in used_income):
-                return 'Поступление Сбера уже использовано или не совпадает с пачкой'
+                return 'Поступление реестра уже использовано или не совпадает с пачкой'
+            account_keys.add(income.get('accountKey') or 'sber')
             used_income.add(key)
             continue
         deal = deals.get(source['dealId'])
@@ -110,6 +112,8 @@ def check_batch(state, conv, *, dispatch=False, independent_id=None):
                     or income.get('excluded') or part_rub is None or part_rub != income_rub
                     or not (income.get('source') == 'sber' or income.get('demo') is True or manual_ok)):
                 return 'Приход RUB не подтверждён, повторно использован или не принадлежит сделке'
+            if income.get('accountKey') or income.get('source') == 'sber':
+                account_keys.add(income.get('accountKey') or 'sber')
             used_income.add(key)
             if source.get('bankNet') and income.get('source') == 'sber':
                 net = money(income.get('rub'), positive=True)
@@ -120,6 +124,8 @@ def check_batch(state, conv, *, dispatch=False, independent_id=None):
                 total += part_rub
         if total != rub:
             return 'Сумма RUB источника не совпадает с подтверждёнными приходами'
+    if len(account_keys) > 1:
+        return 'Поступления с разных счетов нельзя отправить одной пачкой'
     if any('usdtFact' in source for source in sources):
         total_rub = sum(money(source['rub'], positive=True) for source in sources)
         last = len(sources) - 1

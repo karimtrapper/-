@@ -1319,6 +1319,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                                     <option value="crypto_direct">Крипта напрямую</option>
                                     <option value="sber_wl">СБП</option>
                                     <option value="sber_reqs">Сбер (реквизиты)</option>
+                                    <option value="flow_sole_reqs">Flow Sole (СГБ, реквизиты)</option>
                                     <option value="partners_cash">Партнёры (наличные)</option>
                                     <option value="spp_doverka" data-legacy="1" hidden>СБП (Доверка, архив)</option>
                                 </select>
@@ -1349,6 +1350,15 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                             </div>
                         </div>
 
+                        <div id="flowManualGroupC" style="display:none; margin-bottom:1rem; padding:0.75rem; border:1px solid #bae6fd; border-radius:8px;">
+                            <strong>Приход Flow Sole · ФЛОУ СОЛЕ КО., ЛТД · Московский филиал БАНК СГБ · р/с 40807810819000000261</strong>
+                            <div class="form-row" style="margin-top:8px;">
+                                <div class="form-group"><label class="form-label">Сумма прихода, ₽</label><input id="flowAmountC" type="number" min="0.01" step="0.01" class="form-control"></div>
+                                <div class="form-group"><label class="form-label">Дата прихода</label><input id="flowDateC" type="date" class="form-control"></div>
+                                <div class="form-group"><label class="form-label">Файл выписки</label><input id="flowFileC" type="file" class="form-control" accept=".pdf,.png,.jpg,.jpeg,.webp"></div>
+                            </div>
+                        </div>
+
                         <button type="button" id="customDealSubmit" class="btn btn-success" style="margin-top: 1rem;"
                             onclick="createCustomDeal()">
                             Создать кастомную сделку
@@ -1370,6 +1380,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                                 <select class="form-control" name="payin_method" id="payinMethod" required>
                                     <option value="sber_wl">СБП</option>
                                     <option value="sber_reqs">Сбер (реквизиты)</option>
+                                    <option value="flow_sole_reqs">Flow Sole (СГБ, реквизиты)</option>
                                     <option value="crypto_direct">Крипта напрямую</option>
                                     <option value="partners_cash">Партнеры (наличные)</option>
                                     <!-- Архив: тот же СБП, но через умершую Доверку. Скрыт из выбора,
@@ -1388,6 +1399,15 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                                     oninput="payinUsdtChanged()">
                                 <small style="color:#6b7280;">введи сколько USDT реально пришло — курс посчитается из рублей</small>
                                 <div id="payinUsdtConvHint" style="display:none; margin-top:4px; font-size:0.85rem;"></div>
+                            </div>
+                        </div>
+
+                        <div id="flowManualGroup" style="display:none; margin-bottom:1rem; padding:0.75rem; border:1px solid #bae6fd; border-radius:8px;">
+                            <strong>Приход Flow Sole · ФЛОУ СОЛЕ КО., ЛТД · Московский филиал БАНК СГБ · р/с 40807810819000000261</strong>
+                            <div class="form-row" style="margin-top:8px;">
+                                <div class="form-group"><label class="form-label">Сумма прихода, ₽</label><input id="flowAmount" type="number" min="0.01" step="0.01" class="form-control"></div>
+                                <div class="form-group"><label class="form-label">Дата прихода</label><input id="flowDate" type="date" class="form-control"></div>
+                                <div class="form-group"><label class="form-label">Файл выписки</label><input id="flowFile" type="file" class="form-control" accept=".pdf,.png,.jpg,.jpeg,.webp"></div>
                             </div>
                         </div>
 
@@ -2108,7 +2128,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     <thead><tr>
                         <th style="width:34px"><input type="checkbox" onclick="toggleAllIncomes(this)"></th>
                         <th>Дата</th><th>Плательщик</th><th>Сумма</th><th>Конвертировать</th>
-                        <th>Вид</th><th>Источник</th><th>Сделка</th><th>Конвертация</th><th></th>
+                        <th>Вид</th><th>Счёт</th><th>Источник</th><th>Сделка</th><th>Конвертация</th><th></th>
                     </tr></thead>
                     <tbody id="incomesTable"></tbody>
                 </table>
@@ -2138,7 +2158,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         style="margin-bottom:1rem;">+ Новая пачка</button>
                 <table class="table">
                     <thead><tr>
-                        <th>CNV</th><th>Дата</th><th>Брокер</th><th>Заявка</th>
+                        <th>CNV</th><th>Счёт</th><th>Дата</th><th>Брокер</th><th>Заявка</th>
                         <th>Отправлено ₽</th><th>Курс</th>
                         <th>Получили</th><th>Δ</th><th>Статус</th>
                     </tr></thead>
@@ -4485,7 +4505,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 
         // ==================== Charts ====================
         let chartInstances = {};
-        const METHOD_NAMES = {'spp_doverka': 'СБП (Доверка)', 'partner_cash': 'Партнёры', 'crypto_direct': 'Крипта', 'sber_wl': 'СБП', 'sber_reqs': 'Сбер реквизиты', 'custom': 'Кастомная', 'unknown': 'Другое'};
+        const METHOD_NAMES = {'spp_doverka': 'СБП (Доверка)', 'partner_cash': 'Партнёры', 'crypto_direct': 'Крипта', 'sber_wl': 'СБП', 'sber_reqs': 'Сбер реквизиты', 'flow_sole_reqs': 'Flow Sole (СГБ, реквизиты)', 'custom': 'Кастомная', 'unknown': 'Другое'};
         let currentPeriod = '30d';
         let dashRange = null; // {from:'YYYY-MM-DD', to:'YYYY-MM-DD', label} — кастомный диапазон или месяц
 
@@ -5327,6 +5347,10 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         document.getElementById('customPayoutMethod').value = deal.payout_method || 'office';
                         // Метод Pay-In + части прихода Сбера
                         if (deal.payin_method) setPayinMethodValue('customPayinMethod', deal.payin_method);
+                        flowExistingParts = (deal.payin_parts || []).filter(p => String(p.uuid || '').startsWith('crm-manual:'));
+                        flowExistingReceipt = flowExistingParts.length > 0;
+                        if (flowExistingReceipt) document.getElementById('flowAmountC').value = flowExistingParts[0].amount_rub || '';
+                        document.getElementById('flowAmountC').readOnly = flowExistingReceipt;
                         sberParts = (methodUsesSberPool(deal.payin_method) && deal.payin_parts) ? deal.payin_parts.slice() : [];
                         onCustomPayinMethodChange();
                         customUsdtMode = { payin: 'rate', payout: 'rate' };  // грузим курс → USDT производный
@@ -5357,6 +5381,10 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                             setPayinMethodValue('payinMethod', deal.payin_method);
                             document.getElementById('payinMethod').dispatchEvent(new Event('change'));
                         }
+                        flowExistingParts = (deal.payin_parts || []).filter(p => String(p.uuid || '').startsWith('crm-manual:'));
+                        flowExistingReceipt = flowExistingParts.length > 0;
+                        if (flowExistingReceipt) document.getElementById('flowAmount').value = flowExistingParts[0].amount_rub || '';
+                        document.getElementById('flowAmount').readOnly = flowExistingReceipt;
                         // Части прихода Сбера (СБП и реквизиты — общий пул выписки)
                         sberParts = (methodUsesSberPool(deal.payin_method) && deal.payin_parts) ? deal.payin_parts.slice() : [];
                         if (sberParts.length) sberRender();
@@ -5580,7 +5608,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 client_name: clientName,
                 created_at: createdAt || null,
                 payin_method: customMethod,
-                payin_parts: methodUsesSberPool(customMethod) ? sberParts : [],
+                payin_parts: methodUsesSberPool(customMethod) ? sberParts : customMethod === 'flow_sole_reqs' ? flowExistingParts : [],
                 payout_source: 'binance',
                 payin_amount_usdt: payinUsdt,
                 payout_amount_usdt: payoutUsdt,
@@ -6804,6 +6832,39 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         // Оба сберовских метода кормятся из одной выписки: СБП приходит эквайрингом,
         // реквизиты — переводом от ФИО. Пул один, различаются меткой kind.
         function methodUsesSberPool(method) { return method === 'sber_reqs' || method === 'sber_wl'; }
+        let flowExistingReceipt = false;
+        let flowExistingParts = [];
+        function flowToday() {
+            const d = new Date();
+            return [d.getFullYear(), String(d.getMonth() + 1).padStart(2, '0'),
+                String(d.getDate()).padStart(2, '0')].join('-');
+        }
+        function flowShow(suffix, show) {
+            const group = document.getElementById('flowManualGroup' + suffix);
+            if (group) group.style.display = show ? 'block' : 'none';
+            const day = document.getElementById('flowDate' + suffix);
+            if (show && day && !day.value) day.value = flowToday();
+        }
+        function flowReceiptInput(suffix, hasExisting) {
+            const amount = Number(document.getElementById('flowAmount' + suffix)?.value);
+            const file = document.getElementById('flowFile' + suffix)?.files?.[0];
+            if (hasExisting && !file) return null;
+            if (!(amount > 0) || Math.abs(Math.round(amount * 100) - amount * 100) > 0.00001 || !file) {
+                showToast('Для прихода Flow Sole нужны сумма в ₽ и файл выписки', 'error');
+                return false;
+            }
+            const body = new FormData();
+            body.append('amount_rub', amount.toFixed(2));
+            body.append('operation_date', document.getElementById('flowDate' + suffix)?.value || flowToday());
+            body.append('file', file);
+            return body;
+        }
+        async function flowSaveReceipt(dealId, body) {
+            const response = await fetch(`${API_URL}/api/deals/${dealId}/manual-rub-income`,
+                {method: 'POST', body});
+            const result = await response.json();
+            if (!result.success) throw new Error(result.error || 'Не удалось сохранить приход');
+        }
 
         // Архивные методы (spp_doverka) убраны из выпадашки, но у старых сделок они
         // в базе: если просто присвоить value, селект останется пустым и сохранение
@@ -7187,6 +7248,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             // доступа к пулу: платёж клиента лежал в выписке эквайрингом и не
             // привязывался ни к чему, поэтому «где эти деньги» было не ответить.
             const sberGroup = document.getElementById('sberReqsGroup');
+            flowShow('', method.value === 'flow_sole_reqs');
             const usesPool = methodUsesSberPool(method.value);
             if (sberGroup) sberGroup.style.display = usesPool ? 'block' : 'none';
             if (usesPool) {
@@ -7198,7 +7260,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             partnerGroup.style.display = method.value === 'partners_cash' ? 'block' : 'none';
 
             // Рубли и курс RUB/USDT
-            if (method.value === 'spp_doverka' || method.value === 'partners_cash' || isSberWL || isSberReqs) {
+            if (method.value === 'spp_doverka' || method.value === 'partners_cash' || isSberWL || isSberReqs || method.value === 'flow_sole_reqs') {
                 rubGroup.style.display = 'block';
                 rateGroup.style.display = 'block';
             } else {
@@ -8427,6 +8489,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         // Подбор входящей транзакции в кастомной сделке: WL Сбер или крипта → заполняет всю сумму
         async function onCustomPayinMethodChange() {
             const method = document.getElementById('customPayinMethod').value;
+            flowShow('C', method === 'flow_sole_reqs');
             const picker = document.getElementById('customPayinPicker');
             const label = document.getElementById('customPickerLabel');
             const select = document.getElementById('customPayinTxSelect');
@@ -8546,6 +8609,8 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 
             const payoutMethod = document.getElementById('customPayoutMethod').value;
             const payinMethod = document.getElementById('customPayinMethod').value;
+            const flowBody = payinMethod === 'flow_sole_reqs' ? flowReceiptInput('C', false) : null;
+            if (flowBody === false) return;
             const payinTxHash = document.getElementById('customPayinTxHash').value.trim();
             const notes = document.getElementById('customNotes').value;
             const customDate = document.getElementById('customDealDate').value;
@@ -8584,7 +8649,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 
             const data = {
                 deal_type: 'pay_in',
-                status: 'completed',  // Кастомная сделка сразу завершена
+                status: payinMethod === 'flow_sole_reqs' ? 'pending' : 'completed',
                 manager_name: managerName,
                 client_id: clientId ? parseInt(clientId) : null,
                 client_name: clientName || null,
@@ -8598,7 +8663,8 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 // Pay-In
                 payin_method: payinMethod,
                 payin_tx_hash: payinTxHash || null,
-                payin_amount_usdt: payinUsdt,
+                payin_amount_rub: payinMethod === 'flow_sole_reqs' ? Number(document.getElementById('flowAmountC').value) : null,
+                payin_amount_usdt: payinMethod === 'flow_sole_reqs' ? null : payinUsdt,
                 payin_parts: methodUsesSberPool(payinMethod) ? sberParts : [],
                 payin_extra: payinExtraSerialize(),
 
@@ -8623,9 +8689,9 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 
                 // Прибыль (процент от выдачи — как считает бэкенд _recalculate_deal_financials,
                 // иначе тост показывал один %, а в БД/таблицу писался другой)
-                profit_usdt: profit,
-                profit_percent: payoutUsdt > 0 ? (profit / payoutUsdt * 100) : 0,
-                net_profit_usdt: netProfit,
+                profit_usdt: payinMethod === 'flow_sole_reqs' ? null : profit,
+                profit_percent: payinMethod === 'flow_sole_reqs' ? null : payoutUsdt > 0 ? (profit / payoutUsdt * 100) : 0,
+                net_profit_usdt: payinMethod === 'flow_sole_reqs' ? null : netProfit,
 
                 // Заметки
                 notes: notes || null
@@ -8641,11 +8707,17 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 const result = await response.json();
 
                 if (result.success) {
-                    let msg = `Кастомная сделка создана!\n\nPayIn: $${payinUsdt.toFixed(2)}\nPayOut: $${payoutUsdt.toFixed(2)}\nВаловая прибыль: $${profit.toFixed(2)}`;
-                    if (agents.length) {
+                    if (flowBody) {
+                        try { await flowSaveReceipt(result.deal.id, flowBody); }
+                        catch (error) { showToast(`Сделка #${result.deal.id} создана, приход не сохранён: ${error.message}`, 'error', 10000); return; }
+                    }
+                    let msg = flowBody
+                        ? `Кастомная сделка #${result.deal.id} создана. Приход Flow Sole записан; прибыль появится после конвертации.`
+                        : `Кастомная сделка создана!\n\nPayIn: $${payinUsdt.toFixed(2)}\nPayOut: $${payoutUsdt.toFixed(2)}\nВаловая прибыль: $${profit.toFixed(2)}`;
+                    if (!flowBody && agents.length) {
                         msg += '\n\n' + agents.map(a => `Ур.${a.tier} ${a.name || '-'} → $${(a._payout || 0).toFixed(2)}`).join('\n');
                     }
-                    msg += `\n\nЧистая прибыль: $${netProfit.toFixed(2)}`;
+                    if (!flowBody) msg += `\n\nЧистая прибыль: $${netProfit.toFixed(2)}`;
                     showToast(msg);
 
                     // Очистка формы
@@ -8929,7 +9001,16 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             if (data.payout_source !== 'binance') delete data.payout_wallet_id;
 
             // Части прихода Сбера (пустой список = убрать части и освободить пул)
-            data.payin_parts = methodUsesSberPool(data.payin_method) ? sberParts : [];
+            data.payin_parts = methodUsesSberPool(data.payin_method) ? sberParts :
+                data.payin_method === 'flow_sole_reqs' ? flowExistingParts : [];
+            const flowBody = data.payin_method === 'flow_sole_reqs'
+                ? flowReceiptInput('', editingDealId !== null && flowExistingReceipt) : null;
+            if (flowBody === false) return;
+            if (data.payin_method === 'flow_sole_reqs') {
+                data.payin_amount_rub = flowExistingReceipt && editingDealId !== null
+                    ? flowExistingParts[0].amount_rub : Number(document.getElementById('flowAmount').value);
+                if (!flowExistingReceipt || editingDealId === null) data.payin_amount_usdt = null;
+            }
 
             // Для ручного хэша сеть обязательна: по самому хэшу отличить
             // Ethereum от TRON нельзя. Выбранные из входящих всегда TRC-20.
@@ -9045,11 +9126,22 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 
                 if (result.success) {
                     const dealId = result.deal?.id || '';
+                    if (flowBody) {
+                        try { await flowSaveReceipt(dealId, flowBody); }
+                        catch (error) {
+                            editingDealId = dealId;
+                            showToast(`Сделка #${dealId} сохранена, но приход не записан: ${error.message}. Повторите сохранение.`, 'error', 10000);
+                            return;
+                        }
+                    }
                     showToast(isEditMode ? `Сделка #${dealId} обновлена` : `Сделка #${dealId} создана`, 'success');
                     // Остаток карты в минусе или доля больше ушедшего в сети:
                     // сделку сохранили, но цифру надо перепроверить
                     if (result.warning) showToast(result.warning, 'error', 10000);
                     this.reset();
+                    flowExistingReceipt = false;
+                    flowExistingParts = [];
+                    document.getElementById('flowAmount').readOnly = false;
                     stdAgents = []; renderStdAgents();
                     sberReset();
                     resetPayinTxPool([]);
@@ -11176,6 +11268,8 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         // из приходов с разных страниц не собрать: перелистнул и всё слетело
         let incomesPage = 1;
         const incomeSel = new Map();   // id прихода → сколько рублей из него берём
+        const incomeAccountLabel = i => i.account_key === 'flow_sole' ? 'Flow Sole' :
+            i.account_key?.startsWith('other:') ? 'Другой счёт · ' + i.account_key.slice(6) : 'Сбер';
 
         function incomesPerPage() {
             return Number(document.getElementById('incomesPerPage')?.value ?? 20);
@@ -11292,13 +11386,15 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                           style="width:130px" onchange="syncIncomeAmount(this)"
                           title="Сколько из этого прихода конвертируем — можно частично">` : '—'}</td>
                     <td>${i.kind === 'acquiring' ? 'СБП' : 'реквизиты'}</td>
+                    <td>${escapeHtml(incomeAccountLabel(i))}${i.source_tag === 'manual_crm'
+                        ? `<br><a href="/api/deals/${i.claimed_deal_id}/manual-rub-income/statement">выписка</a>` : ''}</td>
                     <td>${incomeSource(i)}</td>
                     <td>${i.claimed_deal_id ? '#' + i.claimed_deal_id +
                           (i.deal?.client_name ? ' ' + i.deal.client_name : '') : '—'}</td>
                     <td>${conv}</td>
                     <td><a href="#" onclick="editIncome(${i.id});return false" title="Разметить">✏️</a></td>
                 </tr>`;
-            }).join('') || '<tr><td colspan="10">Приходов нет</td></tr>';
+            }).join('') || '<tr><td colspan="11">Приходов нет</td></tr>';
             syncIncomeSelection();
         }
 
@@ -11424,13 +11520,14 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             document.getElementById('conversionsTable').innerHTML = d.conversions.map(c => `
                 <tr onclick="showConversion(${c.id})" style="cursor:pointer">
                     <td>${c.display_name}</td>
+                    <td>${escapeHtml(c.account_label || '—')}</td>
                     <td>${(c.sent_at || c.created_at || '').slice(0, 10)}</td>
                     <td>${c.broker || '—'}</td><td>${c.request_no || '—'}</td>
                     <td>${cnvNum(c.sent_rub)} ₽</td><td>${c.rate_rub_usdt || '—'}</td>
                     <td>${cnvNum(c.received_usdt)}</td>
                     <td>${c.delta_usdt ? cnvNum(c.delta_usdt) : '—'}</td>
                     <td>${c.status || '—'}</td></tr>`).join('')
-                || '<tr><td colspan="9">Пачек пока нет</td></tr>';
+                || '<tr><td colspan="10">Пачек пока нет</td></tr>';
         }
 
         async function openConversionForm(preselected) {
@@ -11443,6 +11540,9 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             const pre = new Map((preselected || []).map(x => [x.sber_income_id, x.amount_rub]));
             const free = (d.incomes || []).filter(
                 i => !i.excluded && ((i.free_rub || 0) > 0.01 || pre.has(i.id)));
+            const preKeys = new Set(free.filter(i => pre.has(i.id)).map(i => i.account_key || 'sber'));
+            if (preKeys.size > 1) { alert('Поступления с разных счетов нельзя отправить одной пачкой'); return; }
+            const accountKey = preKeys.size ? [...preKeys][0] : null;
             // Расход по конвертации уходит тремя строками — отправка брокеру,
             // комиссия процентом и фикс. Отмечаем все три: тогда и отправка,
             // и удержание берутся фактом, а не считаются по ставке
@@ -11461,14 +11561,15 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                            ${pre.has(i.id) ? 'checked' : ''}>
                     <span style="flex:1">${(i.operation_date || '').slice(0, 10)} ·
                         ${i.wl ? i.wl.wl + ' (' + (i.wl.merchant || '') + ')' : (i.payer || '—')} ·
-                        свободно ${cnvNum(i.free_rub)} ₽
+                        ${escapeHtml(incomeAccountLabel(i))} · свободно ${cnvNum(i.free_rub)} ₽
                         ${i.claimed_deal_id ? '· сделка #' + i.claimed_deal_id
                             : (i.wl ? '' : '· ⏳ сделки нет')}</span>
                     <input type="number" step="0.01" class="form-control convSrcAmt"
                            value="${pre.has(i.id) ? pre.get(i.id) : i.free_rub}" style="width:140px">
                 </label>`).join('');
             document.getElementById('conversionModalBody').innerHTML = `
-                <div class="card-title">Новая пачка конвертации</div>
+                <div class="card-title">Новая пачка конвертации${accountKey ? ' · ' + escapeHtml(incomeAccountLabel({account_key: accountKey})) : ''}</div>
+                <p class="fh">Одна пачка собирается только из поступлений одного счёта.</p>
                 <div class="form-group"><label class="form-label">Брокер</label>
                     <input class="form-control" id="convBroker" placeholder="БРАЙТУМ/TRADEX"></div>
                 <div class="form-group"><label class="form-label">Заявка / поручение</label>
@@ -11489,7 +11590,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 </div>
                 <div class="form-group"><label class="form-label">Поступления в пачку</label>
                     ${rows || '<div style="color:#94a3b8">Несконвертированных приходов нет</div>'}</div>
-                <div class="form-group"><label class="form-label">Списания со счёта (отправка + комиссии)</label>
+                <div class="form-group"><label class="form-label">Списания Сбера (только для пачки Сбера)</label>
                     ${debitRows || '<div style="color:#94a3b8">Свободных списаний нет — заполни «Отправлено» вручную</div>'}</div>
                 <button class="btn btn-primary" style="width:100%" onclick="saveConversion()">Создать пачку</button>`;
             document.getElementById('conversionModal').classList.add('active');
@@ -11501,6 +11602,9 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 amount_rub: Number(cb.parentElement.querySelector('.convSrcAmt').value),
             }));
             if (!sources.length) return alert('Отметь хотя бы одно поступление');
+            const selectedKeys = new Set(sources.map(x => (window._incomes || []).find(i => i.id === x.sber_income_id)?.account_key || 'sber'));
+            if (selectedKeys.size > 1) return alert('Поступления с разных счетов нельзя отправить одной пачкой');
+            const selectedKey = [...selectedKeys][0];
             const body = {
                 broker: document.getElementById('convBroker').value,
                 request_no: document.getElementById('convRequest').value,
@@ -11514,10 +11618,11 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 debits: [...document.querySelectorAll('.convDeb:checked')]
                     .map(cb => ({sber_debit_id: Number(cb.value)})),
             };
+            if (selectedKey !== 'sber' && body.debits.length) return alert('Списания Сбера нельзя привязать к пачке другого счёта');
             let r = await fetch('/api/conversions', {method: 'POST',
                 headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
             let d = await r.json();
-            if (!d.success && r.status === 409) {
+            if (!d.success && r.status === 409 && !/разных счет|другого счёта/i.test(d.error || '')) {
                 // Перебор над остатком счёта бывает осознанным (кейс 14.08) — спрашиваем
                 if (!confirm(d.error + '\n\nВсё равно создать?')) return;
                 body.force = true;
@@ -11687,7 +11792,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             const c = d.conversion;
             const comp = d.composition.map(x => `<tr>
                 <td>${(x.operation_date || '').slice(0, 10)}</td>
-                <td>${x.payer || '—'}</td>
+                <td>${x.payer || '—'} · ${escapeHtml(x.account_label || 'Сбер')}</td>
                 <td>${cnvNum(x.amount_rub)} ₽</td>
                 <td>${cnvNum(x.usdt)} USDT</td>
                 <td>${x.wl ? '<b>' + x.wl + '</b> ' + (x.merchant || '') +
@@ -11711,7 +11816,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             window._convSummary = buildConversionSummary(c, d, dist);
             document.getElementById('conversionModalBody').innerHTML = `
                 <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap">
-                    <div class="card-title" style="flex:1 1 220px">${c.display_name} · ${c.broker || ''} ${c.request_no || ''}</div>
+                    <div class="card-title" style="flex:1 1 220px">${c.display_name} · ${escapeHtml(c.account_label || '—')} · ${c.broker || ''} ${c.request_no || ''}</div>
                     <button class="btn btn-secondary btn-sm" onclick="editConversion(${id})">✏️</button>
                     <button class="btn btn-secondary btn-sm" onclick="copyConversionSummary(this)">📋 Копировать</button>
                     <button class="btn btn-danger btn-sm" onclick="deleteConversion(${id}, this)">Удалить</button>
@@ -13101,7 +13206,8 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                 'partners_cash': 'Партнеры (наличные)',
                 'crypto_direct': 'Крипта',
                 'sber_wl': 'СБП',
-                'sber_reqs': 'Сбер (реквизиты)'
+                'sber_reqs': 'Сбер (реквизиты)',
+                'flow_sole_reqs': 'Flow Sole (СГБ, реквизиты)'
             };
             return labels[method] || method || '-';
         }
