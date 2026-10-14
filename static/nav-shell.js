@@ -36,7 +36,7 @@
     ['deals','Сделки','/crm?section=deals'],
     ['documents','Документы','/crm?section=documents'],['closing','Закрытие','/crm?section=closing'],
     ['exchangers','Обменники','/crm?section=exchangers'],['balance','Баланс','/crm?section=balance'],
-    ['conversions','Конвертации','/crm?section=conversions'],
+    ['incomes','Поступления','/crm?section=incomes'],['conversions','Конвертации','/crm?section=conversions'],
     ['reimbursements','Возмещения','/crm?section=reimbursements'],['transactions','Транзакции','/crm?section=transactions'],
     ['managers','Менеджеры','/crm?section=managers'],['verification','Сверка','/crm?section=verification'],
     ['kyc','KYC','/crm?section=kyc'],['partners','Партнёры','/crm?section=partners'],
