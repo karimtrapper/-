@@ -816,7 +816,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 .docs-money-cell { font-variant-numeric:tabular-nums; font-weight:600; white-space:nowrap; }
 
 </style>
-    <link rel="stylesheet" href="/static/nav-shell.css?v=1">
+    <link rel="stylesheet" href="/static/nav-shell.css?v=2">
 </head>
 
 <body>
@@ -835,28 +835,29 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
     </div>
 
     <!-- CRM Navigation -->
-    <nav class="nav">
+    <nav class="nav" aria-label="Разделы CRM">
         <div class="nav-logo">CRM Сделок</div>
+        <div class="crm-nav-title">Разделы CRM</div>
         <div class="nav-tabs">
             <a class="nav-tab stand-only" href="/tasks" style="display:none;text-decoration:none;">✅ Задачник</a>
             <button class="nav-tab active" data-section="dashboard">Дашборд</button>
-            <button class="nav-tab" data-section="deals">Сделки</button>
-            <button class="nav-tab" data-section="documents">📄 Документы</button>
-            <button class="nav-tab" data-section="closing">🔒 Закрытие</button>
-            <button class="nav-tab" data-section="exchangers">🔁 Обменники</button>
-            <button class="nav-tab" data-section="balance">Баланс</button>
-            <button class="nav-tab" data-section="incomes">💵 Поступления</button>
-            <button class="nav-tab" data-section="conversions">🔄 Конвертации</button>
-            <button class="nav-tab" data-section="reimbursements">Возмещения</button>
-            <button class="nav-tab" data-section="transactions">Транзакции</button>
-            <button class="nav-tab" data-section="managers">Менеджеры</button>
-            <button class="nav-tab" data-section="verification">Сверка</button>
-            <button class="nav-tab" data-section="kyc">KYC</button>
-            <button class="nav-tab" data-section="partners">Партнёры</button>
-            <button class="nav-tab" data-section="referrers">Рефереры</button>
-            <button class="nav-tab" data-section="payoutRequests">Заявки на выплату<span id="payoutRequestsBadge" class="payout-nav-count"></span></button>
-            <button class="nav-tab" data-section="admins">🔐 Админы</button>
-            <button class="nav-tab stand-only" data-section="myTelegram" style="display:none;">Мой Telegram</button>
+            <button class="nav-tab" data-section="deals" data-shell-label="Сделки">Сделки</button>
+            <button class="nav-tab" data-section="documents" data-shell-label="Документы">📄 Документы</button>
+            <button class="nav-tab" data-section="closing" data-shell-label="Закрытие">🔒 Закрытие</button>
+            <button class="nav-tab" data-section="exchangers" data-shell-label="Обменники">🔁 Обменники</button>
+            <button class="nav-tab" data-section="balance" data-shell-label="Баланс">Баланс</button>
+            <button class="nav-tab" data-section="incomes" data-shell-label="Поступления">💵 Поступления</button>
+            <button class="nav-tab" data-section="conversions" data-shell-label="Конвертации">🔄 Конвертации</button>
+            <button class="nav-tab" data-section="reimbursements" data-shell-label="Возмещения">Возмещения</button>
+            <button class="nav-tab" data-section="transactions" data-shell-label="Транзакции">Транзакции</button>
+            <button class="nav-tab" data-section="managers" data-shell-label="Менеджеры">Менеджеры</button>
+            <button class="nav-tab" data-section="verification" data-shell-label="Сверка">Сверка</button>
+            <button class="nav-tab" data-section="kyc" data-shell-label="KYC">KYC</button>
+            <button class="nav-tab" data-section="partners" data-shell-label="Партнёры">Партнёры</button>
+            <button class="nav-tab" data-section="referrers" data-shell-label="Рефереры">Рефереры</button>
+            <button class="nav-tab" data-section="payoutRequests" data-shell-label="Заявки на выплату">Заявки на выплату<span id="payoutRequestsBadge" class="payout-nav-count"></span></button>
+            <button class="nav-tab" data-section="admins" data-shell-label="Сотрудники">🔐 Админы</button>
+            <button class="nav-tab stand-only" data-section="myTelegram" data-shell-label="Мой Telegram" style="display:none;">Мой Telegram</button>
         </div>
         <button class="btn btn-primary nav-create-btn" onclick="showSection('create')">+ Создать сделку</button>
     </nav>
@@ -15274,7 +15275,7 @@ ${Math.abs(c.debits_delta_rub) < 0.01
         <button class="bottom-nav-item" data-nav-section="kyc" onclick="showSection('kyc')"><span class="icon">🛡</span><span>KYC</span></button>
         <button class="bottom-nav-item" onclick="toggleMorePanel()" id="moreBtn"><span class="icon">⋯</span><span>Ещё</span></button>
     </nav>
-    <script src="/static/nav-shell.js?v=1"></script>
+    <script src="/static/nav-shell.js?v=2"></script>
     <script>NavShell.boot('crm');</script>
 </body>
 

@@ -37,6 +37,7 @@
     if (!options || !options.stand) return;
     state = {...options};
     document.body.classList.add('nav-shell-on','nav-shell-'+state.page);
+    document.body.classList.toggle('nav-shell-panel',state.active === 'panel');
     const top = document.createElement('header');
     top.className = 'site-shell site-shell-top';
     top.innerHTML = `<div class="site-shell-brand"><i></i>Grusha</div><nav class="site-shell-links" aria-label="Разделы">${links(false)}</nav><div class="site-shell-right">${bell()}${profile()}</div>`;
@@ -79,6 +80,7 @@
   function update(changes) {
     if (!state) return;
     Object.assign(state,changes);
+    document.body.classList.toggle('nav-shell-panel',state.active === 'panel');
     if (state.page === 'tasks' && state.role === 'admin') {
       const source=document.getElementById('roles');
       const mobile=document.querySelector('.site-shell-mobile-head [data-shell-roles]');
