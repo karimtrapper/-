@@ -8,6 +8,23 @@ EXCHANGE_PAIRS = {
 }
 
 
+def exchange_pair(deal):
+    if deal.get('type') != 'Обмен валюты':
+        return None
+    default = 'USDT → THB' if deal.get('payType') == 'Крипта' else 'RUB → THB'
+    return EXCHANGE_PAIRS.get(deal.get('pair') or default)
+
+
+def is_crypto(deal):
+    pair = exchange_pair(deal)
+    return pair[0] == 'usdt' if pair else (deal.get('payType') == 'Крипта' or deal.get('curBase') == 'usdt')
+
+
+def quote_buy(deal, direction):
+    pair = exchange_pair(deal)
+    return pair[0] == direction if pair else direction == 'rub'
+
+
 def quote_dirs(deal):
     if deal.get('type') == 'Обмен валюты':
         default = 'USDT → THB' if deal.get('payType') == 'Крипта' else 'RUB → THB'

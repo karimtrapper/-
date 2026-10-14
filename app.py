@@ -5262,7 +5262,6 @@ def _stand_strip_files(data):
     if not isinstance(data, dict) or 'deals' not in data:
         return data
     out = dict(data)
-    out.setdefault('cps', _stand_initial_state()['cps'])
     out['deals'] = []
     for deal in data['deals']:
         d = dict(deal)
@@ -6369,7 +6368,7 @@ def stand_quote_save():
             owner = db.query(AdminUser).filter_by(id=deal['assigneeAdminId']).first()
             if owner and not owner.login_disabled and owner.role == 'operator' and owner.id != flask_session.get('user_id'):
                 return jsonify(success=False, error=f'Шаг у {owner.display_name or owner.username}'), 409
-        from stand_workflow import quote_dirs
+        from stand_workflow import quote_dirs, quote_buy
         if direction not in quote_dirs(deal):
             return jsonify(success=False, error='У этой сделки нет такого направления курса'), 409
         cp = next((c for c in state.get('cps', _stand_initial_state()['cps']) if c.get('id') == cp_id), None)
@@ -6391,7 +6390,7 @@ def stand_quote_save():
         selected = next((q for q in candidates if q.get('cpId') == (deal.get('ratePick') or {}).get(direction)), None)
         if not selected and candidates:
             selected = min(candidates, key=lambda q: _amount(str(q['rate']).replace(',', '.')))
-            if direction == 'thb':
+            if not quote_buy(deal, direction):
                 selected = max(candidates, key=lambda q: _amount(str(q['rate']).replace(',', '.')))
         if selected:
             rates = deal.setdefault('rates', {})
@@ -6400,7 +6399,7 @@ def stand_quote_save():
         deal.setdefault('log', []).append({'at': stamp_ms,
             'ts': datetime.now().strftime('%d.%m, %H:%M'), 'role': actor,
             'text': ('Курс обновлён' if previous else 'Курс получен') +
-                    f' — {cp.get("name")} ({"RUB→USDT" if direction == "rub" else "USDT→THB"}): {rate.replace(".", ",")}'})
+                    f' — {cp.get("name")} ({direction.upper()+"→USDT" if quote_buy(deal, direction) else "USDT→"+direction.upper()}): {rate.replace(".", ",")}'})
         if deal.get('step') == 's5':
             ready = all(any(q.get('dir') == direction and
                             (_amount(str(q.get('rate') or '').replace(',', '.')) or 0) > 0
@@ -7273,6 +7272,9 @@ def _stand_referral_payouts(deal, gross, payin):
     return total
 
 
+from stand_workflow import is_crypto as _stand_is_crypto
+
+
 def _stand_number(value):
     return float(_amount(value) or 0)
 
@@ -7281,7 +7283,7 @@ def _stand_freehold_plan_problem(deal):
     """Return the issue blocking a crypto freehold financial action, if any."""
     from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
     if not (deal.get('kind') == 'Фрихолд' and
-            (deal.get('payType') == 'Крипта' or deal.get('curBase') == 'usdt')):
+            (_stand_is_crypto(deal))):
         return None
     try:
         x = Decimal(str(deal.get('invoiceUsd')))
@@ -7475,7 +7477,10 @@ def _stand_crm_fact_problem(board, crm, kind):
                     return False
         return True
 
-    if bool(crm.get('is_custom')) != (board.get('custom') is True):
+    from stand_workflow import exchange_pair
+    pair = exchange_pair(board)
+    pair_custom = pair if pair and (pair[0] == 'thb' or pair[1] != 'thb') and not board.get('custom') else None
+    if bool(crm.get('is_custom')) != (board.get('custom') is True or bool(pair_custom)):
         return 'custom_origin_mismatch'
     custom = board.get('customData') or {}
     if board.get('custom') is True:
@@ -7515,6 +7520,23 @@ def _stand_crm_fact_problem(board, crm, kind):
                 return 'custom_facts_mismatch'
         elif stand_hashes:
             return 'custom_facts_mismatch'
+    if pair_custom:
+        amounts = {'rub': 'amountRub', 'thb': 'amountThb', 'usdt': 'amountUsdt'}
+        rates = board.get('rates') or {}
+        for side, currency in zip(('payin', 'payout'), pair_custom[:2]):
+            expected_amount = board.get(amounts[currency])
+            if side == 'payin':
+                expected_amount = board.get('incomeAmount') or expected_amount
+            expected_rate = (None if currency == 'usdt' else rates.get('usdtThb') if currency == 'thb'
+                             else (rates.get('broker') or rates.get('rubUsdt')) if side == 'payin'
+                             else rates.get('rubUsdt'))
+            prefix = 'custom_' + side + '_'
+            if (positive(expected_amount) is None or (currency != 'usdt' and positive(expected_rate) is None)):
+                return 'custom_facts_missing'
+            if (crm.get(prefix + 'currency') != currency.upper()
+                    or not matches(prefix + 'amount', expected_amount)
+                    or not exact(prefix + 'rate', expected_rate)):
+                return 'custom_facts_mismatch'
     payout_board = board.get('payout') or {}
     if ((crm.get('payout_wallet_id') or None) != (payout_board.get('walletId') or None)
             or (crm.get('bank_card_id') or None) != (payout_board.get('bankCardId') or None)):
@@ -7526,7 +7548,7 @@ def _stand_crm_fact_problem(board, crm, kind):
     broker_rate = (board.get('rates') or {}).get('broker')
     if board.get('custom') is not True:
         expected_broker = (broker_rate if board.get('payType') in
-                           ('По реквизитам', 'СБП') else None)
+                           ('По реквизитам', 'СБП') and (not pair or pair[0] == 'rub') else None)
         if _amount(crm.get('payin_rate_rub_usdt')) != _amount(expected_broker):
             return 'payin_rate_mismatch'
     main_hashes = board.get('payinHashes') or []
@@ -7549,10 +7571,14 @@ def _stand_crm_fact_problem(board, crm, kind):
             Decimal('0.01'), rounding=ROUND_HALF_UP)
     elif board.get('custom') is True:
         main_usdt = money(custom.get('payinUsdt'))
+    elif pair_custom and pair_custom[0] == 'thb':
+        rate = positive((board.get('rates') or {}).get('usdtThb'))
+        incoming = positive(board.get('incomeAmount') or board.get('amountThb'))
+        main_usdt = money(incoming / rate) if incoming and rate else None
     else:
         broker_basis = _stand_broker_payin_basis(
             board.get('incomeAmount') or board.get('amountRub'), broker_rate)
-        main_usdt = (money(board.get('amountUsdt')) or
+        main_usdt = ((None if pair_custom and pair_custom[1] == 'usdt' else money(board.get('amountUsdt'))) or
                      (broker_basis or {}).get('usdt'))
     if main_usdt is None or main_usdt <= 0:
         return 'payin_basis_missing'
@@ -7605,7 +7631,7 @@ def _stand_crm_fact_problem(board, crm, kind):
                    != sorted(str(x) for x in source.get('sber_uuids') or [])
                 or (part.get('note') or '') != (source.get('note') or '')):
             return 'payin_extra_mismatch'
-    if board.get('custom') is not True and (board.get('incomeAmount') or board.get('amountRub')):
+    if board.get('custom') is not True and (not pair or pair[0] == 'rub') and (board.get('incomeAmount') or board.get('amountRub')):
         if not matches('payin_amount_rub', board.get('incomeAmount') or board.get('amountRub')):
             return 'payin_amount_mismatch'
     pay_to = board.get('payTo') or {}
@@ -7701,6 +7727,11 @@ def _stand_crm_fact_problem(board, crm, kind):
                        if payout.get('hashes') else money(payout.get('usdt')))
         if board.get('custom') is True:
             payout_usdt = money(custom.get('payoutUsdt'))
+        elif payout_usdt is None and pair_custom:
+            rate = positive((board.get('rates') or {}).get('rubUsdt'))
+            outgoing = positive(board.get('amountRub'))
+            payout_usdt = (money(board.get('amountUsdt')) if pair_custom[1] == 'usdt'
+                           else money(outgoing / rate) if outgoing and rate else None)
         elif payout_usdt is None:
             # T17 econ() may estimate cost from saved THB and buy rate when
             # no payout hash or explicit USDT has arrived yet.
@@ -7717,7 +7748,7 @@ def _stand_crm_fact_problem(board, crm, kind):
             return 'payout_basis_missing'
         if not matches('payout_amount_usdt', payout_usdt):
             return 'payout_amount_mismatch'
-        if (board.get('amountThb') or payout.get('thb')) and board.get('paySrc') != 'client':
+        if (not pair or pair[1] == 'thb') and (board.get('amountThb') or payout.get('thb')) and board.get('paySrc') != 'client':
             if not matches('payout_amount_thb', payout.get('thb') or board.get('amountThb')):
                 return 'payout_amount_mismatch'
     return None
@@ -8967,9 +8998,8 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
                 return 'Некорректное подтверждение реквизитов'
         if 'freeholdLossAck' in deal and deal.get('freeholdLossAck') != (before or {}).get('freeholdLossAck'):
             return 'freehold_loss_ack_server_only'
-        if (deal.get('payType') == 'Крипта' or deal.get('curBase') == 'usdt'
-                or (before and (before.get('payType') == 'Крипта'
-                                or before.get('curBase') == 'usdt'))):
+        if (_stand_is_crypto(deal)
+                or (before and (_stand_is_crypto(before)))):
             if not before and (deal.get('walletId') in ('custom', 'teodor-erc')
                                or deal.get('payinCustom')):
                 return 'Новый кошелёк прихода выбирают на s11'
@@ -10605,7 +10635,7 @@ def stand_payin_check():
     try:
         state = json.loads(_stand_row(db).data or '{}')
         deal = next((d for d in state.get('deals', []) if d.get('id') == deal_id), None)
-        if not deal or not (deal.get('payType') == 'Крипта' or deal.get('curBase') == 'usdt'):
+        if not deal or not (_stand_is_crypto(deal)):
             return jsonify({'success': False, 'error': 'Крипто-сделка не найдена'}), 404
         if deal.get('step') != 's14':
             return jsonify({'success': False, 'error': 'Сделка не ждёт прихода'}), 409
@@ -11129,7 +11159,7 @@ def _stand_freehold_absurd_doc(deal, fields):
     """
     from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
     if not (deal.get('kind') == 'Фрихолд' and
-            (deal.get('payType') == 'Крипта' or deal.get('curBase') == 'usdt')):
+            (_stand_is_crypto(deal))):
         return False
     try:
         x = Decimal(str(deal.get('invoiceUsd')))
@@ -11161,7 +11191,9 @@ def _stand_doc_request(state, deal, F):
     """
     from decimal import Decimal
     import doc_routes
-    crypto = deal.get('payType') == 'Крипта' or deal.get('curBase') == 'usdt'
+    from stand_workflow import exchange_pair
+    pair = exchange_pair(deal)
+    crypto = _stand_is_crypto(deal)
     if deal.get('type') == 'Оплата недвижимости':
         deal_type = STAND_DOC_TYPES.get(deal.get('kind') or 'Лизхолд', 'leasehold')
     else:
@@ -11231,9 +11263,16 @@ def _stand_doc_request(state, deal, F):
              'rate_basis': doc_routes.DIRECT_RATE if (crypto and not freehold) else doc_routes.INVERSE_RATE,
              'rate_valid_until': str(F.get('validTill') or '').strip()
                                  or f'{today:%d.%m.%Y}, 23:59 (GMT+7)'}
+    if pair:
+        money['pair'] = pair[0].upper() + '_' + pair[1].upper()
+        # THB→RUB uses the same RUB/THB quote as the UI; documents store
+        # the inverse THB/RUB quote, without reinterpreting existing pairs.
+        money['rate_basis'] = doc_routes.DIRECT_RATE if pair[0] == 'usdt' else doc_routes.INVERSE_RATE
     if thb and pay:
         money['total_payin'] = _stand_plain(pay)
         money['transfer_amount'] = _stand_plain(thb)
+    if pair and pair[:2] == ('thb', 'rub') and rate:
+        rate = 1 / rate
     if thb and pay and rate:
         # Курс сделки: ₽ за 1 ฿ у лизхолда, ₽ за 1 $ у рублёвого фрихолда, ฿ за 1 USDT
         # у крипто-лизхолда (крипто-фрихолду курс вообще не нужен — rate тут None).
@@ -11291,6 +11330,12 @@ def _stand_doc_request(state, deal, F):
                      payin_recipient_role=role,
                      payin_details=pay_to.replace(' · ', '\n'),
                      payment_reference=str(F.get('purpose') or '').strip())
+    if pair and pair[1] == 'usdt':
+        money['payout_network'] = str(F.get('payoutNetwork') or '').strip()
+        money['payout_wallet'] = str(F.get('payoutWallet') or '').strip()
+        for field, value in (('payoutNetwork', money['payout_network']), ('payoutWallet', money['payout_wallet'])):
+            if not value:
+                missing.append(field)
     fee = str(F.get('feeNote') or '').strip()
     if fee and fee != 'Комиссия включена в курс, отдельно не взимается':
         money['fee_note'] = fee
@@ -11432,7 +11477,7 @@ def stand_docs_issue():
         # Новое/повторное приложение крипто-фрихолда выпускается только с
         # утверждённой двуязычной оговоркой; ранее выпущенные файлы не трогаем.
         if (deal.get('kind') == 'Фрихолд'
-                and (deal.get('payType') == 'Крипта' or deal.get('curBase') == 'usdt')):
+                and (_stand_is_crypto(deal))):
             F['feeNote'] = docgen.CRYPTO_FREEHOLD_AGENT_FEE
         if _stand_freehold_absurd_doc(deal, F):
             return jsonify({'success': False, 'error': 'freehold_amount_absurd',
@@ -11443,7 +11488,7 @@ def stand_docs_issue():
             return jsonify({'success': False, 'error': plan_problem,
                             'version': _stand_row(db).version, 'data': state}), 409
         if (deal.get('kind') == 'Фрихолд'
-                and (deal.get('payType') == 'Крипта' or deal.get('curBase') == 'usdt')
+                and (_stand_is_crypto(deal))
                 and _stand_num(F.get('amountPay')) != _amount(deal.get('amountUsdt'))):
             return jsonify({'success': False, 'error': 'freehold_contract_amount_mismatch',
                             'version': _stand_row(db).version, 'data': state}), 409

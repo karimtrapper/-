@@ -3,9 +3,10 @@ const html=fs.readFileSync('static/stand/tasks.html','utf8');
 for(const script of html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g))new vm.Script(script[1]);
 function fn(name){return (html.match(new RegExp(`^function ${name}\\([^\\n]*\\}\\s*$`,'m'))||html.match(new RegExp(`^function ${name}\\([^]*?^}`,'m')))[0];}
 const ctx={S:{},SIGN:{rub:'₽',thb:'฿',usdt:'USDT'},save(){},render(){},mfList:()=>[],refById:()=>null,
-  brokerSend:r=>({sent:r,held:0,ours:0,ctrl:0}),refAgents:()=>[]};vm.createContext(ctx);
-vm.runInContext(['exchangeSpec','amountField','quoteDirs','exchangeSync','payCur','isCrypto','num','cleanNum','approx','rateUnit','costRate','syncClient','hashSum','payinParts','econ','crmNet','crmPayload'].map(fn).join('\n'),ctx);
-for(const n of ['PAYIN_CRM','PAYOUT_CRM'])vm.runInContext(html.match(new RegExp(`^const ${n}[^]*?;`,'m'))[0],ctx);
+  refAgents:()=>[]};vm.createContext(ctx);
+vm.runInContext(['brokerSend','quotes','quoteBuy','quoteDirection','quoteBest','exchangeSpec','amountField','quoteDirs','exchangeSync','payCur','isCrypto','num','cleanNum','approx','rateUnit','costRate','syncClient','hashSum','payinParts','econ','crmNet','crmPayload'].map(fn).join('\n'),ctx);
+for(const n of ['BROKER_FEE','PAYIN_CRM','PAYOUT_CRM'])vm.runInContext(html.match(new RegExp(`^const ${n}[^]*?;`,'m'))[0],ctx);
+const results=[];
 for(const [pair,input,output,amount,rate,expected,dirs] of [
  ['RUB → THB','rub','thb',100000,2.7,37037,['rub','thb']],
  ['THB → RUB','thb','rub',50000,2.7,135000,['thb','rub']],
@@ -20,10 +21,14 @@ for(const [pair,input,output,amount,rate,expected,dirs] of [
  assert.equal(ctx.approx(d).sign,ctx.SIGN[input]);assert.equal(ctx.approx(d).thbSign,ctx.SIGN[output]);
  assert.deepEqual(Array.from(ctx.quoteDirs(d)),dirs);
  const payload=ctx.crmPayload(d);
+ results.push({deal:d,crm:payload});
+ d.quotes=dirs.flatMap(dir=>[{dir,rate:'80',cpId:'low'},{dir,rate:'90',cpId:'high'}]);
+ for(const dir of dirs)assert.equal(ctx.quoteBest(d,dir).cpId,input===dir?'low':'high',pair+' '+dir);
+ delete d.quotes;
  if(output==='usdt'){assert.equal(payload.payout_amount_usdt,expected);assert.equal(payload.payout_amount_thb,null);}
  if(input==='thb'){assert.equal(payload.payin_amount_rub,null);assert.equal(payload.custom_payin_currency,'THB');assert.equal(payload.custom_payin_amount,amount);}
  if(output==='rub'){assert.equal(payload.custom_payout_currency,'RUB');assert.equal(payload.custom_payout_amount,expected);}
  if(pair==='RUB → THB'){assert.equal(payload.payin_amount_rub,amount);assert.equal(payload.payout_amount_thb,expected);}
  if(pair==='RUB → USDT')assert.notEqual(payload.payin_amount_usdt,expected,'outgoing USDT is not the incoming broker fact');
 }
-console.log('five exchange pairs: calculation, directions and CRM PASS');
+console.log(process.argv.includes('--json')?JSON.stringify(results):'five exchange pairs: calculation, directions and CRM PASS');

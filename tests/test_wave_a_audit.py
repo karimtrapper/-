@@ -169,3 +169,82 @@ def test_fresh_and_reset_board_counterparties_are_server_owned(board, reset):
 
 def test_document_form_depends_on_deal_type():
     subprocess.run(['node', 'tests/test_wave_a_documents.js'], check=True)
+
+@pytest.mark.usefixtures('stand_demo_environment')
+def test_all_pair_payloads_are_accepted_and_persisted_by_crm(monkeypatch):
+    import json
+    import app as m
+    from tests.test_stand_crm_close_atomic import _setup, _seed_evidence, _client, _post, _board
+    cases = json.loads(subprocess.check_output(['node', 'tests/test_wave_a_exchange.js', '--json']))
+    for case in cases:
+        uid = _setup(monkeypatch)
+        deal, crm = case['deal'], case['crm']
+        deal.update(id=1474, step='s27', client='Wave A pair', sentToClient=True, pay={}, log=[])
+        crm.update(client_name='Wave A pair')
+        deal['files'] = _board()['deals'][0]['files']
+        with m.SessionLocal() as db:
+            row = db.get(m.StandState, 1)
+            state = {'deals': [deal], 'notes': []}
+            row.data = json.dumps(state)
+            db.commit()
+            _seed_evidence(db, row, state, uid)
+        assert m._stand_crm_fact_problem(deal, crm, 'exchange') is None, (deal['pair'], crm)
+        for field in ('payin_amount_usdt', 'payout_amount_usdt'):
+            forged = {**crm, field: crm[field] + 10}
+            assert m._stand_crm_fact_problem(deal, forged, 'exchange') is not None
+        result = _post(_client(uid), crm=crm)
+        assert result.status_code == 201, (deal['pair'], result.json)
+        persisted = result.json['deal']
+        for key in ('payin_amount_usdt', 'payout_amount_usdt', 'custom_payin_currency', 'custom_payout_currency',
+                    'custom_payin_amount', 'custom_payout_amount'):
+            assert persisted.get(key) == crm.get(key), (deal['pair'], key, persisted.get(key), crm.get(key))
+
+@pytest.mark.parametrize('pair,direction,expected', [
+    ('RUB → USDT', 'rub', '80'), ('RUB → THB', 'thb', '90'),
+    ('THB → USDT', 'thb', '80'), ('THB → RUB', 'rub', '90')])
+def test_best_quote_respects_conversion_direction(board, pair, direction, expected):
+    install, clients = board
+    install('s5', {'pair': pair}, {'cps': [{'id': n, 'name': n, 'dirs': [direction]} for n in ('low', 'high')]})
+    client = clients('operator')
+    for cp, rate in [('low', '80'), ('high', '90')]:
+        current = client.get('/api/stand/state').json
+        result = client.post('/api/stand/quote', json={'version': current['version'], 'dealId':1474,
+                                                    'dir': direction, 'cpId': cp, 'rate': rate})
+        assert result.status_code == 200, result.json
+    assert result.json['data']['deals'][0]['rates']['rubUsdt' if direction == 'rub' else 'usdtThb'] == expected
+
+
+def test_output_anchor_is_not_crypto_payin():
+    from stand_workflow import is_crypto
+    assert not is_crypto({'type':'Обмен валюты', 'pair':'RUB → USDT', 'curBase':'usdt'})
+    assert not is_crypto({'type':'Обмен валюты', 'pair':'THB → USDT', 'curBase':'usdt'})
+
+@pytest.mark.parametrize('pair,incoming,outgoing,rate,doc_pair', [
+    ('RUB → THB', 27000, 10000, 2.7, 'RUB_THB'),
+    ('THB → RUB', 10000, 27000, 2.7, 'THB_RUB'),
+    ('RUB → USDT', 85000, 1000, 85, 'RUB_USDT'),
+    ('THB → USDT', 31200, 1000, 31.2, 'THB_USDT')])
+def test_exchange_document_money_uses_pair(pair, incoming, outgoing, rate, doc_pair):
+    import app as m
+    import doc_routes
+    fields = {'fio':'Synthetic Client', 'passNo':'1234567890', 'amountPay':str(incoming),
+              'amountThb':str(outgoing), 'rate':str(rate), 'purpose':'Exchange',
+              'payTo':'Synthetic bank account','payoutNetwork':'TRON (TRC-20)',
+              'payoutWallet':'TKkeEVf2zySaWTLyX2qPwvi6kcdHRuPxkJ'}
+    result = m._stand_doc_request({}, {'type':'Обмен валюты','pair':pair,'payType':'По реквизитам'}, fields)
+    assert 'error' not in result, result
+    money = doc_routes.normalize(result['money'], 'payment')
+    assert money['pair'] == doc_pair
+    assert money['total_payin'] == str(incoming)
+    assert money['transfer_amount'] == str(outgoing)
+    assert money['payin_currency'] == doc_pair.split('_')[0]
+    assert money['transfer_currency'] == doc_pair.split('_')[1]
+    assert doc_routes.validate(money, 'payment') == []
+
+
+def test_deleting_deal_cannot_erase_journal(board):
+    install, clients = board
+    install('s5', {'log':[{'role':'system','text':'Server event','at':1}]})
+    response = put_board(clients('admin'), lambda state: state.update(deals=[]))
+    assert response.status_code == 409
+    assert clients('admin').get('/api/stand/state').json['data']['deals'][0]['log'][0]['text'] == 'Server event'

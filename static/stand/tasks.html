@@ -2429,9 +2429,10 @@ const CALC_URL='/';
 function calcLink(d){
   const cat=dealKind(d)==='mf_freehold'?'property_freehold'
     :(dealKind(d)==='mf_realty'?'property_leasehold':'exchange');
-  const scenario=isCrypto(d)?'usdt-to-thb':'rub-to-thb';
-  const dir=d.curBase==='thb'?'target':'amount';
-  const amount=d.curBase==='thb'?(d.amountThb||''):(isCrypto(d)?(d.amountUsdt||''):(d.amountRub||''));
+  const spec=exchangeSpec(d), directPair=spec&&spec.output==='usdt';
+  const scenario=directPair?spec.input+'-to-usdt':isCrypto(d)?'usdt-to-thb':'rub-to-thb';
+  const dir=directPair?(d.curBase===spec.output?'target':'amount'):(d.curBase==='thb'?'target':'amount');
+  const amount=directPair?(d[amountField(dir==='target'?spec.output:spec.input)]||''):(d.curBase==='thb'?(d.amountThb||''):(isCrypto(d)?(d.amountUsdt||''):(d.amountRub||'')));
   const q=new URLSearchParams();
   q.set('deal',d.code); q.set('cat',cat); q.set('method','custom');
   q.set('scenario',scenario); q.set('dir',dir);
@@ -2563,11 +2564,13 @@ function cpAsk(dealId,id,q){
    потом Екатерина перебила. Храним ответ каждого со временем и берём лучший —
    на глаз это не держат (Карим, 24.09). */
 function quotes(d,dir){ d.quotes=d.quotes||[]; return d.quotes.filter(q=>q.dir===dir); }
+function quoteBuy(d,dir){return exchangeSpec(d)?exchangeSpec(d).input===dir:dir==='rub';}
+function quoteDirection(d,dir){return quoteBuy(d,dir)?dir.toUpperCase()+' → USDT':'USDT → '+dir.toUpperCase();}
 function quoteBest(d,dir){
   const l=quotes(d,dir).filter(q=>num(q.rate));
   if(!l.length) return null;
   /* rub: меньше рублей за USDT — лучше. thb: больше батов за USDT — лучше */
-  return l.slice().sort((a,b)=>dir==='rub'?(num(a.rate)-num(b.rate)):(num(b.rate)-num(a.rate)))[0];
+  return l.slice().sort((a,b)=>quoteBuy(d,dir)?(num(a.rate)-num(b.rate)):(num(b.rate)-num(a.rate)))[0];
 }
 /* Курсы отдаём по мере ответов: пришёл один — менеджер уже считает, остальные
    догоняют и правятся на месте. Отдельной кнопки «отдать всё» нет (Карим, 24.09). */
@@ -2651,9 +2654,9 @@ async function quoteSet(id,cpId,dir){
   delete DRAFTS[(S.open||S.tab||'')+'|q_'+cpId+'_'+dir];
   const best=quoteBest(d,dir);
   const better=best&&(!wasBest||wasBest.cpId!==best.cpId||wasBest.rate!==best.rate);
-  log(d,(ex?'Курс обновлён':'Курс получен')+' — '+c.name+' ('+(dir==='rub'?'RUB→USDT':'USDT→THB')+'): '+v+
+  log(d,(ex?'Курс обновлён':'Курс получен')+' — '+c.name+' ('+(quoteDirection(d,dir))+'): '+v+
     (better?' · в сделку ушёл лучший: '+best.rate+' ('+best.name+')':''));
-  noteAdd('manager',(ex?'Курс обновлён':'Новый курс')+' · '+c.name+' '+(dir==='rub'?'RUB→USDT':'USDT→THB')+' '+v+
+  noteAdd('manager',(ex?'Курс обновлён':'Новый курс')+' · '+c.name+' '+(quoteDirection(d,dir))+' '+v+
     (better?' — теперь он лучший в сделке':' — лучший прежний: '+(best?best.rate+' ('+best.name+')':'—')),d.id);
   /* первый же ответ уводит задачу менеджеру — ждать остальных не нужно.
      Фрихолд без крипты: USDT→THB не спрашиваем вообще (батов нет), поэтому его
@@ -2675,7 +2678,7 @@ function quoteDel(id,cpId,dir){
      строки в журнале оставался курс, которого контрагент не давал (Tradex 82,10,
      аудит 27.09 №22, Карим, 27.09) */
   const q=(d.quotes||[]).find(x=>x.cpId===cpId&&x.dir===dir), c=cpById(cpId);
-  if(q) log(d,'Курс убран — '+(c?c.name:q.name)+' ('+(dir==='rub'?'RUB→USDT':'USDT→THB')+'): '+q.rate+' — в расчёте его больше нет');
+  if(q) log(d,'Курс убран — '+(c?c.name:q.name)+' ('+(quoteDirection(d,dir))+'): '+q.rate+' — в расчёте его больше нет');
   d.quotes=(d.quotes||[]).filter(q=>!(q.cpId===cpId&&q.dir===dir));
   quoteApply(d); save();render();
 }
@@ -2700,7 +2703,7 @@ function quotePick(id,cpId,dir){
   else d.ratePick[dir]=cpId;
   quoteApply(d);
   const q=(d.quotes||[]).find(x=>x.cpId===cpId&&x.dir===dir);
-  log(d,'Курс в сделку выбран вручную: '+c.name+' · '+(q?q.rate:'—')+' ('+(dir==='rub'?'RUB→USDT':'USDT→THB')+')');
+  log(d,'Курс в сделку выбран вручную: '+c.name+' · '+(q?q.rate:'—')+' ('+(quoteDirection(d,dir))+')');
   noteAdd('operator','Менеджер взял курс '+c.name+' '+(q?q.rate:'')+' — не лучший из присланных',d.id);
   save();render();toast('В сделке курс '+c.name);
 }
@@ -2713,12 +2716,12 @@ function quotesSummary(d){
       <span class="sub">лучший уже проставлен в расчёт — можно взять другой</span></div>
     ${dirs.map(dir=>{
       const l=(d.quotes||[]).filter(q=>q.dir===dir);
-      if(!l.length) return `<div class="chtitle" style="margin:4px 0 8px">${dir==='rub'?'RUB → USDT':'USDT → THB'}
+      if(!l.length) return `<div class="chtitle" style="margin:4px 0 8px">${quoteDirection(d,dir)}
         <span>ответов нет</span></div>`;
       const used=quoteUsed(d,dir), best=quoteBest(d,dir);
-      return `<div class="chtitle" style="margin:6px 0 8px">${dir==='rub'?'RUB → USDT':'USDT → THB'}
-        <span>${dir==='rub'?'чем меньше рублей за USDT, тем лучше':'чем больше батов за USDT, тем лучше'}</span></div>
-      <div class="list">${l.slice().sort((a,b)=>dir==='rub'?(num(a.rate)-num(b.rate)):(num(b.rate)-num(a.rate)))
+      return `<div class="chtitle" style="margin:6px 0 8px">${quoteDirection(d,dir)}
+        <span>${quoteBuy(d,dir)?'чем меньше за USDT, тем лучше':'чем больше за USDT, тем лучше'}</span></div>
+      <div class="list">${l.slice().sort((a,b)=>quoteBuy(d,dir)?(num(a.rate)-num(b.rate)):(num(b.rate)-num(a.rate)))
         .map(q=>{const isUsed=used&&used.cpId===q.cpId, isBest=best&&best.cpId===q.cpId;
         return `<div class="li ${isUsed?'on':''}" style="cursor:default">
           <span class="av">${isUsed?'✓':'—'}</span>
@@ -2740,7 +2743,7 @@ function quotesCard(d){
   const dirs=quoteDirs(d);
   return `<div class="card"><div class="card-title">Курсы контрагентов
       <span class="sub">ответ пришёл позже — отправьте, менеджер увидит новый лучший</span></div>
-    ${dirs.map(dir=>`<div class="chtitle" style="margin:4px 0 8px">${dir==='rub'?'RUB → USDT':'USDT → THB'}
+    ${dirs.map(dir=>`<div class="chtitle" style="margin:4px 0 8px">${quoteDirection(d,dir)}
         <span>${(function(){const b=quoteBest(d,dir);return b?('в сделке '+b.rate+' · '+b.name):'ответов ещё нет';})()}</span></div>
       ${cps().filter(c=>cpDir(c,dir)).map(c=>quoteRow(d,c,dir)).join('')}`).join('')}
     <p class="fh">Пока клиент не заплатил, курс можно обновить: менеджер пересчитает и пересогласует условия.</p></div>`;
@@ -3989,6 +3992,7 @@ function docFields(d){
     kind:d.kind||'', amountThb:ap.thb||'', rate:d.rates.client||'',
     amountPay:ap.pay||'', rateAt:d.rates.at?new Date(d.rates.at).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'',
     partNo:d.partNo||'', invoiceTotal:d.invoiceTotal||'',
+    payoutNetwork:d.transfer?.net||'',payoutWallet:d.transfer?.addr||'',
     /* реквизиты компании */
     agent:MF.name, agentReg:MF.reg, agentDir:MF.dir,
     /* Крипто-клиент платит USDT на кошелёк компании; рублёвые реквизиты ему не нужны —
@@ -4045,14 +4049,14 @@ function docReq(d){
   return base.concat(isCrypto(d)?[]:['purpose'],
     (d.type==='Оплата недвижимости'&&(d.kind==='Лизхолд'||d.kind==='Фрихолд'))?['invNo']:[]);
 }
-const DOC_LABEL={fio:'ФИО',fioLat:'латиница',passNo:'номер паспорта',passIss:'дата выдачи',
+const DOC_LABEL={payoutNetwork:'сеть получателя',payoutWallet:'кошелёк получателя',fio:'ФИО',fioLat:'латиница',passNo:'номер паспорта',passIss:'дата выдачи',
   passOrg:'кем выдан',born:'дата рождения',dev:'получатель',invNo:'номер инвойса',invDate:'дата инвойса',
   object:'объект',kind:'форма владения',amountThb:'сумма инвойса',rate:'курс',amountPay:'сумма клиенту',
   rateAt:'момент фиксации курса',partNo:'номер платежа',invoiceTotal:'инвойс целиком',
   agent:'агент',agentReg:'рег. номер',agentDir:'подписант',payTo:'реквизиты',purpose:'назначение',
   feeNote:'оговорка о комиссии',validTill:'срок реквизитов'};
 function docReset(id){const d=deal(id);d.docFields=null;draftsClear(id);save();render();toast('Поля подставлены заново');}
-const DOC_SRC={fio:'паспорт',fioLat:'паспорт',passNo:'паспорт',passIss:'паспорт',passOrg:'паспорт',born:'паспорт',
+const DOC_SRC={payoutNetwork:'реквизиты получателя',payoutWallet:'реквизиты получателя',fio:'паспорт',fioLat:'паспорт',passNo:'паспорт',passIss:'паспорт',passOrg:'паспорт',born:'паспорт',
   dev:'инвойс',invNo:'инвойс',invDate:'инвойс',object:'инвойс / SPA',
   kind:'сделка',amountThb:'расчёт',rate:'расчёт',amountPay:'расчёт',rateAt:'момент фиксации курса',
   partNo:'сделка',invoiceTotal:'инвойс',
@@ -4172,11 +4176,13 @@ async function docIssue(id,F,ch,comment){
     if(el){el.scrollIntoView({block:'center'});el.focus();}
     return;}
   d.docMiss=[];d.docErr='';
-  d.amountThb=num(cleanNum(String(F.amountThb)));d.rates.client=F.rate;
+  const spec=exchangeSpec(d);
+  d[spec?amountField(spec.output):'amountThb']=num(cleanNum(String(F.amountThb)));d.rates.client=F.rate;
   /* объект из пакета — в карточку сделки, иначе в шапке всех шагов «не указан» */
   if(String(F.object||'').trim()) d.object=String(F.object).trim();
   const pay=num(cleanNum(String(F.amountPay)));
-  if(!isCrypto(d)) d.amountRub=pay;
+  if(spec)d[amountField(spec.input)]=pay;
+  else if(!isCrypto(d)) d.amountRub=pay;
   d.docComment2=comment;
   if(ch.length) log(d,'Поля пакета поправлены вручную: '+ch.map(k=>DOC_LABEL[k]||k).join(', '));
   go(d,'s11b','Пакет документов создан, версия '+d.docVersion);toast('Создано — проверьте файлы');
@@ -5751,7 +5757,7 @@ function overview(d,st,mine,p,wh){
       ${row('Получатель получает',apMoney(ap,'thb'))}
       ${row(d.kind==='Фрихолд'&&isCrypto(d)?'Клиент отправит':'Клиент отдаёт',apMoney(ap,'pay'))}
       ${d.kind==='Фрихолд'&&isCrypto(d)?'':d.rates.client
-        ?row('Курс клиенту',d.rates.client+' '+(d.kind==='Фрихолд'?'₽ за 1 $':(isCrypto(d)?'฿ за 1 USDT':'₽ за 1 ฿')),d.selfRate?'проставил менеджер сам':'')
+        ?row('Курс клиенту',d.rates.client+' '+(d.kind==='Фрихолд'?'₽ за 1 $':rateUnit(d)),d.selfRate?'проставил менеджер сам':'')
         :row('Курс клиенту','ещё не проставлен','появится, когда менеджер посчитает клиенту')}
       ${d.partial?row('Часть по инвойсу',(d.partNo||'')+' из '+money(d.invoiceTotal,d.kind==='Фрихолд'?'$':'฿')):''}
     </table></div>
@@ -5991,7 +5997,7 @@ const FILLS={
    _apply_mf_realty, _apply_mf_freehold), плюс кто клиент и откуда деньги.
    Имя поля CRM — в скобках, шаг — где оно должно было заполниться. */
 function crmGaps(d){
-  const g=[], E=econ(d), po=d.payout||{}, rub=!isCrypto(d);
+  const g=[], E=econ(d), po=d.payout||{}, rub=payCur(d)==='rub';
   const need=(ok,label,step)=>{if(!ok)g.push({label:label,step:step});};
   need(d.clientId||d.client,'Клиент (client_id)','Заявка');
   need(d.manager,'Менеджер (manager_name)','Заявка');
@@ -6022,7 +6028,7 @@ function crmGaps(d){
     need(d.docs&&d.docs.receipt,'Подтверждение оплаты (doc_payment_url)','Оплатить инвойс');
   }else{
     need(d.paySrc,'Источник Pay-Out (payout_source)','Что делаем с USDT');
-    if(d.paySrc!=='client') need(po.thb||d.amountThb,'Выдано, ฿ (payout_amount_thb)','Что делаем с USDT');
+    if(d.paySrc!=='client'){const spec=exchangeSpec(d);need(d[amountField(spec.output)]||(spec.output==='thb'&&po.thb),'Выдано, '+SIGN[spec.output],'Что делаем с USDT');}
     need(E.cost!=null,'Себестоимость выдачи, USDT (payout_amount_usdt)','Что делаем с USDT / Одобрить перевод');
     if(d.paySrc==='coins'||d.paySrc==='client') need((po.hashes||[]).length,'Хеши выдачи (payout_tx_hashes)','Одобрить перевод');
     if(d.paySrc==='founder') need(po.reimbursement,'Возмещение фаундеру (reimbursement_id)','Возмещения — хеш перевода');
@@ -6083,7 +6089,7 @@ function crmPayload(d){
       profit_percent:(+c.payoutUsdt)>0?profit/(+c.payoutUsdt)*100:0,
       net_profit_usdt:c.netProfit??Math.round(base*100)/100,notes:c.notes||null};
   }
-  const E=econ(d), po=d.payout||{}, rub=!isCrypto(d), prop=d.type==='Оплата недвижимости';
+  const E=econ(d), po=d.payout||{}, rub=payCur(d)==='rub', prop=d.type==='Оплата недвижимости';
   const r2=v=>(v==null||v===''||!isFinite(v))?null:Math.round(v*100)/100;
   const hx=l=>(l||[]).filter(h=>h&&h.hash).map(h=>({hash:h.hash,network:crmNet(h.network||h.net),amount_usdt:h.amount??h.amount_usdt??null}));
   const p={client_name:d.client, client_id:typeof d.clientId==='string'&&d.clientId.startsWith('crm:')?parseInt(d.clientId.slice(4)):(d.crmClientId??null),
@@ -6168,9 +6174,9 @@ function crmPayload(d){
   if(!prop){
     const spec=exchangeSpec(d);
     if(spec&&(spec.input==='thb'||spec.output!=='thb')){
-      const incoming=spec.input==='thb'?(num(d.rates.usdtThb)?(d.incomeAmount||d.amountThb)/num(d.rates.usdtThb):null):p.payin_amount_usdt;
+      const incoming=p.payin_amount_usdt;
       Object.assign(p,{is_custom:true,custom_payin_currency:spec.input.toUpperCase(),
-        custom_payin_amount:d[amountField(spec.input)],custom_payin_rate:spec.input==='thb'?num(d.rates.usdtThb):num(d.rates.broker)||num(d.rates.rubUsdt),
+        custom_payin_amount:d.incomeAmount||d[amountField(spec.input)],custom_payin_rate:spec.input==='thb'?num(d.rates.usdtThb):num(d.rates.broker)||num(d.rates.rubUsdt),
         custom_payout_currency:spec.output.toUpperCase(),custom_payout_amount:d[amountField(spec.output)],
         custom_payout_rate:spec.output==='usdt'?null:num(d.rates.rubUsdt),
         payin_amount_rub:spec.input==='rub'?p.payin_amount_rub:null,payin_amount_usdt:r2(incoming),
@@ -6310,13 +6316,13 @@ function crmForm(d){
       <div class="psec pin" style="margin-top:12px">Pay-In (Получение)</div>
       <div class="fr">
         ${sel('payin_method','Метод Pay-In',PAYIN_LABEL)}
-        ${p.payin_amount_rub!=null||!isCrypto(d)?inp('payin_amount_rub','Сумма RUB'):''}
+        ${p.custom_payin_currency?ro('Сумма '+p.custom_payin_currency,p.custom_payin_amount):p.payin_amount_rub!=null||payCur(d)==='rub'?inp('payin_amount_rub','Сумма RUB'):''}
         ${inp('payin_amount_usdt','Сумма USDT')}
       </div>
       <div class="fr">
-        ${!isCrypto(d)?inp('payin_rate_rub_usdt','Курс RUB/USDT',{hint:'курс брокера, ₽ за 1 USDT'}):''}
+        ${payCur(d)==='rub'?inp('payin_rate_rub_usdt','Курс RUB/USDT',{hint:'курс брокера, ₽ за 1 USDT'}):''}
         ${isCrypto(d)&&d.kind==='Фрихолд'?ro('Клиент отправит',money(d.amountUsdt,'USDT'),'план договора; Pay-In выше — факт прихода'):
-          ro('Курс клиенту',(d.rates.client||'—')+' '+(d.kind==='Фрихолд'?'₽ за 1 $':(isCrypto(d)?'฿ за 1 USDT':'₽ за 1 ฿')),'тот, о котором договорились с клиентом')}
+          ro('Курс клиенту',(d.rates.client||'—')+' '+(d.kind==='Фрихолд'?'₽ за 1 $':rateUnit(d)),'тот, о котором договорились с клиентом')}
       </div>
       ${hashes('payin_tx_hashes','Транзакции Pay-In')}
       ${p.deal_kind==='mf_realty'?`<div class="psec psnd">Отправка через MF Corporation</div>
@@ -6343,7 +6349,7 @@ function crmForm(d){
       ${p.deal_kind==='exchange'?`<div class="psec pout">Pay-Out (Выдача)</div>
       <div class="fr">
         ${sel('payout_source','Источник',PAYOUT_LABEL)}
-        ${inp('payout_amount_thb','Сумма THB')}
+        ${p.custom_payout_currency?ro('Сумма '+p.custom_payout_currency,p.custom_payout_amount):inp('payout_amount_thb','Сумма THB')}
         ${inp('payout_amount_usdt','Стоимость USDT')}
       </div>
       ${hashes('payout_tx_hashes','Хеши выдачи')}`:''}
@@ -8820,8 +8826,8 @@ function stepCard(d){
     </div>
     ${d.self?`<div class="card-title" style="font-size:14px;margin:18px 0 11px">Курс, который вы уже знаете</div>
       <div class="fr">
-        ${isCrypto(d)?'':`<div class="fg"><label class="fl">Курс брокера · RUB → USDT<span class="rq">*</span></label><input class="fc num" id="m1" value="${d.rates.rubUsdt||''}" placeholder="₽ за 1 USDT"></div>`}
-        <div class="fg"><label class="fl">Курс партнёра · USDT → THB<span class="rq">*</span></label><input class="fc num" id="m2" value="${d.rates.usdtThb||''}" placeholder="฿ за 1 USDT"></div>
+        ${!quoteDirs(d).includes('rub')?'':`<div class="fg"><label class="fl">Курс контрагента · ${quoteDirection(d,'rub')}<span class="rq">*</span></label><input class="fc num" id="m1" value="${d.rates.rubUsdt||''}" placeholder="₽ за 1 USDT"></div>`}
+        ${!quoteDirs(d).includes('thb')?'':`<div class="fg"><label class="fl">Курс контрагента · ${quoteDirection(d,'thb')}<span class="rq">*</span></label><input class="fc num" id="m2" value="${d.rates.usdtThb||''}" placeholder="฿ за 1 USDT"></div>`}
       </div>
       <div class="alert a-info"><div>${isCrypto(d)&&d.type==='Обмен валюты'
         ?'Обменный курс USDT→THB виден в стакане Bitazza — операционисту тут звонить не за чем. Итоговый курс клиенту проставите на следующем шаге.'
@@ -8856,7 +8862,7 @@ function stepCard(d){
       <div class="card-title" style="font-size:14px;margin:20px 0 11px">Что спросить — сумма уже подставлена</div>
       <div class="list" style="margin-bottom:10px">${cps().filter(c=>cpDir(c,'rub')).map(c=>cpRow(d,c,q)).join('')}</div>
       ${cpAddBlock('rub')}
-      <div class="chtitle" style="margin:6px 0 8px">Что ответили · RUB → USDT
+      <div class="chtitle" style="margin:6px 0 8px">Что ответили · ${quoteDirection(d,'rub')}
         <span>записывайте по мере ответов — время сохраняется</span></div>
       ${cps().filter(c=>cpDir(c,'rub')).map(c=>quoteRow(d,c,'rub')).join('')}
       <div class="alert a-info"><div>Вы передаёте только то, что вам ответили. Итоговый курс клиенту считает менеджер — наценка не ваша зона.</div></div>
@@ -8879,28 +8885,28 @@ function stepCard(d){
       ${quoteDirs(d).includes('thb')?cell('฿/USDT',t):''}
       <div class="fg"></div></div></div>`;})()}
     <div class="card-title" style="font-size:14px;margin:20px 0 11px">Что спросить — суммы уже подставлены</div>
-    ${!quoteDirs(d).includes('rub')?'':(function(){const q='Какой курс на '+money(ap.pay,'₽')+'?';
-      return `<div class="card-title" style="font-size:13.5px;margin:14px 0 8px">RUB → USDT
+    ${!quoteDirs(d).includes('rub')?'':(function(){const q='Какой курс '+quoteDirection(d,'rub')+' на '+money(d.amountRub,'₽')+'?';
+      return `<div class="card-title" style="font-size:13.5px;margin:14px 0 8px">${quoteDirection(d,'rub')}
         <span class="sub">спросить можно у любого — чей курс лучше, тот и берём</span></div>
       <div class="list" style="margin-bottom:10px">${cps().filter(c=>cpDir(c,'rub')).map(c=>cpRow(d,c,q)).join('')}</div>
       ${cpAddBlock('rub')}
-      <div class="chtitle" style="margin:6px 0 8px">Что ответили · RUB → USDT
+      <div class="chtitle" style="margin:6px 0 8px">Что ответили · ${quoteDirection(d,'rub')}
         <span>записывайте по мере ответов — время сохраняется</span></div>
       ${cps().filter(c=>cpDir(c,'rub')).map(c=>quoteRow(d,c,'rub')).join('')}`;})()}
     ${!quoteDirs(d).includes('thb')?'':(function(){
       /* Coins и Bitazza — англоязычные, русским контрагентам вопрос подставляем
          по-русски, иначе его придётся переписывать руками */
-      const qEn='Which rate? usdt-thb, '+money(ap.thb)+' THB';
-      const qRu='Какой курс usdt→thb на '+money(ap.thb,'฿')+'?';
-      return `<div class="card-title" style="font-size:13.5px;margin:14px 0 8px">USDT → THB
-        <span class="sub">баты берём у того, чей курс лучше</span></div>
+      const qEn='Which rate? '+quoteDirection(d,'thb')+', '+money(d.amountThb)+' THB';
+      const qRu='Какой курс '+quoteDirection(d,'thb')+' на '+money(d.amountThb,'฿')+'?';
+      return `<div class="card-title" style="font-size:13.5px;margin:14px 0 8px">${quoteDirection(d,'thb')}
+        <span class="sub">выбираем лучший курс для направления сделки</span></div>
       <div class="list" style="margin-bottom:10px">${cps().filter(c=>cpDir(c,'thb')).map(c=>cpRow(d,c,(c.lang==='ru'?qRu:qEn))).join('')}</div>
       ${cpAddBlock('thb')}
-      <div class="chtitle" style="margin:6px 0 8px">Что ответили · USDT → THB
+      <div class="chtitle" style="margin:6px 0 8px">Что ответили · ${quoteDirection(d,'thb')}
         <span>если кто-то перебил курс — обновите строку, в сделку уйдёт лучший</span></div>
       ${cps().filter(c=>cpDir(c,'thb')).map(c=>quoteRow(d,c,'thb')).join('')}`;})()}
     <div class="alert a-info"><div>Вы передаёте только то, что вам ответили. Итоговый курс клиенту считает менеджер в калькуляторе — наценка не ваша зона.</div></div>
-    <p class="fh">Отдельной кнопки «отдать курсы» нет: задача уходит менеджеру с первым же отправленным ответом${isCrypto(d)?'':' по обоим направлениям'}. Остальные ответы досылайте по мере поступления — менеджер увидит новый лучший курс.</p>
+    <p class="fh">Отдельной кнопки «отдать курсы» нет: задача уходит менеджеру с первым же отправленным ответом${quoteDirs(d).length>1?' по обоим направлениям':''}. Остальные ответы досылайте по мере поступления — менеджер увидит новый лучший курс.</p>
     <div class="row"><button class="btn btn-outline" onclick="ret(${d.id})">Вернуть с вопросом</button></div></div>`;},
 
   s6:()=>{
@@ -9044,10 +9050,10 @@ function stepCard(d){
     <div class="keybox">
       <div class="sec po" style="margin:0 0 10px">${isCrypto(d)&&d.kind==='Фрихолд'?'ГЛАВНОЕ · СУММА':'ГЛАВНОЕ · СУММА И КУРС'}</div>
       <div class="fr">
-        ${fld('amountThb',d.kind==='Фрихолд'?'Инвойс застройщику, $':'Сумма инвойса к оплате, ฿',{req:1,num:1,big:1,money:1,ro:d.kind==='Фрихолд'})}
+        ${fld('amountThb',d.kind==='Фрихолд'?'Инвойс застройщику, $':exchangeSpec(d)?'Сумма получателю, '+SIGN[exchangeSpec(d).output]:'Сумма инвойса к оплате, ฿',{req:1,num:1,big:1,money:1,ro:d.kind==='Фрихолд'})}
         ${(isCrypto(d)&&d.kind==='Фрихолд')
           ?`<div class="fg"><label class="fl">Курс сделки</label><input class="fc" readonly value="—"></div>`
-          :fld('rate','Курс сделки, '+(d.kind==='Фрихолд'?'₽ за 1$':(isCrypto(d)?'฿/USDT':'₽/฿')),{req:1,num:1,big:1})}
+          :fld('rate','Курс сделки, '+(d.kind==='Фрихолд'?'₽ за 1$':rateUnit(d)),{req:1,num:1,big:1})}
         ${fld('amountPay',isCrypto(d)&&d.kind==='Фрихолд'?'Клиент отправит, USDT':'Сумма клиенту, '+ap.sign,{req:1,num:1,big:1,money:1,
           input:isCrypto(d)&&d.kind==='Фрихолд'?`freeholdDocAmountPreview(${d.id},this.value)`:null,
           change:isCrypto(d)&&d.kind==='Фрихолд'?`freeholdDocAmountSave(${d.id},this.value)`:null})}
@@ -9058,6 +9064,7 @@ function stepCard(d){
         <div id="fh_doc_loss_${d.id}">${d.amountUsdt>0&&d.amountUsdt<freeholdSend(d.invoiceUsd||0,ippsTariff(d))?`<div class="alert a-warn"><div><b>Сделка в минус</b> · ${d.freeholdLossAck?.fingerprint===freeholdLossFingerprint(d)?'риск подтверждён':'перед выпуском подтвердите риск отдельно'}</div></div>${d.freeholdLossAck?.fingerprint===freeholdLossFingerprint(d)?'':`<button class="btn btn-outline" onclick="freeholdLossAck(${d.id})">Подтвердить сделку в минус</button>`}`:''}:${d.amountUsdt>0?'':'<div class="alert a-warn"><div>Укажите сумму клиента, USDT, до выпуска документов.</div></div>'}</div>`:''}
       <p class="fh" style="margin-top:2px">В договор и счёт идёт введённая сумма клиента. Отправка в IPPS и доход показаны для внутренней сверки.</p>
       ${isCrypto(d)?'':fld('purpose','Назначение перевода — клиент впишет его в платёжное поручение',{req:1,area:1})}
+      ${exchangeSpec(d)?.output==='usdt'?`<div class="fr">${fld('payoutNetwork','Сеть получателя USDT',{req:1})}${fld('payoutWallet','Кошелёк получателя USDT',{req:1})}</div>`:''}
     </div>
 
     <div class="sec pi" style="margin:18px 0 10px">ПРИНЦИПАЛ · ИЗ ПАСПОРТА</div>

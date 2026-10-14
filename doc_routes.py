@@ -6,6 +6,7 @@ DIRECT_RATE = 'transfer_per_payin'
 
 PAIRS = {
     'RUB_THB': ('RUB', 'THB'), 'USDT_THB': ('USDT', 'THB'),
+    'THB_RUB': ('THB', 'RUB'), 'THB_USDT': ('THB', 'USDT'),
     'RUB_USDT': ('RUB', 'USDT'), 'RUB_USD': ('RUB', 'USD'),
     'USDT_USD': ('USDT', 'USD'), 'USD_THB': ('USD', 'THB'),
 }
