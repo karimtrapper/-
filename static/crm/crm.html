@@ -842,6 +842,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             <a class="nav-tab stand-only" href="/tasks" style="display:none;text-decoration:none;">✅ Задачник</a>
             <button class="nav-tab active" data-section="dashboard">Дашборд</button>
             <button class="nav-tab" data-section="deals" data-shell-label="Сделки">Сделки</button>
+            <a class="nav-tab stand-only" href="/tasks?section=analytics" style="display:none;text-decoration:none;">Аналитика</a>
             <button class="nav-tab" data-section="documents" data-shell-label="Документы">📄 Документы</button>
             <button class="nav-tab" data-section="closing" data-shell-label="Закрытие">🔒 Закрытие</button>
             <button class="nav-tab" data-section="exchangers" data-shell-label="Обменники">🔁 Обменники</button>
@@ -3741,7 +3742,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         }
 
         // ==================== Navigation ====================
-        document.querySelectorAll('.nav-tab').forEach(tab => {
+        document.querySelectorAll('.nav-tab[data-section]').forEach(tab => {
             tab.addEventListener('click', () => {
                 document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
                 document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
@@ -15275,7 +15276,7 @@ ${Math.abs(c.debits_delta_rub) < 0.01
         <button class="bottom-nav-item" data-nav-section="kyc" onclick="showSection('kyc')"><span class="icon">🛡</span><span>KYC</span></button>
         <button class="bottom-nav-item" onclick="toggleMorePanel()" id="moreBtn"><span class="icon">⋯</span><span>Ещё</span></button>
     </nav>
-    <script src="/static/nav-shell.js?v=3"></script>
+    <script src="/static/nav-shell.js?v=4"></script>
     <script>NavShell.boot('crm');</script>
 </body>
 

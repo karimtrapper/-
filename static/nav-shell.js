@@ -51,7 +51,7 @@
     top.innerHTML = `<div class="site-shell-brand"><i></i><span>Grusha</span></div><nav class="site-shell-links" aria-label="Разделы">${links(false)}</nav><div class="site-shell-right">${bell()}${profile()}</div>`;
     const mobile = document.createElement('div');
     mobile.className = 'site-shell site-shell-mobile-head';
-    mobile.innerHTML = `<span>${state.page === 'panel' ? 'Панель' : state.page === 'calc' ? 'Калькулятор' : state.page === 'tasks' ? 'Задачник' : 'CRM'}</span>${bell()}${profile()}`;
+    mobile.innerHTML = `<span>${state.page === 'panel' ? 'Панель' : state.page === 'calc' ? 'Калькулятор' : state.page === 'tasks' ? (state.active === 'crm' ? 'Аналитика' : 'Задачник') : 'CRM'}</span>${bell()}${profile()}`;
     const bottom = document.createElement('nav');
     bottom.className = 'site-shell site-shell-bottom';
     bottom.setAttribute('aria-label','Разделы');

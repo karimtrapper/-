@@ -637,7 +637,7 @@ a.hash:hover{background:#BAE6FD}
 <script src="/tasks/screens-data.js?v=2609241212"></script>
 <script src="/tasks/crm-draft-core.js?v=1"></script>
 <script src="/tasks/crm-draft-adapter.js?v=1"></script>
-<script src="/static/nav-shell.js?v=3"></script>
+<script src="/static/nav-shell.js?v=4"></script>
 <script>
 const KEY='grusha_proto_v2';
 /* ===== Стенд: состояние общее, лежит на сервере =====
@@ -4790,6 +4790,8 @@ function showTaskListSection(section){
 function viewTasks(){
   const mine=myTasks(S.role),others=waitingOn(S.role);
   const section=taskListSection||(mine.length?'mine':others.length?'wait':'mine');
+  const mineCount=mine.length?`<span class="task-list-count mine">${mine.length}</span>`:'';
+  const waitCount=others.length?`<span class="task-list-count">${others.length}</span>`:'';
   let h=`<div class="task-list"><div class="task-list-head"><h1>Задачник</h1>
     ${S.role==='manager'||S.role==='admin'?`<div class="task-list-create-bar"><button class="btn btn-primary task-list-create" onclick="startCreate()">+ Новая задача</button></div>`:''}</div>`;
   const pend=pendingEx(null);
@@ -4808,10 +4810,10 @@ function viewTasks(){
         'Никуда не денутся: следующая конвертация сама предложит их добрать.'}</p></div>`;
   }
   h+=`<nav class="task-list-seg" aria-label="Разделы задачника">
-    <button type="button" data-section="mine" class="${section==='mine'?'on':''}" aria-pressed="${section==='mine'}" onclick="showTaskListSection('mine')">На мне <span class="task-list-count mine">${mine.length}</span></button>
-    <button type="button" data-section="wait" class="${section==='wait'?'on':''}" aria-pressed="${section==='wait'}" onclick="showTaskListSection('wait')">Жду других <span class="task-list-count">${others.length}</span></button>
+    <button type="button" data-section="mine" class="${section==='mine'?'on':''}" aria-pressed="${section==='mine'}" onclick="showTaskListSection('mine')">На мне ${mineCount}</button>
+    <button type="button" data-section="wait" class="${section==='wait'?'on':''}" aria-pressed="${section==='wait'}" onclick="showTaskListSection('wait')">Жду других ${waitCount}</button>
   </nav><div class="task-list-cols"><section class="card task-list-panel ${section==='mine'?'on':''}" data-section="mine">
-    <div class="task-list-panel-head"><h2>На мне сейчас</h2><span class="task-list-count mine">${mine.length}</span></div>`;
+    <div class="task-list-panel-head"><h2>На мне сейчас</h2>${mineCount}</div>`;
   if(!mine.length){
     h+=`<div class="task-list-empty"><strong>Задач на вас нет</strong>
       ${S.role==='manager'
@@ -4835,7 +4837,7 @@ function viewTasks(){
     }).join('');
   }
   h+=`</section><section class="card task-list-panel ${section==='wait'?'on':''}" data-section="wait">
-    <div class="task-list-panel-head"><h2>Жду других</h2><span class="task-list-count">${others.length}</span></div>`;
+    <div class="task-list-panel-head"><h2>Жду других</h2>${waitCount}</div>`;
   if(!others.length) h+=`<div class="task-list-empty"><strong>Ожиданий нет</strong>Задачи других участников появятся здесь.</div>`;
   else Object.keys(ROLES).forEach(role=>{
     const group=others.filter(d=>stepWho(d)===role);
@@ -10917,7 +10919,9 @@ async function standBoot(){
     standMe=me.user.role||'admin';
     standMeId=me.user.id||null;
     if(standMe!=='admin')S.role=standMe;
-    NavShell.mount({stand:true,page:'tasks',active:'tasks',role:standMe,
+    const analyticsView=new URLSearchParams(location.search).get('section')==='analytics';
+    if(analyticsView){S.tab='analytics';S.open=null;S.draft=null;S.edit=null;}
+    NavShell.mount({stand:true,page:'tasks',active:analyticsView?'crm':'tasks',role:standMe,
       name:me.user.display_name||me.user.username,count:0});
     document.querySelector('.proto .lab').textContent='Тестовый стенд · '+(me.user.display_name||'');
     try{
