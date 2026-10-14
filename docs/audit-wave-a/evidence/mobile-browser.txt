@@ -1,0 +1,5 @@
+375px: roles rail 351.0px, first role 96.2px
+390px: roles rail 366.0px, first role 96.2px
+430px: roles rail 406.0px, first role 96.2px
+Role rail: horizontally scrolled and Фин дир activated by click
+PASS: prod/stand mobile navigation, five slots, Deals active state, /tasks link, 21 synthetic frames at 375/390/430px, documents and modal widths; no API writes

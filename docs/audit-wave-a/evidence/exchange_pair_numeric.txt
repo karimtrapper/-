@@ -1,0 +1,8 @@
+RUB_USDT_before {"pair":"RUB → USDT","amountRub":100000,"approx":{"pay":100000,"thb":null,"cur":"rub","sign":"₽","thbSign":"USDT","approx":null,"rub":100000},"rateUnit":"₽/USDT"}
+RUB_USDT_after_pair_rate {"id":1,"type":"Обмен валюты","pair":"RUB → USDT","payType":"По реквизитам","curBase":"rub","amountRub":100000,"amountThb":null,"amountUsdt":1176.47,"rates":{"rubUsdt":"81.7","usdtThb":"31.2","client":"85"}}
+RUB_USDT_expected_if_client_rate_85_RUB_per_USDT {"usdt":1176.47}
+THB_USDT_before {"pair":"THB → USDT","amountThb":50000,"approx":{"pay":50000,"thb":null,"cur":"thb","sign":"฿","thbSign":"USDT","approx":null,"rub":null},"rateUnit":"฿/USDT"}
+THB_USDT_after_pair_rate {"id":2,"type":"Обмен валюты","pair":"THB → USDT","payType":"По реквизитам","curBase":"thb","amountRub":null,"amountThb":50000,"amountUsdt":1602.56,"rates":{"usdtThb":"31.2","client":"31.2"}}
+THB_USDT_expected_at_31.2_THB_per_USDT {"usdt":1602.56}
+PAIR_CONTROL_RUB_USDT_vs_RUB_THB {"target":null,"control":37037,"identical":false}
+PAIR_CONTROL_THB_USDT_vs_THB_RUB {"target":null,"control":135000,"identical":false}

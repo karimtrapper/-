@@ -1,0 +1,9 @@
+c715a29 test(stand): align regressions with verified workflow and rerun audit probes
+b0388eb fix(stand): complete pair-aware CRM and document admission
+a437821 fix(stand): simplify manual bank receipts to amount and statement
+aa24dab fix(stand): show property documents only for property deals
+c587c0b fix(stand): seed one counterparty catalog for new and reset boards
+2c2f3a0 fix(stand): ignore exact browser defaults on unrelated tasks
+5f74aa3 fix(stand): use decimal half-up cents for IPPS totals
+ec37002 fix(stand): validate version history transitions and server notifications
+8f7f604 fix(stand): calculate exchange amounts and CRM currencies by pair

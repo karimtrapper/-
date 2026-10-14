@@ -1,0 +1,2 @@
+{"tariffPercent":0.8,"range":"$100000–$1000000, whole dollars","mismatchCount":0,"examples":[]}
+{"tariffPercent":1.5,"range":"$100000–$1000000, whole dollars","mismatchCount":0,"examples":[]}

@@ -1,0 +1,16 @@
+MISSING_VERSION {"guarded_status": 409, "guarded_error": "conflict", "bypass_status": 400, "bypass_error": "version_required", "before_bypass_amount": 120000, "after_bypass_amount": 120000, "versions": [3, 4, 4]}
+.SKIP_STEPS {"status": 409, "response": "Недопустимый переход s5 → s14", "stored_step": "s5"}
+.NOTIFY_BEFORE_BIND {"initial_status": "suppressed", "after_bind_status": "suppressed", "operator_sends": [], "first": [{"note_id": "dm-note-98503", "role": "admin", "status": "sent"}, {"note_id": "dm-note-98503", "role": "manager", "status": "suppressed"}, {"note_id": "dm-note-98503", "role": "operator", "status": "suppressed"}], "second": [{"note_id": "dm-note-98503", "role": "admin", "status": "sent"}, {"note_id": "dm-note-98503", "role": "manager", "status": "suppressed"}, {"note_id": "dm-note-98503", "role": "operator", "status": "suppressed"}]}
+.FORGED_NOTE {"status": 200, "error": null, "stored_note": null, "delivered_to": []}
+.ERASE_JOURNAL {"status": 409, "error": "Прошлые записи журнала нельзя удалять или менять", "before": ["Менеджер пинганул операциониста · Клиент отправил чек"], "after": ["Менеджер пинганул операциониста · Клиент отправил чек"]}
+.SECOND_APPLICATION_CLEAN {"status": 200, "error": null, "ids": [98512, 98511]}
+.SECOND_APPLICATION_NORMALIZED {"status": 200, "error": null}
+.prepay_server_amount 1005.12
+order_with_ui_amount 1005.11 409 Сумма поручения должна совпасть с расчётом договора
+.prepay_server_amount 1005.12
+order_with_ui_amount 1005.12 200 None
+.old_transfer_without_checkbox 409 Перевод сделан до поручения — требуется явное подтверждение
+old_transfer_with_checkbox 200 s26
+.
+10 passed, 53 warnings in 3.05s
+NETWORK_FENCE attempts=0 unexpected=0 report=/tmp/calccrm-t19-fence-reports/20261014T095706-33436.json
