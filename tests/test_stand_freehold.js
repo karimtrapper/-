@@ -28,8 +28,9 @@ function consts(names) {
   }).join('\n');
 }
 function run(fnNames, constNames, context) {
+  context.SIGN={rub:'₽',thb:'฿',usdt:'USDT'};
   vm.createContext(context);
-  vm.runInContext(consts(constNames) + '\n' + functions(fnNames), context);
+  vm.runInContext(consts(constNames) + '\n' + functions(['exchangeSpec','amountField','exchangeSync','quoteDirs',...fnNames]), context);
   return context;
 }
 function divTree(markup) {

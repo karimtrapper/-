@@ -6348,10 +6348,9 @@ def stand_quote_save():
             owner = db.query(AdminUser).filter_by(id=deal['assigneeAdminId']).first()
             if owner and not owner.login_disabled and owner.role == 'operator' and owner.id != flask_session.get('user_id'):
                 return jsonify(success=False, error=f'Шаг у {owner.display_name or owner.username}'), 409
-        if direction == 'rub' and (deal.get('payType') == 'Крипта' or deal.get('curBase') == 'usdt'):
-            return jsonify(success=False, error='У этой сделки нет рублёвого курса'), 409
-        if direction == 'thb' and deal.get('kind') == 'Фрихолд':
-            return jsonify(success=False, error='Для фрихолда курс USDT→THB не нужен'), 409
+        from stand_workflow import quote_dirs
+        if direction not in quote_dirs(deal):
+            return jsonify(success=False, error='У этой сделки нет такого направления курса'), 409
         cp = next((c for c in state.get('cps') or [] if c.get('id') == cp_id), None)
         if not cp or direction not in (cp.get('dirs') or [cp.get('dir')]):
             return jsonify(success=False, error='Контрагент для этого курса не найден'), 409
@@ -6382,10 +6381,9 @@ def stand_quote_save():
             'text': ('Курс обновлён' if previous else 'Курс получен') +
                     f' — {cp.get("name")} ({"RUB→USDT" if direction == "rub" else "USDT→THB"}): {rate.replace(".", ",")}'})
         if deal.get('step') == 's5':
-            has_rub = any(q.get('dir') == 'rub' for q in quotes)
-            has_thb = any(q.get('dir') == 'thb' for q in quotes)
-            crypto = deal.get('payType') == 'Крипта' or deal.get('curBase') == 'usdt'
-            ready = has_thb if crypto else has_rub if deal.get('kind') == 'Фрихолд' else has_rub and has_thb
+            ready = all(any(q.get('dir') == direction and
+                            (_amount(str(q.get('rate') or '').replace(',', '.')) or 0) > 0
+                            for q in quotes) for direction in quote_dirs(deal))
             if ready:
                 deal['step'] = 's6'
                 deal['assigneeAdminId'] = None
