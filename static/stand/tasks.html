@@ -1171,8 +1171,22 @@ function ippsApplicationText(d,pt){
    застройщику отправится не то, что он ждал. Менеджер снимает пометку на s6
    («Клиент согласен» фиксирует итог с клиентом). */
 function usdMark(d,v){return (d&&d.invoiceUsdEstimate?'≈ ':'')+usd(v)+(d&&d.invoiceUsdEstimate?' (ориентир)':'');}
-function freeholdFee(X,t){return X?Math.round((X*t.percent/100+t.fixed)*100)/100:0;}
-function freeholdSend(X,t){return X?Math.round((X+freeholdFee(X,t))*100)/100:0;}
+/* Exact decimal fractions: the fee is rounded half-up before adding the invoice.
+   Number.EPSILON cannot fix every half-cent in the supported invoice range. */
+function freeholdFee(X,t){
+  if(!X)return 0;
+  const fraction=value=>{
+    const [mantissa,exponent='0']=String(value).toLowerCase().split('e');
+    const [whole,tail='']=mantissa.split('.');
+    const scale=tail.length-Number(exponent),n=BigInt(whole+tail);
+    return scale>=0?[n,10n**BigInt(scale)]:[n*10n**BigInt(-scale),1n];
+  };
+  const [x,xd]=fraction(X),[p,pd]=fraction(t.percent),[f,fd]=fraction(t.fixed);
+  const numerator=x*p*fd+f*xd*pd*100n,denominator=xd*pd*fd*100n;
+  const cents=(2n*numerator*100n+denominator)/(2n*denominator);
+  return Number(cents)/100;
+}
+function freeholdSend(X,t){return X?freeholdFee(X,{percent:100,fixed:freeholdFee(X,t)}):0;}
 function freeholdLossFingerprint(d){return [String(Number(d.invoiceUsd)),String(Number(d.amountUsdt)),String(Number(freeholdSend(d.invoiceUsd||0,ippsTariff(d)))),d.ippsTariff||'bank'].join('|');}
 /* Инвойс и тариф правятся до s11; сумму клиента можно исправить на s11
    до выпуска документов. Если курс клиенту уже назван, смена

@@ -8439,10 +8439,7 @@ def _stand_freehold_ipps_order_problem(state, before, deal, actor):
             from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
             invoice = Decimal(str(deal.get('invoiceUsd')))
             amount = Decimal(str(transfer.get('amount')))
-            tariff = {'bank': Decimal('0.008'), 'soft': Decimal('0.015')}[deal.get('ippsTariff') or 'bank']
-            expected = (invoice + (invoice * tariff + Decimal('50')).quantize(
-                Decimal('0.01'), rounding=ROUND_HALF_UP)).quantize(
-                    Decimal('0.01'), rounding=ROUND_HALF_UP)
+            expected = Decimal(str(stand_prepay.amount(deal)))
             if invoice <= 0 or amount != expected:
                 return 'Сумма поручения должна совпасть с расчётом договора'
         except (InvalidOperation, TypeError, ValueError, KeyError):
