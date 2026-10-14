@@ -608,8 +608,8 @@ a.hash:hover{background:#BAE6FD}
   .btn-sm{min-height:40px}
 }
 </style>
-<link rel="stylesheet" href="/static/nav-shell.css?v=2">
-<link rel="stylesheet" href="/static/task-list.css?v=2">
+<link rel="stylesheet" href="/static/nav-shell.css?v=3">
+<link rel="stylesheet" href="/static/task-list.css?v=3">
 </head>
 <body>
 
@@ -637,7 +637,7 @@ a.hash:hover{background:#BAE6FD}
 <script src="/tasks/screens-data.js?v=2609241212"></script>
 <script src="/tasks/crm-draft-core.js?v=1"></script>
 <script src="/tasks/crm-draft-adapter.js?v=1"></script>
-<script src="/static/nav-shell.js?v=2"></script>
+<script src="/static/nav-shell.js?v=3"></script>
 <script>
 const KEY='grusha_proto_v2';
 /* ===== Стенд: состояние общее, лежит на сервере =====
@@ -4803,7 +4803,7 @@ function viewTasks(){
         <div><div class="t1">${x.code} · ${x.client}</div>
         <div class="t2">без шагов · ${x.payType} · ждёт ${since(x.readyAt)}</div></div>
         <span class="t3 num">${money(x.amountRub,'₽')}</span></div>`).join('')}</div>
-      <p style="font-size:12.5px;color:var(--text-muted);margin-top:11px">${conv.length?
+      <p style="font-size:14px;color:var(--navy-600);margin-top:12px">${conv.length?
         'Эти деньги можно влить в текущую конвертацию — курс возьмётся на общий объём, наценка по каждой посчитается сама.':
         'Никуда не денутся: следующая конвертация сама предложит их добрать.'}</p></div>`;
   }

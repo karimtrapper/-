@@ -38,9 +38,17 @@
     state = {...options};
     document.body.classList.add('nav-shell-on','nav-shell-'+state.page);
     document.body.classList.toggle('nav-shell-panel',state.active === 'panel');
+    if (state.page === 'crm') {
+      document.querySelectorAll('.nav-tabs .nav-tab[data-shell-label]').forEach(tab => {
+        const label = tab.dataset.shellLabel;
+        const text = [...tab.childNodes].find(node => node.nodeType === Node.TEXT_NODE);
+        if (text) text.textContent = label;
+        tab.setAttribute('aria-label', label);
+      });
+    }
     const top = document.createElement('header');
     top.className = 'site-shell site-shell-top';
-    top.innerHTML = `<div class="site-shell-brand"><i></i>Grusha</div><nav class="site-shell-links" aria-label="Разделы">${links(false)}</nav><div class="site-shell-right">${bell()}${profile()}</div>`;
+    top.innerHTML = `<div class="site-shell-brand"><i></i><span>Grusha</span></div><nav class="site-shell-links" aria-label="Разделы">${links(false)}</nav><div class="site-shell-right">${bell()}${profile()}</div>`;
     const mobile = document.createElement('div');
     mobile.className = 'site-shell site-shell-mobile-head';
     mobile.innerHTML = `<span>${state.page === 'panel' ? 'Панель' : state.page === 'calc' ? 'Калькулятор' : state.page === 'tasks' ? 'Задачник' : 'CRM'}</span>${bell()}${profile()}`;
