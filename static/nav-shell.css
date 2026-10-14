@@ -36,10 +36,6 @@ body.nav-shell-on { --shell-ink:#0F172A; --shell-muted:#64748B; }
 .site-shell-menu [data-shell-admin-tools] { display:block; }
 .site-shell-menu [data-shell-admin-tools] .ghost { display:block;width:100%;color:#334155;border:0;text-align:left;padding:9px 10px;background:none; }
 .site-shell-menu [data-shell-build] .build { display:block;margin:6px 10px;padding:6px 0;border:0;color:#64748B;font-size:11px;line-height:1.35;white-space:normal; }
-.site-shell-sections>summary { padding:9px 10px;border-radius:6px;color:#334155;font:600 13px Inter,system-ui,sans-serif;cursor:pointer; }
-.site-shell-sections>summary:hover { background:#F1F5F9; }
-.site-shell-sections [data-shell-task-sections] { padding-left:10px; }
-.site-shell-sections button[aria-current="page"] { background:#F1F5F9;color:#0F172A; }
 .site-shell-mobile-head, .site-shell-bottom { display:none; }
 body.nav-shell-on .top-nav, body.nav-shell-on .proto { display:none !important; }
 body.nav-shell-on #bottomNav { display:none !important; }

@@ -26,7 +26,7 @@
     const name = esc(state.name || 'Пользователь');
     const role = esc(labels[state.role] || state.role);
     const initial = esc((state.name || '?').trim().charAt(0).toUpperCase());
-    return `<details class="site-shell-profile"><summary aria-label="Профиль: ${name} · ${role}"><span class="site-shell-avatar">${initial}</span><span class="site-shell-profile-name">${name} · ${role}</span>${svg('down')}</summary><div class="site-shell-menu">${state.page === 'tasks' ? '<details class="site-shell-sections"><summary>Разделы задачника</summary><div data-shell-task-sections></div></details><div class="site-shell-menu-title">Курсы</div><div data-shell-market></div>' : ''}${state.role === 'admin' && state.page === 'tasks' ? '<div class="site-shell-menu-title">Смотреть как…</div><div data-shell-roles></div><div data-shell-admin-tools></div><div data-shell-build></div>' : ''}<a href="/docs/instruction.html" target="_blank" rel="noopener">Инструкция</a><button type="button" data-shell-logout>Выйти</button></div></details>`;
+    return `<details class="site-shell-profile"><summary aria-label="Профиль: ${name} · ${role}"><span class="site-shell-avatar">${initial}</span><span class="site-shell-profile-name">${name} · ${role}</span>${svg('down')}</summary><div class="site-shell-menu">${state.page === 'tasks' ? '<div class="site-shell-menu-title">Курсы</div><div data-shell-market></div>' : ''}${state.role === 'admin' && state.page === 'tasks' ? '<div class="site-shell-menu-title">Смотреть как…</div><div data-shell-roles></div><div data-shell-admin-tools></div><div data-shell-build></div>' : ''}<a href="/docs/instruction.html" target="_blank" rel="noopener">Инструкция</a><button type="button" data-shell-logout>Выйти</button></div></details>`;
   }
 
   function bell() {
@@ -88,22 +88,6 @@
       if (tools && mobileTools) mobileTools.innerHTML=tools.innerHTML;
     }
     if (state.page === 'tasks') {
-      const sections=[...document.querySelectorAll('#tabs [data-task-tab]')];
-      document.querySelectorAll('[data-shell-task-sections]').forEach(target => {
-        target.replaceChildren(...sections.map(source => {
-          const button=document.createElement('button');
-          button.type='button';
-          button.textContent=[...source.childNodes].filter(node => node.nodeType === Node.TEXT_NODE).map(node => node.textContent).join('').replace(/[\p{Extended_Pictographic}\uFE0F\u200D]/gu,'').trim();
-          const count=source.querySelector('.cnt');
-          if (count) button.append(` · ${count.textContent}`);
-          if (source.classList.contains('active')) button.setAttribute('aria-current','page');
-          button.addEventListener('click',() => {
-            button.closest('.site-shell-profile').open=false;
-            setTab(source.dataset.taskTab);
-          });
-          return button;
-        }));
-      });
       const desktopBell=document.getElementById('bell');
       const mobileBell=document.querySelector('.site-shell-mobile-head [data-shell-bell]');
       if (desktopBell && mobileBell) mobileBell.innerHTML=desktopBell.innerHTML;

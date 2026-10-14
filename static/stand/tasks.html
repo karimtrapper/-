@@ -4475,9 +4475,9 @@ function render(){
     ['analytics','Аналитика',0]];
   document.getElementById('bell').innerHTML=bellHtml();
   document.getElementById('market').innerHTML=marketWidget();
-  document.getElementById('tabs').innerHTML=tabs.map(([k,t,c])=>
-    `<button class="nav-tab ${S.tab===k?'active':''}" data-task-tab="${k}" onclick="setTab('${k}')">${t}${c?`<span class="cnt">${c}</span>`:''}</button>`).join('');
   if(window.NavShell) NavShell.update({count:myTasks(S.role).length});
+  document.getElementById('tabs').innerHTML=tabs.map(([k,t,c])=>
+    `<button class="nav-tab ${S.tab===k?'active':''}" onclick="setTab('${k}')">${t}${c?`<span class="cnt">${c}</span>`:''}</button>`).join('');
   const app=document.getElementById('app');
   let main;
   if(S.edit)main=viewEdit();                       /* правка — отдельный экран, как в CRM */
