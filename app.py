@@ -16194,6 +16194,10 @@ def update_deal(deal_id):
             return jsonify({'success': False, 'error': 'Сделка не найдена'}), 404
         
         data = request.get_json()
+        # An unchanged editor submits {}. Do not recalculate money, statuses,
+        # allocations or timestamps (including SQLAlchemy onupdate defaults).
+        if data == {}:
+            return jsonify({'success': True, 'deal': deal.to_dict()})
         old_status = deal.status
         old_kind = deal.deal_kind
         
@@ -16250,7 +16254,9 @@ def update_deal(deal_id):
                                main_usdt=main_usdt, main_rub=main_rub)
 
         # Пересчёт needs_reimbursement если не передан явно, но изменился payout_amount_thb
-        if 'needs_reimbursement' not in data and deal.reimbursement_id is None:
+        if ('needs_reimbursement' not in data and deal.reimbursement_id is None
+                and any(key in data for key in ('payout_amount_thb', 'payout_source',
+                                                'custom_payout_currency'))):
             if (data.get('payout_source') or (deal.payout_source.value if deal.payout_source else None)) == PayOutSource.BANK_CARD.value:
                 deal.needs_reimbursement = False  # баты с карты уже откуплены
             else:
@@ -16412,8 +16418,12 @@ def update_deal(deal_id):
                 deal.referrer_markup_percent = None
                 deal.referrer_comp_model = None
         elif deal.deal_kind not in REALTY_KINDS:
-            # У недвижимости агенты уже пересчитаны выше вместе с прибылью
-            _mirror_legacy_agent(session, deal)
+            # Sparse editor PUT omits unchanged agents. Never collapse an
+            # existing cascade into its legacy first-agent mirror.
+            if len(deal.agents) > 1 or any((r.tier or 1) != 1 for r in deal.agents):
+                _refresh_deal_agents(session, deal)
+            else:
+                _mirror_legacy_agent(session, deal)
 
         realty_error = realty_payload_error(deal)
         if realty_error:
@@ -18684,7 +18694,7 @@ def _tronscan_fetch_incoming(wallets, start_ts=None, end_ts=None):
                         continue
                     break
                 if response is None:
-                    wallets_errors.append(wallet.address)
+                    wallets_errors.append({'address': wallet.address, 'error': 'TronScan returned no response'})
                     break
 
                 if response.status_code == 200:

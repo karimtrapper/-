@@ -62,9 +62,11 @@ def crm_server(monkeypatch):
 
 
 @pytest.fixture(scope='module')
-def chromium():
+def chromium(pytestconfig):
     with sync_playwright() as p:
-        browser = (p.chromium.launch() if Path(p.chromium.executable_path).exists()
+        executable = pytestconfig.getoption('--chromium-executable')
+        browser = (p.chromium.launch(executable_path=executable) if executable else
+                   p.chromium.launch() if Path(p.chromium.executable_path).exists()
                    else p.chromium.launch(channel='chrome'))
         yield browser
         browser.close()

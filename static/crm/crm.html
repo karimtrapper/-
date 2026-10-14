@@ -1205,6 +1205,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                             <div class="form-group">
                                 <label class="form-label">Валюта</label>
                                 <select class="form-control" id="customPayinCurrency" onchange="calcCustomProfit()">
+                                    <option value="">— не выбрано —</option>
                                     <option value="RUB">RUB (рубли)</option>
                                     <option value="USDT" selected>USDT</option>
                                     <option value="THB">THB (баты)</option>
@@ -1268,6 +1269,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                             <div class="form-group">
                                 <label class="form-label">Валюта</label>
                                 <select class="form-control" id="customPayoutCurrency" onchange="calcCustomProfit()">
+                                    <option value="">— не выбрано —</option>
                                     <option value="THB" selected>THB (баты)</option>
                                     <option value="USDT">USDT</option>
                                     <option value="RUB">RUB (рубли)</option>
@@ -1316,6 +1318,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                             <div class="form-group">
                                 <label class="form-label">Метод Pay-In</label>
                                 <select class="form-control" id="customPayinMethod" onchange="onCustomPayinMethodChange()">
+                                    <option value="">— не выбрано —</option>
                                     <option value="crypto_direct">Крипта напрямую</option>
                                     <option value="sber_wl">СБП</option>
                                     <option value="sber_reqs">Сбер (реквизиты)</option>
@@ -1332,6 +1335,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                             <div class="form-group">
                                 <label class="form-label">Метод выдачи</label>
                                 <select class="form-control" id="customPayoutMethod">
+                                    <option value="">— не выбрано —</option>
                                     <option value="office">Офис</option>
                                     <option value="courier">Курьер</option>
                                     <option value="atm">Банкомат</option>
@@ -1378,6 +1382,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                             <div class="form-group">
                                 <label class="form-label">Метод Pay-In</label>
                                 <select class="form-control" name="payin_method" id="payinMethod" required>
+                                    <option value="">— не выбрано —</option>
                                     <option value="sber_wl">СБП</option>
                                     <option value="sber_reqs">Сбер (реквизиты)</option>
                                     <option value="flow_sole_reqs">Flow Sole (СГБ, реквизиты)</option>
@@ -1697,6 +1702,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                             <div class="form-group">
                                 <label class="form-label">Метод выдачи</label>
                                 <select class="form-control" name="payout_method">
+                                    <option value="">— не выбрано —</option>
                                     <option value="office">Офис</option>
                                     <option value="courier">Курьер</option>
                                     <option value="atm">Банкомат</option>
@@ -1706,6 +1712,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                             <div class="form-group">
                                 <label class="form-label">Источник</label>
                                 <select class="form-control" name="payout_source" id="payoutSource">
+                                    <option value="">— не выбрано —</option>
                                     <option value="cash_batch">Из кассы (наличные)</option>
                                     <option value="bank_card">С карты банка</option>
                                     <option value="binance">Binance</option>
@@ -1786,6 +1793,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                             <div class="form-group">
                                 <label class="form-label">Фаундер (кто оплатил)</label>
                                 <select class="form-control" name="payout_founder_name">
+                                    <option value="">— не выбрано —</option>
                                     <option value="Андрей">Андрей</option>
                                     <option value="Теодор">Теодор</option>
                                 </select>
@@ -5200,6 +5208,35 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 
         // Глобальная переменная для режима редактирования
         let editingDealId = null;
+        let dealFormBaseline = null;
+
+        function setDealSelectValue(select, value, label) {
+            const saved = value == null ? '' : String(value);
+            // Archived values/IDs may be absent from the active directory.
+            if (saved && !Array.from(select.options).some(o => o.value === saved)) {
+                select.add(new Option(label || saved, saved));
+            }
+            select.value = saved;
+        }
+
+        function serializeDealEditor() {
+            return document.getElementById('customDealToggle').checked
+                ? serializeCustomDeal()
+                : serializeStandardDeal(document.getElementById('createDealForm'));
+        }
+
+        function dealFormDiff(current) {
+            // Baseline is captured AFTER hydration with the same serializer. Nulls,
+            // rounding, hidden controls and derived defaults cannot become edits.
+            if (!dealFormBaseline) throw new Error('Редактор ещё загружается');
+            const diff = {};
+            for (const key of new Set([...Object.keys(dealFormBaseline), ...Object.keys(current)])) {
+                if (JSON.stringify(current[key]) !== JSON.stringify(dealFormBaseline[key])) {
+                    diff[key] = current[key] === undefined ? null : current[key];
+                }
+            }
+            return diff;
+        }
         // Флаг «идём в форму из редактора»: showSection('create') не должен
         // сбрасывать режим редактирования, который openDealEditor только что включил
         let _openingEditor = false;
@@ -5295,17 +5332,10 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 // (кейс #461 — клиент подменился на клиента из #462). Закрываем ввод.
                 setEditorBusy(true, dealId);
 
-                let data;
-                try {
-                    [data] = await Promise.all([
-                        fetch(`${API_URL}/api/deals/${dealId}`).then(r => r.json()),
-                        loadCreateForm()
-                    ]);
-                } finally {
-                    // Завесу снимает только актуальное открытие, иначе форма
-                    // разблокируется, пока едет следующая сделка
-                    if (reqId === _editorRequestId) setEditorBusy(false);
-                }
+                const [data] = await Promise.all([
+                    fetch(`${API_URL}/api/deals/${dealId}`).then(r => r.json()),
+                    loadCreateForm()
+                ]);
 
                 // Пока грузили, открыли другую сделку — этот ответ уже не про неё
                 if (reqId !== _editorRequestId) return;
@@ -5339,14 +5369,14 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 
                         // Заполняем кастомную форму
                         document.getElementById('customPayinAmount').value = deal.custom_payin_amount || '';
-                        document.getElementById('customPayinCurrency').value = deal.custom_payin_currency || 'USDT';
+                        document.getElementById('customPayinCurrency').value = deal.custom_payin_currency || '';
                         document.getElementById('customPayinRate').value = deal.custom_payin_rate || '';
                         document.getElementById('customPayoutAmount').value = deal.custom_payout_amount || '';
-                        document.getElementById('customPayoutCurrency').value = deal.custom_payout_currency || 'USDT';
+                        document.getElementById('customPayoutCurrency').value = deal.custom_payout_currency || '';
                         document.getElementById('customPayoutRate').value = deal.custom_payout_rate || '';
-                        document.getElementById('customPayoutMethod').value = deal.payout_method || 'office';
+                        document.getElementById('customPayoutMethod').value = deal.payout_method || '';
                         // Метод Pay-In + части прихода Сбера
-                        if (deal.payin_method) setPayinMethodValue('customPayinMethod', deal.payin_method);
+                        setPayinMethodValue('customPayinMethod', deal.payin_method || '');
                         flowExistingParts = (deal.payin_parts || []).filter(p => String(p.uuid || '').startsWith('crm-manual:'));
                         flowExistingReceipt = flowExistingParts.length > 0;
                         if (flowExistingReceipt) document.getElementById('flowAmountC').value = flowExistingParts[0].amount_rub || '';
@@ -5377,8 +5407,8 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         if (isFh) fhFillForm(deal);
 
                         // Заполняем обычную форму
-                        if (deal.payin_method) {
-                            setPayinMethodValue('payinMethod', deal.payin_method);
+                        {
+                            setPayinMethodValue('payinMethod', deal.payin_method || '');
                             document.getElementById('payinMethod').dispatchEvent(new Event('change'));
                         }
                         flowExistingParts = (deal.payin_parts || []).filter(p => String(p.uuid || '').startsWith('crm-manual:'));
@@ -5434,9 +5464,10 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                                 (mainRub > 0 && mainUsdt > 0) ? +(mainRub / mainUsdt).toFixed(4) : '';
                         }
                         payinExtraRender();
-                        if (deal.payout_method) form.payout_method.value = deal.payout_method;
-                        if (deal.payout_source) {
-                            document.getElementById('payoutSource').value = deal.payout_source;
+                        form.payout_method.value = deal.payout_method || '';
+                        setDealSelectValue(form.payout_founder_name, deal.payout_founder_name);
+                        {
+                            document.getElementById('payoutSource').value = deal.payout_source || '';
                             document.getElementById('payoutSource').dispatchEvent(new Event('change'));
                         }
                         if (deal.payout_amount_thb) document.getElementById('payoutAmountThb').value = deal.payout_amount_thb;
@@ -5446,6 +5477,8 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 
                         // Для Binance
                         if (deal.payout_source === 'binance') {
+                            setDealSelectValue(document.getElementById('payoutWalletSelect'),
+                                deal.payout_wallet_id, deal.payout_wallet_label);
                             if (deal.payout_amount_usdt) document.getElementById('binanceUsdt').value = deal.payout_amount_usdt;
                             if (deal.payout_tx_hash) document.getElementById('binanceTxInput').value = deal.payout_tx_hash;
                         }
@@ -5455,7 +5488,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         if (deal.payout_source === 'bank_card' && deal.bank_card_id) {
                             const cardSel = document.getElementById('bankCardSelect');
                             if (cardSel) {
-                                cardSel.value = deal.bank_card_id;
+                                setDealSelectValue(cardSel, deal.bank_card_id);
                                 cardSel.dispatchEvent(new Event('change'));
                             }
                         }
@@ -5487,15 +5520,14 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                                 if (deal.payout_no_conversion) {
                                     const usdtEl = document.getElementById('noConvUsdt');
                                     if (usdtEl) usdtEl.value = deal.payout_amount_usdt ?? '';
-                                    loadFounderWallets(deal.payout_wallet_id || '');
+                                    await loadFounderWallets(deal.payout_wallet_id || '');
+                                    if (reqId !== _editorRequestId) return;
                                 }
                                 toggleNoConversion();
                             }
                             if (!deal.payout_no_conversion) loadOutgoingTxForSelect();
                         }
 
-                        // Пересчитываем прибыль
-                        setTimeout(calculateProfit, 100);
                     }
 
                     // Меняем кнопку отправки
@@ -5505,6 +5537,8 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         submitBtn.dataset.editMode = 'true';
                     }
 
+                    calculateProfit();
+                    dealFormBaseline = JSON.parse(JSON.stringify(serializeDealEditor()));
                     setCustomSubmitMode(dealId);
                 } else {
                     // Сделка не загрузилась — выходим из режима редактирования
@@ -5515,11 +5549,14 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 console.error('Error opening deal editor:', error);
                 showToast('Ошибка загрузки сделки #' + dealId, 'error');
                 cancelEditMode();
+            } finally {
+                if (reqId === _editorRequestId) setEditorBusy(false);
             }
         }
 
         function cancelEditMode() {
             editingDealId = null;
+            dealFormBaseline = null;
             document.querySelector('#create .card-title').textContent = 'Создать новую сделку';
             document.getElementById('createDealForm').reset();
             // Сбрасываем агентов обеих форм
@@ -5559,7 +5596,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             document.getElementById('payoutSource').dispatchEvent(new Event('change'));
         }
 
-        async function updateCustomDeal(dealId) {
+        function serializeCustomDeal() {
             const payinAmount = parseFloat(document.getElementById('customPayinAmount').value) || 0;
             const payinCurrency = document.getElementById('customPayinCurrency').value;
             const payinRate = parseFloat(document.getElementById('customPayinRate').value) || 0;
@@ -5578,20 +5615,6 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             const clientName = document.querySelector('[name="client_name"]').value;
             const createdAt = document.getElementById('dealDate').value;
 
-            // Валидация (аналог createCustomDeal)
-            if (payinAmount <= 0 || payoutAmount <= 0) {
-                showToast('Укажите суммы Pay-In и Pay-Out', 'error');
-                return;
-            }
-            if (payinCurrency !== 'USDT' && payinRate <= 0) {
-                showToast('Укажите курс Pay-In к USDT', 'error');
-                return;
-            }
-            if (payoutCurrency !== 'USDT' && payoutRate <= 0) {
-                showToast('Укажите курс Pay-Out к USDT', 'error');
-                return;
-            }
-
             // Конвертация: берём USDT из поля (учитывает ручной ввод USDT), иначе по курсу
             const payinUsdt = payinCurrency === 'USDT' ? payinAmount
                 : (parseFloat(document.getElementById('customPayinUsdt').value) || customToUsdt(payinAmount, payinCurrency, payinRate));
@@ -5600,7 +5623,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             const profit = payinUsdt - payoutUsdt;
             const netProfit = customAgentsRecalc();
 
-            const customMethod = document.getElementById('customPayinMethod')?.value || 'crypto_direct';
+            const customMethod = document.getElementById('customPayinMethod')?.value || null;
             const data = {
                 is_custom: true,
                 manager_name: managerName,
@@ -5612,7 +5635,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 payout_source: 'binance',
                 payin_amount_usdt: payinUsdt,
                 payout_amount_usdt: payoutUsdt,
-                payout_method: payoutMethod,
+                payout_method: payoutMethod || null,
                 custom_payin_currency: payinCurrency,
                 custom_payin_amount: payinAmount,
                 custom_payin_rate: payinCurrency !== 'USDT' ? payinRate : null,
@@ -5625,6 +5648,30 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 net_profit_usdt: netProfit,
                 notes: notes || null
             };
+
+            return data;
+        }
+
+        async function updateCustomDeal(dealId) {
+            if (!dealFormBaseline || editingDealId !== dealId) return;
+            let data = serializeCustomDeal();
+            if (Object.keys(dealFormDiff(data)).length) {
+                // Валидация (аналог createCustomDeal)
+                if (data.custom_payin_amount <= 0 || data.custom_payout_amount <= 0) {
+                    showToast('Укажите суммы Pay-In и Pay-Out', 'error');
+                    return;
+                }
+                if (data.custom_payin_currency !== 'USDT' && data.custom_payin_rate <= 0) {
+                    showToast('Укажите курс Pay-In к USDT', 'error');
+                    return;
+                }
+                if (data.custom_payout_currency !== 'USDT' && data.custom_payout_rate <= 0) {
+                    showToast('Укажите курс Pay-Out к USDT', 'error');
+                    return;
+                }
+
+            }
+            data = dealFormDiff(data);
 
             try {
                 const response = await fetch(`${API_URL}/api/deals/${dealId}`, {
@@ -8930,37 +8977,8 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         document.getElementById('payoutSource')?.addEventListener('change', calculateProfit);
         document.getElementById('bankCardSelect')?.addEventListener('change', calculateProfit);
 
-        function reportInvalidField(form) {
-            /* Возвращает true, если форму отправлять нельзя, и объясняет почему.
-               Нативная валидация тут не годится: невалидное поле часто скрыто
-               (кастомная сделка, недвижимость), и браузер просто ничего не делает. */
-            for (const el of form.elements) {
-                if (el.willValidate && !el.checkValidity()) {
-                    const group = el.closest('.form-group');
-                    const label = group ? (group.querySelector('.form-label') || {}).textContent : '';
-                    showToast('Заполните поле: ' + ((label || el.name || '').trim() || 'обязательное'), 'warning', 4000);
-                    if (el.offsetParent !== null) { el.focus(); el.reportValidity(); }
-                    return true;
-                }
-            }
-            return false;
-        }
-
-        document.getElementById('createDealForm').addEventListener('submit', async function (e) {
-            e.preventDefault();
-            if (reportInvalidField(this)) return;
-
-            // Если включена кастомная сделка — перенаправляем на кастомный обработчик
-            if (document.getElementById('customDealToggle').checked) {
-                if (editingDealId !== null) {
-                    updateCustomDeal(editingDealId);
-                } else {
-                    createCustomDeal();
-                }
-                return;
-            }
-
-            const formData = new FormData(this);
+        function serializeStandardDeal(form) {
+            const formData = new FormData(form);
             // При редактировании не перетираем статус — оставляем существующий в БД.
             // При создании новой сделки — pending по умолчанию.
             const data = (editingDealId !== null)
@@ -8986,7 +9004,9 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     }
                 } else {
                     if (['referrer_name', 'referrer_percent', 'referrer_fixed_usdt',
-                         'referrer_markup_percent', 'notes', 'payin_tx_hash', 'payout_tx_hash'].includes(key)) {
+                         'referrer_markup_percent', 'notes', 'payin_tx_hash', 'payout_tx_hash',
+                         'payout_source', 'payout_method', 'payin_method', 'payout_founder_name',
+                         'payout_wallet_id', 'bank_card_id'].includes(key)) {
                         data[key] = null;
                     }
                 }
@@ -9003,9 +9023,6 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             // Части прихода Сбера (пустой список = убрать части и освободить пул)
             data.payin_parts = methodUsesSberPool(data.payin_method) ? sberParts :
                 data.payin_method === 'flow_sole_reqs' ? flowExistingParts : [];
-            const flowBody = data.payin_method === 'flow_sole_reqs'
-                ? flowReceiptInput('', editingDealId !== null && flowExistingReceipt) : null;
-            if (flowBody === false) return;
             if (data.payin_method === 'flow_sole_reqs') {
                 data.payin_amount_rub = flowExistingReceipt && editingDealId !== null
                     ? flowExistingParts[0].amount_rub : Number(document.getElementById('flowAmount').value);
@@ -9085,6 +9102,62 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 data.deal_kind = 'exchange';
             }
 
+            // Добавляем данные из Binance полей
+            if (data.payout_source === 'binance') {
+                const binanceUsdt = parseFloat(document.getElementById('binanceUsdt')?.value);
+                const binanceTxHash = document.getElementById('binanceTxInput')?.value;
+                if (binanceUsdt) data.payout_amount_usdt = binanceUsdt;
+                if (binanceTxHash) data.payout_tx_hash = binanceTxHash;
+            }
+
+            return data;
+        }
+
+        function reportInvalidField(form, changes = null) {
+            /* Возвращает true, если форму отправлять нельзя, и объясняет почему.
+               Нативная валидация тут не годится: невалидное поле часто скрыто
+               (кастомная сделка, недвижимость), и браузер просто ничего не делает. */
+            for (const el of form.elements) {
+                // Legacy records can have empty required selects. An unrelated
+                // edit must not force a fabricated source/method into that record.
+                if (changes && el.name && !Object.prototype.hasOwnProperty.call(changes, el.name)) continue;
+                if (el.willValidate && !el.checkValidity()) {
+                    const group = el.closest('.form-group');
+                    const label = group ? (group.querySelector('.form-label') || {}).textContent : '';
+                    showToast('Заполните поле: ' + ((label || el.name || '').trim() || 'обязательное'), 'warning', 4000);
+                    if (el.offsetParent !== null) { el.focus(); el.reportValidity(); }
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        document.getElementById('createDealForm').addEventListener('submit', async function (e) {
+            e.preventDefault();
+            if (editingDealId !== null && !dealFormBaseline) return;
+            const changes = editingDealId === null ? null : dealFormDiff(serializeDealEditor());
+            const hasChanges = changes === null || Object.keys(changes).length > 0;
+            if (hasChanges && reportInvalidField(this, changes)) return;
+
+            // Если включена кастомная сделка — перенаправляем на кастомный обработчик
+            if (document.getElementById('customDealToggle').checked) {
+                if (editingDealId !== null) {
+                    updateCustomDeal(editingDealId);
+                } else {
+                    createCustomDeal();
+                }
+                return;
+            }
+
+            let data = serializeStandardDeal(this);
+            // Receipt validation/upload belongs to submit, never to the baseline
+            // serializer. Read the method before sparse PUT removes unchanged keys.
+            const flowBody = data.payin_method === 'flow_sole_reqs'
+                && (hasChanges || document.getElementById('flowFile')?.files?.length)
+                ? flowReceiptInput('', editingDealId !== null && flowExistingReceipt) : null;
+            if (flowBody === false) return;
+            if (editingDealId !== null) data = dealFormDiff(data);
+
             // Защита от дублей: блокируем кнопку на время запроса (двойной клик
             // при лаге сети создавал две сделки → двойное списание с кошелька).
             const submitBtn = this.querySelector('button[type="submit"]');
@@ -9095,14 +9168,6 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 const isEditMode = editingDealId !== null;
                 const url = isEditMode ? `${API_URL}/api/deals/${editingDealId}` : `${API_URL}/api/deals`;
                 const method = isEditMode ? 'PUT' : 'POST';
-
-                // Добавляем данные из Binance полей
-                if (data.payout_source === 'binance') {
-                    const binanceUsdt = parseFloat(document.getElementById('binanceUsdt')?.value);
-                    const binanceTxHash = document.getElementById('binanceTxInput')?.value;
-                    if (binanceUsdt) data.payout_amount_usdt = binanceUsdt;
-                    if (binanceTxHash) data.payout_tx_hash = binanceTxHash;
-                }
 
                 let response = await fetch(url, {
                     method: method,
@@ -9130,6 +9195,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         try { await flowSaveReceipt(dealId, flowBody); }
                         catch (error) {
                             editingDealId = dealId;
+                            dealFormBaseline = JSON.parse(JSON.stringify(serializeStandardDeal(this)));
                             showToast(`Сделка #${dealId} сохранена, но приход не записан: ${error.message}. Повторите сохранение.`, 'error', 10000);
                             return;
                         }
@@ -9884,7 +9950,9 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     // Обновляем выпадающий список в форме создания сделки
                     const payoutWalletSelect = document.getElementById('payoutWalletSelect');
                     if (payoutWalletSelect) {
-                        payoutWalletSelect.innerHTML = data.wallets.map(w => `<option value="${w.id}" data-address="${w.address}">${w.label || w.address.substring(0, 8)} ($${w.system_balance.toFixed(0)})</option>`).join('');
+                        const keepWallet = payoutWalletSelect.value;
+                        payoutWalletSelect.innerHTML = '<option value="">— не выбрано —</option>' + data.wallets.map(w => `<option value="${w.id}" data-address="${w.address}">${w.label || w.address.substring(0, 8)} ($${w.system_balance.toFixed(0)})</option>`).join('');
+                        payoutWalletSelect.value = keepWallet;
                         // Добавляем обработчик изменения кошелька для перезагрузки транзакций
                         payoutWalletSelect.onchange = () => loadOutgoingTxForBinance(false);
                     }

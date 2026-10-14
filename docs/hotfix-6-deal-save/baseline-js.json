@@ -1,0 +1,242 @@
+{
+  "node": "v25.4.0",
+  "port_pool": [
+    42982,
+    43045
+  ],
+  "results": [
+    {
+      "test": "test_login_setup_mode.js",
+      "exit": 0
+    },
+    {
+      "test": "test_s6_freehold_amount.js",
+      "exit": 0
+    },
+    {
+      "test": "test_stand_assignee_take.js",
+      "exit": 0
+    },
+    {
+      "test": "test_stand_board_concurrency.js",
+      "exit": 0
+    },
+    {
+      "test": "test_stand_botpin.js",
+      "exit": 0
+    },
+    {
+      "test": "test_stand_client_payin_receipts.js",
+      "exit": 0
+    },
+    {
+      "test": "test_stand_crm_close_race.js",
+      "exit": 0
+    },
+    {
+      "test": "test_stand_crm_draft_core.js",
+      "exit": 0
+    },
+    {
+      "test": "test_stand_crm_draft_payload.js",
+      "exit": 0
+    },
+    {
+      "test": "test_stand_crm_labels.js",
+      "exit": 0
+    },
+    {
+      "test": "test_stand_crm_locked.js",
+      "exit": 0
+    },
+    {
+      "test": "test_stand_crm_push_close.js",
+      "exit": 0
+    },
+    {
+      "test": "test_stand_demo_and_broker_wallet.js",
+      "exit": 0
+    },
+    {
+      "test": "test_stand_docparse_dataurl.js",
+      "exit": 0
+    },
+    {
+      "test": "test_stand_docparse_ui.js",
+      "exit": 0
+    },
+    {
+      "test": "test_stand_files.js",
+      "exit": 0
+    },
+    {
+      "test": "test_stand_files_storage.js",
+      "exit": 0
+    },
+    {
+      "test": "test_stand_flows_findings.js",
+      "exit": 0
+    },
+    {
+      "test": "test_stand_freehold.js",
+      "exit": 0
+    },
+    {
+      "test": "test_stand_freehold_close_roles.js",
+      "exit": 0
+    },
+    {
+      "test": "test_stand_hash_split.js",
+      "exit": 0
+    },
+    {
+      "test": "test_stand_income_conv_form.js",
+      "exit": 0
+    },
+    {
+      "test": "test_stand_incoming.js",
+      "exit": 0
+    },
+    {
+      "test": "test_stand_leasehold.js",
+      "exit": 0
+    },
+    {
+      "test": "test_stand_log_legacy.js",
+      "exit": 0
+    },
+    {
+      "test": "test_stand_log_xss.js",
+      "exit": 0
+    },
+    {
+      "test": "test_stand_manual_agent_ids.js",
+      "exit": 0
+    },
+    {
+      "test": "test_stand_manual_bank_receipt.js",
+      "exit": 0
+    },
+    {
+      "test": "test_stand_manual_origin_queue.js",
+      "exit": 0
+    },
+    {
+      "test": "test_stand_manual_receipt_confirm_ui.js",
+      "exit": 0
+    },
+    {
+      "test": "test_stand_mobile_tasks_nav.js",
+      "exit": 1
+    },
+    {
+      "test": "test_stand_no_prod_links.js",
+      "exit": 0
+    },
+    {
+      "test": "test_stand_no_prod_links_ui.js",
+      "exit": 0
+    },
+    {
+      "test": "test_stand_ops.js",
+      "exit": 0
+    },
+    {
+      "test": "test_stand_outgoing_pick_list.js",
+      "exit": 0
+    },
+    {
+      "test": "test_stand_owner_summary.js",
+      "exit": 0
+    },
+    {
+      "test": "test_stand_payin_api_manual.js",
+      "exit": 0
+    },
+    {
+      "test": "test_stand_payto_card.js",
+      "exit": 0
+    },
+    {
+      "test": "test_stand_prepay.js",
+      "exit": 0
+    },
+    {
+      "test": "test_stand_referrer_id.js",
+      "exit": 0
+    },
+    {
+      "test": "test_stand_release_minor.js",
+      "exit": 0
+    },
+    {
+      "test": "test_stand_remaining_links.js",
+      "exit": 0
+    },
+    {
+      "test": "test_stand_rub_account_switch.js",
+      "exit": 0
+    },
+    {
+      "test": "test_stand_rub_s14.js",
+      "exit": 0
+    },
+    {
+      "test": "test_stand_s14_operator.js",
+      "exit": 0
+    },
+    {
+      "test": "test_stand_s14_ping.js",
+      "exit": 0
+    },
+    {
+      "test": "test_stand_s18_crm_incomes.js",
+      "exit": 0
+    },
+    {
+      "test": "test_t30_wallet_mapping.js",
+      "exit": 0
+    },
+    {
+      "test": "test_t31_erc_payin.js",
+      "exit": 0
+    },
+    {
+      "test": "test_t33_custom_wallet_flow.js",
+      "exit": 0
+    },
+    {
+      "test": "test_t34_parallel.js",
+      "exit": 0
+    },
+    {
+      "test": "test_t34_wallet_cards_dropdown.js",
+      "exit": 0
+    },
+    {
+      "test": "test_t36_draft_resolve_2.js",
+      "exit": 0
+    },
+    {
+      "test": "test_t37_crm_clients_ui.js",
+      "exit": 0
+    },
+    {
+      "test": "test_wallet_registry_dropdown.js",
+      "exit": 0
+    },
+    {
+      "test": "test_wave_a_documents.js",
+      "exit": 0
+    },
+    {
+      "test": "test_wave_a_exchange.js",
+      "exit": 0
+    },
+    {
+      "test": "test_wave_a_rounding.js",
+      "exit": 0
+    }
+  ],
+  "native_attempt_audit": "unavailable"
+}

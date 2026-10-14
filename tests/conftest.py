@@ -84,6 +84,7 @@ def isolated_runtime(monkeypatch):
 
 
 def pytest_addoption(parser):
+    parser.addoption('--chromium-executable', help='Local Chromium/headless-shell executable for fenced UI tests')
     parser.addoption('--browser', action='store_true', help='Запустить Chromium UI-тесты')
 
 
