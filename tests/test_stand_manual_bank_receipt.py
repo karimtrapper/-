@@ -60,7 +60,7 @@ def snapshot(client):
     return client.get('/api/stand/state').json
 
 
-def test_manager_request_is_pending_operator_only_and_documents_ack_required(monkeypatch):
+def test_request_is_operator_only_and_no_longer_needs_documents_ack(monkeypatch):
     client = seed(monkeypatch, board())
     monkeypatch.setattr(m, 'current_role', lambda: 'manager')
     data = payload(); data['documentsAcknowledged'] = False
@@ -71,9 +71,6 @@ def test_manager_request_is_pending_operator_only_and_documents_ack_required(mon
     data['version'] = current['version']
 
     monkeypatch.setattr(m, 'current_role', lambda: 'operator')
-    denied = client.post('/api/stand/manual-bank-receipt', json=data)
-    assert denied.status_code == 409
-    data['documentsAcknowledged'] = True
     saved = client.post('/api/stand/manual-bank-receipt', json=data)
     assert saved.status_code == 200, saved.json
     state = snapshot(client)['data']
@@ -130,16 +127,14 @@ def test_legacy_s14_1485_moves_to_operator_and_flowsole_confirms(monkeypatch):
             'actualMode': 'flowsole', 'actualAmount': '192666.30',
             'payer': 'Татьяна', 'bankPurpose': 'Оплата по договору',
             'statementDate': '2026-10-13', 'statementRef': 'строка 1485'}
-    no_ack = client.post('/api/stand/manual-bank-receipt/1485/confirm', json=data)
-    assert no_ack.status_code == 409
-    data['deviationAcknowledged'] = True
     confirmed = client.post('/api/stand/manual-bank-receipt/1485/confirm', json=data)
     assert confirmed.status_code == 200, confirmed.json
     result = confirmed.json['data']['deals'][0]
     assert result['step'] == 's18'
     assert result['manualBankReceipt']['accountMismatch'] is True
     assert result['manualBankReceipt']['documentMismatch'] is True
-    assert result['manualBankReceipt']['deviationAcknowledged'] is True
+    assert result['manualBankReceipt']['accountChanged'] is True
+    assert any('Пришло на другой счёт' in x['text'] for x in result['log'])
     assert result['files']['clientPayinReceipt'][0]['file'] == 'чек.pdf'
     assert confirmed.json['data']['incomes'][0]['source'] == 'manual_confirmed'
 
@@ -239,11 +234,8 @@ def test_operator_confirmation_creates_immutable_manual_provenance(monkeypatch):
     monkeypatch.setattr(m, 'current_role', lambda: 'operator')
     second_request = client.post('/api/stand/manual-bank-receipt', json=payload(pending['version']))
     assert second_request.status_code == 409
-    refused = client.post('/api/stand/manual-bank-receipt/9301/confirm',
-                          json={'version': pending['version']})
-    assert refused.status_code == 400
     confirmed = client.post('/api/stand/manual-bank-receipt/9301/confirm',
-                            json={'version': pending['version'], 'statementVerified': True})
+                            json={'version': pending['version']})
     assert confirmed.status_code == 200, confirmed.json
     state = confirmed.json['data']; deal = state['deals'][0]; income = state['incomes'][0]
     receipt = deal['manualBankReceipt']
@@ -416,7 +408,8 @@ def test_custom_account_form_can_save_each_field_progressively_only_on_s11(monke
     assert refreshed == fields[-1]
     current = snapshot(client)['data']; current['deals'][0]['step'] = 's12'
     moved = client.put('/api/stand/state', json={'version': version, 'data': current})
-    assert moved.status_code == 200, moved.json
+    assert moved.status_code == 409, moved.json
+    assert 'пакет документов' in moved.json['error']
 
 
 def test_flowsole_existing_state_switches_without_database_rewrite(monkeypatch):
@@ -501,11 +494,6 @@ def test_1485_handoff_operator_selects_flowsole_and_acknowledges_documents(monke
               'actualMode': 'flowsole', 'actualAmount': '9987.50',
               'payer': 'Иван Клиент', 'bankPurpose': 'Оплата по договору',
               'statementDate': '2026-10-01', 'statementRef': 'строка 7788'}
-    without_ack = client.post('/api/stand/manual-bank-receipt/1485/confirm', json=actual)
-    assert without_ack.status_code == 409
-    assert 'расхождение' in without_ack.json['error']
-    assert snapshot(client)['data']['incomes'] == []
-    actual['deviationAcknowledged'] = True
     confirmed = client.post('/api/stand/manual-bank-receipt/1485/confirm', json=actual)
     assert confirmed.status_code == 200, confirmed.json
     saved = confirmed.json['data']['deals'][0]
@@ -519,8 +507,8 @@ def test_1485_handoff_operator_selects_flowsole_and_acknowledges_documents(monke
     assert receipt['correspondentAccount'] == '30101810245250000094'
     assert receipt['accountMismatch'] is True
     assert receipt['documentMismatch'] is True
-    assert receipt['documentsAcknowledged'] is True
-    assert any('расхождение' in entry['text'] for entry in saved['log'])
+    assert receipt['documentsAcknowledged'] is False
+    assert any('Пришло на другой счёт' in entry['text'] for entry in saved['log'])
     assert confirmed.json['data']['incomes'][0]['source'] == 'manual_confirmed'
 
     # От подтверждения до s18w идём только через действия ролей, без правки БД.

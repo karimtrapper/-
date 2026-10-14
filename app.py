@@ -10724,7 +10724,7 @@ def stand_manual_bank_receipt():
     payer = _stand_manual_receipt_text(data.get('payer'), 120)
     bank_purpose = _stand_manual_receipt_text(data.get('bankPurpose'), 250)
     statement_ref = _stand_manual_receipt_text(data.get('statementRef'), 120)
-    statement_date = _stand_manual_receipt_text(data.get('statementDate'), 20)
+    statement_date = _stand_manual_receipt_text(data.get('statementDate') or datetime.now().date().isoformat(), 20)
     docs_ack = data.get('documentsAcknowledged') is True
     from decimal import Decimal
     try:
@@ -10733,9 +10733,9 @@ def stand_manual_bank_receipt():
         valid_date = False
     if not handoff and (actual is None or actual <= 0 or actual > 10**12 or not bank or
             actual != actual.quantize(Decimal('0.01')) or
-            not re.search(r'\d{8,}', account) or not payer or not bank_purpose or not statement_ref or
+            not re.search(r'\d{8,}', account) or
             not valid_date):
-        return jsonify({'success': False, 'error': 'Заполните банк, полный счёт, сумму, плательщика, дату и ссылку/номер выписки'}), 400
+        return jsonify({'success': False, 'error': 'Укажите сумму, счёт и корректную дату выписки'}), 400
     db = get_session()
     try:
         if 'postgresql' not in DATABASE_URL:
@@ -10824,8 +10824,6 @@ def stand_manual_bank_receipt():
             not document_payto or any(not str(value or '').strip()
                 or str(value).strip().lower() not in document_payto.lower()
                 for value in doc_required))
-        if document_mismatch and not docs_ack:
-            return jsonify({'success': False, 'error': 'Подтвердите, что клиенту сообщили новые реквизиты или документы будут исправлены'}), 409
         stamp = datetime.utcnow().isoformat(timespec='seconds') + 'Z'
         deal['manualBankReceipt'] = {
             'id': secrets.token_hex(12), 'status': 'pending', 'bank': bank,
@@ -10889,7 +10887,7 @@ def _stand_advance_manual_payin(state, deal, receipt):
         if abs(gap) > tolerance:
             issues.append(('Недоплата ' if gap > 0 else 'Переплата ') + f'{abs(gap):.2f} ₽')
     purpose = str(expected.get('purpose') or (deal.get('docFields') or {}).get('purpose') or '').strip()
-    if purpose and purpose.lower() != str(receipt.get('bankPurpose') or '').strip().lower():
+    if purpose and receipt.get('bankPurpose') and purpose.lower() != str(receipt.get('bankPurpose') or '').strip().lower():
         issues.append('Назначение отличается от ожидаемого')
     deal['incomeReview'] = issues
     deal['assigneeAdminId'] = None
@@ -10926,8 +10924,6 @@ def stand_manual_bank_receipt_confirm(deal_id):
     data = request.get_json(silent=True) or {}
     if type(data.get('version')) is not int:
         return jsonify({'success': False, 'error': 'version_required'}), 400
-    if data.get('statementVerified') is not True:
-        return jsonify({'success': False, 'error': 'Оператор должен подтвердить сверку с выпиской'}), 400
     db = get_session()
     try:
         if 'postgresql' not in DATABASE_URL:
@@ -10955,8 +10951,18 @@ def stand_manual_bank_receipt_confirm(deal_id):
         receiving = deal.get('rubReceivingAccount') or {}
         if not isinstance(receiving, dict):
             return jsonify({'success': False, 'error': 'Некорректные реквизиты получателя'}), 409
-        if receipt.get('handoff'):
-            actual_account = _stand_actual_rub_account(data)
+        # The saved receiving account is the default. An explicit selection
+        # changes the actual account only, never the issued document snapshot.
+        account_data = dict(data)
+        if not data.get('actualMode'):
+            account_data.update(receiving, actualMode=receiving.get('mode') or 'sber')
+            if not receiving and expected.get('account'):
+                account_data.update(actualMode='custom', bank=expected.get('bank'),
+                    account=expected.get('account'), correspondent=expected.get('correspondent'), bik=expected.get('bik'))
+                if expected.get('account') == '40807810938720000286':
+                    account_data['actualMode'] = 'sber'
+        if receipt.get('handoff') or data.get('actualAmount') is not None:
+            actual_account = _stand_actual_rub_account(account_data)
             if actual_account is None:
                 return jsonify({'success': False, 'error': 'Укажите фактический счёт и полные реквизиты другого банка'}), 400
             from decimal import Decimal
@@ -10964,19 +10970,19 @@ def stand_manual_bank_receipt_confirm(deal_id):
             payer = _stand_manual_receipt_text(data.get('payer'), 120)
             bank_purpose = _stand_manual_receipt_text(data.get('bankPurpose'), 250)
             statement_ref = _stand_manual_receipt_text(data.get('statementRef'), 120)
-            statement_date = _stand_manual_receipt_text(data.get('statementDate'), 20)
+            statement_date = _stand_manual_receipt_text(data.get('statementDate') or datetime.now().date().isoformat(), 20)
             try:
                 valid_date = datetime.strptime(statement_date, '%Y-%m-%d').date().isoformat() == statement_date
             except ValueError:
                 valid_date = False
             if (actual is None or actual <= 0 or actual > 10**12
                     or actual != actual.quantize(Decimal('0.01'))
-                    or not payer or not bank_purpose or not statement_ref or not valid_date):
-                return jsonify({'success': False, 'error': 'Укажите сумму, плательщика, назначение, дату и строку выписки'}), 400
+                    or not valid_date):
+                return jsonify({'success': False, 'error': 'Укажите положительную сумму до копеек и корректную дату'}), 400
             actual_bank, actual_number, actual_corr, actual_bik = actual_account
-            recipient_name = _stand_manual_receipt_text(data.get('recipientName'), 120)
-            recipient_inn = _stand_manual_receipt_text(data.get('recipientInn'), 20)
-            recipient_kpp = _stand_manual_receipt_text(data.get('recipientKpp'), 20)
+            recipient_name = _stand_manual_receipt_text(account_data.get('recipientName'), 120)
+            recipient_inn = _stand_manual_receipt_text(account_data.get('recipientInn'), 20)
+            recipient_kpp = _stand_manual_receipt_text(account_data.get('recipientKpp'), 20)
             if data.get('actualMode') == 'custom' and (
                     not recipient_name or not re.fullmatch(r'\d{10}', recipient_inn)
                     or not re.fullmatch(r'\d{9}', recipient_kpp)):
@@ -10996,9 +11002,7 @@ def stand_manual_bank_receipt_confirm(deal_id):
                 doc_required.extend((recipient_name, recipient_inn, recipient_kpp))
             document_mismatch = bool(deal.get('docPack') or deal.get('docVersion')) and (
                 not doc_payto or any(value.lower() not in doc_payto for value in doc_required))
-            if (account_mismatch or document_mismatch) and data.get('deviationAcknowledged') is not True:
-                return jsonify({'success': False, 'error': 'Подтвердите расхождение фактического счёта с ожиданием или документами'}), 409
-            receipt.update({'actualMode': data.get('actualMode'), 'bank': actual_bank,
+            receipt.update({'actualMode': account_data.get('actualMode'), 'bank': actual_bank,
                 'account': actual_number, 'correspondentAccount': actual_corr, 'bankBik': actual_bik,
                 'recipientName': recipient_name if data.get('actualMode') == 'custom' else None,
                 'recipientInn': recipient_inn if data.get('actualMode') == 'custom' else None,
@@ -11006,9 +11010,8 @@ def stand_manual_bank_receipt_confirm(deal_id):
                 'actualAmount': float(actual), 'payer': payer, 'bankPurpose': bank_purpose,
                 'statementDate': statement_date, 'statementRef': statement_ref,
                 'accountMismatch': account_mismatch, 'documentMismatch': document_mismatch,
-                'documentsAcknowledged': bool(document_mismatch and data.get('deviationAcknowledged')),
-                'deviationAcknowledged': bool((account_mismatch or document_mismatch)
-                                              and data.get('deviationAcknowledged'))})
+                'accountChanged': account_mismatch,
+                'documentsAcknowledged': False, 'deviationAcknowledged': False})
         else:
             if receiving.get('mode') == 'custom' and (
                     receipt.get('bankBik') != receiving.get('bik')
@@ -11024,8 +11027,7 @@ def stand_manual_bank_receipt_confirm(deal_id):
         if deal.get('payinParts') or deal.get('incomeAmount') is not None or any(
                 i.get('dealId') == deal_id for i in state.get('incomes') or []):
             return jsonify({'success': False, 'error': 'К сделке привязаны другие приходы; ручную сверку остановили'}), 409
-        if not (receipt.get('bank') and receipt.get('account') and receipt.get('statementRef')
-                and receipt.get('bankPurpose')
+        if not (receipt.get('bank') and receipt.get('account')
                 and receipt.get('statementDate') and _stand_number(receipt.get('actualAmount')) > 0):
             return jsonify({'success': False, 'error': 'pending_receipt_incomplete'}), 409
         income_id = max([int(i.get('id')) for i in state.get('incomes') or []
@@ -11050,9 +11052,8 @@ def stand_manual_bank_receipt_confirm(deal_id):
         deal['incomeAmount'] = receipt['actualAmount']
         deal.setdefault('log', []).append({'at': int(time.time() * 1000), 'ts': stamp,
             'role': actor, 'text': 'Оператор сверил ручной RUB приход по банковской выписке'
-            + (f"; фактический счёт {receipt['bank']} · {receipt['account']}; "
-               'расхождение с ожиданием/документами подтверждено'
-               if receipt.get('deviationAcknowledged') else '')})
+            + (f"; Пришло на другой счёт: {receipt['bank']} · {receipt['account']}"
+               if receipt.get('accountMismatch') else '')})
         transition = _stand_advance_manual_payin(state, deal, receipt)
         deal['log'].append({'at': int(time.time() * 1000),
             'ts': datetime.now().strftime('%d.%m, %H:%M'),

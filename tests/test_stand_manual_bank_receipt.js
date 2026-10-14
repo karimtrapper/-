@@ -37,23 +37,25 @@ const values = {mbr_bank_77: 'Новый банк', mbr_account_77: '40702810900
 const calls = [];
 const ctx = vm.createContext({S: {role: 'operator'}, deal: id => id === 77 ? deal : null,
   sberText: String, money: n => String(n), docFields: d => d.docFields,
+  manualBankActualFields:()=>'',
   bankEvidenceBlock: () => '<div>Выписка / подтверждение зачисления</div>',
   rubApiAccount: () => false, filesOf: () => [{file:'statement.pdf'}],
   val: id => values[id], document: {getElementById: id => elements[id]},
   standAction: async (...args) => { calls.push(args); return {success: true}; },
   standVer: 12, toast: msg => calls.push(['toast', msg]), Date});
-vm.runInContext(html.slice(start, end), ctx);
+vm.runInContext(html.match(/^function manualBankOperatorForm\([^]*?^}/m)[0]+'\n'+html.slice(start, end), ctx);
 const run = code => vm.runInContext(code, ctx);
 
 const card = run('manualBankReceiptBlock(S.deals ? S.deals[0] : ' + JSON.stringify(deal) + ')');
 assert.match(card, /Ожидает сверки оператором/);
-assert.match(card, /Сверил фактическое зачисление/);
+assert.match(card,/Сумма прихода/);
+assert.match(card,/Ещё по приходу/);
+assert.match(card,/Пришло на другой счёт/);
+assert.doesNotMatch(card,/mbr_verify_|mbr_payer_|mbr_ref_|mbr_deviation_/);
 assert.match(card, /не подтверждение Сбер API/);
 assert.match(html, /Другой счёт/);
 assert.match(html, /Корреспондентский счёт \(20 цифр\)/);
 assert.match(html, /БИК банка \(9 цифр\)/);
-assert.match(html, /display:flex;flex-direction:column;align-items:stretch;gap:10px;margin-top:8px/);
-assert.match(html, /display:flex;align-items:flex-start;gap:9px;width:100%;line-height:1\.45/);
 assert.match(html, /d\.manualBankReceipt\?\.status==='pending'/);
 assert.doesNotMatch(html, /Вебхук банка · DEMO/);
 
@@ -128,12 +130,10 @@ vm.runInContext('copyAsk('+decodeOnce(jsonAttr)+')',safeCtx);
 assert.equal(copied,hostileBank);
 
 run('manualBankReceiptConfirm(77)');
-assert.match(calls.at(-1)[1], /Сначала сверьте/);
-elements.mbr_verify_77.checked = true;
-run('manualBankReceiptConfirm(77)');
 assert.equal(calls.at(-1)[0], '/api/stand/manual-bank-receipt/77/confirm');
 assert.equal(calls.at(-1)[1].version, 12);
-assert.equal(calls.at(-1)[1].statementVerified, true);
+assert.equal(calls.at(-1)[1].actualAmount, '1050.00');
+assert.equal(calls.at(-1)[1].statementVerified, undefined);
 
 (async()=>{
   let chromium;
