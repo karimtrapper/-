@@ -1,0 +1,148 @@
+diff --git a/static/calculator/index.html b/static/calculator/index.html
+index 9306f3c..d62231e 100644
+--- a/static/calculator/index.html
++++ b/static/calculator/index.html
+@@ -8,7 +8,7 @@
+     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+     <link rel="stylesheet" href="styles.css?v=16">
+     <link rel="stylesheet" href="/static/nav-shell.css?v=6">
+-    <link rel="stylesheet" href="/static/design-layer.css?v=1">
++    <link rel="stylesheet" href="/static/design-layer.css?v=2">
+     <style>
+         .top-nav {
+             background: #1E293B;
+diff --git a/static/crm/crm.html b/static/crm/crm.html
+index 8ae00d4..a426267 100644
+--- a/static/crm/crm.html
++++ b/static/crm/crm.html
+@@ -814,7 +814,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
+ 
+ </style>
+     <link rel="stylesheet" href="/static/nav-shell.css?v=6">
+-    <link rel="stylesheet" href="/static/design-layer.css?v=1">
++    <link rel="stylesheet" href="/static/design-layer.css?v=2">
+ </head>
+ 
+ <body class="wave4a">
+@@ -4239,10 +4239,10 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
+                         <tr onclick="showDealDetails(${deal.id})" style="cursor: pointer;">
+                             <td>#${deal.id}</td>
+                             <td>${formatDate(deal.created_at)}</td>
+-                            <td>${escapeHtml(deal.client_name) || '-'}</td>
++                            <td>${escapeHtml(deal.client_name) || '—'}</td>
+                             <td>${payinUsdtCell(deal)}</td>
+                             <td>${deal.custom_payout_currency
+-                            ? (deal.custom_payout_amount ? formatNumber(deal.custom_payout_amount) + ' ' + deal.custom_payout_currency : '-')
++                            ? (deal.custom_payout_amount ? formatNumber(deal.custom_payout_amount) + ' ' + deal.custom_payout_currency : '—')
+                             : (deal.payout_amount_thb ? formatNumber(deal.payout_amount_thb) + ' ฿'
+                                 : (deal.deal_kind === 'mf_realty' && deal.company_sent_thb
+                                     // У MF-сделки клиенту баты не выдают — они уходят в компанию
+@@ -4250,8 +4250,8 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
+                                     : (deal.deal_kind === 'mf_freehold' && deal.transfer_sent_usd
+                                         // Фрихолд: ушло в USD застройщику, батов нет вообще
+                                         ? '$' + formatNumber(deal.transfer_sent_usd)
+-                                        : '-')))}</td>
+-                            <td style="color: ${profitUnknown ? '#f59e0b' : ((deal.net_profit_usdt || deal.profit_usdt) > 0 ? '#10b981' : '#ef4444')}; font-weight: 600;">${profitUnknown ? '⏳ ожид.' : (deal.net_profit_usdt != null ? '$' + deal.net_profit_usdt.toFixed(2) : (deal.profit_usdt != null ? '$' + deal.profit_usdt.toFixed(2) : '-'))}</td>
++                                        : '—')))}</td>
++                            <td style="color: ${profitUnknown ? '#f59e0b' : ((deal.net_profit_usdt || deal.profit_usdt) > 0 ? '#10b981' : '#ef4444')}; font-weight: 600;">${profitUnknown ? '⏳ ожид.' : (deal.net_profit_usdt != null ? '$' + deal.net_profit_usdt.toFixed(2) : (deal.profit_usdt != null ? '$' + deal.profit_usdt.toFixed(2) : '—'))}</td>
+                             <td><span class="pill badge badge-${deal.status}">${getStatusLabel(deal.status)}</span></td>
+                         </tr>
+                     `}).join('');
+@@ -4692,13 +4692,13 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
+                         <tr>
+                             <td>#${deal.id}</td>
+                             <td>${formatDate(deal.created_at)}</td>
+-                            <td>${escapeHtml(deal.manager_name) || '-'}</td>
+-                            <td>${escapeHtml(deal.client_name) || '-'}</td>
++                            <td>${escapeHtml(deal.manager_name) || '—'}</td>
++                            <td>${escapeHtml(deal.client_name) || '—'}</td>
+                             <td>${escapeHtml(deal.referrer_name) || '—'}</td>
+                             <td>${deal.is_custom ? 'Кастомная' : getPayinMethodLabel(deal.payin_method)}</td>
+                             <td>${payinUsdtCell(deal)}</td>
+                             <td>${deal.custom_payout_currency
+-                                ? (deal.custom_payout_amount ? formatNumber(deal.custom_payout_amount) + ' ' + deal.custom_payout_currency : '-')
++                                ? (deal.custom_payout_amount ? formatNumber(deal.custom_payout_amount) + ' ' + deal.custom_payout_currency : '—')
+                                 : (deal.payout_amount_thb ? formatNumber(deal.payout_amount_thb) + ' ฿'
+                                 : (deal.deal_kind === 'mf_realty' && deal.company_sent_thb
+                                     // У MF-сделки клиенту баты не выдают — они уходят в компанию
+@@ -4706,9 +4706,9 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
+                                     : (deal.deal_kind === 'mf_freehold' && deal.transfer_sent_usd
+                                         // Фрихолд: ушло в USD застройщику, батов нет вообще
+                                         ? '$' + formatNumber(deal.transfer_sent_usd)
+-                                        : '-')))}</td>
++                                        : '—')))}</td>
+                             <td style="color: ${profitUnknown ? '#f59e0b' : ((deal.net_profit_usdt || deal.profit_usdt) > 0 ? '#10b981' : '#ef4444')}; font-weight: 600;">
+-                                ${profitUnknown ? '⏳ ожид.' : (deal.net_profit_usdt != null ? '$' + deal.net_profit_usdt.toFixed(2) : (deal.profit_usdt != null ? '$' + deal.profit_usdt.toFixed(2) : '-'))}
++                                ${profitUnknown ? '⏳ ожид.' : (deal.net_profit_usdt != null ? '$' + deal.net_profit_usdt.toFixed(2) : (deal.profit_usdt != null ? '$' + deal.profit_usdt.toFixed(2) : '—'))}
+                             </td>
+                             <td><span class="pill badge badge-${deal.status}">${getStatusLabel(deal.status)}</span></td>
+                             <td>
+@@ -4744,7 +4744,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
+             if (deal.payin_usdt_converted) {
+                 return `<span style="color:#059669;" title="Доля сделки в пачке конвертации">$${deal.payin_usdt_converted.toFixed(2)}</span>`;
+             }
+-            return '-';
++            return '—';
+         }
+ 
+         // Приход из пачки → в саму сделку. Нужна для сделок, чью пачку разнесли
+@@ -13217,7 +13217,7 @@ ${Math.abs(c.debits_delta_rub) < 0.01
+                 'sber_reqs': 'Сбер (реквизиты)',
+                 'flow_sole_reqs': 'Flow Sole (СГБ, реквизиты)'
+             };
+-            return labels[method] || method || '-';
++            return labels[method] || method || '—';
+         }
+ 
+         // Все части прихода сделки, первая — основная. Зеркало _payin_all_parts
+@@ -14408,6 +14408,8 @@ ${Math.abs(c.debits_delta_rub) < 0.01
+                                     onclick="${wa.onclick}">
+                             </div>
+                         </div>
++                        ${r.pending_usdt > 0 ? `<button type="button" class="btn btn-secondary referrer-pay-btn"
++                            onclick="payReferrer(${r.id},'${r.name.replace(/'/g,"\\'")}',${r.pending_usdt})">Выплатить</button>` : ''}
+                         <details class="referrer-actions">
+                             <summary aria-label="Действия с реферером">⋯</summary>
+                             <div class="referrer-actions-menu">
+@@ -14420,8 +14422,6 @@ ${Math.abs(c.debits_delta_rub) < 0.01
+                                 onclick="showReferrerPayoutRequests(${r.id},'${r.name.replace(/'/g,"\\'")}')">Заявки</button>
+                             <button class="btn btn-sm" style="background:${r.active ? '#fef3c7' : '#f0fdf4'};color:${r.active ? '#d97706' : '#16a34a'};border:none;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:12px;"
+                                 onclick="toggleReferrer(${r.id},${!r.active})">${r.active ? 'Откл.' : 'Вкл.'}</button>
+-                            ${r.pending_usdt > 0 ? `<button class="btn btn-sm" style="background:#f0fdf4;color:#16a34a;border:none;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;"
+-                                onclick="payReferrer(${r.id},'${r.name.replace(/'/g,"\\'")}',${r.pending_usdt})">Выплатить</button>` : ''}
+                             </div>
+                         </details>
+                     </div>
+diff --git a/static/design-layer.css b/static/design-layer.css
+index 1d404be..681dd90 100644
+--- a/static/design-layer.css
++++ b/static/design-layer.css
+@@ -457,6 +457,7 @@ body.wave4a #referrers .referrer-links input {
+   overflow: hidden;
+   text-overflow: ellipsis;
+ }
++body.wave4a #referrers .referrer-pay-btn { flex: 0 0 auto; white-space: nowrap; }
+ body.wave4a #referrers .referrer-actions { position: relative; flex: 0 0 44px; margin-left: 0; }
+ body.wave4a #referrers .referrer-actions summary {
+   display: flex;
+@@ -500,14 +501,12 @@ body.wave4a #referrers .referrer-actions-menu .btn {
+ }
+ @media (max-width: 600px) {
+   body.wave4a #referrers .referrer-links { grid-template-columns: minmax(0, 1fr); }
+-  body.wave4a #referrers .referrer-row:has(.referrer-actions[open]) { flex-wrap: wrap; }
+-  body.wave4a #referrers .referrer-actions[open] { flex: 1 1 100%; width: 100%; }
+-  body.wave4a #referrers .referrer-actions[open] summary { margin-left: auto; }
+-  body.wave4a #referrers .referrer-actions[open] .referrer-actions-menu {
+-    position: static;
+-    width: 100%;
+-    margin-top: 4px;
+-  }
++  body.wave4a #referrers .referrer-row { flex-wrap: wrap; }
++  body.wave4a #referrers .referrer-main { flex: 0 0 100% !important; width: 100%; }
++  body.wave4a #referrers .referrer-pay-btn,
++  body.wave4a #referrers .referrer-actions { margin-left: auto; }
++  body.wave4a #referrers .referrer-pay-btn + .referrer-actions { margin-left: 0; }
++  body.wave4a #referrers .referrer-row:has(.referrer-actions[open]) { z-index: 21; }
+ }
+ body.wave4a #deals:has(#dealsTable tr) #dealsEmpty { display: none; }
+ body.wave4a :is(.btn-link, .button-link) {

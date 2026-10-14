@@ -3,7 +3,7 @@
  "mode": "check",
  "url": "http://127.0.0.1:59109/",
  "design": "/Users/karimamirov/Desktop/untitled folder/outputs/calccrm-redesign/DESIGN.md",
- "generated": "2026-10-15T00:54:17",
+ "generated": "2026-10-15T01:38:06",
  "widths_requested": [
   375,
   768,
@@ -287,13 +287,13 @@
    "notes": [],
    "shots": {
     "375": {
-     "after": "/private/tmp/calccrm-wave4a/outputs/calccrm-redesign/wave4a/machine-calculator/after-karim-375.png",
-     "before": "/private/tmp/calccrm-wave4a/outputs/calccrm-redesign/wave4a/machine-calculator/before-karim-375.png",
+     "after": "outputs/calccrm-redesign/wave4a/machine-calculator/after-karim-375.png",
+     "before": "outputs/calccrm-redesign/wave4a/machine-calculator/before-karim-375.png",
      "identical": false
     },
     "1280": {
-     "after": "/private/tmp/calccrm-wave4a/outputs/calccrm-redesign/wave4a/machine-calculator/after-karim-1280.png",
-     "before": "/private/tmp/calccrm-wave4a/outputs/calccrm-redesign/wave4a/machine-calculator/before-karim-1280.png",
+     "after": "outputs/calccrm-redesign/wave4a/machine-calculator/after-karim-1280.png",
+     "before": "outputs/calccrm-redesign/wave4a/machine-calculator/before-karim-1280.png",
      "identical": false
     }
    },

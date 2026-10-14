@@ -3,7 +3,7 @@
  "mode": "check",
  "url": "http://127.0.0.1:59109/",
  "design": "/Users/karimamirov/Desktop/untitled folder/outputs/calccrm-redesign/DESIGN.md",
- "generated": "2026-10-15T00:57:17",
+ "generated": "2026-10-15T01:46:59",
  "widths_requested": [
   375,
   768,
@@ -277,175 +277,41 @@
      "rule": "G12-dup",
      "sev": "WARN",
      "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
-     "value": "87,2800 ₽ × 3",
-     "n": 3,
-     "ex": [
-      {
-       "sel": "div#rubUsdtRate",
-       "t": "87,2800 ₽"
-      },
-      {
-       "sel": "div.detail-section.full-table > div.detail-row > span.detail-value",
-       "t": "87,2800 ₽"
-      },
-      {
-       "sel": "div.detail-section.full-table > div.detail-row > span.detail-value.highlight",
-       "t": "87,2800 ₽"
-      }
-     ],
-     "gr": 12,
-     "extra": null,
-     "note": null,
-     "by_width": {
-      "375": 3,
-      "768": 3,
-      "1280": 3,
-      "1920": 3
-     },
-     "ex_by_width": {
-      "375": [
-       {
-        "sel": "div#rubUsdtRate",
-        "t": "87,2800 ₽"
-       },
-       {
-        "sel": "div.detail-section.full-table > div.detail-row > span.detail-value",
-        "t": "87,2800 ₽"
-       },
-       {
-        "sel": "div.detail-section.full-table > div.detail-row > span.detail-value.highlight",
-        "t": "87,2800 ₽"
-       }
-      ],
-      "768": [
-       {
-        "sel": "div#rubUsdtRate",
-        "t": "87,2800 ₽"
-       },
-       {
-        "sel": "div.detail-section.full-table > div.detail-row > span.detail-value",
-        "t": "87,2800 ₽"
-       },
-       {
-        "sel": "div.detail-section.full-table > div.detail-row > span.detail-value.highlight",
-        "t": "87,2800 ₽"
-       }
-      ],
-      "1280": [
-       {
-        "sel": "div#rubUsdtRate",
-        "t": "87,2800 ₽"
-       },
-       {
-        "sel": "div.detail-section.full-table > div.detail-row > span.detail-value",
-        "t": "87,2800 ₽"
-       },
-       {
-        "sel": "div.detail-section.full-table > div.detail-row > span.detail-value.highlight",
-        "t": "87,2800 ₽"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "div#rubUsdtRate",
-        "t": "87,2800 ₽"
-       },
-       {
-        "sel": "div.detail-section.full-table > div.detail-row > span.detail-value",
-        "t": "87,2800 ₽"
-       },
-       {
-        "sel": "div.detail-section.full-table > div.detail-row > span.detail-value.highlight",
-        "t": "87,2800 ₽"
-       }
-      ]
-     }
-    },
-    {
-     "gate": 5,
-     "rule": "G12-dup",
-     "sev": "WARN",
-     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
-     "value": "36599,51 ฿ × 3",
+     "value": "35760,08 ฿ × 3",
      "n": 3,
      "ex": [
       {
        "sel": "div#resultValue",
-       "t": "36 599,51 ฿"
+       "t": "35 760,08 ฿"
       },
       {
        "sel": "div#clientCopyText",
-       "t": "Отдаёте: 100 000,00 ₽ Получаете: 36 599,51 ฿ Курс: 2,732277 ₽/฿"
+       "t": "Отдаёте: 100 000,00 ₽ Получаете: 35 760,08 ฿ Курс: 2,796414 ₽/฿"
       },
       {
        "sel": "div.detail-section.full-table > div.detail-row > span.detail-value.highlight-final",
-       "t": "36 599,51 ฿"
+       "t": "35 760,08 ฿"
       }
      ],
      "gr": 12,
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 3,
-      "768": 3,
-      "1280": 3,
-      "1920": 3
+      "375": 3
      },
      "ex_by_width": {
       "375": [
        {
         "sel": "div#resultValue",
-        "t": "36 599,51 ฿"
+        "t": "35 760,08 ฿"
        },
        {
         "sel": "div#clientCopyText",
-        "t": "Отдаёте: 100 000,00 ₽ Получаете: 36 599,51 ฿ Курс: 2,732277 ₽/฿"
+        "t": "Отдаёте: 100 000,00 ₽ Получаете: 35 760,08 ฿ Курс: 2,796414 ₽/฿"
        },
        {
         "sel": "div.detail-section.full-table > div.detail-row > span.detail-value.highlight-final",
-        "t": "36 599,51 ฿"
-       }
-      ],
-      "768": [
-       {
-        "sel": "div#resultValue",
-        "t": "36 599,51 ฿"
-       },
-       {
-        "sel": "div#clientCopyText",
-        "t": "Отдаёте: 100 000,00 ₽ Получаете: 36 599,51 ฿ Курс: 2,732277 ₽/฿"
-       },
-       {
-        "sel": "div.detail-section.full-table > div.detail-row > span.detail-value.highlight-final",
-        "t": "36 599,51 ฿"
-       }
-      ],
-      "1280": [
-       {
-        "sel": "div#resultValue",
-        "t": "36 599,51 ฿"
-       },
-       {
-        "sel": "div#clientCopyText",
-        "t": "Отдаёте: 100 000,00 ₽ Получаете: 36 599,51 ฿ Курс: 2,732277 ₽/฿"
-       },
-       {
-        "sel": "div.detail-section.full-table > div.detail-row > span.detail-value.highlight-final",
-        "t": "36 599,51 ฿"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "div#resultValue",
-        "t": "36 599,51 ฿"
-       },
-       {
-        "sel": "div#clientCopyText",
-        "t": "Отдаёте: 100 000,00 ₽ Получаете: 36 599,51 ฿ Курс: 2,732277 ₽/฿"
-       },
-       {
-        "sel": "div.detail-section.full-table > div.detail-row > span.detail-value.highlight-final",
-        "t": "36 599,51 ฿"
+        "t": "35 760,08 ฿"
        }
       ]
      }
@@ -455,66 +321,33 @@
      "rule": "G12-dup",
      "sev": "WARN",
      "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
-     "value": "54,56 USDT × 2",
+     "value": "57,65 USDT × 2",
      "n": 2,
      "ex": [
       {
        "sel": "div#resultProfit",
-       "t": "Прибыль: 5.00% (54,56 USDT)"
+       "t": "Прибыль: 5.00% (57,65 USDT)"
       },
       {
        "sel": "div.detail-section.profitability-section > div.detail-row > span.detail-value.profit-value",
-       "t": "54,56 USDT"
+       "t": "57,65 USDT"
       }
      ],
      "gr": 12,
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 2,
-      "768": 2,
-      "1280": 2,
-      "1920": 2
+      "375": 2
      },
      "ex_by_width": {
       "375": [
        {
         "sel": "div#resultProfit",
-        "t": "Прибыль: 5.00% (54,56 USDT)"
+        "t": "Прибыль: 5.00% (57,65 USDT)"
        },
        {
         "sel": "div.detail-section.profitability-section > div.detail-row > span.detail-value.profit-value",
-        "t": "54,56 USDT"
-       }
-      ],
-      "768": [
-       {
-        "sel": "div#resultProfit",
-        "t": "Прибыль: 5.00% (54,56 USDT)"
-       },
-       {
-        "sel": "div.detail-section.profitability-section > div.detail-row > span.detail-value.profit-value",
-        "t": "54,56 USDT"
-       }
-      ],
-      "1280": [
-       {
-        "sel": "div#resultProfit",
-        "t": "Прибыль: 5.00% (54,56 USDT)"
-       },
-       {
-        "sel": "div.detail-section.profitability-section > div.detail-row > span.detail-value.profit-value",
-        "t": "54,56 USDT"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "div#resultProfit",
-        "t": "Прибыль: 5.00% (54,56 USDT)"
-       },
-       {
-        "sel": "div.detail-section.profitability-section > div.detail-row > span.detail-value.profit-value",
-        "t": "54,56 USDT"
+        "t": "57,65 USDT"
        }
       ]
      }
@@ -529,7 +362,7 @@
      "ex": [
       {
        "sel": "div#clientCopyText",
-       "t": "Отдаёте: 100 000,00 ₽ Получаете: 36 599,51 ฿ Курс: 2,732277 ₽/฿"
+       "t": "Отдаёте: 100 000,00 ₽ Получаете: 35 760,08 ฿ Курс: 2,796414 ₽/฿"
       },
       {
        "sel": "div.detail-section.full-table > div.detail-row > span.detail-value.highlight",
@@ -540,46 +373,13 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 2,
-      "768": 2,
-      "1280": 2,
-      "1920": 2
+      "375": 2
      },
      "ex_by_width": {
       "375": [
        {
         "sel": "div#clientCopyText",
-        "t": "Отдаёте: 100 000,00 ₽ Получаете: 36 599,51 ฿ Курс: 2,732277 ₽/฿"
-       },
-       {
-        "sel": "div.detail-section.full-table > div.detail-row > span.detail-value.highlight",
-        "t": "100 000,00 ₽"
-       }
-      ],
-      "768": [
-       {
-        "sel": "div#clientCopyText",
-        "t": "Отдаёте: 100 000,00 ₽ Получаете: 36 599,51 ฿ Курс: 2,732277 ₽/฿"
-       },
-       {
-        "sel": "div.detail-section.full-table > div.detail-row > span.detail-value.highlight",
-        "t": "100 000,00 ₽"
-       }
-      ],
-      "1280": [
-       {
-        "sel": "div#clientCopyText",
-        "t": "Отдаёте: 100 000,00 ₽ Получаете: 36 599,51 ฿ Курс: 2,732277 ₽/฿"
-       },
-       {
-        "sel": "div.detail-section.full-table > div.detail-row > span.detail-value.highlight",
-        "t": "100 000,00 ₽"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "div#clientCopyText",
-        "t": "Отдаёте: 100 000,00 ₽ Получаете: 36 599,51 ฿ Курс: 2,732277 ₽/฿"
+        "t": "Отдаёте: 100 000,00 ₽ Получаете: 35 760,08 ฿ Курс: 2,796414 ₽/฿"
        },
        {
         "sel": "div.detail-section.full-table > div.detail-row > span.detail-value.highlight",
@@ -593,66 +393,33 @@
      "rule": "G12-dup",
      "sev": "WARN",
      "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
-     "value": "1145,74 USDT × 2",
+     "value": "1210,60 USDT × 2",
      "n": 2,
      "ex": [
       {
        "sel": "div.detail-section.full-table > div.detail-row > span.detail-value.highlight",
-       "t": "1 145,74 USDT"
+       "t": "1 210,60 USDT"
       },
       {
        "sel": "div.detail-section.profitability-section > div.detail-row > span.detail-value.highlight",
-       "t": "1 145,74 USDT"
+       "t": "1 210,60 USDT"
       }
      ],
      "gr": 12,
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 2,
-      "768": 2,
-      "1280": 2,
-      "1920": 2
+      "375": 2
      },
      "ex_by_width": {
       "375": [
        {
         "sel": "div.detail-section.full-table > div.detail-row > span.detail-value.highlight",
-        "t": "1 145,74 USDT"
+        "t": "1 210,60 USDT"
        },
        {
         "sel": "div.detail-section.profitability-section > div.detail-row > span.detail-value.highlight",
-        "t": "1 145,74 USDT"
-       }
-      ],
-      "768": [
-       {
-        "sel": "div.detail-section.full-table > div.detail-row > span.detail-value.highlight",
-        "t": "1 145,74 USDT"
-       },
-       {
-        "sel": "div.detail-section.profitability-section > div.detail-row > span.detail-value.highlight",
-        "t": "1 145,74 USDT"
-       }
-      ],
-      "1280": [
-       {
-        "sel": "div.detail-section.full-table > div.detail-row > span.detail-value.highlight",
-        "t": "1 145,74 USDT"
-       },
-       {
-        "sel": "div.detail-section.profitability-section > div.detail-row > span.detail-value.highlight",
-        "t": "1 145,74 USDT"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "div.detail-section.full-table > div.detail-row > span.detail-value.highlight",
-        "t": "1 145,74 USDT"
-       },
-       {
-        "sel": "div.detail-section.profitability-section > div.detail-row > span.detail-value.highlight",
-        "t": "1 145,74 USDT"
+        "t": "1 210,60 USDT"
        }
       ]
      }
@@ -888,175 +655,41 @@
      "rule": "G12-dup",
      "sev": "WARN",
      "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
-     "value": "87,2800 ₽ × 3",
-     "n": 3,
-     "ex": [
-      {
-       "sel": "div#rubUsdtRate",
-       "t": "87,2800 ₽"
-      },
-      {
-       "sel": "div.detail-section.full-table > div.detail-row > span.detail-value",
-       "t": "87,2800 ₽"
-      },
-      {
-       "sel": "div.detail-section.full-table > div.detail-row > span.detail-value.highlight",
-       "t": "87,2800 ₽"
-      }
-     ],
-     "gr": 12,
-     "extra": null,
-     "note": null,
-     "by_width": {
-      "375": 3,
-      "768": 3,
-      "1280": 3,
-      "1920": 3
-     },
-     "ex_by_width": {
-      "375": [
-       {
-        "sel": "div#rubUsdtRate",
-        "t": "87,2800 ₽"
-       },
-       {
-        "sel": "div.detail-section.full-table > div.detail-row > span.detail-value",
-        "t": "87,2800 ₽"
-       },
-       {
-        "sel": "div.detail-section.full-table > div.detail-row > span.detail-value.highlight",
-        "t": "87,2800 ₽"
-       }
-      ],
-      "768": [
-       {
-        "sel": "div#rubUsdtRate",
-        "t": "87,2800 ₽"
-       },
-       {
-        "sel": "div.detail-section.full-table > div.detail-row > span.detail-value",
-        "t": "87,2800 ₽"
-       },
-       {
-        "sel": "div.detail-section.full-table > div.detail-row > span.detail-value.highlight",
-        "t": "87,2800 ₽"
-       }
-      ],
-      "1280": [
-       {
-        "sel": "div#rubUsdtRate",
-        "t": "87,2800 ₽"
-       },
-       {
-        "sel": "div.detail-section.full-table > div.detail-row > span.detail-value",
-        "t": "87,2800 ₽"
-       },
-       {
-        "sel": "div.detail-section.full-table > div.detail-row > span.detail-value.highlight",
-        "t": "87,2800 ₽"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "div#rubUsdtRate",
-        "t": "87,2800 ₽"
-       },
-       {
-        "sel": "div.detail-section.full-table > div.detail-row > span.detail-value",
-        "t": "87,2800 ₽"
-       },
-       {
-        "sel": "div.detail-section.full-table > div.detail-row > span.detail-value.highlight",
-        "t": "87,2800 ₽"
-       }
-      ]
-     }
-    },
-    {
-     "gate": 5,
-     "rule": "G12-dup",
-     "sev": "WARN",
-     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
-     "value": "36599,51 ฿ × 3",
+     "value": "35760,08 ฿ × 3",
      "n": 3,
      "ex": [
       {
        "sel": "div#resultValue",
-       "t": "36 599,51 ฿"
+       "t": "35 760,08 ฿"
       },
       {
        "sel": "div#clientCopyText",
-       "t": "Отдаёте: 100 000,00 ₽ Получаете: 36 599,51 ฿ Курс: 2,732277 ₽/฿"
+       "t": "Отдаёте: 100 000,00 ₽ Получаете: 35 760,08 ฿ Курс: 2,796414 ₽/฿"
       },
       {
        "sel": "div.detail-section.full-table > div.detail-row > span.detail-value.highlight-final",
-       "t": "36 599,51 ฿"
+       "t": "35 760,08 ฿"
       }
      ],
      "gr": 12,
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 3,
-      "768": 3,
-      "1280": 3,
-      "1920": 3
+      "375": 3
      },
      "ex_by_width": {
       "375": [
        {
         "sel": "div#resultValue",
-        "t": "36 599,51 ฿"
+        "t": "35 760,08 ฿"
        },
        {
         "sel": "div#clientCopyText",
-        "t": "Отдаёте: 100 000,00 ₽ Получаете: 36 599,51 ฿ Курс: 2,732277 ₽/฿"
+        "t": "Отдаёте: 100 000,00 ₽ Получаете: 35 760,08 ฿ Курс: 2,796414 ₽/฿"
        },
        {
         "sel": "div.detail-section.full-table > div.detail-row > span.detail-value.highlight-final",
-        "t": "36 599,51 ฿"
-       }
-      ],
-      "768": [
-       {
-        "sel": "div#resultValue",
-        "t": "36 599,51 ฿"
-       },
-       {
-        "sel": "div#clientCopyText",
-        "t": "Отдаёте: 100 000,00 ₽ Получаете: 36 599,51 ฿ Курс: 2,732277 ₽/฿"
-       },
-       {
-        "sel": "div.detail-section.full-table > div.detail-row > span.detail-value.highlight-final",
-        "t": "36 599,51 ฿"
-       }
-      ],
-      "1280": [
-       {
-        "sel": "div#resultValue",
-        "t": "36 599,51 ฿"
-       },
-       {
-        "sel": "div#clientCopyText",
-        "t": "Отдаёте: 100 000,00 ₽ Получаете: 36 599,51 ฿ Курс: 2,732277 ₽/฿"
-       },
-       {
-        "sel": "div.detail-section.full-table > div.detail-row > span.detail-value.highlight-final",
-        "t": "36 599,51 ฿"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "div#resultValue",
-        "t": "36 599,51 ฿"
-       },
-       {
-        "sel": "div#clientCopyText",
-        "t": "Отдаёте: 100 000,00 ₽ Получаете: 36 599,51 ฿ Курс: 2,732277 ₽/฿"
-       },
-       {
-        "sel": "div.detail-section.full-table > div.detail-row > span.detail-value.highlight-final",
-        "t": "36 599,51 ฿"
+        "t": "35 760,08 ฿"
        }
       ]
      }
@@ -1066,66 +699,33 @@
      "rule": "G12-dup",
      "sev": "WARN",
      "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
-     "value": "54,56 USDT × 2",
+     "value": "57,65 USDT × 2",
      "n": 2,
      "ex": [
       {
        "sel": "div#resultProfit",
-       "t": "Прибыль: 5.00% (54,56 USDT)"
+       "t": "Прибыль: 5.00% (57,65 USDT)"
       },
       {
        "sel": "div.detail-section.profitability-section > div.detail-row > span.detail-value.profit-value",
-       "t": "54,56 USDT"
+       "t": "57,65 USDT"
       }
      ],
      "gr": 12,
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 2,
-      "768": 2,
-      "1280": 2,
-      "1920": 2
+      "375": 2
      },
      "ex_by_width": {
       "375": [
        {
         "sel": "div#resultProfit",
-        "t": "Прибыль: 5.00% (54,56 USDT)"
+        "t": "Прибыль: 5.00% (57,65 USDT)"
        },
        {
         "sel": "div.detail-section.profitability-section > div.detail-row > span.detail-value.profit-value",
-        "t": "54,56 USDT"
-       }
-      ],
-      "768": [
-       {
-        "sel": "div#resultProfit",
-        "t": "Прибыль: 5.00% (54,56 USDT)"
-       },
-       {
-        "sel": "div.detail-section.profitability-section > div.detail-row > span.detail-value.profit-value",
-        "t": "54,56 USDT"
-       }
-      ],
-      "1280": [
-       {
-        "sel": "div#resultProfit",
-        "t": "Прибыль: 5.00% (54,56 USDT)"
-       },
-       {
-        "sel": "div.detail-section.profitability-section > div.detail-row > span.detail-value.profit-value",
-        "t": "54,56 USDT"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "div#resultProfit",
-        "t": "Прибыль: 5.00% (54,56 USDT)"
-       },
-       {
-        "sel": "div.detail-section.profitability-section > div.detail-row > span.detail-value.profit-value",
-        "t": "54,56 USDT"
+        "t": "57,65 USDT"
        }
       ]
      }
@@ -1140,7 +740,7 @@
      "ex": [
       {
        "sel": "div#clientCopyText",
-       "t": "Отдаёте: 100 000,00 ₽ Получаете: 36 599,51 ฿ Курс: 2,732277 ₽/฿"
+       "t": "Отдаёте: 100 000,00 ₽ Получаете: 35 760,08 ฿ Курс: 2,796414 ₽/฿"
       },
       {
        "sel": "div.detail-section.full-table > div.detail-row > span.detail-value.highlight",
@@ -1151,46 +751,13 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 2,
-      "768": 2,
-      "1280": 2,
-      "1920": 2
+      "375": 2
      },
      "ex_by_width": {
       "375": [
        {
         "sel": "div#clientCopyText",
-        "t": "Отдаёте: 100 000,00 ₽ Получаете: 36 599,51 ฿ Курс: 2,732277 ₽/฿"
-       },
-       {
-        "sel": "div.detail-section.full-table > div.detail-row > span.detail-value.highlight",
-        "t": "100 000,00 ₽"
-       }
-      ],
-      "768": [
-       {
-        "sel": "div#clientCopyText",
-        "t": "Отдаёте: 100 000,00 ₽ Получаете: 36 599,51 ฿ Курс: 2,732277 ₽/฿"
-       },
-       {
-        "sel": "div.detail-section.full-table > div.detail-row > span.detail-value.highlight",
-        "t": "100 000,00 ₽"
-       }
-      ],
-      "1280": [
-       {
-        "sel": "div#clientCopyText",
-        "t": "Отдаёте: 100 000,00 ₽ Получаете: 36 599,51 ฿ Курс: 2,732277 ₽/฿"
-       },
-       {
-        "sel": "div.detail-section.full-table > div.detail-row > span.detail-value.highlight",
-        "t": "100 000,00 ₽"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "div#clientCopyText",
-        "t": "Отдаёте: 100 000,00 ₽ Получаете: 36 599,51 ฿ Курс: 2,732277 ₽/฿"
+        "t": "Отдаёте: 100 000,00 ₽ Получаете: 35 760,08 ฿ Курс: 2,796414 ₽/฿"
        },
        {
         "sel": "div.detail-section.full-table > div.detail-row > span.detail-value.highlight",
@@ -1204,66 +771,33 @@
      "rule": "G12-dup",
      "sev": "WARN",
      "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
-     "value": "1145,74 USDT × 2",
+     "value": "1210,60 USDT × 2",
      "n": 2,
      "ex": [
       {
        "sel": "div.detail-section.full-table > div.detail-row > span.detail-value.highlight",
-       "t": "1 145,74 USDT"
+       "t": "1 210,60 USDT"
       },
       {
        "sel": "div.detail-section.profitability-section > div.detail-row > span.detail-value.highlight",
-       "t": "1 145,74 USDT"
+       "t": "1 210,60 USDT"
       }
      ],
      "gr": 12,
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 2,
-      "768": 2,
-      "1280": 2,
-      "1920": 2
+      "375": 2
      },
      "ex_by_width": {
       "375": [
        {
         "sel": "div.detail-section.full-table > div.detail-row > span.detail-value.highlight",
-        "t": "1 145,74 USDT"
+        "t": "1 210,60 USDT"
        },
        {
         "sel": "div.detail-section.profitability-section > div.detail-row > span.detail-value.highlight",
-        "t": "1 145,74 USDT"
-       }
-      ],
-      "768": [
-       {
-        "sel": "div.detail-section.full-table > div.detail-row > span.detail-value.highlight",
-        "t": "1 145,74 USDT"
-       },
-       {
-        "sel": "div.detail-section.profitability-section > div.detail-row > span.detail-value.highlight",
-        "t": "1 145,74 USDT"
-       }
-      ],
-      "1280": [
-       {
-        "sel": "div.detail-section.full-table > div.detail-row > span.detail-value.highlight",
-        "t": "1 145,74 USDT"
-       },
-       {
-        "sel": "div.detail-section.profitability-section > div.detail-row > span.detail-value.highlight",
-        "t": "1 145,74 USDT"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "div.detail-section.full-table > div.detail-row > span.detail-value.highlight",
-        "t": "1 145,74 USDT"
-       },
-       {
-        "sel": "div.detail-section.profitability-section > div.detail-row > span.detail-value.highlight",
-        "t": "1 145,74 USDT"
+        "t": "1 210,60 USDT"
        }
       ]
      }
@@ -1372,44 +906,44 @@
  ],
  "stats": {
   "375": {
-   "elements": 211,
-   "groups": 103,
-   "texts": 122,
-   "contrast_checked": 125,
+   "elements": 199,
+   "groups": 102,
+   "texts": 114,
+   "contrast_checked": 117,
    "contrast_unknown": 0,
    "primaries": 1,
    "addresses": 0,
    "controls": 22
   },
   "768": {
-   "elements": 209,
-   "groups": 103,
-   "texts": 117,
-   "contrast_checked": 120,
+   "elements": 113,
+   "groups": 72,
+   "texts": 59,
+   "contrast_checked": 61,
    "contrast_unknown": 0,
    "primaries": 1,
    "addresses": 0,
-   "controls": 22
+   "controls": 18
   },
   "1280": {
-   "elements": 214,
-   "groups": 105,
-   "texts": 122,
-   "contrast_checked": 125,
+   "elements": 118,
+   "groups": 74,
+   "texts": 64,
+   "contrast_checked": 66,
    "contrast_unknown": 0,
    "primaries": 1,
    "addresses": 0,
-   "controls": 22
+   "controls": 18
   },
   "1920": {
-   "elements": 214,
-   "groups": 105,
-   "texts": 122,
-   "contrast_checked": 125,
+   "elements": 118,
+   "groups": 74,
+   "texts": 64,
+   "contrast_checked": 66,
    "contrast_unknown": 0,
    "primaries": 1,
    "addresses": 0,
-   "controls": 22
+   "controls": 18
   }
  },
  "limits": [],
@@ -1581,175 +1115,41 @@
    "rule": "G12-dup",
    "sev": "WARN",
    "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
-   "value": "87,2800 ₽ × 3",
-   "n": 3,
-   "ex": [
-    {
-     "sel": "div#rubUsdtRate",
-     "t": "87,2800 ₽"
-    },
-    {
-     "sel": "div.detail-section.full-table > div.detail-row > span.detail-value",
-     "t": "87,2800 ₽"
-    },
-    {
-     "sel": "div.detail-section.full-table > div.detail-row > span.detail-value.highlight",
-     "t": "87,2800 ₽"
-    }
-   ],
-   "gr": 12,
-   "extra": null,
-   "note": null,
-   "by_width": {
-    "375": 3,
-    "768": 3,
-    "1280": 3,
-    "1920": 3
-   },
-   "ex_by_width": {
-    "375": [
-     {
-      "sel": "div#rubUsdtRate",
-      "t": "87,2800 ₽"
-     },
-     {
-      "sel": "div.detail-section.full-table > div.detail-row > span.detail-value",
-      "t": "87,2800 ₽"
-     },
-     {
-      "sel": "div.detail-section.full-table > div.detail-row > span.detail-value.highlight",
-      "t": "87,2800 ₽"
-     }
-    ],
-    "768": [
-     {
-      "sel": "div#rubUsdtRate",
-      "t": "87,2800 ₽"
-     },
-     {
-      "sel": "div.detail-section.full-table > div.detail-row > span.detail-value",
-      "t": "87,2800 ₽"
-     },
-     {
-      "sel": "div.detail-section.full-table > div.detail-row > span.detail-value.highlight",
-      "t": "87,2800 ₽"
-     }
-    ],
-    "1280": [
-     {
-      "sel": "div#rubUsdtRate",
-      "t": "87,2800 ₽"
-     },
-     {
-      "sel": "div.detail-section.full-table > div.detail-row > span.detail-value",
-      "t": "87,2800 ₽"
-     },
-     {
-      "sel": "div.detail-section.full-table > div.detail-row > span.detail-value.highlight",
-      "t": "87,2800 ₽"
-     }
-    ],
-    "1920": [
-     {
-      "sel": "div#rubUsdtRate",
-      "t": "87,2800 ₽"
-     },
-     {
-      "sel": "div.detail-section.full-table > div.detail-row > span.detail-value",
-      "t": "87,2800 ₽"
-     },
-     {
-      "sel": "div.detail-section.full-table > div.detail-row > span.detail-value.highlight",
-      "t": "87,2800 ₽"
-     }
-    ]
-   }
-  },
-  {
-   "gate": 5,
-   "rule": "G12-dup",
-   "sev": "WARN",
-   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
-   "value": "36599,51 ฿ × 3",
+   "value": "35760,08 ฿ × 3",
    "n": 3,
    "ex": [
     {
      "sel": "div#resultValue",
-     "t": "36 599,51 ฿"
+     "t": "35 760,08 ฿"
     },
     {
      "sel": "div#clientCopyText",
-     "t": "Отдаёте: 100 000,00 ₽ Получаете: 36 599,51 ฿ Курс: 2,732277 ₽/฿"
+     "t": "Отдаёте: 100 000,00 ₽ Получаете: 35 760,08 ฿ Курс: 2,796414 ₽/฿"
     },
     {
      "sel": "div.detail-section.full-table > div.detail-row > span.detail-value.highlight-final",
-     "t": "36 599,51 ฿"
+     "t": "35 760,08 ฿"
     }
    ],
    "gr": 12,
    "extra": null,
    "note": null,
    "by_width": {
-    "375": 3,
-    "768": 3,
-    "1280": 3,
-    "1920": 3
+    "375": 3
    },
    "ex_by_width": {
     "375": [
      {
       "sel": "div#resultValue",
-      "t": "36 599,51 ฿"
+      "t": "35 760,08 ฿"
      },
      {
       "sel": "div#clientCopyText",
-      "t": "Отдаёте: 100 000,00 ₽ Получаете: 36 599,51 ฿ Курс: 2,732277 ₽/฿"
+      "t": "Отдаёте: 100 000,00 ₽ Получаете: 35 760,08 ฿ Курс: 2,796414 ₽/฿"
      },
      {
       "sel": "div.detail-section.full-table > div.detail-row > span.detail-value.highlight-final",
-      "t": "36 599,51 ฿"
-     }
-    ],
-    "768": [
-     {
-      "sel": "div#resultValue",
-      "t": "36 599,51 ฿"
-     },
-     {
-      "sel": "div#clientCopyText",
-      "t": "Отдаёте: 100 000,00 ₽ Получаете: 36 599,51 ฿ Курс: 2,732277 ₽/฿"
-     },
-     {
-      "sel": "div.detail-section.full-table > div.detail-row > span.detail-value.highlight-final",
-      "t": "36 599,51 ฿"
-     }
-    ],
-    "1280": [
-     {
-      "sel": "div#resultValue",
-      "t": "36 599,51 ฿"
-     },
-     {
-      "sel": "div#clientCopyText",
-      "t": "Отдаёте: 100 000,00 ₽ Получаете: 36 599,51 ฿ Курс: 2,732277 ₽/฿"
-     },
-     {
-      "sel": "div.detail-section.full-table > div.detail-row > span.detail-value.highlight-final",
-      "t": "36 599,51 ฿"
-     }
-    ],
-    "1920": [
-     {
-      "sel": "div#resultValue",
-      "t": "36 599,51 ฿"
-     },
-     {
-      "sel": "div#clientCopyText",
-      "t": "Отдаёте: 100 000,00 ₽ Получаете: 36 599,51 ฿ Курс: 2,732277 ₽/฿"
-     },
-     {
-      "sel": "div.detail-section.full-table > div.detail-row > span.detail-value.highlight-final",
-      "t": "36 599,51 ฿"
+      "t": "35 760,08 ฿"
      }
     ]
    }
@@ -1759,66 +1159,33 @@
    "rule": "G12-dup",
    "sev": "WARN",
    "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
-   "value": "54,56 USDT × 2",
+   "value": "57,65 USDT × 2",
    "n": 2,
    "ex": [
     {
      "sel": "div#resultProfit",
-     "t": "Прибыль: 5.00% (54,56 USDT)"
+     "t": "Прибыль: 5.00% (57,65 USDT)"
     },
     {
      "sel": "div.detail-section.profitability-section > div.detail-row > span.detail-value.profit-value",
-     "t": "54,56 USDT"
+     "t": "57,65 USDT"
     }
    ],
    "gr": 12,
    "extra": null,
    "note": null,
    "by_width": {
-    "375": 2,
-    "768": 2,
-    "1280": 2,
-    "1920": 2
+    "375": 2
    },
    "ex_by_width": {
     "375": [
      {
       "sel": "div#resultProfit",
-      "t": "Прибыль: 5.00% (54,56 USDT)"
+      "t": "Прибыль: 5.00% (57,65 USDT)"
      },
      {
       "sel": "div.detail-section.profitability-section > div.detail-row > span.detail-value.profit-value",
-      "t": "54,56 USDT"
-     }
-    ],
-    "768": [
-     {
-      "sel": "div#resultProfit",
-      "t": "Прибыль: 5.00% (54,56 USDT)"
-     },
-     {
-      "sel": "div.detail-section.profitability-section > div.detail-row > span.detail-value.profit-value",
-      "t": "54,56 USDT"
-     }
-    ],
-    "1280": [
-     {
-      "sel": "div#resultProfit",
-      "t": "Прибыль: 5.00% (54,56 USDT)"
-     },
-     {
-      "sel": "div.detail-section.profitability-section > div.detail-row > span.detail-value.profit-value",
-      "t": "54,56 USDT"
-     }
-    ],
-    "1920": [
-     {
-      "sel": "div#resultProfit",
-      "t": "Прибыль: 5.00% (54,56 USDT)"
-     },
-     {
-      "sel": "div.detail-section.profitability-section > div.detail-row > span.detail-value.profit-value",
-      "t": "54,56 USDT"
+      "t": "57,65 USDT"
      }
     ]
    }
@@ -1833,7 +1200,7 @@
    "ex": [
     {
      "sel": "div#clientCopyText",
-     "t": "Отдаёте: 100 000,00 ₽ Получаете: 36 599,51 ฿ Курс: 2,732277 ₽/฿"
+     "t": "Отдаёте: 100 000,00 ₽ Получаете: 35 760,08 ฿ Курс: 2,796414 ₽/฿"
     },
     {
      "sel": "div.detail-section.full-table > div.detail-row > span.detail-value.highlight",
@@ -1844,46 +1211,13 @@
    "extra": null,
    "note": null,
    "by_width": {
-    "375": 2,
-    "768": 2,
-    "1280": 2,
-    "1920": 2
+    "375": 2
    },
    "ex_by_width": {
     "375": [
      {
       "sel": "div#clientCopyText",
-      "t": "Отдаёте: 100 000,00 ₽ Получаете: 36 599,51 ฿ Курс: 2,732277 ₽/฿"
-     },
-     {
-      "sel": "div.detail-section.full-table > div.detail-row > span.detail-value.highlight",
-      "t": "100 000,00 ₽"
-     }
-    ],
-    "768": [
-     {
-      "sel": "div#clientCopyText",
-      "t": "Отдаёте: 100 000,00 ₽ Получаете: 36 599,51 ฿ Курс: 2,732277 ₽/฿"
-     },
-     {
-      "sel": "div.detail-section.full-table > div.detail-row > span.detail-value.highlight",
-      "t": "100 000,00 ₽"
-     }
-    ],
-    "1280": [
-     {
-      "sel": "div#clientCopyText",
-      "t": "Отдаёте: 100 000,00 ₽ Получаете: 36 599,51 ฿ Курс: 2,732277 ₽/฿"
-     },
-     {
-      "sel": "div.detail-section.full-table > div.detail-row > span.detail-value.highlight",
-      "t": "100 000,00 ₽"
-     }
-    ],
-    "1920": [
-     {
-      "sel": "div#clientCopyText",
-      "t": "Отдаёте: 100 000,00 ₽ Получаете: 36 599,51 ฿ Курс: 2,732277 ₽/฿"
+      "t": "Отдаёте: 100 000,00 ₽ Получаете: 35 760,08 ฿ Курс: 2,796414 ₽/฿"
      },
      {
       "sel": "div.detail-section.full-table > div.detail-row > span.detail-value.highlight",
@@ -1897,66 +1231,33 @@
    "rule": "G12-dup",
    "sev": "WARN",
    "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
-   "value": "1145,74 USDT × 2",
+   "value": "1210,60 USDT × 2",
    "n": 2,
    "ex": [
     {
      "sel": "div.detail-section.full-table > div.detail-row > span.detail-value.highlight",
-     "t": "1 145,74 USDT"
+     "t": "1 210,60 USDT"
     },
     {
      "sel": "div.detail-section.profitability-section > div.detail-row > span.detail-value.highlight",
-     "t": "1 145,74 USDT"
+     "t": "1 210,60 USDT"
     }
    ],
    "gr": 12,
    "extra": null,
    "note": null,
    "by_width": {
-    "375": 2,
-    "768": 2,
-    "1280": 2,
-    "1920": 2
+    "375": 2
    },
    "ex_by_width": {
     "375": [
      {
       "sel": "div.detail-section.full-table > div.detail-row > span.detail-value.highlight",
-      "t": "1 145,74 USDT"
+      "t": "1 210,60 USDT"
      },
      {
       "sel": "div.detail-section.profitability-section > div.detail-row > span.detail-value.highlight",
-      "t": "1 145,74 USDT"
-     }
-    ],
-    "768": [
-     {
-      "sel": "div.detail-section.full-table > div.detail-row > span.detail-value.highlight",
-      "t": "1 145,74 USDT"
-     },
-     {
-      "sel": "div.detail-section.profitability-section > div.detail-row > span.detail-value.highlight",
-      "t": "1 145,74 USDT"
-     }
-    ],
-    "1280": [
-     {
-      "sel": "div.detail-section.full-table > div.detail-row > span.detail-value.highlight",
-      "t": "1 145,74 USDT"
-     },
-     {
-      "sel": "div.detail-section.profitability-section > div.detail-row > span.detail-value.highlight",
-      "t": "1 145,74 USDT"
-     }
-    ],
-    "1920": [
-     {
-      "sel": "div.detail-section.full-table > div.detail-row > span.detail-value.highlight",
-      "t": "1 145,74 USDT"
-     },
-     {
-      "sel": "div.detail-section.profitability-section > div.detail-row > span.detail-value.highlight",
-      "t": "1 145,74 USDT"
+      "t": "1 210,60 USDT"
      }
     ]
    }

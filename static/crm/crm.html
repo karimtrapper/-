@@ -814,7 +814,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 
 </style>
     <link rel="stylesheet" href="/static/nav-shell.css?v=6">
-    <link rel="stylesheet" href="/static/design-layer.css?v=1">
+    <link rel="stylesheet" href="/static/design-layer.css?v=2">
 </head>
 
 <body class="wave4a">
@@ -4247,10 +4247,10 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         <tr onclick="showDealDetails(${deal.id})" style="cursor: pointer;">
                             <td>#${deal.id}</td>
                             <td>${formatDate(deal.created_at)}</td>
-                            <td>${escapeHtml(deal.client_name) || '-'}</td>
+                            <td>${escapeHtml(deal.client_name) || '—'}</td>
                             <td>${payinUsdtCell(deal)}</td>
                             <td>${deal.custom_payout_currency
-                            ? (deal.custom_payout_amount ? formatNumber(deal.custom_payout_amount) + ' ' + deal.custom_payout_currency : '-')
+                            ? (deal.custom_payout_amount ? formatNumber(deal.custom_payout_amount) + ' ' + deal.custom_payout_currency : '—')
                             : (deal.payout_amount_thb ? formatNumber(deal.payout_amount_thb) + ' ฿'
                                 : (deal.deal_kind === 'mf_realty' && deal.company_sent_thb
                                     // У MF-сделки клиенту баты не выдают — они уходят в компанию
@@ -4258,8 +4258,8 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                                     : (deal.deal_kind === 'mf_freehold' && deal.transfer_sent_usd
                                         // Фрихолд: ушло в USD застройщику, батов нет вообще
                                         ? '$' + formatNumber(deal.transfer_sent_usd)
-                                        : '-')))}</td>
-                            <td style="color: ${profitUnknown ? '#f59e0b' : ((deal.net_profit_usdt || deal.profit_usdt) > 0 ? '#10b981' : '#ef4444')}; font-weight: 600;">${profitUnknown ? '⏳ ожид.' : (deal.net_profit_usdt != null ? '$' + deal.net_profit_usdt.toFixed(2) : (deal.profit_usdt != null ? '$' + deal.profit_usdt.toFixed(2) : '-'))}</td>
+                                        : '—')))}</td>
+                            <td style="color: ${profitUnknown ? '#f59e0b' : ((deal.net_profit_usdt || deal.profit_usdt) > 0 ? '#10b981' : '#ef4444')}; font-weight: 600;">${profitUnknown ? '⏳ ожид.' : (deal.net_profit_usdt != null ? '$' + deal.net_profit_usdt.toFixed(2) : (deal.profit_usdt != null ? '$' + deal.profit_usdt.toFixed(2) : '—'))}</td>
                             <td><span class="pill badge badge-${deal.status}">${getStatusLabel(deal.status)}</span></td>
                         </tr>
                     `}).join('');
@@ -4700,13 +4700,13 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         <tr>
                             <td>#${deal.id}</td>
                             <td>${formatDate(deal.created_at)}</td>
-                            <td>${escapeHtml(deal.manager_name) || '-'}</td>
-                            <td>${escapeHtml(deal.client_name) || '-'}</td>
+                            <td>${escapeHtml(deal.manager_name) || '—'}</td>
+                            <td>${escapeHtml(deal.client_name) || '—'}</td>
                             <td>${escapeHtml(deal.referrer_name) || '—'}</td>
                             <td>${deal.is_custom ? 'Кастомная' : getPayinMethodLabel(deal.payin_method)}</td>
                             <td>${payinUsdtCell(deal)}</td>
                             <td>${deal.custom_payout_currency
-                                ? (deal.custom_payout_amount ? formatNumber(deal.custom_payout_amount) + ' ' + deal.custom_payout_currency : '-')
+                                ? (deal.custom_payout_amount ? formatNumber(deal.custom_payout_amount) + ' ' + deal.custom_payout_currency : '—')
                                 : (deal.payout_amount_thb ? formatNumber(deal.payout_amount_thb) + ' ฿'
                                 : (deal.deal_kind === 'mf_realty' && deal.company_sent_thb
                                     // У MF-сделки клиенту баты не выдают — они уходят в компанию
@@ -4714,9 +4714,9 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                                     : (deal.deal_kind === 'mf_freehold' && deal.transfer_sent_usd
                                         // Фрихолд: ушло в USD застройщику, батов нет вообще
                                         ? '$' + formatNumber(deal.transfer_sent_usd)
-                                        : '-')))}</td>
+                                        : '—')))}</td>
                             <td style="color: ${profitUnknown ? '#f59e0b' : ((deal.net_profit_usdt || deal.profit_usdt) > 0 ? '#10b981' : '#ef4444')}; font-weight: 600;">
-                                ${profitUnknown ? '⏳ ожид.' : (deal.net_profit_usdt != null ? '$' + deal.net_profit_usdt.toFixed(2) : (deal.profit_usdt != null ? '$' + deal.profit_usdt.toFixed(2) : '-'))}
+                                ${profitUnknown ? '⏳ ожид.' : (deal.net_profit_usdt != null ? '$' + deal.net_profit_usdt.toFixed(2) : (deal.profit_usdt != null ? '$' + deal.profit_usdt.toFixed(2) : '—'))}
                             </td>
                             <td><span class="pill badge badge-${deal.status}">${getStatusLabel(deal.status)}</span></td>
                             <td>
@@ -4752,7 +4752,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             if (deal.payin_usdt_converted) {
                 return `<span style="color:#059669;" title="Доля сделки в пачке конвертации">$${deal.payin_usdt_converted.toFixed(2)}</span>`;
             }
-            return '-';
+            return '—';
         }
 
         // Приход из пачки → в саму сделку. Нужна для сделок, чью пачку разнесли
@@ -13285,7 +13285,7 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                 'sber_reqs': 'Сбер (реквизиты)',
                 'flow_sole_reqs': 'Flow Sole (СГБ, реквизиты)'
             };
-            return labels[method] || method || '-';
+            return labels[method] || method || '—';
         }
 
         // Все части прихода сделки, первая — основная. Зеркало _payin_all_parts
@@ -14476,6 +14476,8 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                                     onclick="${wa.onclick}">
                             </div>
                         </div>
+                        ${r.pending_usdt > 0 ? `<button type="button" class="btn btn-secondary referrer-pay-btn"
+                            onclick="payReferrer(${r.id},'${r.name.replace(/'/g,"\\'")}',${r.pending_usdt})">Выплатить</button>` : ''}
                         <details class="referrer-actions">
                             <summary aria-label="Действия с реферером">⋯</summary>
                             <div class="referrer-actions-menu">
@@ -14488,8 +14490,6 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                                 onclick="showReferrerPayoutRequests(${r.id},'${r.name.replace(/'/g,"\\'")}')">Заявки</button>
                             <button class="btn btn-sm" style="background:${r.active ? '#fef3c7' : '#f0fdf4'};color:${r.active ? '#d97706' : '#16a34a'};border:none;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:12px;"
                                 onclick="toggleReferrer(${r.id},${!r.active})">${r.active ? 'Откл.' : 'Вкл.'}</button>
-                            ${r.pending_usdt > 0 ? `<button class="btn btn-sm" style="background:#f0fdf4;color:#16a34a;border:none;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;"
-                                onclick="payReferrer(${r.id},'${r.name.replace(/'/g,"\\'")}',${r.pending_usdt})">Выплатить</button>` : ''}
                             </div>
                         </details>
                     </div>

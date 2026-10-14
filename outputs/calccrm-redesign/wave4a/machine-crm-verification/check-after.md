@@ -76,8 +76,8 @@ _Гардрейлы 1–2, 7, 8, 11 дублируют гейты 1, 3, 4, 5 —
 
 ## Гейт 6. Снимки — PASS
 _авто: наличие и непустота пар «до/после»; сравнение — глазами_
-- 375px: после `outputs/calccrm-redesign/wave4a/machine-crm-verification/after-karim-375.png`, до `outputs/calccrm-redesign/wave4a/machine-crm-verification/before-karim-375.png`
-- 1280px: после `outputs/calccrm-redesign/wave4a/machine-crm-verification/after-karim-1280.png`, до `outputs/calccrm-redesign/wave4a/machine-crm-verification/before-karim-1280.png`
+- 375px: после `/private/tmp/calccrm-wave4a/outputs/calccrm-redesign/wave4a/machine-crm-verification/after-karim-375.png`, до `/private/tmp/calccrm-wave4a/outputs/calccrm-redesign/wave4a/machine-crm-verification/before-karim-375.png`
+- 1280px: после `/private/tmp/calccrm-wave4a/outputs/calccrm-redesign/wave4a/machine-crm-verification/after-karim-1280.png`, до `/private/tmp/calccrm-wave4a/outputs/calccrm-redesign/wave4a/machine-crm-verification/before-karim-1280.png`
 
 ## Гардрейлы (18)
 

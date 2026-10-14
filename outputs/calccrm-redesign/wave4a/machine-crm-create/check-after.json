@@ -3,7 +3,7 @@
  "mode": "check",
  "url": "http://127.0.0.1:59109/crm?section=create",
  "design": "/Users/karimamirov/Desktop/untitled folder/outputs/calccrm-redesign/DESIGN.md",
- "generated": "2026-10-15T01:06:04",
+ "generated": "2026-10-15T01:43:23",
  "widths_requested": [
   375,
   768,
@@ -3682,20 +3682,20 @@
  "extras": [],
  "stats": {
   "375": {
-   "elements": 954,
-   "groups": 85,
-   "texts": 728,
-   "contrast_checked": 746,
+   "elements": 956,
+   "groups": 87,
+   "texts": 729,
+   "contrast_checked": 747,
    "contrast_unknown": 0,
    "primaries": 1,
    "addresses": 0,
    "controls": 164
   },
   "768": {
-   "elements": 952,
-   "groups": 84,
-   "texts": 723,
-   "contrast_checked": 741,
+   "elements": 954,
+   "groups": 86,
+   "texts": 724,
+   "contrast_checked": 742,
    "contrast_unknown": 0,
    "primaries": 1,
    "addresses": 0,

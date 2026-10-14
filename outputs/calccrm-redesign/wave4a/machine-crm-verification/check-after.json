@@ -3,7 +3,7 @@
  "mode": "check",
  "url": "http://127.0.0.1:59109/crm?section=verification",
  "design": "/Users/karimamirov/Desktop/untitled folder/outputs/calccrm-redesign/DESIGN.md",
- "generated": "2026-10-15T01:02:58",
+ "generated": "2026-10-15T01:39:00",
  "widths_requested": [
   375,
   768,
@@ -483,13 +483,13 @@
    "notes": [],
    "shots": {
     "375": {
-     "after": "outputs/calccrm-redesign/wave4a/machine-crm-verification/after-karim-375.png",
-     "before": "outputs/calccrm-redesign/wave4a/machine-crm-verification/before-karim-375.png",
+     "after": "/private/tmp/calccrm-wave4a/outputs/calccrm-redesign/wave4a/machine-crm-verification/after-karim-375.png",
+     "before": "/private/tmp/calccrm-wave4a/outputs/calccrm-redesign/wave4a/machine-crm-verification/before-karim-375.png",
      "identical": false
     },
     "1280": {
-     "after": "outputs/calccrm-redesign/wave4a/machine-crm-verification/after-karim-1280.png",
-     "before": "outputs/calccrm-redesign/wave4a/machine-crm-verification/before-karim-1280.png",
+     "after": "/private/tmp/calccrm-wave4a/outputs/calccrm-redesign/wave4a/machine-crm-verification/after-karim-1280.png",
+     "before": "/private/tmp/calccrm-wave4a/outputs/calccrm-redesign/wave4a/machine-crm-verification/before-karim-1280.png",
      "identical": false
     }
    },

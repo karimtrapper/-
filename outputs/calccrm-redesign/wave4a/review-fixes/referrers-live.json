@@ -1,0 +1,16 @@
+{
+  "rows": 25,
+  "pendingPositive": 14,
+  "payButtons": 14,
+  "mismatches": 0,
+  "firstButtonBg": "rgb(255, 255, 255)",
+  "firstAdjacent": true,
+  "menu": [
+    "Кабинет",
+    "Изм.",
+    "Сделки",
+    "Заявки",
+    "Откл."
+  ],
+  "onclick": "payReferrer(12,'Lidia SID Thailand',442.01)"
+}

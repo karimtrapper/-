@@ -457,6 +457,7 @@ body.wave4a #referrers .referrer-links input {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+body.wave4a #referrers .referrer-pay-btn { flex: 0 0 auto; white-space: nowrap; }
 body.wave4a #referrers .referrer-actions { position: relative; flex: 0 0 44px; margin-left: 0; }
 body.wave4a #referrers .referrer-actions summary {
   display: flex;
@@ -500,14 +501,12 @@ body.wave4a #referrers .referrer-actions-menu .btn {
 }
 @media (max-width: 600px) {
   body.wave4a #referrers .referrer-links { grid-template-columns: minmax(0, 1fr); }
-  body.wave4a #referrers .referrer-row:has(.referrer-actions[open]) { flex-wrap: wrap; }
-  body.wave4a #referrers .referrer-actions[open] { flex: 1 1 100%; width: 100%; }
-  body.wave4a #referrers .referrer-actions[open] summary { margin-left: auto; }
-  body.wave4a #referrers .referrer-actions[open] .referrer-actions-menu {
-    position: static;
-    width: 100%;
-    margin-top: 4px;
-  }
+  body.wave4a #referrers .referrer-row { flex-wrap: wrap; }
+  body.wave4a #referrers .referrer-main { flex: 0 0 100% !important; width: 100%; }
+  body.wave4a #referrers .referrer-pay-btn,
+  body.wave4a #referrers .referrer-actions { margin-left: auto; }
+  body.wave4a #referrers .referrer-pay-btn + .referrer-actions { margin-left: 0; }
+  body.wave4a #referrers .referrer-row:has(.referrer-actions[open]) { z-index: 21; }
 }
 body.wave4a #deals:has(#dealsTable tr) #dealsEmpty { display: none; }
 body.wave4a :is(.btn-link, .button-link) {

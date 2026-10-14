@@ -3,7 +3,7 @@
  "mode": "check",
  "url": "http://127.0.0.1:59109/crm?section=payoutRequests",
  "design": "/Users/karimamirov/Desktop/untitled folder/outputs/calccrm-redesign/DESIGN.md",
- "generated": "2026-10-15T01:04:06",
+ "generated": "2026-10-15T01:41:35",
  "widths_requested": [
   375,
   768,

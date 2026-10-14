@@ -3,7 +3,7 @@
  "mode": "check",
  "url": "http://127.0.0.1:59109/crm?section=referrers",
  "design": "/Users/karimamirov/Desktop/untitled folder/outputs/calccrm-redesign/DESIGN.md",
- "generated": "2026-10-15T01:03:28",
+ "generated": "2026-10-15T01:40:58",
  "widths_requested": [
   375,
   768,
@@ -2392,44 +2392,44 @@
  "extras": [],
  "stats": {
   "375": {
-   "elements": 536,
-   "groups": 49,
-   "texts": 257,
-   "contrast_checked": 360,
+   "elements": 550,
+   "groups": 53,
+   "texts": 271,
+   "contrast_checked": 374,
    "contrast_unknown": 0,
    "primaries": 1,
    "addresses": 0,
-   "controls": 106
+   "controls": 120
   },
   "768": {
-   "elements": 534,
-   "groups": 46,
-   "texts": 252,
-   "contrast_checked": 355,
+   "elements": 548,
+   "groups": 53,
+   "texts": 266,
+   "contrast_checked": 369,
    "contrast_unknown": 0,
    "primaries": 1,
    "addresses": 0,
-   "controls": 106
+   "controls": 120
   },
   "1280": {
-   "elements": 539,
-   "groups": 48,
-   "texts": 257,
-   "contrast_checked": 360,
+   "elements": 553,
+   "groups": 49,
+   "texts": 271,
+   "contrast_checked": 374,
    "contrast_unknown": 0,
    "primaries": 1,
    "addresses": 0,
-   "controls": 106
+   "controls": 120
   },
   "1920": {
-   "elements": 539,
-   "groups": 48,
-   "texts": 257,
-   "contrast_checked": 360,
+   "elements": 553,
+   "groups": 49,
+   "texts": 271,
+   "contrast_checked": 374,
    "contrast_unknown": 0,
    "primaries": 1,
    "addresses": 0,
-   "controls": 106
+   "controls": 120
   }
  },
  "limits": [],
