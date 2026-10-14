@@ -418,7 +418,9 @@ def test_incoming_endpoint_rejects_old_tx_and_persists_verified(monkeypatch):
         db.commit()
     finally:
         db.close()
-    payload = {'dealId': 1, 'hash': HASH, 'network': 'TRC-20'}
+    # The incoming ledger is now shared with CRM: isolate this synthetic hash.
+    import uuid
+    payload = {'dealId': 1, 'hash': uuid.uuid4().hex * 2, 'network': 'TRC-20'}
     with appmod.app.test_client() as client:
         monkeypatch.setattr(appmod, 'verify_transfer', lambda *a, **kw: {
             'status': 'confirmed', 'verifiedAmount': 100, 'verifiedAt': 'now',

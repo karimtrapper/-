@@ -50,6 +50,20 @@ def _physical_send(deal, wallet_id):
     return route in ('coins', 'client', 'refund', 'ipps_swift', 'ipps')
 
 
+def incoming_shares(weights, amount):
+    """Preserve the on-chain micro-USDT tail on the final source (same as s18w)."""
+    total = sum(weights, Decimal(0))
+    if not weights or total <= 0:
+        return []
+    used = Decimal(0)
+    result = []
+    for index, weight in enumerate(weights):
+        part = amount - used if index == len(weights) - 1 else (amount * weight / total).quantize(CENT, rounding=ROUND_DOWN)
+        result.append(part)
+        used += part
+    return result
+
+
 def check_batch(state, conv, *, dispatch=False, independent_id=None):
     """Return a user-facing error, before any state or transfer mutation."""
     sources = conv.get('sources') or []
@@ -111,16 +125,12 @@ def check_batch(state, conv, *, dispatch=False, independent_id=None):
         last = len(sources) - 1
         allocated = [Decimal(0) for _ in sources]
         for tx in conv.get('txs') or []:
-            amount = money(tx.get('amount'), positive=True)
+            amount = sent_money(tx.get('amount'), reviewing=True)
             if tx.get('status') != 'confirmed' or amount is None:
                 return 'Распределять можно только подтверждённый приход USDT'
-            used = Decimal(0)
-            for index, source in enumerate(sources):
-                part = (amount - used if index == last else
-                        (amount * money(source['rub']) / total_rub).quantize(CENT, rounding=ROUND_DOWN))
+            for index, part in enumerate(incoming_shares([money(src['rub']) for src in sources], amount)):
                 allocated[index] += part
-                used += part
-        if any(money(source.get('usdtFact')) != allocated[index]
+        if any(sent_money(source.get('usdtFact'), reviewing=True) != allocated[index]
                for index, source in enumerate(sources)):
             return 'Распределение USDT не совпадает с подтверждённым приходом и долями RUB'
     if not dispatch:
@@ -140,7 +150,7 @@ def check_batch(state, conv, *, dispatch=False, independent_id=None):
     incoming = Decimal(0)
     hashes = set()
     for tx in conv.get('txs') or []:
-        amount = money(tx.get('amount'), positive=True)
+        amount = sent_money(tx.get('amount'), reviewing=True)
         key = (str(tx.get('hash') or '').lower(), str(tx.get('net') or '').lower().replace('-', ''))
         if tx.get('status') != 'confirmed' or amount is None or not key[0] or key in hashes:
             return 'Для отправки нужен уникальный подтверждённый приход USDT'
@@ -192,7 +202,24 @@ def check_state(previous, state):
     old_incomes = {str(i.get('id')): i for i in previous.get('incomes') or []}
     used_incomes = set()
     used_deals = set()
-    used_hashes = set()
+    used_hashes = {}
+    def remember_hash(tx):
+        key = (str(tx.get('hash') or '').lower(), str(tx.get('net') or '').lower().replace('-', ''))
+        previous = used_hashes.setdefault(key, [])
+        if previous:
+            rows = previous + [tx]
+            # Only server-persisted shares can repeat. preserve_server_fields
+            # runs before this guard; a browser cannot mint a ledgerUseId.
+            ids = [t.get('ledgerUseId') for t in rows]
+            amounts = [sent_money(t.get('amount'), reviewing=True) for t in rows]
+            totals = [sent_money(t.get('verifiedAmount'), reviewing=True) for t in rows]
+            if (not all(ids) or len(set(ids)) != len(ids) or any(a is None for a in amounts)
+                    or any(t is None for t in totals) or len(set(totals)) != 1
+                    or sum(amounts) > totals[0] + Decimal('0.005')
+                    or len({t.get('to') for t in rows}) != 1):
+                return 'Один приход USDT нельзя использовать в двух пачках без проверенных долей'
+        previous.append(tx)
+        return None
     for conv in state.get('convs') or []:
         # The conversions register also accepts unassigned bank receipts.
         # They are not a deal funding batch until a deal is explicitly linked.
@@ -205,11 +232,9 @@ def check_state(previous, state):
                         return 'Один приход RUB нельзя использовать в двух пачках'
                     used_incomes.add(key)
             for tx in conv.get('txs') or []:
-                key = (str(tx.get('hash') or '').lower(),
-                       str(tx.get('net') or '').lower().replace('-', ''))
-                if key in used_hashes:
-                    return 'Один приход USDT нельзя использовать в двух пачках'
-                used_hashes.add(key)
+                issue = remember_hash(tx)
+                if issue:
+                    return issue
             continue
         before = old_convs.get(conv.get('id'))
         members = [d for d in state.get('deals') or [] if d.get('cnvId') == conv.get('id')]
@@ -258,9 +283,7 @@ def check_state(previous, state):
                     return 'Один приход RUB нельзя использовать в двух пачках'
                 used_incomes.add(income_id)
         for tx in conv.get('txs') or []:
-            key = (str(tx.get('hash') or '').lower(),
-                   str(tx.get('net') or '').lower().replace('-', ''))
-            if key in used_hashes:
-                return 'Один приход USDT нельзя использовать в двух пачках'
-            used_hashes.add(key)
+            issue = remember_hash(tx)
+            if issue:
+                return issue
     return None

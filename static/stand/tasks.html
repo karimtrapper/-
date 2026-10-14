@@ -7164,10 +7164,26 @@ function convMarginBlock(d,total,crmRows=[]){
     ${m.minRate?'<br><span style="color:var(--text-muted)">Порог безубыточности по известным обязательствам: '+String(Math.round(m.minRate*100)/100).replace('.',',')+' ₽ за USDT. Выше — в минус.</span>':''}
   </div></div>`;
 }
+function cnvTxOptionLabel(t){
+  if(!t||t.used_usdt<=0)return '';
+  return t.free_usdt>0?`♻️ свободно $${t.free_usdt.toFixed(2)} из $${t.amount_usdt.toFixed(2)} · `:'✅ разобран · ';
+}
+async function cnvTxLoad(id){
+  try{
+    const r=await fetch('/api/payin-txs?unallocated=1',{credentials:'same-origin'}),j=await r.json();
+    if(!j.success){toast(j.error||'Не удалось загрузить реестр');return;}
+    S.incomingLedgerRows=j.txs||[];render();
+  }catch(e){toast('Не удалось загрузить реестр');}
+}
 function cnvTxPick(id,txId){
+  if(String(txId).startsWith('ledger:')){
+    const row=(S.incomingLedgerRows||[]).find(t=>String(t.id)===String(txId).slice(7));
+    if(row)cnvTxManual(id,row.tx_hash,row.network);return;
+  }
   const d=deal(id),c=convOf(d),t=txPool().find(x=>x.id===Number(txId));
   if(!c||!t)return;
-  if(!demoAllowed()||!d.demoTransfers||!t.demo||t.cnv!==c.id){toast('Для настоящего прихода введите полный хеш — сервер проверит сеть');return;}
+  if(!t.demo){cnvTxManual(id,t.hash,t.net);return;}
+  if(!demoAllowed()||!d.demoTransfers||t.cnv!==c.id){toast('Для настоящего прихода введите полный хеш — сервер проверит сеть');return;}
   if(S.convs.some(v=>(v.txs||[]).some(x=>x.hash===t.hash))){toast('Перевод уже привязан к пачке');return;}
   c.txs=c.txs||[];c.txs.push(Object.assign({},t,cnvTo(c)));
   save();render();toast('DEMO: добавлен тестовый приход '+usd(t.amount));
@@ -7191,18 +7207,48 @@ async function cnvWalletFix(id,wid){
   if(j)toast('Ждём USDT на '+(w.owner||w.name)+' · '+w.addr);
 }
 function txFind(h){return txPool().find(t=>String(t.hash).toLowerCase()===String(h).trim().toLowerCase())||null;}
-async function cnvTxManual(id){
+function cnvTxHint(t){
+  if(!t||t.used_usdt<=0)return '';
+  const deals=(t.deal_ids||[]).map(id=>'#'+id).join(', ');
+  return `по переводу уже разнесено $${t.used_usdt.toFixed(2)}${deals?' ('+deals+')':''}, свободно $${t.free_usdt.toFixed(2)} из $${t.amount_usdt.toFixed(2)}`;
+}
+function cnvTxShareBlock(d){
+  const p=S.incomingShare;if(!p||p.dealId!==d.id)return '';
+  const t=p.ledger;
+  return `<div id="incoming_share" class="alert ${t.free_usdt>0?'a-info':'a-warn'}"><div style="width:100%">
+    <b>${t.free_usdt>0?'♻️ свободно $'+t.free_usdt.toFixed(2)+' из $'+t.amount_usdt.toFixed(2):'✅ разобран'}</b>
+    <p class="fh">${esc(cnvTxHint(t))}</p>
+    ${(t.allocations||[]).map(a=>`<p class="fh">$${a.amount_usdt.toFixed(2)} · ${esc((a.deal_codes||[]).join(', '))}${a.stand_cnv_id?' (пачка '+esc(String(a.stand_cnv_id))+')':''}</p>`).join('')}
+    <label class="fl" for="w_share">Сумма на эту сделку</label>
+    <div class="hrow"><input class="fc num" id="w_share" type="number" min="0.000001" max="${t.free_usdt}" step="0.000001" value="${p.amount}" ${t.free_usdt>0?'':'disabled'}
+      oninput="S.incomingShare.amount=this.value;this.setCustomValidity(Number(this.value)>${t.free_usdt}?'Сумма больше свободного остатка':'');this.reportValidity()">
+    <button class="btn btn-secondary btn-sm" ${t.free_usdt>0?'':'disabled'} onclick="cnvTxAllocate(${d.id})">Засчитать долю</button></div>
+    <p class="fh">Можно уменьшить сумму. Остаток останется доступен другим пачкам.</p></div></div>`;
+}
+async function cnvTxManual(id,selectedHash=null,selectedNetwork=null){
   const d=deal(id),c=convOf(d);if(!c)return;
-  const hash=String(val('w2')||'').trim(),network=val('w_net')||'TRC-20';
+  const hash=String(selectedHash||val('w2')||'').trim(),network=selectedNetwork||val('w_net')||'TRC-20';
   if(!hash){toast('Введите полный хеш перевода');return;}
   if(demoAllowed()&&d.demoTransfers){
     const found=txFind(hash);if(found){cnvTxPick(id,found.id);return;}
     toast('В DEMO выберите тестовый приход из списка');return;
   }
-  if(S.convs.some(v=>(v.txs||[]).some(x=>String(x.hash).toLowerCase()===hash.toLowerCase()))){toast('Этот хеш уже привязан');return;}
-  const j=await standAction('/api/stand/incoming/check',{dealId:id,hash,network});
-  if(j&&j.tx){const latest=convOf(deal(id));latest.txs=latest.txs||[];
-    if(!latest.txs.some(t=>t.hash===j.tx.hash))latest.txs.push(j.tx);save();render();toast('Приход проверен: '+usd(j.tx.amount));}
+  S.incomingShare=null;
+  const j=await standAction('/api/stand/incoming/check',{dealId:id,hash,network,preview:true});
+  if(j&&j.ledger){S.incomingShare={dealId:id,cnvId:c.id,hash:j.hash,network:j.network,
+    ledger:j.ledger,amount:j.ledger.free_usdt};render();}
+}
+async function cnvTxAllocate(id){
+  const p=S.incomingShare;if(!p||p.dealId!==id)return;
+  if(String(val('w2')||'').trim().toLowerCase().replace(/^0x/,'')!==p.hash.toLowerCase().replace(/^0x/,'')){
+    toast('Хеш изменился — повторите проверку');return;
+  }
+  const amount=Number(String(val('w_share')||'').replace(',','.'));
+  if(!Number.isFinite(amount)||amount<=0||amount>p.ledger.free_usdt){
+    toast('Укажите положительную сумму не больше свободного остатка: $'+p.ledger.free_usdt.toFixed(2));return;
+  }
+  const j=await standAction('/api/stand/incoming/check',{dealId:id,hash:p.hash,network:p.network,amount});
+  if(j&&j.tx){S.incomingShare=null;render();toast('Засчитана доля: '+usd(j.tx.amount));}
 }
 function payinTxPick(id,txId){
   editApply(id); const d=deal(id), t=txPool().find(x=>x.id===Number(txId)); if(!t)return;
@@ -9811,25 +9857,28 @@ function stepCard(d){
           ${uniqueWallets(wallets()).filter(w=>w.addr!==walletById(c.walletId)?.addr&&addrValid(w.addr,'TRC-20')).map(w=>`<option value="${w.id}">${walletOptionText(w)}</option>`).join('')}
         </select>${walletBlock(d)}</div>`;})()}
     <div class="chtitle" style="margin-top:14px">Переводы от брокера
-      <span>сумма берётся из транзакции — руками её не пишем</span></div>
+      <span>сумма перевода проверяется в сети · на пачку можно взять часть</span></div>
     <div class="fr">
       <div class="fg"><label class="fl">Выбрать из входящих</label>
         <select class="fc" onchange="if(this.value)cnvTxPick(${d.id},this.value)">
           <option value="">— входящие переводы —</option>
+          ${(S.incomingLedgerRows||[]).filter(t=>t.free_usdt>0&&(!t.to_address||t.to_address===walletById(c?.walletId)?.addr)
+            &&!(c?.txs||[]).some(x=>x.hash===t.tx_hash)).map(t=>`<option value="ledger:${t.id}">${esc(cnvTxOptionLabel(t))}$${t.amount_usdt.toFixed(2)} · ${esc(t.tx_hash)}</option>`).join('')}
           ${txPool().filter(t=>!txUsed(t.hash)&&!(c&&(c.txs||[]).some(x=>x.hash===t.hash))
             /* во входящих для пачки — только то, что пришло после отправки рублей */
             &&demoAllowed()&&!!d.demoTransfers&&t.demo&&t.cnv===c.id).map(t=>
             `<option value="${t.id}">${usd(t.amount)} · ${t.net} · ${t.at} · ${t.hash}</option>`).join('')}
-        </select></div>
+        </select><button class="btn btn-outline btn-sm" onclick="cnvTxLoad(${d.id})">Обновить список</button></div>
       <div class="fg"><label class="fl">Или хеш вручную</label>
-        <input class="fc" id="w2" placeholder="полный хеш транзакции">
+        <input class="fc" id="w2" value="${S.incomingShare?.dealId===d.id?esc(S.incomingShare.hash):''}" placeholder="полный хеш транзакции">
         <p class="fh">сумма и адрес получения проверяются сервером</p></div>
       <div class="fg"><label class="fl">Сеть прихода</label>
         <div class="hrow"><select class="fc" id="w_net"><option>TRC-20</option><option>ERC-20</option></select>
-          <button class="btn btn-outline btn-sm" onclick="cnvTxManual(${d.id})">Добавить</button></div>
+          <button class="btn btn-outline btn-sm" onclick="cnvTxManual(${d.id})">Проверить</button></div>
         <p class="fh">Укажите ту сеть, в которой брокер отправил USDT.</p></div>
     </div>
 
+    ${cnvTxShareBlock(d)}
     <div class="hashbox">
       ${(c&&(c.txs||[]).length)?c.txs.map((t,i)=>`<div class="hrow">
         <b class="pos" style="min-width:110px">+${usd(t.amount)}</b>
@@ -9846,7 +9895,7 @@ function stepCard(d){
     </div>
 
     ${(gap!=null&&gap<-0.01)?`<div class="alert a-warn"><div><b>Пришло меньше, чем ждали.</b> Разница ${usd(Math.abs(gap))} — либо брокер недослал, либо ждём второй перевод. Добавьте его, когда придёт, или закройте шаг как есть: прибыль посчитается от фактической суммы.</div></div>`:''}
-    <div class="alert a-info"><div>Сумму не вводим руками — она приходит вместе с транзакцией. Переводов может быть несколько, они суммируются. Дальше прибыль считается от этой суммы, а не от расчёта по курсу.</div></div>
+    <div class="alert a-info"><div>Сервер проверяет перевод и свободный остаток. В пачку засчитывается выбранная доля; доли разных переводов суммируются. Дальше прибыль считается от фактически засчитанной суммы.</div></div>
     <div class="row"><button class="btn btn-success" onclick="act(${d.id},'s18w')">${d.prepay?'USDT получены — завершить конвертацию':'USDT получены — решить, что с ними делать'}</button>
     <button class="btn btn-outline" onclick="toast('В прототипе не реализовано — в жизни это запрос брокеру')">Брокер задерживает</button></div></div>`;},
 
@@ -10387,14 +10436,14 @@ async function act(id,step){
         toast('Пачка содержит источник без положительного RUB прихода');return;}
       const allocations=c.sources.map(()=>[]);
       c.txs.forEach(t=>{
-        const cents=Math.round(t.amount*100);let allocated=0;
+        const micros=Math.round(t.amount*1000000);let allocated=0;
         c.sources.forEach((src,i)=>{
-          const part=i===lastFunded?cents-allocated:(i>lastFunded?0:Math.floor(cents*src.rub/rubAll));
-          allocated+=part;allocations[i].push({amount:part/100,network:t.net||'TRC20',hash:t.hash});
+          const part=i===lastFunded?micros-allocated:(i>lastFunded?0:Math.floor(micros*src.rub/rubAll/10000)*10000);
+          allocated+=part;allocations[i].push({amount:part/1000000,network:t.net||'TRC20',hash:t.hash});
         });
       });
       c.sources.forEach((src,i)=>{
-        src.usdtFact=hashSum(allocations[i]);
+        src.usdtFact=Math.round(allocations[i].reduce((sum,t)=>sum+t.amount,0)*1000000)/1000000;
         const x=deal(src.dealId);if(!x)return;
         x.payinHashes=allocations[i];
         x.pay=x.pay||{};x.pay.usdt=src.usdtFact;x.pay.hash=c.txs[0].hash;

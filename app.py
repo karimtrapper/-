@@ -403,7 +403,7 @@ def invalidate_tronscan_cache():
     TRONSCAN_CACHE['balances'] = {}
 
 # ==================== MODELS ====================
-from sqlalchemy import Column, Integer, BigInteger, String, Float, DateTime, Boolean, Text, LargeBinary, ForeignKey, Enum as SQLEnum, or_, and_, UniqueConstraint
+from sqlalchemy import Column, Integer, BigInteger, String, Float, DateTime, Boolean, Text, LargeBinary, ForeignKey, Enum as SQLEnum, or_, and_, UniqueConstraint, Index, CheckConstraint
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, deferred
 from enum import Enum
@@ -1143,12 +1143,17 @@ class PayinTx(Base):
             with s.no_autoflush:
                 val = s.query(_f.sum(PayinTxUse.amount_usdt)).filter(
                     PayinTxUse.tx_id == self.id).scalar()
-            return round(val or 0, 2)
+            return round(val or 0, 6) if s.query(PayinTxUse.id).filter(
+                PayinTxUse.tx_id == self.id, PayinTxUse.stand_generation.isnot(None)).first() else round(val or 0, 2)
         return round(sum(u.amount_usdt or 0 for u in (self.uses or [])), 2)
 
     def free_usdt(self):
-        """Нераспределённый остаток перевода."""
-        return round((self.amount_usdt or 0) - self.used_usdt(), 2)
+        """Keep legacy CRM display rounding; reservations retain USDT precision."""
+        from sqlalchemy.orm import object_session
+        session = object_session(self)
+        reserved = session and session.query(PayinTxUse.id).filter(
+            PayinTxUse.tx_id == self.id, PayinTxUse.stand_generation.isnot(None)).first()
+        return max(0, round((self.amount_usdt or 0) - self.used_usdt(), 6 if reserved else 2))
 
     def to_dict(self):
         return {'id': self.id, 'tx_hash': self.tx_hash,
@@ -1164,10 +1169,20 @@ class PayinTx(Base):
 class PayinTxUse(Base):
     """Сколько из конкретного входящего перевода отнесено на конкретную сделку."""
     __tablename__ = 'payin_tx_uses'
-    __table_args__ = (UniqueConstraint('tx_id', 'deal_id', name='uq_payin_tx_use'),)
+    __table_args__ = (
+        Index('uq_payin_tx_deal', 'tx_id', 'deal_id', unique=True,
+              postgresql_where=Column('deal_id').isnot(None), sqlite_where=Column('deal_id').isnot(None)),
+        Index('uq_payin_tx_stand', 'tx_id', 'stand_generation', 'stand_cnv_id', unique=True,
+              postgresql_where=Column('deal_id').is_(None), sqlite_where=Column('deal_id').is_(None)),
+        CheckConstraint('deal_id IS NOT NULL OR (stand_generation IS NOT NULL AND stand_cnv_id IS NOT NULL)',
+                        name='ck_payin_use_owner'),
+    )
     id = Column(Integer, primary_key=True)
     tx_id = Column(Integer, ForeignKey('payin_txs.id'), nullable=False, index=True)
-    deal_id = Column(Integer, ForeignKey('deals.id'), nullable=False, index=True)
+    deal_id = Column(Integer, ForeignKey('deals.id'), nullable=True, index=True)
+    stand_generation = Column(String(64))
+    stand_cnv_id = Column(String(128))
+    conversion_id = Column(Integer, ForeignKey('conversions.id'), nullable=True)
     amount_usdt = Column(Float, nullable=False, default=0)
     created_at = Column(DateTime, default=datetime.utcnow)
     tx = relationship('PayinTx', back_populates='uses')
@@ -3026,6 +3041,10 @@ try:
         conn.commit()
 except Exception as e:
     print(f"ℹ️ payin_txs migration: {e}")
+
+# A failed money-ledger migration must stop startup, never silently fall back.
+from payin_reservation_schema import upgrade as _upgrade_payin_reservations
+_upgrade_payin_reservations(engine, PayinTxUse.__table__)
 
 # Бэкфилл реестра: существующие хэши прихода становятся переводами с долями.
 # Без него старый хэш не найдётся в реестре и будет считаться занятым целиком —
@@ -6940,7 +6959,16 @@ def stand_crm_close(stand_deal_id):
             # Never trust an ID supplied by the browser: derive it from the signed
             # selected StandChannel card and bind it to this CRM row transactionally.
             crm_data['bitrix_deal_id'] = bitrix_id
-        result = _create_deal_impl(db, data=crm_data, defer_commit=True)
+        if (stand_deal.get('cnvId') is not None
+                and not (stand_demo.enabled() and stand_deal.get('demoTransfers'))):
+            _stand_import_legacy_payins(db, row, state)
+            db.info['stand_payin_origin'] = (row.generation, str(stand_deal['cnvId']))
+            db.info['stand_payin_hashes'] = {_payin_hash_key(t.get('hash')) for t in conv.get('txs') or []}
+        try:
+            result = _create_deal_impl(db, data=crm_data, defer_commit=True)
+        finally:
+            db.info.pop('stand_payin_origin', None)
+            db.info.pop('stand_payin_hashes', None)
         response, status = result if isinstance(result, tuple) else (result, 200)
         created = response.get_json() or {}
         if status >= 400 or not created.get('success'):
@@ -10446,11 +10474,157 @@ def stand_incoming_wallet():
         db.close()
 
 
+def _payin_hash_key(value):
+    raw = str(value or '').strip()
+    if re.fullmatch(r'(?:0[xX])?[0-9a-fA-F]{64}', raw):
+        return raw.lower().removeprefix('0x')
+    return raw
+
+
+def _payin_find(db, value, lock=True):
+    """Canonical lookup also sees old uppercase/0x spellings without rewriting them."""
+    from sqlalchemy import func
+    key = _payin_hash_key(value)
+    q = db.query(PayinTx)
+    if re.fullmatch(r'[0-9a-f]{64}', key):
+        q = q.filter(func.lower(PayinTx.tx_hash).in_((key, '0x' + key)))
+    else:
+        q = q.filter_by(tx_hash=value)
+    rows = (q.with_for_update() if lock else q).all()
+    if len(rows) > 1:
+        raise ValueError('В реестре несколько написаний одного хеша — нужна сверка долей')
+    return rows[0] if rows else None
+
+
+def _payin_exact_used(db, tx):
+    """Money comparisons never use the two-decimal presentation total."""
+    from decimal import Decimal
+    return sum((Decimal(str(u.amount_usdt or 0)) for u in
+                db.query(PayinTxUse).filter_by(tx_id=tx.id).all()), Decimal(0))
+
+
+def _payin_ledger_hint(info):
+    ids = ', '.join('#' + str(i) for i in info.get('deal_ids') or [])
+    return (f"по переводу уже разнесено ${info['used_usdt']:.2f}"
+            + (f' ({ids})' if ids else '')
+            + f", свободно ${info['free_usdt']:.2f} из ${info['amount_usdt']:.2f}")
+
+
+def _payin_ledger_info(db, tx, state=None, *, exact=False):
+    info = tx.to_dict()
+    uses = db.query(PayinTxUse).filter_by(tx_id=tx.id).all()
+    if exact or any(u.stand_generation for u in uses):
+        used = _payin_exact_used(db, tx)
+        from decimal import Decimal
+        info.update(used_usdt=float(used), amount_usdt=tx.amount_usdt,
+                    free_usdt=float(max(Decimal(0), Decimal(str(tx.amount_usdt)) - used)))
+    if state is None and STAND_MODE:
+        row = db.query(StandState).filter_by(id=1).first()
+        state = json.loads(row.data or '{}') if row else {}
+    allocations = []
+    for u in uses:
+        ids = [u.deal_id] if u.deal_id else []
+        codes = []
+        if u.stand_cnv_id and state:
+            members = [d for d in state.get('deals') or []
+                       if str(d.get('cnvId')) == u.stand_cnv_id]
+            if not ids:
+                ids = [d['id'] for d in members]
+            codes = [d.get('code') or str(d['id']) for d in members]
+        allocations.append({'amount_usdt': u.amount_usdt, 'deal_ids': ids,
+                            'deal_codes': codes, 'stand_cnv_id': u.stand_cnv_id,
+                            'reserved': u.deal_id is None})
+    info['allocations'] = allocations
+    info['deal_ids'] = sorted(set(info['deal_ids']) | {i for a in allocations for i in a['deal_ids']})
+    return info
+
+
+def _stand_import_legacy_payins(db, row, state, only_hash=None):
+    """Read legacy full hashes as shares. Add ledger rows, never rewrite the board.
+
+    Already closed CRM uses are the same money, not another reservation.
+    Called with the board locked, before locking individual hashes.
+    """
+    from decimal import Decimal
+    if not row.generation:
+        row.generation = secrets.token_hex(16)
+    deals = {d['id']: d for d in state.get('deals') or []}
+    for conv in sorted(state.get('convs') or [], key=lambda c: str(c.get('id'))):
+        for part in conv.get('txs') or []:
+            net = normalize_network(part.get('net') or 'trc20')
+            h = normalize_ref(part.get('hash'), net)
+            if not h or h.startswith('demo:') or part.get('status') != 'confirmed' or (only_hash and h != only_hash):
+                continue
+            tx = _payin_find(db, h)
+            if not tx:
+                tx = PayinTx(tx_hash=h, network=net, amount_usdt=part.get('verifiedAmount') or part['amount'],
+                             source='tronscan' if net == 'trc20' else 'etherscan', to_address=part.get('to'))
+                db.add(tx); db.flush()
+            origin = dict(tx_id=tx.id, stand_generation=row.generation, stand_cnv_id=str(conv['id']))
+            owned = db.query(PayinTxUse).filter_by(**origin).all()
+            # A new-format entry is always represented by its reservation or
+            # transferred shares. Do not recreate money after an explicit edit.
+            if owned or part.get('ledgerUseId'):
+                continue
+            known_ids = {deals.get(src.get('dealId'), {}).get('crmDealId') for src in conv.get('sources') or []}
+            if conv.get('crmConversionId'):
+                crm = db.query(Conversion).get(conv['crmConversionId'])
+                if crm:
+                    known_ids.update(_conversion_deal_ids(db, crm))
+            known_ids.discard(None)
+            already = sum((Decimal(str(u.amount_usdt or 0)) for u in db.query(PayinTxUse).filter(
+                PayinTxUse.tx_id == tx.id, PayinTxUse.deal_id.in_(known_ids)).all()), Decimal(0)) if known_ids else Decimal(0)
+            reserve = Decimal(str(part['amount'])) - already
+            if reserve > 0:
+                db.add(PayinTxUse(**origin, amount_usdt=float(reserve)))
+                db.flush()
+
+
+def _stand_consume_payin_reserve(db, tx, deal_id, amount, origin):
+    """Transfer a reservation inside the CRM close transaction; preserve row ID if whole."""
+    from decimal import Decimal
+    generation, cnv_id = origin
+    reserve = db.query(PayinTxUse).filter_by(tx_id=tx.id, deal_id=None,
+        stand_generation=generation, stand_cnv_id=str(cnv_id)).first()
+    use = db.query(PayinTxUse).filter_by(tx_id=tx.id, deal_id=deal_id).first()
+    desired = Decimal(str(amount))
+    previous = Decimal(str(use.amount_usdt or 0)) if use else Decimal(0)
+    delta = desired - previous
+    if use and (use.stand_generation, use.stand_cnv_id) != (generation, str(cnv_id)):
+        raise ValueError('Доля CRM уже относится к другому источнику')
+    available = Decimal(str(reserve.amount_usdt or 0)) if reserve else Decimal(0)
+    if delta > available:
+        raise ValueError('Недостаточно резерва пачки для переноса доли в CRM')
+    if not use and desired == available and reserve:
+        reserve.deal_id = deal_id
+        use = reserve
+    else:
+        remaining = available - delta
+        if reserve:
+            if remaining:
+                reserve.amount_usdt = float(remaining)
+            else:
+                db.delete(reserve)
+        elif remaining:
+            db.add(PayinTxUse(tx_id=tx.id, stand_generation=generation,
+                             stand_cnv_id=str(cnv_id), amount_usdt=float(remaining)))
+        if use:
+            use.amount_usdt = float(desired)
+        else:
+            use = PayinTxUse(tx_id=tx.id, deal_id=deal_id, amount_usdt=float(desired),
+                            stand_generation=generation, stand_cnv_id=str(cnv_id))
+            db.add(use)
+    db.flush()
+    return use
+
+
 @app.route('/api/stand/incoming/check', methods=['POST'])
 def stand_incoming_check():
     """Проверить входящий USDT-перевод и привязать его к пачке стенда."""
     if not STAND_MODE:
         return jsonify({'success': False, 'error': 'stand_only'}), 404
+    if current_role() not in ('operator', 'admin'):
+        return jsonify(success=False, error='Приход засчитывает операционист'), 403
     data = request.get_json(silent=True) or {}
     try:
         deal_id = int(data.get('dealId'))
@@ -10485,6 +10659,8 @@ def stand_incoming_check():
                         'error': 'Перевод был раньше отправки рублей брокеру'}), 422
     db = get_session()
     try:
+        if engine.dialect.name == 'sqlite':
+            db.execute(text('BEGIN IMMEDIATE'))
         row = _stand_row(db, lock=True)
         state = json.loads(row.data or '{}')
         deal = next((d for d in state.get('deals', []) if d.get('id') == deal_id), None)
@@ -10495,23 +10671,66 @@ def stand_incoming_check():
         current_receiver = stand_wallet_address(state, conv.get('walletId'))
         if current_receiver != receiver:
             return jsonify({'success': False, 'error': 'Кошелёк пачки изменился'}), 409
-        if conv.get('sentTs') and checked['timestampMs'] < conv['sentTs']:
+        if conv.get('sentTs') and (not checked.get('timestampMs') or checked['timestampMs'] < conv['sentTs']):
             return jsonify({'success': False, 'error': 'Время отправки пачки изменилось'}), 409
-        existing = next((t for c in state.get('convs', []) for t in c.get('txs', []) or []
-                         if normalize_ref(t.get('hash'), normalize_network(t.get('net'))) == tx_hash), None)
-        if existing:
-            return jsonify({'success': False, 'error': 'Хеш уже привязан к пачке'}), 409
-        tx = {'hash': tx_hash, 'net': network.upper(), 'amount': checked['verifiedAmount'],
+        from decimal import Decimal, InvalidOperation
+        _stand_import_legacy_payins(db, row, state, tx_hash)
+        ledger_tx = _payin_find(db, tx_hash)
+        total = Decimal(str(checked['verifiedAmount']))
+        if not total.is_finite() or total <= 0:
+            return jsonify(success=False, error='Некорректная сумма перевода в сети'), 422
+        if ledger_tx and (ledger_tx.network or 'trc20') != network:
+            return jsonify(success=False, error='Хеш уже записан в другой сети'), 409
+        if not ledger_tx:
+            ledger_tx = PayinTx(tx_hash=tx_hash, network=network)
+            db.add(ledger_tx)
+        ledger_tx.amount_usdt = float(total)
+        ledger_tx.source = 'tronscan'
+        ledger_tx.to_address = checked['to']
+        ledger_tx.tx_time = datetime.utcfromtimestamp(checked['timestampMs'] / 1000) if checked.get('timestampMs') else None
+        db.flush()
+        used = _payin_exact_used(db, ledger_tx)
+        remaining = max(Decimal(0), total - used)
+        info = _payin_ledger_info(db, ledger_tx, state, exact=True)
+        if used > total + Decimal('0.005'):
+            return jsonify(success=False, error='Превышена сумма перевода: ' + _payin_ledger_hint(info), ledger=info), 409
+        if data.get('preview') is True:
+            db.commit()
+            return jsonify(success=True, ledger=info, hash=tx_hash, network=network)
+        try:
+            amount = Decimal(str(data['amount'])) if 'amount' in data else remaining
+        except (InvalidOperation, ValueError, TypeError):
+            return jsonify(success=False, error='Укажите положительную сумму доли'), 400
+        if not amount.is_finite() or amount <= 0:
+            return jsonify(success=False, error='Укажите положительную сумму доли; ' + _payin_ledger_hint(info), ledger=info), 409
+        if remaining <= 0 or amount > remaining + Decimal('0.005'):
+            return jsonify(success=False, error='Нельзя засчитать долю: ' + _payin_ledger_hint(info), ledger=info), 409
+        if amount != amount.quantize(Decimal('0.000001')):
+            return jsonify(success=False, error='USDT: не больше 6 знаков после запятой'), 400
+        # Accept rounding noise at the boundary, but never book more than on-chain.
+        amount = min(amount, remaining)
+        if any(normalize_ref(t.get('hash'), network) == tx_hash for t in conv.get('txs') or []):
+            return jsonify(success=False, error='Доля этого хеша уже в пачке — сначала отвяжите её'), 409
+        use = PayinTxUse(tx_id=ledger_tx.id, amount_usdt=float(amount),
+                        stand_generation=row.generation, stand_cnv_id=str(conv['id']))
+        db.add(use); db.flush()
+        tx = {'hash': tx_hash, 'net': network.upper(), 'amount': float(amount), 'verifiedAmount': float(total), 'ledgerUseId': use.id,
               'to': checked['to'], 'from': checked['from'], 'status': 'confirmed',
               'verifiedAt': checked['verifiedAt'], 'timestampMs': checked['timestampMs'],
               'cnv': conv['id']}
         conv.setdefault('txs', []).append(tx)
+        deal.setdefault('log', []).append({'ts': datetime.now().strftime('%d.%m, %H:%M'),
+            'at': int(time.time() * 1000), 'role': current_role(),
+            'text': f'Засчитана доля {amount} из {total} USDT, хеш {tx_hash}'})
         row.data = json.dumps(state, ensure_ascii=False)
         row.version = (row.version or 0) + 1
         row.updated_by = 'проверка прихода USDT'
         row.updated_at = datetime.utcnow()
         db.commit()
-        return jsonify({'success': True, 'tx': tx, 'version': row.version, 'data': state})
+        return jsonify({'success': True, 'tx': tx, 'version': row.version, 'data': state, 'ledger': _payin_ledger_info(db, ledger_tx, state, exact=True)})
+    except ValueError as exc:
+        db.rollback()
+        return jsonify(success=False, error=str(exc)), 409
     finally:
         db.close()
 
@@ -10665,6 +10884,8 @@ def stand_incoming_unlink():
         return jsonify({'success': False, 'error': 'Отвязать приход может операционист или фин дир'}), 403
     db = get_session()
     try:
+        if engine.dialect.name == 'sqlite':
+            db.execute(text('BEGIN IMMEDIATE'))
         row = _stand_row(db, lock=True)
         state = json.loads(row.data or '{}')
         deals = {d.get('id'): d for d in state.get('deals', [])}
@@ -10677,6 +10898,29 @@ def stand_incoming_unlink():
         main = next((m for m in members if m.get('step') in ('s18w', 's22')), deal)
         if main.get('step') not in ('s18w', 's22') or any((m.get('transfer') or {}).get('sends') for m in members):
             return jsonify({'success': False, 'error': 'По пачке уже есть отправки — приход не отвязать'}), 409
+        _stand_import_legacy_payins(db, row, state, normalize_ref(tx_hash, 'trc20'))
+        ledger_tx = _payin_find(db, normalize_ref(tx_hash, 'trc20'))
+        if ledger_tx:
+            owned = db.query(PayinTxUse).filter_by(tx_id=ledger_tx.id,
+                stand_generation=row.generation, stand_cnv_id=str(conv['id'])).all()
+            if any(u.deal_id is not None for u in owned):
+                return jsonify(success=False, error='Доля уже перенесена в CRM — приход не отвязать'), 409
+            if conv.get('crmConversionId'):
+                crm = db.query(Conversion).filter_by(id=conv['crmConversionId']).with_for_update().first()
+                # Accepted CRM shares cannot be silently removed by a board action.
+                legacy_ids = _conversion_deal_ids(db, crm) if crm else []
+                if db.query(PayinTxUse.id).filter(PayinTxUse.tx_id == ledger_tx.id,
+                        PayinTxUse.deal_id.in_(legacy_ids)).first():
+                    return jsonify(success=False, error='Приход уже разнесён по сделкам CRM — нужна корректировка долей'), 409
+                link = db.query(ConversionTx).filter_by(conversion_id=conv['crmConversionId'], payin_tx_id=ledger_tx.id).first()
+                if link:
+                    db.delete(link); db.flush(); db.refresh(crm)
+                    if not crm.txs:
+                        crm.status = ConversionStatus.SENT
+                        crm.received_at = None
+            for use in owned:
+                db.delete(use)
+            db.flush()
         before = len(conv.get('txs') or [])
         conv['txs'] = [t for t in conv.get('txs') or [] if t.get('hash') != tx_hash]
         if len(conv['txs']) == before:
@@ -13002,11 +13246,17 @@ def list_payin_txs():
     """
     session = get_session()
     try:
+        if STAND_MODE:
+            if engine.dialect.name == 'sqlite':
+                session.execute(text('BEGIN IMMEDIATE'))
+            row = _stand_row(session, lock=True)
+            _stand_import_legacy_payins(session, row, json.loads(row.data or '{}'))
+            session.commit()
         q = session.query(PayinTx).order_by(PayinTx.created_at.desc(), PayinTx.id.desc())
         needle = (request.args.get('q') or '').strip()
         if needle:
             q = q.filter(PayinTx.tx_hash.ilike(f'%{needle}%'))
-        rows = [t.to_dict() for t in q.limit(500).all()]
+        rows = [_payin_ledger_info(session, t) for t in q.limit(500).all()]
         if request.args.get('unallocated') == '1':
             rows = [r for r in rows if r['free_usdt'] > 0.01]
         return jsonify({'success': True, 'txs': rows[:300]})
@@ -13019,16 +13269,22 @@ def get_payin_tx(tx_hash):
     """Детали перевода и разбивка по сделкам — для карточки и формы."""
     session = get_session()
     try:
-        tx = session.query(PayinTx).filter(PayinTx.tx_hash == tx_hash).first()
+        if STAND_MODE:
+            if engine.dialect.name == 'sqlite':
+                session.execute(text('BEGIN IMMEDIATE'))
+            row = _stand_row(session, lock=True)
+            _stand_import_legacy_payins(session, row, json.loads(row.data or '{}'))
+            session.commit()
+        tx = _payin_find(session, tx_hash, lock=False)
         if not tx:
             return jsonify({'success': False, 'error': 'not_found'}), 404
         uses = []
         for u in session.query(PayinTxUse).filter(PayinTxUse.tx_id == tx.id).all():
-            deal = session.query(Deal).get(u.deal_id)
+            deal = session.query(Deal).get(u.deal_id) if u.deal_id else None
             uses.append({'deal_id': u.deal_id, 'amount_usdt': round(u.amount_usdt or 0, 2),
                          'client_name': (deal.client_name if deal else None),
                          'realty_purpose': (deal.realty_purpose if deal else None)})
-        return jsonify({'success': True, 'tx': tx.to_dict(), 'uses': uses})
+        return jsonify({'success': True, 'tx': _payin_ledger_info(session, tx), 'uses': uses})
     finally:
         session.close()
 
@@ -13266,23 +13522,26 @@ def _stand_sync_crm_conversions(db, previous, state):
             for tx in item.get('txs') or []:
                 if tx.get('status') != 'confirmed' or not tx.get('hash'):
                     raise ValueError('Для разноса нужен подтверждённый приход USDT')
-                existing = db.query(PayinTx).filter_by(tx_hash=tx['hash']).with_for_update().first()
-                if existing and abs((existing.amount_usdt or 0) - float(tx.get('amount') or 0)) > .01:
-                    raise ValueError('Сумма хеша в CRM отличается от прихода задачника')
-                if not existing:
-                    existing = PayinTx(tx_hash=tx['hash'], amount_usdt=float(tx['amount']),
-                                       source='stand')
-                    db.add(existing)
-                    db.flush()
-                if db.query(ConversionTx).filter_by(payin_tx_id=existing.id).first():
-                    raise ValueError('Этот приход USDT уже в другой пачке CRM')
-                db.add(ConversionTx(conversion_id=crm.id, payin_tx_id=existing.id,
-                                    amount_usdt=float(tx['amount'])))
+                row = _stand_row(db, lock=True)
+                _stand_import_legacy_payins(db, row, state, tx['hash'])
+                existing = _payin_find(db, tx['hash'])
+                from decimal import Decimal
+                if _payin_exact_used(db, existing) > Decimal(str(existing.amount_usdt)) + Decimal('0.005'):
+                    raise ValueError('Превышена сумма перевода: ' + _payin_ledger_hint(_payin_ledger_info(db, existing, state)))
+                link = db.query(ConversionTx).filter_by(conversion_id=crm.id, payin_tx_id=existing.id).first()
+                if not link:
+                    db.add(ConversionTx(conversion_id=crm.id, payin_tx_id=existing.id,
+                                        amount_usdt=float(tx['amount'])))
+                elif abs(link.amount_usdt - float(tx['amount'])) > .000001:
+                    raise ValueError('Доля пачки CRM изменилась')
+                for use in db.query(PayinTxUse).filter_by(tx_id=existing.id,
+                        stand_generation=row.generation, stand_cnv_id=str(item['id'])).all():
+                    use.conversion_id = crm.id
             db.flush()
             db.refresh(crm)
             crm.status = ConversionStatus.RECEIVED
             crm.received_at = datetime.utcnow()
-            _apply_conversion_shares(db, crm)
+            _apply_conversion_shares(db, crm, stand_origin=(row.generation, str(item['id'])))
             _close_deals_after_conversion(db)
             continue
         if item.get('crmConversionId'):
@@ -13367,8 +13626,44 @@ def _clear_conversion_payin_uses(db, conv):
     if any(set(deal_ids) & set(_conversion_deal_ids(db, other)) for other in others):
         raise ValueError('Доля сделки относится к нескольким пачкам — нужен разбор происхождения')
     db.query(PayinTxUse).filter(PayinTxUse.tx_id.in_(tx_ids),
-                               PayinTxUse.deal_id.in_(deal_ids)).delete(synchronize_session=False)
+                               PayinTxUse.stand_generation.is_(None),
+                               or_(PayinTxUse.conversion_id == conv.id,
+                                   and_(PayinTxUse.conversion_id.is_(None), PayinTxUse.deal_id.in_(deal_ids)))).delete(synchronize_session=False)
     db.flush()
+
+
+def _stand_conversion_income_shares(db, conv, amount):
+    """New ledger shares use exactly the allocation accepted on the board.
+
+    Legacy conversions retain their historical rounding. For a board source
+    backed by several bank receipts, subdivide that source's share only.
+    """
+    if not STAND_MODE:
+        return None
+    row = db.query(StandState).filter_by(id=1).first()
+    if not row:
+        return None
+    state = json.loads(row.data or '{}')
+    item = next((c for c in state.get('convs') or [] if c.get('crmConversionId') == conv.id), None)
+    if not item or not any(t.get('ledgerUseId') for t in item.get('txs') or []):
+        return None
+    from decimal import Decimal
+    from stand_funding import incoming_shares
+    sources = item.get('sources') or []
+    shares = incoming_shares([Decimal(str(src['rub'])) for src in sources], Decimal(str(amount)))
+    bank = {inc.uuid: (src.sber_income_id, Decimal(str(src.amount_rub)))
+            for src in conv.sources for inc in [db.query(SberIncome).get(src.sber_income_id)] if inc}
+    deals = {d['id']: d for d in state.get('deals') or []}
+    result = {}
+    for src, share in zip(sources, shares):
+        keys = ([str(src.get('incomeId'))] if src.get('dealId') is None else
+                [str(p.get('incId')) for p in deals.get(src['dealId'], {}).get('payinParts') or []])
+        receipts = [bank[key[5:]] for key in keys if key.startswith('sber:') and key[5:] in bank]
+        if not receipts:
+            raise ValueError('Нет связи доли пачки с поступлениями CRM')
+        for (sid, _), part in zip(receipts, incoming_shares([r[1] for r in receipts], share)):
+            result[sid] = float(Decimal(str(result.get(sid, 0))) + part)
+    return result
 
 
 def conversion_shares_for(conv, expected_if_pending=False):
@@ -13383,39 +13678,53 @@ def conversion_shares_for(conv, expected_if_pending=False):
     """
     pairs = [(x.sber_income_id, x.amount_rub) for x in (conv.sources or [])]
     if conv.status == ConversionStatus.RECEIVED:
+        from sqlalchemy.orm import object_session
+        db = object_session(conv)
+        if db and conv.txs:
+            portions = [_stand_conversion_income_shares(db, conv, t.amount_usdt) for t in conv.txs]
+            if all(p is not None for p in portions):
+                return {sid: round(sum(p.get(sid, 0) for p in portions), 6) for sid, _ in pairs}
         return _conversion_shares(pairs, conv.received_usdt())
     if expected_if_pending:
         return _conversion_shares(pairs, conv.expected_usdt())
     return {}
 
 
-def _apply_conversion_shares(db, conv):
-    """Разнести полученный USDT по сделкам поступлений пачки.
+def _apply_conversion_shares(db, conv, stand_origin=None):
+    """Recalculate this conversion only; distribute each hash's actual share."""
+    if stand_origin is None:
+        owned = db.query(PayinTxUse).filter(PayinTxUse.conversion_id == conv.id,
+            PayinTxUse.stand_generation.isnot(None)).first()
+        if owned:
+            stand_origin = (owned.stand_generation, owned.stand_cnv_id)
+    if stand_origin is None:
+        _clear_conversion_payin_uses(db, conv)
+    pairs = [(src.sber_income_id, src.amount_rub) for src in conv.sources]
+    for link in conv.txs:
+        shares = _stand_conversion_income_shares(db, conv, link.amount_usdt) if stand_origin else None
+        if shares is None:
+            shares = _conversion_shares(pairs, link.amount_usdt)
+        per_deal = {}
+        for sid, amount in shares.items():
+            _conversion_number(amount, 'Рассчитанная доля USDT')
+            inc = db.query(SberIncome).get(sid)
+            if inc and inc.claimed_deal_id:
+                per_deal[inc.claimed_deal_id] = round(per_deal.get(inc.claimed_deal_id, 0) + amount, 6)
+        tx = db.query(PayinTx).filter_by(id=link.payin_tx_id).with_for_update().one()
+        for deal_id, amount in per_deal.items():
+            if stand_origin:
+                use = _stand_consume_payin_reserve(db, tx, deal_id, amount, stand_origin)
+                use.conversion_id = conv.id
+            else:
+                use = db.query(PayinTxUse).filter_by(tx_id=tx.id, deal_id=deal_id).first()
+                if use:
+                    raise ValueError('Доля сделки уже относится к другому источнику')
+                db.add(PayinTxUse(tx_id=tx.id, deal_id=deal_id, amount_usdt=amount, conversion_id=conv.id))
+        db.flush()
+        from decimal import Decimal
+        if tx.source in ('tronscan', 'etherscan') and _payin_exact_used(db, tx) > Decimal(str(tx.amount_usdt)) + Decimal('0.005'):
+            raise ValueError('Нельзя разнести приход: ' + _payin_ledger_hint(_payin_ledger_info(db, tx)))
 
-    Одна сделка может забрать несколько поступлений — доли суммируются.
-    Поступление без сделки пропускается: конвертировать приход, у которого сделки
-    ещё нет, разрешено (порядок «приход → конвертация → USDT → сделка»).
-    """
-    _clear_conversion_payin_uses(db, conv)
-    shares = _conversion_shares(
-        [(src.sber_income_id, src.amount_rub) for src in conv.sources],
-        conv.received_usdt())
-    for share in shares.values():
-        _conversion_number(share, 'Рассчитанная доля USDT')
-    per_deal = {}
-    for sid, usdt in shares.items():
-        inc = db.query(SberIncome).get(sid)
-        if not inc or not inc.claimed_deal_id:
-            continue
-        per_deal[inc.claimed_deal_id] = round(per_deal.get(inc.claimed_deal_id, 0) + usdt, 4)
-    if not per_deal or not conv.txs:
-        return
-    # Доли вешаем на первый перевод пачки: брокер обычно шлёт одним, а при дроблении
-    # разбивка по переводам роли не играет — важна сумма, пришедшаяся на сделку.
-    tx_id = conv.txs[0].payin_tx_id
-    for deal_id, amount in per_deal.items():
-        db.add(PayinTxUse(tx_id=tx_id, deal_id=deal_id, amount_usdt=amount))
-    db.flush()
 
 
 def _income_conversion_usdt(db, income_ids):
@@ -13695,6 +14004,14 @@ def _auto_settle_conversion(db, conv):
     return settled
 
 
+def _stand_owns_conversion(db, conv_id):
+    if not STAND_MODE:
+        return False
+    row = db.query(StandState).filter_by(id=1).first()
+    return bool(row and any(c.get('crmConversionId') == conv_id
+                           for c in json.loads(row.data or '{}').get('convs') or []))
+
+
 @app.route('/api/conversions/<int:conv_id>/txs', methods=['POST'])
 def attach_conversion_tx(conv_id):
     """Привязать приход USDT к пачке и разнести доли по сделкам.
@@ -13704,6 +14021,8 @@ def attach_conversion_tx(conv_id):
     """
     db = get_session()
     try:
+        if _stand_owns_conversion(db, conv_id):
+            return jsonify(success=False, error='Эта пачка связана с задачником — измените приход в задачнике'), 409
         try:
             conv = db.query(Conversion).filter(Conversion.id == conv_id).with_for_update().first()
             if not conv:
@@ -13809,6 +14128,8 @@ def detach_conversion_tx(conv_id, tx_id):
     """
     db = get_session()
     try:
+        if _stand_owns_conversion(db, conv_id):
+            return jsonify(success=False, error='Эта пачка связана с задачником — измените приход в задачнике'), 409
         conv = db.query(Conversion).get(conv_id)
         if not conv:
             return jsonify({'success': False, 'error': 'not_found'}), 404
@@ -14259,6 +14580,8 @@ def update_conversion(conv_id):
     """
     db = get_session()
     try:
+        if _stand_owns_conversion(db, conv_id):
+            return jsonify(success=False, error='Эта пачка связана с задачником — измените приход в задачнике'), 409
         conv = db.query(Conversion).get(conv_id)
         if not conv:
             return jsonify({'success': False, 'error': 'not_found'}), 404
@@ -14285,6 +14608,8 @@ def delete_conversion(conv_id):
     """Удалить пачку — поступления возвращаются в несконвертированные."""
     db = get_session()
     try:
+        if _stand_owns_conversion(db, conv_id):
+            return jsonify(success=False, error='Эта пачка связана с задачником — измените приход в задачнике'), 409
         conv = db.query(Conversion).get(conv_id)
         if not conv:
             return jsonify({'success': False, 'error': 'not_found'}), 404
@@ -15127,7 +15452,7 @@ def _payin_tx_get_or_create(session, tx_hash, claim_usdt, part=None):
     network = _normalize_tx_network(part.get('network'))
     if network == 'unknown':
         raise ValueError('Выберите сеть прихода: TRC-20 или ERC-20')
-    tx = session.query(PayinTx).filter(PayinTx.tx_hash == tx_hash).with_for_update().first()
+    tx = _payin_find(session, tx_hash)
     if tx:
         existing_network = tx.network or 'trc20'
         if existing_network != network:
@@ -15177,18 +15502,21 @@ def _sync_payin_tx_uses(session, deal, parts):
     того, что пришло (допуск копейка). Превышение это двойной учёт: один и тот
     же приход попал бы в две сделки и раздул бы месяц.
     """
-    wanted = {p['hash']: p for p in (parts or []) if p.get('hash')}
+    if STAND_MODE and not session.info.get('stand_payin_origin'):
+        row = _stand_row(session, lock=True)
+        _stand_import_legacy_payins(session, row, json.loads(row.data or '{}'))
+    wanted = {_payin_hash_key(p['hash']): p for p in (parts or []) if p.get('hash')}
 
     # Снять доли, которых в сделке больше нет
     for use in session.query(PayinTxUse).filter(PayinTxUse.deal_id == deal.id).all():
         tx = session.query(PayinTx).get(use.tx_id)
-        if not tx or tx.tx_hash not in wanted:
+        if not tx or _payin_hash_key(tx.tx_hash) not in wanted:
             session.delete(use)
     session.flush()
 
     for tx_hash, part in wanted.items():
         claim = part.get('amount_usdt')
-        tx = _payin_tx_get_or_create(session, tx_hash, claim, part)
+        tx = _payin_tx_get_or_create(session, part['hash'], claim, part)
         use = session.query(PayinTxUse).filter(
             PayinTxUse.tx_id == tx.id, PayinTxUse.deal_id == deal.id).first()
         # Долю не указали — считаем, что сделка забирает остаток перевода
@@ -15196,6 +15524,10 @@ def _sync_payin_tx_uses(session, deal, parts):
         if share is None:
             share = round((tx.amount_usdt or 0) - tx.used_usdt()
                           + (use.amount_usdt if use else 0), 2)
+        origin = session.info.get('stand_payin_origin')
+        if origin and ('stand_payin_hashes' not in session.info or tx_hash in session.info['stand_payin_hashes']):
+            _stand_consume_payin_reserve(session, tx, deal.id, share, origin)
+            continue
         if use:
             use.amount_usdt = share
         else:
@@ -15203,7 +15535,9 @@ def _sync_payin_tx_uses(session, deal, parts):
             session.add(use)
         session.flush()
 
-        if tx.used_usdt() > (tx.amount_usdt or 0) + 0.01:
+        from decimal import Decimal
+        exact_used = _payin_exact_used(session, tx)
+        if exact_used > Decimal(str(tx.amount_usdt or 0)) + Decimal('0.005'):
             if tx.source not in ('tronscan', 'etherscan'):
                 # Сумму перевода мы не знаем: сеть молчала, и она равна первой
                 # заявленной доле. Отказывать по такому потолку нельзя — он

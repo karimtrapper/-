@@ -185,7 +185,8 @@ def test_main_sber_income_also_reaches_crm_without_small_exchange(sber_board):
         db.close()
 
 
-def test_received_batch_distributes_crm_deal_shares(sber_board):
+@pytest.mark.parametrize('ledger_share', [False, True])
+def test_received_batch_distributes_crm_deal_shares(sber_board, ledger_share):
     client, rows = sber_board
     before = client.get('/api/stand/state').json
     sent = client.put('/api/stand/state', json={'version': before['version'],
@@ -200,6 +201,13 @@ def test_received_batch_distributes_crm_deal_shares(sber_board):
         state = json.loads(stand.data)
         state['convs'][0]['txs'] = [{'hash': incoming_hash, 'net': 'TRC20',
                                     'amount': 647.65, 'status': 'confirmed'}]
+        if ledger_share:
+            tx = m.PayinTx(tx_hash=incoming_hash, amount_usdt=1000, source='tronscan')
+            db.add(tx); db.flush()
+            use = m.PayinTxUse(tx_id=tx.id, stand_generation=stand.generation,
+                              stand_cnv_id='1', amount_usdt=647.65)
+            db.add(use); db.flush()
+            state['convs'][0]['txs'][0].update(ledgerUseId=use.id, verifiedAmount=1000)
         stand.data = json.dumps(state, ensure_ascii=False)
         stand.version += 1
         db.commit()
@@ -219,10 +227,15 @@ def test_received_batch_distributes_crm_deal_shares(sber_board):
         assert crm.received_usdt() == 647.65
         tx = db.query(m.PayinTx).filter_by(tx_hash=incoming_hash).first()
         uses = {u.deal_id: u.amount_usdt for u in db.query(m.PayinTxUse).filter_by(tx_id=tx.id)}
-        assert uses[rows[1]['claimed']] == 199.28
+        assert uses[rows[1]['claimed']] == (199.27 if ledger_share else 199.28)
         assert uses[rows[2]['claimed']] == 298.91
-        assert db.query(m.Deal).get(rows[1]['claimed']).payin_amount_usdt == 199.28
+        assert db.query(m.Deal).get(rows[1]['claimed']).payin_amount_usdt == (199.27 if ledger_share else 199.28)
         assert db.query(m.Deal).get(rows[2]['claimed']).payin_amount_usdt == 298.91
         assert rows[3]['claimed'] is None
+        if ledger_share:
+            assert tx.free_usdt() == 352.35
+            assert uses[None] == 149.47
+            m._apply_conversion_shares(db, crm)
+            assert tx.free_usdt() == 352.35
     finally:
         db.close()
