@@ -21,8 +21,7 @@ const ctx = {
 vm.createContext(ctx);
 vm.runInContext(code, ctx);
 const block = ctx.assigneeBlock({id: 1485, assigneeAdminId: 1}, 'manager');
-assert.match(block, /Забрать себе/);
-assert.match(block, /onclick="takeAssignee\(1485\)"/);
+assert.equal(block, '', 'назначение шага не показывается в новой карточке задачи');
 ctx.takeAssignee(1485).then(() => {
   assert.equal(calls.length, 1);
   assert.equal(calls[0].path, '/api/stand/assignee/take');

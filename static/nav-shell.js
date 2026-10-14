@@ -26,11 +26,35 @@
     const name = esc(state.name || 'Пользователь');
     const role = esc(labels[state.role] || state.role);
     const initial = esc((state.name || '?').trim().charAt(0).toUpperCase());
-    return `<details class="site-shell-profile"><summary aria-label="Профиль: ${name} · ${role}"><span class="site-shell-avatar">${initial}</span><span class="site-shell-profile-name">${name} · ${role}</span>${svg('down')}</summary><div class="site-shell-menu">${state.page === 'tasks' ? '<div class="site-shell-menu-title">Курсы</div><div data-shell-market></div>' : ''}${state.role === 'admin' && state.page === 'tasks' ? '<div class="site-shell-menu-title">Смотреть как…</div><div data-shell-roles></div><div data-shell-admin-tools></div><div data-shell-build></div>' : ''}<a href="/docs/instruction.html" target="_blank" rel="noopener">Инструкция</a><button type="button" data-shell-logout>Выйти</button></div></details>`;
+    return `<details class="site-shell-profile"><summary aria-label="Профиль: ${name} · ${role}"><span class="site-shell-avatar">${initial}</span><span class="site-shell-profile-name">${name} · ${role}</span>${svg('down')}</summary><div class="site-shell-menu">${state.role === 'admin' && state.page === 'tasks' ? '<div class="site-shell-menu-title">Смотреть как…</div><div data-shell-roles></div><div data-shell-admin-tools></div>' : ''}<a href="/docs/instruction.html" target="_blank" rel="noopener">Инструкция</a><button type="button" data-shell-logout>Выйти</button></div></details>`;
   }
 
   function bell() {
     return `<span class="site-shell-bell" data-shell-bell><a href="/tasks?notifications=1" aria-label="Уведомления" style="color:inherit;display:inline-flex;padding:6px">${svg('bell')}</a></span>`;
+  }
+  const sections = [
+    ['tasks','Задачник','/tasks'],['deals','Сделки','/crm?section=deals'],
+    ['documents','Документы','/crm?section=documents'],['closing','Закрытие','/crm?section=closing'],
+    ['exchangers','Обменники','/crm?section=exchangers'],['balance','Баланс','/crm?section=balance'],
+    ['incomes','Поступления','/crm?section=incomes'],['conversions','Конвертации','/crm?section=conversions'],
+    ['reimbursements','Возмещения','/crm?section=reimbursements'],['transactions','Транзакции','/crm?section=transactions'],
+    ['managers','Менеджеры','/crm?section=managers'],['verification','Сверка','/crm?section=verification'],
+    ['kyc','KYC','/crm?section=kyc'],['partners','Партнёры','/crm?section=partners'],
+    ['referrers','Рефереры','/crm?section=referrers'],['payoutRequests','Заявки на выплату','/crm?section=payoutRequests'],
+    ['admins','Сотрудники','/crm?section=admins'],['analytics','Аналитика','/tasks?section=analytics']
+  ];
+  function sectionNav() {
+    return `<nav class="site-shell-sections" aria-label="Разделы работы"><button type="button" class="site-shell-scroll" data-shell-scroll="-1" aria-label="Предыдущие разделы">‹</button><div class="site-shell-section-list">${sections.map(([key,label,href])=>`<a href="${href}" data-shell-section="${key}">${label}</a>`).join('')}</div><button type="button" class="site-shell-scroll" data-shell-scroll="1" aria-label="Следующие разделы">›</button></nav>`;
+  }
+  function activateSection(key) {
+    const nav=document.querySelector('.site-shell-sections');
+    if (!nav) return;
+    nav.querySelectorAll('[data-shell-section]').forEach(link=>{
+      const active=link.dataset.shellSection===key;
+      link.classList.toggle('on',active);
+      if (active) { link.setAttribute('aria-current','page');link.scrollIntoView({block:'nearest',inline:'nearest'}); }
+      else link.removeAttribute('aria-current');
+    });
   }
 
   function mount(options) {
@@ -57,23 +81,31 @@
     bottom.setAttribute('aria-label','Разделы');
     bottom.style.setProperty('--shell-columns',panelRoles.has(state.role) ? 4 : 3);
     bottom.innerHTML = links(true);
-    document.body.prepend(top,mobile);
+    const strip=document.createElement('div');
+    strip.innerHTML=sectionNav();
+    document.body.prepend(top,mobile,strip.firstElementChild);
     document.body.append(bottom);
+    document.querySelectorAll('[data-shell-scroll]').forEach(button=>button.addEventListener('click',()=>{
+      document.querySelector('.site-shell-section-list').scrollBy({left:Number(button.dataset.shellScroll)*320,behavior:'smooth'});
+    }));
+    document.querySelectorAll('[data-shell-section]').forEach(link=>link.addEventListener('click',event=>{
+      const section=link.dataset.shellSection;
+      if (state.page==='crm' && section!=='tasks' && section!=='analytics' && typeof showSection==='function') {
+        event.preventDefault();showSection(section);history.replaceState(null,'','/crm?section='+encodeURIComponent(section));activateSection(section);
+      } else if(state.page==='tasks' && section==='tasks' && typeof setTab==='function') {
+        event.preventDefault();setTab('tasks');history.replaceState(null,'','/tasks');activateSection('tasks');
+      } else if(state.page==='tasks' && section==='analytics' && typeof setTab==='function') {
+        event.preventDefault();setTab('analytics');history.replaceState(null,'','/tasks?section=analytics');activateSection('analytics');
+      }
+    }));
+    activateSection(state.section || (state.page==='tasks'?'tasks':state.page==='crm'?'deals':state.active));
     if (state.page === 'tasks') {
       const roles = document.getElementById('roles');
       const tools = document.getElementById('admintools');
       const taskBell = document.getElementById('bell');
-      const market = document.getElementById('market');
-      if (market) top.querySelector('[data-shell-market]').append(market);
       if (state.role === 'admin') {
         top.querySelector('[data-shell-roles]').append(roles);
         top.querySelector('[data-shell-admin-tools]').append(tools);
-        const build=document.querySelector('.proto .build');
-        if (build) {
-          top.querySelector('[data-shell-build]').append(build);
-          mobile.querySelector('[data-shell-build]').innerHTML=build.outerHTML;
-        }
-        // Only one live role switcher is needed; CSS shows this profile on desktop.
       }
       if (taskBell) {
         top.querySelector('[data-shell-bell]').replaceChildren(taskBell);
@@ -88,6 +120,11 @@
   function update(changes) {
     if (!state) return;
     Object.assign(state,changes);
+    if (changes.section) activateSection(changes.section);
+    if (state.page === 'tasks' && changes.section) {
+      const title=document.querySelector('.site-shell-mobile-head>span');
+      if (title) title.textContent=changes.section==='analytics'?'Аналитика':'Задачник';
+    }
     document.body.classList.toggle('nav-shell-panel',state.active === 'panel');
     if (state.page === 'tasks' && state.role === 'admin') {
       const source=document.getElementById('roles');
@@ -101,9 +138,6 @@
       const desktopBell=document.getElementById('bell');
       const mobileBell=document.querySelector('.site-shell-mobile-head [data-shell-bell]');
       if (desktopBell && mobileBell) mobileBell.innerHTML=desktopBell.innerHTML;
-      const market=document.getElementById('market');
-      const mobileMarket=document.querySelector('.site-shell-mobile-head [data-shell-market]');
-      if (market && mobileMarket) mobileMarket.innerHTML=market.innerHTML;
     } else {
       document.querySelectorAll('[data-shell-bell]').forEach(bell => {
         const link=bell.querySelector('a');
@@ -142,7 +176,7 @@
       mount({stand:true,page,active,role,name:data.user.display_name || data.user.username,count:0});
       if (page === 'crm') {
         // /panel opens the existing CRM dashboard. /crm is the operational CRM.
-        if (typeof showSection === 'function') showSection(active === 'panel' ? 'dashboard' : 'deals');
+        if (typeof showSection === 'function') showSection(new URLSearchParams(location.search).get('section') || (active === 'panel' ? 'dashboard' : 'deals'));
       }
       try {
         const countResponse=await fetch('/api/stand/nav-count',{credentials:'same-origin'});

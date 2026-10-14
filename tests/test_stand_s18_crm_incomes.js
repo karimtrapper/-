@@ -45,13 +45,14 @@ vm.runInContext(`s18Candidates=${JSON.stringify(ctx.s18Candidates)};s18Selected=
 let rendered = vm.runInContext('stepS18()', ctx);
 assert.match(rendered, /Сделка #42 · Обмен/);
 assert.match(rendered, /Поступление без сделки/);
-assert.match(rendered, /35[\s\u00a0]*000/);
+assert.match(rendered, /Состав пачки · 3 поступл\./);
+assert.match(rendered, /Отметьте поступления для этого перевода/);
 assert.match(rendered, /Сделки CRM/);
 assert.match(rendered, /12\.10, 12:00/);
 assert.match(rendered, /Ориентировочная прибыль по сделкам с известными обязательствами/);
 assert.match(rendered, /Фикс 40 ₽ за поручение делится по долям/);
-assert.match(rendered, /Ждём USDT<\/div><div class="value num">≈ [^<]+ USDT<\/div>/);
-assert.match(rendered, /Ждём примерно[^]*?value="≈ [^"]+ USDT"/);
+assert.match(rendered, /<details class="deal-detail s18-detail"><summary>Удержания/);
+assert.doesNotMatch(rendered, /Объём обмена<\/label><input/);
 assert.match(rendered, /Период с <span class="sub2">дд\.мм\.гггг<\/span>/);
 assert.match(html, /\.s18-batch-summary\{[^}]*background:#fff/);
 assert.match(rendered, /прибыль не считаем — сделки нет/);
@@ -92,11 +93,12 @@ main.manualBankReceipt = {bank: 'БАНК СГБ', account: '4080781081900000026
 incomes[0] = {id: 'manual:1', source: 'manual_confirmed', dealId: 100,
   rub: 10000, grossRub: 10000};
 rendered = vm.runInContext('stepS18()', ctx);
-assert.match(rendered, /поступления Сбера сюда не добавить/);
+assert.match(rendered, /СД-100 · Клиент/);
+assert.doesNotMatch(rendered, /поступления Сбера сюда не добавить|Первая строка|Отметьте поступления/);
 assert.doesNotMatch(rendered, /Сделка #42|Поступление без сделки/);
 main.manualBankReceipt = {bank: 'Банк клиента', account: '40702810123456789012'};
 rendered = vm.runInContext('stepS18()', ctx);
-assert.match(rendered, /Банк клиента · 40702810123456789012/);
+assert.doesNotMatch(rendered, /Банк клиента · 40702810123456789012|Отметьте поступления/);
 assert.doesNotMatch(rendered, /Сделка #42|Поступление без сделки/);
 incomes[0] = {id: 'sber:main', source: 'sber', dealId: 100, rub: 9930,
   grossRub: 10000};

@@ -47,8 +47,8 @@ vm.runInContext('syncWalletRegistry()', ctx);
 const html_out = vm.runInContext("walletCards({id:5}, null, 'walletPick', false, 'b2w_5')", ctx);
 
 assert.match(html_out, /<select/, 'рендерится select, а не карточки');
-assert.match(html_out, /TAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA · TRC-20 · Ира/, 'формат «адрес · сеть · владелец»');
-assert.match(html_out, /TBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB · TRC-20 · компания · мультисиг/, 'мультисиг отмечен в опции');
+assert.match(html_out, /<option[^>]*>\s*TAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA<\/option>/, 'в опции только адрес');
+assert.match(html_out, /<option[^>]*>\s*TBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB<\/option>/, 'длинная подпись не ломает select');
 assert.ok(!html_out.includes('invalid-address'), 'кошелёк без корректного TRC-20 адреса не предлагается');
 
 console.log('T34 wallet dropdown OK');
@@ -56,3 +56,4 @@ console.log('T34 wallet dropdown OK');
 const selected=vm.runInContext("walletCards({id:5},walletById('vitaly'),'walletPick',false,'wallet')",ctx);
 assert.equal([...selected.matchAll(/<option[^>]*>([\s\S]*?)<\/option>/g)].filter(m=>m[1].includes('TKkeEV')).length,1,'Один адрес — одна опция');
 assert.match(selected, /value="vitaly" selected/,'Сохранённый alias остаётся выбранным');
+assert.match(selected, /компания · /,'владелец показан под выбранным адресом');

@@ -18,7 +18,7 @@ body.nav-shell-tasks .task-list { --task-list-shadow:0 1px 3px rgba(15,23,42,.05
 .task-list-row-main strong { display:block;font-size:16px;font-weight:600;line-height:1.4; }
 .task-list-meta { display:block;margin-top:4px;color:var(--navy-600);font-size:12px;line-height:1.45; }
 .task-list-amount { color:var(--navy-900);font-size:16px;font-weight:600;white-space:nowrap; }
-.task-list-arrow { color:var(--navy-400);font-size:16px;line-height:1; }
+.task-list-arrow { color:var(--navy-600);font-size:16px;line-height:1; }
 .task-list-person { display:flex;align-items:center;gap:8px;padding:12px 24px 8px;border-top:1px solid var(--border-light);font-size:14px;font-weight:600; }
 .task-list-avatar { display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:50%;background:var(--navy-100);color:var(--navy-600);font-size:12px; }
 .task-list-person-count { color:var(--navy-500);font-weight:400; }
@@ -28,7 +28,33 @@ body.nav-shell-tasks .task-list { --task-list-shadow:0 1px 3px rgba(15,23,42,.05
 .task-list-pending { border-color:var(--navy-200);box-shadow:var(--task-list-shadow); }
 .task-list-pending .btn-primary { background:var(--navy-900);color:var(--bg); }
 .task-list-pending .btn-primary:hover { background:var(--navy-700); }
-.task-list-seg { display:none; }
+.task-list-seg { display:none;justify-content:flex-end;margin-bottom:12px; }
+.task-list-seg button { min-height:44px;padding:0 12px;border:1px solid var(--navy-200);border-radius:8px;background:var(--bg);color:var(--navy-700);font:600 14px Inter,system-ui,sans-serif;cursor:pointer; }
+.task-list-seg button.on { background:var(--navy-900);color:var(--bg); }
+.task-list-seg button:not([data-section="all"]) { display:none; }
+.task-list-all { grid-column:1/-1;display:block; }
+.task-list-all-toggle { width:100%;min-height:44px;border:0;background:var(--bg);color:var(--navy-900);text-align:left;cursor:pointer;justify-content:space-between; }
+.task-list-all-toggle:hover { background:var(--navy-100); }
+.task-list-all-toggle:focus-visible { outline:2px solid var(--coral);outline-offset:-2px; }
+.task-list-all-content { display:none; }
+.task-list-all.on .task-list-all-content { display:block; }
+.task-list-cols:has(.task-list-all.on)>.task-list-panel:not(.task-list-all) { display:none; }
+.task-list-filters { display:flex;gap:8px;padding:8px 24px 16px;flex-wrap:wrap; }
+.task-list-filters button { min-height:44px;padding:0 12px;border:1px solid var(--navy-200);border-radius:8px;background:var(--bg);color:var(--navy-600);font:600 14px Inter,system-ui,sans-serif;cursor:pointer; }
+.task-list-filters button.on { background:var(--navy-900);color:var(--bg); }
+.task-deals-heading,.task-deal-row { display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,.8fr) minmax(0,1.4fr) minmax(0,.7fr) auto minmax(0,.65fr);gap:12px;align-items:center; }
+.task-deals-heading { padding:8px 24px;color:var(--navy-600);font-size:12px; }
+.task-deal-row { width:100%;min-height:calc(44px + var(--ds-xl));padding:12px 24px;border:0;border-top:1px solid var(--navy-200);background:var(--bg);color:var(--navy-900);text-align:left;cursor:pointer;font:400 14px Inter,system-ui,sans-serif; }
+.task-deal-row:hover { background:var(--navy-100); }
+.task-deal-row strong,.task-deal-row small { display:block; }
+.task-deal-row small { color:var(--navy-600);font-size:12px; }
+.task-deal-row b { white-space:nowrap; }
+.task-deal-progress { display:flex;gap:4px;margin-top:8px; }
+.task-deal-progress i { flex:1;max-width:10px;height:4px;background:var(--navy-200); }
+.task-deal-progress i.done { background:var(--navy-600); }
+.task-deal-progress i.current { background:var(--navy-900); }
+.task-deal-since { color:var(--navy-600);font-size:12px; }
+.task-deal-row:focus-visible,.task-list-filters button:focus-visible { outline:2px solid var(--coral);outline-offset:2px; }
 @media(max-width:700px){
   body.nav-shell-tasks .container:has(.task-list) { padding:16px 16px calc(110px + env(safe-area-inset-bottom)); }
   body.nav-shell-tasks .container:has(.task-list-create-bar) { padding-bottom:calc(150px + env(safe-area-inset-bottom)); }
@@ -36,12 +62,16 @@ body.nav-shell-tasks .task-list { --task-list-shadow:0 1px 3px rgba(15,23,42,.05
   .task-list-head h1 { display:none; }
   .task-list-create-bar { position:fixed;left:0;right:0;bottom:calc(61px + env(safe-area-inset-bottom));z-index:219;margin:0;padding:12px 16px;background:rgba(255,255,255,.97);border-top:1px solid var(--navy-200);backdrop-filter:blur(10px); }
   .task-list .task-list-create { width:100%;min-height:50px;font-size:16px; }
-  .task-list-seg { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px;padding:4px;margin-bottom:12px;border-radius:8px;background:var(--navy-100); }
+  .task-list-seg { display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;padding:4px;margin-bottom:12px;border-radius:8px;background:var(--navy-100); }
+  .task-list-seg button:not([data-section="all"]) { display:flex; }
   .task-list-seg button { display:flex;align-items:center;justify-content:center;gap:8px;min-width:0;min-height:44px;padding:4px 8px;border:0;border-radius:8px;background:transparent;color:var(--navy-600);font-family:inherit;font-size:14px;font-weight:600;cursor:pointer;white-space:nowrap; }
   .task-list-seg button.on { background:var(--bg);color:var(--navy-900);box-shadow:var(--task-list-shadow); }
   .task-list-cols { display:block; }
   .task-list-panel { display:none; }
   .task-list-panel.on { display:block; }
+  .task-list-all { display:none; }
+  .task-list-all.on { display:block; }
+  .task-list-all-toggle { display:none; }
   .task-list-panel-head { display:none; }
   .task-list-row { grid-template-columns:minmax(0,1fr);gap:0;padding:12px 16px;min-height:68px; }
   .task-list-row-main strong { font-size:16px; }
@@ -51,4 +81,13 @@ body.nav-shell-tasks .task-list { --task-list-shadow:0 1px 3px rgba(15,23,42,.05
   .task-list-person { padding:12px 16px 8px; }
   .task-list-wait-row { padding-left:16px; }
   .task-list-empty { padding:16px; }
+  .task-list-filters { padding:8px 16px; }
+  .task-deals-heading { display:none; }
+  .task-deal-row { grid-template-columns:minmax(0,1fr) auto;gap:8px;padding:12px 16px; }
+  .task-deal-name { grid-column:1;grid-row:1; }
+  .task-deal-amount { grid-column:2;grid-row:1; }
+  .task-deal-flow { grid-column:1;grid-row:2;color:var(--navy-600); }
+  .task-deal-stage { grid-column:1/-1;grid-row:3; }
+  .task-deal-who { grid-column:1;grid-row:4;color:var(--navy-600); }
+  .task-deal-since { grid-column:2;grid-row:4;text-align:right; }
 }

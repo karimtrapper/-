@@ -640,6 +640,18 @@ a.hash:hover{background:#BAE6FD}
 .deal-screen .branch-tabs button.on{background:var(--ds-surface);color:var(--ds-ink)}
 .deal-screen .vtabs{margin:0 0 var(--ds-md)}
 .deal-screen .vtab{border-radius:var(--ds-control);font-size:var(--ds-body);min-height:44px;display:inline-flex;align-items:center}
+.deal-screen .vtab{gap:var(--ds-xs)}
+.deal-screen .addr-value .btn,.deal-screen .wallet-address-line .btn{font-family:Inter,system-ui,sans-serif!important}
+.deal-screen .wallet-address-line{display:flex;align-items:center;gap:var(--ds-sm);margin-top:var(--ds-sm);min-width:0}
+.deal-screen .wallet-address-line .addr{flex:1;min-width:0;overflow-x:auto;text-overflow:clip;white-space:nowrap}
+.deal-screen .wallet-address-line .btn{flex:none}
+.deal-screen .s18-detail,.deal-screen .s23-action-fields>details{border:1px solid var(--ds-border);border-radius:var(--ds-control);padding:0 var(--ds-md);margin:var(--ds-md) 0}
+.deal-screen .s18-detail summary,.deal-screen .s23-action-fields>details summary{font-weight:var(--ds-semibold)!important}
+.analytics-view .stat-card{border-left:1px solid var(--ds-border)!important}
+.analytics-view .page-h{font-size:var(--ds-display);font-weight:var(--ds-bold)}
+.analytics-view .stat-value{font-size:var(--ds-display);font-weight:var(--ds-bold);color:var(--ds-ink)!important}
+.analytics-view .stat-label{font-size:var(--ds-body);font-weight:var(--ds-regular);color:var(--navy-600)}
+.analytics-view th{font-size:var(--ds-body);text-transform:none;letter-spacing:normal;color:var(--navy-700)}
 .deal-screen .task-action{background:var(--ds-surface);border:1px solid var(--ds-border);border-radius:var(--ds-card);padding:var(--ds-xl);margin-bottom:var(--ds-md)}
 .deal-screen .task-action>.card{border:0;box-shadow:none;padding:0;margin:0 0 var(--ds-lg)}
 .deal-screen .task-action>.card:last-child{margin-bottom:0}
@@ -651,7 +663,7 @@ a.hash:hover{background:#BAE6FD}
 .deal-screen .task-action .goalnums .v{font-size:var(--ds-emphasis)!important;font-weight:var(--ds-semibold)!important;overflow:hidden}
 .deal-screen .task-action .goalnums .v.big{font-size:var(--ds-display)!important;font-weight:var(--ds-bold)!important}
 .deal-screen .task-action .goalnums .addr-value{display:flex;flex-direction:column;align-items:flex-start;font:var(--ds-regular) var(--ds-body) ui-monospace,SFMono-Regular,Menlo,monospace!important;white-space:nowrap}
-.deal-screen .addr-value>span{max-width:100%;overflow:hidden;text-overflow:ellipsis;cursor:pointer}
+.deal-screen .addr-value>span{max-width:100%;overflow-x:auto;text-overflow:clip;cursor:pointer;scrollbar-width:thin}
 .deal-screen .addr-value>span.full,.deal-screen .tx-hash.full{overflow-x:auto;text-overflow:clip}
 .deal-screen .addr-value .btn{margin-top:var(--ds-xs)}
 .deal-screen .prepay-notice{background:var(--ds-decision);border:1px solid var(--ds-decision-border);color:var(--ds-decision-ink)!important;padding:var(--ds-sm) var(--ds-md);border-radius:var(--ds-control);font-size:var(--ds-body)!important;margin-bottom:var(--ds-lg)}
@@ -709,7 +721,9 @@ a.hash:hover{background:#BAE6FD}
   .deal-screen .task-action .goalnums>div:first-child{grid-column:auto}
   .deal-screen .task-action .deal-main-button{position:fixed;left:var(--ds-lg);right:var(--ds-lg);bottom:calc(var(--ds-md) + env(safe-area-inset-bottom));width:calc(100% - 2 * var(--ds-lg));min-height:50px;z-index:100}
   .deal-screen .fr{grid-template-columns:minmax(0,1fr)}
-  .deal-screen{padding-bottom:calc(50px + var(--ds-xl) + env(safe-area-inset-bottom))}
+  .deal-screen{padding-bottom:calc(50px + var(--ds-xl) + var(--ds-xl) + env(safe-area-inset-bottom))}
+  .container:has(.deal-screen){padding-bottom:0}
+  .deal-screen .vtabs .lg{display:none}
   body.deal-task-mode::after{content:"";position:fixed;left:0;right:0;bottom:0;height:calc(50px + var(--ds-xl) + env(safe-area-inset-bottom));background:var(--ds-glass);backdrop-filter:blur(10px);pointer-events:none;z-index:99}
 }
 body.deal-task-mode .proto,body.deal-task-mode .nav{display:none}
@@ -770,17 +784,15 @@ body.deal-task-mode .top-nav .who{border:0;color:var(--navy-300);font-size:var(-
   .task-grid .waiting-section .li>button{grid-column:2;justify-self:start}
   .task-grid.mine-empty .waiting-section{order:-1}}
 </style>
-<link rel="stylesheet" href="/static/nav-shell.css?v=3">
-<link rel="stylesheet" href="/static/task-list.css?v=3">
+<link rel="stylesheet" href="/static/nav-shell.css?v=4">
+<link rel="stylesheet" href="/static/task-list.css?v=4">
 </head>
 <body>
 
 <div class="proto">
   <span class="lab">Тестовый стенд · роль</span>
-  <span class="build" title="Если тут старое время — страница из кэша, обновите Cmd+Shift+R">сборка 28.09 23:20 · форма CRM в задачнике, T24 деньги, дубли хешей</span>
   <span id="roles"></span>
   <span id="bell"></span>
-  <span id="market"></span>
   <span class="spacer"></span>
   <span id="admintools"></span>
 </div>
@@ -794,13 +806,13 @@ body.deal-task-mode .top-nav .who{border:0;color:var(--navy-300);font-size:var(-
 </nav>
 <nav class="nav"><div class="nav-tabs" id="tabs"></div></nav>
 
-<div class="container" id="app"></div>
+<div class="container" id="app"><div class="card">Загружаем задачи…</div></div>
 <div class="toast" id="toast"></div>
 
 <script src="/tasks/screens-data.js?v=2609241212"></script>
 <script src="/tasks/crm-draft-core.js?v=1"></script>
 <script src="/tasks/crm-draft-adapter.js?v=1"></script>
-<script src="/static/nav-shell.js?v=4"></script>
+<script src="/static/nav-shell.js?v=5"></script>
 <script>
 const KEY='grusha_proto_v2';
 /* ===== Стенд: состояние общее, лежит на сервере =====
@@ -811,7 +823,7 @@ const KEY='grusha_proto_v2';
 const STAND=true;
 const STAND_SHARED=['deals','convs','seq','cseq','notes','incomes','cps','cpChats',
                     'wallets','refs','clients','bal','txpool','avg','avgU','chatClientMap'];
-let standVer=null, standPush=null, standBusy=false, standSaveScheduled=false,
+let standVer=null, standPush=null, standBusy=false, standSaveScheduled=false, standLoadError=false,
     standClosing=false, standMe=null, standMeId=null, STAND_EMPLOYEES=[];
 let standLastSaveResult={ok:true};
 let standDemoEnabled=false;
@@ -939,7 +951,9 @@ async function standPull(force){
   try{
     const r=await fetch('/api/stand/state',{credentials:'same-origin'});
     if(r.status===401){location.href='/login';return;}
-    const j=await r.json(); if(!j.success)return;
+    if(r.status>=400)throw new Error('stand_state_unavailable');
+    const j=await r.json(); if(!j.success)throw new Error('stand_state_unavailable');
+    standLoadError=false;
     standDemoEnabled=j.demoEnabled===true;
     if(standBusy||standPush||standSaveScheduled||standClosing)return;
     /* GET мог начаться до PUT, а вернуться уже после его завершения. Такой
@@ -954,7 +968,7 @@ async function standPull(force){
        затрётся на полуслове. Догоним на следующем тике. */
     if(standTyping()&&!force)return;
     standVer=j.version; standBase=standClone(j.data); standApply(j.data); render();
-  }catch(e){}
+  }catch(e){if(standVer===null){standLoadError=true;render();}}
 }
 async function standSave(){
   standSaveScheduled=false;
@@ -2126,11 +2140,11 @@ function walletCards(d,cur,fn,disabled,name,choices){
       onchange="${fn}(${d.id},this.value)">
     ${!cur?`<option value="">— выберите кошелёк —</option>`:''}
     ${list.map(w=>`<option value="${htmlText(w.id)}"${cur&&String(cur.id)===String(w.id)?' selected':''}>
-      ${walletOptionText(w)}</option>`).join('')}
+      ${htmlText(w.addr)}</option>`).join('')}
   </select>${!disabled?walletBlock(d,name):''}
-  ${cur?`<p class="fh" style="margin-top:6px">${walletSends(cur)}
-    <button type="button" class="btn btn-outline btn-sm" style="white-space:nowrap;margin-left:8px"
-      onclick="copyAsk(${htmlText(JSON.stringify(cur.addr))})">копировать</button></p>`:''}`;
+  ${cur?`<div class="wallet-address-line"><span class="addr" title="${htmlText(cur.addr)}">${htmlText(cur.addr)}</span>
+    <button type="button" class="btn btn-outline btn-sm" onclick="copyAsk(${htmlText(JSON.stringify(cur.addr))})">Копировать адрес</button></div>
+    <p class="fh">${htmlText(cur.owner||'Владелец')} · ${walletSends(cur)}</p>`:''}`;
 }
 /* Куда брокер прислал USDT — кошелёк пачки, а не всегда общий кошелёк Груши */
 function cnvTo(c){
@@ -2585,6 +2599,10 @@ function sendHead(d){
   if(!l.length) return 'Отправлять с кошелька нечего';
   const m=l.find(x=>x.id===d.id)||l[0];
   return sendPurpose(m)+(l.length>1?' · и ещё '+(l.length-1)+' '+plural(l.length-1,'перевод','перевода','переводов')+' по пачке':'');
+}
+function sendActionHead(d){
+  const target=d.postConv==='ipps_swift'?'в IPPS':d.postConv==='coins'?'в Coins':d.postConv==='client'?'клиенту':'по адресу';
+  return 'Отправьте USDT '+target;
 }
 /* Кому принадлежит адрес получателя: «Coins.co.th · TRC-20» */
 function sendTo(x){return ((x.transfer||{}).to||pcDefaultTo(x.postConv,x)||'получатель')+' · '+pcNet(x);}
@@ -4702,41 +4720,17 @@ function render(){
   /* На стенде роль даёт логин. Переключатель оставлен админу — Кариму нужно
      смотреть чужими глазами, остальным подменять себя незачем. */
   const canSwitch=!STAND||standMe==='admin';
+  document.getElementById('roles').innerHTML=canSwitch?Object.keys(ROLES).map(r=>{
+    const c=myTasks(r).length;
+    return `<button class="rolebtn ${S.role===r?'on':''}" onclick="setRole('${r}')">${ROLES[r].t}${c?`<span class="c">${c}</span>`:''}</button>`;
+  }).join(' '):`<button class="rolebtn on">${ROLES[S.role].t}${myTasks(S.role).length?`<span class="c">${myTasks(S.role).length}</span>`:''}</button>`;
   /* Сброс доски и засев примеров общие для всех — их прячем от коллег,
      иначе один человек посреди прогона снесёт работу остальным. */
   const at=document.getElementById('admintools');
   if(at) at.innerHTML=canSwitchRole()
     ? `<button class="ghost" onclick="refsSync()">Рефереры из базы</button> <button class="ghost" onclick="resetAll()">Сбросить всё</button>` : '';
-  document.getElementById('roles').innerHTML=canSwitch?Object.keys(ROLES).map(r=>{
-    const c=myTasks(r).length;
-    return `<button class="rolebtn ${S.role===r?'on':''}" onclick="setRole('${r}')">${ROLES[r].t}${c?`<span class="c">${c}</span>`:''}</button>`;
-  }).join(' '):`<button class="rolebtn on">${ROLES[S.role].t}${myTasks(S.role).length?`<span class="c">${myTasks(S.role).length}</span>`:''}</button>`;
-  const refDebt=refs().reduce((s,r)=>s+refStat(r).pending,0);
-  /* Навигация — та же, что в работающей CRM (crm.html, nav-tab data-section).
-     Задачник добавлен первым: он и есть то, что мы прототипируем, остальное — как было. */
-  const tabs=[['tasks','Задачник',myTasks(S.role).length],
-    ['deals','Сделки',0],
-    ['documents','Документы',0],
-    ['closing','Закрытие',0],
-    ['exchangers','Обменники',0],
-    ['balance','Баланс',0],
-    ['income','Поступления',incomes().filter(x=>!x.excluded&&!x.cnvId).length],
-    ['convs','Конвертации',(S.convs||[]).filter(c=>c.status!=='received').length],
-    ['reimb','Возмещения',0],
-    ['transactions','Транзакции',0],
-    ['managers','Менеджеры',0],
-    ['verification','Сверка',0],
-    ['kyc','KYC',0],
-    ['partners','Партнёры',0],
-    ['refs','Рефереры',refs().filter(r=>refStat(r).pending>0).length],
-    ['payouts','Заявки на выплату',0],
-    ['admins','Админы',0],
-    ['analytics','Аналитика',0]];
   document.getElementById('bell').innerHTML=bellHtml();
-  document.getElementById('market').innerHTML=marketWidget();
-  if(window.NavShell) NavShell.update({count:myTasks(S.role).length});
-  document.getElementById('tabs').innerHTML=tabs.map(([k,t,c])=>
-    `<button class="nav-tab ${S.tab===k?'active':''}" onclick="setTab('${k}')">${t}${c?`<span class="cnt">${c}</span>`:''}</button>`).join('');
+  if(window.NavShell) NavShell.update({count:myTasks(S.role).length,viewRole:S.role,section:S.tab==='analytics'?'analytics':'tasks',active:S.tab==='analytics'?'crm':'tasks'});
   const app=document.getElementById('app');
   let main;
   if(S.edit)main=viewEdit();                       /* правка — отдельный экран, как в CRM */
@@ -4762,13 +4756,14 @@ function polishDealActions(){
     button.classList.toggle('deal-secondary-button',button!==main);
   });
 }
-function setRole(r){S.role=r;S.open=null;S.draft=null;S.modal=null;S.tab='tasks';save();render();}
-function setTab(t){S.tab=t;S.open=null;S.draft=null;S.modal=null;save();render();}
-function openDeal(id){S.open=id;S.view='deal';save();render();}
-function openTask(id,branch){S.open=id;S.view='task';S.taskBranch=branch||null;save();render();}
-function setInspectRole(role){S.inspectRole=role;save();render();}
-function setView(v){S.view=v;save();render();}
-function back(){S.open=null;S.draft=null;save();render();}
+function saveUi(){if(!STAND)save();}
+function setRole(r){S.role=r;S.draft=null;S.modal=null;S.tab='tasks';saveUi();render();}
+function setTab(t){S.tab=t;S.open=null;S.draft=null;S.modal=null;saveUi();render();}
+function openDeal(id){S.open=id;S.view='deal';saveUi();render();}
+function openTask(id,branch){S.open=id;S.view='task';S.taskBranch=branch||null;saveUi();render();}
+function setInspectRole(role){S.inspectRole=role;saveUi();render();}
+function setView(v){S.view=v;saveUi();render();}
+function back(){S.open=null;S.draft=null;saveUi();render();}
 /* Черновики полей, которые читаются только по кнопке: комментарии, ответ курса, хеш.
    Опрос сервера раз в 2,5 с перерисовывает экран — набранное в них пропадало
    (Карим, 25.09: комментарии на создании договора не оставались). Поля с
@@ -5048,6 +5043,20 @@ function viewModal(){
 
 /* ---------- задачник ---------- */
 let taskListSection=null;
+let taskDealFilter='all';
+function setTaskDealFilter(filter){taskDealFilter=filter;render();}
+function taskDealsHtml(role){
+  const deals=S.deals.filter(d=>taskDealFilter==='exchange'?d.type==='Обмен валюты':
+    taskDealFilter==='leasehold'?String(d.kind||'').toLowerCase().includes('лизхолд'):
+    taskDealFilter==='freehold'?String(d.kind||'').toLowerCase().includes('фрихолд'):
+    taskDealFilter==='prepay'?!!d.prepay:taskDealFilter==='batch'?!!convOf(d):true);
+  if(!deals.length)return '<div class="task-list-empty"><strong>Сделок нет</strong>Для этого фильтра пока нет сделок.</div>';
+  return `<div class="task-deals-table"><div class="task-deals-heading"><span>Сделка</span><span>Флоу</span><span>Этап</span><span>На ком</span><span>Сумма</span><span>С какого времени</span></div>${deals.map(d=>{
+    const a=approx(d),amount=apMoney(a,'pay');
+    const path=dealTaskPath(d,null),lastEvent=(d.log||[]).at(-1),sinceAt=lastEvent?.at;
+    return `<button type="button" class="task-deal-row" onclick="openDeal(${d.id})"><span class="task-deal-name"><strong>${htmlText(d.code)} · ${htmlText(d.client)}</strong></span><span class="task-deal-flow">${htmlText(d.kind||d.type||'Сделка')}</span><span class="task-deal-stage">${htmlText(d.closed?d.closeReason||'Завершена':stepTitle(d))}<span class="task-deal-progress" aria-label="Шаг ${path.index+1} из ${path.steps.length}">${path.steps.map((_,i)=>`<i class="${i<path.index?'done':i===path.index?'current':''}"></i>`).join('')}</span></span><span class="task-deal-who">${htmlText(d.closed?'—':(ROLES[stepWho(d)]||{}).n||'—')}</span><b class="task-deal-amount num">${amount==='посчитаем после курса'?apMoney(a,'thb'):amount}</b><span class="task-deal-since">${sinceAt?since(sinceAt):'—'}</span></button>`;
+  }).join('')}</div>`;
+}
 function showTaskListSection(section){
   taskListSection=section;
   document.querySelectorAll('.task-list-seg button').forEach(button=>{
@@ -5057,16 +5066,20 @@ function showTaskListSection(section){
   });
   document.querySelectorAll('.task-list-panel').forEach(panel=>
     panel.classList.toggle('on',panel.dataset.section===section));
+  const allToggle=document.querySelector('.task-list-all-toggle');
+  if(allToggle){allToggle.setAttribute('aria-expanded',section==='all'?'true':'false');allToggle.querySelector('span').textContent=section==='all'?'⌃':'›';}
 }
 function viewTasks(){
-  const role=S.role==='admin'?(S.inspectRole||'manager'):S.role;
-  const mine=myTasks(role),others=waitingOn(role);
+  if(standLoadError)return `<div class="task-list"><div class="card task-list-empty"><strong>Задачи не загрузились</strong><p>Проверьте соединение и повторите загрузку.</p><button class="btn btn-primary" onclick="standPull(true)">Повторить загрузку</button></div></div>`;
+  const role=S.role;
+  const mine=role==='admin'?S.deals.filter(d=>!d.closed&&STEPS[d.step]&&stepWho(d)):myTasks(role);
+  const others=role==='admin'?[]:waitingOn(role);
   const section=taskListSection||(mine.length?'mine':others.length?'wait':'mine');
   const mineCount=mine.length?`<span class="task-list-count mine">${mine.length}</span>`:'';
   const waitCount=others.length?`<span class="task-list-count">${others.length}</span>`:'';
   let h=`<div class="task-list"><div class="task-list-head"><h1>Задачник</h1>
     ${S.role==='manager'||S.role==='admin'?`<div class="task-list-create-bar"><button class="btn btn-primary task-list-create" onclick="startCreate()">+ Новая задача</button></div>`:''}</div>
-    ${S.role==='admin'?`<div class="task-inspect-bar"><label class="task-inspect">Смотреть как <select class="fc" onchange="setInspectRole(this.value)">${['manager','operator','findir','teodor'].map(r=>`<option value="${r}" ${r===role?'selected':''}>${ROLES[r].n}</option>`).join('')}</select></label></div>`:''}`;
+    `;
   const pend=pendingEx(null);
   if(pend.length&&role==='operator'){
     const conv=mine.filter(d=>d.step==='s18');
@@ -5085,8 +5098,9 @@ function viewTasks(){
   h+=`<nav class="task-list-seg" aria-label="Разделы задачника">
     <button type="button" data-section="mine" class="${section==='mine'?'on':''}" aria-pressed="${section==='mine'}" onclick="showTaskListSection('mine')">На мне ${mineCount}</button>
     <button type="button" data-section="wait" class="${section==='wait'?'on':''}" aria-pressed="${section==='wait'}" onclick="showTaskListSection('wait')">Жду других ${waitCount}</button>
+    <button type="button" data-section="all" class="${section==='all'?'on':''}" aria-pressed="${section==='all'}" onclick="showTaskListSection('all')">Все сделки</button>
   </nav><div class="task-list-cols"><section class="card task-list-panel ${section==='mine'?'on':''}" data-section="mine">
-    <div class="task-list-panel-head"><h2>На мне сейчас</h2>${mineCount}</div>`;
+    <div class="task-list-panel-head"><h2>${role==='admin'?'Все задачи':'На мне сейчас'}</h2>${mineCount}</div>`;
   if(!mine.length){
     h+=`<div class="task-list-empty"><strong>Задач на вас нет</strong>
       ${role==='manager'
@@ -5113,7 +5127,7 @@ function viewTasks(){
           d.prepay?usd(d.prepay.amount):apMoney(a,'pay');
         return `<button type="button" class="task-list-row" title="шаг ${path.index+1} из ${path.steps.length}"
           onclick="openTask(${d.id},${branch?`'${branch}'`:'null'})">
-          <span class="task-list-row-main"><strong>${htmlText(title)}</strong>
+          <span class="task-list-row-main"><strong>${role==='admin'?htmlText((ROLES[stepWho(d)]||{}).n||'Сотрудник')+' · ':''}${htmlText(title)}</strong>
             <span class="task-list-meta">${htmlText(d.code)} · ${htmlText(d.client)} · ${d.prepay?'Оплата наперёд · ':''}${htmlText(d.kind||d.type)}</span>
             ${side&&!branch?`<span class="task-list-meta">Параллельно: ${stepTitle(d)} · ${(ROLES[stepWho(d)]||{}).t||'—'}</span>`:''}</span>
           <span class="task-list-amount num">${amount==='посчитаем после курса'?apMoney(a,'thb'):amount}</span>
@@ -5138,7 +5152,12 @@ function viewTasks(){
         ${role==='manager'&&d.step==='s14'?`<button class="btn btn-outline btn-sm" onclick="s14Ping(${d.id})">Напомнить</button>`:''}`;
     }).join('');
   });
-  return h+`</section></div></div>`;
+  h+=`</section><section class="card task-list-panel task-list-all ${section==='all'?'on':''}" data-section="all">
+    <button type="button" class="task-list-panel-head task-list-all-toggle" aria-expanded="${section==='all'}" onclick="showTaskListSection(taskListSection==='all'?'mine':'all')"><h2>Все сделки</h2><span aria-hidden="true">${section==='all'?'⌃':'›'}</span></button>
+    <div class="task-list-all-content"><div class="task-list-filters" role="group" aria-label="Фильтр сделок">
+      ${[['all','Все'],['exchange','Обмены'],['leasehold','Лизхолд'],['freehold','Фрихолд'],['prepay','Наперёд'],['batch','Пачки']].map(([key,label])=>`<button type="button" class="${taskDealFilter===key?'on':''}" onclick="setTaskDealFilter('${key}')">${label}</button>`).join('')}
+    </div>${taskDealsHtml(role)}</div></section>`;
+  return h+`</div></div>`;
 }
 
 /* ---------- сделки ---------- */
@@ -5891,21 +5910,7 @@ async function takeAssignee(dealId){
   if(result)toast('Шаг назначен вам');
 }
 function assigneeBlock(d,who){
-  const id=d.assigneeAdminId||null;
-  const label=id?(employeeName(id)||'сотрудник с ID '+id):'не назначен';
-  let actions='';
-  if(S.role==='admin'){
-    const opts=STAND_EMPLOYEES.filter(e=>!e.login_disabled&&(e.role===who||e.role==='admin'));
-    actions=`<select class="fc" style="width:auto;display:inline-block;margin-left:8px" onchange="setAssignee(${d.id}, this.value?Number(this.value):null)">
-      <option value="">не назначен</option>
-      ${opts.map(e=>`<option value="${e.id}" ${e.id===id?'selected':''}>${e.display_name||e.username}</option>`).join('')}
-    </select>`;
-  } else if(S.role===who){
-    if(!id) actions=`<button class="btn btn-sm btn-outline" style="margin-left:8px" onclick="setAssignee(${d.id}, standMeId)">Взять себе</button>`;
-    else if(String(id)===String(standMeId)) actions=`<button class="btn btn-sm btn-outline" style="margin-left:8px" onclick="setAssignee(${d.id}, null)">Отказаться</button>`;
-    else actions=`<button class="btn btn-sm btn-outline" style="margin-left:8px" onclick="takeAssignee(${d.id})">Забрать себе</button>`;
-  }
-  return `<div class="card" style="margin-bottom:12px;font-size:13px;color:var(--text-muted)">Исполнитель шага: <b>${label}</b>${actions}</div>`;
+  return '';
 }
 
 /* ---------- карточка сделки ---------- */
@@ -6017,16 +6022,13 @@ function viewDeal(d){
     <h1>${htmlText(d.client)}</h1><p>${htmlText([d.object,d.dev,d.manager?'менеджер '+d.manager:''].filter(Boolean).join(' · '))}</p></div>
     ${view==='task'&&branchPath?`<div class="deal-progress"><span>${htmlText(branchPath.active==='refund'?'Возместить оплату':STEPS[branchPath.active]?.title||'Конвертация завершена')}</span>
       <b>Шаг ${branchPath.index+1} из ${branchPath.steps.length}</b><i><span style="width:${Math.round((branchPath.index+1)/Math.max(1,branchPath.steps.length)*100)}%"></span></i></div>`:''}</header>
-  ${view==='task'&&d.prepay?`<nav class="branch-tabs" aria-label="Ветка сделки">
-    <button class="${branch==='conversion'?'on':''}" onclick="taskBranchSet('conversion')">Конвертация</button>
-    <button class="${branch==='payment'?'on':''}" onclick="taskBranchSet('payment')">Оплата застройщику</button></nav>`:''}
   ${(function(){
     /* Вкладка задачника появляется только если по сделке были задачи: у внесённой
        руками смотреть нечего, и лишняя вкладка сбивает (Карим, 23.09). */
     const had=!d.manual;
-    return `<div class="vtabs">${tab('deal','Карточка<span class="lg"> сделки</span>')}${
-      had?tab('task',d.closed?'<span class="lg">Последний </span>шаг':'<span class="lg">Текущая </span>задача'):''}${
-      had?tab('path','<span class="lg">Задачник — </span>история'):''}</div>`;})()}
+    return `<div class="vtabs">${tab('deal','Карточка <span class="lg">сделки</span>')}${
+      had?tab('task',d.closed?'<span class="lg">Последний</span> шаг':'<span class="lg">Текущая</span> задача'):''}${
+      had?tab('path','История'):''}</div>`;})()}
   ${view==='deal'&&['teodor','findir','admin'].includes(S.role)?ownerSummary(d):''}
   ${view==='deal'?payToCard(d):''}
   <div class="cols"><main>${body}</main>
@@ -7117,11 +7119,11 @@ function convMarginBlock(d,total,crmRows=[]){
   const unlinkedRub=crmRows.filter(x=>!x.dealId).reduce((s,x)=>s+x.rub,0);
   const unlinkedLine=unlinkedRub?`<div style="margin-top:6px">Поступления без сделки: конвертируем <b>${moneyKop(unlinkedRub,'₽')}</b> → ${
     rate?'≈ <b>'+moneyKop(brokerSend(total).sent*unlinkedRub/total/rate,'USDT')+'</b>':'USDT посчитаем после курса'}; прибыль не считаем — сделки нет.</div>`:'';
-  if(!rate) return `<div class="alert a-info"><div>Поставьте курс брокера — сразу посчитаем, в плюсе мы по этой пачке или нет.${unlinkedLine}</div></div>`;
+  if(!rate) return `<div class="derived"><div>Поставьте курс брокера для оценки результата пачки.${unlinkedLine}</div></div>`;
   const m=convMargin(d,total,rate,crmRows);
-  if(!m) return unlinkedLine?`<div class="alert a-info"><div>${unlinkedLine}</div></div>`:'';
+  if(!m) return unlinkedLine?`<div class="derived"><div>${unlinkedLine}</div></div>`:'';
   const ok=m.profit>0;
-  return `<div class="alert ${ok?'a-ok':'a-warn'}" style="margin-top:12px"><div>
+  return `<div class="derived" style="margin-top:12px"><div>
     <b>Ориентировочная прибыль по сделкам с известными обязательствами: ${ok?'':'−'}${usd(Math.abs(m.profit))}${m.pct!=null?' ('+m.pct.toFixed(2)+' %)':''}</b><br>
     <span class="fh">Фикс 40 ₽ за поручение делится по долям: при добавлении поступлений прибыль по известным сделкам может сдвинуться на копейки.</span><br>
     По курсу ${String(rate).replace('.',',')} по этим сделкам получим <b>${usd(m.usdtIn)}</b> за ${moneyKop(m.sent,'₽')}.
@@ -8388,9 +8390,8 @@ function stepNote(d){
   /* свёрнут, пока пуст: необязательное поле не должно отодвигать главную кнопку за
      первый экран (Карим, 27.09). Поле в разметке всегда — act() читает его и свёрнутым */
   const on=v||((S.noteOpen||{})[d.id+k]);
-  return `<details class="snote"${on?' open':''} ontoggle="(S.noteOpen=S.noteOpen||{})['${d.id+k}']=this.open"><summary>${cfg.label||'Комментарий к шагу'}
-    <span class="sub2">${cfg.sub||'попадёт в журнал сделки'}</span></summary>
-    <textarea class="fc" id="sn_${k}" placeholder="что просил клиент, что пошло не так, о чём договорились">${htmlText(v)}</textarea></details>`;
+  return `<details class="snote"${on?' open':''} ontoggle="(S.noteOpen=S.noteOpen||{})['${d.id+k}']=this.open"><summary>${cfg.label||'Комментарий к шагу'}</summary>
+    <p class="fh">${cfg.sub||'Попадёт в журнал сделки'}</p><textarea class="fc" id="sn_${k}" placeholder="что просил клиент, что пошло не так, о чём договорились">${htmlText(v)}</textarea></details>`;
 }
 function saveNote(d,step){
   const v=val('sn_'+step); if(!v)return;
@@ -8823,13 +8824,11 @@ function stepGoal(d){
       /* Брокеру уходит сумма за вычетом удержания 0,3 % + 40 ₽ — её и показываем
          главной, сумма от клиента — подписью: сверка с заявкой брокера расходилась
          на 5 227 ₽ (аудит 27.09 №2, Карим, 27.09) */
-      const bs=brokerSend(own+добрано), bp=brokerPicked(d);
+      const selectedCrm=s18CrmRows(d).filter(x=>s18Selected.has(x.id)).reduce((sum,x)=>sum+x.rub,0);
+      const bs=brokerSend(own+добрано+selectedCrm), bp=brokerPicked(d);
       return {t:'Отдать рубли брокеру и зафиксировать курс',
-        nums:[['Уйдёт брокеру',own+добрано?moneyKop(bs.sent,'₽'):'—'],
-              ['Курс брокера',(brokerRate(d)||'спросить')+(bp?' · '+bp:'')],
-              ['Сделок в пачке',String(1+((d.conv||[]).length))]],
-        sub:'Пришло от клиента '+money2(own,'₽')+(добрано?' + мелкие обмены '+money2(добрано,'₽'):'')+
-          ' · удержание '+moneyKop(bs.held,'₽')+' (0,3 % + 40 ₽) брокеру не уходит'};})();
+        nums:[['Уйдёт брокеру',own+добрано+selectedCrm?moneyKop(bs.sent,'₽'):'—'],
+              ['Ждём USDT',num(brokerRate(d))?'≈ '+moneyKop(bs.sent/num(brokerRate(d)),'USDT'):'после курса']]};})();
     case 's18w': return (function(){
       /* Как и на отправке: брокеру ушла вся пачка, а шапка показывала одну сделку
          и считала удержание так, будто она одна (прогон 24.09). */
@@ -8850,10 +8849,7 @@ function stepGoal(d){
     case 's23': {
       const n=cnvMembers(d).filter(x=>pcSends(x)).length;
       /* цель — зачем уходят деньги, а не «чем платим получателю» (аудит 27.09 №4) */
-      return {t:sendHead(d),
-        sub:(dealWallet(d)&&dealWallet(d).multisig)
-        ?(n>1?'Подписать '+n+' перевода — дальше их одобрит Теодор':'Подписать перевод — дальше его одобрит Теодор')
-        :(d.outgoingReview?'Проверить найденные переводы; при расхождении уточнить части и сумму':'Отправить деньги и нажать «Отправил» — хеши найдёт система'),
+      return {t:sendActionHead(d),
       nums:[['К отправке',moneyKop(pcOut(d),'USDT')],
             ['Куда',d.ippsPayoutOrder?.address||d.transfer?.addr||'не указан'],
             ['С кошелька',(dealWallet(d)||{}).addr||'не выбран']]};}
@@ -8908,7 +8904,7 @@ function goalCard(d){
     ${d.prepay?`<p class="prepay-notice"><b>Оплата наперёд.</b> ${S.role==='teodor'?'USDT брокера ещё не пришли; возмещение вам после конвертации.':
       'Оплата застройщику и конвертация идут параллельно; возмещение после получения USDT.'}</p>`:''}
     <div class="goalnums">${(g.nums||[]).slice(0,3).map((n,i)=>`<div><span class="k">${htmlText(n[0])}</span><span class="v${i===0?' big':''}${machine(n[1])?' addr-value':''}">${machine(n[1])
-      ?`<span title="${htmlText(n[1])}" onclick="this.textContent=this.title;this.classList.add('full')">${htmlText(txShort(n[1]))}</span><button class="btn btn-outline btn-sm" onclick="copyAsk(${jsLiteralAttr(n[1])})">Копировать адрес</button>`
+      ?`<span title="${htmlText(n[1])}" onclick="this.textContent=this.title;this.classList.add('full')">${htmlText(n[1])}</span><button class="btn btn-outline btn-sm" onclick="copyAsk(${jsLiteralAttr(n[1])})">Копировать адрес</button>`
       :htmlText(n[1])}</span></div>`).join('')}</div>
     ${g.sub?`<p class="fh" style="margin-top:8px">${htmlText(g.sub)}</p>`:''}
     ${(g.rows||[]).filter(r=>r[1]).length?`<div class="goalrows">${g.rows.filter(r=>r[1]).map(r=>`<div class="payrow">
@@ -9705,20 +9701,24 @@ function stepCard(d){
     const total=base+selD.reduce((sum,x)=>sum+s18Rub(x),0)+crmSel.reduce((sum,x)=>sum+x.rub,0);
     const bp=brokerPicked(d), bq=brokerQuote(d,bp), used=quoteUsed(d,'rub');
     const batch=brokerSend(total), rate=num(brokerRate(d)||d.rates.broker||d.rates.rubUsdt);
-    return `<div class="card"><div class="card-title">Отправка брокеру для конвертации<span class="sub">курс берётся на общий объём</span></div>
-    <div class="s18-batch-summary" aria-label="Итог пачки">
-      <div><div class="label">Отмечено</div><div class="value">${1+sel.length+crmSel.length} поступл.</div></div>
-      <div><div class="label">Всего</div><div class="value num">${moneyKop(total,'₽')}</div></div>
-      <div><div class="label">Удержание</div><div class="value num">${moneyKop(batch.held,'₽')}</div></div>
-      <div><div class="label">К брокеру</div><div class="value num">${moneyKop(batch.sent,'₽')}</div></div>
-      <div><div class="label">Ждём USDT</div><div class="value num">${rate?'≈ '+moneyKop(batch.sent/rate,'USDT'):'после курса'}</div></div>
+    return `<div class="card s18-action-fields"><div class="fr">
+      <div class="fg"><label class="fl">Брокер<span class="rq">*</span></label>
+        <select class="fc" id="b0" onchange="brokerPickSet(${d.id},this.value)">
+          <option value="">— выбрать брокера —</option>
+          ${brokerOpts().map(x=>`<option${x===bp?' selected':''}>${htmlText(x)}</option>`).join('')}</select></div>
+      <div class="fg"><label class="fl">Курс обмена RUB→USDT<span class="rq">*</span></label>
+        <input class="fc num" id="b1" value="${htmlText(brokerRate(d))}" placeholder="₽ за 1 USDT"
+          oninput="rememberFocus();brokerDraft(${d.id},this.value)"></div>
+      <div class="fg w2"><label class="fl">Куда брокер пришлёт USDT · TRC-20<span class="rq">*</span></label>
+        <input type="hidden" id="b2" value="${walletById(d.walletId)?d.walletId:''}">
+        ${walletCards(d,walletById(d.walletId),'walletPick',false,'b2w_'+d.id)}</div>
     </div>
+    <details class="deal-detail s18-detail"><summary>Состав пачки · ${1+sel.length+crmSel.length} поступл.</summary>
     ${free.length?`<div class="alert a-warn"><div><b>${free.length} обмена на ${money(exSum(free),'₽')} ждут конвертации</b> — выбрать можно только сделки с положительным подтверждённым приходом RUB. Остальным сначала нужно зарегистрировать и привязать оплату. Наценка по готовым ≈ ${money(exMargin(free.filter(rubBatchReady)),'₽')}.</div>
       <button class="btn btn-outline btn-sm" style="margin-left:auto;align-self:center;white-space:nowrap" onclick="convAll(${d.id})">Взять все</button></div>`:''}
     <div class="card-title" style="font-size:14px;margin-bottom:4px">Что уходит брокеру одним переводом
       ${sel.length?`<button class="btn btn-outline btn-sm" onclick="convNone(${d.id})">Снять отмеченные</button>`:''}</div>
-    <p class="fh" style="margin:0 0 11px">Первая строка — основная сумма по этой сделке, она уйдёт в любом случае.
-      Ниже — обмены, которые уже ждут конвертации: отметьте те, что отправляем брокеру вместе с ней.</p>
+    ${bankSber&&(extra.some(rubBatchReady)||crmRows.length)?'<p class="fh" style="margin:0 0 11px">Отметьте поступления для этого перевода.</p>':''}
     ${bankSber?`<div class="s18-filterbar">
       <div class="fg"><label class="fl" for="s18_q">Поиск</label><input class="fc" id="s18_q" placeholder="Клиент, плательщик или № сделки" value="${htmlText(s18Filters.query)}" oninput="s18FilterSet('query',this.value)"></div>
       <div class="fg"><label class="fl" for="s18_from">Период с <span class="sub2">дд.мм.гггг</span></label><input class="fc" type="date" lang="ru" id="s18_from" value="${htmlText(s18Filters.from)}" onchange="s18FilterSet('from',this.value)"></div>
@@ -9743,42 +9743,16 @@ function stepCard(d){
           sel.indexOf(x.id)<0?'отметить в этот перевод':'идёт этим переводом'}</span></span></div>`).join(''):''}
       ${bankSber?crmRows.length?
         s18CrmSection(crmLinked,'crm','Сделки CRM',sh)+s18CrmSection(crmUnlinked,'unlinked','Поступления без сделки',sh)
-        :(!extra.length?'<div class="li">Свободных поступлений Сбера нет</div>':''):
-        `<div class="li" style="cursor:default"><span class="av">—</span><div><div class="t1">Деньги этой сделки на ${htmlText(d.manualBankReceipt?.bank?d.manualBankReceipt.bank+' · '+d.manualBankReceipt.account:expectOf(d).acc||'другом счёте')} — переводим брокеру с него, поступления Сбера сюда не добавить</div></div></div>`}`;})()}
+        :(!extra.length?'<div class="li">Свободных поступлений Сбера нет</div>':''):''}`;})()}
     </div>
-    <p class="fh">Удержание считается на всю пачку: 0,3 % плюс 40 ₽ за платёжное поручение. По сделкам оно делится по доле рублей, поэтому суммы «к брокеру» чуть меньше того, что заплатил клиент.</p>
-    ${sel.length||crmSel.length?`<div class="derived" style="margin-top:12px">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 7-7"/><path d="M14 8h6v6"/></svg>
-      <span>Сделка <b class="num">${money(base,'₽')}</b> + дополнительно <b class="num">${money(total-base,'₽')}</b> = <b class="num">${money(total,'₽')}</b></span></div>`:''}
-    <div class="fr" style="margin-top:14px">
-      <div class="fg"><label class="fl">Объём обмена</label><input class="fc num" readonly value="${money(total,'₽')} · ${1+sel.length+crmSel.length} поступл."></div>
-      <div class="fg"><label class="fl">Брокер<span class="rq">*</span></label>
-        <select class="fc" id="b0" onchange="brokerPickSet(${d.id},this.value)">
-          <option value="">— выбрать брокера —</option>
-          ${brokerOpts().map(x=>`<option${x===bp?' selected':''}>${htmlText(x)}</option>`).join('')}</select>
-        <p class="fh">${used&&brokerName(used.name)===bp?'его курс взят в расчёт клиенту'
-          :(used?'в расчёте клиенту был '+htmlText(brokerName(used.name))+', '+used.rate:'курсов брокеров в сделке нет')}</p></div>
-      <div class="fg"><label class="fl">Курс обмена RUB→USDT<span class="rq">*</span></label>
-        <input class="fc num" id="b1" value="${htmlText(brokerRate(d))}" placeholder="курс брокера, ₽ за 1 USDT"
-          oninput="rememberFocus();brokerDraft(${d.id},this.value)">
-        <p class="fh">${bp?(bq?'на шаге курсов '+htmlText(bp)+' давал '+bq.rate+' — подтвердите у брокера':htmlText(bp)+' курс не давал — впишите, что он назвал'):'сначала выберите брокера'}</p></div>
-      <div class="fg"><label class="fl">Уйдёт брокеру<span style="color:var(--text-muted);font-weight:400"> за вычетом удержания</span></label>
-        <input class="fc num" readonly value="${(function(){const b=brokerSend(total);return moneyKop(b.sent,'₽');})()}"></div>
-      <div class="fg"><label class="fl">Ждём примерно<span style="color:var(--text-muted);font-weight:400"> по курсу брокера</span></label>
-        <input class="fc num" readonly value="${(function(){const r=num(d.rates.broker)||num(d.rates.rubUsdt);return r?'≈ '+moneyKop(brokerSend(total).sent/r,'USDT'):'посчитаем после курса';})()}"></div>
-      <div class="fg" style="grid-column:1/-1"><label class="fl">Куда брокер пришлёт USDT · сеть TRC-20<span class="rq">*</span></label>
-        <input type="hidden" id="b2" value="${walletById(d.walletId)?d.walletId:''}">
-        ${walletCards(d,walletById(d.walletId),'walletPick',false,'b2w_'+d.id)}
-        <p class="fh">от владельца зависит, кто отправляет дальше: мультисиг — фин дир и вторая подпись, личный — владелец сам</p></div>
-    </div>
+    </details>
     ${transferModeBlock(d)}
-    <div class="derived" style="margin-top:4px">
+    <details class="deal-detail s18-detail"><summary>Удержания · ${moneyKop(batch.held,'₽')}</summary><div class="derived" style="margin-top:4px">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
       <span>${(function(){const b=brokerSend(total);
         return `Удержим <b>${moneyKop(b.held,'₽')}</b>: валютный контроль <b>${moneyKop(b.ctrl,'₽')}</b> (${pct(b.ctrlPct)} + ${b.fix} ₽) и <b>${moneyKop(b.ours,'₽')}</b> (${pct(b.oursPct)}) остаются на рублёвом счёте — в прибыль сделки не входят`;})()}</span>
     </div>
-    ${convMarginBlock(d,total,crmSel)}
-    <div class="alert a-info"><div>Сейчас фиксируем только состав и курс, который назвал брокер. USDT придут позже — сумму и хеш впишете на следующем шаге, когда они реально появятся на кошельке.</div></div>
+    ${convMarginBlock(d,total,crmSel)}</details>
     <div class="row"><button class="btn btn-success" onclick="act(${d.id},'s18')">Отправил брокеру — ждём USDT</button></div></div>`;},
 
   s18w:()=>{
@@ -9917,14 +9891,14 @@ function stepCard(d){
     const mine=c?(c.sources.find(x=>x.dealId===d.id)||{}):{};
     const cost=sObj.cur==='usdt'?need/rate:null;
     const foundTx=(d.outgoingReview?.candidates||[]).find(t=>t.to===d.transfer?.addr&&!t.networkFee&&t.hash);
-    return `<div class="card"><div class="card-title">${htmlText(sendHead(d))}</div>
+    return `<div class="card s23-action-fields">
     ${foundTx&&S.role==='teodor'?`<div class="alert a-warn">В сети уже есть перевод · ${new Date(foundTx.timestamp_ms).toLocaleString('ru-RU',{timeZone:'Europe/Moscow'})} МСК ·
       <a href="https://tronscan.org/#/transaction/${encodeURIComponent(foundTx.hash)}" target="_blank" rel="noopener noreferrer">${htmlText(txShort(foundTx.hash))} · TronScan</a>
       <button class="btn btn-outline btn-sm" onclick="copyAsk(${jsLiteralAttr(foundTx.hash)})">Копировать хеш</button></div>`:''}
-    ${d.kind==='Фрихолд'&&d.ippsPayoutOrder?`<div class="alert a-info"><div><b>Поручение операциониста · IPPS</b><br>${usd(d.ippsPayoutOrder.amount)} · ${htmlText(d.ippsPayoutOrder.network)} · <span class="addr">${htmlText(d.ippsPayoutOrder.address)}</span><br>Используйте этот подтверждённый снимок при подготовке исходящего перевода.</div></div>`:''}
+    ${d.kind==='Фрихолд'&&d.ippsPayoutOrder?`<details class="deal-detail"><summary>Поручение IPPS · ${htmlText(d.ippsPayoutOrder.network)}</summary><div class="wallet-address-line"><span class="addr">${htmlText(d.ippsPayoutOrder.address)}</span><button class="btn btn-outline btn-sm" onclick="copyAsk(${jsLiteralAttr(d.ippsPayoutOrder.address)})">Копировать адрес</button></div></details>`:''}
 
     <details class="card deal-detail"><summary>Деньги и переводы пачки</summary>
-    ${d.prepay?`<div class="alert a-info"><div>${htmlText(prepayFundingText(d))}</div></div>`:c?`<div class="card" style="background:var(--navy-50);box-shadow:none;margin-bottom:16px">
+    ${d.prepay?`<p class="fh">${htmlText(prepayFundingText(d))}</p>`:c?`<div class="card" style="background:var(--navy-50);box-shadow:none;margin-bottom:16px">
       <div class="sec snd" style="margin:0 0 10px">ОТКУДА ДЕНЬГИ · ${htmlText(c.name)} · ${c.broker}${c.requestNo?' · заявка '+c.requestNo:''}</div>
       <table class="tbl">
         ${trow('Пришло на счёт',money(c.rubTotal||c.sources.reduce((s,x)=>s+(x.rub||0),0),'₽'),c.sources.length>1?'пачка из '+c.sources.length+' приходов':'')}
@@ -9949,7 +9923,7 @@ function stepCard(d){
       <div class="alert a-warn"><div>Кошелёк с мультисигом: <b>${walletSigner(w)}</b> завешивает каждый перевод и подписывает первым — будет 1 из 2, дальше одобряет Теодор. Транзакция живёт сутки: не одобрят — завешивать заново.</div></div>
       <div class="row"><button class="btn btn-success" onclick="act(${d.id},'s23')">Подписал — передать Теодору</button></div>`
       :`
-      <div class="alert a-info"><div>${d.outgoingReview?'Владелец отметил отправку. Проверьте найденные части и при необходимости добавьте хеш вручную.':`Личный кошелёк <b>${w?w.owner:'владельца'}</b> — второй подписи нет. Отправьте деньги на указанный адрес и нажмите «Отправил». Система найдёт переводы; расхождения проверит операционист.`}</div></div>
+      ${d.outgoingReview?'<p class="fh">Проверьте найденные переводы и хеши.</p>':''}
       ${!d.outgoingReview?`<div class="row"><button class="btn btn-success" onclick="outgoingReviewAction(${d.id},'sent')">Отправил</button></div>`:''}`;})()}
     </div>`;},
 
@@ -10757,14 +10731,14 @@ function viewAnalytics(){
   const reasons={};S.deals.filter(d=>d.closed&&d.closeReason!=='Успешно завершена').forEach(d=>{reasons[d.closeReason]=(reasons[d.closeReason]||0)+1;});
   const won=S.deals.filter(d=>d.closed&&d.closeReason==='Успешно завершена');
   const turnover=won.reduce((s,d)=>s+(d.amountRub||0),0);
-  return `<div class="page-h">Аналитика</div>
+  return `<div class="analytics-view"><div class="page-h">Аналитика</div>
   <div class="stats-grid">
     <div class="stat-card"><div class="stat-value num">${S.deals.length}</div><div class="stat-label">сделок всего</div></div>
-    <div class="stat-card success"><div class="stat-value num">${won.length}</div><div class="stat-label">завершено</div></div>
-    <div class="stat-card danger"><div class="stat-value num">${S.deals.filter(d=>d.closed&&d.closeReason!=='Успешно завершена').length}</div><div class="stat-label">отказов</div></div>
-    <div class="stat-card info"><div class="stat-value num">${turnover.toLocaleString('ru-RU')}</div><div class="stat-label">оборот, ₽</div></div>
+    <div class="stat-card success"><div class="stat-value num">${won.length||'—'}</div><div class="stat-label">завершено</div></div>
+    <div class="stat-card danger"><div class="stat-value num">${S.deals.filter(d=>d.closed&&d.closeReason!=='Успешно завершена').length||'—'}</div><div class="stat-label">отказов</div></div>
+    <div class="stat-card info"><div class="stat-value num">${turnover?turnover.toLocaleString('ru-RU'):'—'}</div><div class="stat-label">оборот, ₽</div></div>
   </div>
-  <div class="card"><div class="card-title">По источникам<span class="sub">считается по вашим сделкам в прототипе</span></div>
+  <div class="card"><div class="card-title">По источникам</div>
   <table><thead><tr><th>Источник</th><th>Сделок</th><th>Завершено</th><th>Закрыто отказом</th><th>Оборот</th></tr></thead><tbody>
   ${Object.keys(SOURCES).map(k=>`<tr><td><b>${SOURCES[k]}</b></td><td class="num">${bySrc[k].all}</td>
     <td class="num">${bySrc[k].won}</td><td class="num">${bySrc[k].lost}</td><td class="num">${money(bySrc[k].sum,'₽')}</td></tr>`).join('')}
@@ -10772,7 +10746,7 @@ function viewAnalytics(){
   <div class="card"><div class="card-title">Почему закрывали</div>
   ${Object.keys(reasons).length?`<table><thead><tr><th>Причина</th><th>Сколько</th></tr></thead><tbody>
   ${Object.entries(reasons).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`<tr><td>${k}</td><td class="num">${v}</td></tr>`).join('')}</tbody></table>`:
-  `<div class="empty">Отказов пока нет. Закройте сделку с причиной — появится строка.</div>`}</div>`;
+  `<div class="empty">Отказов пока нет. Закройте сделку с причиной — появится строка.</div>`}</div></div>`;
 }
 
 /* ---------- рефералы ---------- */
