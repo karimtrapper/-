@@ -390,10 +390,15 @@ body.wave4a.nav-shell-crm .container { padding: 24px !important; }
 body.wave4a.nav-shell-crm :is(.card, .form-group) { margin-bottom: 16px !important; }
 body.wave4a.nav-shell-crm .card { padding: 24px !important; }
 body.wave4a.nav-shell-crm th { padding: 12px !important; }
-body.wave4a.nav-shell-crm button { gap: 8px !important; }
+body.wave4a.nav-shell-crm :is(button, a.btn) { gap: 8px !important; }
 body.wave4a.nav-shell-crm :is(#deals .nav-create-btn, #create .btn-primary) { border-color: transparent !important; }
 body.wave4a .container:has(> #ratesCard) { padding: 16px !important; }
 body.wave4a :is(.checkbox-label, .direction-header) { gap: 8px !important; }
+body.wave4a.nav-shell-crm #verificationSummary .stats-grid {
+  gap: 12px !important;
+  margin-bottom: 16px !important;
+}
+body.wave4a.nav-shell-crm #verificationSummary .stat-card { padding: 16px !important; }
 body.wave4a .partner-section { margin-top: 24px !important; }
 body.wave4a .info-header { padding: 12px !important; }
 body.wave4a.nav-shell-crm .form-label { margin-bottom: 8px !important; }

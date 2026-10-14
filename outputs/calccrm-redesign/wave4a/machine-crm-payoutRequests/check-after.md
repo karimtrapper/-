@@ -1,8 +1,8 @@
 # design-gate · check — **PASS**
 
-URL: `http://127.0.0.1:59109/crm?section=payoutRequests`
-DESIGN: `/Users/karimamirov/Desktop/untitled folder/outputs/calccrm-redesign/DESIGN.md`
-Ширины: запрошено [375, 768, 1280, 1920], обязательны для PASS [375, 768, 1280, 1920]
+URL: `http://127.0.0.1:59109/crm?section=payoutRequests`  
+DESIGN: `/Users/karimamirov/Desktop/untitled folder/outputs/calccrm-redesign/DESIGN.md`  
+Ширины: запрошено [375, 768, 1280, 1920], обязательны для PASS [375, 768, 1280, 1920]  
 Роль: karim
 
 _Вердикт машинный: проверена автоматическая часть гейтов. Вкус, иерархия и пункты «MANUAL» ниже остаются человеку._
@@ -17,7 +17,7 @@ _Вердикт машинный: проверена автоматическа�
 | 6. Снимки | **PASS** | PASS | PASS | PASS | PASS |
 
 ## Телефон (≤700px)
-- 375px: элементов 711, контраст проверен у 423, главных кнопок 0, адресов 45
+- 375px: элементов 710, контраст проверен у 422, главных кнопок 0, адресов 45
 
 ### Гейт 1. Токены: 375px PASS
 находок нет
@@ -51,9 +51,9 @@ _Гардрейлы 1–2, 7, 8, 11 дублируют гейты 1, 3, 4, 5 —
   - `450,01 $ × 2` — 375px×2 — напр. `div.payout-request-head > div.payout-request-amount > div` «возместить $450,01»
 
 ## Компьютер (>700px)
-- 768px: элементов 709, контраст проверен у 418, главных кнопок 0, адресов 45
-- 1280px: элементов 714, контраст проверен у 423, главных кнопок 0, адресов 45
-- 1920px: элементов 714, контраст проверен у 423, главных кнопок 0, адресов 45
+- 768px: элементов 708, контраст проверен у 417, главных кнопок 0, адресов 45
+- 1280px: элементов 713, контраст проверен у 422, главных кнопок 0, адресов 45
+- 1920px: элементов 713, контраст проверен у 422, главных кнопок 0, адресов 45
 
 ### Гейт 1. Токены: 768px PASS · 1280px PASS · 1920px PASS
 находок нет
@@ -88,8 +88,8 @@ _Гардрейлы 1–2, 7, 8, 11 дублируют гейты 1, 3, 4, 5 —
 
 ## Гейт 6. Снимки — PASS
 _авто: наличие и непустота пар «до/после»; сравнение — глазами_
-- 375px: после `outputs/calccrm-redesign/wave4a/machine-crm-payoutRequests/after-karim-375.png`, до `outputs/calccrm-redesign/wave4a/machine-crm-payoutRequests/before-karim-375.png`
-- 1280px: после `outputs/calccrm-redesign/wave4a/machine-crm-payoutRequests/after-karim-1280.png`, до `outputs/calccrm-redesign/wave4a/machine-crm-payoutRequests/before-karim-1280.png`
+- 375px: после `/private/tmp/calccrm-wave4a/outputs/calccrm-redesign/wave4a/machine-crm-payoutRequests/after-karim-375.png`, до `/private/tmp/calccrm-wave4a/outputs/calccrm-redesign/wave4a/machine-crm-payoutRequests/before-karim-375.png`
+- 1280px: после `/private/tmp/calccrm-wave4a/outputs/calccrm-redesign/wave4a/machine-crm-payoutRequests/after-karim-1280.png`, до `/private/tmp/calccrm-wave4a/outputs/calccrm-redesign/wave4a/machine-crm-payoutRequests/before-karim-1280.png`
 
 ## Гардрейлы (18)
 

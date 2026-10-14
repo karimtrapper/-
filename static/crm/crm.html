@@ -11463,7 +11463,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     <td>${i.claimed_deal_id ? '#' + i.claimed_deal_id +
                           (i.deal?.client_name ? ' ' + i.deal.client_name : '') : '—'}</td>
                     <td>${conv}</td>
-                    <td><a href="#" onclick="editIncome(${i.id});return false" title="Разметить">✏️</a></td>
+                    <td><a class="btn" href="#" onclick="editIncome(${i.id});return false">Разметить</a></td>
                 </tr>`;
             }).join('') || '<tr><td colspan="11">Приходов нет</td></tr>';
             syncIncomeSelection();

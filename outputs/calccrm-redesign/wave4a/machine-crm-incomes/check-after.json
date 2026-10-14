@@ -3,7 +3,7 @@
  "mode": "check",
  "url": "http://127.0.0.1:59109/crm?section=incomes",
  "design": "/Users/karimamirov/Desktop/untitled folder/outputs/calccrm-redesign/DESIGN.md",
- "generated": "2026-10-14T21:25:44",
+ "generated": "2026-10-15T01:01:37",
  "widths_requested": [
   375,
   768,
@@ -81,6 +81,153 @@
    "verdict": "PASS",
    "findings": [],
    "warnings": [
+    {
+     "gate": 2,
+     "rule": "G5-emoji",
+     "sev": "WARN",
+     "title": "эмодзи в тексте (если это не контент пользователя — заменить иконкой)",
+     "value": "🗄",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div#incomesSummary > div",
+       "t": "🗄 до запуска учёта (раньше 2026-08-19): 410 150 282,67 ₽ — к"
+      }
+     ],
+     "gr": 5,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "768": 1,
+      "1280": 1,
+      "1920": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#incomesSummary > div",
+        "t": "🗄 до запуска учёта (раньше 2026-08-19): 410 150 282,67 ₽ — к"
+       }
+      ],
+      "768": [
+       {
+        "sel": "div#incomesSummary > div",
+        "t": "🗄 до запуска учёта (раньше 2026-08-19): 410 150 282,67 ₽ — к"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#incomesSummary > div",
+        "t": "🗄 до запуска учёта (раньше 2026-08-19): 410 150 282,67 ₽ — к"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "div#incomesSummary > div",
+        "t": "🗄 до запуска учёта (раньше 2026-08-19): 410 150 282,67 ₽ — к"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G5-emoji",
+     "sev": "WARN",
+     "title": "эмодзи в тексте (если это не контент пользователя — заменить иконкой)",
+     "value": "⏳",
+     "n": 20,
+     "ex": [
+      {
+       "sel": "tr > td > span",
+       "t": "⏳ лежит на счёте"
+      }
+     ],
+     "gr": 5,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 20,
+      "768": 20,
+      "1280": 20,
+      "1920": 20
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tr > td > span",
+        "t": "⏳ лежит на счёте"
+       }
+      ],
+      "768": [
+       {
+        "sel": "tr > td > span",
+        "t": "⏳ лежит на счёте"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tr > td > span",
+        "t": "⏳ лежит на счёте"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "tr > td > span",
+        "t": "⏳ лежит на счёте"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "X-caps-typed",
+     "sev": "WARN",
+     "title": "текст набран капслоком руками",
+     "value": "АМИРОВ КАРИМ КАРНЕЛЬЕВИЧ",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "tbody#incomesTable > tr > td",
+       "t": "АМИРОВ КАРИМ КАРНЕЛЬЕВИЧ"
+      }
+     ],
+     "gr": null,
+     "extra": "Don't: капслок",
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "768": 1,
+      "1280": 1,
+      "1920": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tbody#incomesTable > tr > td",
+        "t": "АМИРОВ КАРИМ КАРНЕЛЬЕВИЧ"
+       }
+      ],
+      "768": [
+       {
+        "sel": "tbody#incomesTable > tr > td",
+        "t": "АМИРОВ КАРИМ КАРНЕЛЬЕВИЧ"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#incomesTable > tr > td",
+        "t": "АМИРОВ КАРИМ КАРНЕЛЬЕВИЧ"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "tbody#incomesTable > tr > td",
+        "t": "АМИРОВ КАРИМ КАРНЕЛЬЕВИЧ"
+       }
+      ]
+     }
+    },
     {
      "gate": 2,
      "rule": "G4-icononly",
@@ -418,7 +565,204 @@
    },
    "verdict": "PASS",
    "findings": [],
-   "warnings": [],
+   "warnings": [
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "39720,00 ₽ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "tbody#incomesTable > tr > td",
+       "t": "39 720,00 ₽"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "768": 2,
+      "1280": 2,
+      "1920": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tbody#incomesTable > tr > td",
+        "t": "39 720,00 ₽"
+       }
+      ],
+      "768": [
+       {
+        "sel": "tbody#incomesTable > tr > td",
+        "t": "39 720,00 ₽"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#incomesTable > tr > td",
+        "t": "39 720,00 ₽"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "tbody#incomesTable > tr > td",
+        "t": "39 720,00 ₽"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "34755,00 ₽ × 5",
+     "n": 5,
+     "ex": [
+      {
+       "sel": "tbody#incomesTable > tr > td",
+       "t": "34 755,00 ₽"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 5,
+      "768": 5,
+      "1280": 5,
+      "1920": 5
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tbody#incomesTable > tr > td",
+        "t": "34 755,00 ₽"
+       }
+      ],
+      "768": [
+       {
+        "sel": "tbody#incomesTable > tr > td",
+        "t": "34 755,00 ₽"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#incomesTable > tr > td",
+        "t": "34 755,00 ₽"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "tbody#incomesTable > tr > td",
+        "t": "34 755,00 ₽"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "19860,00 ₽ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "tbody#incomesTable > tr > td",
+       "t": "19 860,00 ₽"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "768": 2,
+      "1280": 2,
+      "1920": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tbody#incomesTable > tr > td",
+        "t": "19 860,00 ₽"
+       }
+      ],
+      "768": [
+       {
+        "sel": "tbody#incomesTable > tr > td",
+        "t": "19 860,00 ₽"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#incomesTable > tr > td",
+        "t": "19 860,00 ₽"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "tbody#incomesTable > tr > td",
+        "t": "19 860,00 ₽"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "9,93 ₽ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "tbody#incomesTable > tr > td",
+       "t": "9,93 ₽"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "768": 2,
+      "1280": 2,
+      "1920": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tbody#incomesTable > tr > td",
+        "t": "9,93 ₽"
+       }
+      ],
+      "768": [
+       {
+        "sel": "tbody#incomesTable > tr > td",
+        "t": "9,93 ₽"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#incomesTable > tr > td",
+        "t": "9,93 ₽"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "tbody#incomesTable > tr > td",
+        "t": "9,93 ₽"
+       }
+      ]
+     }
+    }
+   ],
    "scope": "авто: внутренние слова, повтор сумм; глагол/фразы из переписки — глазами"
   },
   "6": {
@@ -434,13 +778,13 @@
    "notes": [],
    "shots": {
     "375": {
-     "after": "/private/tmp/calccrm-wave4a/outputs/calccrm-redesign/wave4a/machine-crm-incomes/after-karim-375.png",
-     "before": "/private/tmp/calccrm-wave4a/outputs/calccrm-redesign/wave4a/machine-crm-incomes/before-karim-375.png",
+     "after": "outputs/calccrm-redesign/wave4a/machine-crm-incomes/after-karim-375.png",
+     "before": "outputs/calccrm-redesign/wave4a/machine-crm-incomes/before-karim-375.png",
      "identical": false
     },
     "1280": {
-     "after": "/private/tmp/calccrm-wave4a/outputs/calccrm-redesign/wave4a/machine-crm-incomes/after-karim-1280.png",
-     "before": "/private/tmp/calccrm-wave4a/outputs/calccrm-redesign/wave4a/machine-crm-incomes/before-karim-1280.png",
+     "after": "outputs/calccrm-redesign/wave4a/machine-crm-incomes/after-karim-1280.png",
+     "before": "outputs/calccrm-redesign/wave4a/machine-crm-incomes/before-karim-1280.png",
      "identical": false
     }
    },
@@ -587,7 +931,106 @@
    "coverage": "partial",
    "verdict": "PASS",
    "findings": [],
-   "warnings": []
+   "warnings": [
+    {
+     "gate": 2,
+     "rule": "G5-emoji",
+     "sev": "WARN",
+     "title": "эмодзи в тексте (если это не контент пользователя — заменить иконкой)",
+     "value": "🗄",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div#incomesSummary > div",
+       "t": "🗄 до запуска учёта (раньше 2026-08-19): 410 150 282,67 ₽ — к"
+      }
+     ],
+     "gr": 5,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "768": 1,
+      "1280": 1,
+      "1920": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#incomesSummary > div",
+        "t": "🗄 до запуска учёта (раньше 2026-08-19): 410 150 282,67 ₽ — к"
+       }
+      ],
+      "768": [
+       {
+        "sel": "div#incomesSummary > div",
+        "t": "🗄 до запуска учёта (раньше 2026-08-19): 410 150 282,67 ₽ — к"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#incomesSummary > div",
+        "t": "🗄 до запуска учёта (раньше 2026-08-19): 410 150 282,67 ₽ — к"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "div#incomesSummary > div",
+        "t": "🗄 до запуска учёта (раньше 2026-08-19): 410 150 282,67 ₽ — к"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G5-emoji",
+     "sev": "WARN",
+     "title": "эмодзи в тексте (если это не контент пользователя — заменить иконкой)",
+     "value": "⏳",
+     "n": 20,
+     "ex": [
+      {
+       "sel": "tr > td > span",
+       "t": "⏳ лежит на счёте"
+      }
+     ],
+     "gr": 5,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 20,
+      "768": 20,
+      "1280": 20,
+      "1920": 20
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tr > td > span",
+        "t": "⏳ лежит на счёте"
+       }
+      ],
+      "768": [
+       {
+        "sel": "tr > td > span",
+        "t": "⏳ лежит на счёте"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tr > td > span",
+        "t": "⏳ лежит на счёте"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "tr > td > span",
+        "t": "⏳ лежит на счёте"
+       }
+      ]
+     }
+    }
+   ]
   },
   "6": {
    "id": 6,
@@ -643,7 +1086,204 @@
    "coverage": "partial",
    "verdict": "PASS",
    "findings": [],
-   "warnings": []
+   "warnings": [
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "39720,00 ₽ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "tbody#incomesTable > tr > td",
+       "t": "39 720,00 ₽"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "768": 2,
+      "1280": 2,
+      "1920": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tbody#incomesTable > tr > td",
+        "t": "39 720,00 ₽"
+       }
+      ],
+      "768": [
+       {
+        "sel": "tbody#incomesTable > tr > td",
+        "t": "39 720,00 ₽"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#incomesTable > tr > td",
+        "t": "39 720,00 ₽"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "tbody#incomesTable > tr > td",
+        "t": "39 720,00 ₽"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "34755,00 ₽ × 5",
+     "n": 5,
+     "ex": [
+      {
+       "sel": "tbody#incomesTable > tr > td",
+       "t": "34 755,00 ₽"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 5,
+      "768": 5,
+      "1280": 5,
+      "1920": 5
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tbody#incomesTable > tr > td",
+        "t": "34 755,00 ₽"
+       }
+      ],
+      "768": [
+       {
+        "sel": "tbody#incomesTable > tr > td",
+        "t": "34 755,00 ₽"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#incomesTable > tr > td",
+        "t": "34 755,00 ₽"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "tbody#incomesTable > tr > td",
+        "t": "34 755,00 ₽"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "19860,00 ₽ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "tbody#incomesTable > tr > td",
+       "t": "19 860,00 ₽"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "768": 2,
+      "1280": 2,
+      "1920": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tbody#incomesTable > tr > td",
+        "t": "19 860,00 ₽"
+       }
+      ],
+      "768": [
+       {
+        "sel": "tbody#incomesTable > tr > td",
+        "t": "19 860,00 ₽"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#incomesTable > tr > td",
+        "t": "19 860,00 ₽"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "tbody#incomesTable > tr > td",
+        "t": "19 860,00 ₽"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "9,93 ₽ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "tbody#incomesTable > tr > td",
+       "t": "9,93 ₽"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "768": 2,
+      "1280": 2,
+      "1920": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tbody#incomesTable > tr > td",
+        "t": "9,93 ₽"
+       }
+      ],
+      "768": [
+       {
+        "sel": "tbody#incomesTable > tr > td",
+        "t": "9,93 ₽"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#incomesTable > tr > td",
+        "t": "9,93 ₽"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "tbody#incomesTable > tr > td",
+        "t": "9,93 ₽"
+       }
+      ]
+     }
+    }
+   ]
   },
   "13": {
    "id": 13,
@@ -891,47 +1531,97 @@
    ]
   }
  },
- "extras": [],
+ "extras": [
+  {
+   "gate": 2,
+   "rule": "X-caps-typed",
+   "sev": "WARN",
+   "title": "текст набран капслоком руками",
+   "value": "АМИРОВ КАРИМ КАРНЕЛЬЕВИЧ",
+   "n": 1,
+   "ex": [
+    {
+     "sel": "tbody#incomesTable > tr > td",
+     "t": "АМИРОВ КАРИМ КАРНЕЛЬЕВИЧ"
+    }
+   ],
+   "gr": null,
+   "extra": "Don't: капслок",
+   "note": null,
+   "by_width": {
+    "375": 1,
+    "768": 1,
+    "1280": 1,
+    "1920": 1
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "tbody#incomesTable > tr > td",
+      "t": "АМИРОВ КАРИМ КАРНЕЛЬЕВИЧ"
+     }
+    ],
+    "768": [
+     {
+      "sel": "tbody#incomesTable > tr > td",
+      "t": "АМИРОВ КАРИМ КАРНЕЛЬЕВИЧ"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "tbody#incomesTable > tr > td",
+      "t": "АМИРОВ КАРИМ КАРНЕЛЬЕВИЧ"
+     }
+    ],
+    "1920": [
+     {
+      "sel": "tbody#incomesTable > tr > td",
+      "t": "АМИРОВ КАРИМ КАРНЕЛЬЕВИЧ"
+     }
+    ]
+   }
+  }
+ ],
  "stats": {
   "375": {
-   "elements": 74,
-   "groups": 36,
-   "texts": 43,
-   "contrast_checked": 43,
+   "elements": 438,
+   "groups": 55,
+   "texts": 245,
+   "contrast_checked": 265,
    "contrast_unknown": 0,
    "primaries": 0,
    "addresses": 0,
-   "controls": 8
+   "controls": 48
   },
   "768": {
-   "elements": 72,
-   "groups": 38,
-   "texts": 38,
-   "contrast_checked": 38,
+   "elements": 436,
+   "groups": 58,
+   "texts": 240,
+   "contrast_checked": 260,
    "contrast_unknown": 0,
    "primaries": 0,
    "addresses": 0,
-   "controls": 8
+   "controls": 48
   },
   "1280": {
-   "elements": 77,
-   "groups": 40,
-   "texts": 43,
-   "contrast_checked": 43,
+   "elements": 441,
+   "groups": 56,
+   "texts": 245,
+   "contrast_checked": 265,
    "contrast_unknown": 0,
    "primaries": 0,
    "addresses": 0,
-   "controls": 8
+   "controls": 48
   },
   "1920": {
-   "elements": 77,
-   "groups": 40,
-   "texts": 43,
-   "contrast_checked": 43,
+   "elements": 441,
+   "groups": 56,
+   "texts": 245,
+   "contrast_checked": 265,
    "contrast_unknown": 0,
    "primaries": 0,
    "addresses": 0,
-   "controls": 8
+   "controls": 48
   }
  },
  "limits": [],
@@ -951,6 +1641,153 @@
   "п.18 Состояния, анимации transform/opacity, ошибки консоли"
  ],
  "all_warnings": [
+  {
+   "gate": 2,
+   "rule": "G5-emoji",
+   "sev": "WARN",
+   "title": "эмодзи в тексте (если это не контент пользователя — заменить иконкой)",
+   "value": "🗄",
+   "n": 1,
+   "ex": [
+    {
+     "sel": "div#incomesSummary > div",
+     "t": "🗄 до запуска учёта (раньше 2026-08-19): 410 150 282,67 ₽ — к"
+    }
+   ],
+   "gr": 5,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 1,
+    "768": 1,
+    "1280": 1,
+    "1920": 1
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "div#incomesSummary > div",
+      "t": "🗄 до запуска учёта (раньше 2026-08-19): 410 150 282,67 ₽ — к"
+     }
+    ],
+    "768": [
+     {
+      "sel": "div#incomesSummary > div",
+      "t": "🗄 до запуска учёта (раньше 2026-08-19): 410 150 282,67 ₽ — к"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "div#incomesSummary > div",
+      "t": "🗄 до запуска учёта (раньше 2026-08-19): 410 150 282,67 ₽ — к"
+     }
+    ],
+    "1920": [
+     {
+      "sel": "div#incomesSummary > div",
+      "t": "🗄 до запуска учёта (раньше 2026-08-19): 410 150 282,67 ₽ — к"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 2,
+   "rule": "G5-emoji",
+   "sev": "WARN",
+   "title": "эмодзи в тексте (если это не контент пользователя — заменить иконкой)",
+   "value": "⏳",
+   "n": 20,
+   "ex": [
+    {
+     "sel": "tr > td > span",
+     "t": "⏳ лежит на счёте"
+    }
+   ],
+   "gr": 5,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 20,
+    "768": 20,
+    "1280": 20,
+    "1920": 20
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "tr > td > span",
+      "t": "⏳ лежит на счёте"
+     }
+    ],
+    "768": [
+     {
+      "sel": "tr > td > span",
+      "t": "⏳ лежит на счёте"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "tr > td > span",
+      "t": "⏳ лежит на счёте"
+     }
+    ],
+    "1920": [
+     {
+      "sel": "tr > td > span",
+      "t": "⏳ лежит на счёте"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 2,
+   "rule": "X-caps-typed",
+   "sev": "WARN",
+   "title": "текст набран капслоком руками",
+   "value": "АМИРОВ КАРИМ КАРНЕЛЬЕВИЧ",
+   "n": 1,
+   "ex": [
+    {
+     "sel": "tbody#incomesTable > tr > td",
+     "t": "АМИРОВ КАРИМ КАРНЕЛЬЕВИЧ"
+    }
+   ],
+   "gr": null,
+   "extra": "Don't: капслок",
+   "note": null,
+   "by_width": {
+    "375": 1,
+    "768": 1,
+    "1280": 1,
+    "1920": 1
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "tbody#incomesTable > tr > td",
+      "t": "АМИРОВ КАРИМ КАРНЕЛЬЕВИЧ"
+     }
+    ],
+    "768": [
+     {
+      "sel": "tbody#incomesTable > tr > td",
+      "t": "АМИРОВ КАРИМ КАРНЕЛЬЕВИЧ"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "tbody#incomesTable > tr > td",
+      "t": "АМИРОВ КАРИМ КАРНЕЛЬЕВИЧ"
+     }
+    ],
+    "1920": [
+     {
+      "sel": "tbody#incomesTable > tr > td",
+      "t": "АМИРОВ КАРИМ КАРНЕЛЬЕВИЧ"
+     }
+    ]
+   }
+  },
   {
    "gate": 2,
    "rule": "G4-icononly",
@@ -1045,6 +1882,202 @@
      {
       "sel": "nav.site-shell-sections > button.site-shell-scroll",
       "t": "Следующие разделы"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "39720,00 ₽ × 2",
+   "n": 2,
+   "ex": [
+    {
+     "sel": "tbody#incomesTable > tr > td",
+     "t": "39 720,00 ₽"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 2,
+    "768": 2,
+    "1280": 2,
+    "1920": 2
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "tbody#incomesTable > tr > td",
+      "t": "39 720,00 ₽"
+     }
+    ],
+    "768": [
+     {
+      "sel": "tbody#incomesTable > tr > td",
+      "t": "39 720,00 ₽"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "tbody#incomesTable > tr > td",
+      "t": "39 720,00 ₽"
+     }
+    ],
+    "1920": [
+     {
+      "sel": "tbody#incomesTable > tr > td",
+      "t": "39 720,00 ₽"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "34755,00 ₽ × 5",
+   "n": 5,
+   "ex": [
+    {
+     "sel": "tbody#incomesTable > tr > td",
+     "t": "34 755,00 ₽"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 5,
+    "768": 5,
+    "1280": 5,
+    "1920": 5
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "tbody#incomesTable > tr > td",
+      "t": "34 755,00 ₽"
+     }
+    ],
+    "768": [
+     {
+      "sel": "tbody#incomesTable > tr > td",
+      "t": "34 755,00 ₽"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "tbody#incomesTable > tr > td",
+      "t": "34 755,00 ₽"
+     }
+    ],
+    "1920": [
+     {
+      "sel": "tbody#incomesTable > tr > td",
+      "t": "34 755,00 ₽"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "19860,00 ₽ × 2",
+   "n": 2,
+   "ex": [
+    {
+     "sel": "tbody#incomesTable > tr > td",
+     "t": "19 860,00 ₽"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 2,
+    "768": 2,
+    "1280": 2,
+    "1920": 2
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "tbody#incomesTable > tr > td",
+      "t": "19 860,00 ₽"
+     }
+    ],
+    "768": [
+     {
+      "sel": "tbody#incomesTable > tr > td",
+      "t": "19 860,00 ₽"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "tbody#incomesTable > tr > td",
+      "t": "19 860,00 ₽"
+     }
+    ],
+    "1920": [
+     {
+      "sel": "tbody#incomesTable > tr > td",
+      "t": "19 860,00 ₽"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "9,93 ₽ × 2",
+   "n": 2,
+   "ex": [
+    {
+     "sel": "tbody#incomesTable > tr > td",
+     "t": "9,93 ₽"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 2,
+    "768": 2,
+    "1280": 2,
+    "1920": 2
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "tbody#incomesTable > tr > td",
+      "t": "9,93 ₽"
+     }
+    ],
+    "768": [
+     {
+      "sel": "tbody#incomesTable > tr > td",
+      "t": "9,93 ₽"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "tbody#incomesTable > tr > td",
+      "t": "9,93 ₽"
+     }
+    ],
+    "1920": [
+     {
+      "sel": "tbody#incomesTable > tr > td",
+      "t": "9,93 ₽"
      }
     ]
    }

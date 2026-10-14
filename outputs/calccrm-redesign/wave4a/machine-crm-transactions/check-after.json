@@ -3,7 +3,7 @@
  "mode": "check",
  "url": "http://127.0.0.1:59109/crm?section=transactions",
  "design": "/Users/karimamirov/Desktop/untitled folder/outputs/calccrm-redesign/DESIGN.md",
- "generated": "2026-10-15T00:04:03",
+ "generated": "2026-10-15T01:00:11",
  "widths_requested": [
   375,
   768,
@@ -565,50 +565,7 @@
    },
    "verdict": "PASS",
    "findings": [],
-   "warnings": [
-    {
-     "gate": 5,
-     "rule": "G12-dup",
-     "sev": "WARN",
-     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
-     "value": "0,00 USDT × 6",
-     "n": 6,
-     "ex": [
-      {
-       "sel": "div.wallet-card > div > strong",
-       "t": "0,00 USDT"
-      }
-     ],
-     "gr": 12,
-     "extra": null,
-     "note": null,
-     "by_width": {
-      "768": 6,
-      "1280": 6,
-      "1920": 6
-     },
-     "ex_by_width": {
-      "768": [
-       {
-        "sel": "div.wallet-card > div > strong",
-        "t": "0,00 USDT"
-       }
-      ],
-      "1280": [
-       {
-        "sel": "div.wallet-card > div > strong",
-        "t": "0,00 USDT"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "div.wallet-card > div > strong",
-        "t": "0,00 USDT"
-       }
-      ]
-     }
-    }
-   ],
+   "warnings": [],
    "scope": "авто: внутренние слова, повтор сумм; глагол/фразы из переписки — глазами"
   },
   "6": {
@@ -981,50 +938,7 @@
    "coverage": "partial",
    "verdict": "PASS",
    "findings": [],
-   "warnings": [
-    {
-     "gate": 5,
-     "rule": "G12-dup",
-     "sev": "WARN",
-     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
-     "value": "0,00 USDT × 6",
-     "n": 6,
-     "ex": [
-      {
-       "sel": "div.wallet-card > div > strong",
-       "t": "0,00 USDT"
-      }
-     ],
-     "gr": 12,
-     "extra": null,
-     "note": null,
-     "by_width": {
-      "768": 6,
-      "1280": 6,
-      "1920": 6
-     },
-     "ex_by_width": {
-      "768": [
-       {
-        "sel": "div.wallet-card > div > strong",
-        "t": "0,00 USDT"
-       }
-      ],
-      "1280": [
-       {
-        "sel": "div.wallet-card > div > strong",
-        "t": "0,00 USDT"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "div.wallet-card > div > strong",
-        "t": "0,00 USDT"
-       }
-      ]
-     }
-    }
-   ]
+   "warnings": []
   },
   "13": {
    "id": 13,
@@ -1275,44 +1189,44 @@
  "extras": [],
  "stats": {
   "375": {
-   "elements": 90,
+   "elements": 89,
    "groups": 48,
-   "texts": 42,
-   "contrast_checked": 47,
+   "texts": 41,
+   "contrast_checked": 46,
    "contrast_unknown": 0,
    "primaries": 1,
    "addresses": 0,
    "controls": 11
   },
   "768": {
-   "elements": 233,
-   "groups": 66,
-   "texts": 104,
-   "contrast_checked": 135,
+   "elements": 87,
+   "groups": 49,
+   "texts": 36,
+   "contrast_checked": 41,
    "contrast_unknown": 0,
    "primaries": 1,
-   "addresses": 9,
-   "controls": 38
+   "addresses": 0,
+   "controls": 11
   },
   "1280": {
-   "elements": 238,
-   "groups": 66,
-   "texts": 109,
-   "contrast_checked": 140,
+   "elements": 92,
+   "groups": 50,
+   "texts": 41,
+   "contrast_checked": 46,
    "contrast_unknown": 0,
    "primaries": 1,
-   "addresses": 9,
-   "controls": 38
+   "addresses": 0,
+   "controls": 11
   },
   "1920": {
-   "elements": 238,
-   "groups": 66,
-   "texts": 109,
-   "contrast_checked": 140,
+   "elements": 92,
+   "groups": 50,
+   "texts": 41,
+   "contrast_checked": 46,
    "contrast_unknown": 0,
    "primaries": 1,
-   "addresses": 9,
-   "controls": 38
+   "addresses": 0,
+   "controls": 11
   }
  },
  "limits": [],
@@ -1769,48 +1683,6 @@
      {
       "sel": ".docs-purpose textarea:focus",
       "t": ""
-     }
-    ]
-   }
-  },
-  {
-   "gate": 5,
-   "rule": "G12-dup",
-   "sev": "WARN",
-   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
-   "value": "0,00 USDT × 6",
-   "n": 6,
-   "ex": [
-    {
-     "sel": "div.wallet-card > div > strong",
-     "t": "0,00 USDT"
-    }
-   ],
-   "gr": 12,
-   "extra": null,
-   "note": null,
-   "by_width": {
-    "768": 6,
-    "1280": 6,
-    "1920": 6
-   },
-   "ex_by_width": {
-    "768": [
-     {
-      "sel": "div.wallet-card > div > strong",
-      "t": "0,00 USDT"
-     }
-    ],
-    "1280": [
-     {
-      "sel": "div.wallet-card > div > strong",
-      "t": "0,00 USDT"
-     }
-    ],
-    "1920": [
-     {
-      "sel": "div.wallet-card > div > strong",
-      "t": "0,00 USDT"
      }
     ]
    }

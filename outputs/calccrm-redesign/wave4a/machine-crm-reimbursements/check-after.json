@@ -3,7 +3,7 @@
  "mode": "check",
  "url": "http://127.0.0.1:59109/crm?section=reimbursements",
  "design": "/Users/karimamirov/Desktop/untitled folder/outputs/calccrm-redesign/DESIGN.md",
- "generated": "2026-10-15T00:13:31",
+ "generated": "2026-10-15T01:07:59",
  "widths_requested": [
   375,
   768,
@@ -91,7 +91,7 @@
      "ex": [
       {
        "sel": "div.card > div.form-group > div.reimburse-wallet-warning",
-       "t": "⚠️ TronScan не ответил по 2 кошельк(у/ам) — список переводов"
+       "t": "⚠️ TronScan не ответил по 1 кошельк(у/ам) — список переводов"
       }
      ],
      "gr": 5,
@@ -107,25 +107,25 @@
       "375": [
        {
         "sel": "div.card > div.form-group > div.reimburse-wallet-warning",
-        "t": "⚠️ TronScan не ответил по 2 кошельк(у/ам) — список переводов"
+        "t": "⚠️ TronScan не ответил по 1 кошельк(у/ам) — список переводов"
        }
       ],
       "768": [
        {
         "sel": "div.card > div.form-group > div.reimburse-wallet-warning",
-        "t": "⚠️ TronScan не ответил по 2 кошельк(у/ам) — список переводов"
+        "t": "⚠️ TronScan не ответил по 1 кошельк(у/ам) — список переводов"
        }
       ],
       "1280": [
        {
         "sel": "div.card > div.form-group > div.reimburse-wallet-warning",
-        "t": "⚠️ TronScan не ответил по 2 кошельк(у/ам) — список переводов"
+        "t": "⚠️ TronScan не ответил по 1 кошельк(у/ам) — список переводов"
        }
       ],
       "1920": [
        {
         "sel": "div.card > div.form-group > div.reimburse-wallet-warning",
-        "t": "⚠️ TronScan не ответил по 2 кошельк(у/ам) — список переводов"
+        "t": "⚠️ TronScan не ответил по 1 кошельк(у/ам) — список переводов"
        }
       ]
      }
@@ -12803,7 +12803,7 @@
      "ex": [
       {
        "sel": "div.card > div.form-group > div.reimburse-wallet-warning",
-       "t": "⚠️ TronScan не ответил по 2 кошельк(у/ам) — список переводов"
+       "t": "⚠️ TronScan не ответил по 1 кошельк(у/ам) — список переводов"
       }
      ],
      "gr": 5,
@@ -12819,25 +12819,25 @@
       "375": [
        {
         "sel": "div.card > div.form-group > div.reimburse-wallet-warning",
-        "t": "⚠️ TronScan не ответил по 2 кошельк(у/ам) — список переводов"
+        "t": "⚠️ TronScan не ответил по 1 кошельк(у/ам) — список переводов"
        }
       ],
       "768": [
        {
         "sel": "div.card > div.form-group > div.reimburse-wallet-warning",
-        "t": "⚠️ TronScan не ответил по 2 кошельк(у/ам) — список переводов"
+        "t": "⚠️ TronScan не ответил по 1 кошельк(у/ам) — список переводов"
        }
       ],
       "1280": [
        {
         "sel": "div.card > div.form-group > div.reimburse-wallet-warning",
-        "t": "⚠️ TronScan не ответил по 2 кошельк(у/ам) — список переводов"
+        "t": "⚠️ TronScan не ответил по 1 кошельк(у/ам) — список переводов"
        }
       ],
       "1920": [
        {
         "sel": "div.card > div.form-group > div.reimburse-wallet-warning",
-        "t": "⚠️ TronScan не ответил по 2 кошельк(у/ам) — список переводов"
+        "t": "⚠️ TronScan не ответил по 1 кошельк(у/ам) — список переводов"
        }
       ]
      }
@@ -25306,40 +25306,40 @@
  "extras": [],
  "stats": {
   "375": {
-   "elements": 2070,
+   "elements": 2069,
    "groups": 87,
-   "texts": 1430,
-   "contrast_checked": 1438,
+   "texts": 1429,
+   "contrast_checked": 1437,
    "contrast_unknown": 0,
    "primaries": 0,
    "addresses": 0,
    "controls": 213
   },
   "768": {
-   "elements": 2068,
+   "elements": 2067,
    "groups": 78,
-   "texts": 1425,
-   "contrast_checked": 1433,
+   "texts": 1424,
+   "contrast_checked": 1432,
    "contrast_unknown": 0,
    "primaries": 0,
    "addresses": 0,
    "controls": 213
   },
   "1280": {
-   "elements": 2073,
+   "elements": 2072,
    "groups": 73,
-   "texts": 1430,
-   "contrast_checked": 1438,
+   "texts": 1429,
+   "contrast_checked": 1437,
    "contrast_unknown": 0,
    "primaries": 0,
    "addresses": 0,
    "controls": 213
   },
   "1920": {
-   "elements": 2073,
+   "elements": 2072,
    "groups": 73,
-   "texts": 1430,
-   "contrast_checked": 1438,
+   "texts": 1429,
+   "contrast_checked": 1437,
    "contrast_unknown": 0,
    "primaries": 0,
    "addresses": 0,
@@ -25373,7 +25373,7 @@
    "ex": [
     {
      "sel": "div.card > div.form-group > div.reimburse-wallet-warning",
-     "t": "⚠️ TronScan не ответил по 2 кошельк(у/ам) — список переводов"
+     "t": "⚠️ TronScan не ответил по 1 кошельк(у/ам) — список переводов"
     }
    ],
    "gr": 5,
@@ -25389,25 +25389,25 @@
     "375": [
      {
       "sel": "div.card > div.form-group > div.reimburse-wallet-warning",
-      "t": "⚠️ TronScan не ответил по 2 кошельк(у/ам) — список переводов"
+      "t": "⚠️ TronScan не ответил по 1 кошельк(у/ам) — список переводов"
      }
     ],
     "768": [
      {
       "sel": "div.card > div.form-group > div.reimburse-wallet-warning",
-      "t": "⚠️ TronScan не ответил по 2 кошельк(у/ам) — список переводов"
+      "t": "⚠️ TronScan не ответил по 1 кошельк(у/ам) — список переводов"
      }
     ],
     "1280": [
      {
       "sel": "div.card > div.form-group > div.reimburse-wallet-warning",
-      "t": "⚠️ TronScan не ответил по 2 кошельк(у/ам) — список переводов"
+      "t": "⚠️ TronScan не ответил по 1 кошельк(у/ам) — список переводов"
      }
     ],
     "1920": [
      {
       "sel": "div.card > div.form-group > div.reimburse-wallet-warning",
-      "t": "⚠️ TronScan не ответил по 2 кошельк(у/ам) — список переводов"
+      "t": "⚠️ TronScan не ответил по 1 кошельк(у/ам) — список переводов"
      }
     ]
    }

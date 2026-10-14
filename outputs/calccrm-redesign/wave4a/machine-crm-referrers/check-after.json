@@ -3,7 +3,7 @@
  "mode": "check",
  "url": "http://127.0.0.1:59109/crm?section=referrers",
  "design": "/Users/karimamirov/Desktop/untitled folder/outputs/calccrm-redesign/DESIGN.md",
- "generated": "2026-10-15T00:22:28",
+ "generated": "2026-10-15T01:03:28",
  "widths_requested": [
   375,
   768,
@@ -1183,13 +1183,13 @@
    "notes": [],
    "shots": {
     "375": {
-     "after": "outputs/calccrm-redesign/wave4a/machine-crm-referrers/after-karim-375.png",
-     "before": "outputs/calccrm-redesign/wave4a/machine-crm-referrers/before-karim-375.png",
+     "after": "/private/tmp/calccrm-wave4a/outputs/calccrm-redesign/wave4a/machine-crm-referrers/after-karim-375.png",
+     "before": "/private/tmp/calccrm-wave4a/outputs/calccrm-redesign/wave4a/machine-crm-referrers/before-karim-375.png",
      "identical": false
     },
     "1280": {
-     "after": "outputs/calccrm-redesign/wave4a/machine-crm-referrers/after-karim-1280.png",
-     "before": "outputs/calccrm-redesign/wave4a/machine-crm-referrers/before-karim-1280.png",
+     "after": "/private/tmp/calccrm-wave4a/outputs/calccrm-redesign/wave4a/machine-crm-referrers/after-karim-1280.png",
+     "before": "/private/tmp/calccrm-wave4a/outputs/calccrm-redesign/wave4a/machine-crm-referrers/before-karim-1280.png",
      "identical": false
     }
    },
@@ -2392,40 +2392,40 @@
  "extras": [],
  "stats": {
   "375": {
-   "elements": 537,
+   "elements": 536,
    "groups": 49,
-   "texts": 258,
-   "contrast_checked": 361,
+   "texts": 257,
+   "contrast_checked": 360,
    "contrast_unknown": 0,
    "primaries": 1,
    "addresses": 0,
    "controls": 106
   },
   "768": {
-   "elements": 535,
+   "elements": 534,
    "groups": 46,
-   "texts": 253,
-   "contrast_checked": 356,
+   "texts": 252,
+   "contrast_checked": 355,
    "contrast_unknown": 0,
    "primaries": 1,
    "addresses": 0,
    "controls": 106
   },
   "1280": {
-   "elements": 540,
+   "elements": 539,
    "groups": 48,
-   "texts": 258,
-   "contrast_checked": 361,
+   "texts": 257,
+   "contrast_checked": 360,
    "contrast_unknown": 0,
    "primaries": 1,
    "addresses": 0,
    "controls": 106
   },
   "1920": {
-   "elements": 540,
+   "elements": 539,
    "groups": 48,
-   "texts": 258,
-   "contrast_checked": 361,
+   "texts": 257,
+   "contrast_checked": 360,
    "contrast_unknown": 0,
    "primaries": 1,
    "addresses": 0,

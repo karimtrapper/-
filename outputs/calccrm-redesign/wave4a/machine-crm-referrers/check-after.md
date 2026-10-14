@@ -1,8 +1,8 @@
 # design-gate · check — **PASS**
 
-URL: `http://127.0.0.1:59109/crm?section=referrers`
-DESIGN: `/Users/karimamirov/Desktop/untitled folder/outputs/calccrm-redesign/DESIGN.md`
-Ширины: запрошено [375, 768, 1280, 1920], обязательны для PASS [375, 768, 1280, 1920]
+URL: `http://127.0.0.1:59109/crm?section=referrers`  
+DESIGN: `/Users/karimamirov/Desktop/untitled folder/outputs/calccrm-redesign/DESIGN.md`  
+Ширины: запрошено [375, 768, 1280, 1920], обязательны для PASS [375, 768, 1280, 1920]  
 Роль: karim
 
 _Вердикт машинный: проверена автоматическая часть гейтов. Вкус, иерархия и пункты «MANUAL» ниже остаются человеку._
@@ -17,7 +17,7 @@ _Вердикт машинный: проверена автоматическа�
 | 6. Снимки | **PASS** | PASS | PASS | PASS | PASS |
 
 ## Телефон (≤700px)
-- 375px: элементов 537, контраст проверен у 361, главных кнопок 1, адресов 0
+- 375px: элементов 536, контраст проверен у 360, главных кнопок 1, адресов 0
 
 ### Гейт 1. Токены: 375px PASS
 находок нет
@@ -48,9 +48,9 @@ _Гардрейлы 1–2, 7, 8, 11 дублируют гейты 1, 3, 4, 5 —
   - … и ещё 8 (полный список в JSON)
 
 ## Компьютер (>700px)
-- 768px: элементов 535, контраст проверен у 356, главных кнопок 1, адресов 0
-- 1280px: элементов 540, контраст проверен у 361, главных кнопок 1, адресов 0
-- 1920px: элементов 540, контраст проверен у 361, главных кнопок 1, адресов 0
+- 768px: элементов 534, контраст проверен у 355, главных кнопок 1, адресов 0
+- 1280px: элементов 539, контраст проверен у 360, главных кнопок 1, адресов 0
+- 1920px: элементов 539, контраст проверен у 360, главных кнопок 1, адресов 0
 
 ### Гейт 1. Токены: 768px PASS · 1280px PASS · 1920px PASS
 находок нет
@@ -82,8 +82,8 @@ _Гардрейлы 1–2, 7, 8, 11 дублируют гейты 1, 3, 4, 5 —
 
 ## Гейт 6. Снимки — PASS
 _авто: наличие и непустота пар «до/после»; сравнение — глазами_
-- 375px: после `outputs/calccrm-redesign/wave4a/machine-crm-referrers/after-karim-375.png`, до `outputs/calccrm-redesign/wave4a/machine-crm-referrers/before-karim-375.png`
-- 1280px: после `outputs/calccrm-redesign/wave4a/machine-crm-referrers/after-karim-1280.png`, до `outputs/calccrm-redesign/wave4a/machine-crm-referrers/before-karim-1280.png`
+- 375px: после `/private/tmp/calccrm-wave4a/outputs/calccrm-redesign/wave4a/machine-crm-referrers/after-karim-375.png`, до `/private/tmp/calccrm-wave4a/outputs/calccrm-redesign/wave4a/machine-crm-referrers/before-karim-375.png`
+- 1280px: после `/private/tmp/calccrm-wave4a/outputs/calccrm-redesign/wave4a/machine-crm-referrers/after-karim-1280.png`, до `/private/tmp/calccrm-wave4a/outputs/calccrm-redesign/wave4a/machine-crm-referrers/before-karim-1280.png`
 
 ## Гардрейлы (18)
 
