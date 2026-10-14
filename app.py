@@ -5180,6 +5180,11 @@ def current_role():
 
 # ==================== ОБЩЕЕ СОСТОЯНИЕ ЗАДАЧНИКА (СТЕНД) ====================
 
+def _stand_initial_state():
+    with open(os.path.join(app.static_folder, 'stand', 'counterparties.json'), encoding='utf-8') as source:
+        return {'cps': json.load(source)}
+
+
 def _stand_row(db, lock=False):
     q = db.query(StandState).filter(StandState.id == 1)
     # При записи берём строку под блокировку: два сохранения подряд иначе
@@ -5188,7 +5193,7 @@ def _stand_row(db, lock=False):
         q = q.with_for_update()
     row = q.first()
     if not row:
-        row = StandState(id=1, data='{}', version=0, generation=secrets.token_hex(16))
+        row = StandState(id=1, data=json.dumps(_stand_initial_state(), ensure_ascii=False), version=0, generation=secrets.token_hex(16))
         db.add(row)
         db.commit()
     return row
@@ -5257,6 +5262,7 @@ def _stand_strip_files(data):
     if not isinstance(data, dict) or 'deals' not in data:
         return data
     out = dict(data)
+    out.setdefault('cps', _stand_initial_state()['cps'])
     out['deals'] = []
     for deal in data['deals']:
         d = dict(deal)
@@ -6366,7 +6372,7 @@ def stand_quote_save():
         from stand_workflow import quote_dirs
         if direction not in quote_dirs(deal):
             return jsonify(success=False, error='У этой сделки нет такого направления курса'), 409
-        cp = next((c for c in state.get('cps') or [] if c.get('id') == cp_id), None)
+        cp = next((c for c in state.get('cps', _stand_initial_state()['cps']) if c.get('id') == cp_id), None)
         if not cp or direction not in (cp.get('dirs') or [cp.get('dir')]):
             return jsonify(success=False, error='Контрагент для этого курса не найден'), 409
         quotes = deal.setdefault('quotes', [])
@@ -7103,7 +7109,7 @@ def stand_state_reset():
             db.execute(_t('BEGIN IMMEDIATE'))
         row = _stand_row(db, lock=True)
         stand_file_storage.mark_deleted(db, StandFile, json.loads(row.data or '{}'), {})
-        row.data = '{}'
+        row.data = json.dumps(_stand_initial_state(), ensure_ascii=False)
         row.notified = '[]'
         row.generation = secrets.token_hex(16)
         row.version = (row.version or 0) + 1

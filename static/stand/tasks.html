@@ -2419,21 +2419,7 @@ function postConvSet(id,k){
 }
 /* dirs — по каким направлениям у контрагента спрашивают курс: рубли → USDT или
    USDT → баты. PRO100TRADE из списка убран (Карим, 23.09). */
-const COUNTERPARTIES=[
-  /* На стенде переход в реальные чаты брокеров и Coins выключен (cpLink ниже всегда
-     возвращает null) — здесь для тех же контрагентов нет и самих боевых ссылок,
-     чтобы их не было даже в исходнике страницы (Карим, 27.09). */
-  {id:'kripta', dirs:['rub'], lang:'ru', name:'Крипта-Платежи · Екатерина',
-    chat:null, note:'наценка к курсу ЦБ, считаем спред · чат «Крипта - Платежи» — на стенде ссылка выключена'},
-  {id:'asia',   dirs:['rub'], lang:'ru', name:'Asia Capital',
-    chat:null, note:'личный чат — на стенде ссылка выключена'},
-  {id:'tradex', dirs:['rub'], lang:'ru', name:'Tradex',
-    chat:null, note:'чат «Grusha (MF) | Tradex» · через него шли последние пачки — на стенде ссылка выключена'},
-  {id:'coins',  dirs:['thb'], name:'Coins.co.th',
-    chat:null, note:'OTC-чат «OTC MF & coin (USD)» · выплаты только на счёт MF Corp — на стенде ссылка выключена'},
-  {id:'bitazza',dirs:['thb'], name:'Bitazza',
-    chat:null, note:'запасной, когда у Coins лимит — на стенде ссылка выключена'}
-];
+
 /* Переход в калькулятор с уже проставленными курсами, суммой и типом сделки.
    Менеджеру остаётся поставить свой процент — переносить цифры руками не нужно
    (Карим, 22.09). Открываем в новой вкладке, чтобы задача не терялась.
@@ -2500,7 +2486,7 @@ function cpDir(c,d){return (c.dirs||[c.dir]).indexOf(d)>=0;}
 /* COUNTERPARTIES — стартовый набор. Рабочий список живёт в состоянии: брокеры
    появляются и отваливаются, и это должно делаться на месте (Карим, 24.09). */
 function cps(){
-  if(!Array.isArray(S.cps)||!S.cps.length) S.cps=COUNTERPARTIES.map(c=>Object.assign({},c));
+  if(!Array.isArray(S.cps)) S.cps=[]; // справочник приходит вместе с серверной доской
   return S.cps;
 }
 function cpById(id){return cps().find(c=>c.id===id)||null;}

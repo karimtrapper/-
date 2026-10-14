@@ -138,3 +138,30 @@ def test_real_change_to_other_roles_task_still_rejected(board, key, value):
     install('s5', {'amountRub': 100000})
     response = put_board(clients('manager'), lambda state: state['deals'][0].update({key: value}))
     assert response.status_code == 409, response.json
+
+
+@pytest.mark.parametrize('reset', [False, True])
+def test_fresh_and_reset_board_counterparties_are_server_owned(board, reset):
+    import app as m
+    install, clients = board
+    admin = clients('admin')
+    if reset:
+        assert admin.post('/api/stand/reset').status_code == 200
+    else:
+        with m.SessionLocal() as db:
+            db.query(m.StandState).filter_by(id=1).delete()
+            db.commit()
+    current = admin.get('/api/stand/state').json
+    catalog = current['data']['cps']
+    with m.SessionLocal() as db:
+        import json
+        assert json.loads(db.get(m.StandState, 1).data)['cps'] == catalog
+    state = current['data']
+    state['deals'] = [{'id': 1474, 'step': 's5', 'type': 'Обмен валюты', 'pair': 'RUB → USDT', 'log': []}]
+    saved = clients('manager').put('/api/stand/state', json={'version': current['version'], 'data': state})
+    assert saved.status_code == 200, saved.json
+    broker = next(c for c in catalog if 'rub' in c['dirs'])
+    result = clients('operator').post('/api/stand/quote', json={'version': saved.json['version'],
+        'dealId': 1474, 'dir': 'rub', 'cpId': broker['id'], 'rate': '85'})
+    assert result.status_code == 200, result.json
+    assert result.json['data']['deals'][0]['step'] == 's6'
