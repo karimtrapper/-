@@ -97,7 +97,8 @@ _DP_ALLOWED_KEYS = frozenset({'model', 'messages', 'response_format', 'max_token
 _DP_IMAGE_URL_RE = re.compile(r'^data:image/png;base64,[A-Za-z0-9+/]+=*$')
 _DP_MAX_RESPONSE_BYTES = 2 * 1024 * 1024
 _DP_MAX_REQUEST_BYTES = 12 * 1024 * 1024
-_DP_TOTAL_DEADLINE = 20.0
+_DP_FILE_DEADLINE = 90.0
+_DP_REQUEST_DEADLINE = 150.0
 
 _read_ctx = threading.local()
 
@@ -1314,13 +1315,15 @@ class _DocparseRequestScope:
                       and bool(session.get('user_id'))
                       and getattr(g, '_docparse_checked_user', None) == session.get('user_id'))
         _dp_auth_ctx.authorized = authorized
-        _dp_auth_ctx.deadline = (getattr(g, '_docparse_started', time.monotonic())
-                                 + _DP_TOTAL_DEADLINE) if authorized else None
+        _dp_auth_ctx.request_deadline = (getattr(g, '_docparse_started', time.monotonic())
+                                         + _DP_REQUEST_DEADLINE) if authorized else None
+        _dp_auth_ctx.file_deadline = None
         return self
 
     def __exit__(self, *exc):
         _dp_auth_ctx.authorized = False
-        _dp_auth_ctx.deadline = None
+        _dp_auth_ctx.request_deadline = None
+        _dp_auth_ctx.file_deadline = None
         return False
 
 
@@ -1331,13 +1334,29 @@ def docparse_request_authorized():
                 and request.method == 'POST'
                 and getattr(g, '_docparse_checked_user', None) == session.get('user_id')
                 and session.get('user_id')
-                and getattr(_dp_auth_ctx, 'deadline', None) is not None)
+                and getattr(_dp_auth_ctx, 'request_deadline', None) is not None)
+
+
+@contextmanager
+def docparse_file_scope():
+    """One bounded file within an authorized OCR request (thread local)."""
+    if not docparse_request_authorized():
+        raise PermissionError('no_request_context')
+    previous = getattr(_dp_auth_ctx, 'file_deadline', None)
+    _dp_auth_ctx.file_deadline = time.monotonic() + _DP_FILE_DEADLINE
+    try:
+        yield
+    finally:
+        _dp_auth_ctx.file_deadline = previous
 
 
 def docparse_remaining():
     if not docparse_request_authorized():
         return 0.0
-    return max(0.0, _dp_auth_ctx.deadline - time.monotonic())
+    deadlines = [_dp_auth_ctx.request_deadline]
+    if getattr(_dp_auth_ctx, 'file_deadline', None) is not None:
+        deadlines.append(_dp_auth_ctx.file_deadline)
+    return max(0.0, min(deadlines) - time.monotonic())
 
 
 def _dp_content_item_ok(item):
@@ -1396,7 +1415,7 @@ def _valid_docparse_payload(payload):
     return True
 
 
-def docparse_post(payload, timeout=_DP_TOTAL_DEADLINE, _base_url=None):
+def docparse_post(payload, timeout=_DP_FILE_DEADLINE, _base_url=None):
     """Единственный путь распознавания документов в OpenRouter на стенде.
 
     Ровно POST на chat/completions с ключом STAND_DOCPARSE_KEY, через тот же
@@ -1421,7 +1440,9 @@ def docparse_post(payload, timeout=_DP_TOTAL_DEADLINE, _base_url=None):
     timeout = min(timeout, docparse_remaining())
     if timeout <= 0:
         return None, None, 'timeout'
-    deadline = min(_dp_auth_ctx.deadline, time.monotonic() + timeout)
+    deadline = min(_dp_auth_ctx.request_deadline,
+                   getattr(_dp_auth_ctx, 'file_deadline', None) or _dp_auth_ctx.request_deadline,
+                   time.monotonic() + timeout)
 
     key = os.environ.get('STAND_DOCPARSE_KEY', '').strip()
     if not key:

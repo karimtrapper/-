@@ -24165,8 +24165,6 @@ def docs_parse():
     Ничего не сохраняет: менеджер сначала подтверждает данные, и только потом
     создаётся договор. Файлы приезжают повторно на шаге создания.
     """
-    if STAND_MODE:
-        g._docparse_started = time.monotonic()
     key = _docs_openrouter_key()
     if STAND_MODE and not key:
         return jsonify({'success': False, 'error': 'stand_blocked',
@@ -24190,38 +24188,71 @@ def docs_parse():
                             'detail': 'Не приложены: ' + ', '.join(
                                 DOCS_SLOT_LABEL[s] for s in missing)}), 400
 
-    import contextlib
     import docparse
     import stand_egress
     results, failed = [], []
-    # Разрешение на docparse.parse_file(stand=True) открыто только для этого
-    # потока и только на время цикла ниже — прямой вызов из фонового потока/
-    # скрипта, минуя HTTP-запрос залогиненного сотрудника, отказывает до сети
-    # (см. stand_egress.docparse_request_scope).
-    scope = stand_egress.docparse_request_scope() if STAND_MODE else contextlib.nullcontext()
-    with scope:
+    if STAND_MODE:
+        from concurrent.futures import ThreadPoolExecutor, wait
+
+        # Multipart и все файлы уже прочитаны: медленная загрузка не тратит
+        # время модели. В потоки передаются только байты, MIME и имя слота.
+        prepared = [(slot, f.filename, f.read(), f.mimetype) for slot, f in uploads]
+        started = time.monotonic()
+        checked_user = g._docparse_checked_user
+        environ = request.environ
+
+        def parse_one(slot, filename, raw, mime):
+            # У каждого потока свой Flask context на том же POST. Multipart уже
+            # прочитан; в потоке только проверяем endpoint/method/session и
+            # переносим uid, ранее проверенный check_auth в родительском потоке.
+            with app.request_context(environ):
+                g._docparse_checked_user = checked_user
+                g._docparse_started = started
+                with stand_egress.docparse_request_scope():
+                    with stand_egress.docparse_file_scope():
+                        return docparse.parse_file(filename, raw, mime, key, kind=slot, stand=True)
+
+        executor = ThreadPoolExecutor(max_workers=min(3, len(prepared)))
+        try:
+            futures = [executor.submit(parse_one, *item) if item[2] else None
+                       for item in prepared]
+            active = [future for future in futures if future is not None]
+            done, _ = wait(active, timeout=max(0.0, started + stand_egress._DP_REQUEST_DEADLINE
+                                              - time.monotonic()))
+            for (slot, _filename, raw, _mime), future in zip(prepared, futures):
+                if not raw:
+                    continue
+                if future not in done:
+                    code = 'timeout'
+                else:
+                    try:
+                        results.append(future.result())
+                        continue
+                    except Exception as exc:
+                        code = exc.args[0] if isinstance(exc, docparse.StandDocparseError) else 'parse_failed'
+                # Никогда не пишем имя файла, тело документа или SDK exception.
+                app.logger.warning('docs_parse: stand parse failed slot=%s code=%s', slot, code)
+                failed.append({'slot': slot, 'error': code})
+        finally:
+            executor.shutdown(wait=False, cancel_futures=True)
+    else:
         for slot, f in uploads:
             raw = f.read()
             if not raw:
                 continue
             try:
                 results.append(docparse.parse_file(f.filename, raw, f.mimetype, key, kind=slot,
-                                                   stand=STAND_MODE))
+                                                   stand=False))
             except Exception as exc:
-                if STAND_MODE:
-                    # Стабильный код без имени файла и текста исключения SDK/requests —
-                    # ни то ни другое не должно попасть ни в лог, ни в ответ (OCR-review).
-                    code = exc.args[0] if isinstance(exc, docparse.StandDocparseError) else 'parse_failed'
-                    app.logger.warning('docs_parse: stand parse failed slot=%s code=%s', slot, code)
-                    failed.append({'slot': slot, 'error': code})
-                else:
-                    app.logger.warning(f'docs_parse: {f.filename} — {exc}')
-                    failed.append({'file': f.filename, 'slot': slot, 'error': str(exc)[:300]})
+                app.logger.warning(f'docs_parse: {f.filename} — {exc}')
+                failed.append({'file': f.filename, 'slot': slot, 'error': str(exc)[:300]})
     if not results:
         return jsonify({'success': False, 'error': 'parse_failed', 'failed': failed}), 502
     merged = docparse.merge(results)
     merged['warnings'] = docparse.validate(merged['fields'])
     merged['failed'] = failed
+    if STAND_MODE:
+        merged['parsed_slots'] = list(dict.fromkeys(r['_kind'] for r in results if r.get('_kind')))
     merged['success'] = True
     return jsonify(merged)
 

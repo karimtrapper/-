@@ -10,6 +10,8 @@ tests/test_stand_egress.py — здесь docparse_post подменяется �
 """
 import io
 import json
+import time
+import threading
 
 import pytest
 
@@ -50,6 +52,111 @@ def _fake_choice(fields):
     payload['doc_kind'] = None
     payload['masked_fields'] = []
     return {'choices': [{'message': {'content': json.dumps(payload, ensure_ascii=False)}}]}
+
+
+def test_slow_model_succeeds_with_per_file_budget(stand, monkeypatch):
+    """Scaled clock: 0.75s models a 45s provider response, beyond old 20s."""
+    monkeypatch.setattr(stand_egress, '_DP_FILE_DEADLINE', 1.5)
+    monkeypatch.setattr(stand_egress, '_DP_REQUEST_DEADLINE', 2.5)
+    def fake_post(payload, timeout=60):
+        time.sleep(.75)
+        return 200, _fake_choice(FAKE_FIELDS), None
+    monkeypatch.setattr(stand_egress, 'docparse_post', fake_post)
+    r = stand.post('/api/docs/parse', data={'passport': (io.BytesIO(PASSPORT_PNG), 'p.png')},
+                   content_type='multipart/form-data')
+    assert r.status_code == 200, r.get_json()
+
+
+def test_upload_time_does_not_consume_model_budget(stand, monkeypatch):
+    monkeypatch.setattr(stand_egress, '_DP_FILE_DEADLINE', .25)
+    monkeypatch.setattr(stand_egress, '_DP_REQUEST_DEADLINE', .4)
+    original = appmod._docs_collect_uploads
+    def slow_upload():
+        uploads = original()
+        time.sleep(.45)
+        return uploads
+    monkeypatch.setattr(appmod, '_docs_collect_uploads', slow_upload)
+    monkeypatch.setattr(stand_egress, 'docparse_post',
+                        lambda payload, timeout=60: (200, _fake_choice(FAKE_FIELDS), None))
+    r = stand.post('/api/docs/parse', data={'passport': (io.BytesIO(PASSPORT_PNG), 'p.png')},
+                   content_type='multipart/form-data')
+    assert r.status_code == 200, r.get_json()
+
+
+def test_three_slow_files_run_concurrently(stand, monkeypatch):
+    """Scaled clock: three 60s provider responses finish below 150s ceiling."""
+    monkeypatch.setattr(stand_egress, '_DP_FILE_DEADLINE', 1.5)
+    monkeypatch.setattr(stand_egress, '_DP_REQUEST_DEADLINE', 2.5)
+    calls = []
+    lock = threading.Lock()
+    def fake_post(payload, timeout=60):
+        with lock:
+            calls.append(time.monotonic())
+        time.sleep(1)
+        return 200, _fake_choice(FAKE_FIELDS), None
+    monkeypatch.setattr(stand_egress, 'docparse_post', fake_post)
+    started = time.monotonic()
+    r = stand.post('/api/docs/parse', data={
+        'passport': (io.BytesIO(PASSPORT_PNG), 'p.png'),
+        'invoice': (io.BytesIO(INVOICE_PNG), 'i.png'),
+        'spa': (io.BytesIO(PASSPORT_PNG), 's.png'),
+    }, content_type='multipart/form-data')
+    elapsed = time.monotonic() - started
+    assert r.status_code == 200, r.get_json()
+    assert len(calls) == 3 and max(calls) - min(calls) < .4
+    assert elapsed < 2.5
+
+
+def test_timeout_is_per_file_and_preserves_success(stand, monkeypatch):
+    monkeypatch.setattr(stand_egress, '_DP_FILE_DEADLINE', .5)
+    monkeypatch.setattr(stand_egress, '_DP_REQUEST_DEADLINE', 1)
+    def fake_post(payload, timeout=60):
+        kind = payload['messages'][0]['content'][0]['text']
+        if 'инвойс' in kind:
+            time.sleep(timeout + .05)
+            return None, None, 'timeout'
+        return 200, _fake_choice(FAKE_FIELDS), None
+    monkeypatch.setattr(stand_egress, 'docparse_post', fake_post)
+    r = stand.post('/api/docs/parse', data={
+        'passport': (io.BytesIO(PASSPORT_PNG), 'p.png'),
+        'invoice': (io.BytesIO(INVOICE_PNG), 'i.png'),
+    }, content_type='multipart/form-data')
+    body = r.get_json()
+    assert r.status_code == 200 and body['success']
+    assert body['failed'] == [{'slot': 'invoice', 'error': 'timeout'}]
+    assert body['parsed_slots'] == ['passport']
+    assert body['fields']['client_passport_no'] == '77 1234567'
+
+
+def test_request_ceiling_bounds_noncooperative_provider_mock(stand, monkeypatch):
+    monkeypatch.setattr(stand_egress, '_DP_FILE_DEADLINE', 1)
+    monkeypatch.setattr(stand_egress, '_DP_REQUEST_DEADLINE', .3)
+    def fake_post(payload, timeout=60):
+        time.sleep(.45)
+        return 200, _fake_choice(FAKE_FIELDS), None
+    monkeypatch.setattr(stand_egress, 'docparse_post', fake_post)
+    started = time.monotonic()
+    r = stand.post('/api/docs/parse', data={'passport': (io.BytesIO(PASSPORT_PNG), 'p.png')},
+                   content_type='multipart/form-data')
+    assert time.monotonic() - started < .42
+    assert r.status_code == 502
+    assert r.get_json()['failed'] == [{'slot': 'passport', 'error': 'timeout'}]
+    time.sleep(.2)  # let the mock finish before monkeypatch removes it
+
+
+def test_fallback_skipped_if_less_than_thirty_seconds_remain(stand, monkeypatch):
+    monkeypatch.setattr(stand_egress, '_DP_FILE_DEADLINE', .5)
+    monkeypatch.setattr(docparse, 'STAND_FALLBACK_MIN_SECONDS', .3)
+    calls = []
+    def fake_post(payload, timeout=60):
+        calls.append(payload['model'])
+        time.sleep(.25)
+        return 503, {}, None
+    monkeypatch.setattr(stand_egress, 'docparse_post', fake_post)
+    r = stand.post('/api/docs/parse', data={'passport': (io.BytesIO(PASSPORT_PNG), 'p.png')},
+                   content_type='multipart/form-data')
+    assert calls == [docparse.DEFAULT_MODEL]
+    assert r.get_json()['failed'] == [{'slot': 'passport', 'error': 'timeout'}]
 
 
 def test_parse_disabled_without_stand_key(stand, monkeypatch):

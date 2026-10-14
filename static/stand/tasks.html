@@ -7639,7 +7639,12 @@ async function docParse(id,quiet){
   }catch(e){d.docParseState='ошибка: '+e.message;save();render();if(!quiet)toast('Не удалось прочитать файл: '+e.message);return;}
   if(!n){if(!quiet)toast('Нет загруженных паспорта или инвойса — распознавать нечего');return;}
   fd.append('deal_type',d.kind==='Фрихолд'?'freehold':(d.kind==='Аренда'?'rental':'leasehold'));
-  d.docParseState='идёт';render();
+  d.docParseState='идёт';
+  DOC_PARSE_STARTED.set(id,Date.now());render();
+  const progress=setInterval(()=>{
+    const el=document.getElementById('docParseTimer-'+id);
+    if(el)el.textContent=docParseElapsed(id);
+  },1000);
   try{
     const r=await fetch('/api/docs/parse',{method:'POST',credentials:'same-origin',body:fd});
     const j=await r.json();
@@ -7654,10 +7659,13 @@ async function docParse(id,quiet){
         if(!quiet)toast('На стенде распознавание документов выключено — заполните поля договора руками');
         return;
       }
-      dd.docParseState='ошибка: '+(j.detail||j.error||r.status);save();render();if(!quiet)toast('Не распознано: '+(j.detail||j.error));return;}
-    dd.docParse={fields:j.fields||{},warnings:j.warnings||[],failed:(j.failed||[]).map(x=>x.file||x.slot),at:now()};
+      dd.docParse={fields:{},warnings:[],ok:[],failed:j.failed||[],at:now()};
+      dd.docParseState='ошибка';save();render();
+      if(!quiet)toast((j.failed||[]).some(x=>x.error==='timeout')?docParseErrorText('timeout'):'Не распознано: '+(j.detail||j.error));
+      return;}
+    dd.docParse={fields:j.fields||{},warnings:j.warnings||[],ok:j.parsed_slots||[],failed:j.failed||[],at:now()};
     DOC_PARSE_AVAILABLE=true;
-    dd.docParseState='готово';
+    dd.docParseState=dd.docParse.failed.length?'частично':'готово';
     /* Объект из инвойса — сразу в сделку, если его ещё нет: иначе в шапке и сводке до
        выпуска договора стояло «не указан», хотя инвойс уже распознан (аудит 27.09, №23) */
     const obj=[dd.docParse.fields.project_name,dd.docParse.fields.unit_no].filter(Boolean).join(', ');
@@ -7668,8 +7676,9 @@ async function docParse(id,quiet){
     log(dd,'Документы распознаны: '+Object.keys(dd.docParse.fields).length+' полей'+(dd.docParse.warnings.length?' · замечаний '+dd.docParse.warnings.length:''));
     /* свежий результат распознавания важнее недописанного руками в полях пакета */
     Object.keys(DRAFTS).forEach(k=>{if(k.indexOf(id+'|df_')===0)delete DRAFTS[k];});
-    save();render();if(!quiet)toast('Документы распознаны');
+    save();render();if(!quiet)toast(dd.docParse.failed.length?'Часть документов распознана — проверьте результат':'Документы распознаны');
   }catch(e){const dd=deal(id);dd.docParseState='ошибка сети';save();render();if(!quiet)toast('Распознавание недоступно');}
+  finally{clearInterval(progress);DOC_PARSE_STARTED.delete(id);}
 }
 function parsed(d,k){return ((d.docParse||{}).fields||{})[k]||'';}
 const MANAGER_DRAFT_DOCS=['pass','inv','spa','ipds'];
@@ -7699,17 +7708,39 @@ function managerDraftPublishDocs(d){
   if(draft.comment&&!d.docComment)d.docComment=draft.comment;
   delete draft.files;delete draft.docs;delete draft.docMeta;delete draft.comment;
 }
+const DOC_PARSE_STARTED=new Map();
+const DOC_PARSE_SLOT_LABEL={passport:'Паспорт',invoice:'Инвойс',spa:'SPA'};
+function docParseErrorText(code){
+  return code==='timeout'?'Модель не успела за 90 секунд — попробуйте ещё раз или заполните поля вручную':'Распознать не удалось — заполните поля вручную';
+}
+function docParseElapsed(id){
+  return 'Прошло '+Math.floor((Date.now()-(DOC_PARSE_STARTED.get(id)||Date.now()))/1000)+' сек. · до 90 сек. на файл';
+}
+function docParseStatus(d){
+  const parsed=d.docParse||{},ok=parsed.ok||[],failed=parsed.failed||[];
+  const names=ok.filter(s=>DOC_PARSE_SLOT_LABEL[s]).map(s=>DOC_PARSE_SLOT_LABEL[s]+' — распознан');
+  for(const item of failed){
+    const slot=typeof item==='string'?item:item.slot;
+    if(DOC_PARSE_SLOT_LABEL[slot])names.push(DOC_PARSE_SLOT_LABEL[slot]+' — '+docParseErrorText(item.error));
+  }
+  return names.join(' · ');
+}
 function docParseLine(d){
   const st=d.docParseState, P=(d.docParse||{}).fields||{};
   const unavailable=STAND&&DOC_PARSE_AVAILABLE===false;
   const have=['pass','inv','spa'].some(k=>filesOf(d,k).length);
   if(!have) return '';
   const got=Object.keys(P).length;
+  const status=docParseStatus(d);
+  const values=[P.client_name_en||P.client_name_ru,P.client_passport_no,P.recipient_name,P.invoice_no].filter(Boolean).join(' · ');
+  let message='Документы ещё не распознаны.';
+  if(st==='идёт')message=`Распознаём документы… <span id="docParseTimer-${d.id}">${docParseElapsed(d.id)}</span>`;
+  else if(unavailable)message='На стенде распознавание документов выключено (паспорт и инвойс не уходят наружу) — заполните поля договора по файлам руками.';
+  else if(status||got){
+    message=(status?status+'. ':'')+(got?`Из документов распознано: <b>${values||got+' полей'}</b>. Эти поля уедут в договор — сверьте с файлами.`:'');
+  }else if(st&&st.startsWith('ошибка'))message='Распознать не удалось — заполните поля договора по файлам руками.';
   return `<div class="derived" style="margin-top:14px">
-    <span>${st==='идёт'?'Распознаём документы…'
-      :(unavailable?'На стенде распознавание документов выключено (паспорт и инвойс не уходят наружу) — заполните поля договора по файлам руками.'
-      :(got?`Из документов распознано: <b>${[P.client_name_en||P.client_name_ru,P.client_passport_no,P.recipient_name,P.invoice_no].filter(Boolean).join(' · ')||got+' полей'}</b>. Эти поля уедут в договор — сверьте с файлами.`
-      :(st&&st.startsWith('ошибка')?'Распознать не удалось ('+st+') — заполните поля договора по файлам руками.':'Документы ещё не распознаны.')))}</span>
+    <span>${message}</span>
     <button class="btn btn-outline btn-sm" style="margin-left:auto" onclick="docParse(${d.id})" ${st==='идёт'||unavailable?'disabled':''}>${got?'Распознать заново':'Распознать документы'}</button></div>`;
 }
 function filesOf(d,k){

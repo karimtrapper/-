@@ -27,6 +27,7 @@ FALLBACK_MODELS = ['openai/gpt-4.1-mini', 'google/gemini-2.5-flash-lite']
 # сбоя сети/ключа/схемы третья попытка так же не помогла бы, а для случайного
 # отказа одной модели одной запасной достаточно.
 STAND_FALLBACK_MODELS = FALLBACK_MODELS[:1]
+STAND_FALLBACK_MIN_SECONDS = 30.0
 OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions'
 
 # На стенде рисковый растр (маленький PDF → огромные PNG-страницы) режется до
@@ -416,8 +417,9 @@ def parse_file(filename: str, data: bytes, mime: str, api_key: str,
     errors = []
     last_code = 'parse_failed'
     models_to_try = [model or DEFAULT_MODEL] + (STAND_FALLBACK_MODELS if stand else FALLBACK_MODELS)
-    for m in models_to_try:
-        if stand and stand_egress.docparse_remaining() <= 0:
+    for index, m in enumerate(models_to_try):
+        if stand and (stand_egress.docparse_remaining() <= 0 or
+                      (index and stand_egress.docparse_remaining() < STAND_FALLBACK_MIN_SECONDS)):
             last_code = 'timeout'
             break
         try:
