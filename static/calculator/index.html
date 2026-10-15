@@ -57,8 +57,164 @@
             border-color: #8B5CF6;
         }
     </style>
+    <style>
+        /* Hallmark · pre-emit critique: P5 H5 E4 S5 R5 V4 */
+        /* Вариант Б2: существующие элементы калькулятора, новая раскладка. */
+        body.calc-b2 {
+            --b2-ink: #0F172A; --b2-n700: #334155; --b2-n600: #475569;
+            --b2-n500: #64748B; --b2-n400: #94A3B8; --b2-n300: #CBD5E1;
+            --b2-n200: #E2E8F0; --b2-n100: #F1F5F9; --b2-white: #FFFFFF;
+            --b2-action: #C2410C; --b2-action-hover: #9A3412;
+            background: var(--b2-n200); color: var(--b2-ink);
+            font: 400 14px/1.5 Inter, system-ui, sans-serif;
+            font-feature-settings: "tnum" 1, "cv11" 1;
+            overflow-x: clip;
+        }
+        html { overflow-x: clip; }
+        body.calc-b2 *, body.calc-b2 *::before, body.calc-b2 *::after { box-sizing: border-box; }
+        body.calc-b2 * { transition: none !important; animation: none !important; }
+        body.calc-b2 button, body.calc-b2 input { font-family: inherit; }
+        body.calc-b2 :focus-visible { outline: 2px solid var(--b2-action); outline-offset: 2px; }
+        body.calc-b2 .container { max-width: 1168px; padding: 24px; }
+        body.calc-b2 .header { text-align: left; margin-bottom: 24px; }
+        body.calc-b2 .logo { justify-content: flex-start; gap: 8px; margin: 0; }
+        body.calc-b2 .logo-icon { display: none; }
+        body.calc-b2 .header h1 { color: var(--b2-ink); font-size: 24px; font-weight: 700; line-height: 1.25; }
+        body.calc-b2 .subtitle { color: var(--b2-n600); font-size: 14px; font-weight: 400; }
+        body.calc-b2 .top-nav { background: var(--b2-ink); border: 0; padding: 8px 16px; }
+        body.calc-b2 .top-nav a { color: var(--b2-n300); font-size: 14px; font-weight: 600; padding: 8px 16px; }
+        body.calc-b2 .top-nav a.active { color: var(--b2-white); background: transparent; border-bottom: 2px solid var(--b2-white); border-radius: 0; }
+        body.calc-b2 .top-nav .instruction-btn { color: var(--b2-n300); background: transparent; border: 0; padding: 8px 16px; min-height: 44px; }
+        .b2-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(360px, 440px); gap: 24px; align-items: start; }
+        .b2-params { min-width: 0; display: flex; flex-direction: column; gap: 24px; padding: 24px; background: var(--b2-white); border: 1px solid var(--b2-n300); border-radius: 12px; }
+        .b2-group { min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+        body.calc-b2 .switcher-caption, body.calc-b2 .direction-header, body.calc-b2 .input-label { margin: 0 0 8px; color: var(--b2-n700); font-size: 16px; font-weight: 600; line-height: 1.4; letter-spacing: 0; text-transform: none; }
+        body.calc-b2 .dealtype-switcher, body.calc-b2 .method-switcher, body.calc-b2 .direction-buttons, body.calc-b2 .scenarios-grid, body.calc-b2 .commission-buttons, body.calc-b2 .prop-chips, body.calc-b2 .rate-source-toggle {
+            display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; margin: 0;
+            padding: 4px; background: var(--b2-n200); border: 1px solid var(--b2-n300); border-radius: 8px;
+        }
+        body.calc-b2 .dealtype-switcher { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+        body.calc-b2 .method-switcher { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+        body.calc-b2 .scenarios-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        body.calc-b2 .profit-steps { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+        body.calc-b2 :is(.dealtype-btn, .method-btn, .direction-btn, .scenario-btn, .commission-btn, .src-btn) {
+            min-width: 0; min-height: 48px; padding: 8px; margin: 0; border: 1px solid transparent;
+            background: transparent; color: var(--b2-n600); border-radius: 8px;
+            box-shadow: none; font-size: 16px; font-weight: 600; line-height: 1.4; white-space: nowrap;
+        }
+        body.calc-b2 :is(.dealtype-btn, .method-btn, .direction-btn, .scenario-btn, .commission-btn, .src-btn):hover { background: var(--b2-n300); color: var(--b2-ink); }
+        body.calc-b2 :is(.dealtype-btn, .method-btn, .direction-btn, .scenario-btn, .commission-btn, .src-btn).active,
+        body.calc-b2 :is(.dealtype-btn, .method-btn, .direction-btn, .scenario-btn, .commission-btn, .src-btn).active:hover {
+            background: var(--b2-white); color: var(--b2-ink); border-color: var(--b2-n300); box-shadow: var(--card-shadow);
+        }
+        body.calc-b2 .scenario-btn { justify-content: center; }
+        body.calc-b2 .scenario-icon { display: none; }
+        body.calc-b2 .scenario-title { font-size: 16px; font-weight: 600; }
+        body.calc-b2 .direction-switcher { margin: 0 0 20px !important; padding: 0; background: transparent; border: 0; }
+        body.calc-b2 .custom-rate-top { margin: 0; }
+        body.calc-b2 .custom-rate-card, body.calc-b2 .property-extra, body.calc-b2 .calculator-card { padding: 0; margin: 0; background: transparent; border: 0; box-shadow: none; }
+        body.calc-b2 .custom-rate-card + .custom-rate-card { margin-top: 16px !important; }
+        body.calc-b2 .property-badge { display: block; padding: 0; margin-bottom: 16px; background: transparent; color: var(--b2-ink); font-size: 16px; font-weight: 600; }
+        body.calc-b2 .input-section { margin: 0; }
+        body.calc-b2 .input-wrapper { display: flex; align-items: center; min-width: 0; height: 60px; background: var(--b2-white); border: 1px solid var(--b2-n300); border-radius: 8px; }
+        body.calc-b2 .input-wrapper:focus-within { outline: 2px solid var(--b2-action); outline-offset: 2px; }
+        body.calc-b2 .amount-input { flex: 1; width: auto; min-width: 0; height: 100%; padding: 0 12px; border: 0; box-shadow: none; font-size: 24px; font-weight: 700; color: var(--b2-ink); }
+        body.calc-b2 .amount-input:focus { border: 0; box-shadow: none; outline: 0; }
+        body.calc-b2 .amount-input::placeholder { font-size: 16px; font-weight: 400; color: var(--b2-n500); }
+        body.calc-b2 .input-currency { position: static; right: auto; top: auto; transform: none; padding: 0 12px; font-size: 24px; font-weight: 700; color: var(--b2-n600); }
+        body.calc-b2 .input-wrapper.small, body.calc-b2 .input-wrapper:has(#propFxCustom) { height: 48px; max-width: none; }
+        body.calc-b2 .input-wrapper.small .amount-input, body.calc-b2 .input-wrapper.small .input-currency, body.calc-b2 .input-wrapper:has(#propFxCustom) .amount-input { font-size: 16px; font-weight: 600; }
+        body.calc-b2 .calculate-action { margin: 0; padding: 0; }
+        body.calc-b2 #calculateBtn { display: none; }
+        body.calc-b2 .calculator-settings { margin: 0 !important; padding: 16px 0 !important; border: 0 !important; }
+        body.calc-b2 .checkbox-label, body.calc-b2 .partner-section, body.calc-b2 .discount-header { font-size: 16px; font-weight: 600; }
+        body.calc-b2 :is(.fee-hint, .custom-rate-hint, .custom-profit-hint, #propInvResult) { font-size: 14px; color: var(--b2-n600); }
+        body.calc-b2 .b2-extras { border-top: 1px solid var(--b2-n200); }
+        body.calc-b2 .b2-extras summary { display: flex; align-items: center; gap: 8px; min-height: 48px; cursor: pointer; list-style: none; font-size: 16px; font-weight: 600; }
+        body.calc-b2 .b2-extras summary::-webkit-details-marker { display: none; }
+        body.calc-b2 .b2-extras summary span:first-child { flex: 1; }
+        body.calc-b2 #b2ExtrasMeta { color: var(--b2-n600); font-size: 14px; font-weight: 400; }
+        body.calc-b2 .b2-extras[open] summary span:last-child { transform: rotate(180deg); }
+        body.calc-b2 .b2-side { position: sticky; top: 80px; min-width: 0; display: flex; flex-direction: column; gap: 24px; padding: 24px; border-radius: 12px; background: var(--b2-ink); color: var(--b2-white); }
+        body.calc-b2 .b2-side-title { font-size: 22px; font-weight: 700; line-height: 1.25; color: var(--b2-white); }
+        body.calc-b2 .rates-card { padding: 0; margin: 0; background: transparent; border: 0; box-shadow: none; }
+        body.calc-b2 .rates-header { display: grid; grid-template-columns: 1fr auto; gap: 8px; margin-bottom: 16px; }
+        body.calc-b2 .rates-title { font-size: 16px; font-weight: 600; color: var(--b2-n300); }
+        body.calc-b2 .rate-source-toggle { grid-column: 1 / -1; order: 3; background: var(--b2-n700); border-color: var(--b2-n600); }
+        body.calc-b2 .src-btn { color: var(--b2-n300); }
+        body.calc-b2 .src-btn.active { color: var(--b2-ink); background: var(--b2-white); }
+        body.calc-b2 .refresh-btn { min-height: 44px; padding: 0 12px; border: 1px solid var(--b2-n500); border-radius: 8px; background: transparent; color: var(--b2-white); font-size: 16px; font-weight: 600; }
+        body.calc-b2 .rates-grid { display: grid; grid-template-columns: 1fr; gap: 8px; overflow: visible; }
+        body.calc-b2 .rate-item, body.calc-b2 .rate-item.highlight { display: grid; grid-template-columns: 1fr auto; gap: 4px 8px; padding: 12px 16px; background: var(--b2-n700); border: 0; border-radius: 8px; }
+        body.calc-b2 .rate-label { font-size: 14px; font-weight: 400; color: var(--b2-n300); }
+        body.calc-b2 .rate-value { font-size: 24px; font-weight: 700; color: var(--b2-white); white-space: nowrap; }
+        body.calc-b2 .rate-sub { grid-column: 1 / -1; margin-top: 4px; font-size: 12px; font-weight: 400; color: var(--b2-n300); }
+        body.calc-b2 .rate-item.highlight { display: none; }
+        body.calc-b2 .rates-updated { margin: 8px 0 0; font-size: 12px; color: var(--b2-n300); }
+        body.calc-b2 #resultsSection { display: block !important; margin: 0; padding: 24px 0 0; border-top: 1px solid var(--b2-n700); animation: none; }
+        body.calc-b2 .b2-result-bar { display: flex; flex-direction: column; gap: 16px; }
+        body.calc-b2 .result-main { margin: 0; padding: 0; text-align: left; background: transparent; color: var(--b2-white); }
+        body.calc-b2 .result-label { font-size: 16px; font-weight: 600; color: var(--b2-n300); opacity: 1; }
+        body.calc-b2 .result-value { font-size: 36px; font-weight: 700; line-height: 1.15; letter-spacing: -.01em; color: var(--b2-white); white-space: nowrap; }
+        body.calc-b2 .result-rate { font-size: 16px; font-weight: 600; color: var(--b2-white); opacity: 1; }
+        body.calc-b2 .result-profit { padding: 0; margin: 8px 0 0; background: transparent !important; color: var(--b2-n300) !important; font-size: 14px; font-weight: 400; }
+        body.calc-b2 #marginWarning { font-size: 14px !important; font-weight: 600 !important; }
+        body.calc-b2 #createDealSection { min-width: 0 !important; width: 100%; }
+        body.calc-b2 #createDealBtn { width: 100%; min-height: 50px; padding: 0 16px; border: 0; border-radius: 8px; background: var(--b2-action) !important; color: var(--b2-white); font-size: 16px; font-weight: 600; box-shadow: none; }
+        body.calc-b2 #createDealBtn:hover { background: var(--b2-action-hover) !important; }
+        body.calc-b2 #createDealBtn:disabled { background: var(--b2-n200) !important; color: var(--b2-n600); cursor: not-allowed; }
+        body.calc-b2 .b2-side-more { display: flex; flex-direction: column; gap: 12px; margin-top: 16px; }
+        body.calc-b2 #paymentActionSection { min-width: 0 !important; width: 100%; }
+        body.calc-b2 #createPaymentBtn, body.calc-b2 #b2CopyClient { width: 100%; min-height: 48px; padding: 0 16px; border: 1px solid var(--b2-n500); border-radius: 8px; background: transparent !important; color: var(--b2-white); font-size: 16px; font-weight: 600; box-shadow: none; }
+        body.calc-b2 #b2CopyClient { border: 0; text-decoration: underline; }
+        body.calc-b2 #b2CopyClient:disabled { opacity: .5; cursor: not-allowed; }
+        body.calc-b2 .comment-section { margin: 8px 0 !important; }
+        body.calc-b2 .comment-section .input-label { color: var(--b2-n300); }
+        body.calc-b2 .comment-section .amount-input { font-size: 16px !important; font-weight: 400; }
+        body.calc-b2 #clientCopyBlock { display: none !important; }
+        body.calc-b2 .details-section { border: 0; border-top: 1px solid var(--b2-n700); border-radius: 0; }
+        body.calc-b2 .details-header { padding: 12px 0; background: transparent; color: var(--b2-white); font-size: 16px; font-weight: 600; }
+        body.calc-b2 .details-content { display: none; }
+        body.calc-b2 .details-content.open { display: block; padding: 0 0 12px; }
+        body.calc-b2 .details-content, body.calc-b2 .details-content * { font-size: 14px; }
+        body.calc-b2 .info-card { display: none; }
+        body.calc-b2 .footer { padding: 24px 0; color: var(--b2-n600); font-size: 12px; }
+        body.calc-b2 .footer p, body.calc-b2 .footer-small { font-size: 12px; }
+        @media (max-width: 1100px) {
+            body.calc-b2 .dealtype-switcher { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        }
+        @media (max-width: 700px) {
+            body.calc-b2 .container { padding: 16px; }
+            body.calc-b2 .top-nav { position: static; }
+            .b2-layout { display: flex; flex-direction: column; gap: 16px; }
+            body.calc-b2 .b2-layout .b2-side { display: contents; position: static; }
+            .b2-side-title { display: none; }
+            body.calc-b2 .rates-card { order: 0; width: 100%; padding: 16px; background: var(--b2-ink); border-radius: 12px; }
+            .b2-params { order: 1; width: 100%; padding: 16px; }
+            body.calc-b2 #resultsSection { display: contents !important; }
+            body.calc-b2 .b2-result-bar { position: fixed; z-index: 50; left: 0; right: 0; bottom: 0; padding: 12px 16px max(12px, env(safe-area-inset-bottom)); background: var(--b2-ink); border-top: 1px solid var(--b2-n700); gap: 8px; }
+            body.calc-b2 .b2-result-bar .result-main { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+            body.calc-b2 .b2-result-bar .result-value { font-size: 36px; text-align: left; max-width: 100%; overflow-x: auto; }
+            body.calc-b2 .b2-result-bar .result-rate { font-size: 14px; }
+            body.calc-b2 .b2-result-bar .result-profit, body.calc-b2 .b2-result-bar #marginWarning { display: none !important; }
+            body.calc-b2 .b2-side-more { order: 2; width: 100%; margin: 0; padding: 16px; background: var(--b2-white); border: 1px solid var(--b2-n300); border-radius: 12px; }
+            body.calc-b2 #createPaymentBtn, body.calc-b2 #b2CopyClient { color: var(--b2-n700); border-color: var(--b2-n300); }
+            body.calc-b2 .comment-section .input-label { color: var(--b2-n700); }
+            body.calc-b2 .details-section { border-top-color: var(--b2-n200); }
+            body.calc-b2 .details-header { color: var(--b2-ink); }
+            body.calc-b2 .footer { padding-bottom: 24px; }
+            body.calc-b2 .container::after { display: block; height: 160px; content: ''; }
+            body.calc-b2 #b2ExtrasMeta { display: none; }
+        }
+        @media (max-width: 600px) {
+            body.calc-b2 .dealtype-switcher { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+            body.calc-b2 .method-switcher { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+            body.calc-b2 .rate-value { font-size: 24px; }
+            body.calc-b2 .top-nav .instruction-btn { display: none; }
+        }
+    </style>
 </head>
-<body class="wave4a">
+<body class="calc-b2">
     <!-- Global Navigation -->
     <nav class="top-nav">
         <a href="/" class="active">Калькулятор</a>
@@ -72,7 +228,7 @@
                 <span class="logo-icon"></span>
                 <h1>Калькулятор обмена</h1>
             </div>
-            <div class="subtitle">RUB · THB · USDT</div>
+            <div class="subtitle">Рубли · баты · USDT</div>
         </header>
 
         <!-- Тип сделки -->
@@ -129,7 +285,7 @@
         <!-- Актуальные курсы -->
         <div class="rates-card" id="ratesCard">
             <div class="rates-header">
-                <span class="rates-title">Актуальные курсы</span>
+                <span class="rates-title">Курс сейчас</span>
                 <div class="rate-source-toggle" id="rateSourceToggle">
                     <button class="src-btn active" id="srcBitazza" onclick="setRateSource('bitazza')">Bitazza</button>
                     <button class="src-btn" id="srcBinance" onclick="setRateSource('binance')">Binance</button>
@@ -276,7 +432,7 @@
                         type="text" 
                         id="amount" 
                         class="amount-input" 
-                        placeholder="Например: 100000"
+                        placeholder="100 000"
                         oninput="formatInput(this); hideResults()"
                         onkeydown="if(event.key === 'Enter') calculate()"
                     >
@@ -284,9 +440,7 @@
                 </div>
 
                 <div class="calculate-action">
-                    <button class="calculate-btn" id="calculateBtn" onclick="calculate()">
-                        Рассчитать
-                    </button>
+                    <span id="calculateBtn" hidden aria-hidden="true"></span>
 
                     <!-- Индикатор автозапроса точного курса (показывается во время Playwright) -->
                     <div id="preciseRateStatus" style="display: none; margin-top: 10px; padding: 10px 14px;
@@ -305,7 +459,7 @@
                     </button>
                 </div>
 
-                <!-- Блок настроек (Скидки и Партнер) ПОД кнопкой Рассчитать -->
+                <!-- Блок настроек скидки и партнёра -->
                 <div class="calculator-settings" style="margin-top: 25px; border-top: 1px solid #e2e8f0; padding-top: 20px;">
                     <!-- Скидки -->
                     <div id="commissionLevelSection" class="commission-level-section">
@@ -393,7 +547,7 @@
                 <div class="comment-section" style="margin-bottom: 20px;">
                     <label class="input-label" for="paymentComment">Комментарий к платежу (необязательно)</label>
                     <div class="input-wrapper">
-                        <input type="text" id="paymentComment" class="amount-input" placeholder="Имя клиента, номер заказа и т.д." style="font-size: 16px; height: 45px;">
+                        <input type="text" id="paymentComment" class="amount-input" placeholder="Имя клиента или номер заказа" style="font-size: 16px; height: 45px;">
                     </div>
                 </div>
 
@@ -468,7 +622,7 @@
         </footer>
     </div>
 
-    <script src="calculator.js?v=27"></script>
+    <script src="calculator.js?v=28"></script>
     <script src="/static/nav-shell.js?v=6"></script>
     <script>NavShell.boot('calc');</script>
     <script>

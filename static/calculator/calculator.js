@@ -186,7 +186,22 @@ function refreshVisibleRates() {
 
 // Очистка результатов при изменении ввода
 function hideResults() {
-    document.getElementById('resultsSection').style.display = 'none';
+    if (!document.body.classList.contains('calc-b2')) {
+        document.getElementById('resultsSection').style.display = 'none';
+        return;
+    }
+    state._calcVersion++;
+    state.lastResult = null;
+    document.getElementById('resultValue').textContent = '—';
+    document.getElementById('finalRate').textContent = '—';
+    document.getElementById('resultProfit').style.display = 'none';
+    document.getElementById('createDealBtn').disabled = true;
+    document.getElementById('paymentActionSection').style.display = 'none';
+    document.getElementById('paymentResult').style.display = 'none';
+    const copy = document.getElementById('b2CopyClient');
+    if (copy) copy.disabled = true;
+    updateB2ExtrasMeta();
+    scheduleB2Calculate();
 }
 
 // Переключение метода
@@ -453,7 +468,8 @@ function toggleDiscount() {
         // Скидка выключена — пересчитываем без маржи
         const amount = getAmount();
         if (amount > 0) {
-            calculate();
+            if (document.body.classList.contains('calc-b2')) hideResults();
+            else calculate();
         } else {
             hideResults();
         }
@@ -473,6 +489,7 @@ function setProfitMargin(profit) {
     }
 
     state.profitMargin = parseFloat(profit);
+    updateB2ExtrasMeta();
     if (state.applyDiscount && state.profitMargin < ladder) {
         const delta = (ladder - state.profitMargin).toFixed(2).replace(/\.?0+$/, '');
         showToast(`Скидка ${delta} п.п. ниже стандарта (${ladder}%) — согласовано?`, 'info', 4000);
@@ -494,7 +511,8 @@ function setProfitMargin(profit) {
 
     // СРАЗУ вызываем расчет если сумма введена
     if (amount > 0) {
-        calculate();
+        if (document.body.classList.contains('calc-b2')) hideResults();
+        else calculate();
     } else {
         hideResults();
     }
@@ -546,6 +564,7 @@ function onCustomProfitInput(el) {
     }
 
     state.profitMargin = capped;
+    updateB2ExtrasMeta();
     const ladderNow = ladderProfit(getAmount());
     if (state.profitMargin < ladderNow) {
         const d = (ladderNow - state.profitMargin).toFixed(2).replace(/\.?0+$/, '');
@@ -555,7 +574,8 @@ function onCustomProfitInput(el) {
 
     const amount = getAmount();
     if (amount > 0) {
-        calculate();
+        if (document.body.classList.contains('calc-b2')) hideResults();
+        else calculate();
     } else {
         hideResults();
     }
@@ -726,6 +746,7 @@ function updateRatesDisplay() {
     // Время обновления
     const now = new Date();
     document.getElementById('updateTime').textContent = now.toLocaleTimeString('ru-RU');
+    updateB2RateAge();
 }
 
 // Обновление UI полей кастомных курсов (пустое / заполненное)
@@ -1482,6 +1503,11 @@ function displayResult(result) {
 
     // Сохраняем результат в state для дальнейшего использования (например, создания платежа)
     state.lastResult = result;
+    if (document.body.classList.contains('calc-b2')) {
+        document.getElementById('createDealBtn').disabled = false;
+        const copy = document.getElementById('b2CopyClient');
+        if (copy) copy.disabled = false;
+    }
     
     // Показываем/скрываем секцию создания платежа (только для Doverka)
     const paymentSection = document.getElementById('paymentActionSection');
@@ -2568,3 +2594,132 @@ function applyPrefill() {
 // Отдельный слушатель — регистрируется последним, поэтому отрабатывает после
 // восстановления типа сделки из localStorage и перекрывает его параметрами ссылки.
 document.addEventListener('DOMContentLoaded', () => { try { applyPrefill(); } catch (e) { console.warn('prefill', e); } });
+
+// Вариант Б2: переносим только существующие DOM-узлы. Их ID, обработчики и
+// расчётные функции остаются прежними, поэтому префилл и CRM используют тот же контракт.
+let b2Ready = false;
+let b2CalculateTimer = null;
+function scheduleB2Calculate() {
+    if (!b2Ready) return;
+    clearTimeout(b2CalculateTimer);
+    const amount = getAmount();
+    if (!(amount > 0)) return;
+    if ((state.method === 'broker' || state.method === 'custom') &&
+        scenarioNeedsRubRate(state.scenario) && !state.customRubUsdt) return;
+    if (state.method === 'custom' && scenarioNeedsThbRate(state.scenario) && !state.customUsdtThb) return;
+    b2CalculateTimer = setTimeout(() => { b2CalculateTimer = null; calculate(); }, 600);
+}
+
+function updateB2RateAge() {
+    if (!document.body.classList.contains('calc-b2')) return;
+    const label = document.getElementById('ratesUpdated');
+    const time = document.getElementById('updateTime');
+    if (!label || !time) return;
+    if (!state.lastUpdateTimestamp) {
+        label.firstChild.textContent = 'Курсы загружаются… ';
+        time.textContent = '';
+        return;
+    }
+    const minutes = Math.max(0, Math.floor((Date.now() - state.lastUpdateTimestamp) / 60000));
+    const clock = new Date(state.lastUpdateTimestamp).toLocaleTimeString('ru-RU', {hour:'2-digit', minute:'2-digit'});
+    label.firstChild.textContent = 'Обновлено ';
+    time.textContent = `${minutes ? `${minutes} мин назад` : 'только что'} · ${clock}`;
+}
+
+function updateB2ExtrasMeta() {
+    const meta = document.getElementById('b2ExtrasMeta');
+    if (!meta) return;
+    const discount = document.getElementById('applyDiscount').checked;
+    const partner = document.getElementById('hasPartner').checked;
+    const pct = document.getElementById('partnerPercent').value;
+    meta.textContent = `${discount ? `Прибыль ${state.profitMargin}%` : 'Без скидки'} · ${partner ? `Партнёр ${pct}%` : 'без партнёра'}`;
+}
+
+function initB2Layout() {
+    const container = document.querySelector('.container');
+    if (!container || document.querySelector('.b2-layout')) return;
+    const layout = document.createElement('main');
+    layout.className = 'b2-layout';
+    container.querySelector('.header').after(layout);
+    const params = document.createElement('section');
+    params.className = 'b2-params';
+    params.setAttribute('aria-label', 'Параметры сделки');
+    const side = document.createElement('aside');
+    side.className = 'b2-side';
+    side.setAttribute('aria-label', 'Курс и результат');
+    side.innerHTML = '<h2 class="b2-side-title">Курс и результат</h2>';
+    layout.append(params, side);
+    function group(label, ...nodes) {
+        const wrap = document.createElement('div');
+        wrap.className = 'b2-group';
+        if (label) wrap.appendChild(label);
+        nodes.forEach(node => { if (node) wrap.appendChild(node); });
+        params.appendChild(wrap);
+    }
+    group(container.querySelector('.switcher-caption'), container.querySelector('.dealtype-switcher'));
+    group(document.getElementById('methodCaption'), document.getElementById('methodSwitcher'));
+    group(null, document.getElementById('directionSwitcher'), container.querySelector('.scenarios-grid'));
+    group(null, document.getElementById('customRateSection'));
+    group(null, document.getElementById('propertyExtra'));
+
+    const exchange = document.getElementById('exchangeCard');
+    const settings = exchange.querySelector('.calculator-settings');
+    const extras = document.createElement('details');
+    extras.className = 'b2-extras';
+    extras.innerHTML = '<summary><span>Скидка и партнёр</span><span id="b2ExtrasMeta">Без скидки · без партнёра</span><span aria-hidden="true">⌄</span></summary>';
+    extras.appendChild(settings);
+    params.appendChild(exchange);
+    params.appendChild(extras);
+
+    const rates = document.getElementById('ratesCard');
+    side.appendChild(rates);
+    const results = document.getElementById('resultsSection');
+    results.style.display = 'block';
+    const bar = document.createElement('div');
+    bar.className = 'b2-result-bar';
+    bar.appendChild(results.querySelector('.result-main'));
+    bar.appendChild(document.getElementById('createDealSection'));
+    results.prepend(bar);
+    const more = document.createElement('div');
+    more.className = 'b2-side-more';
+    more.appendChild(document.getElementById('paymentActionSection'));
+    const copy = document.createElement('button');
+    copy.id = 'b2CopyClient';
+    copy.type = 'button';
+    copy.textContent = 'Скопировать для клиента';
+    copy.disabled = true;
+    copy.addEventListener('click', copyClientMessage);
+    more.appendChild(copy);
+    more.appendChild(results.querySelector('.comment-section'));
+    more.appendChild(document.getElementById('paymentResult'));
+    more.appendChild(document.getElementById('clientCopyBlock'));
+    more.appendChild(results.querySelector('.details-section'));
+    results.appendChild(more);
+    side.appendChild(results);
+
+    // У старой формы незакрытый wrapper: footer оказался внутри exchangeCard.
+    // Возвращаем его после нового layout, чтобы он не раздувал карточку параметров.
+    const footer = exchange.querySelector('.footer');
+    if (footer) layout.after(footer);
+    document.getElementById('resultValue').textContent = '—';
+    document.getElementById('finalRate').textContent = '—';
+    document.getElementById('createDealBtn').disabled = true;
+    b2Ready = true;
+    updateB2ExtrasMeta();
+    updateB2RateAge();
+    setInterval(updateB2RateAge, 30000);
+    // Существующие inline-обработчики уже меняют state и вызывают hideResults().
+    // Для полей без такого обработчика достаточно поймать input на форме.
+    params.addEventListener('input', event => {
+        if (event.target.id === 'amount' || event.target.id === 'partnerPercent' ||
+            event.target.id === 'customRubUsdt' || event.target.id === 'customUsdtThb' ||
+            event.target.id === 'propFxCustom' || event.target.id === 'propInvoiceThb') {
+            hideResults();
+        }
+    });
+    params.addEventListener('change', event => {
+        if (event.target.matches('input[type="checkbox"], input[name="partnerModel"]')) hideResults();
+    });
+    scheduleB2Calculate();
+}
+document.addEventListener('DOMContentLoaded', initB2Layout);
