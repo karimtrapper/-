@@ -88,7 +88,7 @@
         .b2-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(360px, 440px); gap: 24px; align-items: start; }
         .b2-params { min-width: 0; display: flex; flex-direction: column; gap: 24px; padding: 24px; background: var(--b2-white); border: 1px solid var(--b2-n300); border-radius: 12px; }
         .b2-group { min-width: 0; display: flex; flex-direction: column; gap: 8px; }
-        body.calc-b2 .switcher-caption, body.calc-b2 .direction-header, body.calc-b2 .input-label { margin: 0 0 8px; color: var(--b2-n700); font-size: 16px; font-weight: 600; line-height: 1.4; letter-spacing: 0; text-transform: none; }
+        body.calc-b2 .switcher-caption, body.calc-b2 .direction-header, body.calc-b2 .b2-direction-label, body.calc-b2 .input-label { margin: 0 0 8px; color: var(--b2-n700); font-size: 16px; font-weight: 600; line-height: 1.4; letter-spacing: 0; text-transform: none; }
         body.calc-b2 .dealtype-switcher, body.calc-b2 .method-switcher, body.calc-b2 .direction-buttons, body.calc-b2 .scenarios-grid, body.calc-b2 .commission-buttons, body.calc-b2 .prop-chips, body.calc-b2 .rate-source-toggle {
             display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; margin: 0;
             padding: 4px; background: var(--b2-n200); border: 1px solid var(--b2-n300); border-radius: 8px;
@@ -110,6 +110,7 @@
         body.calc-b2 .scenario-btn { justify-content: center; }
         body.calc-b2 .scenario-icon { display: none; }
         body.calc-b2 .scenario-title { font-size: 16px; font-weight: 600; }
+        body.calc-b2 .b2-direction-hint { margin: 0; color: var(--b2-n600); font-size: 14px; font-weight: 400; line-height: 1.5; }
         body.calc-b2 .direction-switcher { margin: 0 0 20px !important; padding: 0; background: transparent; border: 0; }
         body.calc-b2 .custom-rate-top { margin: 0; }
         body.calc-b2 .custom-rate-card, body.calc-b2 .property-extra, body.calc-b2 .calculator-card { padding: 0; margin: 0; background: transparent; border: 0; box-shadow: none; }
@@ -259,7 +260,7 @@
                 Брокер
             </button>
             <button class="method-btn" data-method="custom" onclick="switchMethod('custom')">
-                Кастом
+                Свой курс
             </button>
         </div>
 
@@ -316,43 +317,45 @@
         </div>
 
         <!-- Сценарии обмена -->
+        <div class="b2-direction-label" id="b2DirectionLabel">Направление</div>
         <div class="scenarios-grid">
             <!-- Doverka сценарии -->
             <button class="scenario-btn active" data-method="doverka" data-scenario="rub-to-thb" onclick="switchScenario('rub-to-thb')">
                 <span class="scenario-icon"></span>
-                <div class="scenario-title">RUB → THB</div>
+                <div class="scenario-title">Рубли → баты</div>
             </button>
             <button class="scenario-btn" data-method="doverka" data-scenario="thb-to-rub" onclick="switchScenario('thb-to-rub')">
                 <span class="scenario-icon"></span>
-                <div class="scenario-title">THB ← RUB</div>
+                <div class="scenario-title">Баты → рубли</div>
             </button>
             <button class="scenario-btn" data-method="doverka" data-scenario="rub-to-usdt" onclick="switchScenario('rub-to-usdt')">
                 <span class="scenario-icon"></span>
-                <div class="scenario-title">RUB → USDT</div>
+                <div class="scenario-title">Рубли → USDT</div>
             </button>
             <button class="scenario-btn" data-method="doverka" data-scenario="usdt-from-rub" onclick="switchScenario('usdt-from-rub')">
                 <span class="scenario-icon"></span>
-                <div class="scenario-title">USDT ← RUB</div>
+                <div class="scenario-title">USDT → рубли</div>
             </button>
 
             <!-- Broker сценарии -->
             <button class="scenario-btn" data-method="broker" data-scenario="rub-to-thb" style="display: none;" onclick="switchScenario('rub-to-thb')">
                 <span class="scenario-icon"></span>
-                <div class="scenario-title">RUB → THB</div>
+                <div class="scenario-title">Рубли → баты</div>
             </button>
             <button class="scenario-btn" data-method="broker" data-scenario="thb-to-usdt" style="display: none;" onclick="switchScenario('thb-to-usdt')">
                 <span class="scenario-icon"></span>
-                <div class="scenario-title">THB → USDT</div>
+                <div class="scenario-title">Баты → USDT</div>
             </button>
             <button class="scenario-btn" data-method="broker" data-scenario="usdt-to-thb" style="display: none;" onclick="switchScenario('usdt-to-thb')">
                 <span class="scenario-icon"></span>
-                <div class="scenario-title">USDT → THB</div>
+                <div class="scenario-title">USDT → баты</div>
             </button>
             <button class="scenario-btn" data-method="broker" data-scenario="rub-to-usdt" style="display: none;" onclick="switchScenario('rub-to-usdt')">
                 <span class="scenario-icon"></span>
-                <div class="scenario-title">RUB → USDT</div>
+                <div class="scenario-title">Рубли → USDT</div>
             </button>
         </div>
+        <p class="b2-direction-hint" id="b2DirectionHint">Считаем от рублей: вводите, сколько рублей вносит клиент.</p>
 
         <!-- Недвижимость / другое: оплата инвойса с доп-комиссиями -->
         <!-- Доп-поля недвижимости (надстройка над обменом, не заменяет его) -->
@@ -612,7 +615,7 @@
                     <strong>Режим СБП:</strong> Реальные курсы от API в реальном времени
                 </div>
                 <div class="info-note">
-                    <strong>Режим Broker:</strong> Кастомный курс RUB-USDT + выбор уровня комиссий
+                    <strong>Режим Broker:</strong> Свой курс RUB-USDT + выбор уровня комиссий
                 </div>
             </div>
         </div>

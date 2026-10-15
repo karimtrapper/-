@@ -221,7 +221,7 @@ function switchMethod(method) {
     if (method === 'broker' || method === 'custom') {
         document.getElementById('customRateSection').style.display = 'block';
         document.getElementById('directionSwitcher').style.display = 'block';
-        document.getElementById('rubUsdtLabel').textContent = 'RUB-USDT (Кастомный)';
+        document.getElementById('rubUsdtLabel').textContent = 'RUB-USDT (Свой курс)';
 
         // Очищаем курсы — менеджер должен ввести сам
         const customInput = document.getElementById('customRubUsdt');
@@ -433,6 +433,7 @@ function updateScenarioUI() {
     document.getElementById('amount').placeholder = config.placeholder;
     document.getElementById('resultLabel').textContent = config.result;
     document.getElementById('rateCurrency').textContent = config.rateCurrency;
+    updateB2DirectionHint();
     
     // Очищаем поле ввода
     document.getElementById('amount').value = '';
@@ -2635,6 +2636,20 @@ function updateB2ExtrasMeta() {
     meta.textContent = `${discount ? `Прибыль ${state.profitMargin}%` : 'Без скидки'} · ${partner ? `Партнёр ${pct}%` : 'без партнёра'}`;
 }
 
+function updateB2DirectionHint() {
+    const hint = document.getElementById('b2DirectionHint');
+    if (!hint) return;
+    const sbpHints = {
+        'rub-to-thb': 'Считаем от рублей: вводите, сколько рублей вносит клиент.',
+        'thb-to-rub': 'Считаем от батов: вводите, сколько батов нужно клиенту, покажем рубли к внесению.',
+        'rub-to-usdt': 'Считаем от рублей: вводите, сколько рублей вносит клиент.',
+        'usdt-from-rub': 'Считаем от USDT: вводите, сколько USDT нужно клиенту, покажем рубли к внесению.'
+    };
+    hint.textContent = state.method === 'doverka'
+        ? (sbpHints[state.scenario] || sbpHints['rub-to-thb'])
+        : 'Выберите, что вводите: сумму взноса или желаемую сумму.';
+}
+
 function initB2Layout() {
     const container = document.querySelector('.container');
     if (!container || document.querySelector('.b2-layout')) return;
@@ -2658,9 +2673,8 @@ function initB2Layout() {
     }
     group(container.querySelector('.switcher-caption'), container.querySelector('.dealtype-switcher'));
     group(document.getElementById('methodCaption'), document.getElementById('methodSwitcher'));
-    group(null, document.getElementById('directionSwitcher'), container.querySelector('.scenarios-grid'));
-    group(null, document.getElementById('customRateSection'));
-    group(null, document.getElementById('propertyExtra'));
+    group(document.getElementById('b2DirectionLabel'), document.getElementById('directionSwitcher'), container.querySelector('.scenarios-grid'), document.getElementById('b2DirectionHint'));
+    params.append(document.getElementById('customRateSection'), document.getElementById('propertyExtra'));
 
     const exchange = document.getElementById('exchangeCard');
     const settings = exchange.querySelector('.calculator-settings');
@@ -2705,6 +2719,7 @@ function initB2Layout() {
     document.getElementById('finalRate').textContent = '—';
     document.getElementById('createDealBtn').disabled = true;
     b2Ready = true;
+    updateB2DirectionHint();
     updateB2ExtrasMeta();
     updateB2RateAge();
     setInterval(updateB2RateAge, 30000);
