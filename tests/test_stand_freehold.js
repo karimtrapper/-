@@ -681,7 +681,7 @@ console.log('test_stand_freehold.js: OK');
 
 // Менеджер подтверждает текущий снимок, затем операционист получает форму IPPS.
 {
-  const ctx=run(['stepWho','myTasks','reqOpen','stepCard','payToConfirmed','payToConfirmBlock'],['STEPS','SOURCES_PAY'],{
+  const ctx=run(['stepWho','myTasks','reqOpen','canRerate','rerateBalance','stepCard','payToConfirmed','payToConfirmBlock'],['STEPS','SOURCES_PAY'],{
     S:{role:'manager',deals:[],notes:[]},NETS:['TRC-20'],IPPS_WALLET:'T'+'A'.repeat(33),
     STAND:true,approx:()=>({}),fake:()=>({}),stepNote:()=>'',htmlText:String,
     freeholdSend:()=>10130,ippsTariff:()=>({}),usd:x=>'$'+x,convOf:()=>null,
