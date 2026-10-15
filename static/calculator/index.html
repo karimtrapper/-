@@ -193,6 +193,7 @@
             .b2-params { order: 1; width: 100%; padding: 16px; }
             body.calc-b2 #resultsSection { display: contents !important; }
             body.calc-b2 .b2-result-bar { position: fixed; z-index: 50; left: 0; right: 0; bottom: 0; padding: 12px 16px max(12px, env(safe-area-inset-bottom)); background: var(--b2-ink); border-top: 1px solid var(--b2-n700); gap: 8px; }
+            body.nav-shell-on.calc-b2 .b2-result-bar { bottom: calc(61px + env(safe-area-inset-bottom)); z-index: 221; padding-bottom: 12px; }
             body.calc-b2 .b2-result-bar .result-main { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
             body.calc-b2 .b2-result-bar .result-value { font-size: 36px; text-align: left; max-width: 100%; overflow-x: auto; }
             body.calc-b2 .b2-result-bar .result-rate { font-size: 14px; }
