@@ -164,10 +164,25 @@ async function checkAuth() {
 // Инициализация
 document.addEventListener('DOMContentLoaded', async () => {
     if (!await checkAuth()) return;
-    refreshRates();
-    // Фоновое обновление курсов каждые 5 минут
-    setInterval(refreshRates, 5 * 60 * 1000);
+    refreshAllRates();
+    setInterval(refreshAllRates, 5 * 60 * 1000);
+    setInterval(() => { if (propInv.cur === 'thb') renderPropFx(); }, 60 * 1000);
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) refreshVisibleRates();
+    });
+    window.addEventListener('focus', refreshVisibleRates);
 });
+
+function refreshAllRates() {
+    refreshRates();
+    propLoadBankRates(true);
+}
+
+function refreshVisibleRates() {
+    // focus и visibilitychange часто приходят парой; один запрос достаточен.
+    if (document.hidden || Date.now() - (propInv.lastAttemptAt || 0) < 60000) return;
+    refreshAllRates();
+}
 
 // Очистка результатов при изменении ввода
 function hideResults() {
@@ -2266,7 +2281,8 @@ const propInv = {
     cur: 'usd',          // usd | thb
     bank: null,          // название банка из PROP_FX_BANKS или 'custom'
     status: 'idle',      // idle | loading | ok | auth (401) | none (эндпоинта нет — прод)
-    rates: null, updatedAt: null, stale: false, loadedAt: 0, loading: null,
+    rates: null, updatedAt: null, stale: false, loadedAt: 0, lastAttemptAt: 0, loading: null,
+    rateLimited: false,
     wantBank: null, wantRate: null, dealRate: null   // что пришло в ссылке из сделки
 };
 
@@ -2365,15 +2381,22 @@ function setPropFxBank(bank) {
 
 // Курсы банков — тот же эндпоинт, что у задачника. На проде его нет (404): там
 // выбор банков скрыт, остаётся «Свой курс». Без логина на стенде — 401, то же самое.
-function propLoadBankRates() {
-    if (propInv.status === 'ok' && Date.now() - propInv.loadedAt < 120000) return propInv.loading;
+function propLoadBankRates(force = false) {
+    if (!force && propInv.status === 'ok' && Date.now() - propInv.loadedAt < 5 * 60000) return propInv.loading;
     if (propInv.loading) return propInv.loading;
-    propInv.status = 'loading';
+    const requestFresh = force || !propInv.loadedAt || Date.now() - propInv.loadedAt >= 5 * 60000;
+    propInv.lastAttemptAt = Date.now();
+    propInv.rateLimited = false;
+    if (propInv.status !== 'ok') propInv.status = 'loading';
     renderPropFx();
-    propInv.loading = fetch('/api/stand/thb-bank-rates', { credentials: 'same-origin' })
+    propInv.loading = fetch('/api/stand/thb-bank-rates' + (requestFresh ? '?fresh=1' : ''), { credentials: 'same-origin', cache: 'no-store' })
         .then(async r => {
+            if (r.status === 429 && requestFresh) {
+                propInv.rateLimited = true;
+                r = await fetch('/api/stand/thb-bank-rates', { credentials: 'same-origin', cache: 'no-store' });
+            }
             if (r.status === 401) { propInv.status = 'auth'; return; }
-            if (!r.ok) { propInv.status = 'none'; return; }
+            if (!r.ok) { if (propInv.status !== 'ok') propInv.status = 'none'; return; }
             const j = await r.json().catch(() => null);
             if (j && j.success && j.rates) {
                 propInv.status = 'ok';
@@ -2381,11 +2404,11 @@ function propLoadBankRates() {
                 propInv.updatedAt = j.updated_at || null;
                 propInv.stale = !!j.stale;
                 propInv.loadedAt = Date.now();
-            } else {
+            } else if (propInv.status !== 'ok') {
                 propInv.status = 'none';
             }
         })
-        .catch(() => { propInv.status = 'none'; })
+        .catch(() => { if (propInv.status !== 'ok') propInv.status = 'none'; })
         .finally(() => {
             propInv.loading = null;
             propResolveWanted();
@@ -2432,7 +2455,12 @@ function renderPropFx() {
         hint = 'Курсы банков здесь недоступны — введите «Свой курс» вручную.';
     } else if (propInv.status === 'ok') {
         const at = propInv.updatedAt ? new Date(propInv.updatedAt).toLocaleString('ru-RU') : '—';
-        hint = 'Курсы TT Buying на ' + at + (propInv.stale ? ' — данные устарели, сверьте с банком.' : '.');
+        const minutes = Math.floor((Date.now() - propInv.loadedAt) / 60000);
+        const sourceAge = propInv.updatedAt ? Date.now() - new Date(propInv.updatedAt).getTime() : NaN;
+        const stale = propInv.stale || (Number.isFinite(sourceAge) && sourceAge > 3 * 60 * 60 * 1000);
+        hint = 'Курсы TT Buying на ' + at + ' · обновлено ' + (minutes < 1 ? 'только что' : minutes + ' мин назад') +
+            (stale ? ' — данные устарели, сверьте с банком.' : '.');
+        if (propInv.rateLimited) hint += ' Повторное обновление доступно через минуту.';
         if (propInv.bank && propInv.bank !== PROP_FX_CUSTOM) {
             const r = propFxRate();
             hint += r ? ` ${propInv.bank}: ${r.toFixed(4)} ฿/$.` : ' Для этого банка нет курса — выберите другой или «Свой курс».';
@@ -2440,6 +2468,8 @@ function renderPropFx() {
     }
     if (propInv.dealRate) hint += ` В сделке зафиксирован курс ${propInv.dealRate}.`;
     document.getElementById('propFxHint').textContent = hint;
+    const refresh = document.getElementById('propFxRefresh');
+    if (refresh) refresh.disabled = !!propInv.loading;
 }
 
 // Изменилась сумма ฿ / курс / банк: пересчитываем $ и подставляем в сумму расчёта

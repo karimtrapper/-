@@ -10865,7 +10865,26 @@ _THB_BANK_RATES_TTL = 600  # 10 минут — курс TT Buying обновля
 _THB_BANK_RATES_STALE_AFTER = timedelta(hours=3)
 
 
-def _thb_bank_rates_cached():
+def _thb_source_datetime(value):
+    """Время котировки банка (источники отдают три разных формата, все — Бангкок)."""
+    if not value:
+        return None
+    from zoneinfo import ZoneInfo
+    stamp = str(value).strip()
+    try:
+        parsed = datetime.fromisoformat(stamp)
+    except ValueError:
+        parsed = None
+        for fmt in ('%Y-%m-%d %H:%M:%S', '%d %B %Y %H:%M:%S', '%d/%m/%Y %H:%M'):
+            try:
+                parsed = datetime.strptime(stamp, fmt)
+                break
+            except ValueError:
+                continue
+    return parsed.replace(tzinfo=ZoneInfo('Asia/Bangkok')) if parsed and not parsed.tzinfo else parsed
+
+
+def _thb_bank_rates_cached(force=False):
     """Курсы TT Buying банков-застройщиков из таблицы bank_rates, кэш 10 минут.
 
     Таблицу раз в час пишет отдельный Railway-сервис bank-rates (BankRates/),
@@ -10876,7 +10895,7 @@ def _thb_bank_rates_cached():
     """
     now = time.time()
     cached = _THB_BANK_RATES_CACHE['data']
-    if cached and now - _THB_BANK_RATES_CACHE['ts'] < _THB_BANK_RATES_TTL:
+    if not force and cached and now - _THB_BANK_RATES_CACHE['ts'] < _THB_BANK_RATES_TTL:
         return cached
     from sqlalchemy import text as _t
     try:
@@ -10898,17 +10917,21 @@ def _thb_bank_rates_cached():
         return {'success': False, 'error': 'rates_unavailable', 'stale': False}
     rates = {}
     source_updated_at = {}
+    source_times = []
     latest_fetched_at = None
     for bank, rate, source_timestamp, fetched_at in rows:
         rates[bank] = float(rate)
         if source_timestamp:
             source_updated_at[bank] = source_timestamp
+            parsed = _thb_source_datetime(source_timestamp)
+            if parsed:
+                source_times.append(parsed)
         if fetched_at is not None and (latest_fetched_at is None or fetched_at > latest_fetched_at):
             latest_fetched_at = fetched_at
     stale = bool(
         latest_fetched_at is not None
         and datetime.now(latest_fetched_at.tzinfo) - latest_fetched_at > _THB_BANK_RATES_STALE_AFTER
-    )
+    ) or any(datetime.now(at.tzinfo) - at > _THB_BANK_RATES_STALE_AFTER for at in source_times)
     fresh = {'success': True, 'rates': rates, 'source_updated_at': source_updated_at,
              'updated_at': latest_fetched_at.isoformat() if latest_fetched_at else '', 'stale': stale}
     _THB_BANK_RATES_CACHE.update(data=fresh, ts=now)
@@ -10916,6 +10939,9 @@ def _thb_bank_rates_cached():
 
 
 @app.route('/api/stand/thb-bank-rates', methods=['GET'])
+@limiter.limit('1/minute',
+               key_func=lambda: str(flask_session.get('user_id') or get_remote_address()),
+               exempt_when=lambda: request.args.get('fresh') != '1')
 def stand_thb_bank_rates():
     """Курсы банков-застройщиков из bank_rates — ориентир $ по инвойсу в ฿
     для фрихолд-сделок (freehold, invoiceCurrency=thb). Только залогиненным.
@@ -10927,7 +10953,7 @@ def stand_thb_bank_rates():
         return jsonify({'success': False, 'error': 'stand_only'}), 404
     if not flask_session.get('user_id'):
         return jsonify({'success': False, 'error': 'unauthorized'}), 401
-    return jsonify(_thb_bank_rates_cached())
+    return jsonify(_thb_bank_rates_cached(force=request.args.get('fresh') == '1'))
 
 
 @app.route('/api/stand/incoming/unlink', methods=['POST'])

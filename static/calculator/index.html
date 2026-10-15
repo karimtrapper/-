@@ -134,7 +134,7 @@
                     <button class="src-btn active" id="srcBitazza" onclick="setRateSource('bitazza')">Bitazza</button>
                     <button class="src-btn" id="srcBinance" onclick="setRateSource('binance')">Binance</button>
                 </div>
-                <button class="refresh-btn" id="refreshBtn" onclick="refreshRates()">
+                <button class="refresh-btn" id="refreshBtn" onclick="refreshAllRates()">
                     <span class="refresh-icon">↻</span> Обновить
                 </button>
             </div>
@@ -233,7 +233,9 @@
                             <span class="input-currency">฿/$</span>
                         </div>
                     </div>
-                    <div class="fee-hint" id="propFxHint"></div>
+                    <div class="fee-hint"><span id="propFxHint"></span>
+                        <button type="button" class="refresh-btn" id="propFxRefresh" onclick="propLoadBankRates(true)" style="padding:4px 8px;margin-left:8px">Обновить курс</button>
+                    </div>
                     <div class="fee-hint" id="propInvResult" style="font-weight: 600;"></div>
                 </div>
                 <div class="fee-hint" id="propInvUsdHint">Инвойс в USD: введите сумму в поле ниже — сценарий «Хочу получить» (USDT).</div>

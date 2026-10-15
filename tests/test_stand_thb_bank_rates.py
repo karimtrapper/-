@@ -91,6 +91,36 @@ def test_cache_avoids_second_query_within_ttl(client_with_user, monkeypatch):
     assert first['success'] and len(calls) == 1
 
 
+def test_fresh_bypasses_cache_and_is_limited_per_user(client_with_user, monkeypatch):
+    from datetime import datetime
+    # Некоторые независимые тесты отключают общий limiter и не восстанавливают его.
+    monkeypatch.setattr(appmod.limiter, 'enabled', True)
+    client, user_id = client_with_user
+    _login(client, user_id)
+    calls = fake_bank_database(monkeypatch, [('SCB', 33, None, datetime.now())])
+    assert client.get('/api/stand/thb-bank-rates').status_code == 200
+    assert client.get('/api/stand/thb-bank-rates?fresh=1').status_code == 200
+    assert len(calls) == 2
+    assert client.get('/api/stand/thb-bank-rates?fresh=1').status_code == 429
+    assert len(calls) == 2
+    assert client.get('/api/stand/thb-bank-rates').status_code == 200
+    # Другой залогиненный пользователь имеет собственный лимит.
+    db = appmod.get_session()
+    other = appmod.AdminUser(username='t-thb-rates-other', password_hash='unused', role='admin')
+    db.add(other)
+    db.commit()
+    other_id = other.id
+    db.close()
+    with client.session_transaction() as session:
+        session['user_id'] = other_id
+    assert client.get('/api/stand/thb-bank-rates?fresh=1').status_code == 200
+    assert len(calls) == 3
+    db = appmod.get_session()
+    db.query(appmod.AdminUser).filter_by(id=other_id).delete()
+    db.commit()
+    db.close()
+
+
 def test_database_error_returns_stale_cached_value(client_with_user, monkeypatch):
     from datetime import datetime
     client, user_id = client_with_user
@@ -116,5 +146,16 @@ def test_old_database_rows_are_stale(client_with_user, monkeypatch):
     client, user_id = client_with_user
     _login(client, user_id)
     fake_bank_database(monkeypatch, [('SCB', 33, None, datetime.now()-timedelta(hours=4))])
+    body = client.get('/api/stand/thb-bank-rates').json
+    assert body['success'] and body['stale']
+
+
+def test_old_bank_quote_is_stale_even_when_recently_fetched(client_with_user, monkeypatch):
+    from datetime import datetime, timedelta
+    from zoneinfo import ZoneInfo
+    client, user_id = client_with_user
+    _login(client, user_id)
+    old_source = (datetime.now(ZoneInfo('Asia/Bangkok')) - timedelta(hours=4)).strftime('%Y-%m-%d %H:%M:%S')
+    fake_bank_database(monkeypatch, [('SCB', 33, old_source, datetime.now())])
     body = client.get('/api/stand/thb-bank-rates').json
     assert body['success'] and body['stale']

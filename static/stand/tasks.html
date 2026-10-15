@@ -1565,7 +1565,7 @@ function freeholdInvoiceInputs6(d){
   const banks=banksOk?THB_REFERENCE_BANKS.concat(['Другой банк','Не знаю']):[];
   const fxHint=!R?'Загружаем курсы банков…'
     :!banksOk?'Курсы банков недоступны — впишите «Свой курс» вручную.'
-    :'Курсы TT Buying на '+(R.updated_at?new Date(R.updated_at).toLocaleString('ru-RU'):'—')+(R.stale?' — данные устарели, сверьте с банком':'')+'.';
+    :thbRatesMeta();
   const fmt=v=>v?Number(v).toLocaleString('ru-RU',{minimumFractionDigits:2,maximumFractionDigits:2}):'';
   return `<div class="card-title" style="font-size:14px;margin:6px 0 4px">Инвойс застройщика<span class="sub">впишите то, что назвал банк/застройщик</span></div>
   <div class="fr">
@@ -1581,7 +1581,7 @@ function freeholdInvoiceInputs6(d){
   ${thb?`<div class="fr"><div class="fg w2"><label class="fl">Курс ฿/$<span class="rq">*</span></label>
       <div class="chips">${banks.map(b=>`<span class="chip ${d.fxBank===b?'on':''}" onclick="freeholdDealSet(${d.id},'fxBank','${b}')">${b}</span>`).join('')}
         <span class="chip ${d.fxBank==='custom'?'on':''}" onclick="freeholdDealSet(${d.id},'fxBank','custom')">Свой курс</span></div>
-      <p class="fh">${fxHint}${d.fxBank&&d.fxBank!=='custom'&&rateNow?' '+d.fxBank+': '+rateNow.toFixed(4)+' ฿/$.':''}</p></div>
+      <p class="fh">${fxHint}${d.fxBank&&d.fxBank!=='custom'&&rateNow?' '+d.fxBank+': '+rateNow.toFixed(4)+' ฿/$.':''}${d.fxBank&&d.fxBank!=='custom'&&rateNow&&Math.abs(num(d.fxRate)-rateNow)>0.000001?' Выберите банк снова, чтобы применить новый курс.':''}${thbRatesRefreshButton()}</p></div>
     ${d.fxBank==='custom'?`<div class="fg"><label class="fl">Свой курс, ฿ за 1 $<span class="rq">*</span></label>
       <input class="fc num" id="fh_fxrate_${d.id}" value="${d.fxRate||''}" placeholder="например, 32,15"
         onchange="freeholdDealSet(${d.id},'fxRate',this.value)"></div>`:''}
@@ -1719,16 +1719,53 @@ function thbBankRate(rates,bank){
   return (typeof v==='number'&&v>0)?v:null;
 }
 let _thbRatesPromise=null;
+const THB_RATES_UI_TTL=5*60*1000;
 /* Курсы живут в S.thbRates, но не часть сделки/черновика — не через save().
-   Серверный прокси сам кэширует на 10 минут, здесь — только чтобы не слать
-   запрос на каждый render() формы (он вызывается на каждое нажатие клавиши). */
-function ensureThbRates(){
-  if(S.thbRates&&Date.now()-(S.thbRatesAt||0)<120000) return;
-  if(_thbRatesPromise) return;
-  _thbRatesPromise=fetch('/api/stand/thb-bank-rates',{credentials:'same-origin'})
-    .then(r=>r.json()).catch(()=>({success:false,error:'network_error'}))
-    .then(j=>{S.thbRates=j;S.thbRatesAt=Date.now();_thbRatesPromise=null;render();})
-    .catch(()=>{_thbRatesPromise=null;});
+   На каждом render() запрос не нужен; на открытии шага и после возврата
+   проверяем возраст данных. Кнопка обходит серверный кэш через fresh=1. */
+function ensureThbRates(force=false){
+  if(!force&&Date.now()-Math.max(S.thbRatesAt||0,S.thbRatesAttemptAt||0)<THB_RATES_UI_TTL) return _thbRatesPromise;
+  if(_thbRatesPromise) return _thbRatesPromise;
+  S.thbRatesAttemptAt=Date.now();
+  _thbRatesPromise=fetch('/api/stand/thb-bank-rates?fresh=1',{credentials:'same-origin',cache:'no-store'})
+    .then(async r=>{
+      if(r.status===429){
+        if(force)toast('Повторное обновление доступно через минуту');
+        r=await fetch('/api/stand/thb-bank-rates',{credentials:'same-origin',cache:'no-store'});
+      }
+      if(!r.ok)throw new Error('rates_http_'+r.status);
+      return r.json();
+    })
+    .then(j=>{if(j&&j.success){S.thbRates=j;S.thbRatesAt=Date.now();
+      if(S.draft&&S.draft.cur==='fhusd'&&S.draft.invoiceCurrency==='thb')recomputeDraftFhEstimate();
+      render();}
+      else if(!S.thbRates){S.thbRates=j;render();}return j;})
+    .catch(()=>{if(!S.thbRates){S.thbRates={success:false};render();}
+      if(force)toast('Не удалось обновить курс — попробуйте через минуту');})
+    .finally(()=>{_thbRatesPromise=null;});
+  return _thbRatesPromise;
+}
+function taskUsesThbRates(){
+  const d=S.open&&deal(S.open);
+  return !!((S.draft&&S.draft.cur==='fhusd'&&S.draft.invoiceCurrency==='thb')||
+    (d&&S.view==='task'&&d.kind==='Фрихолд'&&d.invoiceCurrency==='thb'&&['s5','s6','s18'].includes(d.step)));
+}
+function refreshTaskRatesOnReturn(){
+  if(!document.hidden&&taskUsesThbRates())ensureThbRates();
+}
+document.addEventListener('visibilitychange',refreshTaskRatesOnReturn);
+window.addEventListener('focus',refreshTaskRatesOnReturn);
+function thbRatesMeta(){
+  const R=S.thbRates;
+  const at=R&&R.updated_at?new Date(R.updated_at).toLocaleString('ru-RU'):'—';
+  const age=S.thbRatesAt?ago(S.thbRatesAt):'';
+  const sourceAt=R&&R.updated_at?new Date(R.updated_at).getTime():NaN;
+  const stale=!!(R&&R.stale)||(Number.isFinite(sourceAt)&&Date.now()-sourceAt>3*60*60*1000);
+  return 'Курсы TT Buying на '+at+(age?' · обновлено '+age:'')+
+    (stale?' — данные устарели, сверьте с банком.':'.');
+}
+function thbRatesRefreshButton(){
+  return '<button type="button" class="btn btn-outline btn-sm" onclick="ensureThbRates(true)" style="padding:4px 8px;gap:8px;margin-left:8px">Обновить курс</button>';
 }
 /* Текст-ориентир под полями ฿/банк в черновике заявки — и ошибки, которые
    блокируют создание (нет курсов / банк или сумма не выбраны/не распознаны). */
@@ -1742,8 +1779,7 @@ function draftFhEstimateLine(D){
   const rate=thbBankRate(S.thbRates.rates,D.fxBank);
   if(!rate) return 'Нет курса для этого банка — попробуйте «Другой банк» или «Не знаю».';
   const usdEst=Math.round(thb/rate*100)/100;
-  const at=S.thbRates.updated_at?new Date(S.thbRates.updated_at).toLocaleString('ru-RU'):'—';
-  return `≈ ${usd(usdEst)} по TT Buying ${D.fxBank} (${rate}) на ${at} — ориентир, точные $ и курс вы впишете при расчёте клиенту.`;
+  return `≈ ${usd(usdEst)} по TT Buying ${D.fxBank} (${rate}) — ориентир, точные $ и курс вы впишете при расчёте клиенту. ${thbRatesMeta()}`;
 }
 /* Пересчёт ориентира $ в черновике заявки при смене суммы в ฿ или банка. */
 function recomputeDraftFhEstimate(){
@@ -4799,6 +4835,7 @@ function render(){
   if(S.edit) crmDraftCapture();
   else crmDraftActive=null;
   app.innerHTML=main+(S.modal?viewModal():'')+(S.doc?viewDoc():'')+(S.cnv?viewCnv():'')+(S.refEdit?viewRefEdit():'');
+  if(taskUsesThbRates()) ensureThbRates();
   document.body.classList?.toggle?.('deal-task-mode',!!S.open&&S.view==='task');
   if(S.open&&S.view==='task')polishDealActions();
   draftsRestore();
@@ -4819,7 +4856,7 @@ function saveUi(){if(!STAND)save();}
 function setRole(r){S.role=r;S.draft=null;S.modal=null;S.tab='tasks';saveUi();render();}
 function setTab(t){S.tab=t;S.open=null;S.draft=null;S.modal=null;saveUi();render();}
 function openDeal(id){S.open=id;S.view='deal';saveUi();render();}
-function openTask(id,branch){S.open=id;S.view='task';S.taskBranch=branch||null;saveUi();render();}
+function openTask(id,branch){S.open=id;S.view='task';S.taskBranch=branch||null;saveUi();render();if(taskUsesThbRates())ensureThbRates();}
 function setInspectRole(role){S.inspectRole=role;saveUi();render();}
 function setView(v){S.view=v;saveUi();render();}
 function back(){S.open=null;S.draft=null;saveUi();render();}
@@ -5538,7 +5575,7 @@ function viewCreateBody(D,srcCard){
       <div class="fg"><label class="fl">Банк застройщика<span class="rq">*</span></label>
       <div class="chips">${THB_REFERENCE_BANKS.concat(['Другой банк','Не знаю']).map(b=>
         `<span class="chip ${D.fxBank===b?'on':''}" onclick="draftSet('fxBank','${b}')">${b}</span>`).join('')}</div>
-      <p class="fh" id="d_fx_preview">${draftFhEstimateLine(D)}</p></div>`;})():''}
+      <p class="fh" id="d_fx_preview">${draftFhEstimateLine(D)}${thbRatesRefreshButton()}</p></div>`;})():''}
 
     ${D.cur==='fhusd'&&D.invoiceCurrency!=='thb'?`<div class="fg"><label class="fl">Инвойс застройщику<span class="rq">*</span></label>
       <div style="display:flex;gap:8px;max-width:520px;flex-wrap:wrap;align-items:center">
@@ -6066,6 +6103,10 @@ function viewDeal(d){
       (S.role==='operator'&&d.step==='s14'?s14PingBlock(d,false):'')+ctxCard(d);
   }
   else body=overview(d,st,mine,p,who)+quotesCard(d);
+  if(view==='task'&&d.kind==='Фрихолд'&&d.invoiceCurrency==='thb'&&['s5','s18'].includes(d.step)){
+    body=`<div class="card"><div class="card-title">Курс банка застройщика · TT Buying</div>
+      <p class="fh">${S.thbRates&&S.thbRates.success?thbRatesMeta():'Загружаем курсы банков…'}${thbRatesRefreshButton()}</p></div>`+body;
+  }
   if(view==='task'&&branch){
     const other=branch==='conversion'?'payment':'conversion';
     const title=other==='conversion'?'Конвертация':'Оплата застройщику';
