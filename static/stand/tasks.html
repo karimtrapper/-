@@ -5617,6 +5617,8 @@ function viewCreateBody(D,srcCard){
       <input class="fc" id="d_note" value="${(D.note||'').replace(/"/g,'&quot;')}"
         placeholder="клиент просит курс на сегодня, оплата на этой неделе" oninput="draftSet('note',this.value,true)"></div>
 
+    ${D.createError?`<div class="alert a-warn" style="margin-top:10px"><div style="flex:1">${htmlText(D.createError)}</div>
+      <button class="btn btn-outline btn-sm" style="white-space:nowrap" onclick="createSelf()">Повторить</button></div>`:''}
     <div class="card-title" style="font-size:14px;margin:18px 0 10px">Как ведём дальше</div>
     <div class="row">
       ${D.kind==='Фрихолд'&&D.payType==='Крипта'?`<button class="btn btn-primary" onclick="createGo()">Создать сделку</button>`:`
@@ -5943,7 +5945,7 @@ function createGo(){
   toast('Заявка создана — курс запрашивает операционист');
 }
 /* Менеджер знает курс — сделка сразу на нём, задача операционисту не создаётся */
-function createSelf(){
+async function createSelf(){
   if(!draftValid())return;const D=S.draft;ensureClient(D);
   D.isOld=D.clientId?!!(clientById(D.clientId)||{}).docs:knownBy(D.source,D.sourceRef).some(x=>x.client===D.client);
   /* крипто-фрихолд: курса нет вообще, «сам» здесь означает то же, что и обычная
@@ -5955,11 +5957,33 @@ function createSelf(){
     toast('Заявка создана — соберите документы');
     return;
   }
-  const d=newDeal({...D,step:'s6',isTask:true,...draftAmounts(D)});
-  d.self=true;d.selfRate=true;
-  log(d,'Курс ставит менеджер — операциониста не зовём');
+  /* Сразу на s6 без курсов сервер отклонял (нет rates/selfRate) — к моменту
+     первого PUT (внутри newDeal) d.self ещё не стоял. Черновик уже сбрасывался
+     в UI, а сервер откатывал к previous без новой сделки → «Сделка не найдена»
+     (баг TG #516). Заводим на s4 (как и запрос операционисту) с self:true —
+     курс вводится в уже существующей форме s4, на s6 уходим только после
+     selfRate() с проверенными курсами, одним подтверждённым PUT. */
+  D.createError=null;
+  const d=newDeal({...D,step:'s4',isTask:true,...draftAmounts(D),noSave:true});
+  d.self=true;
+  log(d,'Курс менеджер ставит сам — заявка не уходит операционисту');
+  save();render();
+  /* Черновик закрываем и уходим на карточку только после подтверждённого PUT:
+     отказ сервера (409/сеть) не должен оставлять «осиротевшую» сделку в S.deals
+     и показывать «Сделка не найдена» — откатываем создание и показываем
+     причину прямо в форме черновика (Карим, проверка после правки s4). */
+  if(STAND){
+    let saved;
+    try{saved=await standWaitSaved();}catch(e){saved={ok:false,error:'timeout'};}
+    if(!saved.ok||!deal(d.id)){
+      S.deals=S.deals.filter(x=>x.id!==d.id);
+      D.createError=standSaveError(saved,'Сервер не подтвердил создание задачи — повторите');
+      render();
+      return;
+    }
+  }
   S.draft=null;S.open=d.id;S.view='task';save();render();
-  toast('Проставьте курс — операциониста не зовём');
+  toast('Укажите курс выбранной пары — заявка не уходит операционисту');
 }
 function createQuick(){
   if(!draftValid())return;const D=S.draft;ensureClient(D);
