@@ -5617,8 +5617,7 @@ function viewCreateBody(D,srcCard){
       <input class="fc" id="d_note" value="${(D.note||'').replace(/"/g,'&quot;')}"
         placeholder="клиент просит курс на сегодня, оплата на этой неделе" oninput="draftSet('note',this.value,true)"></div>
 
-    ${D.createError?`<div class="alert a-warn" style="margin-top:10px"><div style="flex:1">${htmlText(D.createError)}</div>
-      <button class="btn btn-outline btn-sm" style="white-space:nowrap" onclick="createSelf()">Повторить</button></div>`:''}
+    ${D.createError?`<div class="alert a-warn" style="margin-top:8px"><div>${htmlText(D.createError)} Повторите кнопкой «Курс знаю — сам» ниже.</div></div>`:''}
     <div class="card-title" style="font-size:14px;margin:18px 0 10px">Как ведём дальше</div>
     <div class="row">
       ${D.kind==='Фрихолд'&&D.payType==='Крипта'?`<button class="btn btn-primary" onclick="createGo()">Создать сделку</button>`:`
@@ -5982,7 +5981,11 @@ async function createSelf(){
       return;
     }
   }
-  S.draft=null;S.open=d.id;S.view='task';save();render();
+  S.draft=null;S.open=d.id;S.view='task';
+  /* Сервер уже подтвердил ровно этот снимок — второй PUT с теми же данными
+     избыточен (QA по commit bbf2ffc, п.1): S.draft/S.open/S.view — локальные
+     поля, которых нет в STAND_SHARED. Без STAND сохраняем как раньше, в localStorage. */
+  if(STAND)render();else{save();render();}
   toast('Укажите курс выбранной пары — заявка не уходит операционисту');
 }
 function createQuick(){
