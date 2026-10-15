@@ -6387,6 +6387,13 @@ def stand_state_put():
         if problem:
             return jsonify(success=False, error=problem, version=row.version or 0, data=_stand_strip_files(previous)), 409
         clean = preserve_server_fields(previous, payload['data'])
+        from stand_workflow import rerate_attempt
+        prior_for_rerate = {d.get('id'): d for d in previous.get('deals') or []}
+        for deal in clean.get('deals') or []:
+            before = prior_for_rerate.get(deal.get('id'))
+            if before and rerate_attempt(before, deal):
+                # A browser cannot choose the version that counts as stale.
+                deal['rerateDocVersion'] = int(before.get('docVersion') or 0)
         author = flask_session.get('display_name') or flask_session.get('username') or actor
         accept_journal(previous, clean, actor, author, int(time.time()*1000))
         accept_notes(previous, clean, actor)
@@ -8730,7 +8737,8 @@ def _stand_freehold_explicit_rub_problem(deal):
 
 def _stand_workflow_problem(previous, state, actor, db):
     """Validate graph and evidence after authorization, before accepting a PUT."""
-    from stand_workflow import EDGES, EXCHANGE_PAIRS, positive, quote_dirs
+    from stand_workflow import (EDGES, EXCHANGE_PAIRS, positive, quote_dirs,
+                                rerate_attempt, rerate_problem)
     old = {d.get('id'): d for d in previous.get('deals', [])}
     for deal in state.get('deals', []):
         before = old.get(deal.get('id'))
@@ -8745,6 +8753,10 @@ def _stand_workflow_problem(previous, state, actor, db):
             if before.get(key) != deal.get(key):
                 return 'Выпуск документов фиксирует только сервер'
         start, end = before.get('step'), deal.get('step')
+        if rerate_attempt(before, deal):
+            problem = rerate_problem(previous, state, before, deal, actor)
+            if problem:
+                return problem
         if start == end:
             continue
         if end not in EDGES.get(start, set()):
@@ -8758,6 +8770,10 @@ def _stand_workflow_problem(previous, state, actor, db):
                     'rubUsdt' if direction == 'rub' else 'usdtThb')) for direction in quote_dirs(source)):
                 return 'Сначала получите курсы выбранной пары'
         if start == 's6' and end == 's8':
+            if deal.get('selfRate') and (not quote_dirs(deal) or not all(
+                    positive(rates.get('rubUsdt' if direction == 'rub' else 'usdtThb'))
+                    for direction in quote_dirs(deal))):
+                return 'Сначала проставьте курсы выбранной пары'
             problem = _stand_freehold_explicit_rub_problem(deal)
             if problem:
                 return problem
@@ -8789,8 +8805,12 @@ def _stand_workflow_problem(previous, state, actor, db):
                         break
                 if not valid:
                     return 'Для передачи документов нужен файл: ' + kind
-        if start in ('s11', 's11b') and end in ('s11b', 's12') and not before.get('docPack'):
-            return 'Сначала выпустите пакет документов на сервере'
+        if start in ('s11', 's11b') and end in ('s11b', 's12'):
+            if not before.get('docPack'):
+                return 'Сначала выпустите пакет документов на сервере'
+            if (before.get('rerateDocVersion') is not None and
+                    int(before.get('docVersion') or 0) <= int(before['rerateDocVersion'])):
+                return 'Сначала перевыпустите документы с новым курсом'
         if start == 's12' and end == 's14':
             if not before.get('docPack') or not deal.get('docsSent'):
                 return 'Нужен выпущенный пакет и отметка отправки клиенту'
@@ -8848,6 +8868,16 @@ def _stand_state_events(previous, state, actor, version):
 
 def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=None,
                             allow_crm_close=False):
+    from stand_workflow import rerate_attempt, rerate_problem
+    prior_deals = {d.get('id'): d for d in previous.get('deals', [])}
+    for deal in new_state.get('deals') or []:
+        before = prior_deals.get(deal.get('id'))
+        if before and rerate_attempt(before, deal):
+            problem = rerate_problem(previous, new_state, before, deal, actor)
+            if problem:
+                return problem
+        elif before and before.get('rerateDocVersion') != deal.get('rerateDocVersion'):
+            return 'Версию для повторного выпуска документов фиксирует сервер'
     demo_problem = stand_demo.guard(previous, new_state)
     if demo_problem:
         return demo_problem
@@ -9346,7 +9376,7 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
             return _stand_freehold_plan_problem(deal)
         if step_changed and not allow_crm_close and actor != 'admin':
             required = _stand_current_step_role(previous, before)
-            if required and actor != required:
+            if required and actor != required and not (actor == 'manager' and rerate_attempt(before, deal)):
                 return f'Действие шага {before.get("step")} доступно роли {required}'
         if step_changed and before.get('step') == 's18' and deal.get('step') == 's18w':
             broker_problem = _stand_broker_handoff_problem(previous, new_state, before, deal)

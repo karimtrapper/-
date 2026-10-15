@@ -48,6 +48,71 @@ EDGES = {
     'ready': {'pack'}, 'pack': {'s22'}, 'manual': {'done'}, 'done': set(),
 }
 
+# A new quote may be requested until the RUB handoff or an outgoing payment starts.
+# The self-priced route returns to the manager's calculation instead of the quote desk.
+RERATE_STEPS = frozenset(('s6', 's8', 's11', 's11b', 's12', 's14', 's14m', 's15', 's18'))
+for _step in RERATE_STEPS:
+    EDGES[_step].update(('s5', 's6'))
+
+
+def rerate_attempt(before, deal):
+    """The board's explicit quote reset, including self-priced s6 -> s6."""
+    start, end = before.get('step'), deal.get('step')
+    stages = RERATE_STEPS | {'s18w', 's22', 's23', 's24', 's25', 's26', 's27', 'done'}
+    return (start in stages and end in ('s5', 's6') and
+            (start != end or start == 's6' and before.get('reRequest') != deal.get('reRequest')))
+
+
+def rerate_problem(state, submitted, before, deal, actor):
+    """Check immutable server facts, never the browser's claimed payment flags."""
+    if before.get('closed') or before.get('crmDealId'):
+        return 'Закрытая сделка уже не пересчитывается'
+    conversion = next((c for c in state.get('convs') or []
+                       if (before.get('cnvId') is not None and c.get('id') == before.get('cnvId'))
+                       or any(s.get('dealId') == before.get('id') for s in c.get('sources') or [])), None)
+    if (before.get('step') == 's18w' or before.get('cnvId') is not None
+            or conversion and conversion.get('status') in ('sent', 'received', 'done')):
+        return 'Рубли уже ушли брокеру — курс зафиксирован'
+    if before.get('prepay') or before.get('ippsPayoutOrder') or before.get('outgoingOrderAt') or (
+            (before.get('transfer') or {}).get('sends') or before.get('serverTransferComplete') or
+            (before.get('pay') or {}).get('ippsSent') or (before.get('pay') or {}).get('invoicePaid')):
+        return 'Оплата наперёд или исходящий перевод уже начаты — курс зафиксирован'
+    if before.get('step') in ('s22', 's23', 's24', 's25', 's26', 's27', 'done'):
+        return 'Этап оплаты уже начат — курс зафиксирован'
+    if before.get('step') not in RERATE_STEPS:
+        return 'На этом этапе нельзя запросить курс заново'
+    if before.get('kind') == 'Фрихолд' and before.get('payType') == 'Крипта':
+        return 'В этой сделке внешний курс не запрашивается'
+    if actor not in ('manager', 'admin'):
+        return 'Запросить курс заново может менеджер'
+    if before.get('selfRate') != deal.get('selfRate'):
+        return 'Способ расчёта курса нельзя менять при повторном запросе'
+    if deal.get('step') == 's6':
+        if (not before.get('selfRate') or not quote_dirs(before) or
+                before.get('type') == 'Обмен валюты' and before.get('pair') not in EXCHANGE_PAIRS):
+            return 'Для своего курса нужна выбранная валютная пара'
+    elif before.get('selfRate'):
+        return 'Свой курс пересчитывается у менеджера'
+    try:
+        if int(deal.get('reRequest') or 0) != int(before.get('reRequest') or 0) + 1:
+            return 'Повторный запрос курса нужно начать кнопкой в сделке'
+    except (TypeError, ValueError):
+        return 'Повторный запрос курса нужно начать кнопкой в сделке'
+    if deal.get('rates') or deal.get('quotes') or deal.get('ratePick'):
+        return 'Для нового запроса очистите прежние курсы и ответы'
+    for key in ('payinParts', 'payinHashes', 'payinExtra', 'incomeAmount',
+                'receiptConfirmed', 'manualBankReceipt', 'pay', 'expect'):
+        if before.get(key) != deal.get(key):
+            return 'Зачтённый приход и его ожидание нельзя менять при запросе курса'
+    def credited_incomes(board):
+        return [{k: v for k, v in income.items() if k != 'sel'}
+                for income in board.get('incomes') or [] if income.get('dealId') == before.get('id')]
+    old_incomes = credited_incomes(state)
+    new_incomes = credited_incomes(submitted)
+    if old_incomes != new_incomes:
+        return 'Зачтённый приход нельзя менять при запросе курса'
+    return None
+
 
 def positive(value):
     try:

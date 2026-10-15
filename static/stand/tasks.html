@@ -3039,13 +3039,13 @@ function quotesSummary(d){
         </div>`;}).join('')}</div>`;}).join('')}
     <p class="fh">Если у лучшего контрагента лимит или он передумал — возьмите другой, расчёт пересчитается.</p></div>`;
 }
-/* Курсы живут дольше своего шага: контрагент отвечает, когда задача уже у менеджера.
-   Поэтому блок ответов висит в карточке сделки, пока деньги не пришли (Карим, 24.09). */
+/* Курсы живут дольше своего шага: ответ можно записать до отправки рублей брокеру,
+   даже если приход клиента уже зачтён. */
 function quotesCard(d){
   if(d.manual||d.closed) return '';
   if(S.role!=='operator'&&S.role!=='admin') return '';
   if(d.step==='s5') return '';                 /* на своём шаге он и так открыт */
-  if(d.incomeAmount) return '';                /* деньги пришли — курс уже не поменять */
+  if(!canRerate(d)) return '';
   /* Фрихолд без крипты — батов и Coins там нет, курс USDT→THB операционисту не нужен (Карим, 06.10) */
   const dirs=quoteDirs(d);
   return `<div class="card"><div class="card-title">Курсы контрагентов
@@ -3053,7 +3053,7 @@ function quotesCard(d){
     ${dirs.map(dir=>`<div class="chtitle" style="margin:4px 0 8px">${quoteDirection(d,dir)}
         <span>${(function(){const b=quoteBest(d,dir);return b?('в сделке '+b.rate+' · '+b.name):'ответов ещё нет';})()}</span></div>
       ${cps().filter(c=>cpDir(c,dir)).map(c=>quoteRow(d,c,dir)).join('')}`).join('')}
-    <p class="fh">Пока клиент не заплатил, курс можно обновить: менеджер пересчитает и пересогласует условия.</p></div>`;
+    <p class="fh">Пока рубли не ушли брокеру, менеджер может запросить новый курс и пересогласовать условия.</p></div>`;
 }
 function quoteRow(d,c,dir){
   const q=(d.quotes||[]).find(x=>x.cpId===c.id&&x.dir===dir);
@@ -4337,6 +4337,10 @@ function docFields(d){
     validTill:''
   };
   const out=Object.assign({},auto,saved);
+  /* Issued files stay immutable; the next issue form uses the newly agreed money. */
+  if(d.reRequest&&d.rates.client&&(!d.docVersion||d.rerateDocVersion===d.docVersion)){
+    for(const key of ['amountThb','amountPay','rate','rateAt'])out[key]=auto[key];
+  }
   if(!isCrypto(d)&&d.rubReceivingAccount)out.payTo=auto.payTo;
   // Поле показывает текст следующего выпуска; старые выпущенные файлы не меняются.
   if(cryptoFreehold)out.feeNote=cryptoFeeNote;
@@ -8447,7 +8451,7 @@ function expectOf(d){
   const receiving=d.rubReceivingAccount||{};
   const custom=receiving.mode==='custom', flowsole=receiving.mode==='flowsole', sber=receiving.mode==='sber';
   return {
-    amount:(e.amount!=null?e.amount:(ap.pay||'')),
+    amount:(e.amount!=null&&!d.rerateExpectFollowsDeal?e.amount:(ap.pay||'')),
     acc:custom?([receiving.bank||'Другой счёт',receiving.account||'счёт не указан'].join(' · ')):flowsole?'Flow Sole (СГБ) …0261':sber?'…0286 · Сбер':(e.acc||'…0286 · Сбер'),
     bank:custom?receiving.bank:flowsole?FLOWSOLE.bank:sber?MF.bank:(e.bank||''),
     account:custom?receiving.account:flowsole?FLOWSOLE.acc:sber?MF.acc:(e.account||''),
@@ -8466,6 +8470,7 @@ function expectSet(id,k,v){
   if(String(was[k])===String(nv))return;
   d.expect=d.expect||{};
   d.expect[k]=nv;
+  if(k==='amount')d.rerateExpectFollowsDeal=false;
   const label={amount:'ждём сумму',acc:'счёт зачисления',tol:'допуск',purpose:'назначение платежа'}[k]||k;
   log(d,'Ожидание прихода — '+label+': «'+(was[k]||'—')+'» → «'+(d.expect[k]||'—')+'»');
   save();render();
@@ -8566,6 +8571,13 @@ function syncFreeholdRate(id,from='rate'){
   d.freeholdClientInput=from;
   save();render();
 }
+function syncFreeholdBrokerRate(id){
+  const d=deal(id);
+  if(!d||d.step!=='s6'||!d.selfRate)return;
+  d.rates.rubUsdt=cleanNum(val('r1c'))||null;
+  d.rates.at=Date.now();
+  save();render();
+}
 /* На этом шаге правятся все цифры: клиент мог согласиться на другую сумму, а
    контрагент — передоговориться о курсе. Меняем одно — пересчитывается зависимое. */
 function syncClient(id,from){
@@ -8575,6 +8587,7 @@ function syncClient(id,from){
   if(from==='rubUsdt'||from==='usdtThb'){
     /* курсы контрагентов двигают себестоимость и наценку, но не то, что назвали клиенту */
     d.rates[from]=cleanNum(val(from==='rubUsdt'?'r1c':'r2c'))||null;
+    if(d.selfRate)d.rates.at=Date.now();
     save();render();return;
   }
   if(d.type==='Обмен валюты'){
@@ -8615,18 +8628,36 @@ function syncClient(id,from){
   }
   save();render();
 }
+function canRerate(d){
+  return !!d&&!d.closed&&['s6','s8','s11','s11b','s12','s14','s14m','s15','s18'].includes(d.step)
+    &&!(d.kind==='Фрихолд'&&isCrypto(d))
+    &&!d.prepay&&!d.ippsPayoutOrder&&!d.outgoingOrderAt&&!d.cnvId
+    &&!(d.transfer?.sends||[]).length&&!d.serverTransferComplete
+    &&!d.pay?.ippsSent&&!d.pay?.invoicePaid;
+}
+function rerateBalance(d){
+  if(!d.reRequest||!num(d.rates?.client))return '';
+  const ex=expectOf(d), expected=Number(ex.amount), got=isCrypto(d)?payinGot(d):(payinSum(d)||Number(d.incomeAmount));
+  if(!Number.isFinite(expected)||!Number.isFinite(got)||got<=0)return '';
+  const gap=Math.round((expected-got)*100)/100, tol=isCrypto(d)?PAYIN_TOL:Number(ex.tol);
+  if(Math.abs(gap)<0.01)return `<div class="alert a-ok"><div>Зачтено ${money(got,approx(d).sign)} из ${money(expected,approx(d).sign)} — сумма совпала.</div></div>`;
+  return `<div class="alert a-warn"><div>Ждали <b>${money(expected,approx(d).sign)}</b>, зачтено <b>${money(got,approx(d).sign)}</b>. <b>${gap>0?'Недоплата':'Переплата'} ${money(Math.abs(gap),approx(d).sign)}</b> — ${gap>0?'нужна доплата клиента':'проверьте возврат излишка'}${Math.abs(gap)<=tol?' (расхождение в пределах допуска)':''}.</div></div>`;
+}
 function rerate(id,why){
   const d=deal(id);
+  if(!canRerate(d)){toast('Курс уже зафиксирован: рубли отправлены брокеру или начата оплата');return;}
   /* прежние ответы больше не годятся: курс запрашивают заново, поля чистые */
   if((d.quotes||[]).length){
     d.quotesPrev=d.quotes.slice();
     d.quotes=[];
   }
-  noteAdd('operator','Менеджер запросил курсы заново'+(why?' — '+why:'')+'. Прежние ответы очищены, впишите новые.',d.id);
-  /* причина попадает в журнал: клиент вернулся через неделю и курс поехал до оплаты —
+  if(!d.selfRate)noteAdd('operator','Менеджер запросил курсы заново'+(why?' — '+why:'')+'. Прежние ответы очищены, впишите новые.',d.id);
+  /* причина попадает в журнал: клиент вернулся через неделю и курс поехал до конвертации —
      разные истории, а по записи потом разбираются, почему цифры менялись */
   const r=why||'клиент вернулся';
-  d.ratesPrev={...d.rates};d.rates={};d.reRequest=(d.reRequest||0)+1;
+  if(d.expect?.amount!=null)d.rerateExpectFollowsDeal=true;
+  if(d.docVersion)d.rerateDocVersion=d.docVersion;
+  d.ratesPrev={...d.rates};d.rates={};d.ratePick={};d.reRequest=(d.reRequest||0)+1;
   if(d.selfRate){d.self=true;go(d,'s6','Курс пересчитывается заново — '+r);
     toast('Проставьте курс заново');return;}
   go(d,'s5','Повторный запрос курсов — '+r);
@@ -9412,7 +9443,7 @@ function stepCard(d){
       <div class="card-title" style="font-size:14px;margin:14px 0 4px">Итог с клиентом</div>
       <div class="fr">
         <div class="fg"><label class="fl">Курс брокера · RUB → USDT</label>
-          <input class="fc num" readonly value="${d.rates.rubUsdt||''}"></div>
+          <input class="fc num" ${d.selfRate?'id="r1c" onchange="syncFreeholdBrokerRate('+d.id+')"':'readonly'} value="${d.rates.rubUsdt||''}"></div>
         <div class="fg"><label class="fl">Итоговый курс клиенту<span class="rq">*</span><span class="sub2"> ₽ за 1 $, 4 знака</span></label>
           <input class="fc num" id="r3" value="${k?k.toFixed(4).replace('.',','):''}" placeholder="курс клиенту, ₽ за 1 $"
             onchange="syncFreeholdRate(${d.id},'rate')"></div>
@@ -9652,12 +9683,12 @@ function stepCard(d){
     ${d.docs.signed?`<p class="fh">Подпись относится к версии ${d.docVersion||1}. Если пересчитаете условия, пакет уйдёт на пересборку, а эта подпись перестанет соответствовать документу — попросите подписать новую версию.</p>`:''}
 
 
-    <div class="chtitle" style="margin-top:16px">Курс поехал, пока клиент думал
+    ${canRerate(d)?`<div class="chtitle" style="margin-top:16px">Курс поехал, пока клиент думал
       <span>цифры меняет операционист — он же подписывает пакет</span></div>
-    <p style="font-size:13px;color:var(--navy-600);line-height:1.65">${d.rates.at?'Курс сделки получен от контрагентов '+ago(d.rates.at)+'. ':''}Настоящий курс знают только контрагенты — если клиент думал долго или просит пересчитать, запросите курсы заново. Задача уйдёт операционисту${d.selfRate?'':' и вернётся с новыми курсами'}; вы пересогласуете условия с клиентом, и пакет соберётся заново. Прежние цифры останутся в журнале.</p>
+    <p style="font-size:13px;color:var(--navy-600);line-height:1.65">${d.rates.at?'Курс сделки получен от контрагентов '+ago(d.rates.at)+'. ':''}Если клиент просит пересчитать, запросите курсы заново. ${d.selfRate?'Вы укажете новый курс сами.':'Задача уйдёт операционисту и вернётся с новыми курсами.'} Вы пересогласуете условия с клиентом, и пакет соберётся заново. Прежние цифры останутся в журнале.</p>
     <div class="row" style="margin-top:10px">
       <button class="btn btn-secondary" onclick="rerate(${d.id},'курс поехал, пока клиент думал')">Запросить курсы заново</button>
-    </div></div>`,
+    </div>`:''}</div>`,
 
   s14:()=>`<div class="card"><div class="card-title">Ждём приход<span class="sub">${isCrypto(d)?'USDT на кошелёк':`рубли на счёт в ${htmlText(rubReceivingBankLabel(d))}`}</span></div>
     ${isCrypto(d)?(function(){
@@ -10223,7 +10254,10 @@ function stepCard(d){
   /* Комментарий одинаково нужен на каждом шаге, поэтому вставляем его централизованно —
      перед строкой кнопок, а не копируем в шестнадцать шаблонов. Шаг, где пояснения
      перенесены под кнопку, ставит метку <!--note--> — комментарий встаёт на неё. */
-  const html=f(), m=html.indexOf('<!--note-->');
+  const extra=(['s8','s11','s11b','s14','s14m','s15','s18'].includes(d.step)
+    &&['manager','admin'].includes(S.role)&&canRerate(d)
+    ?`<div class="card"><button class="btn btn-secondary" onclick="rerate(${d.id})">Запросить курсы заново</button></div>`:'');
+  const html=extra+rerateBalance(d)+f(), m=html.indexOf('<!--note-->');
   if(m>=0) return html.slice(0,m)+stepNote(d)+html.slice(m);
   const i=html.lastIndexOf('<div class="row">');
   if(i>=0) return html.slice(0,i)+stepNote(d)+html.slice(i);
