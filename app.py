@@ -9032,7 +9032,10 @@ def _stand_state_events(previous, state, actor, version):
         if before.get('step') != deal.get('step'):
             role = _stand_current_step_role(state, deal)
             if role:
-                events.append((role, 'Задача на вас: шаг ' + str(deal.get('step'))))
+                step = deal.get('step')
+                text = (f"{deal.get('code') or deal['id']}: задача на вас — закрытие сделки"
+                        if step == 's27' else 'Задача на вас: шаг ' + str(step))
+                events.append((role, text))
             deal.setdefault('log', []).append({'at': int(time.time()*1000), 'role': 'system',
                 'text': f'Переход {before.get("step") or "новая заявка"} → {deal.get("step")} · {actor}'})
         if before.get('reqTask') != deal.get('reqTask'):
@@ -10564,6 +10567,7 @@ def _stand_check_transfers(deal_id=None, *, poll=False):
     try:
         row = _stand_row(db, lock=True)
         state = json.loads(row.data or '{}')
+        before_auto_transition = json.loads(row.data or '{}')
         blocked_convs = set()
         for selected in [c for c in state.get('convs', [])
                          if any(d.get('cnvId') == c.get('id') and d.get('id') in ids
@@ -10614,6 +10618,10 @@ def _stand_check_transfers(deal_id=None, *, poll=False):
             if members:
                 changed = _stand_settle_verified(state, members) or changed
         if changed:
+            # The poller and transfer check bypass the board PUT path. Emit the
+            # same role handoff notes for steps advanced by server settlement.
+            _stand_state_events(before_auto_transition, state, 'проверка переводов',
+                                (row.version or 0) + 1)
             from stand_outgoing_review import fingerprint
             for member in state.get('deals') or []:
                 if member.get('outgoingReview'):

@@ -101,7 +101,10 @@ def test_partial_owner_handoff_and_background_poll(api,network):
     assert m._stand_current_step_role(r.json['data'],d)=='operator'
     network.append(tx(2,10129))
     m._stand_check_transfers(poll=True)
-    assert api[0].get('/api/stand/state').json['data']['deals'][0]['step']=='s26'
+    current = api[0].get('/api/stand/state').json['data']
+    assert current['deals'][0]['step']=='s26'
+    assert any(n['role']=='operator' and 's26' in n['text']
+               for n in current['notes'] if n['id'].startswith('stand:state:'))
 
 
 def test_overpay_requires_operator_and_records_actual_cost(api,network):
