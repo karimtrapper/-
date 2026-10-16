@@ -95,9 +95,10 @@ def _proposal(board, rows):
     deal = state['deals'][0]
     deal.update(step='s18w', cnvId=1, walletId='grusha')
     deal['rates']['broker'] = '100'
-    sources = [{'dealId': deal['id'], 'rub': 10000, 'usdt': 99.64, 'bankNet': True}]
+    deal['brokerCrmDraftIds'] = [r['id'] for r in rows[1:]]
+    sources = [{'dealId': deal['id'], 'rub': 10000, 'clientRub': 10000, 'usdt': 99.64, 'bankNet': True}]
     for row in rows[1:]:
-        sources.append({'dealId': None, 'incomeId': 'sber:' + row['uuid'],
+        sources.append({'dealId': None, 'crmIncomeId': row['id'], 'clientRub': row['rub'], 'incomeId': 'sber:' + row['uuid'],
                         'rub': row['rub'], 'usdt': round(64765 * row['rub'] / 65000 / 100, 2)})
         state['incomes'].append({'id': 'sber:' + row['uuid'], 'source': 'sber',
                                  'rub': row['rub'], 'grossRub': row['rub'],
@@ -105,7 +106,7 @@ def _proposal(board, rows):
     state['incomes'][0]['cnvId'] = 1
     state['convs'] = [{'id': 1, 'broker': 'Tradex', 'requestNo': '41', 'rate': '100',
                        'status': 'sent', 'at': '13.10, 12:00', 'sentTs': 1791892800000,
-                       'walletId': 'grusha', 'rubTotal': 65000, 'held': 235,
+                       'walletId': 'grusha', 'rubTotal': 65000, 'clientRubTotal': 65000, 'held': 235,
                        'sent': 64765, 'feePct': .3, 'feeFix': 40,
                        'feeCtrl': 105, 'feeOurs': 130, 'feeCtrlPct': .1,
                        'feeOursPct': .2, 'sources': sources, 'txs': []}]
@@ -189,7 +190,8 @@ def test_main_sber_income_also_reaches_crm_without_small_exchange(sber_board):
     before = client.get('/api/stand/state').json
     proposal = _proposal(before['data'], rows)
     proposal['convs'][0]['sources'] = proposal['convs'][0]['sources'][:1]
-    proposal['convs'][0].update(rubTotal=10000, sent=9930, held=70,
+    proposal['deals'][0]['brokerCrmDraftIds'] = []
+    proposal['convs'][0].update(rubTotal=10000, clientRubTotal=10000, sent=9930, held=70,
                                feeCtrl=50, feeOurs=20)
     proposal['convs'][0]['sources'][0]['usdt'] = 99.30
     proposal['incomes'] = proposal['incomes'][:1]
@@ -256,5 +258,79 @@ def test_received_batch_distributes_crm_deal_shares(sber_board, ledger_share):
             assert uses[None] == 149.47
             m._apply_conversion_shares(db, crm)
             assert tx.free_usdt() == 352.35
+    finally:
+        db.close()
+
+
+@pytest.mark.parametrize('board_key', [None, 'flow_sole', 'bank:044525094:40807810819000000261'])
+def test_flowsole_alias_draft_handoff_and_sql_actual_sent(sber_board, board_key):
+    """Старый приход стенда + CRM alias: выбор, сохранение, отправка и SQL."""
+    client, rows = sber_board
+    db = m.get_session()
+    try:
+        state = json.loads(m._stand_row(db).data)
+        deal = state['deals'][0]
+        receipt_id = 'alias-' + secrets.token_hex(8)
+        rows[0]['uuid'] = 'manual:' + receipt_id
+        own = db.query(m.SberIncome).get(rows[0]['id'])
+        own.uuid = rows[0]['uuid']
+        for row in rows:
+            db.query(m.SberIncome).get(row['id']).account_key = 'flow_sole'
+        # SQL тоже может хранить полную пару, не только старый alias.
+        own.account_key = 'bank:044525094:40807810819000000261'
+        deal['manualBankReceipt'] = {'id': receipt_id, 'status': 'confirmed',
+            'actualMode': 'custom', 'bankBik': '044525094', 'account': '40807810819000000261',
+            'confirmedAt': '2026-10-16', 'confirmedBy': 12, 'actualAmount': 10000}
+        deal['rubReceivingAccount'] = {'mode': 'custom', 'bank': 'БАНК СГБ',
+                                      'correspondent': '30101810245250000094', 'bik': '044525094',
+                                      'account': '40807810819000000261'}
+        deal['payinParts'] = [{'incId': 'manual-own', 'amountRub': 10000,
+                              'crmIncomeId': own.id, 'manualReceiptId': receipt_id}]
+        state['incomes'] = [{'id': 'manual-own', 'dealId': deal['id'], 'source': 'manual_confirmed',
+            'manualReceiptId': receipt_id, 'crmIncomeId': own.id, 'rub': 10000, 'grossRub': 10000}]
+        if board_key:
+            state['incomes'][0]['accountKey'] = board_key
+        m._stand_row(db).data = json.dumps(state)
+        db.commit()
+    finally:
+        db.close()
+    before = client.get('/api/stand/state').json
+    draft = copy.deepcopy(before['data'])
+    draft['deals'][0]['brokerCrmDraftIds'] = [r['id'] for r in rows[1:]]
+    selected = client.put('/api/stand/state', json={'version': before['version'], 'data': draft})
+    assert selected.status_code == 200, selected.json
+    draft = selected.json['data']
+    draft['deals'][0]['brokerSentOverride'] = 64000
+    saved = client.put('/api/stand/state', json={'version': selected.json['version'], 'data': draft})
+    assert saved.status_code == 200, saved.json
+    proposal = _proposal(saved.json['data'], rows)
+    conv = proposal['convs'][0]
+    conv.update(feeMode='manual', sent=64000, held=1000, clientRubTotal=65000)
+    for key in ('feePct', 'feeFix', 'feeCtrl', 'feeOurs', 'feeCtrlPct', 'feeOursPct'):
+        conv.pop(key, None)
+    for source in conv['sources']:
+        source['clientRub'] = source['rub']
+        source['usdt'] = round(64000 * source['rub'] / 65000 / 100, 2)
+    for source, row in zip(conv['sources'][1:], rows[1:]):
+        source['crmIncomeId'] = row['id']
+    for income in proposal['incomes'][1:]:
+        income.update(source='registry', accountKey='flow_sole')
+    assert stand_funding.check_batch(proposal, conv, strict_account=True) is None
+    conflict = copy.deepcopy(proposal)
+    conflict['convs'][0]['sources'][1]['accountKey'] = 'sber'
+    assert 'не совпадает' in stand_funding.check_batch(conflict, conflict['convs'][0], strict_account=True)
+    conflict = copy.deepcopy(proposal)
+    conflict['deals'][0]['manualBankReceipt']['account'] = '40807810819000000999'
+    assert stand_funding.check_batch(conflict, conflict['convs'][0], strict_account=True)
+    response = client.put('/api/stand/state', json={'version': saved.json['version'], 'data': proposal})
+    assert response.status_code == 200, response.json
+    db = m.get_session()
+    try:
+        crm = db.query(m.Conversion).get(response.json['data']['convs'][0]['crmConversionId'])
+        assert crm.amount_rub_sent == 64000
+        assert crm.held_percent == 0
+        assert crm.held_fixed_rub == 1000
+        assert crm.sources_rub() == 65000
+        assert {s.sber_income_id for s in crm.sources} == {r['id'] for r in rows}
     finally:
         db.close()

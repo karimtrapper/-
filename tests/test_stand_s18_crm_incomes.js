@@ -17,7 +17,7 @@ const main = {id: 100, code: 'СД-100', client: 'Клиент', step: 's18',
   amountRub: 10000, amountThb: 10000, rates: {broker: 100}, conv: []};
 const incomes = [{id: 'sber:main', source: 'sber', dealId: 100, rub: 10000,
   grossRub: 10000}];
-const ctx = {S: {deals: [main], incomes}, d: main, ap: {rub: 10000},
+const ctx = {DRAFTS:{}, S: {deals: [main], incomes}, d: main, ap: {rub: 10000},
   s18Candidates: [{id: 2, uuid: 'crm2', rub: 20000, dealId: 42,
     client: 'Обмен', payer: 'Иванов', date: '2026-10-13T17:31:00',
     dealRub: 20000, payoutUsdt: 150},
@@ -35,9 +35,10 @@ const ctx = {S: {deals: [main], incomes}, d: main, ap: {rub: 10000},
   htmlText: String, num: Number, pct: String,
   avgUsdt: () => 33, approx: () => ({thb: 0}), econ: () => ({sentUsd: 0})};
 vm.createContext(ctx);
-vm.runInContext(['pendingEx', 's18Sber', 's18AccountKey', 's18AccountLabel', 's18Rub', 's18CrmRows',
+vm.runInContext(['MF','FLOWSOLE'].map(name=>html.match(new RegExp('^const '+name+'=[^]*?};', 'm'))[0]).join('\n'),ctx);
+vm.runInContext(['pendingEx', 's18Sber', 's18AccountIdentity', 's18AccountKey', 's18AccountLabel', 's18Rub', 's18CrmRows',
   's18DateKey', 's18DateLabel', 's18FilteredRows', 's18CrmSection',
-  'convMargin', 'convMarginBlock'].map(fn).join('\n')+
+  's18ClientRub', 's18ClientTotal', 'brokerSentAmount', 'brokerSentParse', 'convMargin', 'convMarginBlock'].map(fn).join('\n')+
   '\nlet s18Candidates=[], s18Selected=new Set(), s18SelectedDealId=null;'+
   "let s18Filters={query:'',from:'',to:''},s18Expanded={crm:false,unlinked:false};\n"+stepCode, ctx);
 // Глобальные let заполняем внутри контекста: браузер хранит выбор локально.
@@ -51,7 +52,7 @@ assert.match(rendered, /Сделки CRM/);
 assert.match(rendered, /12\.10, 12:00/);
 assert.match(rendered, /Ориентировочная прибыль по сделкам с известными обязательствами/);
 assert.match(rendered, /Фикс 40 ₽ за поручение делится по долям/);
-assert.match(rendered, /<details class="deal-detail s18-detail"><summary>Удержания/);
+assert.match(rendered, /<details class="deal-detail s18-detail"><summary>Расчёт отправки/);
 assert.doesNotMatch(rendered, /Объём обмена<\/label><input/);
 assert.match(rendered, /Период с <span class="sub2">дд\.мм\.гггг<\/span>/);
 assert.match(html, /\.s18-batch-summary\{[^}]*background:#fff/);
@@ -97,17 +98,36 @@ vm.runInContext(`s18Candidates.push({id:4,uuid:'flow4',accountKey:'flow_sole',
   dealRub:20000,payoutUsdt:150});s18Selected=new Set([4])`, ctx);
 rendered = vm.runInContext('stepS18()', ctx);
 assert.match(rendered, /СД-100 · Клиент/);
-assert.match(rendered, /Пачка · Flow Sole/);
+assert.match(rendered, /Подготовка пачки · Flow Sole/);
 assert.match(rendered, /Сделка #44 · Flow CRM/);
 assert.match(rendered, /Состав пачки · 2 поступл\./);
 assert.doesNotMatch(rendered, /Сделка #42|Поступление без сделки/);
 main.manualBankReceipt = {bank: 'Банк клиента', account: '40702810123456789012'};
 incomes[0].accountKey = 'other:40702810123456789012';
 rendered = vm.runInContext('stepS18()', ctx);
-assert.match(rendered, /Пачка · Другой счёт · 40702810123456789012/);
+assert.match(rendered, /Подготовка пачки · Другой счёт · 40702810123456789012/);
 assert.doesNotMatch(rendered, /Сделка #42|Сделка #44|Поступление без сделки/);
 incomes[0] = {id: 'sber:main', source: 'sber', dealId: 100, rub: 9930,
   grossRub: 10000};
 main.payinParts = [{incId: 'sber:main', amountRub: 10000}];
 assert.equal(vm.runInContext('s18Rub(d)', ctx), 9930);
+// M13: старый приход без ключа и SQL alias одного физического счёта совместимы.
+main.manualBankReceipt = {status:'confirmed',confirmedAt:'2026-10-16',confirmedBy:12,
+  actualMode:'flowsole',bankBik:'044525094',account:'40807810819000000261'};
+main.rubReceivingAccount={mode:'custom',bik:'044525094',account:'40807810819000000261'};
+incomes[0]={id:'manual:1',source:'manual_confirmed',dealId:100,rub:10000,grossRub:10000};
+main.payinParts=[{incId:'manual:1',amountRub:10000}];
+assert.equal(vm.runInContext('s18AccountKey(d)',ctx),'flow_sole');
+assert.equal(vm.runInContext('s18CrmRows(d).map(x=>x.id).join()',ctx),'4');
+incomes[0].accountKey='flow_sole';
+assert.equal(vm.runInContext('s18CrmRows(d).map(x=>x.id).join()',ctx),'4');
+incomes[0].accountKey='bank:044525094:40807810819000000261';
+assert.equal(vm.runInContext('s18CrmRows(d).map(x=>x.id).join()',ctx),'4');
+main.manualBankReceipt.account='40807810819000000999';
+assert.equal(vm.runInContext('s18AccountKey(d)',ctx),null);
+delete incomes[0].accountKey;
+assert.equal(vm.runInContext('s18CrmRows(d).length',ctx),0);
+main.manualBankReceipt.account='40807810819000000261';
+incomes[0].accountKey='sber';
+assert.equal(vm.runInContext('s18AccountKey(d)',ctx),null);
 console.log('s18 CRM income UI: PASS');

@@ -109,7 +109,7 @@ def test_crm_and_s14_flowsole_share_batch_and_profit(monkeypatch):
     before = snapshot(client)
     proposal = copy.deepcopy(before['data'])
     task = proposal['deals'][0]
-    task.update(step='s18w', cnvId=1, walletId='grusha')
+    task.update(step='s18w', cnvId=1, walletId='grusha', brokerCrmDraftIds=[crm_id])
     task.setdefault('rates', {})['broker'] = '100'
     proposal['incomes'][0]['cnvId'] = 1
     proposal['incomes'].append({'id': 'sber:' + crm.uuid, 'source': 'registry',
@@ -118,12 +118,12 @@ def test_crm_and_s14_flowsole_share_batch_and_profit(monkeypatch):
     proposal['convs'] = [{'id': 1, 'broker': 'Test', 'requestNo': '41',
         'rate': '100', 'status': 'sent', 'at': '14.10, 12:00',
         'sentTs': 1791979200000, 'walletId': 'grusha', 'accountKey': 'flow_sole',
-        'rubTotal': 30000, 'held': 130, 'sent': 29870,
+        'rubTotal': 30000, 'clientRubTotal': 30000, 'held': 130, 'sent': 29870,
         'feePct': .3, 'feeFix': 40, 'feeCtrl': 70, 'feeOurs': 60,
         'feeCtrlPct': .1, 'feeOursPct': .2,
-        'sources': [{'dealId': 9301, 'rub': 10000, 'usdt': 99.57, 'bankNet': False,
+        'sources': [{'dealId': 9301, 'rub': 10000, 'clientRub': 10000, 'usdt': 99.57, 'bankNet': False,
                      'accountKey': 'flow_sole'},
-                    {'dealId': None, 'incomeId': 'sber:' + crm.uuid,
+                    {'dealId': None, 'crmIncomeId': crm_id, 'clientRub': 20000, 'incomeId': 'sber:' + crm.uuid,
                      'rub': 20000, 'usdt': 199.13, 'accountKey': 'flow_sole'}],
         'txs': []}]
     batch = client.put('/api/stand/state', json={'version': before['version'],

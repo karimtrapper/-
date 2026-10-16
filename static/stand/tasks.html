@@ -4752,23 +4752,26 @@ function s18Sber(d){
   const parts=d.payinParts||[];
   return !!parts.length&&parts.every(p=>incomes().some(i=>String(i.id)===String(p.incId)&&i.source==='sber'));
 }
+function s18AccountIdentity(key){
+  // Только точные настроенные реквизиты; одинаковый банк не означает один счёт.
+  const aliases={['bank:'+FLOWSOLE.bik+':'+FLOWSOLE.acc]:'flow_sole'};
+  aliases['bank:'+MF.bik+':'+MF.acc]='sber';
+  return aliases[key]||key;
+}
 function s18AccountKey(d){
   const parts=d?.payinParts||[];
   if(!parts.length)return null;
   const receipt=d.manualBankReceipt||{}, target=d.rubReceivingAccount||{};
   const confirmed=receipt.status==='confirmed'&&receipt.confirmedAt&&receipt.confirmedBy;
-  const account=String((confirmed&&receipt.account)||target.account||'').replace(/\D/g,'');
-  const bik=String((confirmed&&receipt.bankBik)||target.bik||'').replace(/\D/g,'');
+  const account=String((confirmed?receipt.account:target.account)||'').replace(/\D/g,'');
+  const bik=String((confirmed?receipt.bankBik:target.bik)||'').replace(/\D/g,'');
   const fallback=account.length===20&&bik.length===9?'bank:'+bik+':'+account:null;
   const keys=parts.map(p=>{const i=incomes().find(x=>String(x.id)===String(p.incId));
     if(!i)return null;
-    if(i.source==='sber')return 'sber';
-    if(i.accountKey&&fallback){
-      const alias=confirmed&&receipt.actualMode==='flowsole'||target.mode==='flowsole'?'flow_sole':
-        target.mode==='custom'?'other:'+account:null;
-      if(i.accountKey!==alias&&i.accountKey!==fallback)return null;
-    }
-    return fallback||i.accountKey||null;
+    if(i.source==='sber')return s18AccountIdentity(i.accountKey||'sber')==='sber'?'sber':null;
+    if(i.accountKey&&fallback&&s18AccountIdentity(i.accountKey)!==s18AccountIdentity(fallback)&&
+       i.accountKey!=='other:'+account)return null;
+    return s18AccountIdentity(fallback||i.accountKey)||null;
   });
   return keys[0]&&keys.every(k=>k===keys[0])?keys[0]:null;
 }
@@ -4790,7 +4793,7 @@ function s18CrmRows(d){
   if(!accountKey)return [];
   const own=new Set((d.payinParts||[]).map(p=>String(p.incId)));
   return s18Candidates.filter(x=>!own.has('sber:'+x.uuid)&&
-    (x.accountKey||'sber')===accountKey&&
+    s18AccountIdentity(x.accountKey||'sber')===accountKey&&
     !incomes().some(i=>i.id==='sber:'+x.uuid&&(i.cnvId||i.dealId)));
 }
 function s18ToggleCrm(id){

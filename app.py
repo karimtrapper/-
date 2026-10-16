@@ -24,6 +24,7 @@ import stand_object_store
 import binascii
 import stand_notify
 from sber_acquiring import parse_sber_acquiring
+from stand_funding import account_identity, income_account_identity
 from stand_funding import check_batch as _stand_check_batch_funding, check_state as _stand_check_funding_state
 import stand_prepay
 import stand_demo
@@ -8278,6 +8279,7 @@ def _stand_broker_draft_rub(state, deal, db=None):
     incomes = {str(i.get('id')): i for i in state.get('incomes') or []}
     deals = {d.get('id'): d for d in state.get('deals') or []}
     total = Decimal(0)
+    account_keys = set()
     for member_id in [deal.get('id'), *(deal.get('conv') or [])]:
         member = deals.get(member_id)
         if not member or not member.get('payinParts'):
@@ -8288,6 +8290,10 @@ def _stand_broker_draft_rub(state, deal, db=None):
             gross = _stand_broker_sent_money((income or {}).get('grossRub') or (income or {}).get('rub'))
             if income is None or rub is None or gross is None or rub != gross:
                 return None
+            identity = income_account_identity(income, member)
+            if identity is None:
+                return None
+            account_keys.add(identity)
             if income.get('source') == 'sber':
                 net = _stand_broker_sent_money(income.get('rub'))
                 if net is None:
@@ -8295,6 +8301,9 @@ def _stand_broker_draft_rub(state, deal, db=None):
                 total += (rub * net / gross).quantize(Decimal('.01'), rounding=ROUND_HALF_UP)
             else:
                 total += rub
+    if len(account_keys) != 1:
+        return None
+    account_key = next(iter(account_keys))
     selected = deal.get('brokerCrmDraftIds') or []
     if selected:
         if (db is None or not isinstance(selected, list)
@@ -8304,11 +8313,9 @@ def _stand_broker_draft_rub(state, deal, db=None):
         if len(rows) != len(selected):
             return None
         used = _converted_by_income(db, selected)
-        account_key = next((i.get('accountKey') or 'sber' for i in state.get('incomes') or []
-                            if str(i.get('id')) == str((deal.get('payinParts') or [{}])[0].get('incId'))), 'sber')
         for row in rows:
             free = row.free_rub(used)
-            if (row.excluded or free <= .01 or _income_account_key(row) != account_key
+            if (row.excluded or free <= .01 or account_identity(_income_account_key(row)) != account_key
                     or ((row.operation_date or '') < CONVERSIONS_LAUNCH_DATE and not row.keep_active)):
                 return None
             total += Decimal(str(round(free, 2)))
@@ -13905,7 +13912,7 @@ def _stand_sync_crm_conversions(db, previous, state):
             SberIncome.id).with_for_update().all()
         if len(rows) != len(ids_by_uuid):
             raise ValueError('Поступление Сбера не найдено в CRM')
-        if len({_income_account_key(row) for row in rows}) != 1:
+        if len({account_identity(_income_account_key(row)) for row in rows}) != 1:
             raise ValueError('Поступления с разных счетов нельзя отправить одной пачкой')
         used = _converted_by_income(db, [r.id for r in rows])
         if abs(sum(r.free_rub(used) for r in rows) - float(item.get('rubTotal') or 0)) > .01:
@@ -13929,7 +13936,8 @@ def _stand_sync_crm_conversions(db, previous, state):
                 if i.get('crmIncomeId') == row.id), {})
             if (mirror.get('source') not in ('sber', 'manual_confirmed', 'registry')
                     or mirror.get('cnvId') != item.get('id')
-                    or (mirror.get('accountKey') or 'sber') != _income_account_key(row)):
+                    or income_account_identity(mirror, board_deals.get(mirror.get('dealId')))
+                    != account_identity(_income_account_key(row))):
                 raise ValueError('Поступление не привязано к пачке на своём счёте')
             if ids_by_uuid[row.uuid] is not None:
                 source = ids_by_uuid[row.uuid]
