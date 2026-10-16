@@ -8132,7 +8132,8 @@ function editSave(id){
     ?(crmDraftActive?.id===id?crmDraftCommit(id):false):editApply(id);
   if(ch===false)return;
   if(isNew){
-    d.manualNew=false;d.log=[];
+    d.manualNew=false;
+    if(!STAND)d.log=[];
     log(d,'Сделка внесена вручную, без задачника · '+(d.type||'')+' · клиент '+(d.client||'без имени'));
     if(d.closed) log(d,'Статус при заведении: '+d.closeReason);
     S.edit=null;save();render();toast('Сделка создана: '+d.code);return;

@@ -619,8 +619,9 @@ async function crmDraftLookupPayin(active) {
   }catch(error){toast('Хэш не принят: '+error.message);}
 }
 function crmDraftManualHashFromPool(active,hash,network) {
+  const normalizedNetwork=String(network||'trc20').toLowerCase().replace('-','');
   return !!hash&&active.core.payinTxPool.some(tx=>
-    tx.hash===hash&&String(tx.network||'trc20').toLowerCase().replace('-','')===network);
+    tx.hash===hash&&String(tx.network||'trc20').toLowerCase().replace('-','')===normalizedNetwork);
 }
 function crmDraftClientSearch(active,query) {
   const box=active.root.getElementById('clientDropdown');if(!box)return;

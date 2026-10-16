@@ -38,7 +38,9 @@ test('one or two selected incoming transfers are recognized in the manual field'
   for (const hashes of [['a'.repeat(64)], ['a'.repeat(64), 'b'.repeat(64)]]) {
     const draft = active(hashes, hashes[0]);
     assert.equal(context.crmDraftManualHashFromPool(draft, hashes[0], 'trc20'), true);
+    assert.equal(context.crmDraftManualHashFromPool(draft, hashes[0], 'TRC-20'), true);
     assert.equal(context.crmDraftManualHashFromPool(draft, hashes[0], 'erc20'), false);
+    assert.equal(context.crmDraftManualHashFromPool(draft, hashes[0], 'ERC-20'), false);
   }
 });
 
