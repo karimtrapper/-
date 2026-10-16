@@ -7428,6 +7428,7 @@ function cnvTxOptionLabel(t){
   if(!t||t.used_usdt<=0)return '';
   return t.free_usdt>0?`♻️ свободно $${t.free_usdt.toFixed(2)} из $${t.amount_usdt.toFixed(2)} · `:'✅ разобран · ';
 }
+function cnvTxTime(ts){return new Date(ts).toLocaleString('ru-RU',{timeZone:'Europe/Moscow',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});}
 async function cnvTxLoad(id){
   try{
     const cnvId=convOf(deal(id))?.id, walletAddr=walletById(convOf(deal(id))?.walletId)?.addr;
@@ -10229,7 +10230,7 @@ function stepCard(d){
             &&!(c?.txs||[]).some(x=>x.hash===t.tx_hash)
             &&!(S.incomingChainRows?.cnvId===c?.id&&S.incomingChainRows.rows.some(x=>x.hash===t.tx_hash))).map(t=>`<option value="ledger:${t.id}">${esc(cnvTxOptionLabel(t))}$${t.amount_usdt.toFixed(2)} · ${esc(t.tx_hash)}</option>`).join('')}
           ${(S.incomingChainRows?.cnvId===c?.id?S.incomingChainRows.rows:[]).filter(t=>t.free_usdt>0)
-            .map(t=>`<option value="chain:${t.hash}">${esc(new Date(t.timestamp_ms).toLocaleString('ru-RU',{timeZone:'Europe/Moscow',day:'2-digit',month:'2-digit',hour:'2-digit'}))} · $${t.amount_usdt.toFixed(2)} · ${esc(t.from_address)} · ${esc(t.hash.slice(0,12))}… · свободно $${t.free_usdt.toFixed(2)} из $${t.amount_usdt.toFixed(2)}${t.early?' · раньше отправки рублей':''}</option>`).join('')}
+            .map(t=>`<option value="chain:${t.hash}">${esc(cnvTxTime(t.timestamp_ms))} · $${t.amount_usdt.toFixed(2)} · ${esc(t.from_address)} · ${esc(t.hash.slice(0,12))}… · свободно $${t.free_usdt.toFixed(2)} из $${t.amount_usdt.toFixed(2)}${t.early?' · раньше отправки рублей':''}</option>`).join('')}
           ${txPool().filter(t=>!txUsed(t.hash)&&!(c&&(c.txs||[]).some(x=>x.hash===t.hash))
             &&demoAllowed()&&!!d.demoTransfers&&t.demo&&t.cnv===c.id).map(t=>
             `<option value="${t.id}">${usd(t.amount)} · ${t.net} · ${t.at} · ${t.hash}</option>`).join('')}
