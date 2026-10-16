@@ -9107,7 +9107,7 @@ function stepGoal(d){
       return {t:'Получить USDT и хэш — это факт прихода',
         nums:[['Ждём USDT',plan!=null?usd(plan):'—'],['Курс заявки',d.rates.broker||'—'],
               ['Ушло брокеру',(c&&c.sent?moneyKop(c.sent,'₽'):money2(rub,'₽'))+(n>1?' · '+n+' '+plural(n,'сделка','сделки','сделок'):'')]],
-        sub:c&&c.sent?'сумма клиента '+money2(c.clientRubTotal!=null?c.clientRubTotal:rub,'₽')+' · на счёте осталось '+moneyKop(c.held,'₽'):''};})();
+        sub:c&&c.sent?'сумма клиента '+money2(c.clientRubTotal!=null?c.clientRubTotal:rub,'₽')+' · не отправлено брокеру '+moneyKop(c.held,'₽'):''};})();
     case 's22': if(d.prepay)return {t:'Согласовать заявку IPPS',nums:[['В IPPS',usd(d.prepay.amount)],['Источник',d.prepay.wallet.addr||'—'],['Застройщику',usd(d.invoiceUsd||0)]],sub:'Оплата идёт параллельно с конвертацией у брокера'};
       return {t:'Решить, куда уходят пришедшие USDT',
       nums:[['На кошельке',(function(){const c=convOf(d);const g=c?hashSum(c.txs):d.pay.usdt;return g?usd(g):'—';})()],
@@ -10042,7 +10042,7 @@ function stepCard(d){
     <div class="alert a-warn"><div>Рубли ушли ${c?c.at:''} — ждём USDT. ${d.prepay?'Оплата IPPS идёт параллельно из выбранного источника.':'Пока не пришли, отправлять получателю нечего: на кошельке денег нет.'}</div></div>
     <div class="fr">
       <div class="fg"><label class="fl">Отправлено брокеру</label><input class="fc num" readonly value="${c?(c.sent?moneyKop(c.sent,'₽'):money(c.sources.reduce((s,x)=>s+(x.rub||0),0),'₽')):'—'}">
-        ${c&&c.sent?`<p class="fh">сумма клиента ${moneyKop(c.clientRubTotal!=null?c.clientRubTotal:c.rubTotal,'₽')} · на счёте осталось ${moneyKop(c.held,'₽')}</p>`:''}</div>
+        ${c&&c.sent?`<p class="fh">сумма клиента ${moneyKop(c.clientRubTotal!=null?c.clientRubTotal:c.rubTotal,'₽')} · не отправлено брокеру ${moneyKop(c.held,'₽')}</p>`:''}</div>
       <div class="fg"><label class="fl">Курс заявки</label><input class="fc num" readonly value="${c?c.rate:'—'}"></div>
       <div class="fg"><label class="fl">Ждём по курсу</label><input class="fc num" readonly value="${plan!=null?usd(plan):'—'}"></div>
     </div>
