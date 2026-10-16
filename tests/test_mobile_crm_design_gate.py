@@ -248,6 +248,63 @@ def test_production_navigation_unchanged(ui):
     assert not errors, errors
 
 
+def test_mobile_income_bulk_selection_and_secondary_actions(stand_ui):
+    page, errors = stand_ui
+    page.set_viewport_size({'width': 375, 'height': 844})
+    page.locator('.site-shell-section-list [data-shell-section="incomes"]').click()
+    page.wait_for_load_state('networkidle')
+    page.evaluate('''() => {
+      window._incomes = [1, 2].map(id => ({id, payer: `Плательщик ${id}`,
+        operation_date: '2026-10-16', amount_rub: id * 1000, gross_rub: id * 1000,
+        free_rub: id * 1000, account_key: 'sber', kind: 'transfer',
+        conv_state: 'pending', excluded: false}));
+      renderIncomes();
+    }''')
+    checks = page.locator('#incomesTable .incSel')
+    expect(checks).to_have_count(2)
+    expect(checks.first).to_be_visible()
+    expect(page.locator('#incomesMobileSelectedTotal')).to_have_text('Выбрано 0 на сумму 0,00 ₽')
+    checks.first.check()
+    expect(page.locator('#incomesMobileSelectedTotal')).to_contain_text('Выбрано 1 на сумму 1 000,00 ₽')
+    expect(page.locator('#convertSelectedBtn')).to_be_enabled()
+    page.locator('#incomesMobileSelectAll').check()
+    expect(checks.nth(1)).to_be_checked()
+    expect(page.locator('#incomesMobileSelectedTotal')).to_contain_text('Выбрано 2 на сумму 3 000,00 ₽')
+    expect(page.locator('#incomesPageInfo')).not_to_contain_text('приходов нет')
+    expect(page.locator('#incomes .crm-income-desktop-secondary').first).to_be_hidden()
+    page.locator('#incomes .crm-mobile-secondary-menu summary').click()
+    expect(page.locator('#incomes .crm-mobile-secondary-menu')).to_have_attribute('open', '')
+    expect(page.locator('#incomes .crm-mobile-secondary-menu').get_by_role(
+        'button', name='Исключить выбранное')).to_be_visible()
+    page.set_viewport_size({'width': 768, 'height': 844})
+    expect(page.locator('#incomes table thead input[type="checkbox"]')).to_be_visible()
+    expect(page.locator('#incomes .crm-income-desktop-secondary').first).to_be_visible()
+    expect(page.locator('#incomes .crm-mobile-secondary-menu')).to_be_hidden()
+    assert not errors, errors
+
+
+def test_mobile_broker_merge_checkboxes_remain_visible(stand_ui):
+    page, errors = stand_ui
+    page.set_viewport_size({'width': 375, 'height': 844})
+    page.locator('.site-shell-section-list [data-shell-section="exchangers"]').click()
+    page.locator('.rx-subtab[data-rx="brokers"]').click()
+    page.locator('#rx-brokers-body').evaluate('''body => {
+      body.replaceChildren();
+      for (let n = 1; n <= 2; n++) {
+        const row = document.createElement('tr');
+        row.innerHTML = `<td><input type="checkbox" class="rx-bchk" data-got="100" onclick="event.stopPropagation();rxUpdMergeBtn()">#${n}</td><td>16.10.2026</td><td>Брокер</td><td>Кошелёк</td><td>Хеш</td><td>100</td><td>1</td><td>Получено</td>`;
+        body.append(row);
+      }
+    }''')
+    checks = page.locator('#rx-brokers-body .rx-bchk')
+    expect(checks).to_have_count(2)
+    expect(checks.first).to_be_visible()
+    checks.first.check()
+    checks.nth(1).check()
+    expect(page.locator('#rxMergeBtn')).to_be_visible()
+    assert not errors, errors
+
+
 @pytest.mark.parametrize('width', [320, 414])
 def test_mobile_edge_widths_no_horizontal_overflow(stand_ui, width):
     page, errors = stand_ui

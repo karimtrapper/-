@@ -11500,8 +11500,9 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         // Галка в шапке — только по видимой странице: «выделить всё» на 300 строк
         // молча собрало бы пачку из приходов, которых менеджер даже не видел
         function toggleAllIncomes(master) {
+            const checked = master.checked;
             document.querySelectorAll('.incSel').forEach(cb => {
-                cb.checked = master.checked;
+                cb.checked = checked;
                 toggleIncome(cb);
             });
         }

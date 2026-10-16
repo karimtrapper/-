@@ -841,7 +841,32 @@ body.wave4a.nav-shell-crm #create .sber-income-row {
     flex: 1 1 100%; width: 100%; min-width: 0;
   }
   body.wave4a.nav-shell-crm #balance #walletsSummaryGrid .wallet-summary-card > div:first-of-type {
-    padding-right: 100px;
+    max-width: calc(100% - 100px); padding-right: 0;
+    overflow-wrap: anywhere;
+  }
+  body.wave4a.nav-shell-crm #balance #walletsSummaryGrid .wallet-summary-address {
+    overflow: visible !important; text-overflow: clip !important;
+    overflow-wrap: anywhere !important; word-break: break-all;
+    white-space: normal !important;
+  }
+  body.wave4a.nav-shell-crm #payoutRequestsList code {
+    overflow-x: visible !important; overflow-y: visible !important;
+    overflow-wrap: anywhere !important; white-space: normal !important;
+    word-break: break-all;
+  }
+  body.wave4a.nav-shell-crm #incomes #convertSelectedBtn {
+    flex: 1 1 100%; min-height: 44px; white-space: normal !important;
+    overflow-wrap: anywhere;
+  }
+  body.wave4a.nav-shell-crm #reimbursements #pendingReimbursementsList .reimburse-btn {
+    width: 100%; min-height: 44px; white-space: normal !important;
+    overflow-wrap: anywhere;
+  }
+  body.wave4a.nav-shell-crm #reimbursements #pendingReimbursementsList label:has(.reimburse-deal) {
+    flex-wrap: wrap; min-width: 0;
+  }
+  body.wave4a.nav-shell-crm #reimbursements #pendingReimbursementsList label:has(.reimburse-deal) > span {
+    min-width: 0; overflow-wrap: anywhere;
   }
 
   body.wave4a.nav-shell-crm .section .btn-primary:not(.crm-mobile-primary),
@@ -915,6 +940,7 @@ body.wave4a.nav-shell-crm #create .sber-income-row {
     color: var(--navy-700); background: var(--surface-white); cursor: pointer; list-style: none;
   }
   body.wave4a.nav-shell-crm #incomes .crm-mobile-secondary-menu summary::-webkit-details-marker { display: none; }
+  body.wave4a.nav-shell-crm #incomes .crm-mobile-secondary-menu:not([open]) > div { display: none !important; }
   body.wave4a.nav-shell-crm #incomes .crm-mobile-secondary-menu[open] > div {
     position: absolute; z-index: 3; right: 0; top: 48px; display: grid; gap: 6px;
     min-width: 220px; padding: 8px; border: 1px solid var(--navy-200);
