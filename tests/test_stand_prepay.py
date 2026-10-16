@@ -84,6 +84,31 @@ def seed(state):
         db.close()
 
 
+def test_broker_draft_of_unbatched_parallel_deals_is_independent(api):
+    state = board('s18')
+    first = state['deals'][0]
+    first.update(step='s27', cnvId=None, brokerPick='Крипта-Платежи', brokerDraft='84.6')
+    first['prepay'] = {'source': 'founder', 'wallet': copy.deepcopy(state['wallets'][1]),
+                       'amount': 10130, 'brokerStep': 's18'}
+    second = copy.deepcopy(first)
+    second.update(id=1487, code='СД-1487')
+    state['deals'].append(second)
+    seed(state)
+
+    changed = copy.deepcopy(state)
+    changed['deals'][0]['brokerPick'] = 'Tradex'
+    changed['deals'][0]['brokerDraft'] = ''
+    response = api[0].put('/api/stand/state', json={'version': 1, 'data': changed,
+                                                     'fileStorageVersion': 1})
+
+    assert response.status_code == 200, response.json
+    saved = response.json['data']
+    assert saved['deals'][0]['brokerPick'] == 'Tradex'
+    assert saved['deals'][1]['brokerPick'] == 'Крипта-Платежи'
+    assert all(deal['cnvId'] is None and deal['conv'] == [] for deal in saved['deals'])
+    assert saved['convs'] == []
+
+
 def start(api, source='founder', step='s18w', incoming='company'):
     seed(board(step, incoming))
     response = api[0].post('/api/stand/prepay', json={

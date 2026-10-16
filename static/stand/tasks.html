@@ -9912,7 +9912,8 @@ function stepCard(d){
     const total=base+selD.reduce((sum,x)=>sum+s18Rub(x),0)+crmSel.reduce((sum,x)=>sum+x.rub,0);
     const bp=brokerPicked(d), bq=brokerQuote(d,bp), used=quoteUsed(d,'rub');
     const batch=brokerSend(total), rate=num(brokerRate(d)||d.rates.broker||d.rates.rubUsdt);
-    return `<div class="card s18-action-fields"><div class="card-title">Пачка · ${htmlText(s18AccountLabel(accountKey))}</div><div class="fr">
+    return `<div class="card s18-action-fields"><div class="card-title">Подготовка пачки · ${htmlText(s18AccountLabel(accountKey))}</div>
+    <p class="fh">Сейчас это черновик для ${htmlText(d.code)}. Другие сделки войдут в пачку, только если отметить их в «Составе пачки». Запись появится в разделе «Конвертации» после отправки рублей брокеру.</p><div class="fr">
       <div class="fg"><label class="fl">Брокер<span class="rq">*</span></label>
         <select class="fc" id="b0" onchange="brokerPickSet(${d.id},this.value)">
           <option value="">— выбрать брокера —</option>
