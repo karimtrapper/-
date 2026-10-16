@@ -8,7 +8,7 @@ function barrier(){let resolve;const promise=new Promise(r=>resolve=r);return {p
 function tab(role,cookie){
  const ctx={S:{role,deals:[],notes:[],seq:1471},STAND_SHARED:['deals','notes','seq'],
   standBusy:false,standPush:false,standSaveScheduled:false,standClosing:false,standLastSaveResult:{ok:true},
-  standVer:null,standBase:null,lastPointer:0,location:{},Date,setTimeout,clearTimeout,
+  standVer:null,standBase:null,lastPointer:0,brokerSentSubmitPointer:false,location:{},Date,setTimeout,clearTimeout,
   load:()=>({deals:[],notes:[],seq:1471}),migrate:s=>s,standTyping:()=>false,render:()=>{},
   toast:message=>trace(role+':toast',{message}),hold:null,
   fetch:async(url,options={})=>{

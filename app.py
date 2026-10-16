@@ -8456,19 +8456,21 @@ def _stand_broker_handoff_problem(previous, state, before, deal, db=None):
     rub = sum((_amount(s.get('rub')) or Decimal(0) for s in sources), Decimal(0))
     if rub <= 0 or _amount(conv.get('rubTotal')) != rub:
         return 'Сумма отправки брокеру не совпадает с подтверждёнными приходами'
-    old_deals = {d.get('id'): d for d in previous.get('deals') or []}
-    client_total = Decimal(0)
-    for source in sources:
-        source_rub = _stand_broker_sent_money(source.get('rub'))
-        if source_rub is None:
-            return 'Некорректный источник суммы клиента'
-        old_deal = old_deals.get(source.get('dealId'))
-        client_rub = (_stand_broker_sent_money(old_deal.get('amountRub')) if old_deal else None) or source_rub
-        if _stand_broker_sent_money(source.get('clientRub')) != client_rub:
-            return 'Сумма клиента в пачке не совпадает со сделками'
-        client_total += client_rub
-    if _stand_broker_sent_money(conv.get('clientRubTotal')) != client_total:
-        return 'Общая сумма клиента в пачке не совпадает с источниками'
+    if (conv.get('clientRubTotal') is not None or conv.get('feeMode') == 'manual'
+            or any(s.get('clientRub') is not None for s in sources)):
+        old_deals = {d.get('id'): d for d in previous.get('deals') or []}
+        client_total = Decimal(0)
+        for source in sources:
+            source_rub = _stand_broker_sent_money(source.get('rub'))
+            if source_rub is None:
+                return 'Некорректный источник суммы клиента'
+            old_deal = old_deals.get(source.get('dealId'))
+            client_rub = (_stand_broker_sent_money(old_deal.get('amountRub')) if old_deal else None) or source_rub
+            if _stand_broker_sent_money(source.get('clientRub')) != client_rub:
+                return 'Сумма клиента в пачке не совпадает со сделками'
+            client_total += client_rub
+        if _stand_broker_sent_money(conv.get('clientRubTotal')) != client_total:
+            return 'Общая сумма клиента в пачке не совпадает с источниками'
     # Mirror brokerSend() in tasks.html for positive RUB amounts. The client
     # sends these rounded figures; each one must agree with the saved sources.
     def js_round(value):

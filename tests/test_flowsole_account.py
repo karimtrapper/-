@@ -1,7 +1,9 @@
 """Bank account isolation for RUB receipts and broker conversions."""
 import copy
 import json
+import time
 import uuid
+from datetime import datetime
 from io import BytesIO
 
 import pytest
@@ -58,6 +60,7 @@ def test_s14_manual_receipt_enters_shared_registry(monkeypatch, mode, key):
 
 
 def test_crm_and_s14_flowsole_share_batch_and_profit(monkeypatch):
+    sent_ts = int(time.time() * 1000) - 60000
     for name in ('send_deal_completed_webhook', 'notify_agents_new_deal',
                  'sync_deals_to_gsheet', 'sync_referrer_reward_to_gsheet',
                  '_send_deal_telegram', '_stand_deliver_notes',
@@ -116,8 +119,8 @@ def test_crm_and_s14_flowsole_share_batch_and_profit(monkeypatch):
         'accountKey': 'flow_sole', 'rub': 20000, 'grossRub': 20000,
         'dealId': None, 'cnvId': 1, 'batchRub': 20000})
     proposal['convs'] = [{'id': 1, 'broker': 'Test', 'requestNo': '41',
-        'rate': '100', 'status': 'sent', 'at': '14.10, 12:00',
-        'sentTs': 1791979200000, 'walletId': 'grusha', 'accountKey': 'flow_sole',
+        'rate': '100', 'status': 'sent', 'at': 'test, now',
+        'sentTs': sent_ts, 'walletId': 'grusha', 'accountKey': 'flow_sole',
         'rubTotal': 30000, 'clientRubTotal': 30000, 'held': 130, 'sent': 29870,
         'feePct': .3, 'feeFix': 40, 'feeCtrl': 70, 'feeOurs': 60,
         'feeCtrlPct': .1, 'feeOursPct': .2,
@@ -141,8 +144,10 @@ def test_crm_and_s14_flowsole_share_batch_and_profit(monkeypatch):
     wallet = stand_wallet_address(proposal, 'grusha')
     def verified(hash_value, network, sender, receiver, expected):
         assert (hash_value, network, receiver) == (incoming_hash, 'trc20', wallet)
+        transfer_ts = sent_ts + 120000
+        verified_at = datetime.utcfromtimestamp(transfer_ts / 1000).isoformat() + 'Z'
         return {'status': 'confirmed', 'verifiedAmount': 298.7,
-            'timestampMs': 1791982800000, 'verifiedAt': '2026-10-14T13:00:00Z',
+            'timestampMs': transfer_ts, 'verifiedAt': verified_at,
             'to': wallet, 'from': 'TVmgzMQ2zwV2DVPscBf98WRRdhrcpf5x5p'}
     monkeypatch.setattr(m, 'verify_transfer', verified)
     checked = client.post('/api/stand/incoming/check', json={

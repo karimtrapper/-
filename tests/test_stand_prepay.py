@@ -428,43 +428,49 @@ def test_missing_account_key_uses_confirmed_bik_and_account_without_mixing(api):
 
 
 def test_manual_send_with_selected_crm_income_uses_full_confirmed_total(api):
-    db = m.get_session()
     try:
-        income = m.SberIncome(uuid='manual-broker-extra', operation_date='2026-10-16',
-                              amount_rub=100000, account_key='sber', excluded=False)
-        db.add(income)
-        db.commit()
-        extra_id = income.id
-        assert m._stand_broker_draft_rub(board('s18'), board('s18')['deals'][0], db) == 900000
+        db = m.get_session()
+        try:
+            income = m.SberIncome(uuid='manual-broker-extra', operation_date='2026-10-16',
+                                  amount_rub=100000, account_key='sber', excluded=False)
+            db.add(income)
+            db.commit()
+            extra_id = income.id
+            assert m._stand_broker_draft_rub(board('s18'), board('s18')['deals'][0], db) == 900000
+        finally:
+            db.close()
+        previous = board('s18')
+        seed(previous)
+        selected = copy.deepcopy(previous)
+        selected['deals'][0]['brokerCrmDraftIds'] = [extra_id]
+        selection = api[0].put('/api/stand/state', json={'version': 1, 'data': selected,
+                                                         'fileStorageVersion': 1})
+        assert selection.status_code == 200, selection.json
+        selected = selection.json['data']
+        selected['deals'][0]['brokerSentOverride'] = 950000
+        saved = api[0].put('/api/stand/state', json={'version': selection.json['version'],
+                                                     'data': selected, 'fileStorageVersion': 1})
+        assert saved.status_code == 200, saved.json
+        previous = saved.json['data']
+        state = copy.deepcopy(previous)
+        d = state['deals'][0]
+        d.update(step='s18w', cnvId=1)
+        state['incomes'].append({'id': 'sber:manual-broker-extra', 'source': 'sber',
+                                 'accountKey': 'sber', 'dealId': None, 'rub': 100000,
+                                 'batchRub': 100000, 'cnvId': 1, 'excluded': False})
+        state['convs'] = [{'id': 1, 'walletId': 'company', 'broker': 'Брокер',
+            'rate': '80', 'status': 'sent', 'at': '12.10, 12:00', 'requestNo': 'TEST',
+            'sentTs': 1700000000000, 'feeMode': 'manual', 'rubTotal': 1000000,
+            'sent': 950000, 'held': 50000, 'clientRubTotal': 1000000, 'sources': [
+                {'dealId': 1484, 'rub': 900000, 'clientRub': 900000, 'usdt': 10687.5},
+                {'dealId': None, 'crmIncomeId': extra_id, 'incomeId': 'sber:manual-broker-extra',
+                 'rub': 100000, 'clientRub': 100000, 'usdt': 1187.5}], 'txs': []}]
+        assert m._stand_broker_handoff_problem(previous, state, previous['deals'][0], d) is None
     finally:
+        db = m.get_session()
+        db.query(m.SberIncome).filter_by(uuid='manual-broker-extra').delete()
+        db.commit()
         db.close()
-    previous = board('s18')
-    seed(previous)
-    selected = copy.deepcopy(previous)
-    selected['deals'][0]['brokerCrmDraftIds'] = [extra_id]
-    selection = api[0].put('/api/stand/state', json={'version': 1, 'data': selected,
-                                                     'fileStorageVersion': 1})
-    assert selection.status_code == 200, selection.json
-    selected = selection.json['data']
-    selected['deals'][0]['brokerSentOverride'] = 950000
-    saved = api[0].put('/api/stand/state', json={'version': selection.json['version'],
-                                                 'data': selected, 'fileStorageVersion': 1})
-    assert saved.status_code == 200, saved.json
-    previous = saved.json['data']
-    state = copy.deepcopy(previous)
-    d = state['deals'][0]
-    d.update(step='s18w', cnvId=1)
-    state['incomes'].append({'id': 'sber:manual-broker-extra', 'source': 'sber',
-                             'accountKey': 'sber', 'dealId': None, 'rub': 100000,
-                             'batchRub': 100000, 'cnvId': 1, 'excluded': False})
-    state['convs'] = [{'id': 1, 'walletId': 'company', 'broker': 'Брокер',
-        'rate': '80', 'status': 'sent', 'at': '12.10, 12:00', 'requestNo': 'TEST',
-        'sentTs': 1700000000000, 'feeMode': 'manual', 'rubTotal': 1000000,
-        'sent': 950000, 'held': 50000, 'clientRubTotal': 1000000, 'sources': [
-            {'dealId': 1484, 'rub': 900000, 'clientRub': 900000, 'usdt': 10687.5},
-            {'dealId': None, 'crmIncomeId': extra_id, 'incomeId': 'sber:manual-broker-extra',
-             'rub': 100000, 'clientRub': 100000, 'usdt': 1187.5}], 'txs': []}]
-    assert m._stand_broker_handoff_problem(previous, state, previous['deals'][0], d) is None
 
 
 def test_manual_mixed_batch_syncs_actual_sent_and_residual_to_crm(api):
