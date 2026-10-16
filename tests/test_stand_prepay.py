@@ -85,6 +85,49 @@ def seed(state):
         db.close()
 
 
+def test_incoming_candidates_show_chain_free_shares_and_early_warning(api, monkeypatch):
+    from decimal import Decimal
+    import uuid
+    import stand_transfer_discovery
+
+    state = board()
+    state['convs'][0]['sentTs'] = 1700000000000
+    seed(state)
+    first, full = (uuid.uuid4().hex * 2, uuid.uuid4().hex * 2)
+    db = m.get_session()
+    try:
+        for tx_hash, used in ((first, 120), (full, 100)):
+            tx = m.PayinTx(tx_hash=tx_hash, network='trc20', amount_usdt=100,
+                           source='tronscan', to_address=COMPANY)
+            db.add(tx)
+            db.flush()
+            db.add(m.PayinTxUse(tx_id=tx.id, amount_usdt=used,
+                                stand_generation='other', stand_cnv_id='other'))
+        db.commit()
+    finally:
+        db.close()
+    # The first hash is actually 200 on chain; free balance must use the chain
+    # total and the ledger's existing 120 USDT share.
+    candidates = [
+        {'hash': first, 'network': 'trc20', 'from': FOUNDER, 'to': COMPANY,
+         'amount': Decimal(200), 'timestamp_ms': 1699999999000},
+        {'hash': full, 'network': 'trc20', 'from': FOUNDER, 'to': COMPANY,
+         'amount': Decimal(100), 'timestamp_ms': 1700000001000},
+    ]
+    def fake_discover(**kwargs):
+        assert kwargs['wallet_addr'] == COMPANY
+        assert kwargs['after_ts'] > 0
+        return {'status': 'complete', 'candidates': candidates}
+    monkeypatch.setattr(stand_transfer_discovery, 'discover_transfers', fake_discover)
+    response = api[0].get('/api/stand/incoming/candidates?dealId=1484')
+    assert response.status_code == 200, response.json
+    assert response.json['complete'] is True
+    assert len(response.json['txs']) == 1
+    assert response.json['txs'][0]['free_usdt'] == 80
+    assert response.json['txs'][0]['early'] is True
+    assert response.json['txs'][0]['from_address'] == FOUNDER
+
+
 def test_broker_draft_of_unbatched_parallel_deals_is_independent(api):
     state = board('s18')
     first = state['deals'][0]
@@ -193,15 +236,25 @@ def test_historical_broker_send_accepts_only_later_chain_event(api, monkeypatch,
             chain(receiver=COMPANY, timestamp=event[0], amount='8000000000'), hash=tx_hash))))
     payload = {'dealId': 1484, 'hash': tx_hash, 'network': 'TRC-20', 'amount': 2200}
     early = api[0].post('/api/stand/incoming/check', json=payload)
-    assert early.status_code == 422, early.json
+    assert early.status_code == 409, early.json
     assert 'раньше отправки' in early.json['error']
+    preview = api[0].post('/api/stand/incoming/check', json={**payload, 'preview': True})
+    assert preview.status_code == 200 and preview.json['early'] is True
+    confirmed = api[0].post('/api/stand/incoming/check', json={**payload, 'confirmBeforeRubSend': True})
+    assert confirmed.status_code == 200, confirmed.json
+    assert confirmed.json['tx']['confirmedBeforeRubSend'] is True
+    assert 'подтверждаю, это перевод брокера' in confirmed.json['data']['deals'][0]['log'][-1]['text']
+    assert api[0].post('/api/stand/incoming/check', json={**payload, 'confirmBeforeRubSend': True}).status_code == 409
+    # Следующий перевод обычный и галочки не требует.
+    tx_hash = uuid.uuid4().hex * 2
+    payload['hash'] = tx_hash
     event[0] = conv['sentTs'] + 1000
     accepted = api[0].post('/api/stand/incoming/check', json=payload)
     assert accepted.status_code == 200, accepted.json
     again = api[0].post('/api/stand/incoming/check', json=payload)
     assert again.status_code == 409, again.json
     final = api[0].get('/api/stand/state').json['data']['convs'][0]
-    assert len(final['txs']) == 1 and final['txs'][0]['amount'] == 2200
+    assert len(final['txs']) == 2 and all(t['amount'] == 2200 for t in final['txs'])
     assert final['sentTs'] == conv['sentTs']
     assert final['sentRecordedTs'] == conv['sentRecordedTs']
 

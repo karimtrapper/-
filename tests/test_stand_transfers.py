@@ -426,7 +426,7 @@ def test_incoming_endpoint_rejects_old_tx_and_persists_verified(monkeypatch):
             'status': 'confirmed', 'verifiedAmount': 100, 'verifiedAt': 'now',
             'from': TO, 'to': FROM, 'timestampMs': 1699999999999})
         old = client.post('/api/stand/incoming/check', json=payload)
-        assert old.status_code == 422
+        assert old.status_code == 409
         monkeypatch.setattr(appmod, 'verify_transfer', lambda *a, **kw: {
             'status': 'confirmed', 'verifiedAmount': 100, 'verifiedAt': 'now',
             'from': TO, 'to': FROM, 'timestampMs': 1700000000001})

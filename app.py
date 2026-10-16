@@ -10913,12 +10913,63 @@ def _stand_consume_payin_reserve(db, tx, deal_id, amount, origin):
     return use
 
 
+@app.route('/api/stand/incoming/candidates', methods=['GET'])
+def stand_incoming_candidates():
+    """Read-only, on-chain choices for the wallet of one sent broker batch."""
+    if not STAND_MODE:
+        return jsonify(success=False, error='stand_only'), 404
+    if current_role() not in ('operator', 'admin'):
+        return jsonify(success=False, error='Приходы видит операционист'), 403
+    try:
+        deal_id = int(request.args.get('dealId'))
+    except (TypeError, ValueError):
+        return jsonify(success=False, error='dealId обязателен'), 400
+    db = get_session()
+    try:
+        state = json.loads(_stand_row(db).data or '{}')
+        deal = next((d for d in state.get('deals') or [] if d.get('id') == deal_id), None)
+        conv = next((c for c in state.get('convs') or [] if c.get('id') == (deal or {}).get('cnvId')), None)
+        if not conv or conv.get('status') != 'sent':
+            return jsonify(success=False, error='Ожидающая пачка не найдена'), 404
+        from stand_transfers import stand_wallet_address
+        address = stand_wallet_address(state, conv.get('walletId'))
+        if not valid_address(address, 'trc20'):
+            return jsonify(success=False, error='У кошелька пачки нет корректного адреса'), 409
+        from decimal import Decimal
+        from stand_transfer_discovery import discover_transfers
+        cutoff = int(time.time() * 1000) - 14 * 24 * 60 * 60 * 1000
+        found = discover_transfers(direction='incoming', wallet_addr=address,
+            expected_amount=Decimal(0), tolerance=Decimal('1000000000000'),
+            after_ts=cutoff, cache_ttl=30)
+        if found['status'] == 'unavailable':
+            return jsonify(success=False, error='TronScan не ответил — обновите список позже'), 503
+        rows = []
+        for candidate in found['candidates']:
+            tx = _payin_find(db, candidate['hash'], lock=False)
+            amount = candidate['amount']
+            used = _payin_exact_used(db, tx) if tx else Decimal(0)
+            free = max(Decimal(0), amount - used)
+            if free <= 0 or any(_payin_hash_key(t.get('hash')) == candidate['hash']
+                                for t in conv.get('txs') or []):
+                continue
+            rows.append({'hash': candidate['hash'], 'network': 'trc20',
+                         'amount_usdt': float(amount), 'free_usdt': float(free),
+                         'from_address': candidate['from'], 'timestamp_ms': candidate['timestamp_ms'],
+                         'early': bool(conv.get('sentTs') and candidate['timestamp_ms'] < conv['sentTs'])})
+        return jsonify(success=True, txs=rows, complete=found['status'] == 'complete')
+    except ValueError as exc:
+        return jsonify(success=False, error=str(exc)), 409
+    finally:
+        db.close()
+
+
 @app.route('/api/stand/incoming/check', methods=['POST'])
 def stand_incoming_check():
     """Проверить входящий USDT-перевод и привязать его к пачке стенда."""
     if not STAND_MODE:
         return jsonify({'success': False, 'error': 'stand_only'}), 404
-    if current_role() not in ('operator', 'admin'):
+    role = current_role()
+    if role not in ('operator', 'admin'):
         return jsonify(success=False, error='Приход засчитывает операционист'), 403
     data = request.get_json(silent=True) or {}
     try:
@@ -10948,10 +10999,8 @@ def stand_incoming_check():
     if checked['status'] != 'confirmed':
         return jsonify({'success': False, 'status': checked['status'],
                         'error': checked.get('checkError') or 'Перевод ещё не подтверждён'}), 422
-    if conv.get('sentTs') and (not checked.get('timestampMs')
-                             or checked['timestampMs'] < conv['sentTs']):
-        return jsonify({'success': False, 'status': 'mismatch',
-                        'error': 'Перевод был раньше отправки рублей брокеру'}), 422
+    if not checked.get('timestampMs'):
+        return jsonify(success=False, error='Сеть не подтвердила время перевода'), 422
     db = get_session()
     try:
         if engine.dialect.name == 'sqlite':
@@ -10966,8 +11015,7 @@ def stand_incoming_check():
         current_receiver = stand_wallet_address(state, conv.get('walletId'))
         if current_receiver != receiver:
             return jsonify({'success': False, 'error': 'Кошелёк пачки изменился'}), 409
-        if conv.get('sentTs') and (not checked.get('timestampMs') or checked['timestampMs'] < conv['sentTs']):
-            return jsonify({'success': False, 'error': 'Время отправки пачки изменилось'}), 409
+        early = bool(conv.get('sentTs') and checked['timestampMs'] < conv['sentTs'])
         from decimal import Decimal, InvalidOperation
         _stand_import_legacy_payins(db, row, state, tx_hash)
         ledger_tx = _payin_find(db, tx_hash)
@@ -10991,7 +11039,9 @@ def stand_incoming_check():
             return jsonify(success=False, error='Превышена сумма перевода: ' + _payin_ledger_hint(info), ledger=info), 409
         if data.get('preview') is True:
             db.commit()
-            return jsonify(success=True, ledger=info, hash=tx_hash, network=network)
+            return jsonify(success=True, ledger=info, hash=tx_hash, network=network, early=early)
+        if early and data.get('confirmBeforeRubSend') is not True:
+            return jsonify(success=False, error='Перевод был раньше отправки рублей. Подтвердите, что это перевод брокера по этой пачке.'), 409
         try:
             amount = Decimal(str(data['amount'])) if 'amount' in data else remaining
         except (InvalidOperation, ValueError, TypeError):
@@ -11013,10 +11063,14 @@ def stand_incoming_check():
               'to': checked['to'], 'from': checked['from'], 'status': 'confirmed',
               'verifiedAt': checked['verifiedAt'], 'timestampMs': checked['timestampMs'],
               'cnv': conv['id']}
+        if early:
+            tx['confirmedBeforeRubSend'] = True
         conv.setdefault('txs', []).append(tx)
         deal.setdefault('log', []).append({'ts': datetime.now().strftime('%d.%m, %H:%M'),
-            'at': int(time.time() * 1000), 'role': current_role(),
-            'text': f'Засчитана доля {amount} из {total} USDT, хеш {tx_hash}'})
+            'at': int(time.time() * 1000), 'role': role,
+            'by': flask_session.get('user_id'),
+            'text': f'Засчитана доля {amount} из {total} USDT, хеш {tx_hash}'
+                    + ('; подтверждаю, это перевод брокера по этой пачке (раньше отправки рублей)' if early else '')})
         row.data = json.dumps(state, ensure_ascii=False)
         row.version = (row.version or 0) + 1
         row.updated_by = 'проверка прихода USDT'
