@@ -1015,7 +1015,7 @@ async function standPull(force){
     if(standVer===j.version&&!force)return;
     /* клик уже начался — перерисовка заменила бы кнопку под пальцем, и нажатие
        терялось бы. Догоним на следующем тике. */
-    if(!force&&Date.now()-lastPointer<1500)return;
+    if(!force&&(Date.now()-lastPointer<1500||brokerSentSubmitPointer))return;
     /* Пока человек печатает, чужое состояние не подставляем — иначе ввод
        затрётся на полуслове. Догоним на следующем тике. */
     if(standTyping()&&!force)return;
@@ -1036,11 +1036,13 @@ async function standSave(){
       if(j.error&&j.error!=='conflict'){
         standLastSaveResult={ok:false,error:j.detail||j.error||'save_rejected'};
         if(S.modal&&S.modal.noteId)S.modal.delivery='save_failed';
-        standVer=j.version; standBase=standClone(j.data); standApply(j.data); render(); toast(j.detail||j.error);
+        standVer=j.version; standBase=standClone(j.data); standApply(j.data);
+        if(!brokerSentSubmitPointer)render();toast(j.detail||j.error);
       }else{
         /* Доску поменял коллега: сливаем его правки с нашими и досылаем */
         const mine=standSnapshot(), m=standMerge(standBase||{},mine,j.data||{});
-        standVer=j.version; standBase=standClone(j.data); standApply(m.data); if(!standTyping())render();
+        standVer=j.version; standBase=standClone(j.data); standApply(m.data);
+        if(!standTyping()&&!brokerSentSubmitPointer)render();
         if(!jeq(m.data,j.data)) standPush=true;
         standLastSaveResult=standPush?{ok:false,pending:true}:{ok:true};
         if(m.conflicts.length) toast('Ту же сделку одновременно поменял'+(j.updated_by?' '+j.updated_by:' коллега')+' — оставил его версию, проверьте свою правку');
@@ -1051,7 +1053,7 @@ async function standSave(){
         standLastSaveResult={ok:true};
         standVer=j.version;
         if(j.data)standBase=standClone(j.data);
-        if(j.data&&!standPush){standApply(j.data);if(!standTyping())render();}
+        if(j.data&&!standPush){standApply(j.data);if(!standTyping()&&!brokerSentSubmitPointer)render();}
         else if(j.data&&standPush){
           /* Первый PUT нового manual draft возвращает серверный originMode.
              Второй queued PUT уже содержит заполненную форму; переносим только
@@ -4921,12 +4923,23 @@ function back(){S.open=null;S.draft=null;saveUi();render();}
    oninput/onchange сами пишут в сделку — их не трогаем. */
 const DRAFTS={};
 let lastPointer=0;
+let brokerSentSubmitPointer=false;
 document.addEventListener('input',e=>{const t=e.target;
   if(!t||!t.id||!(t.tagName==='INPUT'||t.tagName==='TEXTAREA'))return;
   if(t.type==='file'||t.type==='checkbox'||t.type==='radio'||t.readOnly)return;
   if(t.hasAttribute('oninput')||t.hasAttribute('onchange'))return;
   DRAFTS[(S.open||S.tab||'')+'|'+t.id]=t.value;},true);
-document.addEventListener('pointerdown',()=>{lastPointer=Date.now();},true);
+document.addEventListener('pointerdown',e=>{
+  lastPointer=Date.now();
+  brokerSentSubmitPointer=!!e.target?.closest?.('#b_sent_submit');
+},true);
+document.addEventListener('click',()=>{brokerSentSubmitPointer=false;});
+document.addEventListener('pointerup',e=>{
+  if(!e.target?.closest?.('#b_sent_submit'))brokerSentSubmitPointer=false;
+  else setTimeout(()=>{brokerSentSubmitPointer=false;},1500);
+},true);
+document.addEventListener('pointercancel',()=>{brokerSentSubmitPointer=false;},true);
+window.addEventListener('blur',()=>{brokerSentSubmitPointer=false;});
 /* Выпадающие списки без обработчика тоже читаются только по кнопке — брокер на
    «Отправке брокеру» сбрасывался на Tradex при каждой перерисовке (раскадровка 27.09) */
 document.addEventListener('change',e=>{const t=e.target;
@@ -7252,14 +7265,19 @@ function brokerSentInput(id,raw){
   if(hint)hint.textContent=amount==null?'Введите сумму больше 0 с точностью до копейки.':
     amount>total?'Сумма отправки больше подтверждённого пополнения.':'';
   if(amount==null||amount>total)return;
-  delete DRAFTS[key];d.brokerSentOverride=amount;save();render();
+  /* change при клике по кнопке приходит до click: render удалял кнопку и глотал клик.
+     Сохранение запускает штатное обновление стенда после PUT. */
+  delete DRAFTS[key];d.brokerSentOverride=amount;save();
 }
 function brokerSentDraft(id,raw){
   DRAFTS[id+'|b_sent']=raw;
   const hint=document.getElementById('b_sent_error');
   const amount=brokerSentParse(raw);
+  const invalid=amount==null||amount>s18BatchTotal(deal(id));
   if(hint)hint.textContent=amount==null?'Введите сумму больше 0 с точностью до копейки.':
-    amount>s18BatchTotal(deal(id))?'Сумма отправки больше подтверждённого пополнения.':'';
+    invalid?'Сумма отправки больше подтверждённого пополнения.':'';
+  const submit=document.getElementById('b_sent_submit');
+  if(submit)submit.disabled=invalid;
 }
 function brokerSentAuto(id){
   delete DRAFTS[id+'|b_sent'];const d=deal(id);
@@ -10002,14 +10020,16 @@ function stepCard(d){
     const clientTotal=s18ClientTotal(d);
     const batch=brokerSentAmount(d,total), rate=num(brokerRate(d)||d.rates.broker||d.rates.rubUsdt);
     const clientDifference=Math.round((clientTotal-batch.sent)*100)/100;
-    const sentInvalid=!(batch.sent>0&&batch.sent<=total)||DRAFTS[d.id+'|b_sent']!==undefined;
+    const sentDraft=DRAFTS[d.id+'|b_sent'];
+    const sentValue=sentDraft===undefined?batch.sent:brokerSentParse(sentDraft);
+    const sentInvalid=!(sentValue>0&&sentValue<=total);
     return `<div class="card s18-action-fields"><div class="card-title">Подготовка пачки · ${htmlText(s18AccountLabel(accountKey))}</div>
     <p class="fh">Сейчас это черновик для ${htmlText(d.code)}. Другие сделки войдут в пачку, только если отметить их в «Составе пачки». Запись появится в разделе «Конвертации» после отправки рублей брокеру.</p><div class="fr">
       <div class="fg"><label class="fl">Сумма пополнения клиента, ₽</label><div class="fc num" aria-label="Сумма пополнения клиента">${moneyKop(clientTotal,'₽')}</div>
         ${Math.abs(clientTotal-total)>.005?`<span class="fh">Зачислено на счёт: ${moneyKop(total,'₽')}</span>`:''}</div>
       <div class="fg"><label class="fl" for="b_sent">Сумма отправки брокеру, ₽<span class="rq">*</span></label>
         <input class="fc num" id="b_sent" inputmode="decimal" value="${htmlText(batch.sent.toFixed(2).replace('.',','))}" oninput="brokerSentDraft(${d.id},this.value)" onchange="brokerSentInput(${d.id},this.value)">
-        <span class="fh" id="b_sent_error">${sentInvalid?'Проверьте сумму отправки: она должна быть больше нуля и не превышать пополнение.':''}</span>
+        <span class="fh" id="b_sent_error" role="status">${sentInvalid?'Проверьте сумму отправки: она должна быть больше нуля и не превышать пополнение.':''}</span>
         ${d.brokerSentOverride!=null?`<button type="button" class="btn btn-outline btn-sm" onclick="brokerSentAuto(${d.id})">Рассчитать по шаблону</button>`:'<span class="fh">Сумма рассчитана по шаблону 0,3 % + 40 ₽</span>'}</div>
       <div class="fg"><label class="fl">${clientDifference<0?'Превышение суммы клиента, ₽':'Общие расходы, ₽'}</label><div class="fc num">${moneyKop(Math.abs(clientDifference),'₽')}</div></div>
       <div class="fg"><label class="fl">Брокер<span class="rq">*</span></label>
@@ -10064,7 +10084,7 @@ function stepCard(d){
         `По автотарифу: валютный контроль <b>${moneyKop(batch.ctrl,'₽')}</b> (${pct(batch.ctrlPct)} + ${batch.fix} ₽) и <b>${moneyKop(batch.ours,'₽')}</b> (${pct(batch.oursPct)}) остаются на рублёвом счёте — в прибыль сделки не входят.`}</span>
     </div>
     ${convMarginBlock(d,total,crmSel)}</details>
-    <div class="row"><button class="btn btn-success" ${sentInvalid?'disabled':''} onclick="act(${d.id},'s18')">Отправил брокеру — ждём USDT</button></div></div>`;},
+    <div class="row"><button id="b_sent_submit" class="btn btn-success" ${sentInvalid?'disabled':''} onclick="act(${d.id},'s18')">Отправил брокеру — ждём USDT</button></div></div>`;},
 
   s18w:()=>{
     const c=convOf(d), plan=c?c.sources.reduce((s,x)=>s+(x.usdt||0),0):null;
@@ -10604,11 +10624,14 @@ async function act(id,step){
     const crmExtras=s18CrmRows(d).filter(x=>s18Selected.has(x.id));
     const unready=members.find(x=>!rubBatchReady(x));
     if(unready){toast(unready.code+': нужен положительный подтверждённый RUB приход для пачки');return;}
-    S.cseq=(S.cseq||0)+1;
     const rubTotal=members.reduce((s,x)=>s+s18Rub(x),0)+crmExtras.reduce((s,x)=>s+x.rub,0);
-    const bs=brokerSentAmount(d,rubTotal), clientRubTotal=s18ClientTotal(d);
-    if(DRAFTS[d.id+'|b_sent']!==undefined||!Number.isFinite(bs.sent)||bs.sent<=0||bs.sent>rubTotal){
+    const sentDraft=DRAFTS[d.id+'|b_sent'];
+    const sentValue=sentDraft===undefined?brokerSentAmount(d,rubTotal).sent:brokerSentParse(sentDraft);
+    if(!Number.isFinite(sentValue)||sentValue<=0||sentValue>rubTotal){
       toast('Сумма отправки должна быть больше 0 и не превышать подтверждённое пополнение');return;}
+    if(sentDraft!==undefined){d.brokerSentOverride=sentValue;delete DRAFTS[d.id+'|b_sent'];}
+    const bs=brokerSentAmount(d,rubTotal), clientRubTotal=s18ClientTotal(d);
+    S.cseq=(S.cseq||0)+1;
     const cn={id:S.cseq,name:'CNV-'+String(S.cseq).padStart(4,'0'),broker:b0,
       requestNo:String(40+S.cseq),rate:b1,status:'sent',at:now(),accountKey,
       walletId:b2,
