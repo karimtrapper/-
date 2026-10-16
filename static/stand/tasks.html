@@ -7426,7 +7426,7 @@ function convMarginBlock(d,total,crmRows=[]){
 }
 function cnvTxOptionLabel(t){
   if(!t||t.used_usdt<=0)return '';
-  return t.free_usdt>0?`♻️ свободно $${t.free_usdt.toFixed(2)} из $${t.amount_usdt.toFixed(2)} · `:'✅ разобран · ';
+  return t.free_usdt>0?`свободно $${t.free_usdt.toFixed(2)} из $${t.amount_usdt.toFixed(2)} · `:'разобран · ';
 }
 function cnvTxTime(ts){return new Date(ts).toLocaleString('ru-RU',{timeZone:'Europe/Moscow',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});}
 async function cnvTxLoad(id){
@@ -7492,13 +7492,13 @@ function cnvTxShareBlock(d){
   const p=S.incomingShare;if(!p||p.dealId!==d.id)return '';
   const t=p.ledger;
   return `<div id="incoming_share" class="alert ${t.free_usdt>0?'a-info':'a-warn'}"><div style="width:100%">
-    <b>${t.free_usdt>0?'♻️ свободно $'+t.free_usdt.toFixed(2)+' из $'+t.amount_usdt.toFixed(2):'✅ разобран'}</b>
+    <b>${t.free_usdt>0?'Свободно $'+t.free_usdt.toFixed(2)+' из $'+t.amount_usdt.toFixed(2):'Разобран'}</b>
     <p class="fh">${esc(cnvTxHint(t))}</p>
     ${(t.allocations||[]).map(a=>`<p class="fh">$${a.amount_usdt.toFixed(2)} · ${esc((a.deal_codes||[]).join(', '))}${a.stand_cnv_id?' (пачка '+esc(String(a.stand_cnv_id))+')':''}</p>`).join('')}
     <label class="fl" for="w_share">Сумма на эту сделку</label>
     <div class="hrow"><input class="fc num" id="w_share" type="number" min="0.000001" max="${t.free_usdt}" step="0.000001" value="${p.amount}" ${t.free_usdt>0?'':'disabled'}
       oninput="S.incomingShare.amount=this.value;this.setCustomValidity(Number(this.value)>${t.free_usdt}?'Сумма больше свободного остатка':'');this.reportValidity()">
-    <button class="btn btn-secondary btn-sm" ${t.free_usdt>0?'':'disabled'} onclick="cnvTxAllocate(${d.id})">Засчитать долю</button></div>
+    <button class="btn btn-secondary btn-sm" style="min-height:44px;height:44px" ${t.free_usdt>0?'':'disabled'} onclick="cnvTxAllocate(${d.id})">Засчитать долю</button></div>
     <p class="fh">Можно уменьшить сумму. Остаток останется доступен другим пачкам.</p>
     ${p.early?`<div class="alert a-warn"><div>Этот перевод раньше отправки рублей брокеру.
       <label><input type="checkbox" id="w_confirm_early" ${p.confirmed?'checked':''}

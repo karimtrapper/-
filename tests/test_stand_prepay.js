@@ -18,6 +18,7 @@ const ctx={demoAllowed:()=>false,walletBlock:()=>'',S:{role:'operator',deals:[]}
   deal:id=>ctx.S.deals.find(d=>d.id===id),num:Number,cleanNum:String,
   document:{getElementById:()=>null},saveNote:()=>{},toast:()=>{},
   now:()=> '12.10, 12:00',money:String,avgUsdt:()=>1,exSum:()=>0,exMargin:()=>0,
+  esc:String,
 };
 ctx.walletList=[{id:'company',name:'Компания',addr:'company',owner:'компания',multisig:true,role:'findir'},
              {id:'founder',name:'Андрей',addr:'founder',owner:'Андрей',multisig:false,role:'teodor'}];
@@ -26,10 +27,16 @@ for(const name of ['STEPS','FLOW_RUB','FLOW_USDT','FLOW_ALIAS','SOURCES_PAY']){
   vm.runInContext(html.match(new RegExp(`^const ${name}\\s*=[^]*?;`,'m'))[0].replace(/^const /,'var '),ctx);
 }
 for(const name of ['uniqueWallets','walletOptionText','prepayCanStart','prepayStepDone','prepayRefundRole','prepayPanel','flowOf','progress',
-  'stepTitle','myTasks','reqOpen','go','sendList','freeholdFee','freeholdSend','dealWallet','hashSum','econ','act','cnvTxTime']){
+  'stepTitle','myTasks','reqOpen','go','sendList','freeholdFee','freeholdSend','dealWallet','hashSum','econ','act','cnvTxTime','cnvTxHint','cnvTxShareBlock']){
   vm.runInContext(fn(name),ctx);
 }
 assert.match(ctx.cnvTxTime(Date.UTC(2026,9,16,9,47)), /16\.10.*12:47/);
+ctx.S.incomingShare={dealId:1484,amount:80,ledger:{amount_usdt:200,free_usdt:80,used_usdt:120,allocations:[]}};
+const shareBlock=ctx.cnvTxShareBlock({id:1484});
+assert.match(shareBlock, /id="w_share"/);
+assert.match(shareBlock, /style="min-height:44px;height:44px"[^>]*>Засчитать долю<\/button>/);
+assert.doesNotMatch(shareBlock, /[♻✅]/);
+delete ctx.S.incomingShare;
 const old={id:1484,type:'Оплата недвижимости',kind:'Фрихолд',payType:'По реквизитам',
   step:'s18',invoiceUsd:10000,payinParts:[{amountRub:900000}],pay:{},log:[],walletId:'company'};
 assert.equal(ctx.prepayCanStart(old),true);
