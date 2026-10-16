@@ -702,6 +702,9 @@ a.hash:hover{background:#BAE6FD}
 .deal-screen .fh,.deal-screen small,.deal-screen .sub{font-size:var(--ds-caption)!important;color:var(--ds-muted)}
 .deal-screen .card-title,.deal-screen .side h4{font-size:var(--ds-emphasis)!important;font-weight:var(--ds-semibold)!important}
 .deal-screen .addr,.deal-screen .tx-hash{font:var(--ds-regular) var(--ds-body) ui-monospace,SFMono-Regular,Menlo,monospace!important;white-space:nowrap;word-break:normal;overflow-wrap:normal;max-width:100%;overflow:hidden;text-overflow:ellipsis}
+.deal-screen .cash-pay .cash-wallet{min-width:0;max-width:100%;overflow-x:auto;white-space:nowrap;font:var(--ds-regular) var(--ds-body) ui-monospace,SFMono-Regular,Menlo,monospace!important}
+.deal-screen .cash-pay .fg{min-width:0;margin-bottom:var(--ds-md)}
+.deal-screen .cash-pay .row{gap:var(--ds-sm);margin-top:var(--ds-md)}
 .deal-screen .alert{font-size:var(--ds-body)!important;border:1px solid var(--ds-border);border-radius:var(--ds-control);padding:var(--ds-sm) var(--ds-md)}
 .deal-screen .a-info{background:var(--navy-100);color:var(--navy-700);border-color:var(--ds-border)}
 .deal-screen .a-warn{background:var(--ds-decision);color:var(--ds-decision-ink);border-color:var(--ds-decision-border)}
@@ -1817,6 +1820,12 @@ function hashSum(list){
   return n?Math.round(s*100)/100:null;
 }
 function payinParts(d){
+  if(d.cashPartnerUsdt){
+    const fact=hashSum((d.payinHashes||[]).filter(h=>h.verified));
+    return [{label:'Наличные через партнёра',amountRub:d.amountRub||null,rate:null,
+      usdt:fact,calc:null,fact,src:fact!=null?'хэш':null,held:null,kept:null,
+      ctrl:null,partner:null,hashes:d.payinHashes||[]}];
+  }
   if(d.type==='Обмен валюты'&&exchangeSpec(d).input==='thb'){
     const rate=num(d.rates.usdtThb),amount=d.incomeAmount||d.amountThb;
     const fact=hashSum(d.payinHashes),calc=rate&&amount?amount/rate:null;
@@ -3700,7 +3709,7 @@ const FLOW_USDT=['s5','s6','s8','s11','s12','s14','s15','s22','s23','s24','s25',
 const FLOW_ALIAS={s11b:'s11',s14m:'s14'};
 function flowOf(d){
   if(d.prepay)return d.prepay.flow||FLOW_RUB.filter(s=>s!=='s15'&&s!=='s25'&&(!d.selfRate||s!=='s5'));
-  let F=isCrypto(d)?FLOW_USDT:FLOW_RUB;
+  let F=(isCrypto(d)||d.cashPartnerUsdt)?FLOW_USDT:FLOW_RUB;
   /* Реквизиты — параллельная задача менеджера, а не шаг пути: деньги пришли —
      операционист сразу конвертирует (Карим, 25.09). s15 остаётся только у сделок,
      которые уже стоят на нём. */
@@ -8998,6 +9007,28 @@ function payinForeign(d,h){
     (payinNet(d)==='ERC-20'?h.from.toLowerCase()!==d.payerWallet.toLowerCase():h.from!==d.payerWallet));
 }
 function payinGot(d){return rnd2((d.payinHashes||[]).filter(h=>!payinForeign(d,h)).reduce((s,h)=>s+(Number(h.amount)||0),0));}
+async function cashPayinMethod(id,restore=false){
+  const j=await standAction('/api/stand/payin/cash-method',{dealId:id,restore});
+  if(j&&j.success)toast(restore?'Снова ждём оплату через Flow Sole':'Теперь ждём USDT от партнёра');
+}
+async function cashIncomingLoad(id){
+  try{
+    const r=await fetch('/api/stand/payin/cash-incoming?dealId='+encodeURIComponent(id),{credentials:'same-origin'});
+    const j=await r.json();
+    if(!r.ok||!j.success){toast(j.error||'Не удалось получить входящие переводы');return;}
+    S.cashIncoming=S.cashIncoming||{};S.cashIncoming[id]=j.incoming||[];render();
+  }catch(e){toast('Не удалось получить входящие переводы');}
+}
+function cashIncomingPick(id,hash){if(hash)payinCheck(id,hash);}
+function cashPayinFinish(id){
+  const d=deal(id), hashes=d.payinHashes||[];
+  if(d.step!=='s14'||!d.cashPartnerUsdt||!hashes.length||hashes.some(h=>!h.verified||!h.ledgerUseId)){
+    toast('Сначала проверьте каждый перевод партнёра в сети');return;
+  }
+  const got=hashSum(hashes);
+  d.amountUsdt=got;d.pay.usdt=got;d.pay.hash=hashes[0].hash;
+  afterPayin(d,'USDT от партнёра получены: '+money(got,'USDT')+' · '+hashes.length+' перевод(а)');
+}
 function payerWalletSet(id,v){
   const d=deal(id), a=String(v||'').trim();
   const network=payinNet(d);
@@ -9093,13 +9124,13 @@ function payinShort(id){
   d.incomeReview=['Недоплата: пришло '+money(got,'USDT')+' из '+money(exp,'USDT')];
   go(d,'s14m');toast('Недобор — укажите причину');
 }
-async function payinCheck(id){
+async function payinCheck(id,pickedHash){
   const d=deal(id), network=payinNet(d);
-  const ref=String(val('ph_'+id)||'').trim();
+  const ref=String(pickedHash||val('ph_'+id)||'').trim();
   if(!ref){toast('Вставьте хеш или ссылку на обозреватель сети '+network);return;}
   if(!/(?:0x)?[a-fA-F0-9]{64}/.test(ref)){toast('Нужен полный хеш из 64 символов или ссылка с ним');return;}
   const j=await standAction('/api/stand/payin/check',{dealId:id,hash:ref});
-  if(j&&j.tx)await payinSettle(id,true);
+  if(j&&j.tx){if(d.cashPartnerUsdt){S.cashIncoming=null;render();}else await payinSettle(id,true);}
 }
 
 /* ---------- карточки шагов ---------- */
@@ -9892,8 +9923,20 @@ function stepCard(d){
       <button class="btn btn-secondary" onclick="rerate(${d.id},'курс поехал, пока клиент думал')">Запросить курсы заново</button>
     </div>`:''}</div>`,
 
-  s14:()=>`<div class="card"><div class="card-title">Ждём приход<span class="sub">${isCrypto(d)?'USDT на кошелёк':`рубли на счёт в ${htmlText(rubReceivingBankLabel(d))}`}</span></div>
-    ${isCrypto(d)?(function(){
+  s14:()=>`<div class="card${d.cashPartnerUsdt?' cash-pay':''}"><div class="card-title">Ждём приход<span class="sub">${d.cashPartnerUsdt?'USDT от партнёра на наш кошелёк':isCrypto(d)?'USDT на кошелёк':`рубли на счёт в ${htmlText(rubReceivingBankLabel(d))}`}</span></div>
+    ${d.cashPartnerUsdt?`<p class="fh">Клиент передал наличные партнёру. Подписанные документы с Flow Sole остаются в деле. Каждый перевод USDT проверяется отдельно.</p>
+      <div class="fg"><label class="fl">Наш кошелёк · TRC-20</label><div class="fc cash-wallet">${htmlText((payinWallet(d)||{}).addr||'—')}</div></div>
+      ${(d.payinHashes||[]).length?`<div class="hashbox">${d.payinHashes.map(h=>`<div class="hrow"><b>+${money(h.amount,'USDT')}</b>${hashLink(h.hash,'TRC20')}<span class="src">сеть ✓</span></div>`).join('')}
+        <span class="hsum">Всего проверено: <b>${money(hashSum(d.payinHashes),'USDT')}</b></span></div>`:''}
+      <div class="fg"><label class="fl">Выбрать входящий перевод</label>
+        <div class="row"><button class="btn btn-secondary" onclick="cashIncomingLoad(${d.id})">Показать входящие на кошелёк</button></div>
+        ${S.cashIncoming?.[d.id]?`<select class="fc" onchange="cashIncomingPick(${d.id},this.value)"><option value="">— выберите перевод —</option>
+          ${S.cashIncoming[d.id].map(t=>`<option value="${t.hash}">${money(t.amount,'USDT')} · ${htmlText(t.from)} · ${t.hash.slice(0,12)}…</option>`).join('')}</select>`:''}</div>
+      <div class="fg"><label class="fl" for="ph_${d.id}">Или проверить хеш вручную</label><div class="row" style="flex-wrap:nowrap">
+        <input class="fc" id="ph_${d.id}" placeholder="Хеш перевода TRC-20"><button class="btn btn-secondary" onclick="payinCheck(${d.id})">Проверить</button></div></div>
+      <div class="row"><button class="btn btn-primary" ${(d.payinHashes||[]).length?'':'disabled'} onclick="cashPayinFinish(${d.id})">Все переводы получены · выбрать маршрут</button>
+        ${!(d.payinHashes||[]).length?`<button class="btn btn-outline" onclick="cashPayinMethod(${d.id},true)">Вернуть Flow Sole</button>`:''}</div>`:
+      isCrypto(d)?(function(){
       const exp=ap.pay, got=payinGot(d), left=rnd2(exp-got), hs=d.payinHashes||[], w=payinWallet(d)||{}, pt=(d.docFields||{}).payTo;
       return `<div class="fr">
       <div class="fg"><label class="fl">Ждём</label><input class="fc num" readonly value="${money(exp,'USDT')}"></div>
@@ -9939,6 +9982,7 @@ function stepCard(d){
       ${ex.purposeEdited?`<p class="fh">Изменено вручную. В договоре осталось: «${docFields(d).purpose||'—'}»
         <a href="#" onclick="expectReset(${d.id});return false" style="color:var(--coral)">вернуть как в договоре</a></p>`
         :`<p class="fh">Подставлено из договора. Если клиент прислал чек с другим текстом — впишите его, по нему и будем искать платёж.</p>`}</div>
+    ${(d.rubReceivingAccount||{}).mode==='flowsole'&&!d.payinParts?.length&&!d.manualBankReceipt&&S.role==='operator'?`<div class="row"><button class="btn btn-secondary" onclick="cashPayinMethod(${d.id})">Клиент передал наличные партнёру</button></div>`:''}
     ${clientPayinBlock(d)}
     ${manualBankReceiptBlock(d)}
     ${!d.manualBankReceipt&&rubApiAccount(d)?payinPool(d):''}`;})()}</div>`,
@@ -10795,7 +10839,7 @@ async function act(id,step){
        по третьей перевода нет. Пока хоть по одной не решили — отправлять нечего. */
     const mem=cnvMembers(d);
     const batch=convOf(d);
-    const funded=batch?hashSum(batch.txs):(isCrypto(d)?hashSum(d.payinHashes):null);
+    const funded=batch?hashSum(batch.txs):((isCrypto(d)||d.cashPartnerUsdt)?hashSum(d.payinHashes):null);
     const totalOut=pcOut(d);
     if(funded==null||Math.round(totalOut*100)>Math.round(funded*100)){
       toast('Подтверждено '+usd(funded||0)+', по задачам '+usd(totalOut)+' — сначала нужен подтверждённый приход на всю отправку');return;}

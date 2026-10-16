@@ -231,7 +231,7 @@ def preserve_server_fields(old_state, new_state):
                 continue
             trusted = old_payin.get(h.get('hash'))
             fields = ('verified', 'verifiedAt', 'timestampMs', 'otherSender',
-                      'network', 'net') + (
+                      'network', 'net', 'ledgerUseId') + (
                 () if str(h.get('hash') or '').startswith('demo:') else ('from', 'to'))
             for field in fields:
                 h.pop(field, None)

@@ -6716,6 +6716,12 @@ def _stand_close_fact_source(state, deal, kind):
     if kind == 'payin':
         pay_type = deal.get('payType')
         hashes = deal.get('payinHashes') or []
+        if pay_type == 'Наличные' and deal.get('cashPartnerUsdt'):
+            if hashes and all(h.get('verified') and h.get('ledgerUseId')
+                              and normalize_network(h.get('network')) == 'trc20'
+                              and _stand_number(h.get('amount')) > 0 for h in hashes):
+                return 'verified_partner_network', None
+            return None, 'verified_partner_payin_missing'
         if pay_type == 'Крипта':
             if hashes and all(h.get('verified') and _stand_number(h.get('amount')) > 0
                               for h in hashes):
@@ -7013,6 +7019,10 @@ def stand_crm_close(stand_deal_id):
             _stand_import_legacy_payins(db, row, state)
             db.info['stand_payin_origin'] = (row.generation, str(stand_deal['cnvId']))
             db.info['stand_payin_hashes'] = {_payin_hash_key(t.get('hash')) for t in conv.get('txs') or []}
+        elif stand_deal.get('cashPartnerUsdt'):
+            db.info['stand_payin_origin'] = (row.generation, f"cash:{stand_deal['id']}")
+            db.info['stand_payin_hashes'] = {
+                _payin_hash_key(t.get('hash')) for t in stand_deal.get('payinHashes') or []}
         try:
             result = _create_deal_impl(db, data=crm_data, defer_commit=True)
         finally:
@@ -8987,7 +8997,7 @@ def _stand_workflow_problem(previous, state, actor, db):
         if start in ('s14', 's14m') and end in ('s15', 's18', 's22'):
             if not _stand_close_fact_source(state, deal, 'payin')[0]:
                 return 'Сначала подтвердите приход оплаты'
-            crypto = deal.get('payType') == 'Крипта'
+            crypto = deal.get('payType') == 'Крипта' or deal.get('cashPartnerUsdt')
             if end == ('s18' if crypto else 's22'):
                 return 'После прихода используйте маршрут валюты оплаты'
         if start == 's15' and end == 's26' and not before.get('invoiceDetailsReturn'):
@@ -9366,6 +9376,12 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
         if 'closeEvidence' in deal:
             return 'Подтверждения закрытия назначает только сервер'
         before = old.get(deal.get('id'))
+        if (not before and deal.get('cashPartnerUsdt')) or (before and (
+                before.get('cashPartnerUsdt') != deal.get('cashPartnerUsdt')
+                       or (before.get('cashPartnerUsdt') and deal.get('payType') != 'Наличные'))):
+            return 'Способ оплаты наличными меняет только сервер'
+        if before and before.get('cashPartnerUsdt') and before.get('payinHashes') != deal.get('payinHashes'):
+            return 'Приход партнёра меняет только проверка перевода'
         if (not before and (deal.get('ippsPayoutOrder') or deal.get('_ippsPayoutInstruction'))):
             return 'Поручение IPPS назначает только сервер'
         if before:
@@ -11337,6 +11353,99 @@ def _stand_payin_target(state, deal):
     return network, legacy_addr if valid_address(legacy_addr, network) else None
 
 
+@app.route('/api/stand/payin/cash-method', methods=['POST'])
+def stand_payin_cash_method():
+    """Зафиксировать фактическую оплату наличными, сохранив подписанный пакет."""
+    if not STAND_MODE:
+        return jsonify(success=False, error='stand_only'), 404
+    actor = current_role()
+    if actor not in ('operator', 'admin'):
+        return jsonify(success=False, error='Способ оплаты меняет операционист'), 403
+    data = request.get_json(silent=True) or {}
+    db = get_session()
+    try:
+        if engine.dialect.name == 'sqlite':
+            db.execute(text('BEGIN IMMEDIATE'))
+        row = _stand_row(db, lock=True)
+        state = json.loads(row.data or '{}')
+        deal = next((d for d in state.get('deals') or [] if d.get('id') == data.get('dealId')), None)
+        restoring = data.get('restore') is True
+        expected_type = 'Наличные' if restoring else 'По реквизитам'
+        if (not deal or deal.get('step') != 's14' or deal.get('payType') != expected_type
+                or (deal.get('rubReceivingAccount') or {}).get('mode') != 'flowsole'
+                or restoring and (not deal.get('cashPartnerUsdt') or deal.get('payinHashes'))):
+            return jsonify(success=False, error='Сменить способ можно только на ожидании прихода Flow Sole'), 409
+        if (deal.get('payinParts') or deal.get('incomeAmount') or deal.get('receiptConfirmed')
+                or deal.get('manualBankReceipt') or any(
+                    i.get('dealId') == deal['id'] and _stand_number(i.get('rub')) > 0
+                    for i in state.get('incomes') or [])):
+            return jsonify(success=False, error='Банковский приход уже засчитан или сверяется'), 409
+        deal['payType'] = 'По реквизитам' if restoring else 'Наличные'
+        deal['cashPartnerUsdt'] = False if restoring else True
+        deal.setdefault('log', []).append({'at': int(time.time() * 1000), 'role': actor,
+            'text': ('Вернули ожидание оплаты по Flow Sole до прихода USDT.' if restoring else
+                     'Клиент передал наличные партнёру; вместо Flow Sole ждём USDT на наш кошелёк. Подписанные документы сохранены.')})
+        row.data = json.dumps(state, ensure_ascii=False)
+        row.version = (row.version or 0) + 1
+        row.updated_by = flask_session.get('display_name') or flask_session.get('username') or actor
+        row.updated_at = datetime.utcnow()
+        db.commit()
+        return jsonify(success=True, data=_stand_strip_files(state), version=row.version)
+    finally:
+        db.close()
+
+
+@app.route('/api/stand/payin/cash-incoming', methods=['GET'])
+def stand_payin_cash_incoming():
+    """Показать подтверждённые входящие TRC-20 на кошелёк сделки."""
+    if not STAND_MODE:
+        return jsonify(success=False, error='stand_only'), 404
+    if current_role() not in ('operator', 'admin'):
+        return jsonify(success=False, error='Список входящих доступен операционисту'), 403
+    try:
+        deal_id = int(request.args.get('dealId'))
+    except (TypeError, ValueError):
+        return jsonify(success=False, error='dealId обязателен'), 400
+    db = get_session()
+    try:
+        state = json.loads(_stand_row(db).data or '{}')
+        deal = next((d for d in state.get('deals') or [] if d.get('id') == deal_id), None)
+        if not deal or deal.get('step') != 's14' or not deal.get('cashPartnerUsdt'):
+            return jsonify(success=False, error='Сделка не ждёт USDT партнёра'), 409
+        network, receiver = _stand_payin_target(state, deal)
+        if network != 'trc20' or not receiver:
+            return jsonify(success=False, error='Для прихода нужен наш TRC-20 кошелёк'), 409
+        started = ((deal.get('log') or [{}])[0] or {}).get('at') or 0
+    finally:
+        db.close()
+    from decimal import Decimal
+    from stand_transfer_discovery import discover_transfers
+    found = discover_transfers(direction='incoming', wallet_addr=receiver,
+        expected_amount=Decimal(0), tolerance=Decimal('1000000000'),
+        after_ts=int(started), cache_ttl=20)
+    if found['status'] != 'complete':
+        return jsonify(success=False, error='Список входящих пока недоступен — можно проверить хеш вручную'), 503
+    db = get_session()
+    try:
+        state = json.loads(_stand_row(db).data or '{}')
+        used = {normalize_ref(h.get('hash'), 'trc20')
+                for d in state.get('deals') or [] for h in d.get('payinHashes') or []}
+        used.update(normalize_ref(t.get('hash'), 'trc20')
+                    for c in state.get('convs') or [] for t in c.get('txs') or [])
+        rows = []
+        for item in found['candidates']:
+            if item['hash'] in used:
+                continue
+            ledger = _payin_find(db, item['hash'], lock=False)
+            if ledger and _payin_exact_used(db, ledger) > Decimal('0.005'):
+                continue
+            rows.append({'hash': item['hash'], 'amount': float(item['amount']),
+                         'from': item['from'], 'timestampMs': item['timestamp_ms']})
+        return jsonify(success=True, incoming=rows[:100])
+    finally:
+        db.close()
+
+
 @app.route('/api/stand/payin/check', methods=['POST'])
 def stand_payin_check():
     """Проверить по сети перевод крипто-клиента и записать его в приход сделки.
@@ -11347,6 +11456,7 @@ def stand_payin_check():
     if not STAND_MODE:
         return jsonify({'success': False, 'error': 'stand_only'}), 404
     data = request.get_json(silent=True) or {}
+    role = current_role() or 'система'
     try:
         deal_id = int(data.get('dealId'))
     except (TypeError, ValueError):
@@ -11357,11 +11467,16 @@ def stand_payin_check():
     try:
         state = json.loads(_stand_row(db).data or '{}')
         deal = next((d for d in state.get('deals', []) if d.get('id') == deal_id), None)
-        if not deal or not (_stand_is_crypto(deal)):
+        cash_partner = bool(deal and deal.get('cashPartnerUsdt') and deal.get('payType') == 'Наличные')
+        if cash_partner and role not in ('operator', 'admin'):
+            return jsonify(success=False, error='Приход партнёра проверяет операционист'), 403
+        if not deal or not (_stand_is_crypto(deal) or cash_partner):
             return jsonify({'success': False, 'error': 'Крипто-сделка не найдена'}), 404
         if deal.get('step') != 's14':
             return jsonify({'success': False, 'error': 'Сделка не ждёт прихода'}), 409
         network, receiver = _stand_payin_target(state, deal)
+        if cash_partner and network != 'trc20':
+            return jsonify({'success': False, 'error': 'Приход партнёра ожидается в TRC-20'}), 409
         if not receiver:
             return jsonify({'success': False, 'error': 'У кошелька прихода нет корректной сети и адреса'}), 409
     finally:
@@ -11372,20 +11487,22 @@ def stand_payin_check():
     if not tx_hash or tx_hash.startswith('demo:'):
         return jsonify({'success': False, 'error': 'Хеш или ссылка не соответствует сети сделки'}), 400
     checked = verify_transfer(tx_hash, network, None, receiver, None)
-    # Роль фиксируем до записи; current_role() читает её в отдельной сессии.
-
-    role = current_role() or 'система'
+    # Роль уже зафиксирована до чтения доски: current_role() закрывает scoped-сессию.
     if checked['status'] != 'confirmed':
         return jsonify({'success': False, 'status': checked['status'],
                         'error': checked.get('checkError') or
                                  f'Перевод не найден или не подтверждён в выбранной сети {network.upper()}'}), 422
     db = get_session()
     try:
+        if engine.dialect.name == 'sqlite':
+            db.execute(text('BEGIN IMMEDIATE'))
         row = _stand_row(db, lock=True)
         state = json.loads(row.data or '{}')
         deal = next((d for d in state.get('deals', []) if d.get('id') == deal_id), None)
         if not deal or deal.get('step') != 's14':
             return jsonify({'success': False, 'error': 'Сделка изменилась — повторите проверку'}), 409
+        if bool(deal.get('cashPartnerUsdt') and deal.get('payType') == 'Наличные') != cash_partner:
+            return jsonify({'success': False, 'error': 'Способ оплаты изменился — повторите проверку'}), 409
         if _stand_payin_target(state, deal) != (network, receiver):
             return jsonify({'success': False, 'error': 'Сеть или кошелёк прихода изменились — повторите проверку'}), 409
         used = any(normalize_network(h.get('network') or 'trc20') == network
@@ -11396,6 +11513,28 @@ def stand_payin_check():
             for c in state.get('convs', []) for t in c.get('txs') or [])
         if used:
             return jsonify({'success': False, 'error': 'Этот хеш уже привязан к сделке'}), 409
+        if cash_partner:
+            from decimal import Decimal
+            _stand_import_legacy_payins(db, row, state, tx_hash)
+            ledger_tx = _payin_find(db, tx_hash)
+            total = Decimal(str(checked['verifiedAmount']))
+            if not total.is_finite() or total <= 0:
+                return jsonify(success=False, error='Некорректная сумма перевода в сети'), 422
+            if ledger_tx and ((ledger_tx.network or 'trc20') != 'trc20'
+                              or _payin_exact_used(db, ledger_tx) > Decimal('0.005')):
+                return jsonify(success=False, error='Перевод уже учтён в общем реестре'), 409
+            if not ledger_tx:
+                ledger_tx = PayinTx(tx_hash=tx_hash, network='trc20')
+                db.add(ledger_tx)
+            ledger_tx.amount_usdt = float(total)
+            ledger_tx.source = 'tronscan'
+            ledger_tx.to_address = receiver
+            ledger_tx.tx_time = datetime.utcfromtimestamp(checked['timestampMs'] / 1000) if checked.get('timestampMs') else None
+            db.flush()
+            use = PayinTxUse(tx_id=ledger_tx.id, amount_usdt=float(total),
+                             stand_generation=row.generation, stand_cnv_id=f'cash:{deal_id}')
+            db.add(use)
+            db.flush()
         started = ((deal.get('log') or [{}])[0] or {}).get('at')
         if started and checked.get('timestampMs') and checked['timestampMs'] < int(started):
             return jsonify({'success': False, 'error': 'Перевод сделан раньше, чем завели сделку'}), 422
@@ -11404,7 +11543,9 @@ def stand_payin_check():
         tx = {'hash': tx_hash, 'network': network.upper(), 'amount': checked['verifiedAmount'],
               'from': sender, 'to': receiver, 'verified': True,
               'verifiedAt': checked['verifiedAt'], 'timestampMs': checked.get('timestampMs')}
-        if payer and sender and (payer.lower() != sender.lower() if network == 'erc20'
+        if cash_partner:
+            tx['ledgerUseId'] = use.id
+        if not cash_partner and payer and sender and (payer.lower() != sender.lower() if network == 'erc20'
                                  else payer != sender):
             tx['otherSender'] = True
         deal.setdefault('payinHashes', []).append(tx)
@@ -11413,7 +11554,7 @@ def stand_payin_check():
             'role': role,
             'text': f"Приход проверен в сети: {checked['verifiedAmount']} USDT с {sender}"
                     + (' — это не кошелёк клиента из сделки' if tx.get('otherSender') else '')})
-        if not payer and sender:
+        if not cash_partner and not payer and sender:
             deal['payerWallet'] = sender
         row.data = json.dumps(state, ensure_ascii=False)
         row.version = (row.version or 0) + 1
