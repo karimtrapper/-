@@ -178,6 +178,98 @@ def test_manual_broker_send_locked_after_handoff(api):
     assert response.status_code == 409, response.json
 
 
+@pytest.mark.parametrize('field', [
+    'sent', 'held', 'clientRubTotal', 'broker', 'rate', 'requestNo', 'at',
+    'sentTs', 'rubTotal', 'feeMode', 'feeCtrl', 'source_clientRub',
+    'source_usdt', 'source_accountKey', 'source_dealId', 'extra_source',
+    'missing_clientRubTotal', 'missing_source_clientRub', 'missing_conv',
+])
+def test_sent_manual_broker_facts_cannot_change_by_full_put(api, field):
+    _, state = manual_handoff()
+    seed(state)
+    changed = copy.deepcopy(state)
+    conv = changed['convs'][0]
+    source = conv['sources'][0]
+    if field == 'extra_source':
+        conv['sources'].append(copy.deepcopy(source))
+    elif field == 'missing_clientRubTotal':
+        conv.pop('clientRubTotal')
+    elif field == 'missing_source_clientRub':
+        source.pop('clientRub')
+    elif field == 'missing_conv':
+        changed['convs'] = []
+    elif field.startswith('source_'):
+        key = field.removeprefix('source_')
+        source[key] = 1487 if key == 'dealId' else 123
+    else:
+        conv[field] = {'broker': 'Другой брокер', 'feeMode': 'auto',
+                       'requestNo': 'OTHER', 'at': '13.10', 'rate': '81'}.get(field, 123)
+    response = api[0].put('/api/stand/state', json={'version': 1, 'data': changed,
+                                                     'fileStorageVersion': 1})
+    assert response.status_code == 409, (field, response.json)
+
+
+@pytest.mark.parametrize('role', ['manager', 'operator', 'admin'])
+def test_sent_manual_broker_facts_are_locked_for_every_role(api, role):
+    _, state = manual_handoff()
+    seed(state)
+    changed = copy.deepcopy(state)
+    changed['convs'][0]['sent'] += .01
+    api[1][0] = role
+    response = api[0].put('/api/stand/state', json={'version': 1, 'data': changed,
+                                                     'fileStorageVersion': 1})
+    assert response.status_code == 409, (role, response.json)
+
+
+def test_new_auto_broker_facts_are_locked_but_legacy_auto_keeps_prior_contract(api):
+    _, manual = manual_handoff()
+    auto = copy.deepcopy(manual)
+    auto['deals'][0]['brokerSentOverride'] = None
+    auto['convs'][0].pop('feeMode')
+    assert m._stand_guard_transition(auto, copy.deepcopy(auto), 'operator') is None
+    changed = copy.deepcopy(auto)
+    changed['convs'][0]['sent'] += .01
+    assert 'нельзя менять' in m._stand_guard_transition(auto, changed, 'operator')
+    legacy = copy.deepcopy(auto)
+    legacy['convs'][0].pop('clientRubTotal')
+    legacy['convs'][0]['sources'][0].pop('clientRub')
+    changed = copy.deepcopy(legacy)
+    changed['convs'][0]['held'] += .01
+    assert m._stand_guard_transition(legacy, changed, 'operator') is None
+
+
+def test_new_auto_handoff_requires_client_amount_snapshot(api):
+    previous, state = manual_handoff()
+    deal = state['deals'][0]
+    deal['brokerSentOverride'] = None
+    conv = state['convs'][0]
+    conv.pop('feeMode')
+    conv.update(sent=897260, held=2740, feeCtrl=940, feeOurs=1800,
+                feePct=.3, feeFix=40, feeCtrlPct=.1, feeOursPct=.2)
+    conv['sources'][0]['usdt'] = 11215.75
+    assert m._stand_broker_handoff_problem(previous, state, previous['deals'][0], deal) is None
+    conv.pop('clientRubTotal')
+    assert 'сумма клиента' in m._stand_broker_handoff_problem(previous, state, previous['deals'][0], deal).lower()
+    conv['clientRubTotal'] = 900000
+    conv['sources'][0].pop('clientRub')
+    assert 'сумма клиента' in m._stand_broker_handoff_problem(previous, state, previous['deals'][0], deal).lower()
+
+
+def test_sent_manual_broker_accepts_incoming_events_and_locks_facts_after_receive(api):
+    _, state = manual_handoff()
+    received = copy.deepcopy(state)
+    conv = received['convs'][0]
+    conv['txs'] = [{'hash': 'a' * 64, 'net': 'TRC-20', 'amount': 11237.5,
+                    'status': 'confirmed'}]
+    conv['sources'][0]['usdtFact'] = 11237.5
+    conv['status'] = 'received'
+    conv['receivedAt'] = '13.10, 12:00'
+    assert m._stand_guard_transition(state, received, 'operator') is None
+    tampered = copy.deepcopy(received)
+    tampered['convs'][0]['sources'][0]['usdt'] += .01
+    assert 'нельзя менять' in m._stand_guard_transition(received, tampered, 'operator')
+
+
 def test_missing_account_key_uses_confirmed_bik_and_account_without_mixing(api):
     state = board('s18w')
     second = copy.deepcopy(state['deals'][0])
@@ -452,9 +544,11 @@ def test_rubles_can_be_sent_while_manager_or_founder_has_payment_task(api, payme
     d['prepay']['brokerStep'] = 's18w'
     saved['data']['convs'] = [{'id': 1, 'walletId': 'company', 'broker': 'Брокер',
         'rate': '80', 'status': 'sent', 'at': '12.10, 12:00', 'requestNo': 'TEST', 'sentTs': 1700000000000,
-        'rubTotal': 900000, 'sent': 897260, 'held': 2740, 'feeCtrl': 940, 'feeOurs': 1800,
+        'rubTotal': 900000, 'clientRubTotal': 900000,
+        'sent': 897260, 'held': 2740, 'feeCtrl': 940, 'feeOurs': 1800,
         'feePct': .3, 'feeFix': 40, 'feeCtrlPct': .1, 'feeOursPct': .2,
-        'sources': [{'dealId': 1484, 'rub': 900000, 'usdt': 11215.75}], 'txs': []}]
+        'sources': [{'dealId': 1484, 'rub': 900000, 'clientRub': 900000,
+                     'usdt': 11215.75}], 'txs': []}]
     saved = put(api, saved, 'operator')
     assert saved['data']['deals'][0]['step'] == payment_stage
     assert saved['data']['deals'][0]['prepay']['brokerStep'] == 's18w'
