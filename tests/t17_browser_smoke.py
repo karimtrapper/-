@@ -360,6 +360,23 @@ with sync_playwright() as playwright:
     crm.close()
     form=host.locator('#createDealForm')
     pick(form,'payinMethod','crypto_direct')
+    pool_hashes=['a'*64,'b'*64]
+    page.evaluate('''hashes=>{
+      for(const hash of hashes)crmDraftActive.core.selectPayinTx({
+        value:hash,selectedIndex:0,
+        selectedOptions:[{dataset:{amount:'500',date:'2026-10-16'}}]
+      });
+    }''',pool_hashes)
+    assert form.locator('#payinManualHash').input_value()==pool_hashes[0]
+    assert page.evaluate('crmDraftActive.manualTx') is None
+    pool_commit=page.evaluate('async()=>await crmDraftCommit(S.edit)')
+    assert pool_commit is not False
+    assert page.evaluate('deal(S.edit).payinHashes.map(x=>x.hash)')==pool_hashes
+    print('two selected incoming hashes save without manual re-verification: PASS')
+    page.evaluate('''()=>{
+      crmDraftActive.core.resetPayinTxPool([]);
+      crmDraftActive.root.getElementById('payinManualHash').value='';
+    }''')
     form.locator('#payinManualHash').fill(incoming_hash)
     form.locator('#payinManualHash').press('Tab')
     page.wait_for_function('document.querySelector("#crmDraftHost")?.shadowRoot?.querySelector("[name=payin_amount_usdt]")?.value==="1234.56"',timeout=10000)

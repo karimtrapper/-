@@ -618,6 +618,10 @@ async function crmDraftLookupPayin(active) {
     if(hint){hint.textContent='Сумма '+active.manualTx.amount.toFixed(2)+' USDT подтверждена сетью';hint.style.display='block';}
   }catch(error){toast('Хэш не принят: '+error.message);}
 }
+function crmDraftManualHashFromPool(active,hash,network) {
+  return !!hash&&active.core.payinTxPool.some(tx=>
+    tx.hash===hash&&String(tx.network||'trc20').toLowerCase().replace('-','')===network);
+}
 function crmDraftClientSearch(active,query) {
   const box=active.root.getElementById('clientDropdown');if(!box)return;
   const q=query.trim().toLowerCase();
@@ -760,7 +764,12 @@ function crmDraftCommit(id) {
   const kind=crmDraftRead(r,'dealKindSelect');
   if(kind==='custom')return crmDraftCommitCustom(a,d,before);
   const manualHash=crmDraftRead(r,'payinManualHash').trim();
-  if(manualHash&&a.manualTx?.hash!==manualHash){toast('Сначала подтвердите сумму ручного хэша в сети');return false;}
+  const manualNetwork=crmDraftRead(r,'payinManualNetwork')||'trc20';
+  // Выбор из реестра копирует первый хэш пула в ручное поле для карточки сделки.
+  const fromPool=crmDraftManualHashFromPool(a,manualHash,manualNetwork);
+  if(manualHash&&!fromPool&&(a.manualTx?.hash!==manualHash||a.manualTx?.network!==manualNetwork)){
+    toast('Сначала подтвердите сумму ручного хэша в сети');return false;
+  }
   let tariff=null;
   if(kind==='mf_freehold'){
     tariff=document.getElementById('crmDraftTariff')?.value;
@@ -814,7 +823,8 @@ function crmDraftCommit(id) {
   d.payinPartner=crmDraftRead(r,'payin_partner_name');
   d.payinHashes=a.core.payinTxPool.map(x=>({hash:x.hash,network:x.network||'trc20',amount:crmDraftNum(x.amount_usdt)}));
   d.payinExtra=a.core.payinExtraSerialize();
-  if(a.manualTx&&!d.payinHashes.some(x=>x.hash===a.manualTx.hash))d.payinHashes.push(a.manualTx);
+  if(manualHash&&!fromPool&&a.manualTx?.hash===manualHash&&a.manualTx.network===manualNetwork&&
+     !d.payinHashes.some(x=>x.hash===manualHash))d.payinHashes.push(a.manualTx);
   const old=new Set((d.payinParts||[]).map(p=>p.incId).filter(Boolean));
   d.payinParts=a.core.sberParts.map(p=>({uuid:p.uuid||null,
     incId:p.uuid?'sber:'+p.uuid:null,amountRub:crmDraftNum(p.amount_rub),
