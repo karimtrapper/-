@@ -3151,6 +3151,18 @@ function brokerSend(rub,fee){
   return {sent:sent, held:Math.round((ctrl+ours)*100)/100, ctrl:ctrl, ours:ours,
           pct:Math.round((c+o)*100)/100, ctrlPct:c, oursPct:o, fix:f};
 }
+function brokerSentAmount(d,total){
+  if(d.brokerSentOverride==null)return brokerSend(total);
+  const sent=brokerSentParse(d.brokerSentOverride);
+  if(sent==null)return {sent:NaN,held:NaN,manual:true};
+  return {sent,held:Math.round((total-sent)*100)/100,manual:true};
+}
+function brokerSentParse(raw){
+  const value=String(raw).replace(/[\s\u00a0\u202f\u2009]/g,'').replace(',','.');
+  if(!/^\d+(?:\.\d{1,2})?$/.test(value))return null;
+  const amount=Number(value);
+  return Number.isSafeInteger(Math.round(amount*100))&&amount>0?Math.round(amount*100)/100:null;
+}
 /* Откуда физически берутся баты. Это не шаг флоу, а ответ на вопрос «чем платим»:
    от источника зависит, нужна ли конвертация USDT→THB и родится ли обязательство.
    Со счёта IPPS возвращать некому — деньги уже наши. С кошелька фаундера — долг. */
@@ -4743,12 +4755,26 @@ function s18Sber(d){
 function s18AccountKey(d){
   const parts=d?.payinParts||[];
   if(!parts.length)return null;
+  const receipt=d.manualBankReceipt||{}, target=d.rubReceivingAccount||{};
+  const confirmed=receipt.status==='confirmed'&&receipt.confirmedAt&&receipt.confirmedBy;
+  const account=String((confirmed&&receipt.account)||target.account||'').replace(/\D/g,'');
+  const bik=String((confirmed&&receipt.bankBik)||target.bik||'').replace(/\D/g,'');
+  const fallback=account.length===20&&bik.length===9?'bank:'+bik+':'+account:null;
   const keys=parts.map(p=>{const i=incomes().find(x=>String(x.id)===String(p.incId));
-    return i?(i.accountKey||i.source==='sber'&&'sber'||null):null;});
+    if(!i)return null;
+    if(i.source==='sber')return 'sber';
+    if(i.accountKey&&fallback){
+      const alias=confirmed&&receipt.actualMode==='flowsole'||target.mode==='flowsole'?'flow_sole':
+        target.mode==='custom'?'other:'+account:null;
+      if(i.accountKey!==alias&&i.accountKey!==fallback)return null;
+    }
+    return fallback||i.accountKey||null;
+  });
   return keys[0]&&keys.every(k=>k===keys[0])?keys[0]:null;
 }
 function s18AccountLabel(key){return key==='sber'?'Сбер':key==='flow_sole'?'Flow Sole':
-  key?.startsWith('other:')?'Другой счёт · '+key.slice(6):'Счёт не указан';}
+  key?.startsWith('other:')?'Другой счёт · '+key.slice(6):
+  key?.startsWith('bank:')?'Банковский счёт · ••••'+key.slice(-4):'Счёт не указан';}
 function s18Rub(d){
   const parts=d.payinParts||[];
   if(!parts.length)return Number(d.incomeAmount||d.amountRub||0);
@@ -4759,7 +4785,7 @@ function s18Rub(d){
   },0)*100)/100;
 }
 function s18CrmRows(d){
-  if(s18SelectedDealId!==d.id){s18Selected.clear();s18SelectedDealId=d.id;}
+  if(s18SelectedDealId!==d.id){s18Selected=new Set(d.brokerCrmDraftIds||[]);s18SelectedDealId=d.id;}
   const accountKey=s18AccountKey(d);
   if(!accountKey)return [];
   const own=new Set((d.payinParts||[]).map(p=>String(p.incId)));
@@ -4768,7 +4794,8 @@ function s18CrmRows(d){
     !incomes().some(i=>i.id==='sber:'+x.uuid&&(i.cnvId||i.dealId)));
 }
 function s18ToggleCrm(id){
-  s18Selected.has(id)?s18Selected.delete(id):s18Selected.add(id);render();
+  s18Selected.has(id)?s18Selected.delete(id):s18Selected.add(id);
+  const d=deal(S.open);if(d){d.brokerCrmDraftIds=[...s18Selected];save();}render();
 }
 async function s18FetchCandidates(){
   if(!STAND||!['operator','admin'].includes(standMe))return;
@@ -4986,8 +5013,9 @@ function viewCnv(){
         <td class="num">${x.usdtFact!=null?usd(x.usdtFact):'<span style="color:var(--text-muted)">ждём</span>'}</td>
         <td style="white-space:nowrap">${x.dealId?`<a href="#" onclick="cnvClose();openDeal(${x.dealId});return false">${htmlText((deal(x.dealId)||{}).code||'#'+x.dealId)}</a> ${htmlText((deal(x.dealId)||{}).client||'')}`:x.crmDealId?`<a href="/crm?deal=${x.crmDealId}" target="_blank" rel="noopener">CRM #${x.crmDealId}</a> ${htmlText(x.crmClient||'')}`:'<span style="color:var(--text-muted)">поступление без сделки</span>'}</td></tr>`).join('')}
       <tr><th>Итого</th><th></th><th class="num">${money(rub,'₽')}</th><th class="num">${usd(plan)}</th><th class="num">${got?usd(got):'—'}</th><th></th></tr>
-      ${c.held?`<tr><th>Удержано</th><td colspan="5">${moneyKop(c.held,'₽')} — валютный контроль ${moneyKop(c.feeCtrl||0,'₽')} (${c.feeCtrlPct||0.1}% + ${c.feeFix} ₽) и ${moneyKop(c.feeOurs||0,'₽')} (${c.feeOursPct||0.2}%) остались на рублёвом счёте, вне экономики сделки</td></tr>
-      <tr><th>Отправлено</th><td colspan="5">${moneyKop(c.sent,'₽')} по курсу ${c.rate}</td></tr>`:''}
+      ${c.clientRubTotal!=null?`<tr><th>Сумма клиента</th><td colspan="5">${moneyKop(c.clientRubTotal,'₽')} · ${c.clientRubTotal>=c.sent?'общие расходы '+moneyKop(c.clientRubTotal-c.sent,'₽'):'превышение суммы клиента '+moneyKop(c.sent-c.clientRubTotal,'₽')}</td></tr>`:''}
+      ${c.held?`<tr><th>${c.feeMode==='manual'?'Не отправлено брокеру':'Удержано'}</th><td colspan="5">${moneyKop(c.held,'₽')}${c.feeMode==='manual'?' — ручная сумма отправки; состав удержаний не задан, разница вне прибыли сделки':' — валютный контроль '+moneyKop(c.feeCtrl||0,'₽')+' ('+(c.feeCtrlPct||0.1)+'% + '+c.feeFix+' ₽) и '+moneyKop(c.feeOurs||0,'₽')+' ('+(c.feeOursPct||0.2)+'%) остались на рублёвом счёте, вне экономики сделки'}</td></tr>`:''}
+      ${c.sent?`<tr><th>Отправлено</th><td colspan="5">${moneyKop(c.sent,'₽')} по курсу ${c.rate}</td></tr>`:''}
       </tbody></table></div>
       <div class="card-title" style="font-size:14px;margin:18px 0 10px">Чем закрыта — приходы USDT</div>
       ${c.txs.length?c.txs.map(x=>`<div style="margin:5px 0;font-size:13px">${hashLink(x.hash,x.net,x.amount)}
@@ -7194,6 +7222,37 @@ function txUsed(hash){ return S.deals.some(d=>(d.payinHashes||[]).some(h=>h.hash
    во сколько обойдутся баты, которые мы должны. Видно сразу, в плюсе мы или нет
    (Карим, 22.09). */
 function brokerDraft(id,v){const d=deal(id);d.brokerDraft=cleanNum(v);save();render();}
+function brokerSentInput(id,raw){
+  const key=id+'|b_sent';DRAFTS[key]=raw;
+  const hint=document.getElementById('b_sent_error');
+  const amount=brokerSentParse(raw), d=deal(id);
+  const total=s18BatchTotal(d);
+  if(hint)hint.textContent=amount==null?'Введите сумму больше 0 с точностью до копейки.':
+    amount>total?'Сумма отправки больше подтверждённого пополнения.':'';
+  if(amount==null||amount>total)return;
+  delete DRAFTS[key];d.brokerSentOverride=amount;save();render();
+}
+function brokerSentDraft(id,raw){
+  DRAFTS[id+'|b_sent']=raw;
+  const hint=document.getElementById('b_sent_error');
+  const amount=brokerSentParse(raw);
+  if(hint)hint.textContent=amount==null?'Введите сумму больше 0 с точностью до копейки.':
+    amount>s18BatchTotal(deal(id))?'Сумма отправки больше подтверждённого пополнения.':'';
+}
+function brokerSentAuto(id){
+  delete DRAFTS[id+'|b_sent'];const d=deal(id);
+  d.brokerSentOverride=null;save();render();
+}
+function s18BatchTotal(d){
+  return s18Rub(d)+(d.conv||[]).map(deal).filter(Boolean).reduce((s,x)=>s+s18Rub(x),0)+
+    s18CrmRows(d).filter(x=>s18Selected.has(x.id)).reduce((s,x)=>s+x.rub,0);
+}
+function s18ClientRub(d){return Number(d.amountRub)>0?Number(d.amountRub):s18Rub(d);}
+function s18ClientTotal(d){
+  return Math.round((s18ClientRub(d)+(d.conv||[]).map(deal).filter(Boolean)
+    .reduce((s,x)=>s+s18ClientRub(x),0)+s18CrmRows(d).filter(x=>s18Selected.has(x.id))
+    .reduce((s,x)=>s+x.rub,0))*100)/100;
+}
 /* Брокер на отправке — тот, чей курс взят в расчёт клиенту (quoteUsed), а не зашитый
    Tradex: рубли уходили одному брокеру по курсу другого (аудит 27.09 №1). Сменили
    брокера — подставляем его ответ со шага курсов; не давал — поле пустое, курс
@@ -7215,7 +7274,7 @@ function brokerPickSet(id,v){
 function convMargin(d,total,rate,crmRows=[]){
   const ut=num(d.rates.usdtThb)||avgUsdt();
   if(!rate||!total) return null;
-  const totalSent=brokerSend(total).sent;
+  const totalSent=brokerSentAmount(d,total).sent;
   /* сколько батов должны по всем сделкам пачки — фрихолд батами не выдаёт вообще,
      его доля себестоимости это S (сумма в IPPS), уже в USDT, без курса партнёра
      (спека 28.09-freehold-no-baht). Смешивать нельзя: у X там доллары, не баты. */
@@ -7255,14 +7314,14 @@ function convMarginBlock(d,total,crmRows=[]){
   const rate=num(brokerRate(d)||d.rates.broker);
   const unlinkedRub=crmRows.filter(x=>!x.dealId).reduce((s,x)=>s+x.rub,0);
   const unlinkedLine=unlinkedRub?`<div style="margin-top:6px">Поступления без сделки: конвертируем <b>${moneyKop(unlinkedRub,'₽')}</b> → ${
-    rate?'≈ <b>'+moneyKop(brokerSend(total).sent*unlinkedRub/total/rate,'USDT')+'</b>':'USDT посчитаем после курса'}; прибыль не считаем — сделки нет.</div>`:'';
+    rate?'≈ <b>'+moneyKop(brokerSentAmount(d,total).sent*unlinkedRub/total/rate,'USDT')+'</b>':'USDT посчитаем после курса'}; прибыль не считаем — сделки нет.</div>`:'';
   if(!rate) return `<div class="derived"><div>Поставьте курс брокера для оценки результата пачки.${unlinkedLine}</div></div>`;
   const m=convMargin(d,total,rate,crmRows);
   if(!m) return unlinkedLine?`<div class="derived"><div>${unlinkedLine}</div></div>`:'';
   const ok=m.profit>0;
   return `<div class="derived" style="margin-top:12px"><div>
     <b>Ориентировочная прибыль по сделкам с известными обязательствами: ${ok?'':'−'}${usd(Math.abs(m.profit))}${m.pct!=null?' ('+m.pct.toFixed(2)+' %)':''}</b><br>
-    <span class="fh">Фикс 40 ₽ за поручение делится по долям: при добавлении поступлений прибыль по известным сделкам может сдвинуться на копейки.</span><br>
+    <span class="fh">${d.brokerSentOverride!=null?'Сумма отправки задана вручную.':'Фикс 40 ₽ за поручение делится по долям: при добавлении поступлений прибыль по известным сделкам может сдвинуться на копейки.'}</span><br>
     По курсу ${String(rate).replace('.',',')} по этим сделкам получим <b>${usd(m.usdtIn)}</b> за ${moneyKop(m.sent,'₽')}.
     ${m.thb?'Должны выдать <b>'+money(m.thb,'฿')+'</b> — по курсу партнёра '+String(m.ut).replace('.',',')+' это <b>'+usd(m.thb/m.ut)+'</b>. ':''}
     ${m.freeholdCost?'В IPPS уйдёт <b>'+usd(m.freeholdCost)+'</b>. ':''}
@@ -9029,15 +9088,13 @@ function stepGoal(d){
     case 's18': return (function(){
       /* В шапке была сумма одной сделки, хотя брокеру уходит вся пачка: при
          добранных обменах цифра расходилась с тем, что ниже в карточке. */
-      const own=d.incomeAmount||d.amountRub||0;
-      const добрано=exSum((d.conv||[]).map(deal).filter(Boolean));
+      const total=s18BatchTotal(d);
       /* Брокеру уходит сумма за вычетом удержания 0,3 % + 40 ₽ — её и показываем
          главной, сумма от клиента — подписью: сверка с заявкой брокера расходилась
          на 5 227 ₽ (аудит 27.09 №2, Карим, 27.09) */
-      const selectedCrm=s18CrmRows(d).filter(x=>s18Selected.has(x.id)).reduce((sum,x)=>sum+x.rub,0);
-      const bs=brokerSend(own+добрано+selectedCrm), bp=brokerPicked(d);
+      const bs=brokerSentAmount(d,total), bp=brokerPicked(d);
       return {t:'Отдать рубли брокеру и зафиксировать курс',
-        nums:[['Уйдёт брокеру',own+добрано+selectedCrm?moneyKop(bs.sent,'₽'):'—'],
+        nums:[['Уйдёт брокеру',total?moneyKop(bs.sent,'₽'):'—'],
               ['Ждём USDT',num(brokerRate(d))?'≈ '+moneyKop(bs.sent/num(brokerRate(d)),'USDT'):'после курса']]};})();
     case 's18w': return (function(){
       /* Как и на отправке: брокеру ушла вся пачка, а шапка показывала одну сделку
@@ -9050,7 +9107,7 @@ function stepGoal(d){
       return {t:'Получить USDT и хэш — это факт прихода',
         nums:[['Ждём USDT',plan!=null?usd(plan):'—'],['Курс заявки',d.rates.broker||'—'],
               ['Ушло брокеру',(c&&c.sent?moneyKop(c.sent,'₽'):money2(rub,'₽'))+(n>1?' · '+n+' '+plural(n,'сделка','сделки','сделок'):'')]],
-        sub:c&&c.sent?'пришло от клиента '+money2(rub,'₽')+' · удержано '+moneyKop(c.held,'₽'):''};})();
+        sub:c&&c.sent?'сумма клиента '+money2(c.clientRubTotal!=null?c.clientRubTotal:rub,'₽')+' · на счёте осталось '+moneyKop(c.held,'₽'):''};})();
     case 's22': if(d.prepay)return {t:'Согласовать заявку IPPS',nums:[['В IPPS',usd(d.prepay.amount)],['Источник',d.prepay.wallet.addr||'—'],['Застройщику',usd(d.invoiceUsd||0)]],sub:'Оплата идёт параллельно с конвертацией у брокера'};
       return {t:'Решить, куда уходят пришедшие USDT',
       nums:[['На кошельке',(function(){const c=convOf(d);const g=c?hashSum(c.txs):d.pay.usdt;return g?usd(g):'—';})()],
@@ -9911,9 +9968,19 @@ function stepCard(d){
     const base=s18Rub(d)||ap.rub||0;
     const total=base+selD.reduce((sum,x)=>sum+s18Rub(x),0)+crmSel.reduce((sum,x)=>sum+x.rub,0);
     const bp=brokerPicked(d), bq=brokerQuote(d,bp), used=quoteUsed(d,'rub');
-    const batch=brokerSend(total), rate=num(brokerRate(d)||d.rates.broker||d.rates.rubUsdt);
+    const clientTotal=s18ClientTotal(d);
+    const batch=brokerSentAmount(d,total), rate=num(brokerRate(d)||d.rates.broker||d.rates.rubUsdt);
+    const clientDifference=Math.round((clientTotal-batch.sent)*100)/100;
+    const sentInvalid=!(batch.sent>0&&batch.sent<=total)||DRAFTS[d.id+'|b_sent']!==undefined;
     return `<div class="card s18-action-fields"><div class="card-title">Подготовка пачки · ${htmlText(s18AccountLabel(accountKey))}</div>
     <p class="fh">Сейчас это черновик для ${htmlText(d.code)}. Другие сделки войдут в пачку, только если отметить их в «Составе пачки». Запись появится в разделе «Конвертации» после отправки рублей брокеру.</p><div class="fr">
+      <div class="fg"><label class="fl">Сумма пополнения клиента, ₽</label><div class="fc num" aria-label="Сумма пополнения клиента">${moneyKop(clientTotal,'₽')}</div>
+        ${Math.abs(clientTotal-total)>.005?`<span class="fh">Зачислено на счёт: ${moneyKop(total,'₽')}</span>`:''}</div>
+      <div class="fg"><label class="fl" for="b_sent">Сумма отправки брокеру, ₽<span class="rq">*</span></label>
+        <input class="fc num" id="b_sent" inputmode="decimal" value="${htmlText(batch.sent.toFixed(2).replace('.',','))}" oninput="brokerSentDraft(${d.id},this.value)" onchange="brokerSentInput(${d.id},this.value)">
+        <span class="fh" id="b_sent_error">${sentInvalid?'Проверьте сумму отправки: она должна быть больше нуля и не превышать пополнение.':''}</span>
+        ${d.brokerSentOverride!=null?`<button type="button" class="btn btn-outline btn-sm" onclick="brokerSentAuto(${d.id})">Рассчитать по шаблону</button>`:'<span class="fh">Сумма рассчитана по шаблону 0,3 % + 40 ₽</span>'}</div>
+      <div class="fg"><label class="fl">${clientDifference<0?'Превышение суммы клиента, ₽':'Общие расходы, ₽'}</label><div class="fc num">${moneyKop(Math.abs(clientDifference),'₽')}</div></div>
       <div class="fg"><label class="fl">Брокер<span class="rq">*</span></label>
         <select class="fc" id="b0" onchange="brokerPickSet(${d.id},this.value)">
           <option value="">— выбрать брокера —</option>
@@ -9937,7 +10004,7 @@ function stepCard(d){
       <div class="fg"><label class="fl" for="s18_to">По <span class="sub2">дд.мм.гггг</span></label><input class="fc" type="date" lang="ru" id="s18_to" value="${htmlText(s18Filters.to)}" onchange="s18FilterSet('to',this.value)"></div>
     </div><p class="fh" style="margin:0 0 8px">${s18Filters.query||s18Filters.from||s18Filters.to?'По фильтру':'Свободно'}: ${filtered.length} поступл. · ${moneyKop(filtered.reduce((s,x)=>s+x.rub,0),'₽')}. Отмеченные остаются в пачке, даже если скрыты фильтром.</p>`:''}
     <div class="list">
-      ${(function(){const net=brokerSend(total);
+      ${(function(){const net=batch;
         /* доли считаем от чистой суммы; копейку округления забирает основная сделка,
            иначе доли не сойдутся с тем, что реально ушло брокеру */
         const sh=v=>total?Math.round(net.sent*(v/total)*100)/100:0;
@@ -9945,7 +10012,7 @@ function stepCard(d){
         const baseNet=Math.round((net.sent-extraSum)*100)/100;
         return `<div class="li on" style="cursor:default"><span class="av">СД</span>
         <div><div class="t1">${d.code} · ${d.client}</div>
-          <div class="t2">основная сумма по этой сделке · к брокеру уйдёт <b>${moneyKop(baseNet,'₽')}</b> за вычетом удержания</div></div>
+          <div class="t2">основная сумма по этой сделке · к брокеру уйдёт <b>${moneyKop(baseNet,'₽')}</b></div></div>
         <span class="t3 num">${money(base,'₽')}</span></div>
       ${bankSber&&extra.length?extra.map(x=>`<div class="li ${sel.indexOf(x.id)<0?'':'on'}" onclick="toggleConv(${d.id},${x.id})">
         <span class="av">${sel.indexOf(x.id)<0?'+':'✓'}</span><div><div class="t1">${x.code} · ${x.client}</div>
@@ -9959,13 +10026,13 @@ function stepCard(d){
     </div>
     </details>
     ${transferModeBlock(d)}
-    <details class="deal-detail s18-detail"><summary>Удержания · ${moneyKop(batch.held,'₽')}</summary><div class="derived" style="margin-top:4px">
+    <details class="deal-detail s18-detail"><summary>Расчёт отправки · ${moneyKop(batch.sent,'₽')}</summary><div class="derived" style="margin-top:4px">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
-      <span>${(function(){const b=brokerSend(total);
-        return `Удержим <b>${moneyKop(b.held,'₽')}</b>: валютный контроль <b>${moneyKop(b.ctrl,'₽')}</b> (${pct(b.ctrlPct)} + ${b.fix} ₽) и <b>${moneyKop(b.ours,'₽')}</b> (${pct(b.oursPct)}) остаются на рублёвом счёте — в прибыль сделки не входят`;})()}</span>
+      <span>${batch.manual?`От подтверждённого прихода не отправляем брокеру <b>${moneyKop(batch.held,'₽')}</b>. Состав расходов вручную не задан; эта разница в прибыль сделки не включена.`:
+        `По автотарифу: валютный контроль <b>${moneyKop(batch.ctrl,'₽')}</b> (${pct(batch.ctrlPct)} + ${batch.fix} ₽) и <b>${moneyKop(batch.ours,'₽')}</b> (${pct(batch.oursPct)}) остаются на рублёвом счёте — в прибыль сделки не входят.`}</span>
     </div>
     ${convMarginBlock(d,total,crmSel)}</details>
-    <div class="row"><button class="btn btn-success" onclick="act(${d.id},'s18')">Отправил брокеру — ждём USDT</button></div></div>`;},
+    <div class="row"><button class="btn btn-success" ${sentInvalid?'disabled':''} onclick="act(${d.id},'s18')">Отправил брокеру — ждём USDT</button></div></div>`;},
 
   s18w:()=>{
     const c=convOf(d), plan=c?c.sources.reduce((s,x)=>s+(x.usdt||0),0):null;
@@ -9975,7 +10042,7 @@ function stepCard(d){
     <div class="alert a-warn"><div>Рубли ушли ${c?c.at:''} — ждём USDT. ${d.prepay?'Оплата IPPS идёт параллельно из выбранного источника.':'Пока не пришли, отправлять получателю нечего: на кошельке денег нет.'}</div></div>
     <div class="fr">
       <div class="fg"><label class="fl">Отправлено брокеру</label><input class="fc num" readonly value="${c?(c.sent?moneyKop(c.sent,'₽'):money(c.sources.reduce((s,x)=>s+(x.rub||0),0),'₽')):'—'}">
-        ${c&&c.sent?`<p class="fh">пришло от клиента ${money(c.rubTotal||c.sources.reduce((s,x)=>s+(x.rub||0),0),'₽')} · удержано ${moneyKop(c.held,'₽')}</p>`:''}</div>
+        ${c&&c.sent?`<p class="fh">сумма клиента ${moneyKop(c.clientRubTotal!=null?c.clientRubTotal:c.rubTotal,'₽')} · на счёте осталось ${moneyKop(c.held,'₽')}</p>`:''}</div>
       <div class="fg"><label class="fl">Курс заявки</label><input class="fc num" readonly value="${c?c.rate:'—'}"></div>
       <div class="fg"><label class="fl">Ждём по курсу</label><input class="fc num" readonly value="${plan!=null?usd(plan):'—'}"></div>
     </div>
@@ -10117,7 +10184,8 @@ function stepCard(d){
       <div class="sec snd" style="margin:0 0 10px">ОТКУДА ДЕНЬГИ · ${htmlText(c.name)} · ${c.broker}${c.requestNo?' · заявка '+c.requestNo:''}</div>
       <table class="tbl">
         ${trow('Пришло на счёт',money(c.rubTotal||c.sources.reduce((s,x)=>s+(x.rub||0),0),'₽'),c.sources.length>1?'пачка из '+c.sources.length+' приходов':'')}
-        ${c.held?trow('Удержано',moneyKop(c.held,'₽'),'валютный контроль '+moneyKop(c.feeCtrl||0,'₽')+' · на рублёвый счёт '+moneyKop(c.feeOurs||0,'₽')+' (отдельный контур)'):''}
+        ${c.clientRubTotal!=null?trow('Сумма клиента',moneyKop(c.clientRubTotal,'₽'),c.clientRubTotal>=c.sent?'общие расходы '+moneyKop(c.clientRubTotal-c.sent,'₽'):'превышение суммы клиента '+moneyKop(c.sent-c.clientRubTotal,'₽')):''}
+        ${c.held?trow(c.feeMode==='manual'?'Не отправлено брокеру':'Удержано',moneyKop(c.held,'₽'),c.feeMode==='manual'?'Ручная сумма; состав удержаний не задан':'валютный контроль '+moneyKop(c.feeCtrl||0,'₽')+' · на рублёвый счёт '+moneyKop(c.feeOurs||0,'₽')+' (отдельный контур)'):''}
         ${c.sent?trow('Отправлено брокеру',moneyKop(c.sent,'₽'),'по курсу '+c.rate):''}
         ${got!=null?trow('Получено USDT',usd(got),plan!=null&&Math.abs(got-plan)>0.01?('ждали '+usd(plan)+', разница '+usd(got-plan)):'сошлось с заявкой'):trow('Получено USDT','ещё не пришли','пачка в статусе «рубли ушли»')}
         ${c.txs.length?trow(c.txs.length>1?'Хеши прихода ('+c.txs.length+')':'Хеш прихода',payinHashRows(c.txs)):''}
@@ -10506,18 +10574,21 @@ async function act(id,step){
     if(unready){toast(unready.code+': нужен положительный подтверждённый RUB приход для пачки');return;}
     S.cseq=(S.cseq||0)+1;
     const rubTotal=members.reduce((s,x)=>s+s18Rub(x),0)+crmExtras.reduce((s,x)=>s+x.rub,0);
-    const bs=brokerSend(rubTotal);
+    const bs=brokerSentAmount(d,rubTotal), clientRubTotal=s18ClientTotal(d);
+    if(DRAFTS[d.id+'|b_sent']!==undefined||!Number.isFinite(bs.sent)||bs.sent<=0||bs.sent>rubTotal){
+      toast('Сумма отправки должна быть больше 0 и не превышать подтверждённое пополнение');return;}
     const cn={id:S.cseq,name:'CNV-'+String(S.cseq).padStart(4,'0'),broker:b0,
       requestNo:String(40+S.cseq),rate:b1,status:'sent',at:now(),accountKey,
       walletId:b2,
-      rubTotal:rubTotal,held:bs.held,sent:bs.sent,feePct:bs.pct,feeFix:bs.fix,
-      feeCtrl:bs.ctrl,feeOurs:bs.ours,feeCtrlPct:bs.ctrlPct,feeOursPct:bs.oursPct,
+      rubTotal:rubTotal,clientRubTotal,held:bs.held,sent:bs.sent,
+      ...(bs.manual?{feeMode:'manual'}:{feePct:bs.pct,feeFix:bs.fix,
+        feeCtrl:bs.ctrl,feeOurs:bs.ours,feeCtrlPct:bs.ctrlPct,feeOursPct:bs.oursPct}),
       sources:members.map(x=>{const share=rubTotal?s18Rub(x)/rubTotal:0;
         return {dealId:x.id,payer:x.client,date:now().slice(0,5),
-          rub:s18Rub(x),bankNet:s18Sber(x),accountKey,
+          rub:s18Rub(x),clientRub:s18ClientRub(x),bankNet:s18Sber(x),accountKey,
           usdt:rate?Math.round(bs.sent*share/rate*100)/100:null};}).concat(crmExtras.map(x=>({
-            dealId:null,crmDealId:x.dealId,crmClient:x.client,incomeId:'sber:'+x.uuid,payer:x.payer,date:x.date,
-            rub:x.rub,usdt:rate?Math.round(bs.sent*x.rub/rubTotal/rate*100)/100:null}))),
+            dealId:null,crmDealId:x.dealId,crmIncomeId:x.id,crmClient:x.client,incomeId:'sber:'+x.uuid,payer:x.payer,date:x.date,
+            rub:x.rub,clientRub:x.rub,usdt:rate?Math.round(bs.sent*x.rub/rubTotal/rate*100)/100:null}))),
       txs:[],sentTs:Date.now()};
     S.convs.push(cn);
     members.forEach(x=>{x.cnvId=cn.id;x.brokerDraft=null;x.brokerPick=null;});

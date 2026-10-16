@@ -8257,6 +8257,64 @@ def _stand_current_step_role(state, deal):
             ('teodor' if wallet_id in ('teodor', 'andrey') else 'findir'))
 
 
+def _stand_broker_sent_money(value):
+    """Ручная сумма RUB с точностью до копейки; None оставлен для авторежима."""
+    from decimal import Decimal, InvalidOperation
+    if isinstance(value, bool) or value is None:
+        return None
+    raw = str(value).replace(' ', '').replace('\u00a0', '').replace('\u202f', '').replace('\u2009', '').replace(',', '.')
+    if not re.fullmatch(r'\d+(?:\.\d{1,2})?', raw):
+        return None
+    try:
+        amount = Decimal(raw)
+    except InvalidOperation:
+        return None
+    return amount if amount.is_finite() and amount > 0 and amount <= Decimal('1000000000000') else None
+
+
+def _stand_broker_draft_rub(state, deal, db=None):
+    """Подтверждённые источники черновика, включая выбранные свободные приходы CRM."""
+    from decimal import Decimal, ROUND_HALF_UP
+    incomes = {str(i.get('id')): i for i in state.get('incomes') or []}
+    deals = {d.get('id'): d for d in state.get('deals') or []}
+    total = Decimal(0)
+    for member_id in [deal.get('id'), *(deal.get('conv') or [])]:
+        member = deals.get(member_id)
+        if not member or not member.get('payinParts'):
+            return None
+        for part in member['payinParts']:
+            income = incomes.get(str(part.get('incId')))
+            rub = _stand_broker_sent_money(part.get('amountRub'))
+            gross = _stand_broker_sent_money((income or {}).get('grossRub') or (income or {}).get('rub'))
+            if income is None or rub is None or gross is None or rub != gross:
+                return None
+            if income.get('source') == 'sber':
+                net = _stand_broker_sent_money(income.get('rub'))
+                if net is None:
+                    return None
+                total += (rub * net / gross).quantize(Decimal('.01'), rounding=ROUND_HALF_UP)
+            else:
+                total += rub
+    selected = deal.get('brokerCrmDraftIds') or []
+    if selected:
+        if (db is None or not isinstance(selected, list)
+                or any(type(i) is not int for i in selected) or len(set(selected)) != len(selected)):
+            return None
+        rows = db.query(SberIncome).filter(SberIncome.id.in_(selected)).all()
+        if len(rows) != len(selected):
+            return None
+        used = _converted_by_income(db, selected)
+        account_key = next((i.get('accountKey') or 'sber' for i in state.get('incomes') or []
+                            if str(i.get('id')) == str((deal.get('payinParts') or [{}])[0].get('incId'))), 'sber')
+        for row in rows:
+            free = row.free_rub(used)
+            if (row.excluded or free <= .01 or _income_account_key(row) != account_key
+                    or ((row.operation_date or '') < CONVERSIONS_LAUNCH_DATE and not row.keep_active)):
+                return None
+            total += Decimal(str(round(free, 2)))
+    return total
+
+
 def _stand_broker_handoff_problem(previous, state, before, deal):
     """Admission for the operator's RUB send attestation at s18 -> s18w."""
     from decimal import Decimal
@@ -8270,6 +8328,12 @@ def _stand_broker_handoff_problem(previous, state, before, deal):
         return 'Отправка брокеру требует новую пачку'
     sources = conv.get('sources') or []
     members = before.get('conv') or []
+    selected_crm = deal.get('brokerCrmDraftIds') or []
+    source_crm = [s.get('crmIncomeId') for s in sources if s.get('dealId') is None]
+    if (not isinstance(selected_crm, list)
+            or any(type(i) is not int for i in selected_crm + source_crm)
+            or sorted(selected_crm) != sorted(source_crm)):
+        return 'Выбранные поступления CRM не совпадают с составом пачки'
     if (not isinstance(members, list) or any(type(member) is not int for member in members)
             or deal.get('conv', []) != before.get('conv', [])):
         return 'Некорректный состав пачки'
@@ -8278,7 +8342,7 @@ def _stand_broker_handoff_problem(previous, state, before, deal):
     if (not board_sources or {s.get('dealId') for s in board_sources} != expected_ids
             or len(board_sources) != len(expected_ids)):
         return 'Пачка не содержит все связанные сделки'
-    funding = _stand_check_batch_funding(state, conv, dispatch=False)
+    funding = _stand_check_batch_funding(state, conv, dispatch=False, strict_account=True)
     if funding:
         return funding
     wallet_id = conv.get('walletId')
@@ -8304,6 +8368,20 @@ def _stand_broker_handoff_problem(previous, state, before, deal):
     rub = sum((_amount(s.get('rub')) or Decimal(0) for s in sources), Decimal(0))
     if rub <= 0 or _amount(conv.get('rubTotal')) != rub:
         return 'Сумма отправки брокеру не совпадает с подтверждёнными приходами'
+    if conv.get('clientRubTotal') is not None or conv.get('feeMode') == 'manual':
+        old_deals = {d.get('id'): d for d in previous.get('deals') or []}
+        client_total = Decimal(0)
+        for source in sources:
+            source_rub = _stand_broker_sent_money(source.get('rub'))
+            if source_rub is None:
+                return 'Некорректный источник суммы клиента'
+            old_deal = old_deals.get(source.get('dealId'))
+            client_rub = (_stand_broker_sent_money(old_deal.get('amountRub')) if old_deal else None) or source_rub
+            if _stand_broker_sent_money(source.get('clientRub')) != client_rub:
+                return 'Сумма клиента в пачке не совпадает со сделками'
+            client_total += client_rub
+        if _stand_broker_sent_money(conv.get('clientRubTotal')) != client_total:
+            return 'Общая сумма клиента в пачке не совпадает с источниками'
     # Mirror brokerSend() in tasks.html for positive RUB amounts. The client
     # sends these rounded figures; each one must agree with the saved sources.
     def js_round(value):
@@ -8311,16 +8389,28 @@ def _stand_broker_handoff_problem(previous, state, before, deal):
         if not math.isfinite(numeric) or numeric < 0 or numeric > 2**46:
             return None
         return Decimal(str(math.floor(numeric * 100 + .5) / 100))
-    ctrl = js_round(rub * Decimal('.001') + 40)
-    ours = js_round(rub * Decimal('.002'))
-    if ctrl is None or ours is None:
-        return 'Некорректная сумма отправки брокеру'
-    sent = js_round(rub - ctrl - ours)
-    held = js_round(ctrl + ours)
-    facts = {'sent': sent, 'held': held, 'feeCtrl': ctrl,
-             'feeOurs': ours, 'feePct': Decimal('.3'),
-             'feeFix': Decimal(40), 'feeCtrlPct': Decimal('.1'),
-             'feeOursPct': Decimal('.2')}
+    override = _stand_broker_sent_money(deal.get('brokerSentOverride')) if deal.get('brokerSentOverride') is not None else None
+    if deal.get('brokerSentOverride') is not None and (override is None or override > rub):
+        return 'Сумма отправки должна быть больше нуля и не превышать подтверждённые RUB'
+    if override is not None:
+        sent, held = override, rub - override
+        if (conv.get('feeMode') != 'manual' or any(conv.get(k) is not None for k in
+                ('feeCtrl', 'feeOurs', 'feePct', 'feeFix', 'feeCtrlPct', 'feeOursPct'))):
+            return 'Ручная отправка не должна содержать расчётные удержания'
+        facts = {'sent': sent, 'held': held}
+    else:
+        if conv.get('feeMode') == 'manual':
+            return 'Ручная отправка требует сохранённой суммы сделки'
+        ctrl = js_round(rub * Decimal('.001') + 40)
+        ours = js_round(rub * Decimal('.002'))
+        if ctrl is None or ours is None:
+            return 'Некорректная сумма отправки брокеру'
+        sent = js_round(rub - ctrl - ours)
+        held = js_round(ctrl + ours)
+        facts = {'sent': sent, 'held': held, 'feeCtrl': ctrl,
+                 'feeOurs': ours, 'feePct': Decimal('.3'),
+                 'feeFix': Decimal(40), 'feeCtrlPct': Decimal('.1'),
+                 'feeOursPct': Decimal('.2')}
     if sent is None or sent <= 0 or any(_amount(conv.get(k)) != expected
                                          for k, expected in facts.items()):
         return 'Расчёт отправки брокеру не совпадает с подтверждёнными RUB'
@@ -8922,7 +9012,8 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
             if any(old_wallet.get(k) != new_wallet.get(k) for k in ('addr', 'multisig', 'role')):
                 return 'Кошелёк получения USDT брокера закреплён при отправке рублей'
         broker_keys = {'prepay', 'pay', 'payinHashes', 'cnvId', 'walletId', 'conv', 'rates',
-                       'log', 'stepNotes', 'brokerProof', 'brokerDraft', 'brokerPick'}
+                       'log', 'stepNotes', 'brokerProof', 'brokerDraft', 'brokerPick',
+                       'brokerSentOverride', 'brokerCrmDraftIds'}
         changed = {k for k in set(before) | set(deal) if before.get(k) != deal.get(k)
                    and not (k in ('files', 'docs', 'docMeta') and not before.get(k) and not deal.get(k))}
         if bs == 'done' and (before.get('payinHashes') != deal.get('payinHashes')
@@ -8955,7 +9046,7 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
                 if abs(_stand_number(new_pay.get('usdt')) - _stand_number(source.get('usdtFact'))) > .005:
                     return 'Приход сделки должен совпасть с распределённым USDT брокера'
             broker_actions.add(deal['id'])
-        elif actor in ('operator', 'admin') and bs == 's18' and changed <= {'walletId', 'conv', 'log', 'stepNotes', 'brokerDraft', 'brokerPick'}:
+        elif actor in ('operator', 'admin') and bs == 's18' and changed <= {'walletId', 'conv', 'log', 'stepNotes', 'brokerDraft', 'brokerPick', 'brokerSentOverride', 'brokerCrmDraftIds'}:
             broker_actions.add(deal['id'])
         if (deal.get('transfer') or {}).get('sends'):
             sends = [s for s in deal['transfer']['sends'] if s.get('status') not in ('failed', 'mismatch')]
@@ -9389,6 +9480,26 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
             if deal.get('ownerEconomyAtDoc'):
                 return 'Ориентир на момент договора создаётся только при выпуске пакета'
             continue
+        if before.get('brokerCrmDraftIds', []) != deal.get('brokerCrmDraftIds', []):
+            broker_step = (before.get('prepay') or {}).get('brokerStep') or before.get('step')
+            if (actor not in ('operator', 'admin') or broker_step != 's18'
+                    or before.get('cnvId') is not None):
+                return 'Состав пачки меняет операционист до отправки'
+            if _stand_broker_draft_rub(new_state, deal, db) is None:
+                return 'Выбранные поступления CRM недоступны для пачки'
+        if before.get('brokerSentOverride') != deal.get('brokerSentOverride'):
+            broker_step = (before.get('prepay') or {}).get('brokerStep') or before.get('step')
+            if (actor not in ('operator', 'admin') or broker_step != 's18'
+                    or before.get('cnvId') is not None
+                    or (deal.get('step') != before.get('step') and deal.get('step') != 's18w')):
+                return 'Сумму отправки брокеру меняет операционист до отправки пачки'
+            if deal.get('brokerSentOverride') is not None:
+                override = _stand_broker_sent_money(deal['brokerSentOverride'])
+                capacity = (_stand_broker_sent_money(next((c.get('rubTotal') for c in new_state.get('convs') or []
+                    if c.get('id') == deal.get('cnvId')), None)) if deal.get('cnvId') is not None
+                    else _stand_broker_draft_rub(new_state, deal, db))
+                if override is None or capacity is None or override > capacity:
+                    return 'Сумма отправки должна быть больше нуля и не превышать подтверждённые RUB'
         if before.get('ownerEconomyAtDoc') != deal.get('ownerEconomyAtDoc'):
             return 'Ориентир на момент договора меняется только при выпуске новой версии'
         # X и тариф IPPS становятся денежной основой договора. После входа в
@@ -13786,7 +13897,8 @@ def _stand_sync_crm_conversions(db, previous, state):
             raise ValueError('Сумма поступлений CRM не совпадает с отправленной пачкой')
         crm = Conversion(broker=item.get('broker'), request_no=item.get('requestNo'),
                          sent_at=datetime.utcnow(), rate_rub_usdt=float(item.get('rate')),
-                         held_percent=.3, held_fixed_rub=40,
+                         held_percent=0 if item.get('feeMode') == 'manual' else .3,
+                         held_fixed_rub=float(item.get('held') or 0) if item.get('feeMode') == 'manual' else 40,
                          amount_rub_sent=float(item.get('sent')),
                          status=ConversionStatus.SENT,
                          created_by=flask_session.get('username'))

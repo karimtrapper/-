@@ -64,7 +64,7 @@ def incoming_shares(weights, amount):
     return result
 
 
-def check_batch(state, conv, *, dispatch=False, independent_id=None):
+def check_batch(state, conv, *, dispatch=False, independent_id=None, strict_account=False):
     """Return a user-facing error, before any state or transfer mutation."""
     sources = conv.get('sources') or []
     deals = {d.get('id'): d for d in state.get('deals') or []}
@@ -96,6 +96,15 @@ def check_batch(state, conv, *, dispatch=False, independent_id=None):
         if not parts:
             return 'Для RUB пачки нужен подтверждённый рублёвый приход по каждой сделке'
         total = Decimal(0)
+        receipt = deal.get('manualBankReceipt') or {}
+        target = deal.get('rubReceivingAccount') or {}
+        confirmed = (receipt.get('status') == 'confirmed' and receipt.get('confirmedAt')
+                     and receipt.get('confirmedBy'))
+        account = ''.join(ch for ch in str((confirmed and receipt.get('account')) or target.get('account') or '') if ch.isdigit())
+        bik = ''.join(ch for ch in str((confirmed and receipt.get('bankBik')) or target.get('bik') or '') if ch.isdigit())
+        canonical = f'bank:{bik}:{account}' if len(bik) == 9 and len(account) == 20 else None
+        alias = ('flow_sole' if confirmed and receipt.get('actualMode') == 'flowsole' or target.get('mode') == 'flowsole'
+                 else 'other:' + account if target.get('mode') == 'custom' else None)
         for part in parts:
             key = str(part.get('incId'))
             income = incomes.get(key)
@@ -112,8 +121,17 @@ def check_batch(state, conv, *, dispatch=False, independent_id=None):
                     or income.get('excluded') or part_rub is None or part_rub != income_rub
                     or not (income.get('source') == 'sber' or income.get('demo') is True or manual_ok)):
                 return 'Приход RUB не подтверждён, повторно использован или не принадлежит сделке'
-            if income.get('accountKey') or income.get('source') == 'sber':
-                account_keys.add(income.get('accountKey') or 'sber')
+            income_key = income.get('accountKey')
+            if income.get('source') == 'sber':
+                account_keys.add('sber')
+            elif canonical:
+                if income_key and income_key not in (canonical, alias):
+                    return 'Счёт подтверждённого прихода не совпадает со счётом сделки'
+                account_keys.add(canonical)
+            elif income_key:
+                account_keys.add(income_key)
+            elif strict_account:
+                return 'Не указан проверяемый счёт подтверждённого прихода'
             used_income.add(key)
             if source.get('bankNet') and income.get('source') == 'sber':
                 net = money(income.get('rub'), positive=True)

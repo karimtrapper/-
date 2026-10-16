@@ -9,6 +9,7 @@ pytestmark = pytest.mark.usefixtures('stand_demo_environment')
 
 import app as m
 import stand_prepay
+import stand_funding
 from stand_transfers import expected_addresses
 
 COMPANY = 'TKkeEVf2zySaWTLyX2qPwvi6kcdHRuPxkJ'
@@ -107,6 +108,183 @@ def test_broker_draft_of_unbatched_parallel_deals_is_independent(api):
     assert saved['deals'][1]['brokerPick'] == 'Крипта-Платежи'
     assert all(deal['cnvId'] is None and deal['conv'] == [] for deal in saved['deals'])
     assert saved['convs'] == []
+
+
+def manual_handoff(sent=899000):
+    previous = board('s18')
+    state = copy.deepcopy(previous)
+    d = state['deals'][0]
+    d.update(step='s18w', cnvId=1, brokerSentOverride=sent)
+    state['convs'] = [{'id': 1, 'walletId': 'company', 'broker': 'Брокер',
+        'rate': '80', 'status': 'sent', 'at': '12.10, 12:00', 'requestNo': 'TEST',
+        'sentTs': 1700000000000, 'feeMode': 'manual', 'rubTotal': 900000,
+        'sent': sent, 'held': 900000-sent, 'clientRubTotal': 900000,
+        'sources': [{'dealId': 1484, 'rub': 900000, 'clientRub': 900000,
+                     'usdt': round(sent/80, 2)}], 'txs': []}]
+    return previous, state
+
+
+def test_manual_broker_send_uses_confirmed_rub_and_actual_usdt(api):
+    previous, state = manual_handoff()
+    assert m._stand_broker_handoff_problem(previous, state, previous['deals'][0], state['deals'][0]) is None
+    assert m._stand_guard_transition(previous, state, 'operator') is None
+    conv = state['convs'][0]
+    conv['sent'] += 1
+    assert 'не совпадает' in m._stand_broker_handoff_problem(previous, state, previous['deals'][0], state['deals'][0])
+    conv['sent'] -= 1
+    conv['feeCtrl'] = 940
+    assert 'расчётные удержания' in m._stand_broker_handoff_problem(previous, state, previous['deals'][0], state['deals'][0])
+
+
+@pytest.mark.parametrize('value', ['', 0, -1, 'NaN', 'Infinity', '1 000,001', '900000.01'])
+def test_manual_broker_send_rejects_invalid_and_over_available(api, value):
+    state = board('s18')
+    seed(state)
+    changed = copy.deepcopy(state)
+    changed['deals'][0]['brokerSentOverride'] = value
+    response = api[0].put('/api/stand/state', json={'version': 1, 'data': changed,
+                                                     'fileStorageVersion': 1})
+    assert response.status_code == 409, response.json
+
+
+def test_manual_broker_draft_accepts_russian_amount_and_blocks_manager(api):
+    state = board('s18')
+    seed(state)
+    changed = copy.deepcopy(state)
+    changed['deals'][0]['brokerSentOverride'] = '899\u202f000,25'
+    api[1][0] = 'manager'
+    denied = api[0].put('/api/stand/state', json={'version': 1, 'data': changed,
+                                                  'fileStorageVersion': 1})
+    assert denied.status_code == 409
+    api[1][0] = 'operator'
+    saved = api[0].put('/api/stand/state', json={'version': 1, 'data': changed,
+                                                 'fileStorageVersion': 1})
+    assert saved.status_code == 200, saved.json
+    assert saved.json['data']['deals'][0]['brokerSentOverride'] == '899\u202f000,25'
+    changed = saved.json['data']
+    changed['deals'][0]['brokerSentOverride'] = None
+    reset = api[0].put('/api/stand/state', json={'version': saved.json['version'], 'data': changed,
+                                                 'fileStorageVersion': 1})
+    assert reset.status_code == 200, reset.json
+
+
+def test_manual_broker_send_locked_after_handoff(api):
+    _, state = manual_handoff()
+    seed(state)
+    changed = copy.deepcopy(state)
+    changed['deals'][0]['brokerSentOverride'] = 898000
+    response = api[0].put('/api/stand/state', json={'version': 1, 'data': changed,
+                                                     'fileStorageVersion': 1})
+    assert response.status_code == 409, response.json
+
+
+def test_missing_account_key_uses_confirmed_bik_and_account_without_mixing(api):
+    state = board('s18w')
+    second = copy.deepcopy(state['deals'][0])
+    second.update(id=1487, code='СД-1487')
+    state['deals'].append(second)
+    state['convs'][0]['sources'] = [{'dealId': 1484, 'rub': 900000, 'usdt': 1},
+                                    {'dealId': 1487, 'rub': 900000, 'usdt': 1}]
+    state['incomes'] = []
+    for index, deal in enumerate(state['deals'], 1):
+        receipt_id = 'receipt-' + str(index)
+        deal['rubReceivingAccount'] = {'mode': 'custom', 'account': '40807810819000000261',
+                                        'bik': '044525094'}
+        deal['manualBankReceipt'] = {'id': receipt_id, 'status': 'confirmed',
+                                      'confirmedAt': '2026-10-13', 'confirmedBy': 12,
+                                      'actualAmount': 900000, 'account': '40807810819000000261',
+                                      'bankBik': '044525094'}
+        deal['payinParts'] = [{'incId': index, 'amountRub': 900000}]
+        state['incomes'].append({'id': index, 'dealId': deal['id'], 'rub': 900000,
+                                 'grossRub': 900000, 'source': 'manual_confirmed',
+                                 'manualReceiptId': receipt_id})
+    conv = state['convs'][0]
+    assert stand_funding.check_batch(state, conv, strict_account=True) is None
+    state['deals'][1]['manualBankReceipt']['account'] = '40807810819000000999'
+    assert 'разных счетов' in stand_funding.check_batch(state, conv, strict_account=True)
+    state['deals'][1]['manualBankReceipt']['account'] = '40807810819000000261'
+    state['incomes'][1]['accountKey'] = 'sber'
+    assert 'не совпадает' in stand_funding.check_batch(state, conv, strict_account=True)
+    state['incomes'][1].pop('accountKey')
+    state['deals'][1]['manualBankReceipt'].pop('account')
+    state['deals'][1]['rubReceivingAccount'] = {}
+    assert 'Не указан' in stand_funding.check_batch(state, conv, strict_account=True)
+    assert stand_funding.check_batch(state, conv) is None  # старый сохранённый CNV
+
+
+def test_manual_send_with_selected_crm_income_uses_full_confirmed_total(api):
+    db = m.get_session()
+    try:
+        income = m.SberIncome(uuid='manual-broker-extra', operation_date='2026-10-16',
+                              amount_rub=100000, account_key='sber', excluded=False)
+        db.add(income)
+        db.commit()
+        extra_id = income.id
+        assert m._stand_broker_draft_rub(board('s18'), board('s18')['deals'][0], db) == 900000
+    finally:
+        db.close()
+    previous = board('s18')
+    seed(previous)
+    selected = copy.deepcopy(previous)
+    selected['deals'][0]['brokerCrmDraftIds'] = [extra_id]
+    selection = api[0].put('/api/stand/state', json={'version': 1, 'data': selected,
+                                                     'fileStorageVersion': 1})
+    assert selection.status_code == 200, selection.json
+    selected = selection.json['data']
+    selected['deals'][0]['brokerSentOverride'] = 950000
+    saved = api[0].put('/api/stand/state', json={'version': selection.json['version'],
+                                                 'data': selected, 'fileStorageVersion': 1})
+    assert saved.status_code == 200, saved.json
+    previous = saved.json['data']
+    state = copy.deepcopy(previous)
+    d = state['deals'][0]
+    d.update(step='s18w', cnvId=1)
+    state['incomes'].append({'id': 'sber:manual-broker-extra', 'source': 'sber',
+                             'accountKey': 'sber', 'dealId': None, 'rub': 100000,
+                             'batchRub': 100000, 'cnvId': 1, 'excluded': False})
+    state['convs'] = [{'id': 1, 'walletId': 'company', 'broker': 'Брокер',
+        'rate': '80', 'status': 'sent', 'at': '12.10, 12:00', 'requestNo': 'TEST',
+        'sentTs': 1700000000000, 'feeMode': 'manual', 'rubTotal': 1000000,
+        'sent': 950000, 'held': 50000, 'clientRubTotal': 1000000, 'sources': [
+            {'dealId': 1484, 'rub': 900000, 'clientRub': 900000, 'usdt': 10687.5},
+            {'dealId': None, 'crmIncomeId': extra_id, 'incomeId': 'sber:manual-broker-extra',
+             'rub': 100000, 'clientRub': 100000, 'usdt': 1187.5}], 'txs': []}]
+    assert m._stand_broker_handoff_problem(previous, state, previous['deals'][0], d) is None
+
+
+def test_manual_mixed_batch_syncs_actual_sent_and_residual_to_crm(api):
+    previous = board('s18')
+    state = copy.deepcopy(previous)
+    state['deals'][0]['payinParts'] = [{'incId': 'sber:broker-own', 'amountRub': 900000}]
+    state['deals'][0]['brokerSentOverride'] = 950000
+    state['incomes'] = [{'id': 'sber:broker-own', 'source': 'sber', 'rub': 900000,
+                         'grossRub': 900000, 'dealId': 1484, 'cnvId': 1},
+                        {'id': 'sber:broker-extra', 'source': 'sber', 'rub': 100000,
+                         'grossRub': 100000, 'dealId': None, 'cnvId': 1}]
+    state['convs'] = [{'id': 1, 'walletId': 'company', 'broker': 'Брокер',
+        'rate': '80', 'status': 'sent', 'at': '12.10, 12:00', 'requestNo': 'TEST',
+        'sentTs': 1700000000000, 'feeMode': 'manual', 'rubTotal': 1000000,
+        'sent': 950000, 'held': 50000, 'sources': [
+            {'dealId': 1484, 'rub': 900000, 'usdt': 10687.5},
+            {'dealId': None, 'crmIncomeId': 2, 'incomeId': 'sber:broker-extra',
+             'rub': 100000, 'usdt': 1187.5}], 'txs': []}]
+    db = m.get_session()
+    try:
+        db.add_all([m.SberIncome(uuid='broker-own', operation_date='2026-10-16',
+                                 amount_rub=900000, account_key='sber', excluded=False),
+                    m.SberIncome(uuid='broker-extra', operation_date='2026-10-16',
+                                 amount_rub=100000, account_key='sber', excluded=False)])
+        db.flush()
+        with m.app.test_request_context():
+            m._stand_sync_crm_conversions(db, previous, state)
+        crm = db.query(m.Conversion).filter_by(request_no='TEST').one()
+        assert crm.amount_rub_sent == 950000
+        assert crm.held_percent == 0
+        assert crm.held_fixed_rub == 50000
+        assert sum(x.amount_rub for x in crm.sources) == 1000000
+    finally:
+        db.rollback()
+        db.close()
 
 
 def start(api, source='founder', step='s18w', incoming='company'):
