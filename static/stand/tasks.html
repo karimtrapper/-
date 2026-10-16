@@ -1062,6 +1062,12 @@ async function standSave(){
             const local=(S.deals||[]).find(x=>x.id===saved.id);
             if(local&&local.manual&&saved.originMode==='manual')local.originMode='manual';
           });
+          /* Время регистрации новой отправки приходит только в ответе сервера.
+             Переносим его в queued PUT, сохраняя последующие действия оператора. */
+          (j.data.convs||[]).forEach(saved=>{
+            const local=(S.convs||[]).find(x=>x.id===saved.id);
+            if(local&&Number.isSafeInteger(saved.sentRecordedTs))local.sentRecordedTs=saved.sentRecordedTs;
+          });
         }
         const modal=S.modal, delivered=j.notification_delivery||[];
         if(modal&&modal.noteId){
@@ -7257,6 +7263,21 @@ function txUsed(hash){ return S.deals.some(d=>(d.payinHashes||[]).some(h=>h.hash
    во сколько обойдутся баты, которые мы должны. Видно сразу, в плюсе мы или нет
    (Карим, 22.09). */
 function brokerDraft(id,v){const d=deal(id);d.brokerDraft=cleanNum(v);save();render();}
+function brokerSentTimeValue(ts){
+  return new Date(ts+3*60*60*1000).toISOString().slice(0,19);
+}
+function brokerSentTimeParse(raw){
+  if(!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/.test(raw||''))return null;
+  const normalized=raw.length===16?raw+':00':raw;
+  const ts=Date.parse(normalized+'+03:00');
+  return Number.isFinite(ts)&&ts>=946684800000&&brokerSentTimeValue(ts)===normalized?ts:null;
+}
+function brokerSentTimeDraft(id,raw){
+  DRAFTS[id+'|b_sent_time']=raw;
+  const ts=brokerSentTimeParse(raw),hint=document.getElementById('b_sent_time_error');
+  if(hint)hint.textContent=ts===null?'Укажите дату и время отправки по Москве.':
+    ts>Date.now()?'Время отправки не может быть в будущем.':'';
+}
 function brokerSentInput(id,raw){
   const key=id+'|b_sent';DRAFTS[key]=raw;
   const hint=document.getElementById('b_sent_error');
@@ -10040,6 +10061,11 @@ function stepCard(d){
       <div class="fg"><label class="fl">Курс обмена RUB→USDT<span class="rq">*</span></label>
         <input class="fc num" id="b1" value="${htmlText(brokerRate(d))}" placeholder="₽ за 1 USDT"
           oninput="rememberFocus();brokerDraft(${d.id},this.value)"></div>
+      <div class="fg w2"><label class="fl" for="b_sent_time">Когда отправили рубли брокеру · МСК (UTC+3)<span class="rq">*</span></label>
+        <input class="fc" type="datetime-local" step="1" id="b_sent_time" required aria-describedby="b_sent_time_hint b_sent_time_error"
+          value="${htmlText(DRAFTS[d.id+'|b_sent_time']??brokerSentTimeValue(Date.now()))}" oninput="brokerSentTimeDraft(${d.id},this.value)">
+        <span class="fh" id="b_sent_time_hint">Если перевод уже сделан, укажите время из платёжного документа по Москве. После подтверждения изменить его нельзя.</span>
+        <span class="fh" id="b_sent_time_error" role="status"></span></div>
       <div class="fg w2"><label class="fl">Куда брокер пришлёт USDT · TRC-20<span class="rq">*</span></label>
         <input type="hidden" id="b2" value="${walletById(d.walletId)?d.walletId:''}">
         ${walletCards(d,walletById(d.walletId),'walletPick',false,'b2w_'+d.id)}</div>
@@ -10615,6 +10641,11 @@ async function act(id,step){
   if(step==='s18'){
     const b0=val('b0'),b1=cleanNum(val('b1')),b2=val('b2');
     if(need({b0:'брокер',b1:'курс, который назвал брокер',b2:'кошелёк, куда придут USDT'}))return;
+    const sentTime=val('b_sent_time');
+    brokerSentTimeDraft(d.id,sentTime);
+    const sentTs=brokerSentTimeParse(sentTime);
+    if(sentTs===null||sentTs>Date.now()){
+      toast('Проверьте дату и время отправки RUB по Москве: время не должно быть в будущем');return;}
     d.rates.broker=b1;
     const rate=num(b1);
     if(!Number.isFinite(rate)||rate<=0){toast('Курс брокера должен быть больше нуля');return;}
@@ -10634,7 +10665,7 @@ async function act(id,step){
     const bs=brokerSentAmount(d,rubTotal), clientRubTotal=s18ClientTotal(d);
     S.cseq=(S.cseq||0)+1;
     const cn={id:S.cseq,name:'CNV-'+String(S.cseq).padStart(4,'0'),broker:b0,
-      requestNo:String(40+S.cseq),rate:b1,status:'sent',at:now(),accountKey,
+      requestNo:String(40+S.cseq),rate:b1,status:'sent',at:new Date(sentTs).toLocaleString('ru-RU',{timeZone:'Europe/Moscow'})+' МСК',accountKey,
       walletId:b2,
       rubTotal:rubTotal,clientRubTotal,held:bs.held,sent:bs.sent,
       ...(bs.manual?{feeMode:'manual'}:{feePct:bs.pct,feeFix:bs.fix,
@@ -10645,7 +10676,7 @@ async function act(id,step){
           usdt:null};}).concat(crmExtras.map(x=>({
             dealId:null,crmDealId:x.dealId,crmIncomeId:x.id,crmClient:x.client,incomeId:'sber:'+x.uuid,payer:x.payer,date:x.date,
             rub:x.rub,clientRub:x.rub,usdt:null}))),
-      txs:[],sentTs:Date.now()};
+      txs:[],sentTs};
     const planned=brokerPlanShares(cn.sources.map(x=>x.rub),bs.sent,rate);
     cn.sources.forEach((source,i)=>{source.usdt=planned[i];});
     S.convs.push(cn);

@@ -5,9 +5,9 @@ function fn(name){
   const one=html.match(new RegExp(`^(?:async )?function ${name}\\([^\\n]*\\)\\{[^\\n]*\\}$`,'m'));
   return (one||html.match(new RegExp(`^(?:async )?function ${name}\\([^]*?^}`,'m')))[0];
 }
-const ctx={S:{role:'operator',convs:[],deals:[]},STAND:true,standDemoEnabled:false,standVer:7,
+const ctx={S:{role:'operator',convs:[],deals:[]},DRAFTS:{},STAND:true,standDemoEnabled:false,standVer:7,
   document:{getElementById:()=>null},saveNote:()=>{},toast:()=>{},save:()=>{},render:()=>{},
-  deal:id=>ctx.S.deals.find(d=>d.id===id),need:()=>false,val:id=>({b0:'Broker',b1:'80',b2:'company'}[id]),
+  deal:id=>ctx.S.deals.find(d=>d.id===id),need:()=>false,val:id=>({b0:'Broker',b1:'80',b2:'company',b_sent_time:'2026-10-13T12:00:00'}[id]),
   cleanNum:String,num:Number,rubBatchReady:()=>true,now:()=> '13.10, 12:00',
   s18Sber:()=>true,s18AccountKey:()=> 'sber',s18Rub:d=>d.incomeAmount||d.amountRub||0,
   s18CrmRows:()=>[],s18Selected:new Set(),
@@ -20,7 +20,9 @@ const ctx={S:{role:'operator',convs:[],deals:[]},STAND:true,standDemoEnabled:fal
   standAction:async(path,payload)=>{ctx.request={path,payload};return {success:true};},
 };
 vm.createContext(ctx);
-for(const name of ['demoAllowed','act','payinSettle','cnvWalletFix','seedDemo','seedLeaseholdTest','transferMode'])vm.runInContext(fn(name),ctx);
+for(const name of ['demoAllowed','act','payinSettle','cnvWalletFix','seedDemo','seedLeaseholdTest','transferMode',
+  'brokerSentTimeValue','brokerSentTimeParse','brokerSentTimeDraft','brokerSentAmount','brokerSentParse',
+  's18ClientRub','s18ClientTotal','brokerPlanShares'])vm.runInContext(fn(name),ctx);
 (async()=>{
   for(const prepay of [false,true]){
     const d={id:1485,step:prepay?'s23':'s18',kind:'Фрихолд',rates:{},incomeAmount:900000};

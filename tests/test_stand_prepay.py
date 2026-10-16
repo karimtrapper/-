@@ -136,6 +136,76 @@ def test_manual_broker_send_uses_confirmed_rub_and_actual_usdt(api):
     assert 'расчётные удержания' in m._stand_broker_handoff_problem(previous, state, previous['deals'][0], state['deals'][0])
 
 
+@pytest.mark.parametrize('sent', [None, True, '', '1700000000000', 1700000000,
+                                  1700000000000.5, 0, -1, 9999999999999])
+def test_broker_sent_time_rejects_invalid_and_future_without_writing(api, sent):
+    previous, state = manual_handoff()
+    seed(previous)
+    state['convs'][0]['sentTs'] = sent
+    response = api[0].put('/api/stand/state', json={'version': 1, 'data': state})
+    assert response.status_code == 409, response.json
+    assert 'дату и время' in response.json['error']
+    assert api[0].get('/api/stand/state').json['data']['convs'] == []
+
+
+def test_broker_sent_time_uses_known_bank_day_not_operator_confirmation(api):
+    previous, state = manual_handoff()
+    previous['incomes'][0].update(statementDate='2023-11-14', confirmedAt='2023-11-16T12:00:00Z')
+    conv = state['convs'][0]
+    assert m._stand_broker_sent_time_problem(previous, conv) is None
+    conv['sentTs'] = 1699909199999  # 13.11 23:59:59.999 МСК
+    assert 'банковского прихода' in m._stand_broker_sent_time_problem(previous, conv)
+    conv['sentTs'] += 1  # 14.11 00:00 МСК: точность выписки — день.
+    assert m._stand_broker_sent_time_problem(previous, conv) is None
+    previous['incomes'][0] = dict(previous['incomes'][0], statementDate=None, date='15.11')
+    assert m._stand_broker_sent_time_problem(previous, conv) is None
+    conv['sentRecordedTs'] = conv['sentTs']
+    assert 'фиксирует сервер' in m._stand_broker_sent_time_problem(previous, conv)
+
+
+@pytest.mark.parametrize('prepaid', [False, True])
+def test_historical_broker_send_accepts_only_later_chain_event(api, monkeypatch, prepaid):
+    from tests.test_stand_transfers import chain, Response
+    from stand_transfers import verify_transfer
+    import uuid
+    previous, state = manual_handoff()
+    if prepaid:
+        for doc in (previous, state):
+            d = doc['deals'][0]
+            d['prepay'] = {'source': 'founder', 'wallet': copy.deepcopy(doc['wallets'][1]),
+                           'amount': 10130, 'brokerStep': d['step']}
+            d['step'] = 's27'
+    seed(previous)
+    response = api[0].put('/api/stand/state', json={'version': 1, 'data': state})
+    assert response.status_code == 200, response.json
+    saved = response.json['data']
+    conv = saved['convs'][0]
+    assert conv['sentTs'] == 1700000000000
+    assert conv['sentRecordedTs'] > conv['sentTs']
+    assert saved['deals'][0]['step'] == ('s27' if prepaid else 's18w')
+    repeated = api[0].put('/api/stand/state', json={'version': response.json['version'], 'data': saved})
+    assert repeated.status_code == 200, repeated.json
+    assert repeated.json['data']['convs'] == saved['convs']
+    event = [conv['sentTs'] - 1]
+    tx_hash = uuid.uuid4().hex * 2
+    monkeypatch.setattr(m, 'verify_transfer', lambda *a, **kw: verify_transfer(
+        *a, **kw, get=lambda *a, **kw: Response(200, dict(
+            chain(receiver=COMPANY, timestamp=event[0], amount='8000000000'), hash=tx_hash))))
+    payload = {'dealId': 1484, 'hash': tx_hash, 'network': 'TRC-20', 'amount': 2200}
+    early = api[0].post('/api/stand/incoming/check', json=payload)
+    assert early.status_code == 422, early.json
+    assert 'раньше отправки' in early.json['error']
+    event[0] = conv['sentTs'] + 1000
+    accepted = api[0].post('/api/stand/incoming/check', json=payload)
+    assert accepted.status_code == 200, accepted.json
+    again = api[0].post('/api/stand/incoming/check', json=payload)
+    assert again.status_code == 409, again.json
+    final = api[0].get('/api/stand/state').json['data']['convs'][0]
+    assert len(final['txs']) == 1 and final['txs'][0]['amount'] == 2200
+    assert final['sentTs'] == conv['sentTs']
+    assert final['sentRecordedTs'] == conv['sentRecordedTs']
+
+
 @pytest.mark.parametrize('value', ['', 0, -1, 'NaN', 'Infinity', '1 000,001', '900000.01'])
 def test_manual_broker_send_rejects_invalid_and_over_available(api, value):
     state = board('s18')
@@ -180,7 +250,7 @@ def test_manual_broker_send_locked_after_handoff(api):
 
 @pytest.mark.parametrize('field', [
     'sent', 'held', 'clientRubTotal', 'broker', 'rate', 'requestNo', 'at',
-    'sentTs', 'rubTotal', 'feeMode', 'feeCtrl', 'source_clientRub',
+    'sentTs', 'sentRecordedTs', 'rubTotal', 'feeMode', 'feeCtrl', 'source_clientRub',
     'source_usdt', 'source_accountKey', 'source_dealId', 'extra_source',
     'missing_clientRubTotal', 'missing_source_clientRub', 'missing_conv',
 ])

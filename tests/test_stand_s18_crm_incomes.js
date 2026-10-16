@@ -38,7 +38,8 @@ vm.createContext(ctx);
 vm.runInContext(['MF','FLOWSOLE'].map(name=>html.match(new RegExp('^const '+name+'=[^]*?};', 'm'))[0]).join('\n'),ctx);
 vm.runInContext(['pendingEx', 's18Sber', 's18AccountIdentity', 's18AccountKey', 's18AccountLabel', 's18Rub', 's18CrmUnavailable', 's18CrmRows',
   's18DateKey', 's18DateLabel', 's18FilteredRows', 's18CrmSection',
-  's18ClientRub', 's18ClientTotal', 'brokerSentAmount', 'brokerPlanShares', 'brokerSentParse', 'convMargin', 'convMarginBlock'].map(fn).join('\n')+
+  's18ClientRub', 's18ClientTotal', 'brokerSentAmount', 'brokerPlanShares', 'brokerSentParse',
+  'brokerSentTimeValue', 'brokerSentTimeParse', 'brokerSentTimeDraft', 'convMargin', 'convMarginBlock'].map(fn).join('\n')+
   '\nlet s18Candidates=[], s18Selected=new Set(), s18SelectedDealId=null;'+
   "let s18Filters={query:'',from:'',to:''},s18Expanded={crm:false,unlinked:false};\n"+stepCode, ctx);
 // Глобальные let заполняем внутри контекста: браузер хранит выбор локально.
@@ -63,6 +64,15 @@ assert.equal(withUnknown.unlinkedRub, 5000);
 assert.equal(withUnknown.crmCost, 150);
 assert.ok(Math.abs(withUnknown.profit-withoutUnknown.profit)<1);
 assert.ok(withUnknown.profit<100);
+// Московский ввод одинаково разбирается в браузере Москвы, Таиланда и UTC.
+for(const zone of ['UTC','Europe/Moscow','Asia/Bangkok']){
+  process.env.TZ=zone;
+  assert.equal(ctx.brokerSentTimeParse('2026-10-13T12:34'),Date.parse('2026-10-13T09:34:00Z'));
+  assert.equal(ctx.brokerSentTimeValue(Date.parse('2026-10-13T09:34:56Z')),'2026-10-13T12:34:56');
+}
+for(const value of ['', '2026-02-30T12:00', '2026-10-13T25:00', '2026-10-13T12:00Z', '1970-01-01T00:00']){
+  assert.equal(ctx.brokerSentTimeParse(value),null);
+}
 const splitCrm = vm.runInContext(`convMargin(d,30000,100,[
   {dealId:42,rub:10000,dealRub:20000,payoutUsdt:150},
   {dealId:42,rub:10000,dealRub:20000,payoutUsdt:150}])`, ctx);
@@ -144,7 +154,7 @@ console.log('s18 CRM income UI: PASS');
 // Реальное act(s18): найденная QA смешанная пачка сохраняет ровно 2245,86 USDT.
 (async()=>{
   Object.assign(ctx,{STAND:false,document:{getElementById:()=>null},saveNote:()=>{},
-    need:()=>false,val:id=>({b0:'Broker',b1:'84.6',b2:'company'}[id]),cleanNum:String,
+    need:()=>false,val:id=>({b0:'Broker',b1:'84.6',b2:'company',b_sent_time:'2026-10-13T12:00:00'}[id]),cleanNum:String,
     now:()=> '16.10, 12:00',demoAllowed:()=>false,log:()=>{},toast:()=>{},
     go:(d,step)=>{d.step=step;}});
   vm.runInContext(html.match(/^async function act\([^]*?^}/m)[0],ctx);
@@ -166,8 +176,20 @@ console.log('s18 CRM income UI: PASS');
   assert.equal(main.brokerSentOverride,192048.31);
   vm.runInContext("DRAFTS['100|b_sent']='190000,00'",ctx);
   assert.doesNotMatch(vm.runInContext('stepS18()',ctx),/id="b_sent_submit"[^>]*disabled/);
+  const validFields=ctx.val;
+  for(const invalidTime of ['', '2026-02-30T12:00', '2099-01-01T12:00']){
+    ctx.val=id=>id==='b_sent_time'?invalidTime:validFields(id);
+    await ctx.act(100,'s18');
+    assert.equal(ctx.S.convs.length,0);
+    assert.equal(vm.runInContext("DRAFTS['100|b_sent_time']",ctx),invalidTime);
+    assert.equal(vm.runInContext("DRAFTS['100|b_sent']",ctx),'190000,00');
+  }
+  ctx.val=validFields;
   await ctx.act(100,'s18');
   const cn=ctx.S.convs[0];
+  assert.equal(cn.sentTs,Date.parse('2026-10-13T09:00:00Z'));
+  assert.match(cn.at,/13\.10\.2026.*12:00:00.*МСК/);
+  assert.equal(vm.runInContext("DRAFTS['100|b_sent_time']",ctx),'2026-10-13T12:00:00');
   assert.equal(main.step,'s18w');assert.equal(cn.sent,190000);
   assert.equal(main.brokerSentOverride,190000);
   assert.equal(vm.runInContext("DRAFTS['100|b_sent']",ctx),undefined);

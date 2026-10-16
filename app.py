@@ -6388,6 +6388,11 @@ def stand_state_put():
         if problem:
             return jsonify(success=False, error=problem, version=row.version or 0, data=_stand_strip_files(previous)), 409
         clean = preserve_server_fields(previous, payload['data'])
+        old_conv_ids = {c.get('id') for c in previous.get('convs') or []}
+        for conv in clean.get('convs') or []:
+            if conv.get('id') not in old_conv_ids and conv.get('clientRubTotal') is not None:
+                # Время события задаёт оператор, время регистрации — только сервер.
+                conv['sentRecordedTs'] = int(time.time() * 1000)
         from stand_workflow import rerate_attempt
         prior_for_rerate = {d.get('id'): d for d in previous.get('deals') or []}
         for deal in clean.get('deals') or []:
@@ -8336,7 +8341,54 @@ def _stand_broker_draft_rub(state, deal, db=None):
     return total
 
 
-def _stand_broker_handoff_problem(previous, state, before, deal):
+def _stand_broker_sent_time_problem(previous, conv, db=None):
+    """Факт отправки: миллисекунды UTC, не раньше известной даты банковского прихода."""
+    from datetime import timezone, timedelta
+    sent = conv.get('sentTs')
+    if type(sent) is not int or not 946684800000 <= sent <= int(time.time() * 1000):
+        return 'Укажите корректные дату и время отправки RUB брокеру, не в будущем'
+    if 'sentRecordedTs' in conv:
+        return 'Время записи отправки брокеру фиксирует сервер'
+    deals = {d.get('id'): d for d in previous.get('deals') or []}
+    incomes = {str(i.get('id')): i for i in previous.get('incomes') or []}
+    dates, registry_ids, registry_uuids = [], set(), set()
+    for source in conv.get('sources') or []:
+        member = deals.get(source.get('dealId')) or {}
+        receipt = member.get('manualBankReceipt') or {}
+        if receipt.get('status') == 'confirmed':
+            dates.append(receipt.get('statementDate'))
+        for part in member.get('payinParts') or []:
+            income = incomes.get(str(part.get('incId'))) or {}
+            dates.extend([income.get('statementDate'), income.get('date')])
+            if part.get('crmIncomeId'):
+                registry_ids.add(part['crmIncomeId'])
+            key = str(part.get('incId') or '')
+            if key.startswith('sber:'):
+                registry_uuids.add(key[5:])
+        if source.get('dealId') is None and source.get('crmIncomeId'):
+            registry_ids.add(source['crmIncomeId'])
+    if db is not None:
+        if registry_ids:
+            dates.extend(row.operation_date for row in db.query(SberIncome).filter(
+                SberIncome.id.in_(registry_ids)).all())
+        if registry_uuids:
+            dates.extend(row.operation_date for row in db.query(SberIncome).filter(
+                SberIncome.uuid.in_(registry_uuids)).all())
+    for value in dates:
+        # «12.10» не содержит года; confirmedAt — время регистрации, не прихода денег.
+        if not isinstance(value, str) or not re.fullmatch(r'\d{4}-\d{2}-\d{2}', value):
+            continue
+        try:
+            start = datetime.strptime(value, '%Y-%m-%d').replace(
+                tzinfo=timezone(timedelta(hours=3)))
+        except ValueError:
+            continue
+        if sent < int(start.timestamp() * 1000):
+            return 'Отправка RUB брокеру не может быть раньше даты банковского прихода ' + value
+    return None
+
+
+def _stand_broker_handoff_problem(previous, state, before, deal, db=None):
     """Admission for the operator's RUB send attestation at s18 -> s18w."""
     from decimal import Decimal
 
@@ -8347,6 +8399,9 @@ def _stand_broker_handoff_problem(previous, state, before, deal):
     conv = convs[0]
     if any(c.get('id') == conv['id'] for c in previous.get('convs') or []):
         return 'Отправка брокеру требует новую пачку'
+    time_problem = _stand_broker_sent_time_problem(previous, conv, db)
+    if time_problem:
+        return time_problem
     sources = conv.get('sources') or []
     members = before.get('conv') or []
     selected_crm = deal.get('brokerCrmDraftIds') or []
@@ -9057,7 +9112,7 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
                    if k not in ('usdt', 'hash')):
                 return 'Конвертация не меняет оплату инвойса'
             if bs == 's18':
-                issue = _stand_broker_handoff_problem(previous, new_state, before, deal)
+                issue = _stand_broker_handoff_problem(previous, new_state, before, deal, db)
                 if issue:
                     return issue
             else:
@@ -9511,7 +9566,7 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
             if required and actor != required and not (actor == 'manager' and rerate_attempt(before, deal)):
                 return f'Действие шага {before.get("step")} доступно роли {required}'
         if step_changed and before.get('step') == 's18' and deal.get('step') == 's18w':
-            broker_problem = _stand_broker_handoff_problem(previous, new_state, before, deal)
+            broker_problem = _stand_broker_handoff_problem(previous, new_state, before, deal, db)
             if broker_problem:
                 return broker_problem
         assignee_problem = _stand_check_assignee(db, before, deal, actor, actor_id, new_state)
@@ -13939,7 +13994,9 @@ def _stand_sync_crm_conversions(db, previous, state):
         if abs(sum(r.free_rub(used) for r in rows) - float(item.get('rubTotal') or 0)) > .01:
             raise ValueError('Сумма поступлений CRM не совпадает с отправленной пачкой')
         crm = Conversion(broker=item.get('broker'), request_no=item.get('requestNo'),
-                         sent_at=datetime.utcnow(), rate_rub_usdt=float(item.get('rate')),
+                         sent_at=(datetime.utcfromtimestamp(item['sentTs'] / 1000)
+                                  if item.get('clientRubTotal') is not None else datetime.utcnow()),
+                         rate_rub_usdt=float(item.get('rate')),
                          held_percent=0 if item.get('feeMode') == 'manual' else .3,
                          held_fixed_rub=float(item.get('held') or 0) if item.get('feeMode') == 'manual' else 40,
                          amount_rub_sent=float(item.get('sent')),

@@ -142,6 +142,7 @@ def test_sber_crm_and_unlinked_in_one_batch(sber_board):
     db = m.get_session()
     try:
         crm = db.query(m.Conversion).get(saved['convs'][0]['crmConversionId'])
+        assert crm.sent_at == m.datetime.utcfromtimestamp(saved['convs'][0]['sentTs'] / 1000)
         assert crm.status == m.ConversionStatus.SENT
         assert crm.sources_rub() == 65000
         assert crm.sent_rub() == 64765
@@ -151,6 +152,16 @@ def test_sber_crm_and_unlinked_in_one_batch(sber_board):
         db.close()
     after = client.get('/api/stand/s18/sber-candidates').json['incomes']
     assert not {r['id'] for r in rows} & {r['id'] for r in after}
+
+
+def test_s18_rejects_before_registry_bank_date(sber_board):
+    client, rows = sber_board
+    before = client.get('/api/stand/state').json
+    proposal = _proposal(before['data'], rows)
+    proposal['convs'][0]['sentTs'] = 1791752400000  # 12.10 00:00 МСК < выписка 13.10.
+    response = client.put('/api/stand/state', json={'version': before['version'], 'data': proposal})
+    assert response.status_code == 409, response.json
+    assert 'банковского прихода' in response.json['error']
 
 
 def test_s18_rejects_mixed_accounts(sber_board):
