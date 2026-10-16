@@ -38,7 +38,7 @@ vm.createContext(ctx);
 vm.runInContext(['MF','FLOWSOLE'].map(name=>html.match(new RegExp('^const '+name+'=[^]*?};', 'm'))[0]).join('\n'),ctx);
 vm.runInContext(['pendingEx', 's18Sber', 's18AccountIdentity', 's18AccountKey', 's18AccountLabel', 's18Rub', 's18CrmRows',
   's18DateKey', 's18DateLabel', 's18FilteredRows', 's18CrmSection',
-  's18ClientRub', 's18ClientTotal', 'brokerSentAmount', 'brokerSentParse', 'convMargin', 'convMarginBlock'].map(fn).join('\n')+
+  's18ClientRub', 's18ClientTotal', 'brokerSentAmount', 'brokerPlanShares', 'brokerSentParse', 'convMargin', 'convMarginBlock'].map(fn).join('\n')+
   '\nlet s18Candidates=[], s18Selected=new Set(), s18SelectedDealId=null;'+
   "let s18Filters={query:'',from:'',to:''},s18Expanded={crm:false,unlinked:false};\n"+stepCode, ctx);
 // Глобальные let заполняем внутри контекста: браузер хранит выбор локально.
@@ -131,3 +131,33 @@ main.manualBankReceipt.account='40807810819000000261';
 incomes[0].accountKey='sber';
 assert.equal(vm.runInContext('s18AccountKey(d)',ctx),null);
 console.log('s18 CRM income UI: PASS');
+
+// Реальное act(s18): найденная QA смешанная пачка сохраняет ровно 2245,86 USDT.
+(async()=>{
+  Object.assign(ctx,{STAND:false,document:{getElementById:()=>null},saveNote:()=>{},
+    need:()=>false,val:id=>({b0:'Broker',b1:'84.6',b2:'company'}[id]),cleanNum:String,
+    now:()=> '16.10, 12:00',demoAllowed:()=>false,log:()=>{},toast:()=>{},
+    go:(d,step)=>{d.step=step;}});
+  vm.runInContext(html.match(/^async function act\([^]*?^}/m)[0],ctx);
+  main.amountRub=192666.30;main.incomeAmount=192666.31;main.brokerSentOverride=190000;
+  main.payinParts[0].amountRub=192666.31;
+  main.rates.broker=84.6;main.manualBankReceipt.actualAmount=192666.31;
+  incomes[0].rub=incomes[0].grossRub=192666.31;
+  incomes[0].accountKey='flow_sole';ctx.S.convs=[];
+  vm.runInContext("s18Candidates=[{id:4,uuid:'flow4',accountKey:'flow_sole',rub:10000,dealId:null}];s18Selected=new Set([4])",ctx);
+  const preview=vm.runInContext('convMargin(d,202666.31,84.6,s18Candidates)',ctx);
+  assert.equal(preview.usdtIn,2135.04);
+  assert.equal(preview.unlinkedUsdt,110.82);
+  ctx.brokerRate=()=>84.6;
+  assert.match(vm.runInContext('convMarginBlock(d,202666.31,s18Candidates)',ctx),/110,82 USDT/);
+  await ctx.act(100,'s18');
+  const cn=ctx.S.convs[0];
+  assert.equal(main.step,'s18w');assert.equal(cn.sent,190000);
+  assert.deepEqual(Array.from(cn.sources,x=>x.usdt),[2135.04,110.82]);
+  assert.equal(cn.sources.reduce((sum,x)=>sum+Math.round(x.usdt*100),0),224586);
+  assert.equal(cn.sources[0].usdt,preview.usdtIn);
+  assert.equal(cn.sources[1].usdt,preview.unlinkedUsdt);
+  const thirds=vm.runInContext('brokerPlanShares([1,1,1],1,1)',ctx);
+  assert.deepEqual(Array.from(thirds),[.33,.33,.34]);
+  console.log('s18 mixed broker plan conservation: PASS');
+})().catch(e=>{console.error(e);process.exitCode=1;});

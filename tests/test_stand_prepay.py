@@ -808,3 +808,30 @@ def test_actual_crm_close_requires_all_results_and_preserves_profit(api, source,
     assert r.json['deal']['profit_usdt'] == received_usdt - 10130
     again = api[0].post('/api/stand/deals/1484/crm-close', json={'version': 1, 'crm': crm})
     assert again.status_code == 200 and again.json['duplicate']
+
+
+def test_mixed_broker_plan_preserves_total_cents_and_rejects_independent_rounding(api):
+    """Регрессия QA: 190000 / 84.6 = 2245.86, а не 2245.87 из двух округлений."""
+    previous, state = manual_handoff(190000)
+    deal = state['deals'][0]
+    before = previous['deals'][0]
+    for item in (before, deal):
+        item.update(amountRub=192666.30, incomeAmount=192666.31, brokerCrmDraftIds=[42])
+        item['rates']['broker'] = '84.6'
+        item['payinParts'][0]['amountRub'] = 192666.31
+    for item in (previous, state):
+        item['incomes'][0].update(rub=192666.31, grossRub=192666.31)
+    state['incomes'].append({'id': 'sber:qa-plan-extra', 'source': 'sber', 'rub': 10000,
+        'grossRub': 10000, 'batchRub': 10000, 'dealId': None, 'cnvId': 1})
+    conv = state['convs'][0]
+    conv.update(rate='84.6', rubTotal=202666.31, clientRubTotal=202666.30, held=12666.31)
+    conv['sources'] = [
+        {'dealId': 1484, 'rub': 192666.31, 'clientRub': 192666.30, 'usdt': 2135.04},
+        {'dealId': None, 'crmIncomeId': 42, 'incomeId': 'sber:qa-plan-extra',
+         'rub': 10000, 'clientRub': 10000, 'usdt': 110.82}]
+    assert m._stand_broker_handoff_problem(previous, state, before, deal) is None
+    conv['sources'][0]['usdt'] = 2135.05
+    assert 'Распределение' in m._stand_broker_handoff_problem(previous, state, before, deal)
+    # Сохранение суммы само по себе не позволяет перераспределить центы произвольно.
+    conv['sources'][1]['usdt'] = 110.81
+    assert 'Распределение' in m._stand_broker_handoff_problem(previous, state, before, deal)

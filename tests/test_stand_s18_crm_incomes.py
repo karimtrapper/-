@@ -2,6 +2,7 @@
 import copy
 import json
 import secrets
+from decimal import Decimal
 
 import pytest
 
@@ -96,13 +97,16 @@ def _proposal(board, rows):
     deal.update(step='s18w', cnvId=1, walletId='grusha')
     deal['rates']['broker'] = '100'
     deal['brokerCrmDraftIds'] = [r['id'] for r in rows[1:]]
-    sources = [{'dealId': deal['id'], 'rub': 10000, 'clientRub': 10000, 'usdt': 99.64, 'bankNet': True}]
+    sources = [{'dealId': deal['id'], 'rub': 10000, 'clientRub': 10000, 'usdt': 99.63, 'bankNet': True}]
     for row in rows[1:]:
         sources.append({'dealId': None, 'crmIncomeId': row['id'], 'clientRub': row['rub'], 'incomeId': 'sber:' + row['uuid'],
                         'rub': row['rub'], 'usdt': round(64765 * row['rub'] / 65000 / 100, 2)})
         state['incomes'].append({'id': 'sber:' + row['uuid'], 'source': 'sber',
                                  'rub': row['rub'], 'grossRub': row['rub'],
                                  'dealId': None, 'cnvId': 1, 'batchRub': row['rub']})
+    for source, planned in zip(sources, stand_funding.incoming_shares(
+            [Decimal(str(x['rub'])) for x in sources], Decimal('647.65'))):
+        source['usdt'] = float(planned)
     state['incomes'][0]['cnvId'] = 1
     state['convs'] = [{'id': 1, 'broker': 'Tradex', 'requestNo': '41', 'rate': '100',
                        'status': 'sent', 'at': '13.10, 12:00', 'sentTs': 1791892800000,
@@ -308,9 +312,11 @@ def test_flowsole_alias_draft_handoff_and_sql_actual_sent(sber_board, board_key)
     conv.update(feeMode='manual', sent=64000, held=1000, clientRubTotal=65000)
     for key in ('feePct', 'feeFix', 'feeCtrl', 'feeOurs', 'feeCtrlPct', 'feeOursPct'):
         conv.pop(key, None)
-    for source in conv['sources']:
+    planned = stand_funding.incoming_shares(
+        [Decimal(str(x['rub'])) for x in conv['sources']], Decimal(640))
+    for source, share in zip(conv['sources'], planned):
         source['clientRub'] = source['rub']
-        source['usdt'] = round(64000 * source['rub'] / 65000 / 100, 2)
+        source['usdt'] = float(share)
     for source, row in zip(conv['sources'][1:], rows[1:]):
         source['crmIncomeId'] = row['id']
     for income in proposal['incomes'][1:]:

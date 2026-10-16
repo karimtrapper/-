@@ -24,7 +24,7 @@ import stand_object_store
 import binascii
 import stand_notify
 from sber_acquiring import parse_sber_acquiring
-from stand_funding import account_identity, income_account_identity
+from stand_funding import account_identity, income_account_identity, incoming_shares
 from stand_funding import check_batch as _stand_check_batch_funding, check_state as _stand_check_funding_state
 import stand_prepay
 import stand_demo
@@ -8420,10 +8420,13 @@ def _stand_broker_handoff_problem(previous, state, before, deal):
     if sent is None or sent <= 0 or any(_amount(conv.get(k)) != expected
                                          for k, expected in facts.items()):
         return 'Расчёт отправки брокеру не совпадает с подтверждёнными RUB'
-    for source in sources:
-        source_rub = _amount(source.get('rub'))
-        expected_usdt = js_round(sent * source_rub / rub / rate)
-        if expected_usdt is None or expected_usdt <= 0 or _amount(source.get('usdt')) != expected_usdt:
+    # План делим от общей округлённой суммы; последний источник забирает центы.
+    total_usdt = js_round(sent / rate)
+    if total_usdt is None:
+        return 'Некорректная сумма заявки брокеру'
+    planned = incoming_shares([_amount(source.get('rub')) for source in sources], total_usdt)
+    for source, expected_usdt in zip(sources, planned):
+        if expected_usdt <= 0 or _amount(source.get('usdt')) != expected_usdt:
             return 'Распределение заявки брокеру не совпадает с источниками'
     return None
 

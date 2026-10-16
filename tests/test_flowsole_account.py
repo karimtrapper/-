@@ -121,10 +121,10 @@ def test_crm_and_s14_flowsole_share_batch_and_profit(monkeypatch):
         'rubTotal': 30000, 'clientRubTotal': 30000, 'held': 130, 'sent': 29870,
         'feePct': .3, 'feeFix': 40, 'feeCtrl': 70, 'feeOurs': 60,
         'feeCtrlPct': .1, 'feeOursPct': .2,
-        'sources': [{'dealId': 9301, 'rub': 10000, 'clientRub': 10000, 'usdt': 99.57, 'bankNet': False,
+        'sources': [{'dealId': 9301, 'rub': 10000, 'clientRub': 10000, 'usdt': 99.56, 'bankNet': False,
                      'accountKey': 'flow_sole'},
                     {'dealId': None, 'crmIncomeId': crm_id, 'clientRub': 20000, 'incomeId': 'sber:' + crm.uuid,
-                     'rub': 20000, 'usdt': 199.13, 'accountKey': 'flow_sole'}],
+                     'rub': 20000, 'usdt': 199.14, 'accountKey': 'flow_sole'}],
         'txs': []}]
     batch = client.put('/api/stand/state', json={'version': before['version'],
         'data': proposal})

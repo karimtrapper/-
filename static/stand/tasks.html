@@ -3157,6 +3157,19 @@ function brokerSentAmount(d,total){
   if(sent==null)return {sent:NaN,held:NaN,manual:true};
   return {sent,held:Math.round((total-sent)*100)/100,manual:true};
 }
+function brokerPlanShares(weights,sent,rate){
+  // План в целых центах: последний источник забирает остаток, как incoming_shares.
+  const cents=Math.round(sent/rate*100);
+  if(!Number.isSafeInteger(cents)||cents<=0)return [];
+  const rub=weights.map(w=>BigInt(Math.round(Number(w)*100)));
+  const total=rub.reduce((a,b)=>a+b,0n);
+  if(total<=0n)return [];
+  let used=0n;
+  return rub.map((weight,i)=>{
+    const part=i===rub.length-1?BigInt(cents)-used:BigInt(cents)*weight/total;
+    used+=part;return Number(part)/100;
+  });
+}
 function brokerSentParse(raw){
   const value=String(raw).replace(/[\s\u00a0\u202f\u2009]/g,'').replace(',','.');
   if(!/^\d+(?:\.\d{1,2})?$/.test(value))return null;
@@ -7291,9 +7304,10 @@ function convMargin(d,total,rate,crmRows=[]){
     item.rub+=x.rub;crmDeals.set(x.dealId,item);
   });
   let crmRub=0,crmCost=0,missingCrm=0;
-  crmDeals.forEach(x=>{
+  const knownCrm=new Set();
+  crmDeals.forEach((x,id)=>{
     if(!(num(x.dealRub)>0&&num(x.payoutUsdt)>0)){missingCrm++;return;}
-    crmRub+=x.rub;
+    crmRub+=x.rub;knownCrm.add(id);
     /* У одной CRM-сделки бывает несколько приходов: обязательство делим
        пропорционально выбранным рублям и не списываем его дважды. */
     crmCost+=num(x.payoutUsdt)*Math.min(x.rub/num(x.dealRub),1);
@@ -7301,7 +7315,11 @@ function convMargin(d,total,rate,crmRows=[]){
   /* Удержание берётся с общей пачки, затем чистые рубли делятся по долям.
      Доля без сделки и доля без известной себестоимости не являются прибылью. */
   const knownSent=Math.round(totalSent*(boardRub+crmRub)/total*100)/100;
-  const usdtIn=knownSent/rate;
+  const planned=brokerPlanShares(members.map(s18Rub).concat(crmRows.map(x=>x.rub)),totalSent,rate);
+  if(!planned.length)return null;
+  const usdtIn=Math.round(planned.reduce((sum,share,i)=>sum+
+    (i<members.length||knownCrm.has(crmRows[i-members.length].dealId)?share:0),0)*100)/100;
+  const unlinkedUsdt=Math.round(crmRows.reduce((sum,x,i)=>sum+(!x.dealId?planned[members.length+i]:0),0)*100)/100;
   const freeholdMembers=members.filter(x=>x.kind==='Фрихолд');
   const freeholdCost=freeholdMembers.reduce((s,x)=>s+(econ(x).sentUsd||0),0);
   const thb=members.filter(x=>x.kind!=='Фрихолд').reduce((s,x)=>s+(x.amountThb||approx(x).thb||0),0);
@@ -7309,17 +7327,21 @@ function convMargin(d,total,rate,crmRows=[]){
   const cost=(thb?thb/ut:0)+freeholdCost+crmCost;
   const profit=usdtIn-cost;
   return {usdtIn:usdtIn,thb:thb,cost:cost,profit:profit,freeholdCost:freeholdCost,
-    crmCost:crmCost,unlinkedRub:unlinkedRub,missingCrm:missingCrm,
+    crmCost:crmCost,unlinkedRub:unlinkedRub,unlinkedUsdt,missingCrm:missingCrm,
     pct:usdtIn?profit/usdtIn*100:null, ut:ut, sent:knownSent,
     minRate:cost?knownSent/cost:null};
 }
 function convMarginBlock(d,total,crmRows=[]){
   const rate=num(brokerRate(d)||d.rates.broker);
+  const m=rate?convMargin(d,total,rate,crmRows):null;
   const unlinkedRub=crmRows.filter(x=>!x.dealId).reduce((s,x)=>s+x.rub,0);
+  const members=[d].concat((d.conv||[]).map(deal).filter(Boolean));
+  const planned=rate?brokerPlanShares(members.map(s18Rub).concat(crmRows.map(x=>x.rub)),
+    brokerSentAmount(d,total).sent,rate):[];
+  const unlinkedUsdt=crmRows.reduce((sum,x,i)=>sum+(!x.dealId?(planned[members.length+i]||0):0),0);
   const unlinkedLine=unlinkedRub?`<div style="margin-top:6px">Поступления без сделки: конвертируем <b>${moneyKop(unlinkedRub,'₽')}</b> → ${
-    rate?'≈ <b>'+moneyKop(brokerSentAmount(d,total).sent*unlinkedRub/total/rate,'USDT')+'</b>':'USDT посчитаем после курса'}; прибыль не считаем — сделки нет.</div>`:'';
+    rate?'≈ <b>'+moneyKop(unlinkedUsdt,'USDT')+'</b>':'USDT посчитаем после курса'}; прибыль не считаем — сделки нет.</div>`:'';
   if(!rate) return `<div class="derived"><div>Поставьте курс брокера для оценки результата пачки.${unlinkedLine}</div></div>`;
-  const m=convMargin(d,total,rate,crmRows);
   if(!m) return unlinkedLine?`<div class="derived"><div>${unlinkedLine}</div></div>`:'';
   const ok=m.profit>0;
   return `<div class="derived" style="margin-top:12px"><div>
@@ -10586,13 +10608,15 @@ async function act(id,step){
       rubTotal:rubTotal,clientRubTotal,held:bs.held,sent:bs.sent,
       ...(bs.manual?{feeMode:'manual'}:{feePct:bs.pct,feeFix:bs.fix,
         feeCtrl:bs.ctrl,feeOurs:bs.ours,feeCtrlPct:bs.ctrlPct,feeOursPct:bs.oursPct}),
-      sources:members.map(x=>{const share=rubTotal?s18Rub(x)/rubTotal:0;
+      sources:members.map(x=>{
         return {dealId:x.id,payer:x.client,date:now().slice(0,5),
           rub:s18Rub(x),clientRub:s18ClientRub(x),bankNet:s18Sber(x),accountKey,
-          usdt:rate?Math.round(bs.sent*share/rate*100)/100:null};}).concat(crmExtras.map(x=>({
+          usdt:null};}).concat(crmExtras.map(x=>({
             dealId:null,crmDealId:x.dealId,crmIncomeId:x.id,crmClient:x.client,incomeId:'sber:'+x.uuid,payer:x.payer,date:x.date,
-            rub:x.rub,clientRub:x.rub,usdt:rate?Math.round(bs.sent*x.rub/rubTotal/rate*100)/100:null}))),
+            rub:x.rub,clientRub:x.rub,usdt:null}))),
       txs:[],sentTs:Date.now()};
+    const planned=brokerPlanShares(cn.sources.map(x=>x.rub),bs.sent,rate);
+    cn.sources.forEach((source,i)=>{source.usdt=planned[i];});
     S.convs.push(cn);
     members.forEach(x=>{x.cnvId=cn.id;x.brokerDraft=null;x.brokerPick=null;});
     crmExtras.forEach(x=>{
