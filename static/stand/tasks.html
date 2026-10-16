@@ -4800,10 +4800,16 @@ function s18Rub(d){
     return sum+(inc?.source==='sber'&&gross?Number(p.amountRub)*Number(inc.rub)/gross:Number(p.amountRub));
   },0)*100)/100;
 }
+function s18CrmUnavailable(d){
+  const members=[d].concat((d.conv||[]).map(deal).filter(Boolean));
+  return members.some(x=>x.manualBankReceipt?.status==='confirmed'&&(x.payinParts||[]).some(p=>
+    !String(p.incId).startsWith('sber:')&&!p.crmIncomeId))?
+    'Ручной приход ещё не связан с общим реестром. Добавить поступления CRM можно после сверки связи. Эти рубли можно отправить отдельной пачкой.':'';
+}
 function s18CrmRows(d){
   if(s18SelectedDealId!==d.id){s18Selected=new Set(d.brokerCrmDraftIds||[]);s18SelectedDealId=d.id;}
   const accountKey=s18AccountKey(d);
-  if(!accountKey)return [];
+  if(!accountKey||s18CrmUnavailable(d))return [];
   const own=new Set((d.payinParts||[]).map(p=>String(p.incId)));
   return s18Candidates.filter(x=>!own.has('sber:'+x.uuid)&&
     s18AccountIdentity(x.accountKey||'sber')===accountKey&&
@@ -10018,6 +10024,7 @@ function stepCard(d){
         ${walletCards(d,walletById(d.walletId),'walletPick',false,'b2w_'+d.id)}</div>
     </div>
     <details class="deal-detail s18-detail"><summary>Состав пачки · ${1+sel.length+crmSel.length} поступл.</summary>
+    ${s18CrmUnavailable(d)?`<p class="fh">${htmlText(s18CrmUnavailable(d))}</p>`:''}
     ${free.length?`<div class="alert a-warn"><div><b>${free.length} обмена на ${money(exSum(free),'₽')} ждут конвертации</b> — выбрать можно только сделки с положительным подтверждённым приходом RUB. Остальным сначала нужно зарегистрировать и привязать оплату. Наценка по готовым ≈ ${money(exMargin(free.filter(rubBatchReady)),'₽')}.</div>
       <button class="btn btn-outline btn-sm" style="margin-left:auto;align-self:center;white-space:nowrap" onclick="convAll(${d.id})">Взять все</button></div>`:''}
     <div class="card-title" style="font-size:14px;margin-bottom:4px">Что уходит брокеру одним переводом
@@ -10047,7 +10054,7 @@ function stepCard(d){
           sel.indexOf(x.id)<0?'отметить в этот перевод':'идёт этим переводом'}</span></span></div>`).join(''):''}
       ${bankSber?crmRows.length?
         s18CrmSection(crmLinked,'crm','Сделки CRM',sh)+s18CrmSection(crmUnlinked,'unlinked','Поступления без сделки',sh)
-        :(!extra.length?'<div class="li">Свободных поступлений на этом счёте нет</div>':''):''}`;})()}
+        :(!extra.length&&!s18CrmUnavailable(d)?'<div class="li">Свободных поступлений на этом счёте нет</div>':''):''}`;})()}
     </div>
     </details>
     ${transferModeBlock(d)}

@@ -8273,6 +8273,18 @@ def _stand_broker_sent_money(value):
     return amount if amount.is_finite() and amount > 0 and amount <= Decimal('1000000000000') else None
 
 
+def _stand_broker_crm_unavailable(state, deal):
+    """Старый ручной приход без связи с реестром отправляется отдельно от CRM."""
+    members = {deal.get('id'), *(deal.get('conv') or [])}
+    for member in state.get('deals') or []:
+        if member.get('id') not in members or (member.get('manualBankReceipt') or {}).get('status') != 'confirmed':
+            continue
+        if any(not str(part.get('incId')).startswith('sber:') and not part.get('crmIncomeId')
+               for part in member.get('payinParts') or []):
+            return 'Ручной приход не связан с общим реестром: добавление поступлений CRM доступно после сверки связи'
+    return None
+
+
 def _stand_broker_draft_rub(state, deal, db=None):
     """Подтверждённые источники черновика, включая выбранные свободные приходы CRM."""
     from decimal import Decimal, ROUND_HALF_UP
@@ -8306,6 +8318,8 @@ def _stand_broker_draft_rub(state, deal, db=None):
     account_key = next(iter(account_keys))
     selected = deal.get('brokerCrmDraftIds') or []
     if selected:
+        if _stand_broker_crm_unavailable(state, deal):
+            return None
         if (db is None or not isinstance(selected, list)
                 or any(type(i) is not int for i in selected) or len(set(selected)) != len(selected)):
             return None
@@ -8337,6 +8351,8 @@ def _stand_broker_handoff_problem(previous, state, before, deal):
     members = before.get('conv') or []
     selected_crm = deal.get('brokerCrmDraftIds') or []
     source_crm = [s.get('crmIncomeId') for s in sources if s.get('dealId') is None]
+    if source_crm and _stand_broker_crm_unavailable(state, deal):
+        return _stand_broker_crm_unavailable(state, deal)
     if (not isinstance(selected_crm, list)
             or any(type(i) is not int for i in selected_crm + source_crm)
             or sorted(selected_crm) != sorted(source_crm)):
@@ -9510,6 +9526,8 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
             if (actor not in ('operator', 'admin') or broker_step != 's18'
                     or before.get('cnvId') is not None):
                 return 'Состав пачки меняет операционист до отправки'
+            if deal.get('brokerCrmDraftIds') and _stand_broker_crm_unavailable(new_state, deal):
+                return _stand_broker_crm_unavailable(new_state, deal)
             if _stand_broker_draft_rub(new_state, deal, db) is None:
                 return 'Выбранные поступления CRM недоступны для пачки'
         if before.get('brokerSentOverride') != deal.get('brokerSentOverride'):

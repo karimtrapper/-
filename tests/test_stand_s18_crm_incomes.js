@@ -36,7 +36,7 @@ const ctx = {DRAFTS:{}, S: {deals: [main], incomes}, d: main, ap: {rub: 10000},
   avgUsdt: () => 33, approx: () => ({thb: 0}), econ: () => ({sentUsd: 0})};
 vm.createContext(ctx);
 vm.runInContext(['MF','FLOWSOLE'].map(name=>html.match(new RegExp('^const '+name+'=[^]*?};', 'm'))[0]).join('\n'),ctx);
-vm.runInContext(['pendingEx', 's18Sber', 's18AccountIdentity', 's18AccountKey', 's18AccountLabel', 's18Rub', 's18CrmRows',
+vm.runInContext(['pendingEx', 's18Sber', 's18AccountIdentity', 's18AccountKey', 's18AccountLabel', 's18Rub', 's18CrmUnavailable', 's18CrmRows',
   's18DateKey', 's18DateLabel', 's18FilteredRows', 's18CrmSection',
   's18ClientRub', 's18ClientTotal', 'brokerSentAmount', 'brokerPlanShares', 'brokerSentParse', 'convMargin', 'convMarginBlock'].map(fn).join('\n')+
   '\nlet s18Candidates=[], s18Selected=new Set(), s18SelectedDealId=null;'+
@@ -116,9 +116,18 @@ main.manualBankReceipt = {status:'confirmed',confirmedAt:'2026-10-16',confirmedB
   actualMode:'flowsole',bankBik:'044525094',account:'40807810819000000261'};
 main.rubReceivingAccount={mode:'custom',bik:'044525094',account:'40807810819000000261'};
 incomes[0]={id:'manual:1',source:'manual_confirmed',dealId:100,rub:10000,grossRub:10000};
-main.payinParts=[{incId:'manual:1',amountRub:10000}];
+main.payinParts=[{incId:'manual:1',amountRub:10000,crmIncomeId:1}];
 assert.equal(vm.runInContext('s18AccountKey(d)',ctx),'flow_sole');
 assert.equal(vm.runInContext('s18CrmRows(d).map(x=>x.id).join()',ctx),'4');
+// Реальный legacy-приход без связи: объяснение видно, выбрать CRM нельзя.
+delete main.payinParts[0].crmIncomeId;
+assert.equal(vm.runInContext('s18CrmRows(d).length',ctx),0);
+const orphanView=vm.runInContext('stepS18()',ctx);
+assert.match(orphanView,/Ручной приход ещё не связан с общим реестром/);
+assert.match(orphanView,/Эти рубли можно отправить отдельной пачкой/);
+assert.doesNotMatch(orphanView,/Сделка #44|s18ToggleCrm\(4\)/);
+main.payinParts[0].crmIncomeId=1;
+
 incomes[0].accountKey='flow_sole';
 assert.equal(vm.runInContext('s18CrmRows(d).map(x=>x.id).join()',ctx),'4');
 incomes[0].accountKey='bank:044525094:40807810819000000261';

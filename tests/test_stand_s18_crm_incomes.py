@@ -266,8 +266,9 @@ def test_received_batch_distributes_crm_deal_shares(sber_board, ledger_share):
         db.close()
 
 
+@pytest.mark.parametrize('registry_link', [True, False])
 @pytest.mark.parametrize('board_key', [None, 'flow_sole', 'bank:044525094:40807810819000000261'])
-def test_flowsole_alias_draft_handoff_and_sql_actual_sent(sber_board, board_key):
+def test_flowsole_alias_draft_handoff_and_sql_actual_sent(sber_board, board_key, registry_link):
     """Старый приход стенда + CRM alias: выбор, сохранение, отправка и SQL."""
     client, rows = sber_board
     db = m.get_session()
@@ -290,6 +291,8 @@ def test_flowsole_alias_draft_handoff_and_sql_actual_sent(sber_board, board_key)
                                       'account': '40807810819000000261'}
         deal['payinParts'] = [{'incId': 'manual-own', 'amountRub': 10000,
                               'crmIncomeId': own.id, 'manualReceiptId': receipt_id}]
+        if not registry_link:
+            deal['payinParts'][0].pop('crmIncomeId')
         state['incomes'] = [{'id': 'manual-own', 'dealId': deal['id'], 'source': 'manual_confirmed',
             'manualReceiptId': receipt_id, 'crmIncomeId': own.id, 'rub': 10000, 'grossRub': 10000}]
         if board_key:
@@ -302,6 +305,30 @@ def test_flowsole_alias_draft_handoff_and_sql_actual_sent(sber_board, board_key)
     draft = copy.deepcopy(before['data'])
     draft['deals'][0]['brokerCrmDraftIds'] = [r['id'] for r in rows[1:]]
     selected = client.put('/api/stand/state', json={'version': before['version'], 'data': draft})
+    if not registry_link:
+        assert selected.status_code == 409, selected.json
+        assert 'не связан с общим реестром' in selected.json['error']
+        assert client.get('/api/stand/state').json['version'] == before['version']
+        forged = _proposal(before['data'], rows)
+        assert 'не связан с общим реестром' in m._stand_broker_handoff_problem(
+            before['data'], forged, before['data']['deals'][0], forged['deals'][0])
+        # Подтверждённые деньги остаются доступны отдельной пачкой без изменения связи.
+        standalone = copy.deepcopy(before['data'])
+        standalone['deals'][0]['brokerSentOverride'] = 9000
+        saved = client.put('/api/stand/state', json={'version': before['version'], 'data': standalone})
+        assert saved.status_code == 200, saved.json
+        proposal = _proposal(saved.json['data'], rows[:1])
+        conv = proposal['convs'][0]
+        conv.update(feeMode='manual', rubTotal=10000, clientRubTotal=10000, sent=9000, held=1000)
+        for key in ('feePct', 'feeFix', 'feeCtrl', 'feeOurs', 'feeCtrlPct', 'feeOursPct'):
+            conv.pop(key, None)
+        conv['sources'][0]['usdt'] = 90
+        response = client.put('/api/stand/state', json={'version': saved.json['version'], 'data': proposal})
+        assert response.status_code == 200, response.json
+        assert response.json['data']['deals'][0]['step'] == 's18w'
+        assert 'crmIncomeId' not in response.json['data']['deals'][0]['payinParts'][0]
+        assert not response.json['data']['convs'][0].get('crmConversionId')
+        return
     assert selected.status_code == 200, selected.json
     draft = selected.json['data']
     draft['deals'][0]['brokerSentOverride'] = 64000
