@@ -366,20 +366,21 @@ a.hash:hover{background:#BAE6FD}
 @media(max-width:650px){.owner-line summary{flex-wrap:wrap}.owner-line .owner-label{width:100%}.owner-line .owner-hint{margin-left:0;text-align:left}}
 .sberbox{background:#F1F5F9;border:1px solid #E2E8F0;border-radius:var(--r);padding:12px 14px;margin-top:14px}
 /* Итог сделки на закрытии: три раздела, в каждой строке источник и «Поправить» */
-.sumsec{margin-top:14px}
+.sumsec{margin-top:12px}
 .sumsec .sumtitle{font-size:14px;font-weight:700;margin:0 0 4px}
-.sumrow{display:grid;grid-template-columns:150px minmax(0,1fr) 170px auto;gap:10px;align-items:center;padding:9px 0;border-bottom:1px solid var(--border-light);font-size:13.5px}
+.sumrow{display:grid;grid-template-columns:150px minmax(0,1fr) 170px auto;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid var(--border-light);font-size:13.5px}
 .sumrow:last-child{border-bottom:none}
 .sumlab{color:var(--text-muted);font-weight:600}
 .sumval{min-width:0;font-weight:600}
 .sumsrc{font-size:12px;color:var(--text-sec)}
-.sumred{color:#991B1B;background:#FEF2F2;border:1px solid #FECACA;border-radius:999px;padding:2px 10px;font-weight:700;white-space:nowrap}
-/* адрес/хеш — всегда одна строка; подпись доли переносится на следующую строку блока, а не ломает адрес */
-.sumhash{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0;margin-top:3px}
-.sumhash .addr{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
-.sumagent{display:grid;grid-template-columns:minmax(0,1.6fr) 110px 90px auto;gap:6px;align-items:center;margin-top:6px}
+.sumred{color:#991B1B;background:#FEF2F2;border:1px solid #FECACA;border-radius:999px;padding:2px 8px;font-weight:700;white-space:nowrap}
+/* адрес/хеш — всегда одна строка; подпись доли переносится на следующую строку блока, а не ломает адрес.
+   Цвет — токен текста, не цвет ссылки браузера по умолчанию (design-gate: #0000EE вне палитры). */
+.sumhash{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0;margin-top:4px}
+.sumhash .addr{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;color:var(--text)}
+.sumagent{display:grid;grid-template-columns:minmax(0,1.6fr) 110px 90px auto;gap:8px;align-items:center;margin-top:8px}
 @media(max-width:650px){
-  .sumrow{grid-template-columns:1fr;gap:3px;padding:10px 0}
+  .sumrow{grid-template-columns:1fr;gap:4px;padding:8px 0}
   .sumsrc{order:5}
   .sumagent{grid-template-columns:1fr 1fr}
   .sumagent select:first-child{grid-column:1/-1}
@@ -1308,7 +1309,9 @@ function ago(ts){
   return Math.round(h/24)+' дн назад';
 }
 function now(){return new Date().toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});}
-function money(v,c){return (v==null||v==='')?'—':Number(v).toLocaleString('ru-RU')+(c?' '+c:'');}
+/* Знак валюты — после числа (DESIGN.md), кроме доллара: он перед числом, как в usd(). */
+function money(v,c){if(v==null||v==='')return '—';const n=Number(v).toLocaleString('ru-RU');
+  return c==='$'?'$'+n:n+(c?' '+c:'');}
 
 /* средний курс дня. В проде — из справочника курсов (api.exgreen.pro), обновляется сам.
    Здесь живёт в состоянии и обновляется кнопкой, чтобы было видно: ориентир пересчитывается. */
@@ -4166,6 +4169,12 @@ function payinHuman(d){
   if(d.payType==='По реквизитам')return d.rubReceivingAccount?.mode==='flowsole'?'Flow Sole (СГБ)':'Сбер';
   return {'СБП':'СБП','Крипта':'Крипта (USDT)','Наличные':'Наличные'}[d.payType]||d.payType||'не выбран';
 }
+/* Способ оплаты для строки «Получение»: счёт зачисления, если он известен из прихода, иначе — общий способ.
+   Общая функция для «Итога сделки» и «Подтверждений», чтобы не показывать разные названия одного и того же. */
+function payinSourceLabel(d){
+  const acc=(d.payinParts||[]).map(p=>((S.incomes||[]).find(x=>String(x.id)===String(p.incId))||{}).acc).find(Boolean);
+  return acc?accountShortLabel(acc):payinHuman(d);
+}
 function payoutHuman(d){
   if(d.kind==='Фрихолд'||d.postConv==='ipps_swift')return 'IPPS → SWIFT';
   if(d.postConv==='coins')return 'Coins';
@@ -4227,13 +4236,12 @@ function crmPreviewFor(d){
 /* Итог сделки: три раздела, в каждой строке источник и «Поправить» */
 function dealSummaryBlock(d){
   const E=econ(d), rub=!isCrypto(d), fh=d.kind==='Фрихолд', realty=d.type==='Оплата недвижимости';
-  const paid=clientRubPaid(d), pv=crmPreviewFor(d), edit=`editOpen(${d.id})`;
+  const paid=clientRubPaid(d), pv=crmPreviewFor(d), edit=`editOpen(${d.id})`, ev=crmEvidenceParts(d);
   const row=(label,value,src,fix)=>`<div class="sumrow"><div class="sumlab">${label}</div><div class="sumval">${value}</div>
     <div class="sumsrc">${htmlText(src)}</div>${fix?`<button class="btn btn-outline btn-sm" onclick="${fix}">Поправить</button>`:'<span></span>'}</div>`;
   const noSum='<span class="sumred">нет суммы</span>';
   /* 1. Получение */
-  const acc=(d.payinParts||[]).map(p=>((S.incomes||[]).find(x=>String(x.id)===String(p.incId))||{}).acc).find(Boolean);
-  const inRows=[row('Способ оплаты',htmlText(acc?accountShortLabel(acc):payinHuman(d)),'заявка',edit)];
+  const inRows=[row('Способ оплаты',htmlText(payinSourceLabel(d)),'заявка',edit)];
   if(rub){
     inRows.push(row('Клиент заплатил',paid.rub!=null?`<b>${moneyKop(paid.rub,'₽')}</b>${paid.date?' · '+htmlText(paid.date):''}`:noSum,'подтверждённый приход',edit));
     const rate=num(d.rates.broker), broker=convOf(d)?.broker||quoteBest(d,'rub')?.name||'брокер не записан';
@@ -4242,7 +4250,8 @@ function dealSummaryBlock(d){
       :'<span class="sumred">курс или сумма не записаны</span>','курс брокера',edit));
   }
   inRows.push(row('USDT получено',(E.payin!=null?`<b>${moneyKop(E.payin,'USDT')}</b>`:noSum)+
-    ((d.payinHashes||[]).map(h=>hashCell(d,h)).join('')||'<div class="fh">хеша прихода нет</div>'),'приход USDT · хеш',edit));
+    ((d.payinHashes||[]).map(h=>hashCell(d,h)).join('')||'<div class="fh">хеша прихода нет</div>')+
+    (ev?`<div style="margin-top:6px">${ev.payinBtn}</div>`:''),'приход USDT · хеш',edit));
   /* 2. Оплата */
   const po=d.payout||{}, payHashes=(fh||realty)?mfList(d).map(t=>({hash:t.hash,network:t.net,amount:t.amount})):(po.hashes||[]);
   const receipt=filesOf(d,'receipt')[0];
@@ -4252,8 +4261,11 @@ function dealSummaryBlock(d){
       :realty?(d.amountThb!=null?`<b>${money(d.amountThb,'฿')}</b> инвойс${d.companyPct!=null?' · комиссия '+d.companyPct+' %':''}`:noSum)
       :money(po.thb||d.amountThb,'฿'),fh?'инвойс застройщика':'выдача',edit));
   outRows.push(row('USDT списано',E.cost!=null?`<b>${moneyKop(E.cost,'USDT')}</b>`:noSum,'себестоимость выдачи',edit));
-  outRows.push(row('Хеш выплаты',payHashes.length?payHashes.map(h=>hashCell(d,h)).join(''):'<span class="fh">хеша выплаты нет</span>','перевод в сети',edit));
-  outRows.push(row('Инвойс и чек',htmlText((d.payTo||{}).inv||d.invNo||'номер не указан')+' · '+(receipt?'чек: '+htmlText(receipt.file):'чека нет'),'оплата инвойса',edit));
+  outRows.push(row('Хеш выплаты',(payHashes.length?payHashes.map(h=>hashCell(d,h)).join(''):'<span class="fh">хеша выплаты нет</span>')+
+    (ev?`<div style="margin-top:6px">${ev.payoutBtn}</div>`:''),'перевод в сети',edit));
+  outRows.push(row('Инвойс и чек',htmlText((d.payTo||{}).inv||d.invNo||'номер не указан')+' · '+(receipt?'чек: '+htmlText(receipt.file):'чека нет')+
+    (ev&&ev.receiptBtn?`<div style="margin-top:6px">${ev.receiptBtn}</div>`:''),'оплата инвойса',edit));
+  if(ev)outRows.push(row('Подтверждения',ev.sentBtn+ev.warnings+ev.resendBtn,'перед закрытием',null));
   /* 3. Агент и прибыль */
   const list=d.agents||[], order=list.map((a,i)=>i).sort((x,y)=>((list[x].tier||1)-(list[y].tier||1))||x-y);
   const payoutOf=i=>{const pos=order.indexOf(i);return pv&&pv.data&&pv.data.agents[pos]?pv.data.agents[pos].payout_usdt:null;};
@@ -6967,7 +6979,10 @@ function crmEditDiff(d){
   });
   return out;
 }
-function crmEvidencePanel(d){
+/* Кнопки подтверждения факта серверу (/close-evidence) — общие для полной коробки
+   (вид оператора вне s27) и для встраивания прямо в строки «Итога сделки» на s27. */
+function crmEvidenceParts(d){
+  if(d.manual)return null;
   const id=d.id, esc=htmlText;
   const networkOut=['coins','ipps_swift'].includes(d.postConv)||['coins','client'].includes(d.paySrc);
   const networkPayin=d.payType==='Крипта'&&(!(d.payinHashes||[]).length||
@@ -6975,20 +6990,25 @@ function crmEvidencePanel(d){
   const routeRecipient=(d.transfer||{}).addr||(d.payTo||{}).acc||
     (d.payout||{}).bankCardId||(d.payout||{}).founder||d.client||'не указан';
   const canRole=role=>S.role===role||S.role==='admin';
-  return `${!d.manual?`<div class="box box-blue" style="margin:10px 0">
+  const payinBtn=`<button class="btn btn-outline btn-sm" ${networkPayin||!canRole(d.payType==='Наличные'?'operator':'manager')?'disabled':''} onclick="crmEvidence(${id},'payin')">Подтвердить получение · ${esc(payinSourceLabel(d))} · ${esc(econ(d).payin||0)} USDT · ${d.payType==='Наличные'?'оператор':'менеджер'}</button>`;
+  const payoutBtn=`<button class="btn btn-outline btn-sm" ${networkOut&&!d.serverTransferComplete||!canRole(networkOut?'manager':'operator')?'disabled':''} onclick="crmEvidence(${id},'payout')">Подтвердить оплату · ${esc(payoutHuman(d))} · ${esc(econ(d).cost||0)} USDT · ${esc(txShort(routeRecipient))} · ${networkOut?'менеджер':'оператор'}</button>`;
+  const receiptBtn=d.type==='Оплата недвижимости'?`<button class="btn btn-outline btn-sm" ${!canRole('operator')?'disabled':''} onclick="crmEvidence(${id},'receipt')">Подтвердить оплату инвойса · ${esc((d.payTo||{}).acc||'получатель на доске')} · оператор</button>`:'';
+  const sentBtn=`<button class="btn btn-outline btn-sm" ${!canRole('manager')?'disabled':''} onclick="crmEvidence(${id},'sent')">Подтвердить отправку чека · менеджер</button>`;
+  const warnings=(networkPayin?'<p class="fh">Сначала проверьте входящий перевод по сети.</p>':'')+
+    (networkOut&&!d.serverTransferComplete?'<p class="fh">Сначала дождитесь серверного подтверждения сетевого перевода.</p>':'');
+  const resendBtn=(networkOut&&canRole('operator')&&(d.transfer?.sends||[]).some(t=>t.status==='confirmed'&&(!t.from||!t.to)))
+    ?`<button class="btn btn-outline btn-sm" onclick="checkSends(${id})">Повторно проверить перевод в сети</button>`:'';
+  return {payinBtn,payoutBtn,receiptBtn,sentBtn,warnings,resendBtn};
+}
+function crmEvidencePanel(d){
+  const p=crmEvidenceParts(d);
+  if(!p)return '';
+  return `<div class="box box-blue" style="margin:10px 0">
       <b>Подтверждения перед закрытием</b>
       <p class="fh">Сотрудник подтверждает сохранённые суммы и получателя. Сетевой перевод должен быть проверен системой.</p>
-      <div class="row" style="flex-wrap:wrap;gap:6px;margin-top:7px">
-        <button class="btn btn-outline btn-sm" ${networkPayin||!canRole(d.payType==='Наличные'?'operator':'manager')?'disabled':''} onclick="crmEvidence(${id},'payin')">Pay-In · ${esc(d.payType||'канал')} · ${esc(econ(d).payin||0)} USDT · ${d.payType==='Наличные'?'оператор':'менеджер'}</button>
-        <button class="btn btn-outline btn-sm" ${networkOut&&!d.serverTransferComplete||!canRole(networkOut?'manager':'operator')?'disabled':''} onclick="crmEvidence(${id},'payout')">Pay-Out · ${esc(d.postConv||d.paySrc||'маршрут')} · ${esc(econ(d).cost||0)} USDT · ${esc(routeRecipient)} · ${networkOut?'менеджер':'оператор'}</button>
-        ${d.type==='Оплата недвижимости'?`<button class="btn btn-outline btn-sm" ${!canRole('operator')?'disabled':''} onclick="crmEvidence(${id},'receipt')">Оплата инвойса · ${esc((d.payTo||{}).acc||'получатель на доске')} · оператор</button>`:''}
-        <button class="btn btn-outline btn-sm" ${!canRole('manager')?'disabled':''} onclick="crmEvidence(${id},'sent')">Чек отправлен клиенту · менеджер</button>
-      </div>
-      ${networkPayin?'<p class="fh">Сначала проверьте входящий перевод по сети.</p>':''}
-      ${networkOut&&!d.serverTransferComplete?'<p class="fh">Сначала дождитесь серверного подтверждения сетевого перевода.</p>':''}
-      ${networkOut&&canRole('operator')&&(d.transfer?.sends||[]).some(t=>t.status==='confirmed'&&(!t.from||!t.to))
-        ?`<button class="btn btn-outline btn-sm" onclick="checkSends(${id})">Повторно проверить перевод в сети</button>`:''}
-    </div>`:''}`;
+      <div class="row" style="flex-wrap:wrap;gap:6px;margin-top:7px">${p.payinBtn}${p.payoutBtn}${p.receiptBtn}${p.sentBtn}</div>
+      ${p.warnings}${p.resendBtn}
+    </div>`;
 }
 function crmForm(d){
   const p=crmPayloadFinal(d), id=d.id, ed=d.crmEdit||{}, locked=crmLockedKeys(d);
@@ -7018,7 +7038,6 @@ function crmForm(d){
       ${sel('manager_name','Менеджер',MGR)}
       ${ro('Тип сделки',kindT)}
     </div>
-    ${crmEvidencePanel(d)}
     <details class="crmfin"${(Object.keys(ed).length||S.crmFinOpen)?' open':''} ontoggle="S.crmFinOpen=this.open">
       <summary>Деньги и переводы <span class="fh" style="margin:0">— собраны по дороге и сверены автоматически; править, только если знаете, что не так</span></summary>
       <div class="psec pin" style="margin-top:12px">Pay-In (Получение)</div>
