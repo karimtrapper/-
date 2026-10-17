@@ -380,8 +380,13 @@ a.hash:hover{background:#BAE6FD}
 .sumhash .addr{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;color:var(--text)}
 .sumagent{display:grid;grid-template-columns:minmax(0,1.6fr) 110px 90px auto;gap:8px;align-items:center;margin-top:8px}
 @media(max-width:650px){
-  .sumrow{grid-template-columns:1fr;gap:4px;padding:8px 0}
-  .sumsrc{order:5}
+  /* Компактно: подпись+«Поправить» в одной строке сверху, значение — под ней, источник — мелким текстом.
+     Было: все 4 ячейки строки в столбик — «Поправить» растягивался на всю ширину (приёмка Карима). */
+  .sumrow{grid-template-columns:1fr auto;grid-template-areas:"lab fix" "val val" "src src";gap:2px 8px;padding:8px 0}
+  .sumlab{grid-area:lab}
+  .sumval{grid-area:val}
+  .sumsrc{grid-area:src;font-size:11px}
+  .sumrow>:nth-child(4){grid-area:fix;padding:3px 10px;font-size:12px;align-self:start}
   .sumagent{grid-template-columns:1fr 1fr}
   .sumagent select:first-child{grid-column:1/-1}
 }
@@ -1407,8 +1412,8 @@ function rubReceivingBankLabel(d){
    не регистрирует платёж от сторонней компании). approx()/avgRate() ниже — про баты,
    к фрихолду не имеют отношения вообще: у него своя ветка freeholdApprox(). */
 const IPPS_TARIFFS={
-  bank:{percent:0.8,fixed:50,label:'Банк · 0,8% + 50$',note:'обычный FET-платёж от компании'},
-  soft:{percent:1.5,fixed:50,label:'Софт-счёт · 1,5% + 50$',note:'платёж от имени клиента — в заявке IPPS строка POBO'}
+  bank:{percent:0.8,fixed:50,label:'Банк · 0,8 % + $50',note:'обычный FET-платёж от компании'},
+  soft:{percent:1.5,fixed:50,label:'Софт-счёт · 1,5 % + $50',note:'платёж от имени клиента — в заявке IPPS строка POBO'}
 };
 const IPPS_WALLET='TQgQCBXkewuW4RoieDKFP9Ko2SopBh8jso';    // кошелёк IPPS TRC-20, подтверждён 22.09
 function ippsTariff(d){return IPPS_TARIFFS[d.ippsTariff||'bank'];}
@@ -4206,7 +4211,10 @@ function hashShareOf(d,h){
   if(holders.length<2)return null;
   const idx=holders.findIndex(x=>x.id===d.id); if(idx<0)return null;
   const amounts=holders.map(x=>Number((x.payinHashes||[]).find(y=>y.hash===h.hash).amount)||0);
-  const of=Number(h.amount)||0;
+  /* Общая сумма по хешу — сумма амаунтов всех держателей, не свой же amount (иначе
+     splitByPayinShare делит собственную сумму сделки на себя же и даёт долю меньше
+     своей — приёмка Карима 17.10, нашёл расхождение против живой доски). */
+  const of=amounts.reduce((s,a)=>s+a,0);
   return {share:splitByPayinShare(of,amounts)[idx],of:of};
 }
 /* Хеш в одну строку: сокращение посередине (txShort), копирование, ссылка в обозреватель */
@@ -4236,7 +4244,7 @@ function crmPreviewFor(d){
 /* Итог сделки: три раздела, в каждой строке источник и «Поправить» */
 function dealSummaryBlock(d){
   const E=econ(d), rub=!isCrypto(d), fh=d.kind==='Фрихолд', realty=d.type==='Оплата недвижимости';
-  const paid=clientRubPaid(d), pv=crmPreviewFor(d), edit=`editOpen(${d.id})`, ev=crmEvidenceParts(d);
+  const paid=clientRubPaid(d), pv=crmPreviewFor(d), edit=`editOpen(${d.id})`, ev=crmEvidenceParts(d,true);
   const row=(label,value,src,fix)=>`<div class="sumrow"><div class="sumlab">${label}</div><div class="sumval">${value}</div>
     <div class="sumsrc">${htmlText(src)}</div>${fix?`<button class="btn btn-outline btn-sm" onclick="${fix}">Поправить</button>`:'<span></span>'}</div>`;
   const noSum='<span class="sumred">нет суммы</span>';
@@ -4245,8 +4253,14 @@ function dealSummaryBlock(d){
   if(rub){
     inRows.push(row('Клиент заплатил',paid.rub!=null?`<b>${moneyKop(paid.rub,'₽')}</b>${paid.date?' · '+htmlText(paid.date):''}`:noSum,'подтверждённый приход',edit));
     const rate=num(d.rates.broker), broker=convOf(d)?.broker||quoteBest(d,'rub')?.name||'брокер не записан';
-    inRows.push(row('Конвертация',paid.rub!=null&&rate&&E.payin!=null
-      ?`${moneyKop(paid.rub,'₽')} → ${moneyKop(E.payin,'USDT')} по курсу ${htmlText(String(rate).replace('.',','))} · ${htmlText(broker)}`
+    /* В конвертацию уходит не вся сумма клиента — валютный контроль и удержание компании
+       вычитаются ДО обмена (brokerSend/econ). Строку строим от факта (E.payin×курс), а не от
+       суммы клиента — иначе ₽ слева и USDT справа не сходятся по курсу (приёмка Карима). */
+    const convRub=(rate&&E.payin!=null)?Math.round(E.payin*rate*100)/100:null;
+    const heldRub=(paid.rub!=null&&convRub!=null)?Math.round((paid.rub-convRub)*100)/100:null;
+    inRows.push(row('Конвертация',convRub!=null
+      ?`${moneyKop(convRub,'₽')} → ${moneyKop(E.payin,'USDT')} по курсу ${htmlText(String(rate).replace('.',','))} · ${htmlText(broker)}`+
+        (heldRub!=null&&Math.abs(heldRub)>=1?`<div class="fh">из суммы клиента удержано ${moneyKop(Math.abs(heldRub),'₽')} (валютный контроль и комиссия)</div>`:'')
       :'<span class="sumred">курс или сумма не записаны</span>','курс брокера',edit));
   }
   inRows.push(row('USDT получено',(E.payin!=null?`<b>${moneyKop(E.payin,'USDT')}</b>`:noSum)+
@@ -6718,41 +6732,41 @@ const FILLS={
 function crmGaps(d){
   const g=[], E=econ(d), po=d.payout||{}, rub=payCur(d)==='rub';
   const need=(ok,label,step)=>{if(!ok)g.push({label:label,step:step});};
-  need(d.clientId||d.client,'Клиент (client_id)','Заявка');
-  need(d.manager,'Менеджер (manager_name)','Заявка');
-  need(d.payType,'Метод Pay-In (payin_method)','Заявка');
+  need(d.clientId||d.client,'Клиент','Заявка');
+  need(d.manager,'Менеджер','Заявка');
+  need(d.payType,'Метод получения','Заявка');
   if(rub){
     /* у обмена «без шагов» рубли внесены суммой сделки — это и есть payin_amount_rub */
-    need(d.incomeAmount||(d.payinParts||[]).length||(d.amountRub&&d.type!=='Оплата недвижимости'),'Рубли прихода (payin_amount_rub, payin_parts)','Ждём приход');
-    need(num(d.rates.broker),'Курс RUB→USDT (payin_rate_rub_usdt)','Отправка брокеру для конвертации');
+    need(d.incomeAmount||(d.payinParts||[]).length||(d.amountRub&&d.type!=='Оплата недвижимости'),'Рубли прихода','Ждём приход');
+    need(num(d.rates.broker),'Курс RUB→USDT','Отправка брокеру для конвертации');
   }
-  need(E.payin,'USDT прихода (payin_amount_usdt)',rub?'Ждём USDT от брокера':'Ждём приход');
-  need((d.payinHashes||[]).length,'Хеши прихода (payin_tx_hashes)',rub?'Ждём USDT от брокера':'Ждём приход');
+  need(E.payin,'USDT прихода',rub?'Ждём USDT от брокера':'Ждём приход');
+  need((d.payinHashes||[]).length,'Хеши прихода',rub?'Ждём USDT от брокера':'Ждём приход');
   if(d.type==='Оплата недвижимости'){
     if(d.kind==='Фрихолд'){
       /* Фрихолд без батов: инвойс в USD, курса покупки ฿/USDT нет вообще; курс
          клиенту (₽ за 1$) нужен только рублёвому фрихолду — у крипты его не спрашивают */
-      need(d.invoiceUsd,'Инвойс застройщику, $ (invoice_amount_usd)','Заявка');
-      need(!!IPPS_TARIFFS[d.ippsTariff],'Тариф IPPS из сделки (transfer_fee_percent/fixed)','Заявка');
+      need(d.invoiceUsd,'Инвойс застройщику, $','Заявка');
+      need(!!IPPS_TARIFFS[d.ippsTariff],'Тариф IPPS из сделки','Заявка');
       if(!isCrypto(d)) need(num(d.rates.client),'Курс клиенту, ₽ за 1$','Отдать расчёт клиенту');
       else need(d.amountUsdt!=null,'Клиент отправит, USDT (план)','Документы клиента');
     }else{
-      need(d.amountThb,'Инвойс, ฿ (invoice_amount_thb)','Заявка');
-      need(num(d.rates.usdtThb),'Курс покупки ฿/USDT (buy_rate_thb_usdt)','Ответить курс');
-      need(num(d.rates.client),'Курс клиенту (sell_rate_thb_usdt)','Отдать расчёт клиенту');
+      need(d.amountThb,'Инвойс, ฿','Заявка');
+      need(num(d.rates.usdtThb),'Курс покупки ฿/USDT','Ответить курс');
+      need(num(d.rates.client),'Курс клиенту','Отдать расчёт клиенту');
     }
-    need((d.payTo&&d.payTo.purpose)||d.object,'Назначение платежа (realty_purpose)','Реквизиты для оплаты');
-    need(mfList(d).length||hashSum(po.hashes)!=null,'Переводы в MF Corp, факт (payout_tx_hashes)','Одобрить перевод');
-    need(d.docs&&d.docs.inv,'Инвойс застройщика (doc_invoice_url)','Сбор документов');
-    need(d.docs&&d.docs.receipt,'Подтверждение оплаты (doc_payment_url)','Оплатить инвойс');
+    need((d.payTo&&d.payTo.purpose)||d.object,'Назначение платежа','Реквизиты для оплаты');
+    need(mfList(d).length||hashSum(po.hashes)!=null,'Переводы в MF Corp, факт','Одобрить перевод');
+    need(d.docs&&d.docs.inv,'Инвойс застройщика','Сбор документов');
+    need(d.docs&&d.docs.receipt,'Подтверждение оплаты','Оплатить инвойс');
   }else{
-    need(d.paySrc,'Источник Pay-Out (payout_source)','Что делаем с USDT');
+    need(d.paySrc,'Источник выдачи','Что делаем с USDT');
     if(d.paySrc!=='client'){const spec=exchangeSpec(d);need(d[amountField(spec.output)]||(spec.output==='thb'&&po.thb),'Выдано, '+SIGN[spec.output],'Что делаем с USDT');}
-    need(E.cost!=null,'Себестоимость выдачи, USDT (payout_amount_usdt)','Что делаем с USDT / Одобрить перевод');
-    if(d.paySrc==='coins'||d.paySrc==='client') need((po.hashes||[]).length,'Хеши выдачи (payout_tx_hashes)','Одобрить перевод');
-    if(d.paySrc==='founder') need(po.reimbursement,'Возмещение фаундеру (reimbursement_id)','Возмещения — хеш перевода');
+    need(E.cost!=null,'Себестоимость выдачи, USDT','Что делаем с USDT / Одобрить перевод');
+    if(d.paySrc==='coins'||d.paySrc==='client') need((po.hashes||[]).length,'Хеши выдачи','Одобрить перевод');
+    if(d.paySrc==='founder') need(po.reimbursement,'Возмещение фаундеру','Возмещения — хеш перевода');
   }
-  need(E.ready,'Прибыль (profit_usdt, net_profit_usdt) — не считается','');
+  need(E.ready,'Прибыль — не считается','');
   return g;
 }
 /* Сделка в CRM из задачника (Карим, 25.09): на закрытии менеджер ещё раз
@@ -6981,7 +6995,7 @@ function crmEditDiff(d){
 }
 /* Кнопки подтверждения факта серверу (/close-evidence) — общие для полной коробки
    (вид оператора вне s27) и для встраивания прямо в строки «Итога сделки» на s27. */
-function crmEvidenceParts(d){
+function crmEvidenceParts(d,compact){
   if(d.manual)return null;
   const id=d.id, esc=htmlText;
   const networkOut=['coins','ipps_swift'].includes(d.postConv)||['coins','client'].includes(d.paySrc);
@@ -6990,9 +7004,11 @@ function crmEvidenceParts(d){
   const routeRecipient=(d.transfer||{}).addr||(d.payTo||{}).acc||
     (d.payout||{}).bankCardId||(d.payout||{}).founder||d.client||'не указан';
   const canRole=role=>S.role===role||S.role==='admin';
-  const payinBtn=`<button class="btn btn-outline btn-sm" ${networkPayin||!canRole(d.payType==='Наличные'?'operator':'manager')?'disabled':''} onclick="crmEvidence(${id},'payin')">Подтвердить получение · ${esc(payinSourceLabel(d))} · ${esc(econ(d).payin||0)} USDT · ${d.payType==='Наличные'?'оператор':'менеджер'}</button>`;
-  const payoutBtn=`<button class="btn btn-outline btn-sm" ${networkOut&&!d.serverTransferComplete||!canRole(networkOut?'manager':'operator')?'disabled':''} onclick="crmEvidence(${id},'payout')">Подтвердить оплату · ${esc(payoutHuman(d))} · ${esc(econ(d).cost||0)} USDT · ${esc(txShort(routeRecipient))} · ${networkOut?'менеджер':'оператор'}</button>`;
-  const receiptBtn=d.type==='Оплата недвижимости'?`<button class="btn btn-outline btn-sm" ${!canRole('operator')?'disabled':''} onclick="crmEvidence(${id},'receipt')">Подтвердить оплату инвойса · ${esc((d.payTo||{}).acc||'получатель на доске')} · оператор</button>`:'';
+  /* compact=true — кнопка уже стоит рядом со строкой, где всё перечисленное видно,
+     повторять способ/сумму/адрес в тексте кнопки не нужно (приёмка Карима 17.10) */
+  const payinBtn=`<button class="btn btn-outline btn-sm" ${networkPayin||!canRole(d.payType==='Наличные'?'operator':'manager')?'disabled':''} onclick="crmEvidence(${id},'payin')">${compact?`Подтвердить · ${d.payType==='Наличные'?'оператор':'менеджер'}`:`Подтвердить получение · ${esc(payinSourceLabel(d))} · ${esc(moneyKop(econ(d).payin||0,'USDT'))} · ${d.payType==='Наличные'?'оператор':'менеджер'}`}</button>`;
+  const payoutBtn=`<button class="btn btn-outline btn-sm" ${networkOut&&!d.serverTransferComplete||!canRole(networkOut?'manager':'operator')?'disabled':''} onclick="crmEvidence(${id},'payout')">${compact?`Подтвердить · ${networkOut?'менеджер':'оператор'}`:`Подтвердить оплату · ${esc(payoutHuman(d))} · ${esc(moneyKop(econ(d).cost||0,'USDT'))} · ${esc(txShort(routeRecipient))} · ${networkOut?'менеджер':'оператор'}`}</button>`;
+  const receiptBtn=d.type==='Оплата недвижимости'?`<button class="btn btn-outline btn-sm" ${!canRole('operator')?'disabled':''} onclick="crmEvidence(${id},'receipt')">${compact?'Подтвердить · оператор':`Подтвердить оплату инвойса · ${esc((d.payTo||{}).acc||'получатель на доске')} · оператор`}</button>`:'';
   const sentBtn=`<button class="btn btn-outline btn-sm" ${!canRole('manager')?'disabled':''} onclick="crmEvidence(${id},'sent')">Подтвердить отправку чека · менеджер</button>`;
   const warnings=(networkPayin?'<p class="fh">Сначала проверьте входящий перевод по сети.</p>':'')+
     (networkOut&&!d.serverTransferComplete?'<p class="fh">Сначала дождитесь серверного подтверждения сетевого перевода.</p>':'');
@@ -9446,7 +9462,7 @@ function stepGoal(d){
       nums:[['К оплате',money2(pt.amount||ap.thb,'฿')],['Получатель',pt.dev||d.dev||'—'],['Счёт',pt.acc||'—']],
       rows:[['Назначение для банка застройщика',pt.purpose||'']]};}
     case 's27': return {t:'Отписаться клиенту и закрыть сделку',
-      nums:[['Выдано',money2(ap.thb,ap.thbSign||'฿')],['Прибыль',E.ready&&E.net!=null?usd(E.net):'—'],['Документов',String(Object.keys(d.docs||{}).filter(k=>d.docs[k]).length)]]};
+      nums:[['Выдано',money2(ap.thb,ap.thbSign||'฿')],['Прибыль',E.ready&&E.net!=null?moneyKop(E.net,'USDT'):'—'],['Документов',String(Object.keys(d.docs||{}).filter(k=>d.docs[k]).length)]]};
     default: return null;
   }
 }
@@ -10677,12 +10693,12 @@ function stepCard(d){
          лежит в pay.outHash и в отправках, а pay.tx пуст (приёмка 25.09) */
       .concat([['Транзакция отправки',d.pay.tx||d.pay.outHash||((sendList(d).find(x=>x.status==='confirmed')||{}).ref)],
       ['Чек оплаты инвойса',receiptFiles.length?((d.docMeta||{}).receipt||{}).file:null]]);
-    const miss=ok.filter(x=>!x[1]).length+crmGaps(d).length;
+    const okMiss=ok.filter(x=>!x[1]).length, miss=okMiss+crmGaps(d).length;
     /* Чек — главное на этом шаге: сумма, получатель и файл крупно в самом верху,
        «Чек отправлен клиенту» — явная главная кнопка сразу под ним. Служебное
        (CRM-превью, список полей) — ниже и мельче, по иерархии важности (Карим, 25.09) */
     return `<div class="card"><div class="card-title">Чек клиенту и закрытие
-      <span class="sub">${ok.length-miss} из ${ok.length} полей собрано по дороге</span></div>
+      <span class="sub">${ok.length-okMiss} из ${ok.length} полей собрано по дороге</span></div>
     ${receiptFiles.length?`<div class="checktop">
       <div class="checklab">Чек от операциониста</div>
       <div class="checksum">${money(pt.amount||ap.thb,ap.thbSign||'฿')}${pt.dev?`<span class="to">→ ${safe(pt.dev)}</span>`:''}</div>

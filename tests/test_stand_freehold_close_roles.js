@@ -22,6 +22,9 @@ console.log('freehold close role visibility OK');
 
 // Реальные четыре кнопки: у оператора только инвойс; у менеджера остальные три.
 ctx.htmlText=String;ctx.econ=()=>({payin:11000,cost:10130});
+ctx.payinSourceLabel=()=>'Flow Sole (СГБ) …0261';ctx.payoutHuman=()=>'IPPS → SWIFT';ctx.txShort=s=>s;
+ctx.moneyKop=(v)=>String(v);
+vm.runInContext(source('crmEvidenceParts'),ctx);
 vm.runInContext(source('crmEvidencePanel'),ctx);
 d.postConv='ipps_swift';d.serverTransferComplete=true;
 for(const [role,expected] of [['operator',['receipt']],['manager',['payin','payout','sent']],['admin',['payin','payout','receipt','sent']],['teodor',[]]]){
