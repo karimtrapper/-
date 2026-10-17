@@ -990,6 +990,76 @@ body.wave4a.nav-shell-crm #create .sber-income-row {
     border-radius: 8px !important; font: 600 12px Inter, system-ui, sans-serif !important;
     cursor: pointer;
   }
+  body.wave4a.nav-shell-crm #incomes table.crm-mobile-table > tbody > tr[data-crm-card-ready="1"] {
+    grid-template-columns: 34px minmax(0,1fr) auto !important; cursor: pointer;
+  }
+  body.wave4a.nav-shell-crm #incomes table.crm-mobile-table > tbody > tr > td[data-crm-card-role="selection"] {
+    grid-row: span 2; align-self: start; padding-top: 2px !important;
+  }
+  body.wave4a.nav-shell-crm #incomes table.crm-mobile-table > tbody > tr > td[data-crm-card-role="title"] {
+    grid-column: 2; grid-row: 1;
+  }
+  body.wave4a.nav-shell-crm #incomes table.crm-mobile-table > tbody > tr > td[data-crm-card-role="amount"] {
+    grid-column: 3; grid-row: 1; text-align: right; white-space: nowrap;
+  }
+  body.wave4a.nav-shell-crm #incomes table.crm-mobile-table > tbody > tr > td[data-crm-card-role="status"] {
+    grid-column: 2; grid-row: 2; text-align: left;
+    font-size: 12px !important; font-weight: 500 !important; color: var(--navy-600) !important;
+  }
+  body.wave4a.nav-shell-crm #incomes table.crm-mobile-table > tbody > tr > td[data-crm-label="Дата"] {
+    display: block !important; grid-column: 3; grid-row: 2; text-align: right;
+    font-size: 12px !important; color: var(--navy-500) !important;
+    padding: 0 !important; border: 0 !important;
+  }
+  body.wave4a.nav-shell-crm #incomes .crm-mobile-details.crm-mobile-chevron {
+    border: 0 !important; background: transparent !important; padding: 0 !important;
+    width: 22px; height: 22px; min-height: 22px; justify-content: center;
+    color: var(--navy-500) !important; font-size: 16px !important; line-height: 1;
+    transition: transform .15s ease;
+  }
+  body.wave4a.nav-shell-crm #incomes tr.crm-mobile-expanded .crm-mobile-details.crm-mobile-chevron {
+    transform: rotate(180deg);
+  }
+  body.wave4a.nav-shell-crm #dashboard .stats-grid {
+    display: flex !important; flex-direction: column; gap: 0;
+  }
+  body.wave4a.nav-shell-crm #dashboard .stats-grid .stat-card.crm-mobile-stat-hero {
+    order: -2; border: 0; border-radius: 12px; padding: 16px;
+  }
+  body.wave4a.nav-shell-crm #dashboard .stats-grid .stat-card.crm-mobile-stat-hero .stat-value {
+    font: 700 36px Inter, system-ui, sans-serif !important; font-variant-numeric: tabular-nums;
+  }
+  body.wave4a.nav-shell-crm #dashboard .stats-grid .stat-card.crm-mobile-stat-hero .stat-label {
+    font: 600 16px Inter, system-ui, sans-serif !important; margin-top: 4px;
+  }
+  body.wave4a.nav-shell-crm #dashboard .stats-grid .stat-card.crm-mobile-stat-display {
+    order: -1; border: 0; border-radius: 12px; padding: 16px;
+  }
+  body.wave4a.nav-shell-crm #dashboard .stats-grid .stat-card.crm-mobile-stat-display .stat-value {
+    font: 700 22px Inter, system-ui, sans-serif !important; font-variant-numeric: tabular-nums;
+  }
+  body.wave4a.nav-shell-crm #dashboard .stats-grid .stat-card.crm-mobile-stat-display .stat-label {
+    font: 600 16px Inter, system-ui, sans-serif !important; margin-top: 4px;
+  }
+  body.wave4a.nav-shell-crm #dashboard .stats-grid .stat-card:not(.crm-mobile-stat-hero):not(.crm-mobile-stat-display) {
+    display: flex !important; flex-direction: row; align-items: baseline;
+    justify-content: space-between; gap: 12px; order: 0;
+    padding: 10px 0; border: 0; border-left: 0; border-radius: 0;
+    background: transparent; box-shadow: none;
+  }
+  body.wave4a.nav-shell-crm #dashboard .stats-grid .stat-card:not(.crm-mobile-stat-hero):not(.crm-mobile-stat-display) + .stat-card:not(.crm-mobile-stat-hero):not(.crm-mobile-stat-display) {
+    border-top: 1px solid var(--navy-100);
+  }
+  body.wave4a.nav-shell-crm #dashboard .stats-grid .stat-card:not(.crm-mobile-stat-hero):not(.crm-mobile-stat-display) .stat-value {
+    order: 2; font: 600 16px Inter, system-ui, sans-serif !important;
+    font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap;
+  }
+  body.wave4a.nav-shell-crm #dashboard .stats-grid .stat-card:not(.crm-mobile-stat-hero):not(.crm-mobile-stat-display) .stat-label {
+    order: 1; font: 400 14px Inter, system-ui, sans-serif !important; color: var(--navy-600) !important;
+  }
+  body.wave4a.nav-shell-crm #dashboard .stats-grid .stat-card:not(.crm-mobile-stat-hero):not(.crm-mobile-stat-display) > div:nth-child(3) {
+    display: none;
+  }
   body.wave4a.nav-shell-crm #exchangers .rx-scroll table { min-width: 0 !important; }
   body.wave4a.nav-shell-crm #exchangers .rx-cards { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
   body.wave4a.nav-shell-crm #exchangers #rx-merchants-body { grid-template-columns: minmax(0, 1fr) !important; }

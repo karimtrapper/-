@@ -66,22 +66,31 @@
           : index === action ? 'action' : 'extra';
       });
       if (action >= 0) return;
-      addDetailsButton(row, cells[titleIndex]);
+      addDetailsButton(row, cells[titleIndex], section);
     });
   }
 
-  function addDetailsButton(row, titleCell) {
+  function addDetailsButton(row, titleCell, section) {
+      const chevron = section === 'incomes';
       const button = document.createElement('button');
       button.type = 'button';
-      button.className = 'crm-mobile-details';
-      button.textContent = 'Детали';
+      button.className = chevron ? 'crm-mobile-details crm-mobile-chevron' : 'crm-mobile-details';
+      button.textContent = chevron ? '⌄' : 'Детали';
+      button.setAttribute('aria-label', 'Детали');
       button.setAttribute('aria-expanded', 'false');
-      button.addEventListener('click', event => {
-        event.stopPropagation();
+      const toggle = () => {
         const open = row.classList.toggle('crm-mobile-expanded');
         button.setAttribute('aria-expanded', String(open));
-        button.textContent = open ? 'Свернуть' : 'Детали';
-      });
+        if (chevron) button.setAttribute('aria-label', open ? 'Свернуть' : 'Детали');
+        else button.textContent = open ? 'Свернуть' : 'Детали';
+      };
+      button.addEventListener('click', event => { event.stopPropagation(); toggle(); });
+      if (chevron) {
+        row.addEventListener('click', event => {
+          if (event.target.closest('input, a, button, label')) return;
+          toggle();
+        });
+      }
       titleCell.append(button);
   }
 

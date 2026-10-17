@@ -2128,12 +2128,6 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 <div class="crm-mobile-selection-bar">
                     <label><input type="checkbox" id="incomesMobileSelectAll" onchange="toggleAllIncomes(this)"> Выбрать все на странице</label>
                     <strong id="incomesMobileSelectedTotal" aria-live="polite">Выбрано 0 на сумму 0 ₽</strong>
-                </div>
-                <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:1rem;">
-                    <button class="btn btn-primary" id="convertSelectedBtn"
-                            onclick="convertSelectedIncomes()" disabled>Конвертировать выбранное</button>
-                    <button class="btn btn-secondary crm-income-desktop-secondary" onclick="excludeSelectedIncomes()">Исключить выбранное</button>
-                    <button class="btn btn-secondary crm-income-desktop-secondary" onclick="cutoffIncomes()">Отсечь историю до даты</button>
                     <details class="crm-mobile-secondary-menu">
                         <summary aria-label="Дополнительные действия">⋯</summary>
                         <div>
@@ -2141,6 +2135,12 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                             <button class="btn btn-secondary" onclick="cutoffIncomes()">Отсечь историю до даты</button>
                         </div>
                     </details>
+                </div>
+                <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:1rem;">
+                    <button class="btn btn-primary" id="convertSelectedBtn"
+                            onclick="convertSelectedIncomes()" disabled>Конвертировать выбранное</button>
+                    <button class="btn btn-secondary crm-income-desktop-secondary" onclick="excludeSelectedIncomes()">Исключить выбранное</button>
+                    <button class="btn btn-secondary crm-income-desktop-secondary" onclick="cutoffIncomes()">Отсечь историю до даты</button>
                     <label style="display:flex; align-items:center; gap:6px; margin-left:auto;">
                         <input type="checkbox" id="incomesShowExcluded" onchange="setIncomesPerPage()">
                         показывать исключённые</label>
@@ -4144,18 +4144,18 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                                 ≈ $${formatNumber(p.realty_fee_usdt ?? 0)} · баты на счёте компании
                             </div>
                         </div>
-                        <div class="stat-card success">
+                        <div class="stat-card success crm-mobile-stat-hero">
                             <div class="stat-value">$${formatNumber(p.profit_wallet_usdt ?? 0)}</div>
                             <div class="stat-label">Чистая прибыль в крипте ${pl}</div>
                             <div style="font-size:11px;color:#059669;margin-top:4px;line-height:1.5">
                                 после выплат рефералам
                             </div>
                         </div>` : `
-                        <div class="stat-card success">
+                        <div class="stat-card success crm-mobile-stat-hero">
                             <div class="stat-value">$${p.profit_usdt ?? 0}</div>
                             <div class="stat-label">Чистая прибыль ${pl}</div>
                         </div>`}
-                        <div class="stat-card">
+                        <div class="stat-card crm-mobile-stat-display">
                             <div class="stat-value">$${formatNumber(p.volume_usdt ?? 0)}</div>
                             <div class="stat-label">Объём ${pl}</div>
                             ${(p.volume_realty_usdt || 0) > 0 && (p.volume_exchange_usdt || 0) > 0 ? `
@@ -11559,7 +11559,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             }
             btn.disabled = !sel.length;
             btn.textContent = sel.length
-                ? `Конвертировать выбранное (${sel.length} · ${cnvNum(total)} ₽)`
+                ? `Конвертировать · ${cnvNum(total)} ₽`
                 : 'Конвертировать выбранное';
         }
 
