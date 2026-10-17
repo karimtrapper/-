@@ -736,6 +736,33 @@ a.hash:hover{background:#BAE6FD}
 .deal-screen .tx-fee-row{display:flex;align-items:center;gap:var(--ds-sm);min-height:44px;font-size:var(--ds-body)}
 .deal-screen .tx-hidden summary,.deal-screen details summary{cursor:pointer;min-height:44px;display:flex;align-items:center}
 .deal-screen .doc-side{margin-top:var(--ds-md)}
+/* Хронология (pathCard): «Кто»/«Когда»/№/«Сколько держалось» — по содержимому и не
+   переносятся по буквам (td{overflow-wrap:anywhere} из общих стилей иначе рвёт
+   «Менеджер» на слоги в узкой колонке); «Что произошло» — единственная растяжимая
+   колонка, забирает всю оставшуюся ширину. */
+.deal-screen .hist-table td:nth-child(1),.deal-screen .hist-table td:nth-child(3),
+.deal-screen .hist-table td:nth-child(4),.deal-screen .hist-table td:nth-child(5){
+  white-space:nowrap;width:1%;overflow-wrap:normal}
+.deal-screen .hist-table td:nth-child(2){overflow-wrap:break-word;word-break:normal}
+.deal-screen .hist-table td:nth-child(5){color:var(--ds-muted);font-size:var(--ds-caption);text-align:right}
+.deal-screen .hist-table td,.deal-screen .hist-table th{padding:var(--ds-md) var(--ds-lg)}
+@media(max-width:700px){
+  .deal-screen .hist-table,.deal-screen .hist-table tbody{display:block}
+  .deal-screen .hist-table thead{display:none}
+  .deal-screen .hist-table tr{display:flex;flex-wrap:wrap;align-items:baseline;gap:0;
+    padding:var(--ds-md) 0;border-bottom:1px solid var(--ds-border)}
+  .deal-screen .hist-table tr:last-child{border-bottom:0}
+  .deal-screen .hist-table td{display:inline;border:0;padding:0;white-space:normal;
+    overflow-wrap:break-word;width:auto;text-align:left}
+  .deal-screen .hist-table td:first-child{display:none}
+  .deal-screen .hist-table td:nth-child(4){order:1;font-size:var(--ds-caption);color:var(--ds-muted)}
+  .deal-screen .hist-table td:nth-child(3){order:2;font-size:var(--ds-caption);color:var(--ds-muted)}
+  .deal-screen .hist-table td:nth-child(3)::before{content:" · "}
+  .deal-screen .hist-table td:nth-child(5){order:3;font-size:var(--ds-caption);color:var(--ds-muted)}
+  .deal-screen .hist-table td:nth-child(5)::before{content:" · "}
+  .deal-screen .hist-table td:nth-child(2){order:4;flex-basis:100%;margin-top:var(--ds-xs);
+    font-size:var(--ds-body);color:var(--ds-ink)}
+}
 .deal-screen :focus-visible{outline:2px solid var(--coral);outline-offset:2px}
 @media(max-width:700px){.deal-screen .cols{grid-template-columns:minmax(0,1fr)}.deal-screen .deal-path{display:none}}
 @media(max-width:700px){
@@ -6529,7 +6556,7 @@ function pathCard(d){
         <td>${st==='внесено'?'<span class="badge b-done">внесено</span>':(st==='сейчас'?'<span class="badge b-new">сейчас</span>':`<span class="badge b-wait">${st}</span>`)}</td></tr>`;}).join('')}
     </tbody></table>
     <div class="card-title" style="font-size:14px;margin:18px 0 10px">Хронология</div>
-    <table><thead><tr><th style="width:34px">№</th><th>Что произошло</th><th>Кто</th><th>Когда</th><th>Сколько держалось</th></tr></thead><tbody>
+    <table class="hist-table"><thead><tr><th style="width:34px">№</th><th>Что произошло</th><th>Кто</th><th>Когда</th><th>Сколько держалось</th></tr></thead><tbody>
     ${rows.map((r,i)=>`<tr${r.open?' style="background:var(--coral-light)"':''}>
       <td class="num">${i+1}</td><td>${htmlText(r.l.text)}</td>
       <td>${ROLES[r.l.role]?ROLES[r.l.role].t:'—'}</td>
