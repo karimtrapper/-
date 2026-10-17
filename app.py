@@ -9041,8 +9041,10 @@ def _stand_state_events(previous, state, actor, version):
             role = _stand_current_step_role(state, deal)
             if role:
                 events.append((role, 'Задача на вас: шаг ' + str(deal.get('step'))))
-            deal.setdefault('log', []).append({'at': int(time.time()*1000), 'role': 'system',
-                'text': f'Переход {before.get("step") or "новая заявка"} → {deal.get("step")} · {actor}'})
+            # Хронология — для человека: без внутренних кодов шага (s5, s14…),
+            # роль — та же actor, что в остальном журнале, не псевдо-«system».
+            deal.setdefault('log', []).append({'at': int(time.time()*1000), 'role': actor,
+                'text': 'Шаг передан дальше'})
         if before.get('reqTask') != deal.get('reqTask'):
             if deal.get('reqTask') == 'open':
                 events.append(('manager', 'Задача: заполнить реквизиты для оплаты'))
