@@ -758,3 +758,240 @@ body.wave4a.nav-shell-crm #create .sber-income-row {
     order: -1;
   }
 }
+
+/* Hallmark · pre-emit critique: P5 H4 E5 S5 R5 V4 */
+/* Mobile CRM list pattern. Desktop and tablet retain the existing tables. */
+.crm-mobile-filter-toggle, .crm-mobile-details, .docs-mobile-label,
+.crm-mobile-selection-bar, .crm-mobile-secondary-menu { display: none; }
+
+@media (max-width: 767px) {
+  html, body { overflow-x: clip; }
+  body.wave4a.nav-shell-crm .container,
+  body.wave4a.nav-shell-crm .section,
+  body.wave4a.nav-shell-crm .section > .card,
+  body.wave4a.nav-shell-crm .form-row,
+  body.wave4a.nav-shell-crm .form-group { min-width: 0; max-width: 100%; }
+  body.wave4a.nav-shell-crm .section :is(input, select, textarea) { max-width: 100%; }
+  body.wave4a.nav-shell-crm .section :is(code, .wallet-address, .tx-hash, .address) {
+    white-space: normal !important; overflow-wrap: anywhere !important;
+    word-break: break-word !important; overflow-x: visible !important;
+  }
+  body.wave4a.nav-shell-crm .section :is(.card-title, .crm-section-head, .docs-head) { min-width: 0; }
+  body.wave4a.nav-shell-crm .section :is(.card-title, .crm-section-head, .docs-head) > * { min-width: 0; }
+  body.wave4a.nav-shell-crm .crm-section-head { flex-wrap: wrap; }
+  body.wave4a.nav-shell-crm .section .btn { white-space: nowrap; max-width: 100%; }
+  body.wave4a.nav-shell-crm #dashboard > div[style*="grid-template-columns"] {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+  body.wave4a.nav-shell-crm #dashboard > div[style*="grid-template-columns"] > .card { min-width: 0; }
+  body.wave4a.nav-shell-crm #dashboard canvas { max-width: 100% !important; width: 100% !important; }
+  body.wave4a.nav-shell-crm #closing .card-title:has(> .btn) {
+    flex-wrap: wrap; gap: 12px; align-items: flex-start !important;
+  }
+  body.wave4a.nav-shell-crm #closing .card-title > .btn { width: 100%; }
+
+  body.wave4a.nav-shell-crm .crm-mobile-filter-toggle {
+    display: inline-flex !important; align-items: center; justify-content: space-between;
+    width: 100%; min-height: 44px; margin: 0 0 12px; padding: 0 14px;
+    background: var(--surface-white) !important; color: var(--navy-700) !important;
+    border: 1px solid var(--navy-300) !important; border-radius: 8px !important;
+    font: 600 14px Inter, system-ui, sans-serif !important; cursor: pointer;
+  }
+  body.wave4a.nav-shell-crm .crm-mobile-filter-toggle::after { content: '⌄'; font-size: 18px; }
+  body.wave4a.nav-shell-crm .crm-mobile-filter-toggle[aria-expanded="true"]::after { transform: rotate(180deg); }
+  body.wave4a.nav-shell-crm .crm-mobile-filter-panel:not(.is-open) { display: none !important; }
+  body.wave4a.nav-shell-crm #deals > .crm-mobile-filter-toggle { margin-top: 0; }
+  body.wave4a.nav-shell-crm #exchangers .crm-mobile-filter-toggle { margin: 12px; width: calc(100% - 24px); }
+  body.wave4a.nav-shell-crm #documents .docs-head > div:last-child { flex-wrap: wrap; min-width: 0; }
+  body.wave4a.nav-shell-crm #documents #docsSearch { width: 100% !important; }
+  body.wave4a.nav-shell-crm #documents .crm-mobile-filter-toggle { width: auto; margin: 0; }
+  body.wave4a.nav-shell-crm #docsList .docs-deal {
+    display: grid !important; grid-template-columns: minmax(0, 1fr) auto !important;
+    gap: 8px 12px !important; min-width: 0;
+  }
+  body.wave4a.nav-shell-crm #docsList .docs-deal > span:first-child,
+  body.wave4a.nav-shell-crm #docsList .docs-deal-actions { grid-column: 1 / -1; }
+  body.wave4a.nav-shell-crm #docsList .docs-deal > span:nth-child(2),
+  body.wave4a.nav-shell-crm #docsList .docs-deal > span:nth-child(4),
+  body.wave4a.nav-shell-crm #docsList .docs-deal > span:nth-child(5),
+  body.wave4a.nav-shell-crm #docsList .docs-deal > span:nth-child(6),
+  body.wave4a.nav-shell-crm #docsList .docs-deal-actions .btn-primary,
+  body.wave4a.nav-shell-crm #docsList .docs-desktop-label { display: none !important; }
+  body.wave4a.nav-shell-crm #docsList .docs-mobile-label { display: inline; }
+  body.wave4a.nav-shell-crm #docsList .docs-deal > span:nth-child(3) {
+    min-width: 0; text-align: left !important; font-weight: 700 !important;
+  }
+  body.wave4a.nav-shell-crm #docsList .docs-deal-actions { justify-content: stretch; }
+  body.wave4a.nav-shell-crm #docsList .docs-deal-actions .btn { width: 100%; }
+  body.wave4a.nav-shell-crm :is(#kyc, #partners, #referrers) .card-title:has(> .btn) {
+    display: flex !important; flex-direction: column; align-items: stretch !important;
+    gap: 12px !important;
+  }
+  body.wave4a.nav-shell-crm :is(#kyc, #partners, #referrers) .card-title:has(> .btn) > .btn {
+    width: 100%; white-space: nowrap;
+  }
+  body.wave4a.nav-shell-crm #balance .card > div:has(> .balance-subtab-btn) {
+    display: grid !important; grid-template-columns: minmax(0, 1fr) !important;
+    width: 100%; min-width: 0;
+  }
+  body.wave4a.nav-shell-crm #balance .balance-subtab-btn {
+    width: 100%; min-width: 0; white-space: nowrap;
+  }
+  body.wave4a.nav-shell-crm #balance #walletsSummaryGrid .wallet-summary-card {
+    flex: 1 1 100%; width: 100%; min-width: 0;
+  }
+  body.wave4a.nav-shell-crm #balance #walletsSummaryGrid .wallet-summary-card > div:first-of-type {
+    max-width: calc(100% - 100px); padding-right: 0;
+    overflow-wrap: anywhere;
+  }
+  body.wave4a.nav-shell-crm #balance #walletsSummaryGrid .wallet-summary-address {
+    overflow: visible !important; text-overflow: clip !important;
+    overflow-wrap: anywhere !important; word-break: break-all;
+    white-space: normal !important;
+  }
+  body.wave4a.nav-shell-crm #payoutRequestsList code {
+    overflow-x: visible !important; overflow-y: visible !important;
+    overflow-wrap: anywhere !important; white-space: normal !important;
+    word-break: break-all;
+  }
+  body.wave4a.nav-shell-crm #incomes #convertSelectedBtn {
+    flex: 1 1 100%; min-height: 44px; white-space: normal !important;
+    overflow-wrap: anywhere;
+  }
+  body.wave4a.nav-shell-crm #reimbursements #pendingReimbursementsList .reimburse-btn {
+    width: 100%; min-height: 44px; white-space: normal !important;
+    overflow-wrap: anywhere;
+  }
+  body.wave4a.nav-shell-crm #reimbursements #pendingReimbursementsList label:has(.reimburse-deal) {
+    flex-wrap: wrap; min-width: 0;
+  }
+  body.wave4a.nav-shell-crm #reimbursements #pendingReimbursementsList label:has(.reimburse-deal) > span {
+    min-width: 0; overflow-wrap: anywhere;
+  }
+
+  body.wave4a.nav-shell-crm .section .btn-primary:not(.crm-mobile-primary),
+  body.wave4a.nav-shell-crm .section .btn-primary:not(.crm-mobile-primary):hover {
+    background: var(--surface-white) !important; color: var(--navy-700) !important;
+    border-color: var(--navy-300) !important;
+  }
+  body.wave4a.nav-shell-crm .section .btn-primary.crm-mobile-primary,
+  body.wave4a.nav-shell-crm .section .btn-primary.crm-mobile-primary:hover {
+    background: var(--action-coral) !important; color: var(--surface-white) !important;
+    border-color: var(--action-coral) !important;
+  }
+  body.wave4a.nav-shell-crm .section .btn-primary.crm-mobile-primary:disabled { opacity: .5; }
+
+  body.wave4a.nav-shell-crm .section :is(.table-container, .rx-scroll) {
+    width: 100%; max-width: 100%; min-width: 0; overflow: visible !important;
+  }
+  body.wave4a.nav-shell-crm .section table.crm-mobile-table {
+    display: block; width: 100% !important; min-width: 0 !important;
+    max-width: 100%; border: 0; background: transparent;
+  }
+  body.wave4a.nav-shell-crm .section table.crm-mobile-table > thead { display: none; }
+  body.wave4a.nav-shell-crm .section table.crm-mobile-table > tbody { display: grid; gap: 10px; width: 100%; }
+  body.wave4a.nav-shell-crm .section table.crm-mobile-table > tbody:empty::before {
+    content: 'Записей пока нет'; display: block; padding: 14px;
+    color: var(--navy-600) !important; background: var(--surface-white) !important;
+    border: 1px solid var(--navy-200) !important; border-radius: 8px !important;
+  }
+  body.wave4a.nav-shell-crm .section table.crm-mobile-table > tbody > tr[data-crm-card-ready="1"] {
+    display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 8px 12px; width: 100%; min-width: 0; padding: 14px;
+    background: var(--surface-white) !important; border: 1px solid var(--navy-200) !important;
+    border-radius: 12px !important; box-shadow: var(--card-shadow) !important;
+  }
+  body.wave4a.nav-shell-crm .section table.crm-mobile-table > tbody > tr[data-crm-card-ready="1"]:has(> td[data-crm-card-role="selection"]) {
+    grid-template-columns: 34px minmax(0, 1fr);
+  }
+  body.wave4a.nav-shell-crm .section table.crm-mobile-table > tbody > tr[data-crm-card-ready="1"] > :is(th, td) {
+    display: none; min-width: 0; width: auto !important; padding: 0 !important;
+    border: 0 !important; text-align: left !important; background: transparent !important;
+    overflow-wrap: anywhere; white-space: normal !important;
+  }
+  body.wave4a.nav-shell-crm .section table.crm-mobile-table > tbody > tr > :is(th, td)[data-crm-card-role="title"] {
+    display: flex; grid-column: 1 / -1; order: -3; align-items: center;
+    justify-content: space-between; gap: 10px; font-weight: 700 !important;
+    color: var(--ink-navy) !important;
+  }
+  body.wave4a.nav-shell-crm .section table.crm-mobile-table > tbody > tr > td[data-crm-card-role="selection"] {
+    display: flex; grid-column: 1; order: -4; align-items: center; gap: 5px;
+    font-weight: 700 !important;
+  }
+  body.wave4a.nav-shell-crm .section table.crm-mobile-table > tbody > tr:has(> td[data-crm-card-role="selection"]) > td[data-crm-card-role="title"] {
+    grid-column: 2;
+  }
+  body.wave4a.nav-shell-crm .section table.crm-mobile-table > tbody > tr:has(> td[data-crm-card-role="selection"]) > td[data-crm-card-role="amount"],
+  body.wave4a.nav-shell-crm .section table.crm-mobile-table > tbody > tr:has(> td[data-crm-card-role="selection"]) > td[data-crm-card-role="status"] {
+    grid-column: 2;
+  }
+  body.wave4a.nav-shell-crm .section table.crm-mobile-table > tbody > tr > td[data-crm-card-role="selection"] input[type="checkbox"] {
+    flex: none; width: 20px; height: 20px; margin: 0;
+  }
+  body.wave4a.nav-shell-crm #incomes .crm-mobile-selection-bar {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    margin-bottom: 12px; font-size: 14px;
+  }
+  body.wave4a.nav-shell-crm #incomes .crm-mobile-selection-bar input { width: 20px; height: 20px; }
+  body.wave4a.nav-shell-crm #incomes .crm-mobile-secondary-menu { display: block; position: relative; }
+  body.wave4a.nav-shell-crm #incomes .crm-mobile-secondary-menu summary {
+    display: flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px;
+    padding: 0 10px; border: 1px solid var(--navy-300); border-radius: 8px;
+    color: var(--navy-700); background: var(--surface-white); cursor: pointer; list-style: none;
+  }
+  body.wave4a.nav-shell-crm #incomes .crm-mobile-secondary-menu summary::-webkit-details-marker { display: none; }
+  body.wave4a.nav-shell-crm #incomes .crm-mobile-secondary-menu:not([open]) > div { display: none !important; }
+  body.wave4a.nav-shell-crm #incomes .crm-mobile-secondary-menu[open] > div {
+    position: absolute; z-index: 3; right: 0; top: 48px; display: grid; gap: 6px;
+    min-width: 220px; padding: 8px; border: 1px solid var(--navy-200);
+    border-radius: 8px; background: var(--surface-white); box-shadow: var(--card-shadow);
+  }
+  body.wave4a.nav-shell-crm #incomes .crm-mobile-secondary-menu .btn { width: 100%; }
+  body.wave4a.nav-shell-crm #incomes .crm-income-desktop-secondary { display: none !important; }
+  body.wave4a.nav-shell-crm .section table.crm-mobile-table > tbody > tr > td[data-crm-card-role="amount"] {
+    display: block; order: -2; font-weight: 700 !important;
+    font-variant-numeric: tabular-nums;
+  }
+  body.wave4a.nav-shell-crm .section table.crm-mobile-table > tbody > tr > td[data-crm-card-role="status"] {
+    display: block; order: -1; text-align: right !important;
+  }
+  body.wave4a.nav-shell-crm .section table.crm-mobile-table > tbody > tr > td[data-crm-card-role="action"] {
+    display: block; grid-column: 1 / -1; order: 0;
+  }
+  body.wave4a.nav-shell-crm .section table.crm-mobile-table > tbody > tr > td[data-crm-card-role="action"] .btn {
+    width: 100%; background: var(--surface-white) !important;
+    color: var(--navy-700) !important; border-color: var(--navy-300) !important;
+  }
+  body.wave4a.nav-shell-crm .section table.crm-mobile-table > tbody > tr.crm-mobile-expanded > td[data-crm-card-role="extra"] {
+    display: flex; grid-column: 1 / -1; align-items: flex-start;
+    justify-content: space-between; gap: 10px; border-top: 1px solid var(--navy-100) !important;
+    padding-top: 8px !important;
+  }
+  body.wave4a.nav-shell-crm .section table.crm-mobile-table > tbody > tr.crm-mobile-expanded > td[data-crm-card-role="extra"]::before {
+    content: attr(data-crm-label); flex: 0 0 40%; color: var(--navy-600) !important;
+    font-size: 12px !important; font-weight: 600 !important;
+  }
+  body.wave4a.nav-shell-crm .section table.crm-mobile-table > tbody > tr.crm-mobile-expanded > td[data-crm-card-role="extra"] > * {
+    min-width: 0; max-width: 60%; overflow-wrap: anywhere;
+  }
+  body.wave4a.nav-shell-crm .section table.crm-mobile-table td :is(a, code, .num) {
+    white-space: normal !important; overflow-wrap: anywhere !important;
+  }
+  body.wave4a.nav-shell-crm .section table.crm-mobile-table > tbody > tr.crm-mobile-empty-row > td {
+    display: block; grid-column: 1 / -1;
+  }
+  body.wave4a.nav-shell-crm #unitEconTable > tbody > tr > td[data-crm-card-role="title"]::before {
+    content: 'Leads · '; margin-right: 4px; color: var(--navy-600) !important;
+  }
+  body.wave4a.nav-shell-crm .crm-mobile-details {
+    display: inline-flex !important; flex: none; align-items: center; min-height: 36px;
+    padding: 0 10px; background: var(--surface-white) !important;
+    color: var(--navy-700) !important; border: 1px solid var(--navy-300) !important;
+    border-radius: 8px !important; font: 600 12px Inter, system-ui, sans-serif !important;
+    cursor: pointer;
+  }
+  body.wave4a.nav-shell-crm #exchangers .rx-scroll table { min-width: 0 !important; }
+  body.wave4a.nav-shell-crm #exchangers .rx-cards { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  body.wave4a.nav-shell-crm #exchangers #rx-merchants-body { grid-template-columns: minmax(0, 1fr) !important; }
+  body.wave4a.nav-shell-crm :is(#incomes, #conversions) .card:has(> table.table) { overflow: visible !important; }
+}

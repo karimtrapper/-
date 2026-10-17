@@ -46,6 +46,14 @@
   function sectionNav() {
     return `<nav class="site-shell-sections" aria-label="Разделы работы"><button type="button" class="site-shell-scroll" data-shell-scroll="-1" aria-label="Предыдущие разделы">‹</button><div class="site-shell-section-list">${sections.map(([key,label,href])=>`<a href="${href}" data-shell-section="${key}">${label}</a>`).join('')}</div><button type="button" class="site-shell-scroll" data-shell-scroll="1" aria-label="Следующие разделы">›</button></nav>`;
   }
+  function updateSectionArrows() {
+    const list=document.querySelector('.site-shell-section-list');
+    if (!list) return;
+    const before=document.querySelector('[data-shell-scroll="-1"]');
+    const after=document.querySelector('[data-shell-scroll="1"]');
+    before.disabled=list.scrollLeft<=1;
+    after.disabled=list.scrollLeft+list.clientWidth>=list.scrollWidth-1;
+  }
   function activateSection(key) {
     const nav=document.querySelector('.site-shell-sections');
     if (!nav) return;
@@ -55,6 +63,7 @@
       if (active) { link.setAttribute('aria-current','page');link.scrollIntoView({block:'nearest',inline:'nearest'}); }
       else link.removeAttribute('aria-current');
     });
+    requestAnimationFrame(updateSectionArrows);
   }
 
   function mount(options) {
@@ -85,9 +94,13 @@
     strip.innerHTML=sectionNav();
     document.body.prepend(top,mobile,strip.firstElementChild);
     document.body.append(bottom);
+    const sectionList=document.querySelector('.site-shell-section-list');
     document.querySelectorAll('[data-shell-scroll]').forEach(button=>button.addEventListener('click',()=>{
-      document.querySelector('.site-shell-section-list').scrollBy({left:Number(button.dataset.shellScroll)*320,behavior:'smooth'});
+      sectionList.scrollBy({left:Number(button.dataset.shellScroll)*Math.max(240,sectionList.clientWidth-48),behavior:'smooth'});
     }));
+    sectionList.addEventListener('scroll',updateSectionArrows,{passive:true});
+    window.addEventListener('resize',updateSectionArrows);
+    updateSectionArrows();
     document.querySelectorAll('[data-shell-section]').forEach(link=>link.addEventListener('click',event=>{
       const section=link.dataset.shellSection;
       if (state.page==='crm' && section!=='analytics' && typeof showSection==='function') {
