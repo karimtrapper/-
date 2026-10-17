@@ -792,7 +792,7 @@ body.wave4a.nav-shell-crm #create .sber-income-row {
 
   body.wave4a.nav-shell-crm .crm-mobile-filter-toggle {
     display: inline-flex !important; align-items: center; justify-content: space-between;
-    width: 100%; min-height: 44px; margin: 0 0 12px; padding: 0 14px;
+    width: 100%; min-height: 44px; margin: 0 0 12px; padding: 0 12px;
     background: var(--surface-white) !important; color: var(--navy-700) !important;
     border: 1px solid var(--navy-300) !important; border-radius: 8px !important;
     font: 600 14px Inter, system-ui, sans-serif !important; cursor: pointer;
@@ -889,7 +889,7 @@ body.wave4a.nav-shell-crm #create .sber-income-row {
     max-width: 100%; border: 0; background: transparent;
   }
   body.wave4a.nav-shell-crm .section table.crm-mobile-table > thead { display: none; }
-  body.wave4a.nav-shell-crm .section table.crm-mobile-table > tbody { display: grid; gap: 10px; width: 100%; }
+  body.wave4a.nav-shell-crm .section table.crm-mobile-table > tbody { display: grid; gap: 8px; width: 100%; }
   body.wave4a.nav-shell-crm .section table.crm-mobile-table > tbody:empty::before {
     content: 'Записей пока нет'; display: block; padding: 14px;
     color: var(--navy-600) !important; background: var(--surface-white) !important;
@@ -897,7 +897,7 @@ body.wave4a.nav-shell-crm #create .sber-income-row {
   }
   body.wave4a.nav-shell-crm .section table.crm-mobile-table > tbody > tr[data-crm-card-ready="1"] {
     display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    gap: 8px 12px; width: 100%; min-width: 0; padding: 14px;
+    gap: 8px 12px; width: 100%; min-width: 0; padding: 12px;
     background: var(--surface-white) !important; border: 1px solid var(--navy-200) !important;
     border-radius: 12px !important; box-shadow: var(--card-shadow) !important;
   }
@@ -911,7 +911,7 @@ body.wave4a.nav-shell-crm #create .sber-income-row {
   }
   body.wave4a.nav-shell-crm .section table.crm-mobile-table > tbody > tr > :is(th, td)[data-crm-card-role="title"] {
     display: flex; grid-column: 1 / -1; order: -3; align-items: center;
-    justify-content: space-between; gap: 10px; font-weight: 700 !important;
+    justify-content: space-between; gap: 8px; font-weight: 700 !important;
     color: var(--ink-navy) !important;
   }
   body.wave4a.nav-shell-crm .section table.crm-mobile-table > tbody > tr > td[data-crm-card-role="selection"] {
@@ -985,7 +985,7 @@ body.wave4a.nav-shell-crm #create .sber-income-row {
   }
   body.wave4a.nav-shell-crm .crm-mobile-details {
     display: inline-flex !important; flex: none; align-items: center; min-height: 36px;
-    padding: 0 10px; background: var(--surface-white) !important;
+    padding: 0 8px; background: var(--surface-white) !important;
     color: var(--navy-700) !important; border: 1px solid var(--navy-300) !important;
     border-radius: 8px !important; font: 600 12px Inter, system-ui, sans-serif !important;
     cursor: pointer;
