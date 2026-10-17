@@ -91,7 +91,7 @@ const round2 = x => Math.round(x * 100) / 100;
     saveNote: () => {}, log: (d, t) => d.log.push(t),
     go: (d, step) => { d.step = step; }, toast: () => {},
     avgUsdt: () => 31.2, exSum: () => 302000, exMargin: () => 0,
-    money: String, usd: String, pcOut: () => 0, now: () => '24.09, 17:00',
+    money: String, usd: String, moneyKop: (n, s) => `${n} ${s}`, pcOut: () => 0, now: () => '24.09, 17:00',
     Math, Number, String,
   });
   await ctx.act(1, 's18w');
