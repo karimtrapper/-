@@ -813,8 +813,8 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 .docs-money-cell { font-variant-numeric:tabular-nums; font-weight:600; white-space:nowrap; }
 
 </style>
-    <link rel="stylesheet" href="/static/nav-shell.css?v=6">
-    <link rel="stylesheet" href="/static/design-layer.css?v=2">
+    <link rel="stylesheet" href="/static/nav-shell.css?v=7">
+    <link rel="stylesheet" href="/static/design-layer.css?v=3">
 </head>
 
 <body class="wave4a">
@@ -2125,11 +2125,22 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             <div class="card">
                 <div class="card-title">Поступления на счёт</div>
                 <div id="incomesSummary" style="margin-bottom:0.75rem; font-size:1.05rem;"></div>
+                <div class="crm-mobile-selection-bar">
+                    <label><input type="checkbox" id="incomesMobileSelectAll" onchange="toggleAllIncomes(this)"> Выбрать все на странице</label>
+                    <strong id="incomesMobileSelectedTotal" aria-live="polite">Выбрано 0 на сумму 0 ₽</strong>
+                </div>
                 <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:1rem;">
                     <button class="btn btn-primary" id="convertSelectedBtn"
                             onclick="convertSelectedIncomes()" disabled>Конвертировать выбранное</button>
-                    <button class="btn btn-secondary" onclick="excludeSelectedIncomes()">Исключить выбранное</button>
-                    <button class="btn btn-secondary" onclick="cutoffIncomes()">Отсечь историю до даты</button>
+                    <button class="btn btn-secondary crm-income-desktop-secondary" onclick="excludeSelectedIncomes()">Исключить выбранное</button>
+                    <button class="btn btn-secondary crm-income-desktop-secondary" onclick="cutoffIncomes()">Отсечь историю до даты</button>
+                    <details class="crm-mobile-secondary-menu">
+                        <summary aria-label="Дополнительные действия">⋯</summary>
+                        <div>
+                            <button class="btn btn-secondary" onclick="excludeSelectedIncomes()">Исключить выбранное</button>
+                            <button class="btn btn-secondary" onclick="cutoffIncomes()">Отсечь историю до даты</button>
+                        </div>
+                    </details>
                     <label style="display:flex; align-items:center; gap:6px; margin-left:auto;">
                         <input type="checkbox" id="incomesShowExcluded" onchange="setIncomesPerPage()">
                         показывать исключённые</label>
@@ -2682,7 +2693,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
           <!-- Поступления -->
           <div id="rx-postup" class="rx-view">
             <div class="card" style="padding:0;overflow:hidden;">
-              <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:12px 14px;border-bottom:1px solid var(--border);background:var(--navy-50);">
+              <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:12px;border-bottom:1px solid var(--border);background:var(--navy-50);">
                 <select id="rxFltMer" class="rx-inp" onchange="rxApplyFilter()"><option value="">Все мерчанты</option></select>
                 <select id="rxFltStt" class="rx-inp" onchange="rxApplyFilter()"><option value="">Все статусы</option><option value="paid">💰 Оплачено</option><option value="requested">📤 В заявке</option><option value="closed">✅ Закрыто</option><option value="advance">⚠️ Аванс</option></select>
                 <select id="rxFltSort" class="rx-inp" onchange="rxApplyFilter()"><option value="new">↓ новые</option><option value="old">↑ старые</option></select>
@@ -2701,7 +2712,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
           <!-- Конвертация -->
           <div id="rx-brokers" class="rx-view" style="display:none">
             <div class="card" style="padding:0;overflow:hidden;">
-              <div style="display:flex;gap:8px;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid var(--border);">
+              <div style="display:flex;gap:8px;align-items:center;justify-content:space-between;padding:12px;border-bottom:1px solid var(--border);">
                 <div style="font-weight:700">Приходы USDT от брокеров</div>
                 <div style="display:flex;gap:8px;">
                   <button id="rxMergeBtn" class="btn btn-secondary btn-sm" style="display:none" onclick="rxMergeInflows()">🔗 Объединить выбранные</button>
@@ -2719,7 +2730,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
           <!-- Запросы -->
           <div id="rx-requests" class="rx-view" style="display:none">
             <div class="card" style="padding:0;overflow:hidden;">
-              <div style="padding:12px 14px;border-bottom:1px solid var(--border);font-weight:700">Запросы на вывод · от мерчантов</div>
+              <div style="padding:12px;border-bottom:1px solid var(--border);font-weight:700">Запросы на вывод · от мерчантов</div>
               <div class="rx-scroll"><table>
                 <thead><tr><th>Bitrix</th><th>Мерчант</th><th style="text-align:right">Σ USDT</th><th>Запрошен</th><th>Оплачено</th><th>Кошелёк</th><th style="text-align:right">Сделок</th><th>Статус</th></tr></thead>
                 <tbody id="rx-requests-body"></tbody>
@@ -2735,7 +2746,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
           <!-- Кошельки -->
           <div id="rx-wallets" class="rx-view" style="display:none">
             <div class="card" style="padding:0;overflow:hidden;">
-              <div style="padding:12px 14px;border-bottom:1px solid var(--border);font-weight:700">Кошельки (TRON)</div>
+              <div style="padding:12px;border-bottom:1px solid var(--border);font-weight:700">Кошельки (TRON)</div>
               <div class="rx-scroll"><table>
                 <thead><tr><th>Адрес</th><th>Назначение</th><th>Тип</th><th style="text-align:right">Баланс</th><th>Посл. операция</th><th>Статус</th></tr></thead>
                 <tbody id="rx-wallets-body"></tbody>
@@ -11409,7 +11420,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             if (info) info.textContent = all.length
                 ? `${from + 1}–${from + rows.length} из ${all.length}` +
                   (per ? ` · страница ${incomesPage} из ${pages}` : '')
-                : 'приходов нет';
+                : '';
             document.getElementById('incomesTable').innerHTML = rows.map(i => {
                 const c = Array.isArray(i.conversion) ? i.conversion[0] : i.conversion;
                 let conv;
@@ -11501,8 +11512,9 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         // Галка в шапке — только по видимой странице: «выделить всё» на 300 строк
         // молча собрало бы пачку из приходов, которых менеджер даже не видел
         function toggleAllIncomes(master) {
+            const checked = master.checked;
             document.querySelectorAll('.incSel').forEach(cb => {
-                cb.checked = master.checked;
+                cb.checked = checked;
                 toggleIncome(cb);
             });
         }
@@ -11531,6 +11543,20 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             const btn = document.getElementById('convertSelectedBtn');
             if (!btn) return;
             const total = sel.reduce((a, x) => a + (x.amount_rub || 0), 0);
+            const mobileTotal = document.getElementById('incomesMobileSelectedTotal');
+            if (mobileTotal) mobileTotal.textContent = `Выбрано ${sel.length} на сумму ${cnvNum(total)} ₽`;
+            const visible = [...document.querySelectorAll('#incomesTable .incSel')];
+            const mobileAll = document.getElementById('incomesMobileSelectAll');
+            if (mobileAll) {
+                mobileAll.checked = visible.length > 0 && visible.every(cb => cb.checked);
+                mobileAll.indeterminate = visible.some(cb => cb.checked) && !mobileAll.checked;
+                mobileAll.disabled = visible.length === 0;
+            }
+            const desktopAll = document.querySelector('#incomes table thead input[type="checkbox"]');
+            if (desktopAll) {
+                desktopAll.checked = visible.length > 0 && visible.every(cb => cb.checked);
+                desktopAll.indeterminate = visible.some(cb => cb.checked) && !desktopAll.checked;
+            }
             btn.disabled = !sel.length;
             btn.textContent = sel.length
                 ? `Конвертировать выбранное (${sel.length} · ${cnvNum(total)} ₽)`
@@ -14914,7 +14940,7 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                       <span class="docs-num" style="margin-left:6px;color:var(--text-sec)">${a.payments_count} пл.</span></span>
                 <span class="docs-deal-actions">
                     <button class="btn btn-primary docs-btn-sm" onclick="docsOpenAndPay(${a.id})">+ Платёж</button>
-                    <button class="btn docs-btn-sm" onclick="docsOpen(${a.id})">Открыть</button>
+                    <button class="btn docs-btn-sm" onclick="docsOpen(${a.id})"><span class="docs-desktop-label">Открыть</span><span class="docs-mobile-label">Детали</span></button>
                 </span>
             </div>`;
         }
@@ -15440,8 +15466,9 @@ ${Math.abs(c.debits_delta_rub) < 0.01
         <button class="bottom-nav-item" data-nav-section="kyc" onclick="showSection('kyc')"><span class="icon">🛡</span><span>KYC</span></button>
         <button class="bottom-nav-item" onclick="toggleMorePanel()" id="moreBtn"><span class="icon">⋯</span><span>Ещё</span></button>
     </nav>
-    <script src="/static/nav-shell.js?v=6"></script>
+    <script src="/static/nav-shell.js?v=7"></script>
     <script>NavShell.boot('crm');</script>
+    <script src="/static/crm/mobile-layout.js?v=1"></script>
     <script src="/static/visual-format.js?v=1"></script>
 </body>
 

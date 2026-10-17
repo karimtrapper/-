@@ -670,6 +670,8 @@ a.hash:hover{background:#BAE6FD}
 .deal-screen .branch-tabs{display:flex;gap:var(--ds-xs);padding:var(--ds-xs);background:var(--navy-100);border-radius:var(--ds-control);margin-bottom:var(--ds-md)}
 .deal-screen .branch-tabs button{flex:1;border:0;background:transparent;color:var(--ds-muted);font:var(--ds-semibold) var(--ds-body) Inter,system-ui,sans-serif;min-height:44px;padding:var(--ds-sm);border-radius:var(--ds-control);cursor:pointer}
 .deal-screen .branch-tabs button.on{background:var(--ds-surface);color:var(--ds-ink)}
+.deal-screen .branch-tabs button:focus-visible{outline:2px solid var(--navy-700);outline-offset:2px}
+.deal-screen .branch-current{font-size:var(--ds-body);color:var(--ds-ink);margin:0 0 var(--ds-md);font-weight:var(--ds-semibold)}
 .deal-screen .vtabs{margin:0 0 var(--ds-md)}
 .deal-screen .vtab{border-radius:var(--ds-control);font-size:var(--ds-body);min-height:44px;display:inline-flex;align-items:center}
 .deal-screen .vtab{gap:var(--ds-xs)}
@@ -3887,6 +3889,14 @@ function prepayRefundRole(d){
   if(w?.addr===d.prepay.wallet.addr)return null;
   return w?.multisig?'findir':(w?.role||'teodor');
 }
+function prepayCloseReason(d){
+  if(!d.prepay)return '';
+  const txs=convOf(d)?.txs||[];
+  if(d.prepay.brokerStep!=='done'||!txs.length||!txs.every(t=>t.status==='confirmed'))
+    return 'Ждём закрытия конвертации и прихода USDT от брокера';
+  if(!d.payout?.reimbursement)return 'Ждём возмещения оплаты на кошелёк IPPS';
+  return '';
+}
 async function prepayAction(id,action){
   if(!await standRequireSaved())return;
   const j=await standAction('/api/stand/prepay',{dealId:id,action,version:standVer,walletId:val('prepay_wallet')});
@@ -4048,7 +4058,18 @@ function stepWho(d,step){
   if(step==='s23'&&d){const w=dealWallet(d); if(w&&!w.multisig) return w.role||'teodor';}
   return STEPS[step]?STEPS[step].who:null;
 }
-function myTasks(role){return S.deals.filter(d=>!d.closed&&((STEPS[d.step]&&stepWho(d)===role)||(d.prepay&&((role==='operator'&&d.prepay.brokerStep!=='done')||prepayRefundRole(d)===role))||(role==='manager'&&(reqOpen(d)||needsPayConfirm(d)))||(role==='operator'&&d.step==='s27'&&d.type==='Оплата недвижимости')||(role==='operator'&&d.step==='s14'&&(d.manualBankReceipt?.status==='pending'||(!d.manualBankReceipt&&!rubApiAccount(d))))));}
+function taskBranchesForRole(d,role){
+  if(d.closed)return [];
+  const ownsPayment=!!STEPS[d.step]&&stepWho(d)===role;
+  const sidePayment=(role==='manager'&&(reqOpen(d)||needsPayConfirm(d)))||
+    (role==='operator'&&d.step==='s27'&&d.type==='Оплата недвижимости')||
+    (role==='operator'&&d.step==='s14'&&(d.manualBankReceipt?.status==='pending'||(!d.manualBankReceipt&&!rubApiAccount(d))));
+  if(!d.prepay)return ownsPayment||sidePayment?[null]:[];
+  const conversion=(role==='operator'&&d.prepay.brokerStep!=='done')||prepayRefundRole(d)===role;
+  return [...(conversion?['conversion']:[]),...(ownsPayment||sidePayment?['payment']:[])];
+}
+function myTasks(role){return S.deals.filter(d=>taskBranchesForRole(d,role).length);}
+function myTaskCount(role){return myTasks(role).reduce((count,d)=>count+taskBranchesForRole(d,role).length,0);}
 /* Подтверждение реквизитов перед оплатой (Карим, T34 п.3): прямо перед тем, как
    операционист заплатит (s26) или для фрихолда отправит заявку в IPPS (s25),
    менеджер жмёт «Реквизиты верны — можно платить» на актуальном снимке payTo.
@@ -5062,16 +5083,16 @@ function render(){
      смотреть чужими глазами, остальным подменять себя незачем. */
   const canSwitch=!STAND||standMe==='admin';
   document.getElementById('roles').innerHTML=canSwitch?Object.keys(ROLES).map(r=>{
-    const c=myTasks(r).length;
+    const c=myTaskCount(r);
     return `<button class="rolebtn ${S.role===r?'on':''}" onclick="setRole('${r}')">${ROLES[r].t}${c?`<span class="c">${c}</span>`:''}</button>`;
-  }).join(' '):`<button class="rolebtn on">${ROLES[S.role].t}${myTasks(S.role).length?`<span class="c">${myTasks(S.role).length}</span>`:''}</button>`;
+  }).join(' '):`<button class="rolebtn on">${ROLES[S.role].t}${myTaskCount(S.role)?`<span class="c">${myTaskCount(S.role)}</span>`:''}</button>`;
   /* Сброс доски и засев примеров общие для всех — их прячем от коллег,
      иначе один человек посреди прогона снесёт работу остальным. */
   const at=document.getElementById('admintools');
   if(at) at.innerHTML=canSwitchRole()
     ? `<button class="ghost" onclick="refsSync()">Рефереры из базы</button> <button class="ghost" onclick="resetAll()">Сбросить всё</button>` : '';
   document.getElementById('bell').innerHTML=bellHtml();
-  if(window.NavShell) NavShell.update({count:myTasks(S.role).length,viewRole:S.role,section:S.tab==='analytics'?'analytics':'tasks',active:S.tab==='analytics'?'crm':'tasks'});
+  if(window.NavShell) NavShell.update({count:myTaskCount(S.role),viewRole:S.role,section:S.tab==='analytics'?'analytics':'tasks',active:S.tab==='analytics'?'crm':'tasks'});
   const app=document.getElementById('app');
   let main;
   if(S.edit)main=viewEdit();                       /* правка — отдельный экран, как в CRM */
@@ -5105,9 +5126,9 @@ function polishDealActions(){
   });
 }
 function saveUi(){if(!STAND)save();}
-function setRole(r){S.role=r;S.draft=null;S.modal=null;S.tab='tasks';saveUi();render();}
+function setRole(r){S.role=r;S.draft=null;S.modal=null;S.taskBranch=null;S.tab='tasks';saveUi();render();}
 function setTab(t){S.tab=t;S.open=null;S.draft=null;S.modal=null;saveUi();render();}
-function openDeal(id){S.open=id;S.view='deal';saveUi();render();}
+function openDeal(id){S.open=id;S.view='deal';S.taskBranch=null;saveUi();render();}
 function openTask(id,branch){S.open=id;S.view='task';S.taskBranch=branch||null;saveUi();render();if(taskUsesThbRates())ensureThbRates();}
 function setInspectRole(role){S.inspectRole=role;saveUi();render();}
 function setView(v){S.view=v;saveUi();render();}
@@ -5378,7 +5399,7 @@ function viewModal(){
         <div class="tgbot"><span class="av">GR</span><span class="nm">Grusha Задачник</span></div>
         <div class="tgmsg">
           <div class="dim" style="margin-bottom:5px">Предпросмотр уведомления</div>🔔 <b>Новая задача · шаг ${st.n}</b><br>
-          <b>${stepTitle(d)}</b> — ${d.client} · ${d.code}<br>
+          <b>${htmlText(d.prepay?prepayBranchStatus(d,'payment'):stepTitle(d))}</b> — ${d.client} · ${d.code}<br>
           ${lines.map(l=>l.b?`<b>${l.t}</b>`:`<span class="dim">${l.t}</span>`).join('<br>')}
           <div class="tgbtns">
             <button class="tgbtn" onclick="${canSwitchRole()?'modalGo()':'closeModal()'}">Открыть задачу</button>
@@ -5414,7 +5435,7 @@ function taskDealsHtml(role){
   return `<div class="task-deals-table"><div class="task-deals-heading"><span>Сделка</span><span>Флоу</span><span>Этап</span><span>На ком</span><span>Сумма</span><span>С какого времени</span></div>${deals.map(d=>{
     const a=approx(d),amount=apMoney(a,'pay');
     const path=dealTaskPath(d,null),lastEvent=(d.log||[]).at(-1),sinceAt=lastEvent?.at;
-    return `<button type="button" class="task-deal-row" onclick="openDeal(${d.id})"><span class="task-deal-name"><strong>${htmlText(d.code)} · ${htmlText(d.client)}</strong></span><span class="task-deal-flow">${htmlText(d.kind||d.type||'Сделка')}</span><span class="task-deal-stage">${htmlText(d.closed?d.closeReason||'Завершена':stepTitle(d))}<span class="task-deal-progress" aria-label="Шаг ${path.index+1} из ${path.steps.length}">${path.steps.map((_,i)=>`<i class="${i<path.index?'done':i===path.index?'current':''}"></i>`).join('')}</span></span><span class="task-deal-who">${htmlText(d.closed?'—':(ROLES[stepWho(d)]||{}).n||'—')}</span><b class="task-deal-amount num">${amount==='посчитаем после курса'?apMoney(a,'thb'):amount}</b><span class="task-deal-since">${sinceAt?since(sinceAt):'—'}</span></button>`;
+    return `<button type="button" class="task-deal-row" onclick="openDeal(${d.id})"><span class="task-deal-name"><strong>${htmlText(d.code)} · ${htmlText(d.client)}</strong></span><span class="task-deal-flow">${htmlText(d.kind||d.type||'Сделка')}</span><span class="task-deal-stage">${htmlText(d.closed?d.closeReason||'Завершена':d.prepay?prepayBranchStatus(d,'payment'):stepTitle(d))}<span class="task-deal-progress" aria-label="Шаг ${path.index+1} из ${path.steps.length}">${path.steps.map((_,i)=>`<i class="${i<path.index?'done':i===path.index?'current':''}"></i>`).join('')}</span></span><span class="task-deal-who">${htmlText(d.closed?'—':d.prepay?prepayBranchAssignee(d,'payment'):(ROLES[stepWho(d)]||{}).n||'—')}</span><b class="task-deal-amount num">${amount==='посчитаем после курса'?apMoney(a,'thb'):amount}</b><span class="task-deal-since">${sinceAt?since(sinceAt):'—'}</span></button>`;
   }).join('')}</div>`;
 }
 function showTaskListSection(section){
@@ -5435,7 +5456,8 @@ function viewTasks(){
   const mine=role==='admin'?S.deals.filter(d=>!d.closed&&STEPS[d.step]&&stepWho(d)):myTasks(role);
   const others=role==='admin'?[]:waitingOn(role);
   const section=taskListSection||(mine.length?'mine':others.length?'wait':'mine');
-  const mineCount=mine.length?`<span class="task-list-count mine">${mine.length}</span>`:'';
+  const mineTotal=role==='admin'?mine.length:myTaskCount(role);
+  const mineCount=mineTotal?`<span class="task-list-count mine">${mineTotal}</span>`:'';
   const waitCount=others.length?`<span class="task-list-count">${others.length}</span>`:'';
   let h=`<div class="task-list"><div class="task-list-head"><h1>Задачник</h1>
     ${S.role==='manager'||S.role==='admin'?`<div class="task-list-create-bar"><button class="btn btn-primary task-list-create" onclick="startCreate()">+ Новая задача</button></div>`:''}</div>
@@ -5474,13 +5496,11 @@ function viewTasks(){
       const side=role==='manager'&&stepWho(d)!=='manager';
       const taskTitle=side?(needsPayConfirm(d)?'Ваша задача: подтвердить реквизиты перед оплатой':
         reqOpen(d)?'Ваша параллельная задача: реквизиты для оплаты':stepTitle(d)):stepTitle(d);
-      const branches=d.prepay
-        ?[...(role==='operator'&&d.prepay.brokerStep!=='done'||prepayRefundRole(d)===role?['conversion']:[]),
-           ...(stepWho(d)===role?['payment']:[])]:[null];
-      if(!branches.length)branches.push('payment');
+      const branches=taskBranchesForRole(d,role);
       return branches.map(branch=>{
-        const title=branch==='conversion'?'Конвертация · '+(prepayRefundRole(d)===role?'возместить оплату':STEPS[d.prepay.brokerStep]?.title||'ждём USDT'):
-          branch==='payment'?'Оплата застройщику · '+(d.outgoingReview?'засчитать перевод':STEPS[d.step]?.title||'проверить оплату'):taskTitle;
+        const title=branch==='conversion'?'Конвертация · '+(prepayRefundRole(d)===role?'возместить оплату':(STEPS[d.prepay.brokerStep]?.title||'ждём USDT').replace(/^./,s=>s.toLowerCase())):
+          branch==='payment'&&role==='operator'&&d.step==='s27'&&stepWho(d)!==role?'Подтвердить оплату инвойса':
+          branch==='payment'?'Оплата застройщику · '+(d.step==='s23'&&d.outgoingReview?.requestedAt&&!d.serverTransferComplete?'засчитать перевод':(STEPS[d.step]?.title||'проверить оплату').replace(/^./,s=>s.toLowerCase())):taskTitle;
         const path=dealTaskPath(d,branch);
         const amount=branch==='conversion'&&prepayRefundRole(d)===role?moneyKop(d.payout?.usdt||0,'USDT'):
           branch==='conversion'?moneyKop(d.amountRub||d.incomeAmount||0,'₽'):
@@ -5505,7 +5525,7 @@ function viewTasks(){
     h+=group.map(d=>{
       const a=approx(d),pay=apMoney(a,'pay');
       return `<button type="button" class="task-list-row task-list-wait-row" onclick="openDeal(${d.id})">
-        <span class="task-list-row-main"><strong>${stepTitle(d)}</strong>
+        <span class="task-list-row-main"><strong>${htmlText(d.prepay?prepayBranchStatus(d,'payment'):stepTitle(d))}</strong>
           <span class="task-list-meta">${d.code} · ${d.client} · ${d.type}${d.kind?' · '+d.kind:''}</span></span>
         <span class="task-list-amount num">${pay==='посчитаем после курса'?apMoney(a,'thb'):pay}</span>
         <span class="task-list-arrow" aria-hidden="true">›</span></button>
@@ -5584,7 +5604,7 @@ function viewDeals(){
       <td><span class="badge ${d.closed?(d.closeReason==='Успешно завершена'?'b-done':'b-lose'):'b-work'}">${dealStatusLabel(d)}</span></td>
       <td>${d.manual?'<span style="color:var(--text-muted)">без задач</span>'
         :(d.closed?'<span style="color:var(--text-muted)">—</span>'
-        :`<a href="#" onclick="openTask(${d.id});return false">${stepTitle(d)}</a>`)}</td>
+        :`<a href="#" onclick="openTask(${d.id});return false">${htmlText(d.prepay?prepayBranchStatus(d,'payment'):stepTitle(d))}</a>`)}</td>
       <td style="white-space:nowrap">
         <button class="btn btn-outline btn-sm" onclick="openDeal(${d.id})">Детали</button>
         <button class="btn btn-outline btn-sm" onclick="editOpen(${d.id})">Изменить</button></td>
@@ -6339,14 +6359,29 @@ function dealTaskPathCard(d,branch){
     `<li class="${i<path.index||path.done?'done':i===path.index?'current':'next'}"><span class="path-dot"></span>
       <div><b>${htmlText(k==='refund'?'Возместить оплату':STEPS[k]?.title||k)}</b><small>${i===path.index&&!path.done?'Сейчас · ':''}${htmlText(k==='refund'?(ROLES[prepayRefundRole(d)]||{}).t:(ROLES[stepWho(d,k)]||{}).t||'')}</small></div></li>`).join('')}</ol></div>`;
 }
-function taskBranchSet(branch){S.taskBranch=branch;render();}
+function taskBranchSet(branch){S.taskBranch=branch;S.view='task';saveUi();render();}
+function prepayBranchAssignee(d,branch){
+  const role=branch==='conversion'?(prepayRefundRole(d)||'operator'):stepWho(d);
+  const assigned=STAND_EMPLOYEES.find(e=>String(e.id)===String(d.assigneeAdminId)&&
+    (e.role===role||(branch==='payment'&&e.role==='admin')));
+  if(assigned)return assigned.display_name||assigned.username;
+  if(role==='manager'&&d.manager)return d.manager;
+  const staff=STAND_EMPLOYEES.filter(e=>e.role===role&&!e.login_disabled);
+  return staff.length===1?(staff[0].display_name||staff[0].username):(ROLES[role]?.t||'Исполнитель не назначен');
+}
+function prepayBranchStatus(d,branch){
+  const step=branch==='conversion'?d.prepay.brokerStep:d.step;
+  const title=branch==='conversion'&&prepayRefundRole(d)?'возместить оплату':
+    step==='done'?'завершена':(STEPS[step]?.title||step).replace(/^./,s=>s.toLowerCase());
+  return (branch==='conversion'?'Конвертация':'Оплата')+' — '+title+' · '+prepayBranchAssignee(d,branch);
+}
 function viewDeal(d){
   if(!d)return '<div class="card">Сделка не найдена. <button class="btn btn-sm btn-outline" onclick="back()">Назад</button></div>';
   const st=STEPS[d.step]||{title:(d.manual?'внесена вручную':d.step),n:'',who:null};
   const who=stepWho(d);
   const mine=!d.closed&&(who===S.role||(S.role==='admin'&&d.step==='s27'));
   const p=progress(d), view=S.view||'deal';
-  const branch=d.prepay?(S.taskBranch==='conversion'?'conversion':'payment'):null;
+  const branch=d.prepay?(S.taskBranch||((S.role==='operator'&&d.prepay.brokerStep!=='done')||prepayRefundRole(d)===S.role?'conversion':'payment')):null;
   const branchPath=view==='task'?dealTaskPath(d,branch):null;
   let body='';
   if(view==='path') body=pathCard(d);
@@ -6367,7 +6402,7 @@ function viewDeal(d){
     else if(d.closed) body=`<div class="card"><div class="alert ${d.closeReason==='Успешно завершена'?'a-ok':'a-warn'}">Сделка закрыта ${d.closedAt} — <b>${d.closeReason}</b></div>
       <button class="btn btn-outline" onclick="setView('deal')">К карточке сделки</button></div>`;
     else if(!mine){
-      const status=`<div class="card" style="margin-bottom:12px">Сейчас задача ${(who&&ROLES[who])?ROLES[who].t:'—'}${d.assigneeAdminId?' · исполнитель '+htmlText(employeeName(d.assigneeAdminId)||'ID '+d.assigneeAdminId):''}: ${stepTitle(d)}</div>`+
+      const status=(d.prepay?'':`<div class="card" style="margin-bottom:12px">Сейчас задача ${(who&&ROLES[who])?ROLES[who].t:'—'}${d.assigneeAdminId?' · исполнитель '+htmlText(employeeName(d.assigneeAdminId)||'ID '+d.assigneeAdminId):''}: ${stepTitle(d)}</div>`)+
         (S.role==='manager'&&d.step==='s23'&&d.reqTask==='done'&&!needsPayConfirm(d)?`<div class="alert a-info"><div><b>Сейчас отправка с кошелька — от вас ничего не нужно.</b> Правка реквизитов остановит отправку и потребует нового поручения IPPS.</div></div>`:'')+
         (d.step==='s22'&&d.kind==='Фрихолд'?`<div class="alert a-warn"><div>Менеджер подтверждает реквизиты застройщика, затем операционист согласует с IPPS сеть и адрес перевода. До сохранённого поручения подписант кошелька не получает задачу отправки.</div></div>`:'');
       const managerSide=S.role==='manager'&&d.type==='Оплата недвижимости'&&!(d.pay||{}).invoicePaid;
@@ -6398,11 +6433,6 @@ function viewDeal(d){
     body=`<div class="card"><div class="card-title">Курс банка застройщика · TT Buying</div>
       <p class="fh">${S.thbRates&&S.thbRates.success?thbRatesMeta():'Загружаем курсы банков…'}${thbRatesRefreshButton()}</p></div>`+body;
   }
-  if(view==='task'&&branch){
-    const other=branch==='conversion'?'payment':'conversion';
-    const title=other==='conversion'?'Конвертация':'Оплата застройщику';
-    body+=`<div class="branch-other">Ещё задача по сделке: <button onclick="taskBranchSet('${other}')">${title} →</button></div>`;
-  }
   body+=view==='task'&&S.role==='operator'&&['s22','s23','s24','s25','s26'].includes(d.step)&&branch!=='conversion'?payToCard(d,true):'';
   body+=!d.prepay?prepayPanel(d):'';
   if(view==='task'&&branch!=='conversion'&&['s23','s24'].includes(d.step)&&['teodor','findir','admin'].includes(S.role)){
@@ -6423,6 +6453,10 @@ function viewDeal(d){
     return `<div class="vtabs">${tab('deal','Карточка <span class="lg">сделки</span>')}${
       had?tab('task',d.closed?'<span class="lg">Последний</span> шаг':'<span class="lg">Текущая</span> задача'):''}${
       had?tab('path','История'):''}</div>`;})()}
+  ${d.prepay&&!d.closed?`<nav class="branch-tabs" aria-label="Ветки сделки">
+    <button type="button" class="${branch==='conversion'?'on':''}" aria-pressed="${branch==='conversion'}" onclick="taskBranchSet('conversion')">Конвертация</button>
+    <button type="button" class="${branch==='payment'?'on':''}" aria-pressed="${branch==='payment'}" onclick="taskBranchSet('payment')">Оплата застройщику</button>
+  </nav><p class="branch-current" role="status">${htmlText(prepayBranchStatus(d,branch))}</p>`:''}
   ${view==='deal'&&['teodor','findir','admin'].includes(S.role)?ownerSummary(d):''}
   ${view==='deal'?payToCard(d):''}
   <div class="cols"><main>${body}</main>
@@ -6434,7 +6468,7 @@ function viewDeal(d){
         title="${d.originMode==='manual'?'Финальное сохранение в CRM':'Для старой ручной сделки нет подтверждённого сервером происхождения'}"
         onclick="crmPushClose(${d.id})">Сохранить в CRM</button>
       ${!d.manualNew&&d.originMode!=='manual'?'<span class="fh">Не подтверждено сервером происхождение ручного черновика; финальное сохранение недоступно.</span>':''}`:''}
-  ${!d.closed&&!d.manual?`<button class="btn btn-outline btn-sm" onclick="askClose(${d.id})">Закрыть сделку</button>`:''}</div>
+  ${!d.closed&&!d.manual?`<button class="btn btn-outline btn-sm" ${prepayCloseReason(d)?'disabled':''} onclick="askClose(${d.id})">Закрыть сделку</button>${prepayCloseReason(d)?`<p class="fh" role="status">${htmlText(prepayCloseReason(d))}</p>`:''}`:''}</div>
   </aside></div></div>`;
 }
 
@@ -6455,7 +6489,9 @@ function cnvRow(d){
 }
 function overview(d,st,mine,p,wh){
   const ap=approx(d), F=fake(d), E=econ(d);
-  const activeMine=mine&&(!d.assigneeAdminId||String(d.assigneeAdminId)===String(standMeId));
+  const branch=d.prepay?(S.taskBranch||((S.role==='operator'&&d.prepay.brokerStep!=='done')||prepayRefundRole(d)===S.role?'conversion':'payment')):null;
+  const branchMine=branch==='conversion'?taskBranchesForRole(d,S.role).includes('conversion'):mine;
+  const activeMine=branchMine&&(branch==='conversion'||!d.assigneeAdminId||String(d.assigneeAdminId)===String(standMeId));
   const got=['pass','inv','spa','ipds'].filter(k=>d.docs[k]);
   const docRows=docListRows(d), docN=docRows.issued.length+docRows.client.length;
   const row=(k,v,s)=>v==null||v===''||v==='—'?'':`<tr><th>${k}</th><td>${v}${s?` <span style="color:var(--text-muted);font-size:12px">${s}</span>`:''}</td></tr>`;
@@ -6466,8 +6502,9 @@ function overview(d,st,mine,p,wh){
     :`<div class="card" style="margin-bottom:16px"><div class="card-title">Сейчас в работе<span class="sub">этап ${p.i} из ${p.n}</span></div>
       <div class="li" style="cursor:default;border:1px solid var(--border);border-radius:var(--r-sm)">
         <span class="av">${p.i}</span>
-        <div><div class="t1">${stepTitle(d)}</div>
-        <div class="t2">${d.assigneeAdminId?(String(d.assigneeAdminId)===String(standMeId)?'на вас':'у '+htmlText(employeeName(d.assigneeAdminId)||'сотрудника ID '+d.assigneeAdminId)):(mine?'на вас':'у роли «'+((wh&&ROLES[wh])?ROLES[wh].t:'—')+'»')}${last?' · '+dur(Date.now()-last)+' на этом шаге':''}</div></div>
+        <div><div class="t1">${htmlText(branch?prepayBranchStatus(d,branch):stepTitle(d))}</div>
+        <div class="t2">${branch?(activeMine?'на вас':'у '+htmlText(prepayBranchAssignee(d,branch))):
+          d.assigneeAdminId?(String(d.assigneeAdminId)===String(standMeId)?'на вас':'у '+htmlText(employeeName(d.assigneeAdminId)||'сотрудника ID '+d.assigneeAdminId)):(mine?'на вас':'у роли «'+((wh&&ROLES[wh])?ROLES[wh].t:'—')+'»')}${last?' · '+dur(Date.now()-last)+' на этом шаге':''}</div></div>
         <button class="btn ${activeMine?'btn-primary':'btn-outline'} btn-sm" onclick="setView('task')">${activeMine?'Открыть задачу':'Посмотреть шаг'}</button>
       </div></div>`}
 
@@ -10728,9 +10765,10 @@ function stepCard(d){
     ${crmForm(d)}
     <!--note-->
     <div class="row${(miss||!d.sentToClient)?'':' mainrow'}" style="margin-top:14px">
-      <button class="btn btn-success" ${(miss||!d.sentToClient)?'disabled':''} onclick="crmPushClose(${d.id})">Сохранить в CRM и закрыть «Успешно»</button>
+      <button class="btn btn-success" ${(miss||!d.sentToClient||prepayCloseReason(d))?'disabled':''} onclick="crmPushClose(${d.id})">Сохранить в CRM и закрыть «Успешно»</button>
       <button class="btn btn-outline" onclick="editOpen(${d.id})">Поправить данные сделки</button></div>
     ${!d.sentToClient&&!miss?`<p class="fh">Сначала отметьте наверху, что чек отправлен клиенту.</p>`:''}
+    ${prepayCloseReason(d)?`<p class="fh" role="status">${htmlText(prepayCloseReason(d))}.</p>`:''}
     </div>`;},
   }[d.step];
   if(!f) return `<div class="card">Шаг «${d.step}» в прототипе не реализован.</div>`;

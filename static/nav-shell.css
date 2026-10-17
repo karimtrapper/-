@@ -45,6 +45,7 @@ body.nav-shell-on { --shell-ink:#0F172A; --shell-muted:#64748B; }
 .site-shell-section-list a.on { background:#0F172A;color:#fff; }
 .site-shell-scroll { flex:none;width:44px;height:44px;border:0;background:#fff;color:#334155;font-size:22px;cursor:pointer; }
 .site-shell-scroll:hover { background:#F1F5F9; }
+.site-shell-scroll:disabled { color:#94A3B8;cursor:default;background:#fff; }
 .site-shell-scroll:focus-visible,.site-shell-section-list a:focus-visible { outline:2px solid #C2410C;outline-offset:-2px; }
 .site-shell-menu [data-shell-build] .build { display:block;margin:8px;padding:8px 0;border:0;color:#64748B;font-size:12px;line-height:1.45;white-space:normal; }
 .site-shell-mobile-head, .site-shell-bottom { display:none; }
