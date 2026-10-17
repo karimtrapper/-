@@ -4252,16 +4252,21 @@ function dealSummaryBlock(d){
   const inRows=[row('Способ оплаты',htmlText(payinSourceLabel(d)),'заявка',edit)];
   if(rub){
     inRows.push(row('Клиент заплатил',paid.rub!=null?`<b>${moneyKop(paid.rub,'₽')}</b>${paid.date?' · '+htmlText(paid.date):''}`:noSum,'подтверждённый приход',edit));
-    const rate=num(d.rates.broker), broker=convOf(d)?.broker||quoteBest(d,'rub')?.name||'брокер не записан';
-    /* В конвертацию уходит не вся сумма клиента — валютный контроль и удержание компании
-       вычитаются ДО обмена (brokerSend/econ). Строку строим от факта (E.payin×курс), а не от
-       суммы клиента — иначе ₽ слева и USDT справа не сходятся по курсу (приёмка Карима). */
-    const convRub=(rate&&E.payin!=null)?Math.round(E.payin*rate*100)/100:null;
-    const heldRub=(paid.rub!=null&&convRub!=null)?Math.round((paid.rub-convRub)*100)/100:null;
-    inRows.push(row('Конвертация',convRub!=null
-      ?`${moneyKop(convRub,'₽')} → ${moneyKop(E.payin,'USDT')} по курсу ${htmlText(String(rate).replace('.',','))} · ${htmlText(broker)}`+
-        (heldRub!=null&&Math.abs(heldRub)>=1?`<div class="fh">из суммы клиента удержано ${moneyKop(Math.abs(heldRub),'₽')} (валютный контроль и комиссия)</div>`:'')
-      :'<span class="sumred">курс или сумма не записаны</span>','курс брокера',edit));
+    const c=convOf(d), rate=num((c&&c.rate)||d.rates.broker), broker=c?.broker||quoteBest(d,'rub')?.name||'брокер не записан';
+    /* Клиент платит X, брокер на входе списывает свою комиссию (валютный контроль + наш
+       0,2%), в обмен уходит X минус комиссия — это РАЗНЫЕ цифры, не ошибка (приёмка Карима
+       17.10). Берём готовые суммы из записи конвертации (conv.sent/held/fee*), не считаем
+       сами — c.held==0 для ручного режима (feeMode='manual'), тогда просто без разбивки. */
+    const sentRub=c?.sent, heldRub=c?.held;
+    const clientRub=c?.clientRubTotal??c?.rubTotal??paid.rub;
+    inRows.push(row('Конвертация',sentRub!=null
+      ?(heldRub?`<div>Клиент заплатил ${moneyKop(clientRub,'₽')}</div>`+
+          `<div>Комиссии брокера −${moneyKop(heldRub,'₽')}${c.feeMode!=='manual'?' (валютный контроль '+moneyKop(c.feeCtrl||0,'₽')+' + '+moneyKop(c.feeOurs||0,'₽')+')':''}</div>`+
+          `<div><b>Отправлено брокеру ${moneyKop(sentRub,'₽')}</b> → ${moneyKop(E.payin,'USDT')} по курсу ${htmlText(String(rate).replace('.',','))} · ${htmlText(broker)}</div>`
+        :`${moneyKop(sentRub,'₽')} → ${moneyKop(E.payin,'USDT')} по курсу ${htmlText(String(rate).replace('.',','))} · ${htmlText(broker)}`)
+      :(paid.rub!=null&&rate&&E.payin!=null
+        ?`${moneyKop(paid.rub,'₽')} → ${moneyKop(E.payin,'USDT')} по курсу ${htmlText(String(rate).replace('.',','))} · ${htmlText(broker)}<div class="fh">запись конвертации не найдена — показана сумма клиента без вычета комиссий</div>`
+        :'<span class="sumred">курс или сумма не записаны</span>'),'курс брокера',edit));
   }
   inRows.push(row('USDT получено',(E.payin!=null?`<b>${moneyKop(E.payin,'USDT')}</b>`:noSum)+
     ((d.payinHashes||[]).map(h=>hashCell(d,h)).join('')||'<div class="fh">хеша прихода нет</div>')+
