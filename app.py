@@ -7091,6 +7091,58 @@ def stand_crm_close(stand_deal_id):
         db.close()
 
 
+@app.route('/api/stand/crm-preview', methods=['POST'])
+def stand_crm_preview():
+    """Итог сделки в задачнике: прибыль и выплаты агентам теми же функциями, что
+    сохраняют сделку в CRM. Ничего не пишет в базу: объект Deal не добавляется в сессию."""
+    if not STAND_MODE:
+        return jsonify({'success': False, 'error': 'stand_only'}), 404
+    if current_role() not in ('manager', 'admin'):
+        return jsonify({'success': False, 'error': 'forbidden'}), 403
+    payload = request.get_json(silent=True) or {}
+    crm = payload.get('crm')
+    if not isinstance(crm, dict):
+        return jsonify({'success': False, 'error': 'invalid_payload'}), 400
+    kind = crm.get('deal_kind') or 'exchange'
+    if kind not in (MF_REALTY_KIND, MF_FREEHOLD_KIND, 'exchange'):
+        return jsonify({'success': False, 'error': 'deal_kind_invalid'}), 400
+    session = get_session()
+    try:
+        deal = Deal()
+        deal.deal_kind = kind
+        deal.payin_amount_usdt = _stand_number(crm.get('payin_amount_usdt')) or None
+        if kind == MF_REALTY_KIND:
+            _apply_mf_realty(deal, crm)
+        elif kind == MF_FREEHOLD_KIND:
+            _apply_mf_freehold(deal, crm)
+        else:
+            deal.payout_amount_usdt = _stand_number(crm.get('payout_amount_usdt')) or None
+            _recalculate_deal_financials(deal, crm)
+        agents = crm.get('agents') or []
+        if agents:
+            _apply_deal_agents(session, deal, agents)
+        elif kind in REALTY_KINDS:
+            _apply_deal_agents(session, deal, [])
+        else:
+            deal.net_profit_usdt = deal.profit_usdt
+        return jsonify({
+            'success': True,
+            'profit_usdt': deal.profit_usdt,
+            'profit_percent': deal.profit_percent,
+            'company_fee_usdt': deal.company_fee_usdt or 0,
+            'net_profit_usdt': deal.net_profit_usdt,
+            'referrer_payout_usdt': deal.referrer_payout_usdt or 0,
+            # в порядке уровней и строк — как в сделке после сохранения
+            'agents': [{'name': a.name, 'tier': a.tier, 'payout_usdt': a.payout_usdt or 0}
+                       for a in deal.agents],
+        })
+    except Exception as exc:
+        app.logger.exception('stand crm preview failed')
+        return jsonify({'success': False, 'error': str(exc) or 'preview_failed'}), 400
+    finally:
+        session.close()
+
+
 @app.route('/api/stand/deals/<int:stand_deal_id>/crm-close-lose', methods=['POST'])
 def stand_crm_close_lose(stand_deal_id):
     """Persist the refusal and local closure before any scoped Bitrix LOSE write."""

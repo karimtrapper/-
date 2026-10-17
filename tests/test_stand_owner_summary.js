@@ -5,7 +5,7 @@ const vm = require('node:vm');
 
 const html = fs.readFileSync(path.join(__dirname, '../static/stand/tasks.html'), 'utf8');
 const names = ['brokerSend', 'freeholdFee', 'freeholdSend', 'freeholdEstimate', 'freeholdSummary6',
-  'ownerDate', 'ownerEstimate', 'employeeName', 'ownerSummary'];
+  'ownerDate', 'ownerEstimate', 'employeeName', 'accountShortLabel', 'ownerSummary'];
 const source = 'const BROKER_FEE={ctrl:0.1,fix:40,ours:0.2};\n' + names.map(name => {
   const found = html.match(new RegExp(`^function ${name}\\([^]*?^}`, 'm'));
   assert.ok(found, name);

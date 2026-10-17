@@ -4747,6 +4747,15 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         // Приход в USDT: у сделок по СБП/эквайрингу своего USDT нет — он
         // появляется только после конвертации пачки, и до правки в таблице
         // стоял прочерк при уже известной сумме
+        // «Клиент заплатил, ₽»: сумма частей прихода (с комиссией эквайринга), без ожидаемой суммы.
+        // Без частей — сумма RUB сделки. null = суммы нет, в карточке это красная метка.
+        function clientPaidRub(deal) {
+            const parts = (deal.payin_parts || []).reduce((s, p) => s + (+p.amount_rub || 0), 0);
+            const extra = (deal.payin_extra || []).reduce((s, x) => s + (+x.amount_rub || 0), 0);
+            const sum = parts + extra;
+            if (sum > 0) return sum;
+            return deal.payin_amount_rub > 0 ? deal.payin_amount_rub : null;
+        }
         function payinUsdtCell(deal) {
             if (deal.payin_amount_usdt) return '$' + deal.payin_amount_usdt.toFixed(2);
             if (deal.payin_usdt_converted) {
@@ -4862,6 +4871,9 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         ` : `
                             <p><strong>Метод:</strong> ${getPayinMethodLabel(deal.payin_method)}</p>
                             ${deal.payin_amount_rub ? `<p><strong>Сумма RUB:</strong> ${formatNumber(deal.payin_amount_rub)} ₽</p>` : ''}
+                            ${deal.payin_method !== 'crypto_direct' ? (clientPaidRub(deal) != null
+                                ? `<p><strong>Клиент заплатил, ₽:</strong> ${formatNumber(clientPaidRub(deal))} ₽</p>`
+                                : `<p><strong>Клиент заплатил, ₽:</strong> <span style="color:#991B1B;background:#FEF2F2;border:1px solid #FECACA;border-radius:999px;padding:1px 8px;">нет суммы</span></p>`) : ''}
                             <p><strong>Сумма USDT:</strong> ${payinUsdtCell(deal)}${(!deal.payin_amount_usdt && deal.payin_usdt_converted) ? ` <span style="font-size:0.8rem;color:#64748b;">(из пачки)</span>
                                 <button class="btn btn-sm btn-success" style="margin-left:8px;font-size:11px;padding:3px 8px;"
                                     onclick="applyConvertedPayin(${deal.id}, ${deal.payin_usdt_converted}, ${deal.payin_amount_rub || 0})">Записать в сделку</button>` : ''}</p>

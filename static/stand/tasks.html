@@ -252,7 +252,8 @@ tr:last-child td{border-bottom:none}
 .box{border-radius:var(--r-sm);padding:12px 14px;margin:12px 0;font-size:13.5px;line-height:1.6}
 .box-red{background:#FEF2F2;border:1px solid #FECACA;color:#991B1B}
 .box-amber{background:#FFFBEB;border:1px solid #FDE68A;color:#92400E}
-.box-blue{background:#F0F9FF;border:1px solid #BAE6FD;color:#075985}
+/* синих подсказок в DESIGN.md нет (No Blue Rule): нейтральная тройка navy-100 / navy-200 / navy-700 */
+.box-blue{background:#F1F5F9;border:1px solid #E2E8F0;color:#334155}
 .box-green{background:#ECFDF5;border:1px solid #A7F3D0;color:#065F46}
 .hash{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;background:#E0F2FE;
   border:1px solid #BAE6FD;border-radius:6px;padding:2px 7px;color:#0369A1;text-decoration:none;display:inline-block;
@@ -363,7 +364,26 @@ a.hash:hover{background:#BAE6FD}
 .owner-detail{border-top:1px solid var(--border-light);margin-top:10px;padding-top:10px;font-size:12.5px;line-height:1.6;word-break:break-word}
 .owner-detail>div+div{margin-top:5px}
 @media(max-width:650px){.owner-line summary{flex-wrap:wrap}.owner-line .owner-label{width:100%}.owner-line .owner-hint{margin-left:0;text-align:left}}
-.sberbox{background:#F0F9FF;border:1px solid #BAE6FD;border-radius:var(--r);padding:12px 14px;margin-top:14px}
+.sberbox{background:#F1F5F9;border:1px solid #E2E8F0;border-radius:var(--r);padding:12px 14px;margin-top:14px}
+/* Итог сделки на закрытии: три раздела, в каждой строке источник и «Поправить» */
+.sumsec{margin-top:14px}
+.sumsec .sumtitle{font-size:14px;font-weight:700;margin:0 0 4px}
+.sumrow{display:grid;grid-template-columns:150px minmax(0,1fr) 170px auto;gap:10px;align-items:center;padding:9px 0;border-bottom:1px solid var(--border-light);font-size:13.5px}
+.sumrow:last-child{border-bottom:none}
+.sumlab{color:var(--text-muted);font-weight:600}
+.sumval{min-width:0;font-weight:600}
+.sumsrc{font-size:12px;color:var(--text-sec)}
+.sumred{color:#991B1B;background:#FEF2F2;border:1px solid #FECACA;border-radius:999px;padding:2px 10px;font-weight:700;white-space:nowrap}
+/* адрес/хеш — всегда одна строка; подпись доли переносится на следующую строку блока, а не ломает адрес */
+.sumhash{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0;margin-top:3px}
+.sumhash .addr{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.sumagent{display:grid;grid-template-columns:minmax(0,1.6fr) 110px 90px auto;gap:6px;align-items:center;margin-top:6px}
+@media(max-width:650px){
+  .sumrow{grid-template-columns:1fr;gap:3px;padding:10px 0}
+  .sumsrc{order:5}
+  .sumagent{grid-template-columns:1fr 1fr}
+  .sumagent select:first-child{grid-column:1/-1}
+}
 .crm-draft{margin-top:14px}
 .crm-draft .form-control{width:100%;padding:8px 10px;border:1px solid #cbd5e1;border-radius:7px;background:#fff;color:var(--text);font:inherit}
 .crm-draft .form-label{display:block;font-size:12px;font-weight:600;margin-bottom:5px}
@@ -4129,6 +4149,131 @@ function ownerEstimate(d){
       'оценка по котировке';
   return {result,rate,name,source,exact,legacy};
 }
+/* Счёт зачисления одной строкой: Flow Sole, Сбер, Т-Банк или хвост номера */
+function accountShortLabel(account){
+  const a=String(account||'');
+  if(a.includes('40807810819000000261')||a.includes('…0261'))return 'Flow Sole (СГБ) …0261';
+  if(a.includes('40807810938720000286')||a.includes('…0286'))return 'Сбер …0286';
+  if(a.includes('…2118')||a.endsWith('2118'))return 'Сбер эквайринг …2118';
+  if(a.includes('…5510')||a.endsWith('5510'))return 'Т-Банк …5510';
+  const full=a.match(/\d{20}/);
+  if(full)return (a.split(' · ')[0]||'Другой счёт')+' …'+full[0].slice(-4);
+  return a?a:'счёт ещё нет';
+}
+/* ---------- Итог сделки на закрытии (менеджер) ---------- */
+/* Человеческие названия: технические коды полей (payin_method, ipps_swift) в тексте не показываем */
+function payinHuman(d){
+  if(d.payType==='По реквизитам')return d.rubReceivingAccount?.mode==='flowsole'?'Flow Sole (СГБ)':'Сбер';
+  return {'СБП':'СБП','Крипта':'Крипта (USDT)','Наличные':'Наличные'}[d.payType]||d.payType||'не выбран';
+}
+function payoutHuman(d){
+  if(d.kind==='Фрихолд'||d.postConv==='ipps_swift')return 'IPPS → SWIFT';
+  if(d.postConv==='coins')return 'Coins';
+  if(d.postConv==='client'||d.paySrc==='client')return 'кошелёк клиента';
+  if(d.paySrc==='founder')return 'фаундер';
+  return {cash:'касса',ipps:'IPPS',scb:'SCB'}[d.paySrc]||d.paySrc||'не выбран';
+}
+/* Сколько ₽ клиент заплатил и когда — из подтверждённых частей прихода, не из ожидаемой суммы */
+function clientRubPaid(d){
+  const parts=d.payinParts||[], extra=d.payinExtra||[];
+  const sum=parts.reduce((s,p)=>s+(Number(p.amountRub)||0),0)+
+    extra.reduce((s,x)=>s+(Number(x.amount_rub??x.amountRub)||0),0);
+  const last=parts[parts.length-1]||{};
+  const inc=(S.incomes||[]).find(x=>String(x.id)===String(last.incId))||{};
+  return {rub:sum>0?sum:null,date:last.date||inc.date||null};
+}
+/* Доля общего перевода: зеркало split_by_payin_share (app.py): остаток округления — последней части */
+function splitByPayinShare(total,partAmounts,digits=2){
+  const n=partAmounts.length; if(!n)return [];
+  const denom=partAmounts.reduce((s,a)=>s+(Number(a)||0),0), k=10**digits;
+  const out=[]; let acc=0;
+  for(let i=0;i<n-1;i++){const v=denom?Math.round(total*(Number(partAmounts[i])||0)/denom*k)/k:0;out.push(v);acc+=v;}
+  out.push(Math.round((total-acc)*k)/k);
+  return out;
+}
+/* Общий хеш прихода: доля этой сделки, если перевод записан ещё и у других сделок */
+function hashShareOf(d,h){
+  const holders=S.deals.filter(x=>(x.payinHashes||[]).some(y=>y.hash===h.hash));
+  if(holders.length<2)return null;
+  const idx=holders.findIndex(x=>x.id===d.id); if(idx<0)return null;
+  const amounts=holders.map(x=>Number((x.payinHashes||[]).find(y=>y.hash===h.hash).amount)||0);
+  const of=Number(h.amount)||0;
+  return {share:splitByPayinShare(of,amounts)[idx],of:of};
+}
+/* Хеш в одну строку: сокращение посередине (txShort), копирование, ссылка в обозреватель */
+function hashCell(d,h){
+  if(!h||!h.hash)return '—';
+  if(String(h.hash).startsWith('demo:'))return '<span class="src">DEMO</span> <span class="addr">'+htmlText(txShort(h.hash))+'</span>';
+  const net=(h.network||'TRC20').toUpperCase(), sh=hashShareOf(d,h);
+  return `<div class="sumhash"><span class="net">${htmlText(net)}</span>
+    <a class="addr" href="${htmlText(explorer(h.hash,net))}" target="_blank" rel="noopener noreferrer" title="${htmlText(h.hash)}">${htmlText(txShort(h.hash))}</a>
+    <button class="btn btn-outline btn-sm" onclick="copyHash(${jsLiteralAttr(h.hash)})">Копировать</button>
+    ${sh?`<span class="fh">доля ${moneyKop(sh.share,'USDT')} из ${moneyKop(sh.of,'USDT')}</span>`:''}</div>`;
+}
+/* Прибыль и выплаты агентам — ответ /api/stand/crm-preview (те же функции, что при сохранении в CRM).
+   Кэш по телу запроса: смена агента даёт новый ключ и новый запрос, без сабмита и без релоада. */
+const CRM_PREVIEW={};
+function crmPreviewFor(d){
+  const crm=crmPayloadFinal(d), key=JSON.stringify(crm), hit=CRM_PREVIEW[key];
+  if(hit)return hit;
+  CRM_PREVIEW[key]={pending:true};
+  fetch('/api/stand/crm-preview',{method:'POST',credentials:'same-origin',
+    headers:{'Content-Type':'application/json'},body:JSON.stringify({crm:crm})})
+    .then(r=>r.json()).then(j=>{CRM_PREVIEW[key]=j.success?{data:j}:{error:j.error||'ошибка расчёта'};})
+    .catch(()=>{CRM_PREVIEW[key]={error:'сервер недоступен'};})
+    .finally(()=>render());
+  return CRM_PREVIEW[key];
+}
+/* Итог сделки: три раздела, в каждой строке источник и «Поправить» */
+function dealSummaryBlock(d){
+  const E=econ(d), rub=!isCrypto(d), fh=d.kind==='Фрихолд', realty=d.type==='Оплата недвижимости';
+  const paid=clientRubPaid(d), pv=crmPreviewFor(d), edit=`editOpen(${d.id})`;
+  const row=(label,value,src,fix)=>`<div class="sumrow"><div class="sumlab">${label}</div><div class="sumval">${value}</div>
+    <div class="sumsrc">${htmlText(src)}</div>${fix?`<button class="btn btn-outline btn-sm" onclick="${fix}">Поправить</button>`:'<span></span>'}</div>`;
+  const noSum='<span class="sumred">нет суммы</span>';
+  /* 1. Получение */
+  const acc=(d.payinParts||[]).map(p=>((S.incomes||[]).find(x=>String(x.id)===String(p.incId))||{}).acc).find(Boolean);
+  const inRows=[row('Способ оплаты',htmlText(acc?accountShortLabel(acc):payinHuman(d)),'заявка',edit)];
+  if(rub){
+    inRows.push(row('Клиент заплатил',paid.rub!=null?`<b>${moneyKop(paid.rub,'₽')}</b>${paid.date?' · '+htmlText(paid.date):''}`:noSum,'подтверждённый приход',edit));
+    const rate=num(d.rates.broker), broker=convOf(d)?.broker||quoteBest(d,'rub')?.name||'брокер не записан';
+    inRows.push(row('Конвертация',paid.rub!=null&&rate&&E.payin!=null
+      ?`${moneyKop(paid.rub,'₽')} → ${moneyKop(E.payin,'USDT')} по курсу ${htmlText(String(rate).replace('.',','))} · ${htmlText(broker)}`
+      :'<span class="sumred">курс или сумма не записаны</span>','курс брокера',edit));
+  }
+  inRows.push(row('USDT получено',(E.payin!=null?`<b>${moneyKop(E.payin,'USDT')}</b>`:noSum)+
+    ((d.payinHashes||[]).map(h=>hashCell(d,h)).join('')||'<div class="fh">хеша прихода нет</div>'),'приход USDT · хеш',edit));
+  /* 2. Оплата */
+  const po=d.payout||{}, payHashes=(fh||realty)?mfList(d).map(t=>({hash:t.hash,network:t.net,amount:t.amount})):(po.hashes||[]);
+  const receipt=filesOf(d,'receipt')[0];
+  const outRows=[row('Способ',htmlText(payoutHuman(d)),'выдача',edit)];
+  outRows.push(row('Отправлено',fh
+      ?(d.invoiceUsd!=null?`<b>${usd(d.invoiceUsd)}</b> застройщику · тариф ${htmlText(ippsTariff(d).label)}`:noSum)
+      :realty?(d.amountThb!=null?`<b>${money(d.amountThb,'฿')}</b> инвойс${d.companyPct!=null?' · комиссия '+d.companyPct+' %':''}`:noSum)
+      :money(po.thb||d.amountThb,'฿'),fh?'инвойс застройщика':'выдача',edit));
+  outRows.push(row('USDT списано',E.cost!=null?`<b>${moneyKop(E.cost,'USDT')}</b>`:noSum,'себестоимость выдачи',edit));
+  outRows.push(row('Хеш выплаты',payHashes.length?payHashes.map(h=>hashCell(d,h)).join(''):'<span class="fh">хеша выплаты нет</span>','перевод в сети',edit));
+  outRows.push(row('Инвойс и чек',htmlText((d.payTo||{}).inv||d.invNo||'номер не указан')+' · '+(receipt?'чек: '+htmlText(receipt.file):'чека нет'),'оплата инвойса',edit));
+  /* 3. Агент и прибыль */
+  const list=d.agents||[], order=list.map((a,i)=>i).sort((x,y)=>((list[x].tier||1)-(list[y].tier||1))||x-y);
+  const payoutOf=i=>{const pos=order.indexOf(i);return pv&&pv.data&&pv.data.agents[pos]?pv.data.agents[pos].payout_usdt:null;};
+  const agentRows=list.map((a,i)=>`<div class="sumagent">
+      <select class="fc" onchange="agentSet('s27',${d.id},${i},'refId',this.value)"><option value="">— выбрать агента —</option>${refs().map(r=>`<option value="${htmlText(r.id)}"${String(a.refId)===String(r.id)?' selected':''}>${htmlText(r.name)} · ${htmlText(r.code)}</option>`).join('')}</select>
+      <select class="fc" onchange="agentSet('s27',${d.id},${i},'comp',this.value)">${compOpts(a.comp)}</select>
+      <input class="fc num" value="${a.comp==='fixed'?(a.fixed||0):(a.percent||0)}" onchange="agentSet('s27',${d.id},${i},'${a.comp==='fixed'?'fixed':'percent'}',this.value)">
+      <span class="sumval">${payoutOf(i)!=null?moneyKop(payoutOf(i),'USDT'):'…'} <button class="btn btn-outline btn-sm" onclick="agentDel('s27',${d.id},${i})">Убрать</button></span></div>`).join('');
+  let profit='<span class="fh">считаем по формуле CRM…</span>';
+  if(pv&&pv.error)profit=`<span class="sumred">не посчитать: ${htmlText(pv.error)}</span>`;
+  else if(pv&&pv.data){const p=pv.data;
+    profit=`<b>${moneyKop(p.profit_usdt,'USDT')}</b> (${Number(p.profit_percent||0).toLocaleString('ru-RU',{minimumFractionDigits:2,maximumFractionDigits:2})} %)`+
+      (list.length?` · после агентов ${moneyKop(p.net_profit_usdt,'USDT')}`:'');}
+  const agSec=`<div class="sumlab" style="margin-top:10px">Агенты</div>${agentRows||'<div class="sumsrc">агента нет — вся прибыль остаётся нам</div>'}
+    <button class="btn btn-outline btn-sm" style="margin-top:8px" onclick="agentAdd('s27',${d.id})">+ Добавить агента</button>`;
+  return `<div class="sumsec"><div class="sumtitle">Получение</div>${inRows.join('')}</div>
+    <div class="sumsec"><div class="sumtitle">Оплата</div>${outRows.join('')}</div>
+    <div class="sumsec"><div class="sumtitle">Агент и прибыль</div>
+      ${row('Прибыль',profit,'формула CRM, считает сервер',null)}${agSec}</div>`;
+}
 /* Сводка владельца читает только сохранённые факты сделки и готовую экономику.
    Неизвестное значение не подменяем расчётом или данными другой сделки. */
 function ownerSummary(d){
@@ -4143,16 +4288,7 @@ function ownerSummary(d){
     if(a.endsWith('5510')&&b.includes('т-банк'))return 'Т-Банк …5510 · '+a;
     return account||null;
   };
-  const accountShort=account=>{
-    const a=String(account||'');
-    if(a.includes('40807810819000000261')||a.includes('…0261'))return 'Flow Sole (СГБ) …0261';
-    if(a.includes('40807810938720000286')||a.includes('…0286'))return 'Сбер …0286';
-    if(a.includes('…2118')||a.endsWith('2118'))return 'Сбер эквайринг …2118';
-    if(a.includes('…5510')||a.endsWith('5510'))return 'Т-Банк …5510';
-    const full=a.match(/\d{20}/);
-    if(full)return (a.split(' · ')[0]||'Другой счёт')+' …'+full[0].slice(-4);
-    return a?a:'счёт ещё нет';
-  };
+  const accountShort=accountShortLabel;
   const link=(hash,network)=>hash&&String(hash).startsWith('demo:')?safe(hash):hash?`<a href="${htmlText(explorer(hash,network||'TRC20'))}" target="_blank" rel="noopener noreferrer">${safe(hash)}</a>`:'ещё нет';
   const file=(kind,f,i)=>`<button class="btn btn-outline btn-sm" onclick="docOpen(${Number(d.id)},'${kind}',${i})">${safe(f.file||f.name||'Файл')}</button>`;
   const c=convOf(d), E=c?econ({...d,rates:{...d.rates,broker:c.rate}}):econ(d);
@@ -6889,6 +7025,8 @@ function crmForm(d){
       <div class="fr">
         ${sel('payin_method','Метод Pay-In',PAYIN_LABEL)}
         ${p.custom_payin_currency?ro('Сумма '+p.custom_payin_currency,p.custom_payin_amount):p.payin_amount_rub!=null||payCur(d)==='rub'?inp('payin_amount_rub','Сумма RUB'):''}
+        ${!p.custom_payin_currency&&payCur(d)==='rub'&&!isCrypto(d)?(()=>{const cp=clientRubPaid(d);
+          return ro('Клиент заплатил, ₽',cp.rub!=null?moneyKop(cp.rub,'₽'):'нет суммы',cp.date?'приход от '+cp.date+', из частей прихода':'из подтверждённых частей прихода');})():''}
         ${inp('payin_amount_usdt','Сумма USDT')}
       </div>
       <div class="fr">
@@ -10541,6 +10679,9 @@ function stepCard(d){
     </div>`
     :`<div class="alert a-warn"><div>Чека нет — операционист ещё не приложил его на шаге оплаты.</div></div>`}
 
+    <div class="card-title" style="font-size:14px;margin:18px 0 6px">Итог сделки
+      <span class="sub">проверьте каждую строку · «Поправить» открывает поле</span></div>
+    ${dealSummaryBlock(d)}
     ${crmGapsBlock(d,'До закрытия в карточке CRM не хватает')}
     <div class="card-title" style="font-size:14px;margin:18px 0 8px">Сделка в CRM
       <span class="sub">те же поля, что «Редактировать» в CRM — поправьте, если нужно, и сохраните</span></div>
@@ -10549,11 +10690,8 @@ function stepCard(d){
     <div class="row${(miss||!d.sentToClient)?'':' mainrow'}" style="margin-top:14px">
       <button class="btn btn-success" ${(miss||!d.sentToClient)?'disabled':''} onclick="crmPushClose(${d.id})">Сохранить в CRM и закрыть «Успешно»</button>
       <button class="btn btn-outline" onclick="editOpen(${d.id})">Поправить данные сделки</button></div>
-    ${miss?`<p class="fh">Не закрыть, пока не собрано: ${ok.filter(x=>!x[1]).map(x=>x[0].toLowerCase()).concat(crmGaps(d).map(x=>x.label)).join(', ')}.</p>`:''}
     ${!d.sentToClient&&!miss?`<p class="fh">Сначала отметьте наверху, что чек отправлен клиенту.</p>`:''}
-    <details style="margin-top:14px"><summary class="fh" style="cursor:pointer">Что собралось по сделке — ${ok.length-ok.filter(x=>!x[1]).length} из ${ok.length}</summary>
-    <div class="list" style="margin-top:8px">${ok.map(([k,v])=>`<div class="li" style="cursor:default"><span class="av">${v?'✓':'—'}</span>
-      <div><div class="t1">${k}</div><div class="t2">${v||'не заполнено'}</div></div><span class="t3"></span></div>`).join('')}</div></details></div>`;},
+    </div>`;},
   }[d.step];
   if(!f) return `<div class="card">Шаг «${d.step}» в прототипе не реализован.</div>`;
   /* Комментарий одинаково нужен на каждом шаге, поэтому вставляем его централизованно —
