@@ -38,6 +38,14 @@ from stand_transfers import (preserve_server_fields, send_fingerprint,
                              verify_transfer, valid_address, _amount, FREEHOLD_LOCKED_STEPS)
 from google.oauth2.service_account import Credentials as GoogleCredentials
 
+def stand_now():
+    """Время для журнала сделки — Таиланд (UTC+7), как и весь остальной стенд
+    (см. datetime.utcnow() + timedelta(hours=7) в отчётах и ZoneInfo('Asia/Bangkok')
+    в payin). datetime.now() на сервере даёт время контейнера (обычно UTC) и расходится
+    с браузером клиента на 7 часов — отсюда «Курс получен» раньше «Сделка создана»."""
+    return datetime.utcnow() + timedelta(hours=7)
+
+
 # ==================== ТЕСТОВЫЙ СТЕНД ====================
 # STAND_MODE=1 — копия сервиса для обкатки процесса с несколькими ролями.
 # Предохранитель стоит ДО чтения любых интеграционных переменных: полагаться на
@@ -5273,7 +5281,7 @@ def _stand_move_legacy_s14_to_operator(db, state):
             continue
         deal['assigneeAdminId'] = None
         deal.setdefault('log', []).append({'at': int(time.time() * 1000),
-            'ts': datetime.now().strftime('%d.%m, %H:%M'), 'role': 'system',
+            'ts': stand_now().strftime('%d.%m, %H:%M'), 'role': 'system',
             'text': marker})
         changed = True
     return changed
@@ -5608,7 +5616,7 @@ def stand_file_upload():
         author = user.display_name or user.username
         item = {'id': 'sf_' + secrets.token_hex(16), 'file': name,
                 'mime': mime, 'bytes': len(raw), 'size': f'{len(raw) / 1024:.0f} КБ',
-                'at': datetime.now().strftime('%d.%m, %H:%M'), 'demo': False,
+                'at': stand_now().strftime('%d.%m, %H:%M'), 'demo': False,
                 'uploadedById': actor_id, 'uploadedBy': author,
                 'data': 'data:' + mime + ';base64,' + base64.b64encode(raw).decode()}
         if kind == STAND_CLIENT_PAYIN_KIND:
@@ -5625,7 +5633,7 @@ def stand_file_upload():
                     else 'Выписка о зачислении прикреплена · ' + name + ' · ' + author if kind == STAND_BANK_CREDIT_KIND
                     else 'Приложен файл: ' + kind + ' · ' + name)
             deal.setdefault('log', []).append({'text': text, 'role': actor,
-                'at': int(time.time() * 1000), 'ts': datetime.now().strftime('%d.%m, %H:%M')})
+                'at': int(time.time() * 1000), 'ts': stand_now().strftime('%d.%m, %H:%M')})
         problem = _stand_guard_transition(previous, state, actor, actor_id, db)
         if problem:
             return jsonify(success=False, error=problem), 403
@@ -6264,7 +6272,7 @@ def stand_assignee_take():
         new_name = taker.display_name or taker.username
         deal['assigneeAdminId'] = actor_id
         deal.setdefault('log', []).append({
-            'at': int(time.time() * 1000), 'ts': datetime.now().strftime('%d.%m, %H:%M'),
+            'at': int(time.time() * 1000), 'ts': stand_now().strftime('%d.%m, %H:%M'),
             'role': actor, 'text': f'{new_name} забрал шаг у {old_name}'})
         row.data = json.dumps(state, ensure_ascii=False)
         row.version = (row.version or 0) + 1
@@ -6534,7 +6542,7 @@ def stand_quote_save():
             rates['rubUsdt' if direction == 'rub' else 'usdtThb'] = selected['rate']
             rates['at'] = stamp_ms
         deal.setdefault('log', []).append({'at': stamp_ms,
-            'ts': datetime.now().strftime('%d.%m, %H:%M'), 'role': actor,
+            'ts': stand_now().strftime('%d.%m, %H:%M'), 'role': actor,
             'text': ('Курс обновлён' if previous else 'Курс получен') +
                     f' — {cp.get("name")} ({direction.upper()+"→USDT" if quote_buy(deal, direction) else "USDT→"+direction.upper()}): {rate.replace(".", ",")}'})
         if deal.get('step') == 's5':
@@ -6545,7 +6553,7 @@ def stand_quote_save():
                 deal['step'] = 's6'
                 deal['assigneeAdminId'] = None
                 deal['log'].append({'at': stamp_ms,
-                    'ts': datetime.now().strftime('%d.%m, %H:%M'), 'role': actor,
+                    'ts': stand_now().strftime('%d.%m, %H:%M'), 'role': actor,
                     'text': 'Курсы отданы менеджеру'})
         _stand_note(state, f'stand:quote:{deal["id"]}:{cp_id}:{direction}:{stamp_ms}',
                     'manager', deal, f'Курс {cp.get("name")}: {rate}')
@@ -6599,7 +6607,7 @@ def stand_payto_reopen():
             transfer.pop(key, None)
         deal['transfer'] = transfer
         deal.setdefault('log', []).append({'at': int(time.time() * 1000),
-            'ts': datetime.now().strftime('%d.%m, %H:%M'), 'role': actor,
+            'ts': stand_now().strftime('%d.%m, %H:%M'), 'role': actor,
             'text': 'Правка реквизитов: отправка остановлена, поручение IPPS сброшено; требуется повторное подтверждение менеджера и операциониста'})
         _stand_note(state, f'stand:payto-reopen:{deal["id"]}:{row.version}', 'operator', deal,
                     'Отправка остановлена: менеджер меняет реквизиты, потребуется новое поручение IPPS')
@@ -8715,7 +8723,7 @@ def stand_prepay_action():
             text = 'Оплата наперёд отменена до отправки с кошелька'
         else:
             return jsonify(success=False, error='Неизвестное действие'), 400
-        deal.setdefault('log', []).append({'ts': datetime.now().strftime('%d.%m, %H:%M'),
+        deal.setdefault('log', []).append({'ts': stand_now().strftime('%d.%m, %H:%M'),
             'at': int(time.time() * 1000), 'role': actor,
             'text': text, 'actorId': flask_session.get('user_id')})
         row.data = json.dumps(state, ensure_ascii=False)
@@ -8788,7 +8796,7 @@ def stand_prepay_reimburse():
             return jsonify(success=False, error='Доска изменилась во время проверки — повторите'), 409
         deal['payout']['reimbursement'] = _stand_reimbursement_record(
             deal, due, ref, 'возмещение оплаты наперёд')
-        deal.setdefault('log', []).append({'ts': datetime.now().strftime('%d.%m, %H:%M'),
+        deal.setdefault('log', []).append({'ts': stand_now().strftime('%d.%m, %H:%M'),
             'at': int(time.time() * 1000), 'role': actor,
             'text': f'Возмещено на кошелёк {p["wallet"]["name"]} · {due:.2f} USDT · {ref}'})
         row.data = json.dumps(state, ensure_ascii=False)
@@ -9796,7 +9804,7 @@ def _stand_small_profit(deal):
 def _stand_reimbursement_record(deal, amount, ref, kind):
     """Единый факт возмещения для обменов и оплаты наперёд; не второй расход."""
     return {'id': 'R-' + str(deal['id']), 'kind': kind, 'hash': ref,
-            'usdt': amount, 'at': datetime.now().strftime('%d.%m, %H:%M')}
+            'usdt': amount, 'at': stand_now().strftime('%d.%m, %H:%M')}
 
 
 def _stand_settle_prepay(state, deal):
@@ -9811,7 +9819,7 @@ def _stand_settle_prepay(state, deal):
         deal['payout']['reimbursement'] = _stand_reimbursement_record(
             deal, due, ', '.join(t['hash'] for t in conv['txs']),
             'автовозмещение — кошелёк совпал, перевод не потребовался')
-        deal.setdefault('log', []).append({'ts': datetime.now().strftime('%d.%m, %H:%M'),
+        deal.setdefault('log', []).append({'ts': stand_now().strftime('%d.%m, %H:%M'),
             'at': int(time.time() * 1000), 'role': 'system',
             'text': f'Возмещение {due:.2f} USDT закрыто: кошелёк совпал, перевод не потребовался'})
         return True
@@ -9876,7 +9884,7 @@ def _stand_settle_verified(state, members):
         deal['closed'] = True
         deal['step'] = 'done'
         deal['closeReason'] = 'Успешно завершена'
-        deal['closedAt'] = datetime.now().strftime('%d.%m, %H:%M')
+        deal['closedAt'] = stand_now().strftime('%d.%m, %H:%M')
         deal['serverSettled'] = True
         profit = _stand_small_profit(deal)
         prefix = 'DEMO · ' if deal.get('demoTransfers') else ''
@@ -9932,7 +9940,7 @@ def _stand_settle_verified(state, members):
             # понять, кто и когда выпустил деньги (аудит 27.09 №7, Карим, 27.09).
             verb = 'подписан' if multisig else 'отправлен'
             signer = 'teodor' if multisig else ((wallet or {}).get('role') or 'teodor')
-            logged = datetime.now().strftime('%d.%m, %H:%M')
+            logged = stand_now().strftime('%d.%m, %H:%M')
             for deal in outgoing:
                 for s in (deal.get('transfer') or {}).get('sends') or []:
                     if s.get('status') != 'confirmed':
@@ -9950,7 +9958,7 @@ def _stand_settle_verified(state, members):
                 main['assigneeAdminId'] = None
             if main.get('postConv') == 'client' and main.get('outgoingReview'):
                 main.update(step='done', closed=True, closeReason='Успешно завершена',
-                            closedAt=datetime.now().strftime('%d.%m, %H:%M'), serverSettled=True)
+                            closedAt=stand_now().strftime('%d.%m, %H:%M'), serverSettled=True)
             main['serverTransferComplete'] = True
             if main.get('outgoingReview'):
                 main.setdefault('log', []).append({'at': int(time.time()*1000), 'role': 'system',
@@ -9965,7 +9973,7 @@ def _stand_settle_verified(state, members):
             # когда перевод подтверждён, — это закрытие сделки и хеши выдачи в Pay-Out.
             # Раньше их закрывал браузер на шаге подписи; после переноса подтверждения
             # на сервер они навсегда оставались «в пачке» без хешей (прогон 24.09).
-            stamp = datetime.now().strftime('%d.%m, %H:%M')
+            stamp = stand_now().strftime('%d.%m, %H:%M')
             for deal in outgoing:
                 if (deal is main or deal.get('closed')
                         or deal.get('postConv') not in ('coins', 'client')):
@@ -10756,7 +10764,7 @@ def stand_incoming_wallet():
                       role='findir' if registered.is_multisig else 'teodor', name=registered.label or registered.owner)
         for member in members:
             member['walletId'] = chosen['id']
-            member.setdefault('log', []).append({'ts': datetime.now().strftime('%d.%m, %H:%M'),
+            member.setdefault('log', []).append({'ts': stand_now().strftime('%d.%m, %H:%M'),
                 'at': int(time.time()*1000), 'role': current_role(),
                 'by': flask_session.get('user_id'),
                 'text': f"Фактический кошелёк прихода брокера: {old} → {registered.address}. Приход ещё не проверен"})
@@ -11068,7 +11076,7 @@ def stand_incoming_check():
         if early:
             tx['confirmedBeforeRubSend'] = True
         conv.setdefault('txs', []).append(tx)
-        deal.setdefault('log', []).append({'ts': datetime.now().strftime('%d.%m, %H:%M'),
+        deal.setdefault('log', []).append({'ts': stand_now().strftime('%d.%m, %H:%M'),
             'at': int(time.time() * 1000), 'role': role,
             'by': flask_session.get('user_id'),
             'text': f'Засчитана доля {amount} из {total} USDT, хеш {tx_hash}'
@@ -11302,7 +11310,7 @@ def stand_incoming_unlink():
         conv['txs'] = [t for t in conv.get('txs') or [] if t.get('hash') != tx_hash]
         if len(conv['txs']) == before:
             return jsonify({'success': False, 'error': 'Такого прихода в пачке нет'}), 404
-        stamp = datetime.now().strftime('%d.%m, %H:%M')
+        stamp = stand_now().strftime('%d.%m, %H:%M')
         entry = lambda text: {'ts': stamp, 'at': int(time.time() * 1000), 'role': role, 'text': text}
         if conv.get('status') == 'received':
             conv['status'] = 'sent'
@@ -11606,7 +11614,7 @@ def stand_payin_check():
             tx['otherSender'] = True
         deal.setdefault('payinHashes', []).append(tx)
         deal.setdefault('log', []).append({
-            'ts': datetime.now().strftime('%d.%m, %H:%M'), 'at': int(time.time() * 1000),
+            'ts': stand_now().strftime('%d.%m, %H:%M'), 'at': int(time.time() * 1000),
             'role': role,
             'text': f"Приход проверен в сети: {checked['verifiedAmount']} USDT с {sender}"
                     + (' — это не кошелёк клиента из сделки' if tx.get('otherSender') else '')})
@@ -11849,7 +11857,7 @@ def _stand_advance_manual_payin(state, deal, receipt):
     if deal.get('isTask'):
         deal['isTask'] = False
         deal.setdefault('log', []).append({'at': int(time.time() * 1000),
-            'ts': datetime.now().strftime('%d.%m, %H:%M'), 'role': 'system',
+            'ts': stand_now().strftime('%d.%m, %H:%M'), 'role': 'system',
             'text': 'Задача стала сделкой — деньги пошли, карточка попала в реестр'})
     need_requisites = not (deal.get('payTo') or {}).get('acc')
     deal['reqTask'] = 'open' if need_requisites else 'done'
@@ -12019,7 +12027,7 @@ def stand_manual_bank_receipt_confirm(deal_id):
                if receipt.get('accountMismatch') else '')})
         transition = _stand_advance_manual_payin(state, deal, receipt)
         deal['log'].append({'at': int(time.time() * 1000),
-            'ts': datetime.now().strftime('%d.%m, %H:%M'),
+            'ts': stand_now().strftime('%d.%m, %H:%M'),
             'role': 'system', 'text': transition})
         row.data = json.dumps(state, ensure_ascii=False)
         row.version = (row.version or 0) + 1
@@ -12587,7 +12595,7 @@ def stand_docs_issue():
                 + ', '.join(f"{names[e['kind']]} {e['file']}" for e in entries)
                 + (f'. {note}' if note else '')
                 + (f". Свои файлы ({', '.join(dropped)}) заменены новой версией" if dropped else ''))
-        deal.setdefault('log', []).append({'ts': datetime.now().strftime('%d.%m, %H:%M'),
+        deal.setdefault('log', []).append({'ts': stand_now().strftime('%d.%m, %H:%M'),
                                            'at': at, 'role': role, 'text': text})
         row.data = json.dumps(state, ensure_ascii=False)
         row.version = (row.version or 0) + 1
@@ -12697,12 +12705,12 @@ def stand_docs_upload():
         size = f'{len(raw) / 1024:.0f} КБ' if len(raw) < 1024 * 1024 else f'{len(raw) / 1048576:.1f} МБ'
         deal.setdefault('issued', {})[kind] = {'file': filename, 'size': size, 'docId': doc_id,
                                                'mime': STAND_UPLOAD_EXT[ext],
-                                               'at': datetime.now().strftime('%d.%m, %H:%M')}
+                                               'at': stand_now().strftime('%d.%m, %H:%M')}
         deal['docVersion'] = int(deal.get('docVersion') or 0) + 1
         deal.pop('docsSent', None)
         names = {'dog': 'договор', 'app': 'приложение', 'bill': 'счёт'}
         deal.setdefault('log', []).append({
-            'ts': datetime.now().strftime('%d.%m, %H:%M'), 'at': int(time.time() * 1000), 'role': role,
+            'ts': stand_now().strftime('%d.%m, %H:%M'), 'at': int(time.time() * 1000), 'role': role,
             'text': f"Загружен свой файл вместо сгенерированного: {names[kind]} · {filename} · версия {deal['docVersion']}"})
         row.data = json.dumps(state, ensure_ascii=False)
         row.version = (row.version or 0) + 1
