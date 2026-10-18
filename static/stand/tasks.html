@@ -772,35 +772,13 @@ a.hash:hover{background:#BAE6FD}
 .deal-screen .tx-fee-row{display:flex;align-items:center;gap:var(--ds-sm);min-height:44px;font-size:var(--ds-body)}
 .deal-screen .tx-hidden summary,.deal-screen details summary{cursor:pointer;min-height:44px;display:flex;align-items:center}
 .deal-screen .doc-side{margin-top:var(--ds-md)}
-/* Хронология (pathCard): «Кто»/«Когда»/№/«Сколько держалось» — по содержимому и не
-   переносятся по буквам (td{overflow-wrap:anywhere} из общих стилей иначе рвёт
-   «Менеджер» на слоги в узкой колонке); «Что произошло» — единственная растяжимая
-   колонка, забирает всю оставшуюся ширину. */
-.deal-screen .hist-table td:nth-child(1),.deal-screen .hist-table td:nth-child(3),
-.deal-screen .hist-table td:nth-child(4),.deal-screen .hist-table td:nth-child(5){
-  white-space:nowrap;width:1%;overflow-wrap:normal}
-.deal-screen .hist-table td:nth-child(2){overflow-wrap:break-word;word-break:normal}
-.deal-screen .hist-table td:nth-child(5){color:var(--ds-muted);font-size:var(--ds-caption);text-align:right}
-.deal-screen .hist-table td,.deal-screen .hist-table th{padding:var(--ds-md) var(--ds-lg)}
-@media(max-width:700px){
-  .deal-screen .hist-table,.deal-screen .hist-table tbody{display:block}
-  .deal-screen .hist-table thead{display:none}
-  .deal-screen .hist-table tr{display:flex;flex-wrap:wrap;align-items:baseline;gap:0;
-    padding:var(--ds-md) 0;border-bottom:1px solid var(--ds-border)}
-  .deal-screen .hist-table tr:last-child{border-bottom:0}
-  .deal-screen .hist-table td,.deal-screen .hist-table td:nth-child(1),
-  .deal-screen .hist-table td:nth-child(3),.deal-screen .hist-table td:nth-child(4),
-  .deal-screen .hist-table td:nth-child(5){display:inline;border:0;padding:0;
-    white-space:normal;overflow-wrap:break-word;width:auto;text-align:left}
-  .deal-screen .hist-table td:first-child{display:none}
-  .deal-screen .hist-table td:nth-child(4){order:1;font-size:var(--ds-caption);color:var(--ds-muted)}
-  .deal-screen .hist-table td:nth-child(3){order:2;font-size:var(--ds-caption);color:var(--ds-muted)}
-  .deal-screen .hist-table td:nth-child(3)::before{content:"·";margin:0 var(--ds-xs)}
-  .deal-screen .hist-table td:nth-child(5){order:3;font-size:var(--ds-caption);color:var(--ds-muted)}
-  .deal-screen .hist-table td:nth-child(5)::before{content:"·";margin:0 var(--ds-xs)}
-  .deal-screen .hist-table td:nth-child(2){order:4;flex-basis:100%;margin-top:var(--ds-xs);
-    font-size:var(--ds-body);color:var(--ds-ink)}
-}
+/* Хронология (pathCard): лента карточек на ВСЕХ ширинах — таблица на широких экранах
+   вылезала за карточку колонкой «Сколько держалось» (Карим, живой стенд, 17.10) */
+.deal-screen .hist-feed{display:flex;flex-direction:column}
+.deal-screen .hist-item{padding:var(--ds-md) 0;border-bottom:1px solid var(--ds-border)}
+.deal-screen .hist-item:last-child{border-bottom:0}
+.deal-screen .hist-meta{font-size:var(--ds-caption);color:var(--ds-muted)}
+.deal-screen .hist-text{font-size:var(--ds-body);color:var(--ds-ink);margin-top:var(--ds-xs);overflow-wrap:break-word}
 .deal-screen :focus-visible{outline:2px solid var(--coral);outline-offset:2px}
 @media(max-width:700px){.deal-screen .cols{grid-template-columns:minmax(0,1fr)}.deal-screen .deal-path{display:none}}
 @media(max-width:700px){
@@ -2635,7 +2613,15 @@ function selectOutgoingTx(id,control){
   else outgoingPickSet(id,value,true);
 }
 function txShort(value){
-  const s=String(value||'');return s.length>20?s.slice(0,8)+'…'+s.slice(-8):s;
+  /* >=20, не >20: российский р/с — ровно 20 цифр, иначе no-op на самом частом случае */
+  const s=String(value||'');return s.length>=20?s.slice(0,8)+'…'+s.slice(-8):s;
+}
+/* «Банк · полный счёт» в журнале — сокращаем только цифры счёта, банк не трогаем */
+function accShort(acc){
+  const s=String(acc||''), i=s.lastIndexOf(' · ');
+  if(i<0)return s;
+  const head=s.slice(0,i+3), tail=s.slice(i+3);
+  return /^\d{9,}$/.test(tail)?head+txShort(tail):s;
 }
 function outgoingPickList(d){
   const r=d.outgoingReview, p=outgoingPickState(d), rows=r.candidates||[], target=Number(d.transfer?.amount||0);
@@ -3859,11 +3845,16 @@ function log(d,text){
   d.log.push(entry);
 }
 function logWhen(entry){
+  /* at — абсолютная эпоха (мс), показываем в поясе смотрящего через Date();
+     ts — текст без эпохи у старых записей, оставляем как записали тогда */
+  const stamp=typeof entry.at==='number'?entry.at:Date.parse(entry.at||'');
+  if(Number.isFinite(stamp)&&stamp>0)
+    return new Date(stamp).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
   if(typeof entry.ts==='string'&&/^\d{2}\.\d{2},? \d{2}:\d{2}$/.test(entry.ts))
     return entry.ts.replace(/^(\d{2}\.\d{2}) (\d{2}:\d{2})$/,'$1, $2');
-  const stamp=typeof entry.at==='number'?entry.at:Date.parse(entry.at||entry.ts||'');
-  return Number.isFinite(stamp)&&stamp>0
-    ?new Date(stamp).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})
+  const parsed=Date.parse(entry.ts||'');
+  return Number.isFinite(parsed)&&parsed>0
+    ?new Date(parsed).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})
     :'время неизвестно';
 }
 function logMeta(entry){
@@ -6807,13 +6798,11 @@ function pathCard(d){
         <td>${st==='внесено'?'<span class="badge b-done">внесено</span>':(st==='сейчас'?'<span class="badge b-new">сейчас</span>':`<span class="badge b-wait">${st}</span>`)}</td></tr>`;}).join('')}
     </tbody></table>
     <div class="card-title" style="font-size:14px;margin:18px 0 10px">Хронология</div>
-    <table class="hist-table"><thead><tr><th style="width:34px">№</th><th>Что произошло</th><th>Кто</th><th>Когда</th><th>Сколько держалось</th></tr></thead><tbody>
-    ${rows.map((r,i)=>`<tr${r.open?' style="background:var(--coral-light)"':''}>
-      <td class="num">${i+1}</td><td>${htmlText(r.l.text)}</td>
-      <td>${ROLES[r.l.role]?ROLES[r.l.role].t:'—'}</td>
-      <td style="white-space:nowrap">${logWhen(r.l)}</td>
-      <td class="num" style="white-space:nowrap">${r.ms!=null?dur(r.ms)+(r.open?' · идёт':''):'—'}</td></tr>`).join('')}
-    </tbody></table>
+    <div class="hist-feed">
+    ${rows.map(r=>`<div class="hist-item"${r.open?' style="background:var(--coral-light)"':''}>
+      <div class="hist-meta">${logWhen(r.l)} · ${ROLES[r.l.role]?ROLES[r.l.role].t:'—'}${r.ms!=null?' · '+dur(r.ms)+(r.open?' · идёт':''):''}</div>
+      <div class="hist-text">${htmlText(r.l.text)}</div></div>`).join('')}
+    </div>
     ${Object.keys(byRole).length>1?`<div class="card-title" style="font-size:14px;margin:20px 0 11px">Сколько времени сделка провела у каждой роли</div>
     <table><thead><tr><th>Роль</th><th>Время</th><th>Доля</th></tr></thead><tbody>
     ${Object.entries(byRole).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`<tr><td>${ROLES[k]?ROLES[k].t:'—'}</td>
@@ -7877,7 +7866,7 @@ function payinIssues(d){
     const acc=x&&x.acc, purpose=x&&x.purpose;
     const manual=d.manualBankReceipt, manualAccount=manual&&x&&x.source==='manual_confirmed'&&x.manualReceiptId===manual.id&&manual.status==='confirmed'&&manual.confirmedAt&&manual.confirmedBy&&Number(p.amountRub)===Number(manual.actualAmount)&&acc===manual.bank+' · '+manual.account;
     if(!acc) issues.push('Счёт прихода не указан');
-    else if(!manualAccount&&acc!==ex.acc) issues.push('Счёт прихода '+acc+' вместо '+ex.acc);
+    else if(!manualAccount&&acc!==ex.acc) issues.push('Счёт прихода '+accShort(acc)+' вместо '+ex.acc);
     if(!purpose) issues.push('Назначение платежа не указано');
     else if(String(purpose).trim().toLowerCase()!==String(ex.purpose).trim().toLowerCase())
       issues.push('Назначение отличается от ожидаемого');
@@ -9014,7 +9003,9 @@ function expectOf(d){
   const custom=receiving.mode==='custom', flowsole=receiving.mode==='flowsole', sber=receiving.mode==='sber';
   return {
     amount:(e.amount!=null&&!d.rerateExpectFollowsDeal?e.amount:(ap.pay||'')),
-    acc:custom?([receiving.bank||'Другой счёт',receiving.account||'счёт не указан'].join(' · ')):flowsole?'Flow Sole (СГБ) …0261':sber?'…0286 · Сбер':(e.acc||'…0286 · Сбер'),
+    /* e.acc иногда наследует значение технического поля mode из старых данных —
+       показывать его пользователю нельзя (Карим, живой стенд, 17.10) */
+    acc:custom?([receiving.bank||'Другой счёт',receiving.account?(String(receiving.account).length>=20?String(receiving.account).slice(0,8)+'…'+String(receiving.account).slice(-8):receiving.account):'счёт не указан'].join(' · ')):flowsole?'Flow Sole (СГБ) …0261':sber?'…0286 · Сбер':(['custom','flowsole','sber'].includes(e.acc)?'…0286 · Сбер':(e.acc||'…0286 · Сбер')),
     bank:custom?receiving.bank:flowsole?FLOWSOLE.bank:sber?MF.bank:(e.bank||''),
     account:custom?receiving.account:flowsole?FLOWSOLE.acc:sber?MF.acc:(e.account||''),
     tol:(e.tol!=null?e.tol:1000),
@@ -9034,7 +9025,10 @@ function expectSet(id,k,v){
   d.expect[k]=nv;
   if(k==='amount')d.rerateExpectFollowsDeal=false;
   const label={amount:'ждём сумму',acc:'счёт зачисления',tol:'допуск',purpose:'назначение платежа'}[k]||k;
-  log(d,'Ожидание прихода — '+label+': «'+(was[k]||'—')+'» → «'+(d.expect[k]||'—')+'»');
+  /* amount/tol — суммы в рублях, в журнал идут с разделителями тысяч и знаком валюты,
+     не сырым числом (Карим, живой стенд, 17.10) */
+  const fmt=v=>(k==='amount'||k==='tol')?money(v,'₽'):(v||'—');
+  log(d,'Ожидание прихода — '+label+': «'+fmt(was[k])+'» → «'+fmt(d.expect[k])+'»');
   save();render();
 }
 function expectReset(id){

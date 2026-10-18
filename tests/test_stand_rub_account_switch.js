@@ -47,7 +47,8 @@ Object.assign(fields, {rub_bank_1: 'Банк Тест', rub_account_1: '40702810
   rub_recip_name_1: 'ООО ТЕСТ', rub_recip_inn_1: '7700000000', rub_recip_kpp_1: '770101001'});
 run("rubReceivingAccountSave(1, 'custom')");
 assert.match(run('docFields(S.deals[0]).payTo'), /ООО ТЕСТ.*Банк Тест.*40702810900000012345/);
-assert.equal(run('expectOf(S.deals[0]).acc'), 'Банк Тест · 40702810900000012345');
+// 20-значный счёт — ровно порог для сокращения середины (Карим, живой стенд, 17.10)
+assert.equal(run('expectOf(S.deals[0]).acc'), 'Банк Тест · 40702810…00012345');
 assert.equal(run('expectOf(S.deals[0]).account'), '40702810900000012345');
 assert.equal(run('expectOf(S.deals[0]).purpose'), 'Назначение из выписки');
 assert.equal(run('docFields(S.deals[0]).fio'), 'Ручная правка');
