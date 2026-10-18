@@ -764,6 +764,35 @@ a.hash:hover{background:#BAE6FD}
 .deal-screen .tx-fee-row{display:flex;align-items:center;gap:var(--ds-sm);min-height:44px;font-size:var(--ds-body)}
 .deal-screen .tx-hidden summary,.deal-screen details summary{cursor:pointer;min-height:44px;display:flex;align-items:center}
 .deal-screen .doc-side{margin-top:var(--ds-md)}
+/* Хронология (pathCard): «Кто»/«Когда»/№/«Сколько держалось» — по содержимому и не
+   переносятся по буквам (td{overflow-wrap:anywhere} из общих стилей иначе рвёт
+   «Менеджер» на слоги в узкой колонке); «Что произошло» — единственная растяжимая
+   колонка, забирает всю оставшуюся ширину. */
+.deal-screen .hist-table td:nth-child(1),.deal-screen .hist-table td:nth-child(3),
+.deal-screen .hist-table td:nth-child(4),.deal-screen .hist-table td:nth-child(5){
+  white-space:nowrap;width:1%;overflow-wrap:normal}
+.deal-screen .hist-table td:nth-child(2){overflow-wrap:break-word;word-break:normal}
+.deal-screen .hist-table td:nth-child(5){color:var(--ds-muted);font-size:var(--ds-caption);text-align:right}
+.deal-screen .hist-table td,.deal-screen .hist-table th{padding:var(--ds-md) var(--ds-lg)}
+@media(max-width:700px){
+  .deal-screen .hist-table,.deal-screen .hist-table tbody{display:block}
+  .deal-screen .hist-table thead{display:none}
+  .deal-screen .hist-table tr{display:flex;flex-wrap:wrap;align-items:baseline;gap:0;
+    padding:var(--ds-md) 0;border-bottom:1px solid var(--ds-border)}
+  .deal-screen .hist-table tr:last-child{border-bottom:0}
+  .deal-screen .hist-table td,.deal-screen .hist-table td:nth-child(1),
+  .deal-screen .hist-table td:nth-child(3),.deal-screen .hist-table td:nth-child(4),
+  .deal-screen .hist-table td:nth-child(5){display:inline;border:0;padding:0;
+    white-space:normal;overflow-wrap:break-word;width:auto;text-align:left}
+  .deal-screen .hist-table td:first-child{display:none}
+  .deal-screen .hist-table td:nth-child(4){order:1;font-size:var(--ds-caption);color:var(--ds-muted)}
+  .deal-screen .hist-table td:nth-child(3){order:2;font-size:var(--ds-caption);color:var(--ds-muted)}
+  .deal-screen .hist-table td:nth-child(3)::before{content:"·";margin:0 var(--ds-xs)}
+  .deal-screen .hist-table td:nth-child(5){order:3;font-size:var(--ds-caption);color:var(--ds-muted)}
+  .deal-screen .hist-table td:nth-child(5)::before{content:"·";margin:0 var(--ds-xs)}
+  .deal-screen .hist-table td:nth-child(2){order:4;flex-basis:100%;margin-top:var(--ds-xs);
+    font-size:var(--ds-body);color:var(--ds-ink)}
+}
 .deal-screen :focus-visible{outline:2px solid var(--coral);outline-offset:2px}
 @media(max-width:700px){.deal-screen .cols{grid-template-columns:minmax(0,1fr)}.deal-screen .deal-path{display:none}}
 @media(max-width:700px){
@@ -2861,7 +2890,7 @@ function calcLink(d){
 }
 function calcOpen(id){
   const d=deal(id), u=calcLink(d);
-  log(d,'Открыт калькулятор с курсами '+(d.rates.rubUsdt||'—')+' / '+(d.rates.usdtThb||'—'));
+  log(d,'Открыт калькулятор с курсами '+ratePair(d.rates.rubUsdt,d.rates.usdtThb));
   save(); window.open(u,'_blank'); render();
 }
 function calcBtn(d){
@@ -3325,6 +3354,13 @@ function bxRefCode(sourceRef){
   const name = obj ? obj.name : sourceRef;
   return BX_REF[name]||null;
 }
+/* sourceRef — внутренний ключ чата (account:chat_id), не текст для человека.
+   В логе и прочих местах, которые видит пользователь, нужно только имя. */
+function sourceRefLabel(source,sourceRef){
+  if(!sourceRef) return '';
+  const obj=getChatObj(source,sourceRef);
+  return obj?obj.name:sourceRef;
+}
 /* Молчим, когда молчать правильно. Отсутствие агента — это норма: клиент чаще всего
    приходит сам. Спрашивать имеет смысл только если след есть: метка в карточке
    Битрикса, партнёр, закреплённый за клиентом, или прошлая сделка из того же чата
@@ -3705,6 +3741,14 @@ function pct(v){return String(v).replace('.',',')+' %';}
 function moneyKop(v,c){return (v==null||v==='')?'—':Number(v).toLocaleString('ru-RU',
   {minimumFractionDigits:2,maximumFractionDigits:2})+(c?' '+c:'');}
 function usd(v){return v==null?'—':'$'+Number(v).toLocaleString('ru-RU',{minimumFractionDigits:2,maximumFractionDigits:2});}
+/* Пара курсов в журнале: запятая вместо точки (The Tabular Money Rule), и без
+   «/ —», когда второго курса ещё нет — пустое значение с разделителем не показываем. */
+function ratePair(rub,usdtThb){
+  const fmt=v=>(v==null||v==='')?null:String(v).replace('.',',');
+  const a=fmt(rub),b=fmt(usdtThb);
+  if(a&&b) return a+' / '+b;
+  return a||b||'—';
+}
 /* строка таблицы «поле — значение»; пустые значения не рисуем */
 function trow(k,v,s){return (v==null||v===''||v==='—')?'':
   `<tr><th>${k}</th><td>${v}${s?` <span style="color:var(--text-muted);font-size:12px">${s}</span>`:''}</td></tr>`;}
@@ -4547,7 +4591,7 @@ function newDeal(o){
     payout:o.payout||null,notes:o.notes||'',
     spread:(o.spread!==undefined?o.spread:(o.type==='Обмен валюты'?0.3:null)),
     readyAt:(o.step==='ready'?Date.now():null)};
-  log(d,'Сделка создана · '+SOURCES[o.source]+(o.sourceRef?' · '+o.sourceRef:'')+' · клиент '+(o.isOld?'узнан по источнику':'новый'));
+  log(d,'Сделка создана · '+SOURCES[o.source]+(o.sourceRef?' · '+sourceRefLabel(o.source,o.sourceRef):'')+' · клиент '+(o.isOld?'узнан по источнику':'новый'));
   /* noSave: создающий сам сохранит сделку вместе с логом и уведомлением одним PUT */
   S.deals.unshift(d);if(!o.noSave)save();return d;
 }
@@ -6755,7 +6799,7 @@ function pathCard(d){
         <td>${st==='внесено'?'<span class="badge b-done">внесено</span>':(st==='сейчас'?'<span class="badge b-new">сейчас</span>':`<span class="badge b-wait">${st}</span>`)}</td></tr>`;}).join('')}
     </tbody></table>
     <div class="card-title" style="font-size:14px;margin:18px 0 10px">Хронология</div>
-    <table><thead><tr><th style="width:34px">№</th><th>Что произошло</th><th>Кто</th><th>Когда</th><th>Сколько держалось</th></tr></thead><tbody>
+    <table class="hist-table"><thead><tr><th style="width:34px">№</th><th>Что произошло</th><th>Кто</th><th>Когда</th><th>Сколько держалось</th></tr></thead><tbody>
     ${rows.map((r,i)=>`<tr${r.open?' style="background:var(--coral-light)"':''}>
       <td class="num">${i+1}</td><td>${htmlText(r.l.text)}</td>
       <td>${ROLES[r.l.role]?ROLES[r.l.role].t:'—'}</td>
@@ -11048,8 +11092,8 @@ async function act(id,step){
     }
     /* фиксируем, с какой маржой шли в эту конвертацию — потом видно, кто просел */
     const mg=convMargin(d,rubTotal,rate,crmExtras);
-    if(mg) log(d,'Ориентировочная прибыль по сделкам с известными обязательствами: получим '+usd(mg.usdtIn)+', расходы '+usd(mg.cost)+
-      ' — '+(mg.profit>0?'плюс ':'минус ')+usd(Math.abs(mg.profit))+(mg.pct!=null?' ('+mg.pct.toFixed(2)+' %)':'')+
+    if(mg) log(d,'Ориентировочная прибыль по сделкам с известными обязательствами: получим '+moneyKop(mg.usdtIn,'USDT')+', расходы '+moneyKop(mg.cost,'USDT')+
+      ' — '+(mg.profit>0?'плюс ':'минус ')+moneyKop(Math.abs(mg.profit),'USDT')+(mg.pct!=null?' ('+mg.pct.toFixed(2)+' %)':'')+
       (mg.unlinkedRub?' · поступления без сделки '+moneyKop(mg.unlinkedRub,'₽')+' в прибыль не включены':''));
     /* приходы в разделе «Поступления» помечаются той же пачкой: экран один */
     incomes().forEach(i=>{if(!i.cnvId&&members.some(m=>m.id===i.dealId))i.cnvId=cn.id;});
@@ -11073,7 +11117,7 @@ async function act(id,step){
       c.receivedAt=now();
       const plan=c.sources.reduce((s,x)=>s+(x.usdt||0),0);
       const gap=Math.round((got-plan)*100)/100;
-      if(Math.abs(gap)>0.01) log(d,'Расхождение с заявкой: '+(gap>0?'больше на ':'меньше на ')+usd(Math.abs(gap)));
+      if(Math.abs(gap)>0.01) log(d,'Расхождение с заявкой: '+(gap>0?'больше на ':'меньше на ')+moneyKop(Math.abs(gap),'USDT'));
       /* Хеш — это факт прихода, а не строка для показа. Записываем его в сделку,
          чтобы прибыль считалась от того, что реально пришло. В пачке денег несколько
          сделок — делим по доле рублей, иначе расхождение осядет на одной из них. */
@@ -11104,8 +11148,8 @@ async function act(id,step){
       log(x,'Сконвертирована в обмене '+d.code+', курс '+d.rates.broker+' — ждёт решения по выдаче');}});
     const selD=(d.conv||[]).map(deal).filter(Boolean);
     if(selD.length) log(d,'В обмен вошли мелкие: '+selD.length+' на '+money(exSum(selD),'₽')+', наценка '+money(exMargin(selD),'₽'));
-    log(d,'USDT получены: '+usd(got)+' · переводов '+c.txs.length+' · '+c.txs.map(t=>t.hash).join(', '));
-    go(d,'s22','USDT на кошельке — решаем, что дальше');toast('Пришло '+usd(got));return;}
+    log(d,'USDT получены: '+moneyKop(got,'USDT')+' · переводов '+c.txs.length+' · '+c.txs.map(t=>t.hash).join(', '));
+    go(d,'s22','USDT на кошельке — решаем, что дальше');toast('Пришло '+moneyKop(got,'USDT'));return;}
   if(step==='s22'){
     if(d.kind==='Фрихолд'){
       const amount=freeholdSend(d.invoiceUsd||0,ippsTariff(d)), network=val('fh_order_net'), address=String(val('fh_order_addr')||'').trim();
@@ -11339,9 +11383,9 @@ function convReceive(id){
     src.usdtFact=amt;
     const d=src.dealId?deal(src.dealId):null;
     if(d){d.payinHashes=[{amount:amt,network:'TRC20',hash:hash}];d.pay=d.pay||{};d.pay.usdt=amt;d.pay.hash=hash;
-      log(d,'USDT получены: '+usd(amt)+' · хеш '+hash+' · пачка '+c.name);}
+      log(d,'USDT получены: '+moneyKop(amt,'USDT')+' · хеш '+hash+' · пачка '+c.name);}
   });
-  save();render();toast('Пришло '+usd(g));
+  save();render();toast('Пришло '+moneyKop(g,'USDT'));
 }
 function viewIncome(){
   const list=incomes().filter(x=>S.incShowExcl||!x.excluded);
