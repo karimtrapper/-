@@ -94,7 +94,7 @@ function run(names, context) {
     type: 'Оплата недвижимости', kind: 'Лизхолд', step: 's11',
     docs: {}, log: [], pay: {}, closed: false};
   const S = {role: 'manager', view: 'task'};
-  const ctx = run(['viewDeal'], {
+  const ctx = run(['viewDeal', 'prepayCloseReason'], {
     S, STEPS: {s11: {title: 'Подготовить договор', n: 11, who: 'operator'}},
     ROLES: {manager: {t: 'Менеджер'}, operator: {t: 'Операционист'}},
     SOURCES: {test: 'Тест'}, stepWho: () => 'operator',
