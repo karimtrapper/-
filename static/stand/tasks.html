@@ -6542,7 +6542,7 @@ function viewDeal(d){
     return `<div class="vtabs">${tab('deal','Карточка <span class="lg">сделки</span>')}${
       had?tab('task',d.closed?'<span class="lg">Последний</span> шаг':'<span class="lg">Текущая</span> задача'):''}${
       had?tab('path','История'):''}</div>`;})()}
-  ${d.prepay&&!d.closed?`<nav class="branch-tabs" aria-label="Ветки сделки">
+  ${d.prepay&&!d.closed&&convOf(d)?.status!=='received'?`<nav class="branch-tabs" aria-label="Ветки сделки">
     <button type="button" class="${branch==='conversion'?'on':''}" aria-pressed="${branch==='conversion'}" onclick="taskBranchSet('conversion')">Конвертация</button>
     <button type="button" class="${branch==='payment'?'on':''}" aria-pressed="${branch==='payment'}" onclick="taskBranchSet('payment')">Оплата застройщику</button>
   </nav><p class="branch-current" role="status">${htmlText(prepayBranchStatus(d,branch))}</p>`:''}
