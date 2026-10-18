@@ -1573,6 +1573,8 @@ class Deal(Base):
     # В CRM (список сделок, клиенты, аналитика), в GSheet и в TG-уведомления
     # НЕ попадает — витрина для показа партнёру, а не реальные деньги.
     is_test = Column(Boolean, default=False)
+    # Момент внешних уведомлений о закрытии со стенда (атомарный claim, см. _stand_claim_close_notification)
+    close_notified_at = Column(DateTime, nullable=True)
     client_id = Column(Integer, ForeignKey('clients.id'), nullable=True)
     client = relationship("Client", back_populates="deals")
     client_name = Column(String(100))
@@ -2860,6 +2862,15 @@ try:
             try: conn.execute(text("ALTER TABLE deals ADD COLUMN is_test BOOLEAN DEFAULT 0"))
             except: pass
             try: conn.execute(text("ALTER TABLE clients ADD COLUMN is_test BOOLEAN DEFAULT 0"))
+            except: pass
+        # Маркер внешних уведомлений о закрытии сделки со стенда (идемпотентность)
+        if 'postgresql' in DATABASE_URL:
+            try:
+                conn.execute(text("ALTER TABLE deals ADD COLUMN IF NOT EXISTS close_notified_at TIMESTAMP"))
+            except Exception as e:
+                print(f"ℹ️ deals.close_notified_at: {e}")
+        else:
+            try: conn.execute(text("ALTER TABLE deals ADD COLUMN close_notified_at TIMESTAMP"))
             except: pass
         # Вход в кабинет: режим + привязанный TG id
         if 'postgresql' in DATABASE_URL:
@@ -4729,15 +4740,20 @@ def _mf_freehold_telegram_text(deal):
     return msg
 
 
-def _send_deal_telegram(deal):
-    """Отправляет уведомление о сделке в Telegram"""
+def _send_deal_telegram(deal, sender=None):
+    """Отправляет уведомление о сделке в Telegram.
+    sender — куда отдать готовый текст (по умолчанию send_telegram_notification,
+    стенд подставляет заметку в канал stand_notify)."""
+    if sender is None:
+        # Разрешаем имя в момент вызова, а не при определении функции
+        sender = send_telegram_notification
     if getattr(deal, 'is_test', False):
         print(f'[TG] Skip notify: deal #{deal.id} is test')
         return
     if deal.deal_kind == MF_REALTY_KIND:
-        return send_telegram_notification(_mf_realty_telegram_text(deal))
+        return sender(_mf_realty_telegram_text(deal))
     if deal.deal_kind == MF_FREEHOLD_KIND:
-        return send_telegram_notification(_mf_freehold_telegram_text(deal))
+        return sender(_mf_freehold_telegram_text(deal))
     date_str = deal.created_at.strftime('%d.%m.%Y') if deal.created_at else ''
     payout_usdt = deal.payout_amount_usdt or 0
     profit = deal.profit_usdt or 0
@@ -4831,7 +4847,7 @@ def _send_deal_telegram(deal):
             f"К выплате рефереру: ${ref_payout:,.2f}\n"
             f"💰 <b>Чистая наша: ${net:,.2f}</b>"
         )
-    send_telegram_notification(msg)
+    sender(msg)
 
 
 def send_webhook_async(url, data):
@@ -6127,6 +6143,113 @@ def _stand_tg_send(text):
     return False
 
 
+def _stand_claim_close_notification(session, deal_id):
+    """Атомарно помечает сделку уведомлённой; True только для первого вызова."""
+    from sqlalchemy import text as _t
+    result = session.execute(
+        _t("UPDATE deals SET close_notified_at = :now WHERE id = :id AND close_notified_at IS NULL"),
+        {'now': datetime.utcnow(), 'id': deal_id}
+    )
+    session.commit()
+    return result.rowcount == 1
+
+
+def _stand_notify_deal_closed(db, crm_id, crm_row, stand_deal_id):
+    """Единая точка идемпотентного запуска пост-эффектов — её же дёргают тесты,
+    чтобы проверять настоящую проводку, а не реимплементацию guard'а."""
+    try:
+        if _stand_claim_close_notification(db, crm_id):
+            _stand_fire_close_post_effects(db, crm_row, stand_deal_id)
+    except Exception:
+        app.logger.exception('stand close post-effects failed')
+
+
+def _stand_fire_close_post_effects(session, deal, stand_deal_id):
+    """Внешние пост-эффекты завершённой сделки — то же, что при создании
+    напрямую в CRM (_create_deal_impl, блок после flush/commit), только вызвано
+    из stand_crm_close после commit. Каждый вызов изолирован: падение одного
+    не блокирует остальные и не превращается в 500."""
+    if deal.deal_kind in REALTY_KINDS:
+        try:
+            sync_realty_deal_to_gsheet(deal)
+        except Exception as e:
+            print(f'[GSheet realty] stand close sync error: {e}')
+        if deal.status == DealStatus.COMPLETED:
+            try:
+                if STAND_MODE:
+                    _stand_queue_close_card_note(session, deal, stand_deal_id)
+                else:
+                    _send_deal_telegram(deal)
+            except Exception as e:
+                print(f'[Telegram] stand close realty error: {e}')
+    elif deal.status == DealStatus.COMPLETED:
+        try:
+            send_deal_completed_webhook(deal)
+        except Exception as e:
+            print(f'[Webhook] stand close error: {e}')
+        try:
+            if STAND_MODE:
+                _stand_queue_referrer_notices(session, deal, stand_deal_id)
+            else:
+                notify_agents_new_deal(session, deal)
+        except Exception as e:
+            print(f'[ReferrerDM] stand close notify error: {e}')
+        if deal.profit_usdt is not None:
+            try:
+                sync_deals_to_gsheet([deal])
+            except Exception as e:
+                print(f'[GSheet] stand close sync error: {e}')
+            try:
+                sync_referrer_reward_to_gsheet(deal)
+            except Exception as e:
+                print(f'[GSheet] stand close referrer sync error: {e}')
+            try:
+                if STAND_MODE:
+                    _stand_queue_close_card_note(session, deal, stand_deal_id)
+                else:
+                    _send_deal_telegram(deal)
+            except Exception as e:
+                print(f'[Telegram] stand close error: {e}')
+
+
+def _stand_queue_close_card_note(db, deal, stand_deal_id):
+    """Стенд: карточка сделки — заметкой в канал stand_notify вместо боевой
+    группы (группа STAND_TG_CHAT не читается ни одним кодом — инвариант T1
+    «тишина»); текст тот же _send_deal_telegram строит для прода."""
+    row = _stand_row(db, lock=True)
+    state = json.loads(row.data or '{}')
+
+    def _sender(text, thread_id=None, fallback_without_thread=False):
+        _stand_note(state, f'stand:close-card:{deal.id}', 'admin', {'id': stand_deal_id}, text)
+        return True
+
+    _send_deal_telegram(deal, sender=_sender)
+    row.data = json.dumps(state, ensure_ascii=False)
+    row.version = (row.version or 0) + 1
+    db.commit()
+
+
+def _stand_queue_referrer_notices(db, deal, stand_deal_id):
+    """Стенд: вместо DM рефералу (чужой баланс «Всего доступно», прод-ссылка
+    в кнопке) — заметка-копия «[стенд] реферер X получил бы: …», один раз на
+    агента с привязанным Telegram и начислением — та же выборка, что у
+    notify_agents_new_deal."""
+    row = _stand_row(db, lock=True)
+    state = json.loads(row.data or '{}')
+    for ag in (deal.agents or []):
+        if not ag.referrer_id or not (ag.payout_usdt or 0):
+            continue
+        referrer = db.query(Referrer).get(ag.referrer_id)
+        if not referrer or not referrer.telegram_user_id:
+            continue
+        name = referrer.name or f'#{referrer.id}'
+        _stand_note(state, f'stand:close-ref:{deal.id}:{ag.id}', 'admin', {'id': stand_deal_id},
+                    f'[стенд] реферер {name} получил бы: ${ag.payout_usdt:.2f}')
+    row.data = json.dumps(state, ensure_ascii=False)
+    row.version = (row.version or 0) + 1
+    db.commit()
+
+
 def _stand_deliver_notes():
     """После commit доставить новые заметки по ролям в личку."""
     if STAND_MODE:
@@ -7075,6 +7198,7 @@ def stand_crm_close(stand_deal_id):
         row.updated_by = flask_session.get('display_name') or flask_session.get('username')
         row.updated_at = datetime.utcnow()
         db.commit()
+        _stand_notify_deal_closed(db, crm_id, crm_row, stand_deal_id)
         created.update(version=row.version, data=updated)
         if bitrix_id:
             # End the request transaction before helpers open their independent
