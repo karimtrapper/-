@@ -3358,19 +3358,27 @@ function refOfClient(clientId,source,sourceRef){
    это норма, и переучивать справочник ради одной сделки нельзя. */
 /* Блок агентов сделки — тот же, что в рабочей CRM: строка = уровень, агент, модель,
    ставка, расчётная выплата. Всё правится в сделке, справочник даёт лишь значения по умолчанию. */
-function agentsBlock(d,ctx){
+/* serverPayouts (опционально) — ответ /api/stand/crm-preview в порядке уровней: {agents:[{payout_usdt}]}.
+   Когда передан — строки показывают серверную выплату (не client-side econ()) и общий итог
+   не дублируется здесь: его показывает вызывающий код (строка «Прибыль» в «Итоге сделки» на s27). */
+function agentsBlock(d,ctx,serverPayouts){
   const E=econ(d), pays={};
   (E.agents||[]).forEach((a,i)=>pays[i]=a.payout);
   const list=d.agents||[];
+  const order=list.map((a,i)=>i).sort((x,y)=>((list[x].tier||1)-(list[y].tier||1))||x-y);
+  const payOf=i=>{
+    if(serverPayouts){const pos=order.indexOf(i);return serverPayouts[pos]?serverPayouts[pos].payout_usdt:null;}
+    return pays[i];
+  };
   const total=Object.values(pays).reduce((s,v)=>s+(v||0),0);
   const mode=d.agentsMode||((list.length&&list.every(a=>(a.tier||1)===1))?'flat':'cascade');
   return `<div class="card-title" style="font-size:14px;margin:18px 0 10px">Агенты сделки
     <span class="sub">кто привёл клиента — это агент 1-го уровня</span>
-    <span class="preset"><button class="${mode==='cascade'?'on':''}" onclick="agentsPreset('${ctx}',${d.id},'cascade')">⬇️ Каскадом</button><button class="${mode==='flat'?'on':''}" onclick="agentsPreset('${ctx}',${d.id},'flat')">🟰 В долю</button></span>
+    <span class="preset"><button class="${mode==='cascade'?'on':''}" onclick="agentsPreset('${ctx}',${d.id},'cascade')">Каскадом</button><button class="${mode==='flat'?'on':''}" onclick="agentsPreset('${ctx}',${d.id},'flat')">В долю</button></span>
     <button class="btn btn-outline btn-sm" onclick="agentAdd('${ctx}',${d.id})">+ Добавить агента</button></div>
   ${list.length?list.map((a,i)=>`<div class="agrow">
     <div class="agtop">
-      <span class="tier"><button onclick="agentTier('${ctx}',${d.id},${i},-1)">−</button>Ур.${a.tier||1}<button onclick="agentTier('${ctx}',${d.id},${i},1)">+</button></span>
+      <span class="tier"><button onclick="agentTier('${ctx}',${d.id},${i},-1)">−</button>${a.tier||1}-й уровень<button onclick="agentTier('${ctx}',${d.id},${i},1)">+</button></span>
       <select class="fc" onchange="agentSet('${ctx}',${d.id},${i},'refId',this.value)">
         <option value="">— выбрать агента —</option>
         ${refs().map(r=>`<option value="${r.id}"${String(a.refId)===String(r.id)?' selected':''}>${r.name} · ${r.code}</option>`).join('')}
@@ -3380,9 +3388,9 @@ function agentsBlock(d,ctx){
     <div class="agbot">
       <select class="fc" onchange="agentSet('${ctx}',${d.id},${i},'comp',this.value)">${compOpts(a.comp)}</select>
       ${a.comp==='fixed'
-        ? `<input class="fc num" style="max-width:110px" value="${a.fixed||0}" onchange="agentSet('${ctx}',${d.id},${i},'fixed',this.value)" placeholder="$">`
+        ? `<input class="fc num" style="max-width:110px" value="${a.fixed||0}" onchange="agentSet('${ctx}',${d.id},${i},'fixed',this.value)" placeholder="USDT">`
         : `<input class="fc num" style="max-width:110px" value="${a.percent||0}" onchange="agentSet('${ctx}',${d.id},${i},'percent',this.value)" placeholder="%">`}
-      <span class="agpay">${pays[i]!=null?usd(pays[i]):'—'}</span>
+      <span class="agpay">${payOf(i)!=null?moneyKop(payOf(i),'USDT'):'…'}</span>
     </div>
     <div class="agnote">${(E.agents[i]&&E.agents[i].base)?'считается от: '+E.agents[i].base:''}${a.paid?' · выплачено '+(a.paidAt||''):''}</div>
   </div>`).join(''):(function(){const sig=refSignal(d);
@@ -3390,8 +3398,8 @@ function agentsBlock(d,ctx){
       <button class="btn btn-outline btn-sm" style="margin-left:auto;align-self:center;white-space:nowrap"
         onclick="agentsFromSignal('${ctx}',${d.id})">Добавить ${sig.r.name}</button></div>`
     :`<div class="alert a-info" style="margin:0"><div>Агентов нет — вся прибыль остаётся нам. Клиент пришёл сам: ни метки в источнике, ни партнёра за ним не закреплено.</div></div>`;})()}
-  ${list.length?`<p style="font-size:13px;margin-top:8px">Агентам всего: <b>${usd(total)}</b> · чистая наша: <b class="pos">${usd(E.net!=null?E.net:0)}</b>
-    <span style="color:var(--text-muted)"> · ${mode==='cascade'?'каскадом: каждый следующий считается от выплаты предыдущего':'в долю: все считаются от прибыли'}</span></p>`:''}`;
+  ${list.length?`<p style="font-size:13px;margin-top:8px">${serverPayouts?'':`Агентам всего: <b>${moneyKop(total,'USDT')}</b> · чистая наша: <b class="pos">${moneyKop(E.net!=null?E.net:0,'USDT')}</b> · `}
+    <span style="color:var(--text-muted)">${mode==='cascade'?'каскадом: каждый следующий считается от выплаты предыдущего':'в долю: все считаются от прибыли'}</span></p>`:''}`;
 }
 /* тот же блок для черновика: сделки ещё нет, правим массив в draft */
 function draftAgentsBlock(D){
@@ -3509,8 +3517,8 @@ function syncRef(o){
     else {o.refKnown=false;if(o.refSrc==='подтверждено: реферала нет')o.refSrc=null;}
   }
 }
-const COMPS=[['revshare','revshare — % от прибыли'],['markup','markup — +% к курсу, от объёма'],
-  ['fixed','fixed — фикс в долларах'],['crypto_share','% от прибыли в крипте (MF Corp)']];
+const COMPS=[['revshare','% от прибыли'],['markup','Наценка к курсу (% от объёма)'],
+  ['fixed','Фикс USDT'],['crypto_share','% от прибыли в крипте (MF Corp)']];
 function compOpts(cur){return COMPS.map(([k,t])=>`<option value="${k}"${cur===k?' selected':''}>${t}</option>`).join('');}
 /* Пресеты как в старой CRM: каскадом — каждый следующий уровнем ниже и считается
    от выплаты предыдущего; в долю — все на первом уровне, все от прибыли. */
@@ -4272,7 +4280,28 @@ function dealSummaryBlock(d){
   /* 1. Получение */
   const inRows=[row('Способ оплаты',htmlText(payinSourceLabel(d)),'заявка',edit)];
   if(rub){
-    inRows.push(row('Клиент заплатил',paid.rub!=null?`<b>${moneyKop(paid.rub,'₽')}</b>${paid.date?' · '+htmlText(paid.date):''}`:noSum,'подтверждённый приход',edit));
+    /* Если ждали одну сумму, а подтверждённый приход — другая, не прячем расхождение,
+       но и не держим жёлтый призыв к действию вечно: если в Хронологии уже есть
+       объяснение (банк/комиссия/расхождение, записано сотрудником) — показываем
+       нейтрально с полной причиной по наведению; иначе остаётся обычная строка
+       (жёлтый баннер «Ждали... Недоплата...» — отдельно, rerateBalance, гасится
+       canRerate). Приёмка Карима 17.10: сверка уже принята, баннер не должен мозолить. */
+    const expected=num(expectOf(d).amount), gapNote=(()=>{
+      if(paid.rub==null||!expected||Math.abs(expected-paid.rub)<1)return null;
+      /* «Расхождения приняты вручную: ... Причина: ...» — точный префикс, которым s14m
+         («Разберите поступление») логирует ручное принятие расхождения прихода. Не by,
+         а role — автор этим действием часто не подписан по имени (видно на живых данных). */
+      const hit=(d.log||[]).slice().reverse().find(l=>String(l.text||'').startsWith('Расхождения приняты вручную:'));
+      if(!hit)return null;
+      const reason=String(hit.text).split('Причина:')[1]?.trim()||hit.text;
+      const who=hit.by||ROLES[hit.role]?.n||'сотрудник';
+      return {gap:Math.round((expected-paid.rub)*100)/100,reason,who,when:logWhen(hit)};
+    })();
+    inRows.push(row('Клиент заплатил',paid.rub!=null
+      ?(gapNote
+        ?`<span title="${htmlText(gapNote.reason)}">Клиент перевёл ${moneyKop(expected,'₽')} · пришло ${moneyKop(paid.rub,'₽')} · ${gapNote.gap>0?'−':'+'}${moneyKop(Math.abs(gapNote.gap),'₽')} (расхождение принято ${htmlText(gapNote.when)}, ${htmlText(gapNote.who)})</span>`
+        :`<b>${moneyKop(paid.rub,'₽')}</b>${paid.date?' · '+htmlText(paid.date):''}`)
+      :noSum,'подтверждённый приход',edit));
     const c=convOf(d), rate=num((c&&c.rate)||d.rates.broker), broker=c?.broker||quoteBest(d,'rub')?.name||'брокер не записан';
     /* Клиент платит X, брокер на входе списывает свою комиссию (валютный контроль + наш
        0,2%), в обмен уходит X минус комиссия — это РАЗНЫЕ цифры, не ошибка (приёмка Карима
@@ -4296,6 +4325,18 @@ function dealSummaryBlock(d){
   const po=d.payout||{}, payHashes=(fh||realty)?mfList(d).map(t=>({hash:t.hash,network:t.net,amount:t.amount})):(po.hashes||[]);
   const receipt=filesOf(d,'receipt')[0];
   const outRows=[row('Способ',htmlText(payoutHuman(d)),'выдача',edit)];
+  if(d.prepay){
+    /* Жёлтый баннер «Оплата наперёд...» живёт, пока конвертация не завершена (goalCard).
+       Когда conv.status==='received' — факт уже история, не предупреждение: нейтральная
+       строка с датами вместо жёлтого баннера (приёмка Карима 17.10). */
+    /* d.prepay.startedAt — ISO с сервера; conv.receivedAt — уже готовая строка «ДД.ММ, ЧЧ:ММ»
+       (пишет её now(), как и остальные ts в логе) — не парсим её через new Date(). */
+    const pc=convOf(d), started=d.prepay.startedAt?new Date(d.prepay.startedAt).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit'}):null;
+    const received=pc&&pc.status==='received'&&pc.receivedAt?String(pc.receivedAt).split(',')[0].trim():null;
+    if(started)outRows.push(row('Оплата наперёд',
+      received?`Оплачено наперёд ${started} · конвертация завершена ${received}`:`Оплачено наперёд ${started} · конвертация ещё не завершена`,
+      'параллельная оплата',null));
+  }
   outRows.push(row('Отправлено',fh
       ?(d.invoiceUsd!=null?`<b>${usd(d.invoiceUsd)}</b> застройщику · тариф ${htmlText(ippsTariff(d).label)}`:noSum)
       :realty?(d.amountThb!=null?`<b>${money(d.amountThb,'฿')}</b> инвойс${d.companyPct!=null?' · комиссия '+d.companyPct+' %':''}`:noSum)
@@ -4306,21 +4347,15 @@ function dealSummaryBlock(d){
   outRows.push(row('Инвойс и чек',htmlText((d.payTo||{}).inv||d.invNo||'номер не указан')+' · '+(receipt?'чек: '+htmlText(receipt.file):'чека нет')+
     (ev&&ev.receiptBtn?`<div style="margin-top:6px">${ev.receiptBtn}</div>`:''),'оплата инвойса',edit));
   if(ev)outRows.push(row('Подтверждения',ev.sentBtn+ev.warnings+ev.resendBtn,'перед закрытием',null));
-  /* 3. Агент и прибыль */
-  const list=d.agents||[], order=list.map((a,i)=>i).sort((x,y)=>((list[x].tier||1)-(list[y].tier||1))||x-y);
-  const payoutOf=i=>{const pos=order.indexOf(i);return pv&&pv.data&&pv.data.agents[pos]?pv.data.agents[pos].payout_usdt:null;};
-  const agentRows=list.map((a,i)=>`<div class="sumagent">
-      <select class="fc" onchange="agentSet('s27',${d.id},${i},'refId',this.value)"><option value="">— выбрать агента —</option>${refs().map(r=>`<option value="${htmlText(r.id)}"${String(a.refId)===String(r.id)?' selected':''}>${htmlText(r.name)} · ${htmlText(r.code)}</option>`).join('')}</select>
-      <select class="fc" onchange="agentSet('s27',${d.id},${i},'comp',this.value)">${compOpts(a.comp)}</select>
-      <input class="fc num" value="${a.comp==='fixed'?(a.fixed||0):(a.percent||0)}" onchange="agentSet('s27',${d.id},${i},'${a.comp==='fixed'?'fixed':'percent'}',this.value)">
-      <span class="sumval">${payoutOf(i)!=null?moneyKop(payoutOf(i),'USDT'):'…'} <button class="btn btn-outline btn-sm" onclick="agentDel('s27',${d.id},${i})">Убрать</button></span></div>`).join('');
+  /* 3. Агент и прибыль — переиспользуем agentsBlock (тот же редактор, что в editOpen),
+     не рисуем свою вёрстку. Выплаты — серверные (pv.data.agents), не client-side econ(). */
+  const list=d.agents||[];
   let profit='<span class="fh">считаем по формуле CRM…</span>';
   if(pv&&pv.error)profit=`<span class="sumred">не посчитать: ${htmlText(pv.error)}</span>`;
   else if(pv&&pv.data){const p=pv.data;
     profit=`<b>${moneyKop(p.profit_usdt,'USDT')}</b> (${Number(p.profit_percent||0).toLocaleString('ru-RU',{minimumFractionDigits:2,maximumFractionDigits:2})} %)`+
       (list.length?` · после агентов ${moneyKop(p.net_profit_usdt,'USDT')}`:'');}
-  const agSec=`<div class="sumlab" style="margin-top:10px">Агенты</div>${agentRows||'<div class="sumsrc">агента нет — вся прибыль остаётся нам</div>'}
-    <button class="btn btn-outline btn-sm" style="margin-top:8px" onclick="agentAdd('s27',${d.id})">+ Добавить агента</button>`;
+  const agSec=agentsBlock(d,'s27',pv&&pv.data?pv.data.agents:null);
   return `<div class="sumsec"><div class="sumtitle">Получение</div>${inRows.join('')}</div>
     <div class="sumsec"><div class="sumtitle">Оплата</div>${outRows.join('')}</div>
     <div class="sumsec"><div class="sumtitle">Агент и прибыль</div>
@@ -9100,7 +9135,11 @@ function canRerate(d){
     &&!d.pay?.ippsSent&&!d.pay?.invoicePaid;
 }
 function rerateBalance(d){
-  if(!d.reRequest||!num(d.rates?.client))return '';
+  /* d.reRequest — счётчик «клиент возвращался», не снимается никогда (это история,
+     не флаг). Баннер по текущему расхождению актуален, только пока курс/сумму ещё
+     можно поправить (canRerate) — иначе висит жёлтым до самого s27, хотя расхождение
+     уже дано и сделка давно ушла дальше (приёмка Карима 17.10). */
+  if(!d.reRequest||!num(d.rates?.client)||!canRerate(d))return '';
   const ex=expectOf(d), expected=Number(ex.amount), got=isCrypto(d)?payinGot(d):(payinSum(d)||Number(d.incomeAmount));
   if(!Number.isFinite(expected)||!Number.isFinite(got)||got<=0)return '';
   const gap=Math.round((expected-got)*100)/100, tol=isCrypto(d)?PAYIN_TOL:Number(ex.tol);
@@ -9521,7 +9560,7 @@ function goalCard(d){
   const machine=v=>/^(T[A-Za-z0-9]{32,}|0x[A-Fa-f0-9]{40,})$/.test(String(v||''));
   return `<div class="card goal" style="margin-bottom:16px">
     <div class="goalt">${htmlText(titles[d.step]||g.t)}</div>
-    ${d.prepay?`<p class="prepay-notice"><b>Оплата наперёд.</b> ${S.role==='teodor'?'USDT брокера ещё не пришли; возмещение вам после конвертации.':
+    ${d.prepay&&convOf(d)?.status!=='received'?`<p class="prepay-notice"><b>Оплата наперёд.</b> ${S.role==='teodor'?'USDT брокера ещё не пришли; возмещение вам после конвертации.':
       'Оплата застройщику и конвертация идут параллельно; возмещение после получения USDT.'}</p>`:''}
     <div class="goalnums">${(g.nums||[]).slice(0,3).map((n,i)=>`<div><span class="k">${htmlText(n[0])}</span><span class="v${i===0?' big':''}${machine(n[1])?' addr-value':''}">${machine(n[1])
       ?`<span title="${htmlText(n[1])}" onclick="this.textContent=this.title;this.classList.add('full')">${htmlText(n[1])}</span><button class="btn btn-outline btn-sm" onclick="copyAsk(${jsLiteralAttr(n[1])})">Копировать адрес</button>`
