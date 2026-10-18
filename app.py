@@ -13611,6 +13611,13 @@ def _apply_deal_agents(session, deal, agents_data):
     и кэш ур.1 (referrer_id/name/percent/comp_model) для legacy-отображений.
     Статус paid сохраняется по совпадению referrer_id+tier.
     """
+    # Строка без referrer_id и без вручную введённого имени — незаполненный черновик
+    # («+ Добавить агента» нажали, никого не выбрали). Не валидный агент: не считаем
+    # в прибыль и не сохраняем — иначе пустая строка молча ест долю (живые данные
+    # 1484, приёмка Карима 18.10). Фильтр здесь, а не только на фронте — функция
+    # общая для stand crm-preview/close И реального сохранения сделки в CRM.
+    agents_data = [a for a in (agents_data or [])
+                   if a.get('referrer_id') or str(a.get('name') or '').strip()]
     # запоминаем кто уже выплачен (чтобы не сбросить при пересохранении)
     prev_paid = {(r.referrer_id, r.tier or 1): (r.paid or False, r.paid_at, r.paid_note) for r in deal.agents}
     deal.agents.clear()  # delete-orphan удалит старые строки на flush

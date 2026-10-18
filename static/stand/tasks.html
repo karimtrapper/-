@@ -288,6 +288,12 @@ a.hash:hover{background:#BAE6FD}
 .psec.pin{color:#10B981} .psec.psnd{color:#7C3AED}
 .crmfin{border-top:1px solid var(--border-light);padding-top:12px;margin-top:4px}
 .crmfin>summary{cursor:pointer;font-weight:700;font-size:14px}
+/* .deal-screen details summary{display:flex} (строка 767) убирает нативный треугольник
+   раскрытия — без замены блок выглядит мёртвым текстом, хотя внутри реальные поля
+   (3-я жалоба подряд на «пустой» блок — на самом деле просто не видно, что он кликабельный,
+   приёмка Карима 18.10). Тот же ▸/▾-паттерн, что уже есть у .ctx. */
+.crmfin>summary::before{content:'▸';color:var(--text-muted);font-size:12px;margin-right:2px}
+.crmfin[open]>summary::before{content:'▾'}
 .crmfin .psec{font-size:15px;margin:16px 0 10px} .psec.pout{color:#EF4444} .psec.pref{color:#F59E0B} .psec.pcalc{color:#6366F1}
 .pdiv{height:1px;background:var(--border-light);margin:26px 0 20px}
 .agbox{background:#F0FDF4;border:1px solid #BBF7D0;border-radius:var(--r);padding:4px 16px 16px}
@@ -670,7 +676,9 @@ a.hash:hover{background:#BAE6FD}
 .deal-screen .branch-tabs{display:flex;gap:var(--ds-xs);padding:var(--ds-xs);background:var(--navy-100);border-radius:var(--ds-control);margin-bottom:var(--ds-md)}
 .deal-screen .branch-tabs button{flex:1;border:0;background:transparent;color:var(--ds-muted);font:var(--ds-semibold) var(--ds-body) Inter,system-ui,sans-serif;min-height:44px;padding:var(--ds-sm);border-radius:var(--ds-control);cursor:pointer}
 .deal-screen .branch-tabs button.on{background:var(--ds-surface);color:var(--ds-ink)}
-.deal-screen .branch-tabs button:focus-visible{outline:2px solid var(--navy-700);outline-offset:2px}
+/* Фокус — тот же оранжевый 2px/2px, что у остальных контролов (DESIGN.md: focus ring),
+   не свой navy-700 «стиль сегмента» — просто наследуется от глобального :focus-visible
+   (строка 29/796) теперь, что override тут перекрывал (приёмка Карима 18.10). */
 .deal-screen .branch-current{font-size:var(--ds-body);color:var(--ds-ink);margin:0 0 var(--ds-md);font-weight:var(--ds-semibold)}
 .deal-screen .vtabs{margin:0 0 var(--ds-md)}
 .deal-screen .vtab{border-radius:var(--ds-control);font-size:var(--ds-body);min-height:44px;display:inline-flex;align-items:center}
@@ -6980,7 +6988,12 @@ function crmPayload(d){
        id в базе давно другой человек (QA перепроверка, FAIL №7). Не совпало —
        id не шлём вовсе, сервер сам поищет по точному имени (аудитор, 28.09: имена
        бывают неуникальны, id надёжнее, но выдумывать чужой id нельзя). */
-    agents:(d.agents||[]).map(a=>{
+    /* Строка агента без выбранного рефа и без вручную введённого имени — черновик
+       («+ Добавить агента» нажали, никого не выбрали), не настоящий агент. Не шлём
+       на сервер вообще: не должна ни попадать в расчёт прибыли, ни сохраняться как
+       валидная запись (нашли такую пустую строку на живых данных 1484, приёмка
+       Карима 18.10 — осталась от прогона до этой задачи, не добавляли активно). */
+    agents:(d.agents||[]).filter(a=>a.refId!=null||String(a.name||'').trim()).map(a=>{
       const src=(a.refId!=null)?refById(a.refId):null;
       const nameOk=src&&String(src.name||'').trim().toLowerCase()===String(a.name||'').trim().toLowerCase();
       return {referrer_id:(src&&src.prod&&nameOk)?src.id:undefined,name:a.name,tier:a.tier||1,
@@ -9592,8 +9605,16 @@ function stepGoal(d){
       return {t:'Оплатить инвойс получателю и приложить чек',
       nums:[['К оплате',money2(pt.amount||ap.thb,'฿')],['Получатель',pt.dev||d.dev||'—'],['Счёт',pt.acc||'—']],
       rows:[['Назначение для банка застройщика',pt.purpose||'']]};}
-    case 's27': return {t:'Отписаться клиенту и закрыть сделку',
-      nums:[['Выдано',money2(ap.thb,ap.thbSign||'฿')],['Прибыль',E.ready&&E.net!=null?moneyKop(E.net,'USDT'):'—'],['Документов',String(docFilesCount(d))]]};
+    case 's27': {
+      /* Плитка и строка «после агентов» в «Итоге сделки» считали прибыль по-разному
+         (клиентский econ() здесь vs серверный /crm-preview там) — копейка расхождения
+         на живых данных (приёмка Карима 18.10). Один источник: тот же crmPreviewFor(d),
+         что dealSummaryBlock — кэш по payload, повторный вызов не плодит лишний запрос. */
+      const pvTile=crmPreviewFor(d);
+      const profitTile=pvTile&&pvTile.data&&pvTile.data.net_profit_usdt!=null?moneyKop(pvTile.data.net_profit_usdt,'USDT'):'—';
+      return {t:'Отписаться клиенту и закрыть сделку',
+        nums:[['Выдано',money2(ap.thb,ap.thbSign||'฿')],['Прибыль',profitTile],['Документов',String(docFilesCount(d))]]};
+    }
     default: return null;
   }
 }
