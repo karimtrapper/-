@@ -4308,9 +4308,11 @@ function dealSummaryBlock(d){
        17.10). Берём готовые суммы из записи конвертации (conv.sent/held/fee*), не считаем
        сами — c.held==0 для ручного режима (feeMode='manual'), тогда просто без разбивки. */
     const sentRub=c?.sent, heldRub=c?.held;
-    const clientRub=c?.clientRubTotal??c?.rubTotal??paid.rub;
+    /* Цепочка должна начинаться с ФАКТА прихода (paid.rub — он же «пришло» строкой выше),
+       а не с ожидаемой суммы заявки (conv.clientRubTotal/rubTotal — это план, не факт;
+       перепутал раньше, приёмка Карима 18.10). */
     inRows.push(row('Конвертация',sentRub!=null
-      ?(heldRub?`<div>Клиент заплатил ${moneyKop(clientRub,'₽')}</div>`+
+      ?(heldRub?`<div>Пришло ${moneyKop(paid.rub,'₽')}</div>`+
           `<div>Комиссии брокера −${moneyKop(heldRub,'₽')}${c.feeMode!=='manual'?' (валютный контроль '+moneyKop(c.feeCtrl||0,'₽')+' + '+moneyKop(c.feeOurs||0,'₽')+')':''}</div>`+
           `<div><b>Отправлено брокеру ${moneyKop(sentRub,'₽')}</b> → ${moneyKop(E.payin,'USDT')} по курсу ${htmlText(String(rate).replace('.',','))} · ${htmlText(broker)}</div>`
         :`${moneyKop(sentRub,'₽')} → ${moneyKop(E.payin,'USDT')} по курсу ${htmlText(String(rate).replace('.',','))} · ${htmlText(broker)}`)
@@ -7397,6 +7399,10 @@ function docListRows(d,small){
       <button class="btn btn-outline btn-sm" onclick="docDownload(${d.id},'bankCreditEvidence',${i})">Скачать</button></span></div>`));
   return {issued,client};
 }
+/* Единый счётчик файлов сделки — тот же, что в сайдбаре «Документы N файлов» (docSide).
+   Раньше плитка «Документов» считала Object.keys(d.docs) — это чек-лист НУЖНЫХ типов
+   документов, а не факт прикреплённых файлов: давало другое число (приёмка Карима 18.10). */
+function docFilesCount(d){const {issued,client}=docListRows(d);return issued.length+client.length;}
 /* Подписанный договор менеджер загружает в любой момент после выпуска пакета — на
    любом шаге, путь он не блокирует, загрузка пишется в журнал (Карим, 27.09) */
 function signedBlock(d,small){
@@ -9463,7 +9469,7 @@ function stepGoal(d){
       nums:[['Сумма к оплате',money2(ap.pay,ap.sign)],['Курс сделки',isCrypto(d)&&d.kind==='Фрихолд'?'—':d.rates.client||'—'],['Получателю',money2(ap.thb,ap.thbSign||'฿')]],
       rows:[['Назначение платежа',F.purpose],['Куда платит клиент',F.payTo]]};
     case 's11b': return {t:'Проверить пакет и отдать менеджеру',
-      nums:[['Сумма к оплате',money2(ap.pay,ap.sign)],['Курс сделки',isCrypto(d)&&d.kind==='Фрихолд'?'—':d.rates.client||'—'],['Документов',String(Object.keys(d.docs||{}).filter(k=>d.docs[k]).length)]],
+      nums:[['Сумма к оплате',money2(ap.pay,ap.sign)],['Курс сделки',isCrypto(d)&&d.kind==='Фрихолд'?'—':d.rates.client||'—'],['Документов',String(docFilesCount(d))]],
       rows:[['Назначение платежа',F.purpose],['Куда платит клиент',F.payTo]]};
     case 's12': return {t:'Отправить клиенту договор и реквизиты — и дождаться оплаты',
       nums:[['К оплате',money2(ap.pay,ap.sign)],[isCrypto(d)&&d.kind==='Фрихолд'?'Клиент отправит':'Курс клиенту',isCrypto(d)&&d.kind==='Фрихолд'?money(d.amountUsdt,'USDT'):(d.rates.client||'—')+' '+rateUnit(d)],
@@ -9543,7 +9549,7 @@ function stepGoal(d){
       nums:[['К оплате',money2(pt.amount||ap.thb,'฿')],['Получатель',pt.dev||d.dev||'—'],['Счёт',pt.acc||'—']],
       rows:[['Назначение для банка застройщика',pt.purpose||'']]};}
     case 's27': return {t:'Отписаться клиенту и закрыть сделку',
-      nums:[['Выдано',money2(ap.thb,ap.thbSign||'฿')],['Прибыль',E.ready&&E.net!=null?moneyKop(E.net,'USDT'):'—'],['Документов',String(Object.keys(d.docs||{}).filter(k=>d.docs[k]).length)]]};
+      nums:[['Выдано',money2(ap.thb,ap.thbSign||'฿')],['Прибыль',E.ready&&E.net!=null?moneyKop(E.net,'USDT'):'—'],['Документов',String(docFilesCount(d))]]};
     default: return null;
   }
 }
