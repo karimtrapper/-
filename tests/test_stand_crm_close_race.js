@@ -26,7 +26,8 @@ async function main() {
     S, STAND: true, STAND_SHARED: ['deals', 'open'],
     standBusy: false, standPush: false, standSaveScheduled: false, standClosing: false,
     standVer: 10, standBase: {deals: [structuredClone(original)], open: 1474},
-    lastPointer: 0, brokerSentSubmitPointer:false, location: {href: ''}, Date, setTimeout, clearTimeout, AbortController,
+    // standSave reads this page-level flag; the isolated VM must define it too.
+    lastPointer: 0, brokerSentSubmitPointer: false, location: {href: ''}, Date, setTimeout, clearTimeout, AbortController,
     deal: id => S.deals.find(d => d.id === id),
     now: () => '28.09', log: (d, msg) => d.log.push(msg),
     render: () => {}, toast: msg => toasts.push(msg),

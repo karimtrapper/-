@@ -42,9 +42,10 @@ async function render(bound, stand) {
         for (const stand of [false, true]) {
             const {html: rendered, calls} = await render(bound, stand);
             const status = rendered.match(/<div style="font-size:12px;color:#64748b;">(.*?)<\/div>/)?.[1];
+            // CRM status labels lost their decorative emoji in the October UI cleanup.
             const expected = stand
-                ? `логин <b>user</b> · @user ${bound ? '· 🟢 Telegram ID задан' : '· ⚪ Telegram ID не задан'}`
-                : `@user ${bound ? '· 🟢 привязан' : '· ⚪ ждёт входа'}`;
+                ? `логин <b>user</b> · @user ${bound ? '· Telegram ID задан' : '· Telegram ID не задан'}`
+                : `@user ${bound ? '· привязан' : '· ждёт входа'}`;
             assert.equal(status, expected, `bound=${bound}, stand=${stand}`);
             assert.deepEqual(calls, stand ? ['/api/admins', '/api/stand/tg-status'] : ['/api/admins']);
             for (const marker of ['placeholder="Telegram ID"', 'setAdminRole(', 'setAdminNotify(', 'testAdminNotify(']) {

@@ -18,7 +18,8 @@ for(const name of ['cnvTxHint','cnvTxShareBlock','cnvTxManual','cnvTxAllocate','
   assert.equal(ctx.S.incomingShare.amount,100);
   const block=ctx.cnvTxShareBlock({id:1});
   assert.match(block,/Сумма на эту сделку/);assert.match(block,/max="100"/);
-  assert.match(block,/♻️ свободно \$100.00 из \$200.00/);
+  // The remaining balance is now the card heading, without a decorative emoji.
+  assert.match(block,/<b>Свободно \$100.00 из \$200.00<\/b>/);
   assert.match(block,/по переводу уже разнесено \$100.00 \(#1487\), свободно \$100.00/);
   values.w_share='101';await ctx.cnvTxAllocate(1);assert.equal(calls.length,1);
   values.w_share='50';await ctx.cnvTxAllocate(1);assert.equal(calls[1].amount,50);

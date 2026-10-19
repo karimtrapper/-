@@ -7,7 +7,9 @@ const path = require('node:path');
 const { chromium, webkit, devices } = require('playwright');
 
 const root = path.resolve(__dirname, '..');
-const mime = { '.html': 'text/html; charset=utf-8', '.json': 'application/json; charset=utf-8', '.js': 'text/javascript; charset=utf-8' };
+// Shared navigation now loads external CSS; browsers reject octet-stream stylesheets.
+const mime = { '.html': 'text/html; charset=utf-8', '.json': 'application/json; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8' };
 const server = http.createServer((req, res) => {
   const pathname = new URL(req.url, 'http://localhost').pathname;
   const target = pathname === '/tasks' ? 'static/stand/tasks.html'
@@ -37,10 +39,12 @@ async function main() {
     await page.setViewportSize({ width: 375, height: 812 });
     await page.route('**/api/**', async route => {
       const req = route.request();
-      if (req.method() !== 'GET' && req.method() !== 'HEAD') {
+      const url = new URL(req.url());
+      // crm-preview uses POST for a read-only calculation; still abort it locally.
+      if (req.method() !== 'GET' && req.method() !== 'HEAD' && url.pathname !== '/api/stand/crm-preview') {
         writes.push(`${req.method()} ${req.url()}`); await route.abort(); return;
       }
-      const url = new URL(req.url());
+      if (url.pathname === '/api/stand/crm-preview') { await route.abort(); return; }
       let status = 404, data = { success: false };
       if (url.pathname === '/api/auth/me') {
         status = 200; data = { success: true, user: { stand: apiMode === 'stand', role: 'admin' } };
@@ -63,34 +67,30 @@ async function main() {
     }));
     assert.deepEqual(nav, { visible: 5, tasks: 'none', dashboard: 'flex' });
 
-    // Confirm the stand and verify five visible slots, Tasks in the bar,
-    // Dashboard in More, stable active state, and a working /tasks destination.
+    // Stand now mounts the shared four-link shell; the legacy five-slot bar is hidden.
     apiMode = 'stand';
     await page.reload();
-    await page.waitForFunction(() => getComputedStyle(document.querySelector('#standTasksNav')).display === 'flex');
+    await page.waitForFunction(() => document.body.classList.contains('nav-shell-on'));
     nav = await page.evaluate(() => ({
-      visible: [...document.querySelectorAll('#bottomNav .bottom-nav-item')]
+      visible: [...document.querySelectorAll('.site-shell-bottom [data-shell-link]')]
         .filter(el => getComputedStyle(el).display !== 'none').length,
-      tasks: getComputedStyle(document.querySelector('#standTasksNav')).display,
-      dashboard: getComputedStyle(document.querySelector('#bottomNav [data-nav-section="dashboard"]')).display,
-      dashboardMore: getComputedStyle(document.querySelector('#standDashboardMore')).display,
+      tasks: document.querySelector('.site-shell-bottom [data-shell-link="tasks"]').getAttribute('href'),
+      active: document.querySelector('.site-shell-bottom [aria-current="page"]')?.dataset.shellLink,
+      legacy: getComputedStyle(document.querySelector('#bottomNav')).display,
     }));
-    assert.deepEqual(nav, { visible: 5, tasks: 'flex', dashboard: 'none', dashboardMore: 'flex' });
+    assert.deepEqual(nav, { visible: 4, tasks: '/tasks', active: 'crm', legacy: 'none' });
     const crmLayout = await page.evaluate(() => ({
       viewport: innerWidth,
       html: document.documentElement.scrollWidth,
       body: document.body.scrollWidth,
-      nav: document.querySelector('#bottomNav').getBoundingClientRect().width,
+      nav: document.querySelector('.site-shell-bottom').getBoundingClientRect().width,
       viewportMeta: document.querySelector('meta[name="viewport"]').content,
     }));
     assert.deepEqual(crmLayout, { viewport: 375, html: 375, body: 375, nav: 375,
       viewportMeta: 'width=device-width, initial-scale=1.0, shrink-to-fit=no' });
-    await page.locator('#moreBtn').click();
-    assert.equal(await page.locator('#standDashboardMore').isVisible(), true);
-    await page.evaluate(() => closeMorePanel());
-    await page.locator('#bottomNav [data-nav-section="deals"]').click();
-    assert.equal(await page.locator('#bottomNav [data-nav-section="deals"]').getAttribute('class'), 'bottom-nav-item active');
-    await page.locator('#standTasksNav').click();
+    await page.locator('.site-shell-sections [data-shell-section="documents"]').click();
+    assert.equal(await page.locator('.site-shell-sections [data-shell-section="documents"]').getAttribute('aria-current'), 'page');
+    await page.locator('.site-shell-bottom [data-shell-link="tasks"]').click();
     await page.waitForURL('**/tasks');
     // Synthetic mode keeps actual role switching local: save() is disabled and
     // every server request remains read-only while exercising the real handlers.
@@ -159,7 +159,7 @@ async function main() {
     console.log('Role rail: horizontally scrolled and Фин дир activated by click');
     assert.deepEqual(writes, [], `unexpected mutating API calls: ${writes.join(', ')}`);
     await context.close();
-    console.log('PASS: prod/stand mobile navigation, five slots, Deals active state, /tasks link, 21 synthetic frames at 375/390/430px, documents and modal widths; no API writes');
+    console.log('PASS: prod nav and stand shared shell, four stand links, /tasks link, 21 synthetic frames at 375/390/430px, documents and modal widths; no API writes');
   } finally {
     await browser.close();
     await new Promise(resolve => server.close(resolve));

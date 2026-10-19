@@ -56,4 +56,6 @@ console.log('T34 wallet dropdown OK');
 const selected=vm.runInContext("walletCards({id:5},walletById('vitaly'),'walletPick',false,'wallet')",ctx);
 assert.equal([...selected.matchAll(/<option[^>]*>([\s\S]*?)<\/option>/g)].filter(m=>m[1].includes('TKkeEV')).length,1,'Один адрес — одна опция');
 assert.match(selected, /value="vitaly" selected/,'Сохранённый alias остаётся выбранным');
-assert.match(selected, /компания · /,'владелец показан под выбранным адресом');
+// The compact dropdown intentionally shows addresses only; the selected address can be copied.
+assert.match(selected, /onclick="copyAsk\(&quot;TKkeEVf2zySaWTLyX2qPwvi6kcdHRuPxkJ&quot;\)"/,
+  'сохранённый адрес доступен кнопкой копирования');

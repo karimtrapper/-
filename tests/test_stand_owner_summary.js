@@ -195,7 +195,9 @@ const noDoc = {...live1487, cnvId: null, docVersion: null, docPack: null,
   quotes: [{cpId: 'tradex', name: 'Tradex', rate: '84.95'}]};
 card = ctx.ownerSummary(noDoc);
 assert.match(card, /оценка по котировке · котировка Tradex 84,95/);
-assert.match(html, /view==='task'&&branch!=='conversion'&&\['s23','s24'\]\.includes\(d\.step\)&&\['teodor','findir','admin'\]\.includes\(S\.role\)\)body\+=`<details class="card"><summary>Деньги по сделке<\/summary>\$\{ownerSummary\(d\)\}<\/details>`/);
+// The task summary is now collapsible and shows the expected amount in its heading.
+assert.match(html, /view==='task'&&branch!=='conversion'&&\['s23','s24'\]\.includes\(d\.step\)&&\['teodor','findir','admin'\]\.includes\(S\.role\)\)\{/);
+assert.match(html, /<details class="card fold-card"><summary>Деньги по сделке<span class="fold-total">\$\{expected\|\|'Сводка'\}<\/span><\/summary>\$\{ownerSummary\(d\)\}<\/details>/);
 assert.match(html, /view==='deal'&&\['teodor','findir','admin'\]\.includes\(S\.role\)\?ownerSummary\(d\)/);
 const bootSource = html.match(/^async function standBoot\([^]*?^}/m);
 assert.ok(bootSource, 'загрузка задачника найдена');
