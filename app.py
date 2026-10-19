@@ -11977,6 +11977,50 @@ def stand_payin_check():
     finally:
         db.close()
 
+
+@app.route('/api/stand/manual-close/verify-hash', methods=['POST'])
+def stand_manual_close_verify_hash():
+    """Предпросмотр проверки хеша перевода для ручного закрытия сделки.
+
+    Только читает сеть и доску — ничего не пишет и не блокирует строку.
+    Это UX-подсказка менеджеру/админу; авторитетная проверка на самом
+    закрытии выполняется отдельно и не доверяет результату этой ручки."""
+    if not STAND_MODE:
+        return jsonify({'success': False, 'error': 'stand_only'}), 404
+    if current_role() not in ('manager', 'admin'):
+        return jsonify({'success': False, 'error': 'forbidden'}), 403
+    data = request.get_json(silent=True) or {}
+    try:
+        deal_id = int(data.get('dealId'))
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'error': 'dealId обязателен'}), 400
+    if data.get('direction') not in ('payin', 'payout'):
+        return jsonify({'success': False, 'error': 'direction обязателен'}), 400
+    network = normalize_network(data.get('network'))
+    if not network:
+        return jsonify({'success': False, 'error': 'Некорректная сеть'}), 400
+    db = get_session()
+    try:
+        state = json.loads(_stand_row(db).data or '{}')
+        deal = next((d for d in state.get('deals', []) if d.get('id') == deal_id), None)
+        if not deal or deal.get('closed'):
+            return jsonify({'success': False, 'error': 'deal_not_found'}), 404
+    finally:
+        db.close()
+    tx_hash = normalize_ref(data.get('hash'), network)
+    if not tx_hash:
+        return jsonify({'success': False, 'error': 'Хеш не соответствует сети'}), 400
+    checked = verify_transfer(tx_hash, network, data.get('sender') or None,
+                              data.get('receiver'), data.get('amount') or None)
+    if checked['status'] != 'confirmed':
+        return jsonify({'success': False, 'status': checked['status'],
+                        'error': checked.get('checkError') or
+                                 f'Перевод не найден или не подтверждён в выбранной сети {network.upper()}'}), 422
+    return jsonify({'success': True, 'status': 'confirmed',
+                    'verifiedAmount': checked['verifiedAmount'],
+                    'verifiedAt': checked['verifiedAt'], 'from': checked.get('from')})
+
+
 def _stand_manual_receipt_text(value, limit):
     if not isinstance(value, str):
         return ''
