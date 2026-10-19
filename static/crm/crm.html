@@ -1044,6 +1044,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         <tbody id="recentDealsTable"></tbody>
                     </table>
                 </div>
+                <a href="#" onclick="showSection('deals');return false" style="display:inline-block;margin-top:12px;font-size:14px">Показать все →</a>
             </div>
         </section>
 
@@ -4253,8 +4254,11 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 // Конверсия — отдельный эндпоинт, не блокируем остальной дашборд
                 loadConversion();
 
-                // Load recent deals
-                const dealsResponse = await fetch(`${API_URL}/api/deals?limit=5`);
+                // Load recent deals. API понимает per_page, не limit — старый ?limit=5
+                // молча игнорировался бэкендом (per_page по умолчанию 50), поэтому на
+                // дашборде реально рендерилось 50 строк вместо 5 (телефон — страница
+                // ~12800px высотой). Правка по запросу координатора на выкат, 19.10.
+                const dealsResponse = await fetch(`${API_URL}/api/deals?per_page=5`);
                 const dealsData = await dealsResponse.json();
 
                 if (dealsData.success) {

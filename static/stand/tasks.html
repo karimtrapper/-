@@ -92,14 +92,20 @@ body.screen-mode.embed .container{padding-top:14px}
    адрес кошелька в тексте лога вылезал за край правой колонки (Карим, 25.09). */
 .li .t1,.li .t2,.v,.tbl td,.fh,.derived,.alert,.tl .t,.tl .s,.side{overflow-wrap:anywhere}
 td{overflow-wrap:anywhere}
-/* «Как задачи наполняют сделку» (История сделки) — обычные короткие русские
-   слова, а не хеши/адреса: глобальный overflow-wrap:anywhere выше рвал их по
-   буквам в узких колонках на 768px (находка №2 аудита ui-2026-10-17, блокер).
-   Слова должны переноситься по пробелам, а если таблица всё равно шире
-   контейнера на 375 — скроллиться целиком, а не обрезаться (находка №3). */
-.hist-flow-table,.hist-flow-table th,.hist-flow-table td{overflow-wrap:normal;word-break:normal}
-.hist-scroll-x{overflow-x:auto;-webkit-overflow-scrolling:touch;max-width:100%}
-.hist-scroll-x .hist-flow-table{min-width:520px}
+/* «Как задачи наполняют сделку» (История сделки) — тот же паттерн, что
+   Хронология (47af6a6): не таблица ни на одной ширине, а список. Раньше
+   4-колоночная таблица на 768 обрезала «Что вносит в сделку» справа, а на
+   375 требовала горизонтальный скролл (находки №2/№3 аудита ui-2026-10-17).
+   Короткие поля (шаг, кто, статус) — caption-строка сверху через « · »,
+   содержательный текст (что вносит) — ниже, во всю ширину, как в
+   Хронологии на мобильном. */
+.flow-list{list-style:none;margin:0 0 20px;padding:0}
+.flow-item{padding:var(--ds-md) 0;border-bottom:1px solid var(--ds-border)}
+.flow-item:last-child{border-bottom:0}
+.flow-item-meta{display:flex;flex-wrap:wrap;align-items:baseline;gap:0;font-size:var(--ds-caption);color:var(--ds-muted)}
+.flow-item-who::before{content:" · "}
+.flow-item-status{margin-left:auto}
+.flow-item-body{margin-top:var(--ds-xs);font-size:var(--ds-body);color:var(--ds-ink);overflow-wrap:break-word}
 /* Внутренний комментарий (находка №4 аудита ui-2026-10-17): переносы строк
    как в исходном тексте, длинный текст свёрнут за «Показать полностью». */
 .comment-fold-text{white-space:pre-line;overflow-wrap:break-word}
@@ -6826,15 +6832,15 @@ function pathCard(d){
     ${longest?`<div class="alert a-info"><div>Дольше всего сделка ждала на «<b>${htmlText(longest.l.text)}</b>» — ${dur(longest.ms)}, роль «${ROLES[longest.l.role]?ROLES[longest.l.role].t:'—'}». Вот такие строки и покажут узкое место, когда сделок станет много.</div></div>`:''}
     <div class="card-title" style="font-size:14px;margin:18px 0 10px">Как задачи наполняют сделку
       <span class="sub">каждый шаг вносит свою часть — из них и собирается карточка</span></div>
-    <div class="hist-scroll-x"><table class="hist-flow-table" style="margin-bottom:20px"><thead><tr><th>Шаг</th><th>Кто</th><th>Что вносит в сделку</th><th>Статус</th></tr></thead><tbody>
+    <ul class="flow-list">
     ${flowOf(d).map(k=>{const f=FILLS[k]; if(!f)return '';
       const idx=flowOf(d).indexOf(k), cur=flowOf(d).indexOf(d.step);
       const st=d.prepay?(k==='s24'&&!d.prepay.wallet.multisig?'не требуется':prepayStepDone(d,k)?'внесено':([d.step,d.prepay.brokerStep].includes(k)?'сейчас':'ещё нет')):d.closed?'внесено':(cur<0?'—':(idx<cur?'внесено':(idx===cur?'сейчас':'ещё нет')));
-      return `<tr${st==='сейчас'&&!d.closed?' style="background:var(--coral-light)"':''}>
-        <td>${STEPS[k].n}. ${k==='s22'&&d.kind==='Фрихолд'?'Согласовать заявку IPPS':(k==='s25'&&d.kind==='Фрихолд'?'Ожидать MT103':STEPS[k].title)}</td><td>${stepWho(d,k)?ROLES[stepWho(d,k)].t:'—'}</td>
-        <td><b>${f.b}</b> — ${d.prepay&&k==='s22'?'согласованная операционистом заявка IPPS для параллельной оплаты':f.w}</td>
-        <td>${st==='внесено'?'<span class="badge b-done">внесено</span>':(st==='сейчас'?'<span class="badge b-new">сейчас</span>':`<span class="badge b-wait">${st}</span>`)}</td></tr>`;}).join('')}
-    </tbody></table></div>
+      return `<li class="flow-item"${st==='сейчас'&&!d.closed?' style="background:var(--coral-light)"':''}>
+        <div class="flow-item-meta"><span>${STEPS[k].n}. ${k==='s22'&&d.kind==='Фрихолд'?'Согласовать заявку IPPS':(k==='s25'&&d.kind==='Фрихолд'?'Ожидать MT103':STEPS[k].title)}</span><span class="flow-item-who">${stepWho(d,k)?ROLES[stepWho(d,k)].t:'—'}</span>
+        <span class="flow-item-status">${st==='внесено'?'<span class="badge b-done">внесено</span>':(st==='сейчас'?'<span class="badge b-new">сейчас</span>':`<span class="badge b-wait">${st}</span>`)}</span></div>
+        <div class="flow-item-body"><b>${f.b}</b> — ${d.prepay&&k==='s22'?'согласованная операционистом заявка IPPS для параллельной оплаты':f.w}</div></li>`;}).join('')}
+    </ul>
     <div class="card-title" style="font-size:14px;margin:18px 0 10px">Хронология</div>
     <div class="hist-feed">
     ${rows.map(r=>`<div class="hist-item"${r.open?' style="background:var(--coral-light)"':''}>
