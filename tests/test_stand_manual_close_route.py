@@ -41,16 +41,19 @@ def _early_board(**overrides):
 
 
 def _s27_board(**overrides):
-    """Сделка на s27 с уже известными фактами (без хешей — приход по СБП
-    через кассу) — не хватает только причины ручного переноса. Override всё
-    равно переповторяет payin/payout явно: _stand_manual_close_apply_override
-    не доверяет прежним записям доски, только собственной независимой сверке."""
+    """Сделка на s27 с уже известными фактами (крипто-приход уже верифицирован
+    и лежит в payinHashes этой же сделки, расход по кассе с чеком) — не хватает
+    только причины ручного переноса. Override переподтверждает тот же, уже
+    записанный на эту сделку хеш: это не повторное использование (дедуп
+    исключает собственную сделку), а именно «почти всё уже известно»."""
     deal = {
         'id': 1489, 'code': 'СД-1489', 'client': 'Synthetic T31',
         'type': 'Обмен валюты', 'step': 's27', 'closed': False,
         'crmDealId': None, 'sentToClient': True, 'pay': {},
-        'payType': 'СБП', 'amountUsdt': 100,
-        'payinHashes': [],
+        'payType': 'Крипта', 'amountUsdt': 100,
+        'payinHashes': [{'hash': 'a' * 64, 'network': 'TRC20', 'amount': 100,
+                         'from': 'TSenderWallet11111111111111', 'to': 'TReceiverWallet111111111111',
+                         'verified': True, 'verifiedAt': '2026-01-01T00:00:00Z'}],
         'paySrc': 'cash', 'payout': {'usdt': 90},
         'files': {'receipt': [{'file': 'receipt.pdf', 'mime': 'application/pdf',
                                'data': 'data:application/pdf;base64,JVBERi0='}]},
@@ -193,20 +196,23 @@ def test_override_closes_deal_from_early_step_as_admin(monkeypatch):
 
 
 def test_override_closes_deal_already_at_s27(monkeypatch):
+    """«Почти всё уже известно»: payin-хеш уже верифицирован и лежит в
+    payinHashes этой же сделки (нормальным флоу до s27). Override
+    переподтверждает ТОТ ЖЕ хеш — не новый — только причины не хватало.
+    Дедуп должен исключить собственную сделку из «уже использован», иначе
+    это задача не решается в принципе: форма неизбежно предзаполняет уже
+    известные факты, а не просит менеджера придумать новый хеш."""
     monkeypatch.setattr(m, 'STAND_MODE', True)
     monkeypatch.setattr(m, 'verify_transfer', confirmed_echo)
     uid = _setup(board_factory=_s27_board)
-    override = {'reason': REASON,
-               'payin': {'method': 'СБП', 'amountUsdt': 100, 'manualBankConfirmed': True},
-               'payout': {'source': 'cash', 'amountUsdt': 90}}
-    crm = _crm(payin_method='sber_wl')
-    crm.pop('payin_tx_hashes', None)
-    response = _post(_client(uid), crm=crm, override=override)
+    response = _post(_client(uid), override=_override())
     assert response.status_code == 201, response.json
     state = _client(uid).get('/api/stand/state').json
     deal = state['data']['deals'][0]
     assert deal['step'] == 'done'
     assert deal['closed'] is True
+    # Переподтверждение собственного хеша не задваивает запись на доске.
+    assert [h['hash'] for h in deal['payinHashes']].count('a' * 64) == 1
 
 
 def test_override_double_submit_is_idempotent(monkeypatch):

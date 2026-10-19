@@ -8248,11 +8248,18 @@ def _stand_crm_fact_problem(board, crm, kind):
     return None
 
 
-def _stand_hash_used_elsewhere(state, network, tx_hash):
-    """Хеш уже привязан к другой сделке/конвертации на доске — тот же дедуп,
+def _stand_hash_used_elsewhere(state, network, tx_hash, exclude_deal_id=None):
+    """Хеш уже привязан к ДРУГОЙ сделке/конвертации на доске — тот же дедуп,
     что делает stand_payin_check (app.py:11758-11765), переиспользуем его и
-    для проверки расходных хешей ручного переноса."""
-    return any(normalize_network(h.get('network') or 'trc20') == network
+    для проверки расходных хешей ручного переноса.
+
+    `exclude_deal_id` — id сделки, которую сейчас закрывают ручным переносом:
+    хеш, уже записанный в её собственный payinHashes (факт известен ДО
+    override, менеджер его просто переподтверждает), не считается чужим
+    использованием. Чужая сделка с тем же хешем — всё ещё реальное
+    повторное использование и должна быть отклонена."""
+    return any(d.get('id') != exclude_deal_id
+               and normalize_network(h.get('network') or 'trc20') == network
                and normalize_ref(h.get('hash'), network) == tx_hash
                for d in state.get('deals') or [] for h in d.get('payinHashes') or []) or any(
         normalize_network(t.get('net') or 'trc20') == network
@@ -8261,10 +8268,13 @@ def _stand_hash_used_elsewhere(state, network, tx_hash):
 
 
 def _stand_manual_close_verify_hashes(state, hashes, declared_amount, verify, used_in_submit,
-                                       side):
+                                       side, exclude_deal_id=None):
     """Проверить список вручную введённых хешей (приход или расход): каждый —
     через сеть (`verify`), без повторов (на доске и внутри самой заявки), и
     сумма подтверждённых переводов должна совпасть с заявленной суммой.
+
+    `exclude_deal_id` см. `_stand_hash_used_elsewhere` — переподтверждение
+    факта, уже записанного на эту же сделку, это не повтор.
 
     Возвращает (list_новых_записей, код_ошибки_или_None). `side` — 'payin'
     или 'payout', только для префикса кода ошибки."""
@@ -8285,7 +8295,8 @@ def _stand_manual_close_verify_hashes(state, hashes, declared_amount, verify, us
         if checked.get('status') != 'confirmed':
             return None, f'{side}_hash_unverified'
         key = (network, tx_hash)
-        if key in used_in_submit or _stand_hash_used_elsewhere(state, network, tx_hash):
+        if key in used_in_submit or _stand_hash_used_elsewhere(
+                state, network, tx_hash, exclude_deal_id=exclude_deal_id):
             return None, f'{side}_hash_already_used'
         used_in_submit.add(key)
         verified_amount = checked.get('verifiedAmount')
@@ -8335,12 +8346,14 @@ def _stand_manual_close_apply_override(state, stand_deal, override, actor, *, ve
     if payin_amount <= 0:
         return 'payin_amount_required'
 
+    deal_id = stand_deal.get('id')
     used_hashes = set()
     payin_entries = []
     is_crypto_payin = payin.get('method') == 'Крипта' or bool(stand_deal.get('cashPartnerUsdt'))
     if is_crypto_payin:
         payin_entries, problem = _stand_manual_close_verify_hashes(
-            state, payin.get('hashes'), payin_amount, verify, used_hashes, 'payin')
+            state, payin.get('hashes'), payin_amount, verify, used_hashes, 'payin',
+            exclude_deal_id=deal_id)
         if problem:
             return problem
     else:
@@ -8366,7 +8379,8 @@ def _stand_manual_close_apply_override(state, stand_deal, override, actor, *, ve
             return 'payout_amount_required'
         if payout['source'] in ('coins', 'client'):
             payout_entries, problem = _stand_manual_close_verify_hashes(
-                state, payout.get('hashes'), payout_amount, verify, used_hashes, 'payout')
+                state, payout.get('hashes'), payout_amount, verify, used_hashes, 'payout',
+                exclude_deal_id=deal_id)
             if problem:
                 return problem
         else:
@@ -8389,15 +8403,25 @@ def _stand_manual_close_apply_override(state, stand_deal, override, actor, *, ve
         stand_deal['amountRub'] = _stand_number(payin.get('amountRub'))
     if payin.get('rate') is not None:
         stand_deal.setdefault('rates', {})['broker'] = payin['rate']
+    # Переподтверждение уже записанного на эту сделку хеша (exclude_deal_id
+    # выше) не должно задвоить запись — тот же (network, hash) пропускаем,
+    # факт остаётся как был, а не дублируется.
+    existing_payin_keys = {(h.get('network'), h.get('hash'))
+                            for h in stand_deal.get('payinHashes') or [] if isinstance(h, dict)}
     for entry in payin_entries:
-        stand_deal.setdefault('payinHashes', []).append(entry)
+        if (entry.get('network'), entry.get('hash')) not in existing_payin_keys:
+            stand_deal.setdefault('payinHashes', []).append(entry)
 
     if kind == 'exchange' and payout.get('source'):
         stand_deal['paySrc'] = payout['source']
         deal_payout = dict(stand_deal.get('payout') or {})
         deal_payout['usdt'] = payout_amount
         if payout_entries:
-            deal_payout['hashes'] = list(deal_payout.get('hashes') or []) + payout_entries
+            existing_payout_keys = {(h.get('network'), h.get('hash'))
+                                    for h in deal_payout.get('hashes') or [] if isinstance(h, dict)}
+            new_payout_entries = [e for e in payout_entries
+                                  if (e.get('network'), e.get('hash')) not in existing_payout_keys]
+            deal_payout['hashes'] = list(deal_payout.get('hashes') or []) + new_payout_entries
         stand_deal['payout'] = deal_payout
 
     if agents is not None:

@@ -83,6 +83,45 @@ def test_rejects_reused_hash():
         state, deal, override, 'manager', verify=confirmed_echo) == 'payin_hash_already_used'
 
 
+def test_allows_restating_hash_already_recorded_on_same_deal():
+    """СД-1489 на s27: приход уже верифицирован обычным флоу и лежит в
+    payinHashes этой же сделки. Менеджер переносит её в CRM через override,
+    форма предзаполняет уже известный факт — это не повторное использование
+    хеша, это переподтверждение своего же факта. Должно пройти, а не упасть
+    с payin_hash_already_used, и не задвоить запись в payinHashes."""
+    tx_hash = '9' * 64
+    state, deal = board(type='Оплата недвижимости', kind='Лизхолд',
+                        payinHashes=[{'hash': tx_hash, 'network': 'TRC20', 'amount': 100,
+                                      'verified': True}])
+    override = {'reason': REASON,
+                'payin': {'method': 'Крипта', 'amountUsdt': 100, 'hashes': [
+                    {'hash': tx_hash, 'network': 'trc20',
+                     'receiver': 'TReceiverWallet111111111111', 'amount': 100}]}}
+    result = A._stand_manual_close_apply_override(
+        state, deal, override, 'manager', verify=confirmed_echo)
+    assert result is None
+    assert [h['hash'] for h in deal['payinHashes']].count(tx_hash) == 1
+
+
+def test_rejects_hash_used_by_different_deal_even_when_current_deal_has_its_own_hash():
+    """Исключение из дедупа — только для СВОЕЙ сделки. Хеш чужой сделки
+    всё ещё реальное повторное использование и отклоняется, даже если
+    override этой же заявкой переподтверждает собственный (другой) хеш."""
+    own_hash = '9' * 64
+    other_hash = 'b' * 64
+    other_deal = {'id': 1, 'payinHashes': [{'hash': other_hash, 'network': 'TRC20', 'amount': 100}]}
+    state, deal = board(type='Оплата недвижимости', kind='Лизхолд',
+                        payinHashes=[{'hash': own_hash, 'network': 'TRC20', 'amount': 100,
+                                      'verified': True}])
+    state['deals'].insert(0, other_deal)
+    override = {'reason': REASON,
+                'payin': {'method': 'Крипта', 'amountUsdt': 100, 'hashes': [
+                    {'hash': other_hash, 'network': 'trc20',
+                     'receiver': 'TReceiverWallet111111111111', 'amount': 100}]}}
+    assert A._stand_manual_close_apply_override(
+        state, deal, override, 'manager', verify=confirmed_echo) == 'payin_hash_already_used'
+
+
 def test_rejects_payin_amount_mismatch():
     state, deal = board()
     override = {'reason': REASON,
