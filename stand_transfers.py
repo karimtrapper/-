@@ -352,7 +352,7 @@ def _stand_get(url, params=None, headers=None, timeout=None):
 
 def verify_transfer(ref, network, sender, receiver, amount, *, demo=False,
                     demo_outcome=None, demo_timestamp_ms=None, get=requests.get, etherscan_key=None,
-                    tronscan_key=None):
+                    tronscan_key=None, observe_recipient=False):
     """Сверить перевод по сети. Деньги эта функция не отправляет."""
     if (demo or str(ref or '').startswith('demo:')) and not stand_demo.enabled():
         return _result('mismatch', checkError='DEMO отключён в этом окружении')
@@ -364,6 +364,8 @@ def verify_transfer(ref, network, sender, receiver, amount, *, demo=False,
         return _result('mismatch', checkError='Некорректная сеть или сумма')
     if amount is not None and sender is None:
         return _result('mismatch', checkError='Не задан кошелёк отправителя')
+    if receiver is None and (not observe_recipient or sender is not None or amount is not None):
+        return _result('mismatch', checkError='Не задан кошелёк получателя')
     if ((sender is not None and not valid_address(sender, network))
             or (receiver is not None and not valid_address(receiver, network))):
         return _result('mismatch', checkError='Адрес отправителя или получателя не определён')

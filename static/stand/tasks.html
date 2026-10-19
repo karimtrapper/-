@@ -2401,6 +2401,21 @@ function dealWallet(d){
   return walletById(wid)||null;
 }
 function needsSecondSign(d){const w=dealWallet(d);return !w||w.multisig;}
+function policyInitiators(w){return (w?.initiator_roles||[]).concat(w?.owner_can_alone?['teodor']:[]);}
+function policySignerCards(w){
+  if(!w?.purpose)return '';
+  const names={operator:'Операционист',findir:'Финансист',teodor:'Владелец'};
+  const roles=[...new Set([...policyInitiators(w),...(w.confirmer_roles||[])])];
+  return `<div class="fr" style="margin:10px 0">${roles.map(role=>{const address=w.signer_addresses?.[role];
+    return `<div class="fg"><span class="fl">${names[role]||htmlText(role)}</span>${address?
+      `<details class="deal-detail"><summary class="addr">${htmlText(txShort(address))}</summary><span class="addr">${htmlText(address)}</span></details><button type="button" class="btn btn-outline btn-sm" onclick="copyAsk(${jsLiteralAttr(address)})">Копировать</button>`:'Адрес подписи не указан'}</div>`;
+  }).join('')}</div>`;
+}
+async function transferClaim(id){
+  const j=await standAction('/api/stand/transfer/claim',{dealId:id,version:standVer});
+  if(j?.success)toast('Отправка взята вами');
+  else if(j?.taken_by)toast('Шаг уже взял '+j.taken_by);
+}
 /* У общего кошелька владелец — компания, а подписывает живой человек: фин дир */
 function walletSigner(w){return (!w||!w.owner||w.owner==='компания')?'фин дир':w.owner;}
 function cnvWalletSet(id,wid){
@@ -4165,12 +4180,15 @@ function stepWho(d,step){
   step=step||(d&&d.step);
   if(step==='s22'&&d&&d.kind==='Фрихолд')return payToReady(d)&&payToConfirmed(d)?'operator':'manager';
   if(step==='s23'&&d?.outgoingReview?.requestedAt)return 'operator';
+  if(step==='s23'&&d){const w=dealWallet(d);if(w?.purpose)return d.transferClaim?.role||policyInitiators(w)[0]||'operator';}
   if(step==='s23'&&d){const w=dealWallet(d); if(w&&!w.multisig) return w.role||'teodor';}
   return STEPS[step]?STEPS[step].who:null;
 }
 function taskBranchesForRole(d,role){
   if(d.closed)return [];
-  const ownsPayment=!!STEPS[d.step]&&stepWho(d)===role;
+  const policySend=d.step==='s23'&&dealWallet(d)?.purpose&&!d.outgoingReview?.requestedAt;
+  const ownsPayment=!!STEPS[d.step]&&(stepWho(d)===role||
+    (policySend&&policyInitiators(dealWallet(d)).includes(role)));
   const sidePayment=(role==='manager'&&(reqOpen(d)||needsPayConfirm(d)))||
     (role==='operator'&&d.step==='s27'&&d.type==='Оплата недвижимости')||
     (role==='operator'&&d.step==='s14'&&(d.manualBankReceipt?.status==='pending'||(!d.manualBankReceipt&&!rubApiAccount(d))));
@@ -6569,7 +6587,8 @@ function viewDeal(d){
   if(S.manualCloseDraft&&S.manualCloseDraft[d.id])return manualCloseScreen(d);
   const st=STEPS[d.step]||{title:(d.manual?'внесена вручную':d.step),n:'',who:null};
   const who=stepWho(d);
-  const mine=!d.closed&&(who===S.role||(S.role==='admin'&&d.step==='s27'));
+  const mine=!d.closed&&(who===S.role||(S.role==='admin'&&d.step==='s27')||
+    (d.step==='s23'&&dealWallet(d)?.purpose&&policyInitiators(dealWallet(d)).includes(S.role)));
   const p=progress(d), view=S.view||'deal';
   const branch=d.prepay?(S.taskBranch||((S.role==='operator'&&d.prepay.brokerStep!=='done')||prepayRefundRole(d)===S.role?'conversion':'payment')):null;
   const branchPath=view==='task'?dealTaskPath(d,branch):null;
@@ -11203,7 +11222,16 @@ function stepCard(d){
     const mine=c?(c.sources.find(x=>x.dealId===d.id)||{}):{};
     const cost=sObj.cur==='usdt'?need/rate:null;
     const foundTx=(d.outgoingReview?.candidates||[]).find(t=>t.to===d.transfer?.addr&&!t.networkFee&&t.hash);
+    const policyWallet=dealWallet(d);
+    if(policyWallet?.purpose&&!d.outgoingReview?.requestedAt){
+      const claim=d.transferClaim;
+      if(!claim||String(claim.byId)!==String(standMeId))return `<div class="card"><div class="card-title">Отправка с кошелька ${htmlText(policyWallet.name)}</div>
+        ${walletLine(policyWallet)}${policySignerCards(policyWallet)}
+        ${claim?`<div class="alert a-warn"><div>Шаг уже взял ${htmlText(claim.byName||'другой сотрудник')}.</div></div>`:
+          `<div class="row"><button class="btn btn-primary" onclick="transferClaim(${d.id})">Беру</button></div>`}</div>`;
+    }
     return `<div class="card s23-action-fields">
+    ${policyWallet?.purpose?policySignerCards(policyWallet):''}
     ${foundTx&&S.role==='teodor'?`<div class="alert a-warn">В сети уже есть перевод · ${new Date(foundTx.timestamp_ms).toLocaleString('ru-RU',{timeZone:'Europe/Moscow'})} МСК ·
       <a href="https://tronscan.org/#/transaction/${encodeURIComponent(foundTx.hash)}" target="_blank" rel="noopener noreferrer">${htmlText(txShort(foundTx.hash))} · TronScan</a>
       <button class="btn btn-outline btn-sm" onclick="copyAsk(${jsLiteralAttr(foundTx.hash)})">Копировать хеш</button></div>`:''}
