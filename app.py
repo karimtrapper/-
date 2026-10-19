@@ -8237,6 +8237,168 @@ def _stand_crm_fact_problem(board, crm, kind):
     return None
 
 
+def _stand_hash_used_elsewhere(state, network, tx_hash):
+    """Хеш уже привязан к другой сделке/конвертации на доске — тот же дедуп,
+    что делает stand_payin_check (app.py:11758-11765), переиспользуем его и
+    для проверки расходных хешей ручного переноса."""
+    return any(normalize_network(h.get('network') or 'trc20') == network
+               and normalize_ref(h.get('hash'), network) == tx_hash
+               for d in state.get('deals') or [] for h in d.get('payinHashes') or []) or any(
+        normalize_network(t.get('net') or 'trc20') == network
+        and normalize_ref(t.get('hash'), network) == tx_hash
+        for c in state.get('convs') or [] for t in c.get('txs') or [])
+
+
+def _stand_manual_close_verify_hashes(state, hashes, declared_amount, verify, used_in_submit,
+                                       side):
+    """Проверить список вручную введённых хешей (приход или расход): каждый —
+    через сеть (`verify`), без повторов (на доске и внутри самой заявки), и
+    сумма подтверждённых переводов должна совпасть с заявленной суммой.
+
+    Возвращает (list_новых_записей, код_ошибки_или_None). `side` — 'payin'
+    или 'payout', только для префикса кода ошибки."""
+    if not hashes:
+        return None, f'{side}_hash_required'
+    from decimal import Decimal
+    entries = []
+    verified_sum = Decimal('0')
+    for item in hashes:
+        if not isinstance(item, dict):
+            return None, f'{side}_hash_required'
+        network = normalize_network(item.get('network'))
+        tx_hash = normalize_ref(item.get('hash'), network)
+        sender = item.get('sender') or None
+        receiver = item.get('receiver')
+        amount = item.get('amount')
+        checked = verify(tx_hash, network, sender, receiver, amount) or {}
+        if checked.get('status') != 'confirmed':
+            return None, f'{side}_hash_unverified'
+        key = (network, tx_hash)
+        if key in used_in_submit or _stand_hash_used_elsewhere(state, network, tx_hash):
+            return None, f'{side}_hash_already_used'
+        used_in_submit.add(key)
+        verified_amount = checked.get('verifiedAmount')
+        verified_sum += Decimal(str(verified_amount if verified_amount is not None else 0))
+        entries.append({
+            'hash': tx_hash, 'network': (network or '').upper(),
+            'amount': verified_amount, 'from': checked.get('from'), 'to': receiver,
+            'verified': True, 'verifiedAt': checked.get('verifiedAt'),
+        })
+    if abs(verified_sum - Decimal(str(declared_amount))) > Decimal('0.01'):
+        return None, f'{side}_amount_mismatch'
+    return entries, None
+
+
+def _stand_manual_close_apply_override(state, stand_deal, override, actor, *, verify=verify_transfer):
+    """Ручной перенос сделки в CRM минуя штатный шаг s27 (СД-1489): менеджер/
+    админ вручную вводит факты, которые степпер не собрал (способ и сумма
+    прихода/расхода, хеши, агенты, обязательная причина). Это единственный
+    шлюз, решающий, достаточно ли введённых фактов, чтобы реальная сделка в
+    CRM была создана со `status=completed` — каждый хеш обязательно сверяется
+    по сети через `verify` (по умолчанию настоящий `verify_transfer`), ничьё
+    `verified:true` с клиента не принимается на веру.
+
+    Чистая функция относительно БД: без `db`, без коммитов — только читает и
+    мутирует переданные `state`/`stand_deal`. Транзакцией управляет вызывающий
+    код (роут `stand_crm_close`). Возвращает `None` при успехе (сделка уже
+    мутирована) или один из строковых кодов ошибки — вызывающий код
+    превращает их в HTTP-статус.
+
+    Примечание по интерфейсу: бриф ссылается на именованную константу
+    `PAYIN_TOL` в app.py:10295 — такой константы в кодовой базе нет (там код
+    про комиссию исходящего перевода). Используем допуск в 1 цент/копейку —
+    ту же точность, что везде в деньгах этого файла (`Decimal('0.01')`)."""
+    if stand_deal.get('originMode') == 'manual':
+        return 'manual_override_not_applicable'
+    if stand_deal.get('closed'):
+        return 'already_closed'
+    override = override or {}
+    reason = str(override.get('reason') or '').strip()
+    if len(reason) < 10:
+        return 'manual_override_reason_required'
+    payin = override.get('payin') or {}
+    if not payin.get('method'):
+        return 'payin_method_required'
+    payin_amount = _stand_number(payin.get('amountUsdt'))
+    if payin_amount <= 0:
+        return 'payin_amount_required'
+
+    used_hashes = set()
+    payin_entries = []
+    is_crypto_payin = payin.get('method') == 'Крипта' or bool(stand_deal.get('cashPartnerUsdt'))
+    if is_crypto_payin:
+        payin_entries, problem = _stand_manual_close_verify_hashes(
+            state, payin.get('hashes'), payin_amount, verify, used_hashes, 'payin')
+        if problem:
+            return problem
+    else:
+        has_receipt = bool((stand_deal.get('files') or {}).get('receipt'))
+        if (not payin.get('hashes') and not has_receipt
+                and not payin.get('manualBankConfirmed')):
+            return 'payin_evidence_missing'
+
+    kind = ('mf_freehold' if stand_deal.get('kind') == 'Фрихолд' else
+            'mf_realty' if stand_deal.get('type') == 'Оплата недвижимости' else
+            'exchange')
+
+    payout = {}
+    payout_amount = None
+    payout_entries = []
+    if kind == 'exchange':
+        payout = override.get('payout') or {}
+        if not payout.get('source'):
+            return 'payout_source_required'
+        payout_amount = _stand_number(payout.get('amountUsdt'))
+        if payout_amount <= 0:
+            return 'payout_amount_required'
+        if payout['source'] in ('coins', 'client'):
+            payout_entries, problem = _stand_manual_close_verify_hashes(
+                state, payout.get('hashes'), payout_amount, verify, used_hashes, 'payout')
+            if problem:
+                return problem
+        else:
+            has_receipt = bool((stand_deal.get('files') or {}).get('receipt'))
+            has_invoice = bool((stand_deal.get('files') or {}).get('inv'))
+            if not has_receipt and not has_invoice:
+                return 'payout_evidence_missing'
+
+    agents = override.get('agents')
+    if agents is not None and not isinstance(agents, list):
+        return 'agents_invalid'
+
+    # Все проверки пройдены — записываем факты на доску сделки.
+    stand_deal['payType'] = payin['method']
+    if payin.get('amountUsdt') is not None:
+        stand_deal['amountUsdt'] = payin_amount
+    if payin.get('amountRub') is not None:
+        stand_deal['amountRub'] = _stand_number(payin.get('amountRub'))
+    if payin.get('rate') is not None:
+        stand_deal.setdefault('rates', {})['broker'] = payin['rate']
+    for entry in payin_entries:
+        stand_deal.setdefault('payinHashes', []).append(entry)
+
+    if kind == 'exchange' and payout.get('source'):
+        stand_deal['paySrc'] = payout['source']
+        deal_payout = dict(stand_deal.get('payout') or {})
+        deal_payout['usdt'] = payout_amount
+        if payout_entries:
+            deal_payout['hashes'] = list(deal_payout.get('hashes') or []) + payout_entries
+        stand_deal['payout'] = deal_payout
+
+    if agents is not None:
+        stand_deal['agents'] = agents
+
+    ts = stand_now().strftime('%d.%m, %H:%M')
+    at = int(time.time() * 1000)
+    summary = 'Ручной перенос в CRM: сверены вручную введённые факты прихода'
+    if kind == 'exchange':
+        summary += ' и расхода'
+    summary += f' ({payin["method"]}), шаг {stand_deal.get("step")} минуя s27.'
+    stand_deal.setdefault('log', []).append({'ts': ts, 'at': at, 'role': actor, 'text': summary})
+    stand_deal['log'].append({'ts': ts, 'at': at, 'role': actor, 'text': reason})
+    return None
+
+
 def _stand_main_profit(deal):
     """Прибыль по фактическим переводам, включая выбранные комиссии наперёд."""
     payin_hashes = sum(_stand_number(h.get('amount')) for h in deal.get('payinHashes') or [])
