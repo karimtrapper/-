@@ -252,6 +252,7 @@ tr:last-child td{border-bottom:none}
 .side .li{grid-template-columns:34px 1fr;row-gap:8px}
 .side .li>:nth-child(3){grid-column:1 / -1;white-space:normal;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 .side h4{font-size:12.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-sec);margin-bottom:13px}
+.side.create-guide h4{text-transform:none;letter-spacing:normal}
 .side p{font-size:13px;color:var(--navy-600);line-height:1.65}
 .tl{list-style:none}
 .tl li{display:grid;grid-template-columns:20px 1fr;gap:11px;padding:0 0 14px;position:relative}
@@ -6056,7 +6057,7 @@ function viewCreateBody(D,srcCard){
     <p class="fh${cryptoFreehold?' create-next':''}" style="margin-top:10px">${cryptoFreehold?'Далее: загрузить паспорт и инвойс → передать Насте':'Заявка отправляет запрос курса операционисту. Остальные кнопки создают сделку для самостоятельного ведения.'}</p>
   </div>
   </div>
-  ${cryptoFreehold?'':`<div class="card side"><h4>Что нужно на входе</h4>
+  ${cryptoFreehold?'':`<div class="card side create-guide"><h4>Что нужно на входе</h4>
   <p>${D.kind==='Фрихолд'&&D.payType==='Крипта'?'Клиент, инвойс, тариф IPPS и сумма в USDT.':'Клиент, тип сделки, способ оплаты и сумма.'}</p>
   <h4 style="margin-top:18px">Дальше</h4>
   <p>Запросить курс у операциониста или указать его самостоятельно.</p></div>`}</div>`;
