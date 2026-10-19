@@ -1423,6 +1423,11 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         </div>
 
                         <div class="form-row">
+                            <div class="form-group" id="payinWalletGroup" style="display:none">
+                                <label class="form-label" for="payinWalletSelect">Кошелёк получения USDT</label>
+                                <select class="form-control" name="payin_wallet_id" id="payinWalletSelect"></select>
+                                <div id="payinWalletPolicy" class="form-hint" style="margin-top:8px"></div>
+                            </div>
                             <div class="form-group" id="payinPartnerGroup" style="display:none;">
                                 <label class="form-label">Партнер (кто прислал)</label>
                                 <input type="text" class="form-control" name="payin_partner_name"
@@ -1767,6 +1772,11 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                                 <select class="form-control" name="payout_wallet_id" id="payoutWalletSelect">
                                     <!-- Загружается динамически -->
                                 </select>
+                                <div id="payoutWalletPolicy" class="form-hint" style="margin-top:8px"></div>
+                                <label id="payoutOwnerApprovalGroup" style="display:none;margin-top:10px;align-items:flex-start;gap:8px">
+                                    <input type="checkbox" id="payoutOwnerApproved" style="margin-top:3px">
+                                    <span>Согласовано владельцем: подтверждаю согласование выплаты свыше $10 000</span>
+                                </label>
                             </div>
                             <div class="form-group">
                                 <label class="form-label">Хэш транзакции (исходящие)</label>
@@ -5469,6 +5479,9 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         {
                             setPayinMethodValue('payinMethod', deal.payin_method || '');
                             document.getElementById('payinMethod').dispatchEvent(new Event('change'));
+                            setDealSelectValue(document.getElementById('payinWalletSelect'),
+                                deal.payin_wallet_id, deal.payin_wallet_label);
+                            refreshPayinWalletPolicy();
                         }
                         flowExistingParts = (deal.payin_parts || []).filter(p => String(p.uuid || '').startsWith('crm-manual:'));
                         flowExistingReceipt = flowExistingParts.length > 0;
@@ -5538,6 +5551,8 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         if (deal.payout_source === 'binance') {
                             setDealSelectValue(document.getElementById('payoutWalletSelect'),
                                 deal.payout_wallet_id, deal.payout_wallet_label);
+                            document.getElementById('payoutOwnerApproved').checked = !!deal.payout_owner_approved;
+                            refreshPayoutWalletPolicy();
                             if (deal.payout_amount_usdt) document.getElementById('binanceUsdt').value = deal.payout_amount_usdt;
                             if (deal.payout_tx_hash) document.getElementById('binanceTxInput').value = deal.payout_tx_hash;
                         }
@@ -5819,6 +5834,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
            непроверенным и не рисуем боевые ссылки (fail-closed), см. standLinkState(). */
         let AUTH_STAND = null;  // null — ещё не проверено или проверка не удалась
         let CRM_ROLE = null;  // роль текущего пользователя из того же /api/auth/me
+        let AUTH_ROLE = null;
         async function loadAuthStand() {
             try {
                 const res = await fetch(`${API_URL}/api/auth/me`);
@@ -5829,9 +5845,11 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                    подтверждённый прод (QA перепроверка, FAIL №5, 28.09). */
                 AUTH_STAND = (d && d.success && d.user && typeof d.user.stand === 'boolean') ? d.user.stand : null;
                 CRM_ROLE = (d && d.success && d.user) ? (d.user.role || 'admin') : null;
-            } catch (e) { AUTH_STAND = null; CRM_ROLE = null; }
+                AUTH_ROLE = d && d.success && d.user ? d.user.role : null;
+            } catch (e) { AUTH_STAND = null; CRM_ROLE = null; AUTH_ROLE = null; }
             applyStandMobileNav();
             refreshStandDependentLinks();
+            refreshPayoutWalletPolicy();
         }
         function applyStandMobileNav() {
             const {isStand} = standLinkState();
@@ -7351,6 +7369,10 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             const exchangeRateGroup = document.getElementById('exchangeRateGroup');
 
             const isCryptoDirect = method.value === 'crypto_direct';
+            const walletGroup = document.getElementById('payinWalletGroup');
+            walletGroup.style.display = isCryptoDirect ? 'block' : 'none';
+            if (isCryptoDirect) syncNewPayinWalletDefault();
+            refreshPayinWalletPolicy();
             const isSberWL = method.value === 'sber_wl';
             const isSberReqs = method.value === 'sber_reqs';
 
@@ -7587,6 +7609,12 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             } else if (this.value === 'binance') {
                 binanceGroup.style.display = 'flex';
                 document.getElementById('binanceGroup2').style.display = 'flex';
+                if (editingDealId === null && !document.getElementById('payoutWalletSelect').value) {
+                    const exchange = payoutRegistryWallets.find(w => w.purpose === 'exchange' &&
+                        w.address === 'TA6S3RBEY57jq8fXEVVsU6H9JZ18inenG4');
+                    if (exchange) document.getElementById('payoutWalletSelect').value = String(exchange.id);
+                }
+                refreshPayoutWalletPolicy();
                 loadOutgoingTxForBinance();
             } else if (this.value === 'founder_personal') {
                 founderGroup.style.display = 'flex';
@@ -7740,6 +7768,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             document.getElementById('mfDealHint').style.display = isMf ? 'block' : 'none';
             applyRealtyLayout();
             syncDealKindSelect();
+            syncNewPayinWalletDefault();
             if (isMf) { mfRecalc(); loadMfPayoutTx(); }
         }
 
@@ -7933,6 +7962,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             document.getElementById('fhDealHint').style.display = isFh ? 'block' : 'none';
             applyRealtyLayout();
             syncDealKindSelect();
+            syncNewPayinWalletDefault();
             if (isFh) { fhRecalc(); loadMfPayoutTx(); }
         }
 
@@ -9139,6 +9169,10 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     }
                 }
             });
+            if (['findir', 'teodor'].includes(AUTH_ROLE) &&
+                    document.getElementById('payoutOwnerApprovalGroup')?.style.display !== 'none') {
+                data.payout_owner_approved = !!document.getElementById('payoutOwnerApproved')?.checked;
+            }
 
             // Мультиагенты стандартной формы
             data.agents = stdAgentsSerialize();
@@ -9147,6 +9181,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             // выбранное значение, даже когда блок скрыт — FormData забирает его
             // в любую сделку. Для остальных источников это чужой кошелёк
             if (data.payout_source !== 'binance') delete data.payout_wallet_id;
+            if (data.payin_method !== 'crypto_direct') delete data.payin_wallet_id;
 
             // Части прихода Сбера (пустой список = убрать части и освободить пул)
             data.payin_parts = methodUsesSberPool(data.payin_method) ? sberParts :
@@ -10068,6 +10103,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 
         async function loadWalletsSummary() {
             try {
+                loadPayoutWalletOptions();
                 const response = await fetch(`${API_URL}/api/wallets/summary`);
                 const data = await response.json();
 
@@ -10085,17 +10121,79 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         </div>
                     `).join('');
 
-                    // Обновляем выпадающий список в форме создания сделки
-                    const payoutWalletSelect = document.getElementById('payoutWalletSelect');
-                    if (payoutWalletSelect) {
-                        const keepWallet = payoutWalletSelect.value;
-                        payoutWalletSelect.innerHTML = '<option value="">— не выбрано —</option>' + data.wallets.map(w => `<option value="${w.id}" data-address="${w.address}">${w.label || w.address.substring(0, 8)} ($${w.system_balance.toFixed(0)})</option>`).join('');
-                        payoutWalletSelect.value = keepWallet;
-                        // Добавляем обработчик изменения кошелька для перезагрузки транзакций
-                        payoutWalletSelect.onchange = () => loadOutgoingTxForBinance(false);
-                    }
                 }
             } catch (e) { console.error('Error loading wallets summary:', e); }
+        }
+
+        let payoutRegistryWallets = [];
+        function walletPolicyText(wallet) {
+            if (!wallet?.purpose) return '';
+            const names = {operator:'операционист', findir:'финансист', teodor:'владелец'};
+            const starters = [...new Set([...(wallet.initiator_roles||[]), ...(wallet.owner_can_alone?['teodor']:[])])];
+            return `${wallet.label || wallet.address} · начинает ${starters.map(r=>names[r]||r).join(' или ')} · подтверждает ${(wallet.confirmer_roles||[]).map(r=>names[r]||r).join(' или ')}${wallet.limit_usd!=null?' · до $'+Number(wallet.limit_usd).toLocaleString('ru-RU')+', выше — с согласованием владельца':''}`;
+        }
+        function refreshPayinWalletPolicy() {
+            const select = document.getElementById('payinWalletSelect');
+            const wallet = payoutRegistryWallets.find(w => String(w.id) === select?.value);
+            const box = document.getElementById('payinWalletPolicy');
+            if (box) box.textContent = walletPolicyText(wallet);
+        }
+        function syncNewPayinWalletDefault() {
+            const select = document.getElementById('payinWalletSelect');
+            if (!select || editingDealId !== null || select.dataset.userSelected === 'true') return;
+            const realty = document.getElementById('mfDealToggle')?.checked ||
+                document.getElementById('fhDealToggle')?.checked;
+            const purpose = realty ? 'realty' : 'exchange';
+            const wallet = payoutRegistryWallets.find(w => w.purpose === purpose && w.accepts_payin &&
+                !w.not_for_new_deals && [...select.options].some(option => option.value === String(w.id)));
+            if (wallet) select.value = String(wallet.id);
+            refreshPayinWalletPolicy();
+        }
+        function refreshPayoutWalletPolicy() {
+            const select = document.getElementById('payoutWalletSelect');
+            const wallet = payoutRegistryWallets.find(w => String(w.id) === select?.value);
+            const box = document.getElementById('payoutWalletPolicy');
+            const group = document.getElementById('payoutOwnerApprovalGroup');
+            if (!box || !group) return;
+            if (!wallet?.purpose) { box.textContent = ''; group.style.display = 'none'; return; }
+            box.textContent = walletPolicyText(wallet);
+            const allowed = wallet.purpose === 'exchange' && ['findir','teodor'].includes(AUTH_ROLE);
+            group.style.display = allowed ? 'flex' : 'none';
+        }
+        async function loadPayoutWalletOptions() {
+            try {
+                const response = await fetch(`${API_URL}/api/wallets?no_balances=true&all=true`);
+                const data = await response.json();
+                if (!data.success) return;
+                payoutRegistryWallets = data.wallets || [];
+                const select = document.getElementById('payoutWalletSelect');
+                if (!select) return;
+                const saved = select.value;
+                const savedLabel = select.selectedOptions[0]?.textContent || saved;
+                const choices = payoutRegistryWallets.filter(w => !w.not_for_new_deals || String(w.id) === saved);
+                select.replaceChildren(new Option('— не выбрано —', ''),
+                    ...choices.map(w => new Option(w.label || w.address, String(w.id))));
+                if (saved) setDealSelectValue(select, saved, savedLabel);
+                else if (editingDealId === null) {
+                    const exchange = choices.find(w => w.purpose === 'exchange' && w.address === 'TA6S3RBEY57jq8fXEVVsU6H9JZ18inenG4');
+                    if (exchange) select.value = String(exchange.id);
+                }
+                select.onchange = () => { refreshPayoutWalletPolicy(); loadOutgoingTxForBinance(false); };
+                refreshPayoutWalletPolicy();
+                const payin = document.getElementById('payinWalletSelect');
+                if (payin) {
+                    const previous = payin.value;
+                    const previousLabel = payin.selectedOptions[0]?.textContent || previous;
+                    const incoming = payoutRegistryWallets.filter(w => w.accepts_payin &&
+                        (!w.not_for_new_deals || String(w.id) === previous));
+                    payin.replaceChildren(new Option('— не выбрано —', ''),
+                        ...incoming.map(w => new Option(w.label || w.address, String(w.id))));
+                    if (previous) setDealSelectValue(payin, previous, previousLabel);
+                    syncNewPayinWalletDefault();
+                    payin.onchange = () => { payin.dataset.userSelected = 'true'; refreshPayinWalletPolicy(); };
+                    refreshPayinWalletPolicy();
+                }
+            } catch (e) { console.error('Error loading payout wallet registry:', e); }
         }
 
         // Сверка кошелька с блокчейном. Баланс в CRM — сумма операций, которые

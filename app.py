@@ -16,7 +16,7 @@ import json
 import re
 import math
 import hashlib
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 import hmac
 import secrets
 import base64
@@ -1720,6 +1720,8 @@ class Deal(Base):
     # Расчётная себестоимость — модель; эти переводы — то, что реально ушло
     payout_tx_hashes = Column(Text, nullable=True)
     payin_tx_verified = Column(Boolean, default=False)
+    payin_wallet_id = Column(Integer, ForeignKey('wallets.id'), nullable=True)
+    payin_wallet = relationship("Wallet", foreign_keys=[payin_wallet_id])
     doverka_transaction_id = Column(String(100))
     doverka_status = Column(SQLEnum(DoverkaStatus), nullable=True)
     doverka_payout_hash = Column(String(100))
@@ -1731,6 +1733,7 @@ class Deal(Base):
     payout_tx_hash = Column(String(100))
     payout_wallet_id = Column(Integer, ForeignKey('wallets.id'), nullable=True)
     payout_wallet = relationship("Wallet", foreign_keys=[payout_wallet_id])
+    payout_owner_approval = Column(Text, nullable=True)  # server-stamped wallet/amount/order approval
     cash_batch_id = Column(Integer, ForeignKey('cash_batches.id'), nullable=True)
     cash_batch = relationship("CashBatch", back_populates="deals")
     cash_batch_rate = Column(Float)
@@ -1843,6 +1846,8 @@ class Deal(Base):
             'payin_tx_hashes': json.loads(self.payin_tx_hashes) if self.payin_tx_hashes else None,
             'payout_tx_hashes': json.loads(self.payout_tx_hashes) if self.payout_tx_hashes else None,
             'payin_tx_verified': self.payin_tx_verified,
+            'payin_wallet_id': self.payin_wallet_id,
+            'payin_wallet_label': self.payin_wallet.label if self.payin_wallet else None,
             'deal_kind': self.deal_kind or 'exchange',
             'realty_purpose': self.realty_purpose,
             'invoice_amount_thb': self.invoice_amount_thb,
@@ -1878,6 +1883,8 @@ class Deal(Base):
             'payout_amount_usdt': self.payout_amount_usdt,
             'payout_tx_hash': self.payout_tx_hash,
             'payout_wallet_id': self.payout_wallet_id,
+            'payout_owner_approved': _crm_payout_approval_valid(self),
+            'payout_owner_approval': json.loads(self.payout_owner_approval) if self.payout_owner_approval else None,
             'cash_batch_rate': self.cash_batch_rate,
             'bank_card_id': self.bank_card_id,
             'payout_founder_name': self.payout_founder_name,
@@ -3472,6 +3479,20 @@ try:
         conn.commit()
 except Exception as e:
     print(f"ℹ️ wallet_registry migration: {e}")
+
+try:
+    with engine.connect() as conn:
+        if 'postgresql' in DATABASE_URL:
+            conn.execute(text("ALTER TABLE deals ADD COLUMN IF NOT EXISTS payout_owner_approval TEXT"))
+            conn.execute(text("ALTER TABLE deals ADD COLUMN IF NOT EXISTS payin_wallet_id INTEGER REFERENCES wallets(id)"))
+        else:
+            try: conn.execute(text("ALTER TABLE deals ADD COLUMN payout_owner_approval TEXT"))
+            except Exception: pass
+            try: conn.execute(text("ALTER TABLE deals ADD COLUMN payin_wallet_id INTEGER"))
+            except Exception: pass
+        conn.commit()
+except Exception as e:
+    print(f"ℹ️ payout_owner_approval migration: {e}")
 
 # KYC: файлы переехали с диска в БД + видео-заявление клиента
 try:
@@ -6672,7 +6693,7 @@ def stand_transfer_claim():
             return jsonify(success=False, error='Для отправки свыше 10 000 USDT требуется подтверждение владельца'), 400
         claim = {'byId': user.id, 'byName': user.display_name or user.username,
                  'role': actor, 'at': int(time.time() * 1000),
-                 'walletId': policy['walletId'], 'amount': str(policy['amount']),
+                 'walletId': policy['walletId'], 'amount': _stand_policy_amount_text(policy['amount']),
                  'fingerprint': policy['fingerprint']}
         main['transferClaim'] = claim
         if actor == 'teodor' and policy['wallet'].owner_can_alone:
@@ -6758,6 +6779,62 @@ def stand_transfer_confirm():
         db.commit()
         return jsonify(success=True, version=row.version, data=_stand_strip_files(state),
                        confirmation=confirmation)
+    finally:
+        db.close()
+
+
+@app.route('/api/stand/transfer/approve', methods=['POST'])
+def stand_transfer_approve():
+    if not STAND_MODE:
+        return jsonify(success=False, error='stand_only'), 404
+    payload = request.get_json(silent=True) or {}
+    actor, actor_id = current_role(), flask_session.get('user_id')
+    if actor not in ('findir', 'teodor') or actor_id is None:
+        return jsonify(success=False, error='Подтверждение владельца ставит финансист или владелец'), 403
+    try:
+        deal_id = int(payload.get('dealId'))
+    except (TypeError, ValueError):
+        return jsonify(success=False, error='dealId обязателен'), 400
+    db = get_session()
+    try:
+        if engine.dialect.name == 'sqlite':
+            db.execute(text('BEGIN IMMEDIATE'))
+        row = _stand_row(db, lock=True)
+        state = json.loads(row.data or '{}')
+        main = _stand_batch_main(state, deal_id)
+        if not main or main.get('step') != 's23' or main.get('transferClaim'):
+            return jsonify(success=False, error='Одобрение доступно до начала отправки'), 409
+        try:
+            policy = _stand_transfer_policy(db, state, main)
+        except ValueError as exc:
+            return jsonify(success=False, error=str(exc)), 409
+        if not policy or policy['wallet'].purpose != 'exchange':
+            return jsonify(success=False, error='Для этого кошелька одобрение не требуется'), 409
+        limit = policy['wallet'].limit_usd
+        if limit is None or policy['amount'] <= Decimal(str(limit)):
+            return jsonify(success=False, error='Сумма не превышает лимит кошелька'), 409
+        user = db.query(AdminUser).filter_by(id=actor_id).first()
+        if not user or user.login_disabled or user.role != actor:
+            return jsonify(success=False, error='Нет доступа к одобрению'), 403
+        if _stand_policy_approval_valid(main, policy):
+            approval = main['transferOwnerApproval']
+            return jsonify(success=True, version=row.version, data=_stand_strip_files(state), approval=approval)
+        if payload.get('version') != row.version:
+            return jsonify(success=False, error='Доска изменилась — обновите её',
+                           version=row.version, data=_stand_strip_files(state)), 409
+        approval = {'byId': user.id, 'byName': user.display_name or user.username,
+                    'role': actor, 'at': int(time.time() * 1000),
+                    'walletId': policy['walletId'], 'amount': _stand_policy_amount_text(policy['amount']),
+                    'fingerprint': policy['fingerprint']}
+        main['transferOwnerApproval'] = approval
+        main.setdefault('log', []).append({'at': approval['at'], 'role': actor,
+            'by': user.id, 'text': f"{approval['byName']} отметил согласование владельца: {approval['amount']} USDT сверх лимита"})
+        row.data = json.dumps(state, ensure_ascii=False)
+        row.version = (row.version or 0) + 1
+        row.updated_by = approval['byName']
+        row.updated_at = datetime.utcnow()
+        db.commit()
+        return jsonify(success=True, version=row.version, data=_stand_strip_files(state), approval=approval)
     finally:
         db.close()
 
@@ -7447,6 +7524,47 @@ def stand_close_evidence(stand_deal_id):
         db.close()
 
 
+def _stand_close_policy_approval(db, state, stand_deal, crm_data):
+    """Carry a board approval into CRM only after server-bound transfer proof."""
+    if crm_data.get('payout_source') != PayOutSource.BINANCE.value:
+        return None, None
+    main = _stand_batch_main(state, stand_deal['id'])
+    policy = _stand_transfer_policy(db, state, main) if main else None
+    if not policy:
+        return None, None
+    selected = crm_data.get('payout_wallet_id')
+    if selected not in (None, ''):
+        try:
+            if _wallet_registry_id(selected) != policy['walletId']:
+                return None, 'payout_source_wallet_mismatch'
+        except ValueError:
+            return None, 'payout_source_wallet_mismatch'
+    crm_data['payout_wallet_id'] = policy['walletId']
+    if policy['wallet'].purpose != 'exchange':
+        return None, None
+    crm_amount = _amount(crm_data.get('payout_amount_usdt'))
+    if crm_amount is None or crm_amount <= Decimal(str(policy['wallet'].limit_usd or 10000)):
+        return None, None
+    claim = main.get('transferClaim') or {}
+    confirmation = main.get('transferConfirmation') or {}
+    approval = main.get('transferOwnerApproval') or {}
+    if (not _stand_policy_approval_valid(main, policy) or
+            claim.get('fingerprint') != policy['fingerprint'] or
+            confirmation.get('claimFingerprint') != claim.get('fingerprint') or
+            not claim.get('byId') or not confirmation.get('byId') or
+            (claim.get('byId') == confirmation.get('byId') and
+             not (confirmation.get('ownerAlone') and policy['wallet'].owner_can_alone and
+                  claim.get('role') == 'teodor')) or
+            not main.get('serverTransferComplete') or
+            not stand_deal.get('serverTransferComplete') or
+            not _stand_send_complete(stand_deal)):
+        return None, _EXCHANGE_APPROVAL_ERROR
+    approver = db.query(AdminUser).filter_by(id=approval.get('byId')).first()
+    if not approver or approver.login_disabled or approval.get('role') not in ('findir', 'teodor'):
+        return None, _EXCHANGE_APPROVAL_ERROR
+    return approval, None
+
+
 @app.route('/api/stand/deals/<int:stand_deal_id>/crm-close', methods=['POST'])
 def stand_crm_close(stand_deal_id):
     """Create one CRM row and close its stand origin in one database commit."""
@@ -7555,6 +7673,8 @@ def stand_crm_close(stand_deal_id):
                 'mf_realty' if stand_deal.get('type') == 'Оплата недвижимости' else
                 'exchange')
         crm_data = dict(payload['crm'])
+        if 'payout_owner_approved' in crm_data or 'payout_owner_approval' in crm_data:
+            return jsonify(success=False, error='Согласование владельца берётся из подтверждённой задачи'), 403
         if crm_data.get('bitrix_deal_id') is not None:
             return jsonify({'success': False, 'error': 'foreign_origin_forbidden'}), 400
         bitrix_id = _stand_bitrix_origin(db, stand_deal)
@@ -7585,6 +7705,14 @@ def stand_crm_close(stand_deal_id):
                         or (currency not in ('USDT', 'USD')
                             and _stand_number(crm_data.get(f'custom_{side}_rate')) <= 0)):
                     return jsonify({'success': False, 'error': 'custom_required_fields'}), 400
+        try:
+            trusted_approval, policy_problem = _stand_close_policy_approval(
+                db, state, stand_deal, crm_data)
+        except ValueError as exc:
+            return jsonify(success=False, error=str(exc)), 409
+        if policy_problem:
+            return jsonify(success=False, error=policy_problem), (
+                400 if policy_problem == _EXCHANGE_APPROVAL_ERROR else 409)
         close_snapshot, close_digest = _stand_close_summary(state, stand_deal, crm_data, row.version or 0)
         crm_data['status'] = 'completed'
         crm_data['skip_sync'] = True
@@ -7605,7 +7733,7 @@ def stand_crm_close(stand_deal_id):
             # Комбинация уже прошла гейт на стенде (создание/смена способа) —
             # см. комментарий в _create_deal_impl.
             result = _create_deal_impl(db, data=crm_data, defer_commit=True,
-                                       skip_flow_gate=True)
+                                       skip_flow_gate=True, trusted_approval=trusted_approval)
         finally:
             db.info.pop('stand_payin_origin', None)
             db.info.pop('stand_payin_hashes', None)
@@ -7987,6 +8115,10 @@ def _stand_batch_main(state, deal_id):
     return owners[0] if len(owners) == 1 else None
 
 
+def _stand_policy_amount_text(value):
+    return format(value.normalize(), 'f')
+
+
 def _stand_transfer_policy(db, state, main):
     """Authoritative opt-in policy and one amount for the whole outgoing batch."""
     if not main:
@@ -8015,13 +8147,15 @@ def _stand_transfer_policy(db, state, main):
     from decimal import Decimal
     total = Decimal(0)
     for member in members:
-        amount = _amount((member.get('transfer') or {}).get('amount'))
-        if amount is None or amount <= 0:
+        transfer = member.get('transfer') or {}
+        if not transfer.get('addr') and transfer.get('amount') is None:
             continue
+        amount = _amount(transfer.get('amount'))
+        if amount is None or amount <= 0:
+            raise ValueError('Укажите положительную сумму USDT для каждой отправки с кошелька')
         if stand_prepay.wallet_id(state, member) != wallet_id:
             raise ValueError('В пачке должны быть отправки с одного кошелька')
-        transfer = member.get('transfer') or {}
-        orders.append({'dealId': member['id'], 'amount': str(amount),
+        orders.append({'dealId': member['id'], 'amount': _stand_policy_amount_text(amount),
                        'to': transfer.get('addr'), 'net': transfer.get('net'),
                        'route': member.get('postConv'),
                        'ippsOrder': member.get('ippsPayoutOrder'),
@@ -8049,7 +8183,7 @@ def _stand_policy_approval_valid(main, policy):
     approval = main.get('transferOwnerApproval') or {}
     return bool(approval.get('byId') and approval.get('fingerprint') == policy['fingerprint']
                 and approval.get('walletId') == policy['walletId']
-                and approval.get('amount') == str(policy['amount']))
+                and approval.get('amount') == _stand_policy_amount_text(policy['amount']))
 
 
 def _stand_note(state, event_id, role, deal, text):
@@ -12219,7 +12353,12 @@ def stand_incoming_check():
             return jsonify({'success': False, 'error': 'У кошелька пачки нет корректного адреса'}), 409
     finally:
         db.close()
-    checked = verify_transfer(tx_hash, network, None, None, None, observe_recipient=True)
+    checked = verify_transfer(tx_hash, network, None, receiver, None)
+    if checked['status'] == 'mismatch':
+        observed = verify_transfer(tx_hash, network, None, None, None, observe_recipient=True)
+        if (observed['status'] == 'confirmed' and observed.get('to') and
+                observed['to'] != receiver):
+            checked = observed
     if checked['status'] != 'confirmed':
         return jsonify({'success': False, 'status': checked['status'],
                         'error': checked.get('checkError') or 'Перевод ещё не подтверждён'}), 422
@@ -12239,7 +12378,7 @@ def stand_incoming_check():
         current_receiver = stand_wallet_address(state, conv.get('walletId'))
         if current_receiver != receiver:
             return jsonify({'success': False, 'error': 'Кошелёк пачки изменился'}), 409
-        actual_receiver = checked.get('to')
+        actual_receiver = checked.get('to') or receiver
         if not actual_receiver or not valid_address(actual_receiver, network):
             return jsonify(success=False, error='Сеть не подтвердила адрес получения'), 422
         warnings = conv.get('recipientWarnings') or []
@@ -12269,7 +12408,7 @@ def stand_incoming_check():
             db.add(ledger_tx)
         ledger_tx.amount_usdt = float(total)
         ledger_tx.source = 'tronscan'
-        ledger_tx.to_address = checked['to']
+        ledger_tx.to_address = actual_receiver
         ledger_tx.tx_time = datetime.utcfromtimestamp(checked['timestampMs'] / 1000) if checked.get('timestampMs') else None
         db.flush()
         used = _payin_exact_used(db, ledger_tx)
@@ -12302,7 +12441,7 @@ def stand_incoming_check():
                         stand_generation=row.generation, stand_cnv_id=str(conv['id']))
         db.add(use); db.flush()
         tx = {'hash': tx_hash, 'net': network.upper(), 'amount': float(amount), 'verifiedAmount': float(total), 'ledgerUseId': use.id,
-              'to': checked['to'], 'from': checked['from'], 'status': 'confirmed',
+              'to': actual_receiver, 'from': checked['from'], 'status': 'confirmed',
               'verifiedAt': checked['verifiedAt'], 'timestampMs': checked['timestampMs'],
               'cnv': conv['id']}
         if early:
@@ -12800,7 +12939,13 @@ def stand_payin_check():
     tx_hash = normalize_ref(data.get('hash'), network)
     if not tx_hash or tx_hash.startswith('demo:'):
         return jsonify({'success': False, 'error': 'Хеш или ссылка не соответствует сети сделки'}), 400
-    checked = verify_transfer(tx_hash, network, None, None, None, observe_recipient=True)
+    checked = verify_transfer(tx_hash, network, None, receiver, None)
+    if checked['status'] == 'mismatch':
+        observed = verify_transfer(tx_hash, network, None, None, None, observe_recipient=True)
+        if (observed['status'] == 'confirmed' and observed.get('to') and
+                (observed['to'].lower() != receiver.lower() if network == 'erc20'
+                 else observed['to'] != receiver)):
+            checked = observed
     # Роль уже зафиксирована до чтения доски: current_role() закрывает scoped-сессию.
     if checked['status'] != 'confirmed':
         return jsonify({'success': False, 'status': checked['status'],
@@ -12819,7 +12964,7 @@ def stand_payin_check():
             return jsonify({'success': False, 'error': 'Способ оплаты изменился — повторите проверку'}), 409
         if _stand_payin_target(state, deal) != (network, receiver):
             return jsonify({'success': False, 'error': 'Сеть или кошелёк прихода изменились — повторите проверку'}), 409
-        actual_receiver = checked.get('to')
+        actual_receiver = checked.get('to') or receiver
         if not actual_receiver or not valid_address(actual_receiver, network):
             return jsonify(success=False, error='Сеть не подтвердила адрес получения'), 422
         warnings = deal.get('recipientWarnings') or []
@@ -12860,7 +13005,7 @@ def stand_payin_check():
                 db.add(ledger_tx)
             ledger_tx.amount_usdt = float(total)
             ledger_tx.source = 'tronscan'
-            ledger_tx.to_address = receiver
+            ledger_tx.to_address = actual_receiver
             ledger_tx.tx_time = datetime.utcfromtimestamp(checked['timestampMs'] / 1000) if checked.get('timestampMs') else None
             db.flush()
             use = PayinTxUse(tx_id=ledger_tx.id, amount_usdt=float(total),
@@ -12873,7 +13018,7 @@ def stand_payin_check():
         sender = checked.get('from')
         payer = deal.get('payerWallet')
         tx = {'hash': tx_hash, 'network': network.upper(), 'amount': checked['verifiedAmount'],
-              'from': sender, 'to': receiver, 'verified': True,
+              'from': sender, 'to': actual_receiver, 'verified': True,
               'verifiedAt': checked['verifiedAt'], 'timestampMs': checked.get('timestampMs'),
               'sourceKnown': _stand_source_known(db, state, sender)}
         if cash_partner:
@@ -17408,6 +17553,45 @@ def _payin_tx_parts(deal):
     return []
 
 
+def _crm_check_payin_recipient(session, deal, parts):
+    """A selected receipt wallet binds every CRM hash to its chain recipient."""
+    if not deal.payin_wallet_id or not parts or session.info.get('stand_payin_origin'):
+        return None
+    wallet = session.query(Wallet).filter_by(id=deal.payin_wallet_id).first()
+    if not wallet or not wallet.active or not wallet.accepts_payin:
+        return {'success': False, 'error': 'Кошелёк получения не найден в реестре'}, 400
+    expected = wallet.address
+    for part in parts:
+        network = _normalize_tx_network(part.get('network'))
+        if network == 'unknown' or not valid_address(expected, network):
+            return {'success': False, 'error': 'Кошелёк получения не соответствует сети прихода'}, 400
+        checked = verify_transfer(part['hash'], network, None, expected, None)
+        if checked.get('status') == 'confirmed':
+            confirmed_to = checked.get('to') or expected
+            if (confirmed_to.lower() == expected.lower() if network == 'erc20'
+                    else confirmed_to == expected):
+                continue
+            checked = {**checked, 'status': 'mismatch', 'to': confirmed_to}
+        if checked.get('status') == 'mismatch':
+            actual = checked.get('to')
+            if not actual or (actual.lower() == expected.lower() if network == 'erc20'
+                              else actual == expected):
+                observed = verify_transfer(part['hash'], network, None, None, None,
+                                           observe_recipient=True)
+                if observed.get('status') == 'confirmed':
+                    actual = observed.get('to')
+            if actual and (actual.lower() != expected.lower() if network == 'erc20'
+                           else actual != expected):
+                return ({'success': False, 'requires_confirmation': True,
+                         'warning': 'Хеш пришёл на другой кошелёк. Выберите фактический кошелёк получения и повторите проверку.',
+                         'expected_recipient': expected, 'actual_recipient': actual,
+                         'hash': part['hash']}, 409)
+        return ({'success': False, 'error': checked.get('checkError') or
+                 'Сеть не подтвердила приход на выбранный кошелёк',
+                 'status': checked.get('status')}, 422)
+    return None
+
+
 def _payin_tx_get_or_create(session, tx_hash, claim_usdt, part=None):
     """Перевод из реестра, при отсутствии — заводит.
 
@@ -17614,13 +17798,158 @@ def create_deal():
     return _create_deal_impl()
 
 
-def _create_deal_impl(session=None, *, data=None, defer_commit=False, skip_flow_gate=False):
+_EXCHANGE_APPROVAL_ERROR = 'Для отправки свыше 10 000 USDT требуется подтверждение владельца'
+
+
+def _wallet_registry_id(value):
+    if type(value) is int and value > 0:
+        return value
+    if isinstance(value, str) and re.fullmatch(r'[1-9][0-9]*', value):
+        return int(value)
+    raise ValueError('Некорректный кошелёк отправки')
+
+
+def _crm_payin_wallet_id(session, value, *, existing_id=None, allow_legacy=False):
+    if value in (None, ''):
+        return None
+    try:
+        wallet_id = _wallet_registry_id(value)
+    except ValueError:
+        raise ValueError('Некорректный кошелёк получения') from None
+    wallet = session.query(Wallet).filter_by(id=wallet_id).first()
+    if not wallet or not wallet.active or not wallet.accepts_payin:
+        raise ValueError('Кошелёк получения не найден в реестре')
+    if wallet.not_for_new_deals and not (allow_legacy and
+                                         (existing_id is None or wallet_id == existing_id)):
+        raise ValueError('Этот кошелёк доступен только для существующих сделок')
+    return wallet_id
+
+
+def _crm_payout_order_fingerprint(deal):
+    amount = Decimal(str(deal.payout_amount_usdt)) if deal.payout_amount_usdt is not None else None
+    order = {'dealId': deal.id, 'walletId': deal.payout_wallet_id,
+             'amount': format(amount.normalize(), 'f') if amount and amount.is_finite() else None,
+             'source': deal.payout_source.value if deal.payout_source else None,
+             'method': deal.payout_method.value if deal.payout_method else None,
+             'recipient': deal.client_id or deal.client_name,
+             'thb': deal.payout_amount_thb,
+             'hash': deal.payout_tx_hash,
+             'parts': json.loads(deal.payout_tx_hashes) if deal.payout_tx_hashes else None}
+    return hashlib.sha256(json.dumps(order, sort_keys=True, ensure_ascii=False,
+                                     separators=(',', ':')).encode()).hexdigest()
+
+
+def _crm_payout_approval_valid(deal):
+    try:
+        marker = json.loads(deal.payout_owner_approval or '{}')
+        if not isinstance(marker, dict):
+            return False
+        amount = Decimal(str(deal.payout_amount_usdt))
+        return bool(marker.get('byId') and marker.get('walletId') == deal.payout_wallet_id
+                    and marker.get('amount') == format(amount.normalize(), 'f')
+                    and marker.get('fingerprint') == _crm_payout_order_fingerprint(deal))
+    except (TypeError, ValueError, AttributeError, InvalidOperation):
+        return False
+
+
+def _crm_exchange_approval_problem(session, deal, data, *, trusted_approval=None):
+    if 'payout_owner_approval' in data:
+        return ('Метаданные одобрения задаёт только сервер', 400)
+    if 'payout_owner_approved' in data and type(data['payout_owner_approved']) is not bool:
+        return ('payout_owner_approved должен быть boolean', 400)
+    wallet = session.query(Wallet).filter_by(id=deal.payout_wallet_id).first() if deal.payout_wallet_id else None
+    policy = bool(wallet and wallet.address == 'TA6S3RBEY57jq8fXEVVsU6H9JZ18inenG4'
+                  and wallet.purpose == 'exchange')
+    if not policy:
+        deal.payout_owner_approval = None
+        return None
+    try:
+        amount = Decimal(str(deal.payout_amount_usdt))
+    except (TypeError, ValueError, InvalidOperation):
+        amount = None
+    if amount is None or not amount.is_finite() or amount <= 0:
+        return ('Укажите положительную сумму USDT для отправки с обменного кошелька', 400)
+    if amount <= Decimal(str(wallet.limit_usd or 10000)):
+        deal.payout_owner_approval = None
+        if data.get('payout_owner_approved') is True and current_role() not in ('findir', 'teodor'):
+            return ('Подтверждение владельца ставит финансист или владелец', 403)
+        return None
+    if data.get('payout_owner_approved') is True and current_role() not in ('findir', 'teodor'):
+        return ('Подтверждение владельца ставит финансист или владелец', 403)
+    if trusted_approval:
+        if (trusted_approval.get('walletId') != wallet.id or
+                trusted_approval.get('role') not in ('findir', 'teodor') or
+                not trusted_approval.get('byId')):
+            return (_EXCHANGE_APPROVAL_ERROR, 400)
+        deal.payout_owner_approval = json.dumps({'byId': trusted_approval['byId'],
+            'byName': trusted_approval.get('byName'), 'role': trusted_approval['role'],
+            'at': trusted_approval.get('at'), 'walletId': wallet.id,
+            'amount': format(amount.normalize(), 'f'),
+            'fingerprint': _crm_payout_order_fingerprint(deal),
+            'standFingerprint': trusted_approval.get('fingerprint')}, ensure_ascii=False)
+        return None
+    if data.get('payout_owner_approved') is False:
+        deal.payout_owner_approval = None
+    if _crm_payout_approval_valid(deal):
+        return None
+    if data.get('payout_owner_approved') is not True:
+        return (_EXCHANGE_APPROVAL_ERROR, 400)
+    role = current_role()
+    actor_id = flask_session.get('user_id')
+    user = session.query(AdminUser).filter_by(id=actor_id).first() if actor_id else None
+    if (role not in ('findir', 'teodor') or not user or user.login_disabled
+            or user.role != role):
+        return ('Подтверждение владельца ставит финансист или владелец', 403)
+    deal.payout_owner_approval = json.dumps({'byId': user.id,
+        'byName': user.display_name or user.username, 'role': role,
+        'at': int(time.time() * 1000), 'walletId': wallet.id,
+        'amount': format(amount.normalize(), 'f'),
+        'fingerprint': _crm_payout_order_fingerprint(deal)}, ensure_ascii=False)
+    return None
+
+
+def _create_deal_impl(session=None, *, data=None, defer_commit=False, skip_flow_gate=False, trusted_approval=None):
     """Existing CRM create validation; stand close may share its DB transaction."""
     own_session = session is None
     if own_session:
         session = get_session()
     try:
-        data = request.get_json() if data is None else data
+        data = dict(request.get_json() if data is None else data)
+        if (not data.get('payout_wallet_id') and not defer_commit
+                and data.get('payout_source') == PayOutSource.BINANCE.value
+                and data.get('deal_kind') in (None, '', 'exchange')):
+            exchange_wallet = session.query(Wallet).filter_by(
+                address='TA6S3RBEY57jq8fXEVVsU6H9JZ18inenG4', purpose='exchange',
+                active=True).first()
+            if exchange_wallet:
+                data['payout_wallet_id'] = exchange_wallet.id
+            else:
+                return jsonify(success=False, error='Обменный кошелёк отсутствует в реестре'), 400
+        if data.get('payout_wallet_id') not in (None, ''):
+            try:
+                data['payout_wallet_id'] = _wallet_registry_id(data['payout_wallet_id'])
+            except (TypeError, ValueError):
+                return jsonify(success=False, error='Некорректный кошелёк отправки'), 400
+            selected_wallet = session.query(Wallet).filter_by(id=data['payout_wallet_id']).first()
+            if not selected_wallet or not selected_wallet.active:
+                return jsonify(success=False, error='Кошелёк отправки не найден в реестре'), 400
+            if selected_wallet.not_for_new_deals and not defer_commit:
+                return jsonify(success=False, error='Этот кошелёк доступен только для существующих сделок'), 400
+        if data.get('payin_method') == PayInMethod.CRYPTO_DIRECT.value:
+            if not data.get('payin_wallet_id') and not defer_commit:
+                purpose = ('realty' if data.get('deal_kind') in REALTY_KINDS else 'exchange')
+                payin_wallet = session.query(Wallet).filter_by(purpose=purpose, active=True,
+                                                               accepts_payin=True).first()
+                if not payin_wallet:
+                    return jsonify(success=False, error='Кошелёк получения отсутствует в реестре'), 400
+                data['payin_wallet_id'] = payin_wallet.id
+            try:
+                data['payin_wallet_id'] = _crm_payin_wallet_id(session, data.get('payin_wallet_id'),
+                                                                allow_legacy=defer_commit)
+            except ValueError as exc:
+                return jsonify(success=False, error=str(exc)), 400
+        else:
+            data['payin_wallet_id'] = None
         
         # Парсим дату если передана
         created_at = None
@@ -17765,6 +18094,7 @@ def _create_deal_impl(session=None, *, data=None, defer_commit=False, skip_flow_
             payin_amount_usdt=data.get('payin_amount_usdt'),
             payin_rate_rub_usdt=data.get('payin_rate_rub_usdt'),
             payin_tx_hash=data.get('payin_tx_hash'),
+            payin_wallet_id=data.get('payin_wallet_id'),
             doverka_transaction_id=data.get('doverka_transaction_id'),
             payout_method=PayOutMethod(data['payout_method']) if data.get('payout_method') else None,
             payout_source=PayOutSource(data['payout_source']) if data.get('payout_source') else None,
@@ -17844,7 +18174,12 @@ def _create_deal_impl(session=None, *, data=None, defer_commit=False, skip_flow_
         # Доли сделки во входящих переводах: один перевод может обслуживать
         # несколько сделок, поэтому учёт ведётся реестром, а не флагом «занят»
         if deal.payin_tx_hashes or deal.payin_tx_hash:
-            _sync_payin_tx_uses(session, deal, _payin_tx_parts(deal))
+            payin_parts = _payin_tx_parts(deal)
+            recipient_problem = _crm_check_payin_recipient(session, deal, payin_parts)
+            if recipient_problem:
+                session.rollback()
+                return jsonify(recipient_problem[0]), recipient_problem[1]
+            _sync_payin_tx_uses(session, deal, payin_parts)
 
         # Пересчёт выплаты рефереру и чистой прибыли (фронт мог не знать
         # об авто-привязке реферера к клиенту и прислать referrer_payout_usdt=null)
@@ -17920,6 +18255,17 @@ def _create_deal_impl(session=None, *, data=None, defer_commit=False, skip_flow_
         if realty_error:
             session.rollback()
             return jsonify({'success': False, 'error': realty_error}), 400
+
+        final_wallet = session.query(Wallet).filter_by(id=deal.payout_wallet_id).first() if deal.payout_wallet_id else None
+        if final_wallet and final_wallet.not_for_new_deals and not defer_commit:
+            session.rollback()
+            return jsonify(success=False, error='Этот кошелёк доступен только для существующих сделок'), 400
+
+        approval_problem = _crm_exchange_approval_problem(session, deal, data,
+                                                          trusted_approval=trusted_approval)
+        if approval_problem:
+            session.rollback()
+            return jsonify(success=False, error=approval_problem[0]), approval_problem[1]
 
         # Автоматическое списание с кошелька при создании
         if deal.payout_source == PayOutSource.BINANCE and deal.payout_wallet_id and deal.payout_amount_usdt:
@@ -18006,6 +18352,31 @@ def update_deal(deal_id):
         # allocations or timestamps (including SQLAlchemy onupdate defaults).
         if data == {}:
             return jsonify({'success': True, 'deal': deal.to_dict()})
+        old_wallet = session.query(Wallet).filter_by(id=deal.payout_wallet_id).first() if deal.payout_wallet_id else None
+        old_policy_wallet = bool(old_wallet and old_wallet.purpose == 'exchange'
+                                 and old_wallet.address == 'TA6S3RBEY57jq8fXEVVsU6H9JZ18inenG4')
+        if 'payout_wallet_id' in data and data['payout_wallet_id'] not in (None, ''):
+            try:
+                data['payout_wallet_id'] = _wallet_registry_id(data['payout_wallet_id'])
+            except (TypeError, ValueError):
+                return jsonify(success=False, error='Некорректный кошелёк отправки'), 400
+            selected_wallet = session.query(Wallet).filter_by(id=data['payout_wallet_id']).first()
+            if not selected_wallet or not selected_wallet.active:
+                return jsonify(success=False, error='Кошелёк отправки не найден в реестре'), 400
+            if (selected_wallet.not_for_new_deals and
+                    data['payout_wallet_id'] != deal.payout_wallet_id):
+                return jsonify(success=False, error='Этот кошелёк доступен только для существующих сделок'), 400
+        if old_policy_wallet and 'payout_wallet_id' in data and data['payout_wallet_id'] != deal.payout_wallet_id:
+            return jsonify(success=False, error='Кошелёк отправки закреплён за выплатой; источник нельзя менять'), 409
+        if 'payin_wallet_id' in data:
+            try:
+                data['payin_wallet_id'] = _crm_payin_wallet_id(session, data['payin_wallet_id'],
+                    existing_id=deal.payin_wallet_id,
+                    allow_legacy=deal.payin_wallet_id is not None)
+            except ValueError as exc:
+                return jsonify(success=False, error=str(exc)), 400
+            if (deal.payin_tx_verified and data['payin_wallet_id'] != deal.payin_wallet_id):
+                return jsonify(success=False, error='Кошелёк подтверждённого прихода менять нельзя'), 409
         old_status = deal.status
         old_kind = deal.deal_kind
         old_payin_method = deal.payin_method
@@ -18029,6 +18400,7 @@ def update_deal(deal_id):
                       'referrer_paid', 'referrer_comp_model', 'referrer_markup_percent',
                       'notes', 'client_id',
                       'payout_founder_name', 'payout_wallet_id',
+                      'payin_wallet_id',
                       'is_custom', 'custom_payin_currency', 'custom_payin_amount', 'custom_payin_rate',
                       'custom_payout_currency', 'custom_payout_amount', 'custom_payout_rate',
                       'needs_reimbursement', 'source_channel']:
@@ -18044,7 +18416,15 @@ def update_deal(deal_id):
         # Приход крипты частями: пустой список = вернуться к одиночному хэшу из формы
         if 'payin_tx_hashes' in data:
             _apply_payin_tx_hashes(deal, data.get('payin_tx_hashes'))
-            _sync_payin_tx_uses(session, deal, _payin_tx_parts(deal))
+        if ('payin_tx_hashes' in data or 'payin_tx_hash' in data or
+                'payin_wallet_id' in data) and (deal.payin_tx_hashes or deal.payin_tx_hash):
+            payin_parts = _payin_tx_parts(deal)
+            recipient_problem = _crm_check_payin_recipient(session, deal, payin_parts)
+            if recipient_problem:
+                session.rollback()
+                return jsonify(recipient_problem[0]), recipient_problem[1]
+            if 'payin_tx_hashes' in data or (deal.payin_wallet_id and 'payin_tx_hash' in data):
+                _sync_payin_tx_uses(session, deal, payin_parts)
 
         # Дополнительные приходы. Суммы основной части вычисляем ДО записи
         # агрегатов: если поле не пришло в payload, восстанавливаем её вычитанием
@@ -18210,6 +18590,19 @@ def update_deal(deal_id):
             _apply_payout_cost_from_transfers(deal)
             _recalculate_deal_financials(deal, data)
 
+        if old_policy_wallet and deal.payout_wallet_id != old_wallet.id:
+            session.rollback()
+            return jsonify(success=False, error='Кошелёк отправки закреплён за выплатой; источник нельзя менять'), 409
+        final_wallet = session.query(Wallet).filter_by(id=deal.payout_wallet_id).first() if deal.payout_wallet_id else None
+        if (final_wallet and final_wallet.not_for_new_deals and
+                deal.payout_wallet_id != (old_wallet.id if old_wallet else None)):
+            session.rollback()
+            return jsonify(success=False, error='Этот кошелёк доступен только для существующих сделок'), 400
+        approval_problem = _crm_exchange_approval_problem(session, deal, data)
+        if approval_problem:
+            session.rollback()
+            return jsonify(success=False, error=approval_problem[0]), approval_problem[1]
+
         # Мультиагенты: явный массив agents → каскадный пересчёт (пустой = убрать всех);
         # без массива → зеркалим одиночного реферала (сохраняя ручной payout)
         if 'agents' in data:
@@ -18354,10 +18747,10 @@ def delete_deal(deal_id):
     session = get_session()
     try:
 
-        deal = session.query(Deal).filter(Deal.id == deal_id).first()
+        deal = session.query(Deal).filter(Deal.id == deal_id).with_for_update().first()
         if not deal:
             return jsonify({'success': False, 'error': 'Сделка не найдена'}), 404
-        
+
         # Запоминаем данные до удаления для Google Sheet
         reimbursement_id = deal.reimbursement_id
         was_reimbursed = deal.reimbursement_id is not None
@@ -22632,6 +23025,14 @@ def _enrich_payout_transfers(session, deal):
                 changed = True
     if changed:
         deal.payout_tx_hashes = json.dumps(parts, ensure_ascii=False)
+    source_wallet = session.query(Wallet).filter_by(id=deal.payout_wallet_id).first() if deal.payout_wallet_id else None
+    if (source_wallet and source_wallet.purpose == 'exchange' and
+            source_wallet.address == 'TA6S3RBEY57jq8fXEVVsU6H9JZ18inenG4'):
+        for part in parts:
+            from_address = (part.get('from_address') or '').strip()
+            if from_address and from_address != source_wallet.address:
+                raise ValueError('Хеш отправлен с другого кошелька; источник выплаты менять нельзя')
+        return
     # Возврат идёт туда, откуда выдали, — это же обещает форма («туда же пойдёт
     # возврат»). Раньше адрес ставился только в пустое поле, а форма всегда
     # присылала payout_wallet_id из скрытого селекта Binance (первый кошелёк
@@ -22643,7 +23044,8 @@ def _enrich_payout_transfers(session, deal):
         addr = (part.get('from_address') or '').strip()
         if not addr:
             continue
-        wallet = session.query(Wallet).filter(Wallet.address.ilike(addr)).first()
+        wallet = session.query(Wallet).filter(
+            Wallet.address.ilike(addr) if addr.startswith('0x') else Wallet.address == addr).first()
         if wallet:
             deal.payout_wallet_id = wallet.id
             break
@@ -24220,9 +24622,14 @@ def confirm_doverka(deal_id):
         data = request.get_json()
         payout_hash = data.get('payout_hash')
         
-        deal = session.query(Deal).filter(Deal.id == deal_id).first()
+        deal = session.query(Deal).filter(Deal.id == deal_id).with_for_update().first()
         if not deal:
             return jsonify({'success': False, 'error': 'Сделка не найдена'}), 404
+
+        approval_problem = _crm_exchange_approval_problem(session, deal, {})
+        if approval_problem:
+            session.rollback()
+            return jsonify(success=False, error=approval_problem[0]), approval_problem[1]
             
         deal.doverka_status = DoverkaStatus.CONFIRMED
         deal.doverka_payout_hash = payout_hash
