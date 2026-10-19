@@ -92,6 +92,19 @@ body.screen-mode.embed .container{padding-top:14px}
    адрес кошелька в тексте лога вылезал за край правой колонки (Карим, 25.09). */
 .li .t1,.li .t2,.v,.tbl td,.fh,.derived,.alert,.tl .t,.tl .s,.side{overflow-wrap:anywhere}
 td{overflow-wrap:anywhere}
+/* «Как задачи наполняют сделку» (История сделки) — обычные короткие русские
+   слова, а не хеши/адреса: глобальный overflow-wrap:anywhere выше рвал их по
+   буквам в узких колонках на 768px (находка №2 аудита ui-2026-10-17, блокер).
+   Слова должны переноситься по пробелам, а если таблица всё равно шире
+   контейнера на 375 — скроллиться целиком, а не обрезаться (находка №3). */
+.hist-flow-table,.hist-flow-table th,.hist-flow-table td{overflow-wrap:normal;word-break:normal}
+.hist-scroll-x{overflow-x:auto;-webkit-overflow-scrolling:touch;max-width:100%}
+.hist-scroll-x .hist-flow-table{min-width:520px}
+/* Внутренний комментарий (находка №4 аудита ui-2026-10-17): переносы строк
+   как в исходном тексте, длинный текст свёрнут за «Показать полностью». */
+.comment-fold-text{white-space:pre-line;overflow-wrap:break-word}
+.comment-fold>summary{cursor:pointer;color:var(--text-sec);font-size:13px}
+.comment-fold[open]>summary{margin-bottom:6px}
 .addr{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;letter-spacing:.01em;word-break:break-all}
 .li .t3 .pick{display:block;font-size:11.5px;font-weight:600;color:var(--text-muted);letter-spacing:.01em}
 .li.on .t3 .pick{color:var(--green-dark)}
@@ -112,12 +125,12 @@ td{overflow-wrap:anywhere}
 .btn-success{background:var(--green);color:#fff}.btn-success:hover{background:var(--green-dark)}
 .btn-secondary{background:var(--navy-100);color:var(--navy-700)}.btn-secondary:hover{background:var(--navy-200)}
 .btn-outline{background:none;border:1.5px solid var(--border);color:var(--text-sec)}.btn-outline:hover{border-color:var(--navy-400);color:var(--text)}
-.btn-sm{padding:8px 14px;font-size:13px;min-height:36px}
+.btn-sm{padding:8px 14px;font-size:14px;min-height:36px}
 .btn-lg{padding:16px 22px;font-size:16px;min-height:56px}
 /* s27: чек от операциониста — главное на шаге, поэтому крупный акцентный блок
    в самом верху карточки, а служебное (CRM-превью и т.п.) — ниже и спокойнее (Карим, 25.09) */
 .checktop{border:1.5px solid var(--coral);border-radius:var(--r);padding:18px;margin-bottom:16px}
-.checktop .checklab{font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--coral-hover)}
+.checktop .checklab{font-size:11.5px;font-weight:700;letter-spacing:.04em;color:var(--coral-hover)}
 .checktop .checksum{font-size:26px;font-weight:800;letter-spacing:-.02em;margin-top:4px;overflow-wrap:anywhere}
 .checktop .checksum .to{font-size:15px;font-weight:600;color:var(--text-sec);margin-left:4px}
 .checkfile{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;
@@ -248,7 +261,7 @@ tr:last-child td{border-bottom:none}
 
 /* денежные блоки карточки сделки — как в «Деталях сделки» рабочей CRM */
 .sec{font-size:13px;font-weight:800;letter-spacing:.02em;margin:0 0 12px}
-.sec.pi{color:var(--green-darker)} .sec.snd{color:#7C3AED} .sec.fin{color:#4F46E5} .sec.po{color:#0369A1}
+.sec.pi{color:var(--green-darker)} .sec.snd{color:#7C3AED} .sec.fin{color:var(--navy-700)} .sec.po{color:#0369A1}
 .box{border-radius:var(--r-sm);padding:12px 14px;margin:12px 0;font-size:13.5px;line-height:1.6}
 .box-red{background:#FEF2F2;border:1px solid #FECACA;color:#991B1B}
 .box-amber{background:#FFFBEB;border:1px solid #FDE68A;color:#92400E}
@@ -1324,6 +1337,10 @@ function plural(n,one,few,many){
 function since(ts){ const a=ago(ts); return a?a.replace(' назад',''):'только что'; }
 function ago(ts){
   if(!ts)return '';
+  // Защита от «NaN дн»: лог иногда содержит записи не того формата (находка
+  // №5 аудита ui-2026-10-17 — строка вместо {at,...} давала NaN через
+  // встроенный String.prototype.at). Нечисловой или нулевой ts — молча '—'.
+  if(typeof ts!=='number'||!Number.isFinite(ts))return '';
   const m=Math.round((Date.now()-ts)/60000);
   if(m<1)return 'только что';
   if(m<60)return m+' мин назад';
@@ -2532,6 +2549,10 @@ function sendDeclared(x){return Math.round(sendList(x).filter(t=>!['failed','mis
 function sendLeft(x){return Math.max(0,Math.round(((pcAmount(x)||0)-sendSum(x))*100)/100);}
 function sendDone(x){const need=pcAmount(x)||0;return need>0&&sendSum(x)>=need-0.005;}
 function htmlText(v){return String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+// Линейная иконка «ожидание» (⏳) — та же гарнитура, что у остальных SVG в проекте
+// (viewBox 24, обводка 1.8, скруглённые концы). Эмодзи как иконки запрещены
+// DESIGN.md (находка №6 аудита ui-2026-10-17).
+function icoWait(){return '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px;margin-right:2px"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>';}
 function jsLiteralAttr(v){return htmlText(JSON.stringify(String(v==null?'':v)));}
 function transferMode(id,mode){
   if(!demoAllowed()){toast('DEMO отключён в этом окружении');return;}
@@ -5515,7 +5536,7 @@ function taskDealsHtml(role){
   return `<div class="task-deals-table"><div class="task-deals-heading"><span>Сделка</span><span>Флоу</span><span>Этап</span><span>На ком</span><span>Сумма</span><span>С какого времени</span></div>${deals.map(d=>{
     const a=approx(d),amount=apMoney(a,'pay');
     const path=dealTaskPath(d,null),lastEvent=(d.log||[]).at(-1),sinceAt=lastEvent?.at;
-    return `<button type="button" class="task-deal-row" onclick="openDeal(${d.id})"><span class="task-deal-name"><strong>${htmlText(d.code)} · ${htmlText(d.client)}</strong></span><span class="task-deal-flow">${htmlText(d.kind||d.type||'Сделка')}</span><span class="task-deal-stage">${htmlText(d.closed?d.closeReason||'Завершена':d.prepay?prepayBranchStatus(d,'payment'):stepTitle(d))}<span class="task-deal-progress" aria-label="Шаг ${path.index+1} из ${path.steps.length}">${path.steps.map((_,i)=>`<i class="${i<path.index?'done':i===path.index?'current':''}"></i>`).join('')}</span></span><span class="task-deal-who">${htmlText(d.closed?'—':d.prepay?prepayBranchAssignee(d,'payment'):(ROLES[stepWho(d)]||{}).n||'—')}</span><b class="task-deal-amount num">${amount==='посчитаем после курса'?apMoney(a,'thb'):amount}</b><span class="task-deal-since">${sinceAt?since(sinceAt):'—'}</span></button>`;
+    return `<button type="button" class="task-deal-row" onclick="openDeal(${d.id})"><span class="task-deal-name"><strong>${htmlText(d.code)} · ${htmlText(d.client)}</strong></span><span class="task-deal-flow">${htmlText(d.kind||d.type||'Сделка')}</span><span class="task-deal-stage">${htmlText(d.closed?d.closeReason||'Завершена':d.prepay?prepayBranchStatus(d,'payment'):stepTitle(d))}<span class="task-deal-progress" aria-label="Шаг ${path.index+1} из ${path.steps.length}">${path.steps.map((_,i)=>`<i class="${i<path.index?'done':i===path.index?'current':''}"></i>`).join('')}</span></span><span class="task-deal-who">${htmlText(d.closed?'—':d.prepay?prepayBranchAssignee(d,'payment'):(ROLES[stepWho(d)]||{}).n||'—')}</span><b class="task-deal-amount num">${amount==='посчитаем после курса'?apMoney(a,'thb'):amount}</b><span class="task-deal-since">${typeof sinceAt==='number'&&Number.isFinite(sinceAt)?since(sinceAt):'—'}</span></button>`;
   }).join('')}</div>`;
 }
 function showTaskListSection(section){
@@ -5604,12 +5625,15 @@ function viewTasks(){
     h+=`<div class="task-list-person"><span class="task-list-avatar">${ROLES[waitRole].n.charAt(0)}</span>${ROLES[waitRole].n}<span class="task-list-person-count">· ${group.length}</span></div>`;
     h+=group.map(d=>{
       const a=approx(d),pay=apMoney(a,'pay');
-      return `<button type="button" class="task-list-row task-list-wait-row" onclick="openDeal(${d.id})">
+      const canRemind=role==='manager'&&d.step==='s14';
+      return `<div class="task-list-row task-list-wait-row${canRemind?' task-list-wait-row-remind':''}" role="button" tabindex="0"
+          onclick="openDeal(${d.id})" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openDeal(${d.id})}">
         <span class="task-list-row-main"><strong>${htmlText(d.prepay?prepayBranchStatus(d,'payment'):stepTitle(d))}</strong>
           <span class="task-list-meta">${d.code} · ${d.client} · ${d.type}${d.kind?' · '+d.kind:''}</span></span>
         <span class="task-list-amount num">${pay==='посчитаем после курса'?apMoney(a,'thb'):pay}</span>
-        <span class="task-list-arrow" aria-hidden="true">›</span></button>
-        ${role==='manager'&&d.step==='s14'?`<button class="btn btn-outline btn-sm" onclick="s14Ping(${d.id})">Напомнить</button>`:''}`;
+        ${canRemind
+          ?`<button type="button" class="btn btn-outline btn-sm task-list-remind" onclick="event.stopPropagation();s14Ping(${d.id})">Напомнить</button>`
+          :`<span class="task-list-arrow" aria-hidden="true">›</span>`}</div>`;
     }).join('');
   });
   h+=`</section><section class="card task-list-panel task-list-all ${section==='all'?'on':''}" data-section="all">
@@ -5669,8 +5693,8 @@ function viewDeals(){
     ${S.role==='manager'||S.role==='admin'?`<button class="btn btn-primary btn-sm" onclick="startManual()">+ Создать сделку</button>
       <button class="btn btn-outline btn-sm" onclick="startCreate()">Завести задачу</button>`:''}</div>
   ${list.length?`<table><thead><tr>
-    <th>ID</th><th>Дата</th><th>Менеджер</th><th>Клиент</th><th>Партнёр</th><th>Метод Pay-In</th>
-    <th>Сумма USDT</th><th>Pay-Out THB</th><th>Прибыль</th><th>Статус</th><th>Задача</th><th>Действия</th>
+    <th>ID</th><th>Дата</th><th>Менеджер</th><th>Клиент</th><th>Партнёр</th><th>Метод получения</th>
+    <th>Сумма USDT</th><th>Оплата, ฿</th><th>Прибыль</th><th>Статус</th><th>Задача</th><th>Действия</th>
   </tr></thead><tbody>
   ${list.map(d=>{const e=econ(d), pr=dealProfit(d), st=STEPS[d.step];
     return `<tr>
@@ -6559,7 +6583,7 @@ function cnvRow(d){
   if(isCrypto(d)||d.type!=='Оплата недвижимости'&&!d.amountRub) return '';
   if(isCrypto(d)) return '';
   const c=convOf(d);
-  if(!c) return `<p style="margin-top:10px"><b>Конвертация:</b> <span style="color:#B45309">⏳ ждёт конвертации</span>
+  if(!c) return `<p style="margin-top:10px"><b>Конвертация:</b> <span style="color:#B45309">${icoWait()}ждёт конвертации</span>
     <span style="color:var(--text-muted);font-size:12.5px">— рубли на счёте, брокер ещё не выбран</span></p>`;
   const mine=c.sources.find(x=>x.dealId===d.id)||{};
   return `<p style="margin-top:10px"><b>Конвертация:</b>
@@ -6575,6 +6599,20 @@ function overview(d,st,mine,p,wh){
   const got=['pass','inv','spa','ipds'].filter(k=>d.docs[k]);
   const docRows=docListRows(d), docN=docRows.issued.length+docRows.client.length;
   const row=(k,v,s)=>v==null||v===''||v==='—'?'':`<tr><th>${k}</th><td>${v}${s?` <span style="color:var(--text-muted);font-size:12px">${s}</span>`:''}</td></tr>`;
+  // Внутренний комментарий — ввод человека, который может оказаться простыней
+  // текста (реквизиты, вставленные одним абзацем — находка №4 аудита
+  // ui-2026-10-17). Содержимое не парсим и не трогаем, только: переносы строк
+  // сохраняются (white-space:pre-line, не только через <br>), а длинный текст
+  // свёрнут — тот же паттерн <details>/summary, что уже используется для
+  // комментария к шагу (stepNote) и свёрнутых секций карточки.
+  const commentRow=(k,v)=>{
+    const text=String(v);
+    if(!text.trim())return '';
+    const long=text.length>160||text.includes('\n');
+    return `<tr><th>${htmlText(k)}</th><td>${long
+      ?`<details class="comment-fold"><summary>Показать полностью</summary><div class="comment-fold-text">${htmlText(text)}</div></details>`
+      :`<div class="comment-fold-text">${htmlText(text)}</div>`}</td></tr>`;
+  };
   const started=d.log.length&&d.log[0].at, last=d.log.length&&d.log[d.log.length-1].at;
   return `${d.closed
     ?`<div class="card" style="margin-bottom:16px"><div class="alert ${d.closeReason==='Успешно завершена'?'a-ok':'a-warn'}" style="margin:0">
@@ -6598,7 +6636,7 @@ function overview(d,st,mine,p,wh){
       ${d.partial?row('Часть оплаты',(d.partNo||'')+' по инвойсу на '+money(d.invoiceTotal,d.kind==='Фрихолд'?'$':'฿')):''}
       ${row('Заведена',d.createdAt,started?dur(Date.now()-started)+' назад':'')}
       ${d.comment?row('Комментарий менеджера',d.comment):''}
-      ${d.docComment?row('Комментарий постановщика',d.docComment):''}
+      ${d.docComment?commentRow('Комментарий постановщика',d.docComment):''}
     ${row('Кто привёл',d.refId?(refById(d.refId)||{}).name||'—':(refSignal(d)?'<span style="color:#B45309">не указан</span>':'пришёл сам'),
       d.refId?(()=>{const r=refById(d.refId);const lost=d.closed&&d.closeReason!=='Успешно завершена';
         return (lost?'сделка не состоялась — начисления нет, но она в его конверсии'
@@ -6621,7 +6659,7 @@ function overview(d,st,mine,p,wh){
   ${d.crmDealId?`<div class="alert a-ok" style="margin:0 0 14px"><div><b>В CRM: сделка #${d.crmDealId}</b> · внесена ${d.crmAt||''} — <a href="/crm?deal=${d.crmDealId}" target="_blank">открыть в CRM</a></div></div>`:''}
   ${d.bitrixSync?`<div class="alert ${d.bitrixSync.status==='success'?'a-ok':'a-warn'}" style="margin:0 0 14px"><div><b>${d.bitrixSync.status==='success'?'Bitrix: сделка переведена в '+(d.bitrixSync.kind==='lose'?'LOSE':'WON'):'Bitrix не обновлён'}</b>${d.bitrixSync.status==='error'&&d.bitrixSync.error==='wrong_category'?' — сделка в другой воронке.':d.bitrixSync.status==='error'&&d.bitrixSync.error==='already_lost'?' — сделка уже закрыта как проигранная.':d.bitrixSync.status==='error'&&d.bitrixSync.error==='already_won'?' — сделка уже закрыта как успешная.':''}</div>${d.bitrixSync.status!=='success'&&canRole('manager')?`<button class="btn btn-outline btn-sm" onclick="crmRetryBitrix(${d.id})">Повторить</button>`:''}</div>`:''}
   <div class="card" style="margin-bottom:16px">
-    <div class="sec pi">PAY-IN</div>
+    <div class="sec pi">Получение</div>
     <table class="tbl">
       ${row('Метод',d.payType||'—')}
       ${isCrypto(d)&&d.kind==='Фрихолд'?row('План клиента',d.amountUsdt==null?'укажите сумму':money(d.amountUsdt,'USDT'),'договорная сумма')+row('Фактически пришло',E.parts[0].fact!=null?money(E.parts[0].fact,'USDT'):'ожидается','по подтверждённым хешам'):isCrypto(d)?row('Сумма USDT',usd(E.parts[0].usdt),E.parts[0].fact!=null?'по хэшу — факт':'со слов клиента, хэша ещё нет'):row('Сумма RUB',money(d.incomeAmount||d.amountRub,'₽'),
@@ -6679,7 +6717,7 @@ function overview(d,st,mine,p,wh){
   </div>`:''}
 
   ${(d.type==='Оплата недвижимости'&&E.ready)?'':`<div class="card" style="margin-bottom:16px">
-    <div class="sec po">PAY-OUT</div>
+    <div class="sec po">Оплата</div>
     ${(!d.payout||!(d.payout.method||d.payout.source||d.payout.usdt||d.payout.thb))?fillNote(d,'Pay-Out'):`
     <table class="tbl">
       ${row('Метод выдачи',(d.payout&&d.payout.method)||'—')}
@@ -6712,7 +6750,7 @@ function overview(d,st,mine,p,wh){
       Начисления нет — платить не с чего. В статистике реферера она считается приведённой и потерянной, это его конверсия.</div></div>
   </div>`:''}
   ${E.ready?`<div class="card" style="margin-bottom:16px">
-    <div class="sec fin">ФИНАНСЫ</div>
+    <div class="sec fin">Финансы</div>
     <p style="font-size:14px">Валовая прибыль: <b class="big-num pos">${usd(E.gross)}</b> <span style="color:var(--text-sec)">(${E.pct.toFixed(1)}%)</span></p>
     <p style="font-size:12.5px;color:var(--text-muted);margin-top:4px">${[
       'в крипте '+usd(E.crypto),
@@ -6728,7 +6766,7 @@ function overview(d,st,mine,p,wh){
     <p style="font-size:14px;margin-top:10px">Чистая прибыль: <b class="big-num pos">${usd(E.net)}</b></p>
     ${E.pockets==='два'?`<p style="font-size:12.5px;color:var(--green-darker);margin-top:4px">= ${money(E.feeThb,'฿')} на MF Corp + ${usd(E.crypto-E.agentsTotal)} на кошельке</p>`:''}
     ${d.notes?`<p style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border-light);font-size:13.5px"><b>Заметки:</b> ${d.notes}</p>`:''}
-  </div>`:`<div class="card" style="margin-bottom:16px"><div class="sec fin">ФИНАНСЫ</div>
+  </div>`:`<div class="card" style="margin-bottom:16px"><div class="sec fin">Финансы</div>
     <div class="alert a-info" style="margin:0"><div>${d.kind==='Фрихолд'&&isCrypto(d)
       ?'Плановый доход известен из суммы клиента и отправки в IPPS. Фактическую прибыль покажем после подтверждения прихода USDT по хешам и расходов на оплату застройщика.'
       :'Прибыль посчитается, когда будут известны '+(d.type==='Оплата недвижимости'?'курс партнёра USDT→THB и приход':'себестоимость выдачи и приход')+'. '+(isCrypto(d)?'':'Для рублёвой сделки нужен ещё курс обмена у брокера.')}</div></div></div>`}
@@ -6788,7 +6826,7 @@ function pathCard(d){
     ${longest?`<div class="alert a-info"><div>Дольше всего сделка ждала на «<b>${htmlText(longest.l.text)}</b>» — ${dur(longest.ms)}, роль «${ROLES[longest.l.role]?ROLES[longest.l.role].t:'—'}». Вот такие строки и покажут узкое место, когда сделок станет много.</div></div>`:''}
     <div class="card-title" style="font-size:14px;margin:18px 0 10px">Как задачи наполняют сделку
       <span class="sub">каждый шаг вносит свою часть — из них и собирается карточка</span></div>
-    <table style="margin-bottom:20px"><thead><tr><th>Шаг</th><th>Кто</th><th>Что вносит в сделку</th><th>Статус</th></tr></thead><tbody>
+    <div class="hist-scroll-x"><table class="hist-flow-table" style="margin-bottom:20px"><thead><tr><th>Шаг</th><th>Кто</th><th>Что вносит в сделку</th><th>Статус</th></tr></thead><tbody>
     ${flowOf(d).map(k=>{const f=FILLS[k]; if(!f)return '';
       const idx=flowOf(d).indexOf(k), cur=flowOf(d).indexOf(d.step);
       const st=d.prepay?(k==='s24'&&!d.prepay.wallet.multisig?'не требуется':prepayStepDone(d,k)?'внесено':([d.step,d.prepay.brokerStep].includes(k)?'сейчас':'ещё нет')):d.closed?'внесено':(cur<0?'—':(idx<cur?'внесено':(idx===cur?'сейчас':'ещё нет')));
@@ -6796,7 +6834,7 @@ function pathCard(d){
         <td>${STEPS[k].n}. ${k==='s22'&&d.kind==='Фрихолд'?'Согласовать заявку IPPS':(k==='s25'&&d.kind==='Фрихолд'?'Ожидать MT103':STEPS[k].title)}</td><td>${stepWho(d,k)?ROLES[stepWho(d,k)].t:'—'}</td>
         <td><b>${f.b}</b> — ${d.prepay&&k==='s22'?'согласованная операционистом заявка IPPS для параллельной оплаты':f.w}</td>
         <td>${st==='внесено'?'<span class="badge b-done">внесено</span>':(st==='сейчас'?'<span class="badge b-new">сейчас</span>':`<span class="badge b-wait">${st}</span>`)}</td></tr>`;}).join('')}
-    </tbody></table>
+    </tbody></table></div>
     <div class="card-title" style="font-size:14px;margin:18px 0 10px">Хронология</div>
     <div class="hist-feed">
     ${rows.map(r=>`<div class="hist-item"${r.open?' style="background:var(--coral-light)"':''}>
@@ -7361,7 +7399,10 @@ async function crmRetryBitrix(id){
 }
 function crmGapsBlock(d,title){
   const g=crmGaps(d);
-  if(!g.length) return `<div class="alert a-ok" style="margin:0 0 14px"><div><b>Карточка CRM заполнена</b> — всё, из чего CRM считает прибыль по этой сделке, собрано по дороге.</div></div>`;
+  // Зелёный — только для подтверждённого движения денег (The Earned Green
+  // Rule, DESIGN.md). «Карточка заполнена» — служебный статус формы, а не
+  // факт про деньги, поэтому не a-ok (находка №13 аудита ui-2026-10-17).
+  if(!g.length) return `<div class="alert a-info" style="margin:0 0 14px"><div><b>Карточка CRM заполнена</b> — всё, из чего CRM считает прибыль по этой сделке, собрано по дороге.</div></div>`;
   return `<div class="alert a-warn" style="margin:0 0 14px"><div><b>${title||'В карточке CRM не хватает'}: ${g.length}</b>
     <ul style="margin:6px 0 0 18px;padding:0">${g.map(x=>`<li>${x.label}${x.step?` <span style="color:var(--text-muted)">— шаг «${x.step}»</span>`:''}</li>`).join('')}</ul></div></div>`;
 }
