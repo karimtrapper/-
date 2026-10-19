@@ -10135,6 +10135,15 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
         protected_wallets = {w.id: w for w in db.query(Wallet).filter(
             Wallet.address.in_(POLICY_WALLET_ADDRESSES)).all()}
         by_address = {w.address: w for w in protected_wallets.values()}
+        protected_before = {str(mirror.get('id')): mirror.get('addr')
+                            for mirror in previous.get('wallets') or []
+                            if mirror.get('addr') in by_address}
+        protected_after = {str(mirror.get('id')): mirror.get('addr')
+                           for mirror in new_state.get('wallets') or []
+                           if mirror.get('addr') in by_address}
+        if any(protected_after.get(wallet_id) != addr
+               for wallet_id, addr in protected_before.items()):
+            return 'Кошелёк с политикой подписей нельзя удалить или переименовать'
         for mirror in new_state.get('wallets') or []:
             try:
                 mirror_id = int(mirror.get('id'))
@@ -10143,14 +10152,16 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
             registry = protected_wallets.get(mirror_id) or by_address.get(mirror.get('addr'))
             if not registry:
                 continue
-            if (mirror_id != registry.id or mirror.get('addr') != registry.address
-                    or mirror.get('purpose') != registry.purpose
-                    or mirror.get('limit_usd') != registry.limit_usd
-                    or mirror.get('initiator_roles') != _stand_policy_roles(registry, 'initiator_roles')
-                    or mirror.get('confirmer_roles') != _stand_policy_roles(registry, 'confirmer_roles')
-                    or mirror.get('owner_can_alone') != registry.owner_can_alone
-                    or mirror.get('signer_addresses') != json.loads(registry.signer_addresses or '{}')):
+            if mirror_id != registry.id or mirror.get('addr') != registry.address:
                 return 'Правила кошелька берутся только из реестра'
+            # The board mirror is presentation data. Registry policy is authoritative;
+            # stale browser metadata cannot edit or disable signing rules.
+            mirror['purpose'] = registry.purpose
+            mirror['limit_usd'] = registry.limit_usd
+            mirror['initiator_roles'] = _stand_policy_roles(registry, 'initiator_roles')
+            mirror['confirmer_roles'] = _stand_policy_roles(registry, 'confirmer_roles')
+            mirror['owner_can_alone'] = registry.owner_can_alone
+            mirror['signer_addresses'] = json.loads(registry.signer_addresses or '{}')
     prior_deals = {d.get('id'): d for d in previous.get('deals', [])}
     for deal in new_state.get('deals') or []:
         before = prior_deals.get(deal.get('id'))
@@ -10167,6 +10178,9 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
     if len(new_convs) != len(new_state.get('convs', [])):
         return 'Нельзя дублировать пачку на доске'
     prior_convs = {c.get('id'): c for c in previous.get('convs', [])}
+    if any(c.get('recipientWarnings') and c.get('id') not in new_convs
+           for c in previous.get('convs') or []):
+        return 'Сверку адреса получения фиксирует только сервер'
     for conv in new_state.get('convs') or []:
         before_conv = prior_convs.get(conv.get('id')) or {}
         if before_conv.get('recipientWarnings') != conv.get('recipientWarnings'):
@@ -12354,11 +12368,13 @@ def stand_incoming_check():
     finally:
         db.close()
     checked = verify_transfer(tx_hash, network, None, receiver, None)
-    if checked['status'] == 'mismatch':
+    recipient_observed = False
+    if receiver in POLICY_WALLET_ADDRESSES and checked['status'] == 'mismatch':
         observed = verify_transfer(tx_hash, network, None, None, None, observe_recipient=True)
         if (observed['status'] == 'confirmed' and observed.get('to') and
                 observed['to'] != receiver):
             checked = observed
+            recipient_observed = True
     if checked['status'] != 'confirmed':
         return jsonify({'success': False, 'status': checked['status'],
                         'error': checked.get('checkError') or 'Перевод ещё не подтверждён'}), 422
@@ -12378,7 +12394,7 @@ def stand_incoming_check():
         current_receiver = stand_wallet_address(state, conv.get('walletId'))
         if current_receiver != receiver:
             return jsonify({'success': False, 'error': 'Кошелёк пачки изменился'}), 409
-        actual_receiver = checked.get('to') or receiver
+        actual_receiver = checked.get('to') if recipient_observed else receiver
         if not actual_receiver or not valid_address(actual_receiver, network):
             return jsonify(success=False, error='Сеть не подтвердила адрес получения'), 422
         warnings = conv.get('recipientWarnings') or []
@@ -12940,12 +12956,14 @@ def stand_payin_check():
     if not tx_hash or tx_hash.startswith('demo:'):
         return jsonify({'success': False, 'error': 'Хеш или ссылка не соответствует сети сделки'}), 400
     checked = verify_transfer(tx_hash, network, None, receiver, None)
-    if checked['status'] == 'mismatch':
+    recipient_observed = False
+    if receiver in POLICY_WALLET_ADDRESSES and checked['status'] == 'mismatch':
         observed = verify_transfer(tx_hash, network, None, None, None, observe_recipient=True)
         if (observed['status'] == 'confirmed' and observed.get('to') and
                 (observed['to'].lower() != receiver.lower() if network == 'erc20'
                  else observed['to'] != receiver)):
             checked = observed
+            recipient_observed = True
     # Роль уже зафиксирована до чтения доски: current_role() закрывает scoped-сессию.
     if checked['status'] != 'confirmed':
         return jsonify({'success': False, 'status': checked['status'],
@@ -12964,7 +12982,7 @@ def stand_payin_check():
             return jsonify({'success': False, 'error': 'Способ оплаты изменился — повторите проверку'}), 409
         if _stand_payin_target(state, deal) != (network, receiver):
             return jsonify({'success': False, 'error': 'Сеть или кошелёк прихода изменились — повторите проверку'}), 409
-        actual_receiver = checked.get('to') or receiver
+        actual_receiver = checked.get('to') if recipient_observed else receiver
         if not actual_receiver or not valid_address(actual_receiver, network):
             return jsonify(success=False, error='Сеть не подтвердила адрес получения'), 422
         warnings = deal.get('recipientWarnings') or []
@@ -17839,12 +17857,30 @@ def _crm_payout_order_fingerprint(deal):
                                      separators=(',', ':')).encode()).hexdigest()
 
 
+def _crm_exchange_exposure(deal):
+    """Approval covers the larger of declared payout and allocated send parts."""
+    amount = Decimal(str(deal.payout_amount_usdt))
+    if not amount.is_finite() or amount <= 0:
+        raise ValueError('invalid payout amount')
+    parts = _payout_transfer_parts(deal)
+    total = Decimal(0)
+    for part in parts:
+        raw = part.get('amount_usdt')
+        if raw in (None, ''):
+            continue
+        value = Decimal(str(raw))
+        if not value.is_finite() or value < 0:
+            raise ValueError('invalid transfer amount')
+        total += value
+    return max(amount, total)
+
+
 def _crm_payout_approval_valid(deal):
     try:
         marker = json.loads(deal.payout_owner_approval or '{}')
         if not isinstance(marker, dict):
             return False
-        amount = Decimal(str(deal.payout_amount_usdt))
+        amount = _crm_exchange_exposure(deal)
         return bool(marker.get('byId') and marker.get('walletId') == deal.payout_wallet_id
                     and marker.get('amount') == format(amount.normalize(), 'f')
                     and marker.get('fingerprint') == _crm_payout_order_fingerprint(deal))
@@ -17864,7 +17900,7 @@ def _crm_exchange_approval_problem(session, deal, data, *, trusted_approval=None
         deal.payout_owner_approval = None
         return None
     try:
-        amount = Decimal(str(deal.payout_amount_usdt))
+        amount = _crm_exchange_exposure(deal)
     except (TypeError, ValueError, InvalidOperation):
         amount = None
     if amount is None or not amount.is_finite() or amount <= 0:
@@ -17915,7 +17951,7 @@ def _create_deal_impl(session=None, *, data=None, defer_commit=False, skip_flow_
         session = get_session()
     try:
         data = dict(request.get_json() if data is None else data)
-        if (not data.get('payout_wallet_id') and not defer_commit
+        if (data.get('payout_wallet_id') in (None, '') and not defer_commit
                 and data.get('payout_source') == PayOutSource.BINANCE.value
                 and data.get('deal_kind') in (None, '', 'exchange')):
             exchange_wallet = session.query(Wallet).filter_by(
@@ -17923,8 +17959,8 @@ def _create_deal_impl(session=None, *, data=None, defer_commit=False, skip_flow_
                 active=True).first()
             if exchange_wallet:
                 data['payout_wallet_id'] = exchange_wallet.id
-            else:
-                return jsonify(success=False, error='Обменный кошелёк отсутствует в реестре'), 400
+            # Before the one-time wallet cutover, existing CRM installs still
+            # have no policy row. Keep their legacy unbound-wallet workflow.
         if data.get('payout_wallet_id') not in (None, ''):
             try:
                 data['payout_wallet_id'] = _wallet_registry_id(data['payout_wallet_id'])
@@ -17936,13 +17972,14 @@ def _create_deal_impl(session=None, *, data=None, defer_commit=False, skip_flow_
             if selected_wallet.not_for_new_deals and not defer_commit:
                 return jsonify(success=False, error='Этот кошелёк доступен только для существующих сделок'), 400
         if data.get('payin_method') == PayInMethod.CRYPTO_DIRECT.value:
-            if not data.get('payin_wallet_id') and not defer_commit:
+            if data.get('payin_wallet_id') in (None, '') and not defer_commit:
                 purpose = ('realty' if data.get('deal_kind') in REALTY_KINDS else 'exchange')
-                payin_wallet = session.query(Wallet).filter_by(purpose=purpose, active=True,
-                                                               accepts_payin=True).first()
-                if not payin_wallet:
-                    return jsonify(success=False, error='Кошелёк получения отсутствует в реестре'), 400
-                data['payin_wallet_id'] = payin_wallet.id
+                policy_address = ('TDuDeRiwrLLN3hnnA57G5yM6ibg58A6wZk' if purpose == 'realty'
+                                  else 'TA6S3RBEY57jq8fXEVVsU6H9JZ18inenG4')
+                payin_wallet = session.query(Wallet).filter_by(address=policy_address,
+                    purpose=purpose, active=True, accepts_payin=True).first()
+                if payin_wallet:
+                    data['payin_wallet_id'] = payin_wallet.id
             try:
                 data['payin_wallet_id'] = _crm_payin_wallet_id(session, data.get('payin_wallet_id'),
                                                                 allow_legacy=defer_commit)
