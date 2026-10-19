@@ -175,6 +175,7 @@ def test_override_closes_deal_from_early_step_as_manager(monkeypatch):
     assert deal['step'] == 'done'
     assert deal['closed'] is True
     assert deal['closeReason'] == 'Успешно завершена'
+    assert 'closeConfirmation' not in deal  # Override has its own audited reason, not s27 review.
     log_entries = [e for e in deal['log'] if isinstance(e, dict)]
     assert any(e.get('role') == 'manager' and REASON in e.get('text', '') for e in log_entries)
 
@@ -191,6 +192,7 @@ def test_override_closes_deal_from_early_step_as_admin(monkeypatch):
     assert deal['step'] == 'done'
     assert deal['closed'] is True
     assert deal['closeReason'] == 'Успешно завершена'
+    assert 'closeConfirmation' not in deal  # Override has its own audited reason, not s27 review.
     log_entries = [e for e in deal['log'] if isinstance(e, dict)]
     assert any(e.get('role') == 'admin' and REASON in e.get('text', '') for e in log_entries)
 
@@ -249,17 +251,14 @@ def test_override_double_submit_is_idempotent(monkeypatch):
 
 def test_normal_s27_close_still_works_without_override(monkeypatch):
     monkeypatch.setattr(m, 'STAND_MODE', True)
-    from tests.test_stand_crm_close_atomic import _setup as atomic_setup
+    from tests.test_stand_crm_close_atomic import _setup as atomic_setup, _crm as atomic_crm
     uid = atomic_setup(monkeypatch)
     client = m.app.test_client()
     with client.session_transaction() as sess:
         sess['user_id'] = uid
     response = client.post('/api/stand/deals/1474/crm-close', json={
         'version': 1,
-        'crm': {'deal_kind': 'exchange', 'client_name': 'Synthetic T24',
-                'manager_name': 'Елизавета', 'payin_method': 'sber_reqs',
-                'payin_amount_usdt': 100, 'payout_method': 'transfer',
-                'payout_source': 'cash_batch', 'payout_amount_usdt': 90}})
+        'crm': atomic_crm()})
     assert response.status_code == 201, response.json
     assert response.json['deal']['status'] == 'completed'
 

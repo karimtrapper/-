@@ -191,7 +191,20 @@ def test_all_pair_payloads_are_accepted_and_persisted_by_crm(monkeypatch):
         uid = _setup(monkeypatch)
         deal, crm = case['deal'], case['crm']
         deal.update(id=1474, step='s27', client='Wave A pair', sentToClient=True, pay={}, log=[])
-        crm.update(client_name='Wave A pair')
+        crm.update(client_name='Wave A pair', payout_source='binance')
+        # These arithmetic fixtures also need trusted workflow facts now that
+        # closing revalidates evidence rather than accepting a seeded signoff.
+        deal.update(paySrc='client', serverTransferComplete=True,
+            payout={'usdt': crm['payout_amount_usdt']},
+            transfer={'amount': crm['payout_amount_usdt'], 'sends': [{
+                'hash': 'synthetic-wave-out', 'status': 'confirmed',
+                'amount': crm['payout_amount_usdt'], 'verifiedAmount': crm['payout_amount_usdt'],
+                'from': 'synthetic-sender', 'to': 'synthetic-recipient'}]})
+        if deal.get('payType') == 'Крипта':
+            deal['payinHashes'] = [{'hash': 'synthetic-wave-in', 'net': 'TRC20',
+                'amount': crm['payin_amount_usdt'], 'verified': True}]
+            crm['payin_tx_hashes'] = [{'hash': 'synthetic-wave-in', 'network': 'trc20',
+                'amount_usdt': crm['payin_amount_usdt']}]
         deal['files'] = _board()['deals'][0]['files']
         with m.SessionLocal() as db:
             row = db.get(m.StandState, 1)

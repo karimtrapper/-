@@ -5642,12 +5642,48 @@ def stand_nav_count():
 
 
 
+def _stand_receipt_content_ids(deal):
+    """Compare actual attachment contents before/after externalization."""
+    result = set()
+    for item in (deal.get('files') or {}).get('receipt') or []:
+        if item.get('storageId') and item.get('sha256'):
+            result.add(item['sha256'])
+        elif str(item.get('data') or '').startswith('data:'):
+            try:
+                result.add(stand_file_storage.digest(stand_file_storage.decode(item)))
+            except ValueError:
+                pass  # externalize/receipt validation rejects invalid content.
+    return result
+
+
 def _stand_externalize_files(db, row, state, *, migration=False, actor=None, previous=None):
     # Сам перенос байтов не отменяет уже данные подтверждения чека/отправки.
     # Перепривязываем только подписи, совпадавшие ДО технического преобразования;
     # новые файлы или изменённые денежные факты по-прежнему снимают подтверждение.
     fingerprints = {(d['id'], kind): _stand_close_fingerprint(d, kind)
                     for d in state.get('deals') or [] for kind in ('receipt', 'sent')}
+    # Migration metadata may claim an operator's uploadedById. Only a native
+    # authenticated acceptance creates this proof; migration never backfills it.
+    accepted_receipts = {}
+    uploader = db.get(AdminUser, actor) if actor is not None and not migration else None
+    if uploader and uploader.role in ('operator', 'admin'):
+        old_deals = {d['id']: d for d in (previous or {}).get('deals') or []}
+        for deal in state.get('deals') or []:
+            if deal.get('type') != 'Оплата недвижимости':
+                continue
+            before = old_deals.get(deal['id']) or {}
+            added = _stand_receipt_content_ids(deal) - _stand_receipt_content_ids(before)
+            paid = ((deal.get('pay') or {}).get('invoicePaid')
+                    and not (before.get('pay') or {}).get('invoicePaid'))
+            if not added and not paid:
+                continue
+            prior = db.query(StandCloseEvidence).filter_by(generation=row.generation,
+                stand_deal_id=deal['id'], kind='receipt').first()
+            # Marking invoicePaid later binds the existing file acceptance to
+            # the paid invoice without inventing a new upload/check date.
+            accepted_receipts[deal['id']] = ((prior.actor_id, prior.confirmed_at) if not added and prior
+                and prior.provenance == 'operator_upload'
+                and prior.fingerprint == _stand_close_fingerprint(before, 'receipt') else (actor, None))
     changed = stand_file_storage.externalize(db, StandFile, state, migration=migration,
                                              actor=actor, previous=previous)
     if changed and row.generation:
@@ -5658,6 +5694,13 @@ def _stand_externalize_files(db, row, state, *, migration=False, actor=None, pre
                     stand_deal_id=d['id'], kind=kind).first()
                 if evidence and evidence.fingerprint == fingerprints[(d['id'], kind)]:
                     evidence.fingerprint = _stand_close_fingerprint(d, kind)
+    for deal in state.get('deals') or []:
+        if deal['id'] in accepted_receipts and _stand_valid_receipt(deal):
+            if not row.generation:
+                row.generation = secrets.token_hex(16)
+            accepted_actor, accepted_at = accepted_receipts[deal['id']]
+            _stand_upsert_close_evidence(db, row, deal, 'receipt', accepted_actor, 'operator_upload',
+                                        confirmed_at=accepted_at)
     return changed
 
 
@@ -6917,12 +6960,86 @@ def _stand_close_required(deal):
         'payin', 'payout', 'sent')
 
 
-def _stand_close_evidence_status(db, row, deal):
-    required = _stand_close_required(deal)
+def _stand_close_readiness(db, row, state, deal):
+    """Revalidate server-owned facts; historical signoffs cannot override failures.
+
+    Reads neither create evidence nor change the board/version/timestamps.
+    Only manual cash/bank facts still require the responsible operator's signoff.
+    """
     records = {item.kind: item for item in db.query(StandCloseEvidence).filter_by(
         generation=row.generation, stand_deal_id=deal['id']).all()}
-    return [kind for kind in required if kind not in records or
-            records[kind].fingerprint != _stand_close_fingerprint(deal, kind)]
+    facts = []
+    for kind in _stand_close_required(deal):
+        source, problem = _stand_close_fact_source(state, deal, kind)
+        if (kind == 'payin' and deal.get('type') == 'Оплата недвижимости'
+                and source not in ('verified_network', 'verified_partner_network', 'accepted_conversion')):
+            problem = problem or 'verified_payin_missing'
+        record = records.get(kind)
+        signed = bool(record and record.fingerprint == _stand_close_fingerprint(deal, kind))
+        manual = source == 'operator_attestation' and kind != 'receipt'
+        if manual and not signed:
+            problem = 'operator_confirmation_missing'
+        checked_at = None
+        receipt_system = bool(kind == 'receipt' and signed
+                              and record.provenance in ('operator_upload', 'operator_attestation'))
+        if kind == 'receipt' and not problem and not signed:
+            problem = 'operator_receipt_acceptance_missing'
+        if not problem:
+            if kind == 'payin':
+                txs = deal.get('payinHashes') or []
+                if source == 'accepted_conversion':
+                    conv = next((c for c in state.get('convs') or []
+                                 if c.get('id') == deal.get('cnvId')), {})
+                    txs = conv.get('txs') or []
+                stamps = [t.get('verifiedAt') for t in txs]
+                if stamps and all(stamps):
+                    checked_at = max(stamps)
+                if source == 'manual_bank_confirmed':
+                    checked_at = (deal.get('manualBankReceipt') or {}).get('confirmedAt')
+            elif kind == 'payout':
+                stamps = [t.get('verifiedAt') or t.get('lastCheckedAt')
+                          for t in (deal.get('transfer') or {}).get('sends') or []]
+                if stamps and all(stamps):
+                    checked_at = max(stamps)
+            elif kind == 'receipt':
+                checked_at = record.confirmed_at.isoformat() + 'Z' if signed and record.confirmed_at else None
+            if (manual or kind == 'sent') and signed and record.confirmed_at:
+                checked_at = record.confirmed_at.isoformat() + 'Z'
+        facts.append({'kind': kind, 'ready': not problem, 'reason': problem,
+                      'source': source, 'system': kind != 'sent' and not manual
+                          and source != 'manual_bank_confirmed'
+                          and (kind != 'receipt' or receipt_system),
+                      'checked_at': checked_at,
+                      'required_role': 'operator' if manual or kind == 'receipt' else 'manager'})
+    return facts
+
+
+def _stand_close_evidence_status(db, row, deal):
+    state = json.loads(row.data or '{}')
+    return [fact['kind'] for fact in _stand_close_readiness(db, row, state, deal)
+            if not fact['ready']]
+
+
+def _stand_close_summary(state, deal, crm, version):
+    """Immutable audit snapshot: persisted facts and the reviewed CRM form."""
+    fields = ('id', 'type', 'kind', 'client', 'payType', 'paySrc', 'postConv',
+              'incomeAmount', 'amountRub', 'amountUsdt', 'amountThb', 'invoiceUsd',
+              'companyPct', 'ippsTariff', 'rates', 'payinParts', 'payinExtra',
+              'payinHashes', 'cnvId', 'pay', 'payout', 'mfPayout', 'transfer',
+              'payTo', 'sentToClient', 'sentAt', 'commissionSends', 'agents')
+    conv = next((c for c in state.get('convs') or [] if c.get('id') == deal.get('cnvId')), None)
+    incomes = [i for i in state.get('incomes') or []
+               if i.get('id') in {p.get('incId') for p in deal.get('payinParts') or []}]
+    snapshot = {'version': version, 'deal': {k: deal.get(k) for k in fields},
+                'conversion': conv, 'incomes': incomes,
+                'receipts': [{k: v for k, v in item.items() if k != 'data'}
+                             for item in (deal.get('files') or {}).get('receipt') or []],
+                'crm': dict(crm), 'facts': {kind: _stand_close_fingerprint(deal, kind)
+                                          for kind in _stand_close_required(deal)}}
+    snapshot = json.loads(json.dumps(snapshot, ensure_ascii=False, default=str))
+    digest = hashlib.sha256(json.dumps(snapshot, ensure_ascii=False, sort_keys=True,
+                           separators=(',', ':')).encode()).hexdigest()
+    return snapshot, digest
 
 
 def _stand_close_evidence_details(state, deal, missing):
@@ -6938,7 +7055,7 @@ def _stand_close_evidence_details(state, deal, missing):
     return result
 
 
-def _stand_upsert_close_evidence(db, row, deal, kind, actor_id, provenance):
+def _stand_upsert_close_evidence(db, row, deal, kind, actor_id, provenance, *, confirmed_at=None):
     evidence = db.query(StandCloseEvidence).filter_by(
         generation=row.generation, stand_deal_id=deal['id'], kind=kind).first()
     if evidence is None:
@@ -6948,7 +7065,7 @@ def _stand_upsert_close_evidence(db, row, deal, kind, actor_id, provenance):
     evidence.fingerprint = _stand_close_fingerprint(deal, kind)
     evidence.actor_id = actor_id
     evidence.provenance = provenance
-    evidence.confirmed_at = datetime.utcnow()
+    evidence.confirmed_at = confirmed_at or datetime.utcnow()
 
 
 def _stand_close_fact_source(state, deal, kind):
@@ -6968,6 +7085,30 @@ def _stand_close_fact_source(state, deal, kind):
             if hashes and all(h.get('verified') and _stand_number(h.get('amount')) > 0
                               for h in hashes):
                 return 'verified_network', None
+            return None, 'verified_payin_missing'
+        # A bank receipt proves RUB only. Allocated USDT must also match the
+        # server-verified conversion; never let a bank receipt mask failed hashes.
+        if hashes or deal.get('cnvId') is not None:
+            conv = next((c for c in state.get('convs') or []
+                         if c.get('id') == deal.get('cnvId')), None)
+            source = next((s for s in (conv or {}).get('sources') or []
+                           if s.get('dealId') == deal.get('id')), None)
+            source_amount = _stand_number((source or {}).get('usdtFact') or (source or {}).get('usdt'))
+            board_amount = sum(_stand_number(h.get('amount')) for h in hashes)
+            def hash_counts(items):
+                return Counter((str(h.get('hash') or '').strip(),
+                                normalize_network(h.get('net') or h.get('network') or 'TRC20'),
+                                round(_stand_number(h.get('amount')), 2))
+                               for h in items or [] if isinstance(h, dict))
+            board_hashes = hash_counts(hashes)
+            confirmed_hashes = hash_counts((conv or {}).get('txs'))
+            if (source and source_amount > 0 and board_amount > 0
+                    and abs(source_amount - board_amount) < .01
+                    and (conv or {}).get('txs') and all(t.get('status') == 'confirmed'
+                        for t in conv['txs']) and board_hashes
+                    and all(confirmed_hashes[key] >= count
+                            for key, count in board_hashes.items())):
+                return 'accepted_conversion', None
             return None, 'verified_payin_missing'
         parts = deal.get('payinParts') or []
         incomes = {i.get('id'): i for i in state.get('incomes') or []}
@@ -6994,26 +7135,6 @@ def _stand_close_fact_source(state, deal, kind):
                                                 (incomes.get(p.get('incId')) or {}).get('rub'))) < .01
                           for p in parts)):
             return 'sber_mirror', None
-        conv = next((c for c in state.get('convs') or []
-                     if c.get('id') == deal.get('cnvId')), None)
-        source = next((s for s in (conv or {}).get('sources') or []
-                       if s.get('dealId') == deal.get('id')), None)
-        source_amount = _stand_number((source or {}).get('usdtFact') or (source or {}).get('usdt'))
-        board_amount = sum(_stand_number(h.get('amount')) for h in hashes)
-        def hash_counts(items):
-            return Counter((str(h.get('hash') or '').strip(),
-                            normalize_network(h.get('net') or h.get('network') or 'TRC20'),
-                            round(_stand_number(h.get('amount')), 2))
-                           for h in items or [] if isinstance(h, dict))
-        board_hashes = hash_counts(hashes)
-        confirmed_hashes = hash_counts((conv or {}).get('txs'))
-        if (source and source_amount > 0 and board_amount > 0
-                and abs(source_amount - board_amount) < .01
-                and (conv or {}).get('txs') and all(t.get('status') == 'confirmed'
-                    for t in conv['txs']) and board_hashes
-                and all(confirmed_hashes[key] >= count
-                        for key, count in board_hashes.items())):
-            return 'accepted_conversion', None
         if (pay_type == 'Наличные' and _stand_number(
                 deal.get('incomeAmount') or deal.get('amountRub') or
                 (deal.get('pay') or {}).get('usdt')) > 0):
@@ -7088,12 +7209,12 @@ def stand_close_evidence(stand_deal_id):
         if request.method == 'POST' and not row.generation:
             row.generation = secrets.token_hex(16)
             db.flush()
-        missing = (_stand_close_evidence_status(db, row, deal) if row.generation
-                   else list(_stand_close_required(deal)))
+        missing = _stand_close_evidence_status(db, row, deal)
         if request.method == 'GET':
             return jsonify({'success': True, 'required': _stand_close_required(deal),
                             'missing': missing,
                             'details': _stand_close_evidence_details(state, deal, missing),
+                            'facts': _stand_close_readiness(db, row, state, deal),
                             'version': row.version or 0})
         if payload['version'] != (row.version or 0):
             return jsonify({'success': False, 'error': 'conflict',
@@ -7172,7 +7293,8 @@ def stand_crm_close(stand_deal_id):
         if payload['version'] != (row.version or 0):
             return jsonify({'success': False, 'error': 'conflict',
                             'version': row.version or 0, 'data': state,
-                            'updated_by': row.updated_by}), 409
+                            'updated_by': row.updated_by,
+                            'detail': 'Данные изменились — обновите страницу и проверьте итог сделки'}), 409
         plan_problem = _stand_freehold_plan_problem(stand_deal)
         if plan_problem:
             return jsonify({'success': False, 'error': plan_problem,
@@ -7217,7 +7339,9 @@ def stand_crm_close(stand_deal_id):
             if missing:
                 return jsonify({'success': False, 'error': 'close_evidence_missing',
                                 'missing': missing, 'version': row.version or 0,
-                                'details': _stand_close_evidence_details(state, stand_deal, missing),
+                                'details': [dict(f, label={'payin': 'Приход', 'payout': 'Выплата',
+                                    'receipt': 'Оплата инвойса и чек', 'sent': 'Отправка чека'}[f['kind']])
+                                    for f in _stand_close_readiness(db, row, state, stand_deal) if not f['ready']],
                                 'data': state}), 409
         if stand_deal.get('type') not in ('Обмен валюты', 'Оплата недвижимости'):
             return jsonify({'success': False, 'error': 'deal_type_invalid'}), 409
@@ -7261,6 +7385,7 @@ def stand_crm_close(stand_deal_id):
                         or (currency not in ('USDT', 'USD')
                             and _stand_number(crm_data.get(f'custom_{side}_rate')) <= 0)):
                     return jsonify({'success': False, 'error': 'custom_required_fields'}), 400
+        close_snapshot, close_digest = _stand_close_summary(state, stand_deal, crm_data, row.version or 0)
         crm_data['status'] = 'completed'
         crm_data['skip_sync'] = True
         if bitrix_id:
@@ -7325,6 +7450,16 @@ def stand_crm_close(stand_deal_id):
         if problem:
             db.rollback()
             return jsonify({'success': False, 'error': problem}), 409
+        if not manual and 'manualOverride' not in payload:
+            confirmed_at = datetime.utcnow()
+            db.add(StandCloseEvidence(generation=row.generation, stand_deal_id=stand_deal_id,
+                kind='summary', fingerprint=close_digest, actor_id=flask_session['user_id'],
+                provenance='manager_summary', confirmed_at=confirmed_at))
+            closed['closeConfirmation'] = {
+                'actor_id': flask_session['user_id'], 'actor_role': actor,
+                'actor_name': flask_session.get('display_name') or flask_session.get('username'),
+                'confirmed_at': confirmed_at.isoformat() + 'Z',
+                'fingerprint': close_digest, 'snapshot': close_snapshot}
         _stand_completion_notes(state, updated)
         row.data = json.dumps(updated, ensure_ascii=False)
         row.version = (row.version or 0) + 1
@@ -9941,6 +10076,8 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
         if 'closeEvidence' in deal:
             return 'Подтверждения закрытия назначает только сервер'
         before = old.get(deal.get('id'))
+        if deal.get('closeConfirmation') != (before or {}).get('closeConfirmation'):
+            return 'Подтверждение итога назначает только сервер'
         if (not before and deal.get('cashPartnerUsdt')) or (before and (
                 before.get('cashPartnerUsdt') != deal.get('cashPartnerUsdt')
                        or (before.get('cashPartnerUsdt') and deal.get('payType') != 'Наличные'))):

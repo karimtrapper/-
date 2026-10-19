@@ -20,7 +20,7 @@ def _board():
     return {'deals': [{'id': 1474, 'code': 'СД-1474', 'client': 'Synthetic T24',
                        'type': 'Обмен валюты', 'step': 's27', 'closed': False,
                        'crmDealId': None, 'sentToClient': True, 'pay': {},
-                       'amountUsdt': 100, 'payout': {'usdt': 90},
+                       'amountUsdt': 100, 'paySrc': 'cash', 'payout': {'usdt': 90, 'thb': 1},
                        'files': {'receipt': [{'file': 'receipt.pdf',
                            'mime': 'application/pdf',
                            'data': 'data:application/pdf;base64,JVBERi0='}]},
@@ -31,7 +31,7 @@ def _crm():
     return {'deal_kind': 'exchange', 'client_name': 'Synthetic T24',
             'manager_name': 'Елизавета', 'payin_method': 'sber_reqs',
             'payin_amount_usdt': 100, 'payout_method': 'transfer',
-            'payout_source': 'cash_batch', 'payout_amount_usdt': 90}
+            'payout_source': 'cash_batch', 'payout_amount_usdt': 90, 'payout_amount_thb': 1}
 
 
 def _setup(monkeypatch):
@@ -59,8 +59,41 @@ def _setup(monkeypatch):
 
 
 def _seed_evidence(db, row, board, actor_id):
-    """Synthetic preverified board for transaction tests; admission has its own tests."""
+    """Seed actual trusted facts as well as legacy signoffs for transaction tests.
+
+    S27 revalidates sources at close; an evidence row alone is no longer proof.
+    These are synthetic persisted outcomes, not a production provenance bypass.
+    """
     deal = board['deals'][0]
+    if deal.get('payType') != 'Крипта' and not deal.get('payinParts'):
+        deal['payinParts'] = [{'incId': -1474, 'amountRub': 1}]
+        board.setdefault('incomes', []).append({'id': -1474, 'source': 'sber', 'rub': 1})
+    if deal.get('type') == 'Оплата недвижимости' and not deal.get('payinHashes'):
+        tx = {'hash': secrets.token_hex(32), 'net': 'TRC20', 'amount': deal['amountUsdt'],
+              'status': 'confirmed', 'verifiedAt': '2026-10-18T12:00:00Z'}
+        deal['payinHashes'] = [dict(tx)]
+        if deal.get('payType') != 'Крипта':
+            deal['cnvId'] = 1474
+            for income in board.get('incomes') or []:
+                if income['id'] == -1474:
+                    income['dealId'] = deal['id']
+            board['convs'] = [{'id': 1474, 'status': 'received', 'txs': [tx],
+                'sources': [{'dealId': deal['id'], 'rub': 1, 'usdtFact': deal['amountUsdt']}]}]
+    if deal.get('payType') == 'Крипта':
+        for receipt in deal.get('payinHashes') or []:
+            receipt.update(verified=True, verifiedAt='2026-10-18T12:00:00Z')
+    network = deal.get('postConv') in ('coins', 'ipps_swift', 'client') or deal.get('paySrc') in ('coins', 'client')
+    if network and not (deal.get('transfer') or {}).get('sends'):
+        hashes = deal.get('mfPayout') or (deal.get('payout') or {}).get('hashes') or []
+        amount = sum(h.get('amount', 0) for h in hashes) or (deal.get('customData') or {}).get('payoutUsdt') or 90
+        if deal.get('kind') == 'Фрихолд' and not hashes:
+            amount = round(deal['invoiceUsd'] * 1.008 + 50, 2)
+        deal.setdefault('transfer', {}).update(amount=amount, sends=[{
+            'hash': 'synthetic-payout-proof', 'net': 'TRC20', 'amount': amount,
+            'verifiedAmount': amount, 'status': 'confirmed', 'verifiedAt': '2026-10-18T12:00:00Z',
+            'from': 'synthetic-sender', 'to': 'synthetic-recipient'}])
+        deal['serverTransferComplete'] = True
+    row.data = json.dumps(board)
     for kind in m._stand_close_required(deal):
         entry = db.query(m.StandCloseEvidence).filter_by(
             generation=row.generation, stand_deal_id=deal['id'], kind=kind).first()
@@ -469,7 +502,7 @@ def test_linked_bitrix_close_writes_crm_link_and_won_after_commit(monkeypatch):
     assert calls[0][1] == calls[1][1] == bitrix_id
     assert calls[1][2] == {
         'payin_amount_usdt': 100.0, 'payin_amount_rub': 0,
-        'payin_method': 'sber_reqs', 'payout_amount_thb': 0,
+        'payin_method': 'sber_reqs', 'payout_amount_thb': 1,
         'payout_method': 'transfer'}
     saved = response.json['data']['deals'][0]['bitrixSync']
     assert saved['status'] == 'success'
@@ -667,7 +700,7 @@ def test_custom_exchange_uses_existing_crm_contract(monkeypatch):
     try:
         row = db.query(m.StandState).filter_by(id=1).one()
         board = json.loads(row.data)
-        board['deals'][0].update(custom=True, paySrc='coins',
+        board['deals'][0].update(custom=True, paySrc='coins', payout={'thb': 343000, 'usdt': 9800},
             customData={'payinCurrency': 'RUB', 'payinAmount': 920000,
                         'payinRate': 92, 'payinUsdt': 10000,
                         'payoutCurrency': 'THB', 'payoutAmount': 343000,
@@ -721,6 +754,7 @@ def test_freehold_locked_board_money_cannot_be_spoofed_in_crm_payload(monkeypatc
     before = _counts()
     valid = {'deal_kind': 'mf_freehold', 'client_name': 'Synthetic T24',
              'payin_method': 'crypto_direct', 'payin_amount_usdt': 46000,
+             'payin_tx_hashes': [{'hash': deal['payinHashes'][0]['hash'], 'network': 'trc20', 'amount_usdt': 46000}],
              'realty_purpose': 'Synthetic property',
              'invoice_amount_usd': 45000, 'transfer_fee_percent': .8,
              'transfer_fee_fixed_usd': 50, 'transfer_sent_usd': 45410,
@@ -810,6 +844,7 @@ def test_rates_and_company_sent_match_persisted_board(monkeypatch):
     crm = {'deal_kind': 'mf_realty', 'client_name': 'Synthetic T24',
            'payin_method': 'sber_reqs', 'payin_amount_rub': 1932000,
            'payin_amount_usdt': 21000, 'payin_rate_rub_usdt': 92,
+           'payin_tx_hashes': [{'hash': deal['payinHashes'][0]['hash'], 'network': 'trc20', 'amount_usdt': 21000}],
            'realty_purpose': 'Synthetic property',
            'invoice_amount_thb': 600000, 'buy_rate_thb_usdt': 32,
            'sell_rate_thb_usdt': 30, 'company_sent_thb': 603000}
@@ -1137,6 +1172,8 @@ def test_operator_evidence_has_role_origin_and_money_binding(monkeypatch):
         row = db.query(m.StandState).filter_by(id=1).one()
         board = json.loads(row.data)
         deal = board['deals'][0]
+        deal.pop('manualBankReceipt', None)
+        deal['payinParts'] = []
         deal.update(payType='По реквизитам', incomeAmount=10000,
                     paySrc='cash', amountUsdt=100,
                     payout={'thb': 3000, 'usdt': 90})
@@ -1150,7 +1187,7 @@ def test_operator_evidence_has_role_origin_and_money_binding(monkeypatch):
     worker = _client(operator_id)
     path = '/api/stand/deals/1474/close-evidence'
     state = manager.get('/api/stand/state').json
-    assert manager.get(path).json['missing'] == ['payin', 'payout', 'sent']
+    assert manager.get(path).json['missing'] == ['payin', 'payout']
     assert worker.post(path, json={'version': 0, 'kind': 'payin'}).status_code == 409
     # A typed Sber amount without a server-owned income/verified conversion
     # cannot be approved as a cash receipt.
@@ -1341,6 +1378,7 @@ def test_payin_extra_rate_only_amount_is_not_dropped(monkeypatch):
         row = db.query(m.StandState).filter_by(id=1).one()
         board = json.loads(row.data)
         board['deals'][0].update(payType='Крипта', amountUsdt=100,
+            payinHashes=[{'hash': 'synthetic-main', 'amount': 100, 'net': 'TRC20'}],
             payinExtra=[{'method': 'partners_cash', 'amountRub': 2000,
                          'rate': 100, 'partner': 'Synthetic Cash'}])
         row.data = json.dumps(board)
@@ -1349,6 +1387,7 @@ def test_payin_extra_rate_only_amount_is_not_dropped(monkeypatch):
     finally:
         db.close()
     crm = {**_crm(), 'payin_method': 'crypto_direct', 'payin_amount_usdt': 100,
+           'payin_tx_hashes': [{'hash': 'synthetic-main', 'amount_usdt': 100, 'network': 'trc20'}],
            'payin_extra': [{'method': 'partners_cash', 'amount_rub': 2000,
                             'rate_rub_usdt': 100, 'amount_usdt': 20,
                             'partner_name': 'Synthetic Cash', 'tx_hashes': []}]}
@@ -1790,7 +1829,7 @@ def test_overage_needs_confirmation_and_cancel_keeps_no_row(monkeypatch):
     try:
         row = db.query(m.StandState).filter_by(id=1).one()
         board = json.loads(row.data)
-        board['deals'][0]['payout'] = {'hashes': [{'hash': tx_hash, 'net': 'TRC20', 'amount': 120}]}
+        board['deals'][0]['payout'] = {'usdt': 120, 'thb': 1, 'hashes': [{'hash': tx_hash, 'net': 'TRC20', 'amount': 120}]}
         row.data = json.dumps(board)
         db.commit()
         _seed_evidence(db, row, board, uid)
@@ -1903,6 +1942,8 @@ def test_property_payloads_close_once_with_independent_money_check(monkeypatch, 
         _seed_evidence(db, row, board, uid)
     finally:
         db.close()
+    crm = {**crm, 'payin_tx_hashes': [{'hash': deal['payinHashes'][0]['hash'], 'network': 'trc20',
+        'amount_usdt': crm['payin_amount_usdt']}]}
     before = _counts()
     first = _post(_client(uid), crm=crm)
     assert first.status_code == 201, first.json
