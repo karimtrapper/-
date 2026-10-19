@@ -183,6 +183,7 @@ tr:last-child td{border-bottom:none}
 .chip{display:inline-flex;align-items:center;padding:8px 14px;border-radius:20px;font-size:13px;font-weight:600;border:1.5px solid var(--border);color:var(--navy-600);background:var(--bg);cursor:pointer}
 .chip:hover{border-color:var(--navy-400)}
 .chip.on{background:var(--navy-800);color:#fff;border-color:var(--navy-800)}
+.chip.disabled{opacity:.45;cursor:not-allowed}
 
 .derived{display:flex;align-items:center;gap:9px;flex-wrap:wrap;padding:11px 14px;background:var(--navy-50);border:1px solid var(--border);border-radius:var(--r-sm);font-size:13.5px;color:var(--navy-600)}
 .derived svg{color:var(--navy-400);flex-shrink:0}
@@ -4616,7 +4617,8 @@ function newDeal(o){
     payinExtra:o.payinExtra||[],payinParts:o.payinParts||[],payinHashes:o.payinHashes||[],
     payout:o.payout||null,notes:o.notes||'',
     spread:(o.spread!==undefined?o.spread:(o.type==='Обмен валюты'?0.3:null)),
-    readyAt:(o.step==='ready'?Date.now():null)};
+    readyAt:(o.step==='ready'?Date.now():null),
+    unverified_confirmed:!!o.unverified_confirmed};
   log(d,'Сделка создана · '+SOURCES[o.source]+(o.sourceRef?' · '+sourceRefLabel(o.source,o.sourceRef):'')+' · клиент '+(o.isOld?'узнан по источнику':'новый'));
   /* noSave: создающий сам сохранит сделку вместе с логом и уведомлением одним PUT */
   S.deals.unshift(d);if(!o.noSave)save();return d;
@@ -5934,8 +5936,10 @@ function viewCreateBody(D,srcCard){
       <p style="font-size:12px;color:var(--text-muted);margin-top:8px">От пары зависит, чем клиент платит и что получает.</p></div>`:''}
 
     ${D.type==='Оплата недвижимости'?`<div class="fg"><label class="fl">Тип сделки<span class="rq">*</span></label>
-      <div class="chips">${['Лизхолд','Фрихолд','Аренда'].map(x=>
-        `<span class="chip ${D.kind===x?'on':''}" onclick="draftSet('kind',${JSON.stringify(x).replace(/"/g,'&quot;')})">${x}</span>`).join('')}</div></div>`:''}
+      <div class="chips">${['Лизхолд','Фрихолд','Аренда'].map(x=>{
+        const verified=draftComboVerified(D.type,x,D.payType),cls=D.kind===x?'on':(verified?'':'disabled');
+        return `<span class="chip ${cls}" ${verified?'':'title="Флоу в проверке — пока проводите через Карима"'} onclick="draftSetGated('kind',${JSON.stringify(x).replace(/"/g,'&quot;')})">${x}</span>`;
+      }).join('')}</div></div>`:''}
 
     ${D.type==='Оплата недвижимости'&&D.kind==='Фрихолд'?`<div class="fg"><label class="fl">Тариф IPPS<span class="rq">*</span></label>
       <div class="chips">${Object.keys(IPPS_TARIFFS).map(k=>
@@ -5950,8 +5954,10 @@ function viewCreateBody(D,srcCard){
       <p class="fh">${D.invoiceCurrency==='thb'?'Сумма в $ не нужна — посчитаем ориентир по курсу банка застройщика, точные суммы и курс впишете при расчёте клиенту.':'Инвойс уже в USD — обычный случай.'}</p></div>`:''}
 
     <div class="fg"><label class="fl">Как клиент платит<span class="rq">*</span></label>
-      <div class="chips">${payWays(D).map(x=>
-        `<span class="chip ${D.payType===x?'on':''}" onclick="draftSet('payType',${JSON.stringify(x).replace(/"/g,'&quot;')})">${x}</span>`).join('')}</div></div>
+      <div class="chips">${payWays(D).map(x=>{
+        const verified=draftComboVerified(D.type,D.kind,x),cls=D.payType===x?'on':(verified?'':'disabled');
+        return `<span class="chip ${cls}" ${verified?'':'title="Флоу в проверке — пока проводите через Карима"'} onclick="draftSetGated('payType',${JSON.stringify(x).replace(/"/g,'&quot;')})">${x}</span>`;
+      }).join('')}</div></div>
 
 
     <div class="fg"><label class="fl">Что просит клиент<span class="rq">*</span></label>
@@ -6100,6 +6106,34 @@ const PAIR_CFG={
 function pairOf(D){
   if(D.pair) return D.pair;
   return D.payType==='Крипта'?'USDT → THB':'RUB → THB';
+}
+const STAND_KIND_CANON={'Фрихолд':'freehold','Лизхолд':'leasehold','Аренда':'rental'};
+const STAND_PAYTYPE_CANON={'По реквизитам':'requisites','СБП':'sbp','Крипта':'crypto','Наличные':'cash'};
+/* Единственный источник истины — VERIFIED_FLOWS на сервере (app.py), отданный
+   через /api/deal-flow-config и закэшированный в STAND_VERIFIED_FLOWS при
+   загрузке (standBoot). Эти две карты — только перевод локальных ярлыков
+   стенда в канонические ключи, сам список проверенных пар здесь не дублируется. */
+function draftComboVerified(type,kind,payType){
+  if(type!=='Оплата недвижимости')return false;
+  const kc=STAND_KIND_CANON[kind],pc=STAND_PAYTYPE_CANON[payType];
+  if(!kc||!pc)return false;
+  return (STAND_VERIFIED_FLOWS||[]).some(p=>p[0]===kc&&p[1]===pc);
+}
+/* Чип выбора типа/способа идёт через этот сеттер вместо draftSet напрямую:
+   непроверенную комбинацию менеджер выбрать не может (чип и так visible-but-
+   disabled), admin может — но только после явного confirm(), который
+   проставляет unverified_confirmed на драфте для сервера. */
+function draftSetGated(k,v){
+  const D=S.draft;
+  const nextKind=k==='kind'?v:D.kind, nextPayType=k==='payType'?v:D.payType;
+  if(draftComboVerified(D.type,nextKind,nextPayType)){draftSet(k,v);return;}
+  if(standMe==='admin'){
+    if(!confirm('Непроверенный флоу, продолжить?'))return;
+    D.unverified_confirmed=true;
+    draftSet(k,v);
+    return;
+  }
+  toast('Флоу в проверке — пока проводите через Карима');
 }
 function payWays(D){
   /* Клиент может заплатить криптой по любой недвижимости, включая лизхолд: USDT
@@ -11998,6 +12032,14 @@ function bootScreen(){
 
 let CRM_CLIENTS = [];
 let crmClientsError = false;
+let STAND_VERIFIED_FLOWS = [];
+async function fetchDealFlowConfig() {
+  try {
+    const res = await fetch('/api/deal-flow-config');
+    const json = await res.json();
+    if (json.verified) STAND_VERIFIED_FLOWS = json.verified;
+  } catch (e) { console.error('fetchDealFlowConfig error', e); }
+}
 
 async function fetchCrmClients() {
   try {
@@ -12064,6 +12106,7 @@ async function standBoot(){
   }catch(e){}
   await fetchChannels();
   await fetchCrmClients();
+  await fetchDealFlowConfig();
   await standPull(true);
   await s18FetchCandidates();
   await checkDocParseCapability();
