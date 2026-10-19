@@ -7424,6 +7424,146 @@ async function crmPushClose(id){
   }catch(e){toast('CRM недоступна — закрытие не подтверждено');}
   finally{standClosing=false;}
 }
+/* Клон d с фактами ручного переноса (задача 6): зеркалит на клиенте ту же мутацию,
+   что серверный _stand_manual_close_apply_override делает над stand_deal ДО проверки
+   _stand_crm_fact_problem. Без этого crmPayloadFinal(d) считал бы по старым (пустым)
+   полям — сервер сравнил бы их с только что записанными фактами override и вернул
+   мнимое расхождение ровно для тех сделок, где ручной перенос и нужен. Хеши мержим,
+   а не заменяем — та же защита от задвоения уже записанного факта, что на сервере. */
+function manualCloseMerge(d,payin,payout){
+  const key=h=>(h.network||'')+'|'+(h.hash||'');
+  const m={...d,rates:{...d.rates}};
+  if(payin.method)m.payType=payin.method;
+  if(payin.amountUsdt!=null)m.amountUsdt=payin.amountUsdt;
+  if(payin.amountRub!=null)m.amountRub=payin.amountRub;
+  if(payin.rate!=null)m.rates.broker=payin.rate;
+  const existingPayin=new Set((d.payinHashes||[]).map(key));
+  m.payinHashes=(d.payinHashes||[]).concat((payin.hashes||[]).filter(h=>!existingPayin.has(key(h))));
+  if(payout.source){
+    m.paySrc=payout.source;
+    const existingPayout=new Set(((d.payout||{}).hashes||[]).map(key));
+    m.payout={...(d.payout||{}),usdt:payout.amountUsdt,
+      hashes:((d.payout||{}).hashes||[]).concat((payout.hashes||[]).filter(h=>!existingPayout.has(key(h))))};
+  }
+  return m;
+}
+/* Пэйлоад ручного переноса (задача 6): «известно» — ровно те же условия, которыми
+   manualCloseScreen (задача 5) решает, рисовать факт read-only строкой или открытым
+   полем. Известное берём из d, открытое — из DOM (val()) либо из черновика хешей
+   S.manualCloseForm (manualCloseFormState). amountUsdt сервер требует всегда, даже для
+   рублёвой сделки — если его ещё нет на d, считаем так же, как остальной приход
+   (payinParts: курс минус удержание брокера на отправке брокеру). */
+function manualClosePayload(d){
+  const crypto=isCrypto(d), paid=clientRubPaid(d), po=d.payout||{};
+  const fh=d.kind==='Фрихолд', realty=d.type==='Оплата недвижимости';
+  const f=manualCloseFormState(d.id);
+  const cleanHash=h=>({hash:h.hash,network:h.network,receiver:h.receiver||null,
+    sender:h.sender||null,amount:h.amount});
+
+  const knownMethod=!!d.payType;
+  const knownAmount=crypto?d.amountUsdt!=null:(paid.rub!=null||d.amountRub!=null||d.incomeAmount!=null);
+  const knownHashes=(d.payinHashes||[]).length>0;
+  const knownBankConfirm=paid.rub!=null||d.manualBankReceipt?.status==='confirmed';
+
+  const payin={method:knownMethod?d.payType:(val('mc_payin_method')||null)};
+  payin.hashes=(knownHashes?d.payinHashes:f.payin.hashes).filter(h=>h&&h.hash).map(cleanHash);
+  if(crypto){
+    payin.amountUsdt=knownAmount?d.amountUsdt:num(val('mc_payin_amount_usdt'));
+  }else{
+    payin.amountRub=knownAmount?(paid.rub??d.amountRub??d.incomeAmount):num(val('mc_payin_amount_rub'));
+    payin.rate=num(d.rates?.broker)??num(val('mc_payin_rate'));
+    payin.manualBankConfirmed=knownBankConfirm?true:!!document.getElementById('mc_payin_manual_bank_confirmed')?.checked;
+    payin.amountUsdt=d.amountUsdt!=null?d.amountUsdt:(payinParts({...d,
+      incomeAmount:payin.amountRub,amountRub:payin.amountRub,
+      rates:{...d.rates,broker:payin.rate}})[0]?.usdt??null);
+  }
+
+  const knownSource=payoutHuman(d)!=='не выбран';
+  const knownPayoutAmount=po.usdt!=null;
+  const payHashes=(fh||realty)?mfList(d):(po.hashes||[]);
+  const knownPayoutHashes=payHashes.length>0;
+  const payout={
+    source:knownSource?d.paySrc:(val('mc_payout_source')||null),
+    amountUsdt:knownPayoutAmount?po.usdt:num(val('mc_payout_amount_usdt')),
+    hashes:(knownPayoutHashes?payHashes:f.payout.hashes).filter(h=>h&&h.hash).map(cleanHash),
+  };
+
+  const merged=manualCloseMerge(d,payin,payout);
+  return {crm:crmPayloadFinal(merged),
+    manualOverride:{reason:val('mc_reason'),payin,payout,agents:d.agents||[]}};
+}
+/* Коды ошибок ручного переноса (app.py:_stand_manual_close_apply_override) — предметный
+   тост вместо общего «не закрыли», чтобы менеджер понимал, какое поле на этом экране
+   поправить (приёмка Карима 19.10: кнопка трогает деньги, молчать нельзя). Коды общего
+   crm-close (conflict, close_evidence_missing и т.п.) сюда намеренно не добавлены —
+   на них остаётся общий тост ниже, как у crmPushClose. */
+const MANUAL_CLOSE_ERRORS={
+  manual_override_not_applicable:'Эта сделка уже оформлена как ручной черновик — перенос через эту форму не подходит',
+  already_closed:'Сделка уже закрыта',
+  manual_override_reason_required:'Укажите причину закрытия вручную — не короче 10 символов',
+  payin_method_required:'Укажите способ получения оплаты',
+  payin_amount_required:'Укажите сумму прихода',
+  payin_evidence_missing:'Нужен чек, хеш или отметка «деньги на счету подтверждены»',
+  payin_hash_required:'Добавьте хотя бы один хеш прихода',
+  payin_hash_unverified:'Хеш прихода не подтверждён в сети',
+  payin_hash_already_used:'Этот хеш прихода уже использован в другой сделке',
+  payin_amount_mismatch:'Сумма прихода не совпадает с подтверждённой в сети',
+  payout_source_required:'Укажите источник выдачи',
+  payout_amount_required:'Укажите сумму выдачи',
+  payout_hash_required:'Добавьте хотя бы один хеш выдачи',
+  payout_hash_unverified:'Хеш выдачи не подтверждён в сети',
+  payout_hash_already_used:'Этот хеш выдачи уже использован в другой сделке',
+  payout_amount_mismatch:'Сумма выдачи не совпадает с подтверждённой в сети',
+  payout_evidence_missing:'Нужен чек, подтверждающий выдачу',
+  agents_invalid:'Список агентов повреждён — обновите страницу',
+};
+async function manualCloseSubmit(id){
+  if(standClosing)return;
+  standClosing=true;
+  try{
+    if(STAND&&!await standRequireSaved())return;
+    const d=deal(id);
+    if(!d){toast('Сделка изменилась — обновите доску');return;}
+    if(need({mc_reason:'причина закрытия вручную'}))return;
+    const body={version:standVer,...manualClosePayload(d)};
+    const url='/api/stand/deals/'+id+'/crm-close';
+    const send=async()=>{
+      const controller=new AbortController(), timer=setTimeout(()=>controller.abort(),20000);
+      try{return await fetch(url,{method:'POST',credentials:'same-origin',
+        headers:{'Content-Type':'application/json'},body:JSON.stringify(body),signal:controller.signal});}
+      finally{clearTimeout(timer);}
+    };
+    let r=await send();
+    let j=await r.json();
+    /* Тот же сценарий превышения расхода над подтверждённым переводом, что у crmPushClose
+       (app.py общий для обычного и ручного закрытия путь _create_deal_impl) — тут тоже
+       переспрашиваем человека, а не закрываем тихо. */
+    if(r.status===409&&j.requires_confirmation){
+      const ok=confirm((j.warning||'Расход по выплате выше доступного остатка перевода.')+
+        '\n\nЭта сумма будет учтена как есть, хотя превышает подтверждённый on-chain перевод. Закрыть сделку?');
+      if(!ok){toast('Закрытие отменено — сделка не изменена');return;}
+      body.crm.confirm_payout_tx_overage=true;
+      r=await send();
+      j=await r.json();
+    }
+    if(!j.success){
+      toast(MANUAL_CLOSE_ERRORS[j.error]||('Перенос не выполнен: '+(j.error||r.status)));
+      return;
+    }
+    const cd=j.deal||{};
+    if(!cd.id||!j.data||!j.data.deals.some(x=>x.id===id&&x.closed&&x.crmDealId===cd.id)){
+      toast('Сервер не подтвердил закрытие — проверьте доску');return;
+    }
+    standVer=j.version;standBase=standClone(j.data);standApply(j.data);
+    delete S.manualCloseDraft[id];
+    delete S.manualCloseForm[id];
+    render();
+    toast('Сделка закрыта вручную — CRM #'+cd.id);
+    if(j.bitrix_sync&&j.bitrix_sync.status==='error')toast('Bitrix не обновлён — повтор доступен в карточке сделки',6000);
+    if(j.warning)toast(j.warning,6000);
+  }catch(e){toast('CRM недоступна — закрытие не подтверждено');}
+  finally{standClosing=false;}
+}
 async function standCloseLose(id,reason){
   if(standClosing)return;
   standClosing=true;
