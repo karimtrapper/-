@@ -7526,6 +7526,11 @@ const MANUAL_CLOSE_ERRORS={
   payout_amount_mismatch:'Сумма выдачи не совпадает с подтверждённой в сети',
   payout_evidence_missing:'Нужен чек, подтверждающий выдачу',
   agents_invalid:'Список агентов повреждён — обновите страницу',
+  realty_invoice_missing:'Нет суммы инвойса, ฿ — заполните через «Редактировать» сделку',
+  realty_rate_missing:'Нет курса покупки или курса клиенту — заполните через «Редактировать» сделку',
+  realty_purpose_missing:'Нет назначения платежа — заполните через «Редактировать» сделку',
+  realty_transfer_missing:'Нет перевода в MF Corp — заполните через «Редактировать» сделку',
+  realty_docs_missing:'Не хватает документов (инвойс застройщика и подтверждение оплаты)',
 };
 async function manualCloseSubmit(id){
   if(standClosing)return;
@@ -8892,6 +8897,29 @@ function manualCloseScreen(d){
             <input class="fc" id="mc_payin_date" placeholder="дата зачисления, если знаете" style="margin-top:6px"></div>`)
   ].join('');
 
+  /* Недвижимость (Лизхолд/Аренда): прибыль считает та же серверная формула
+     compute_mf_realty, что и обычная CRM-форма (crmGaps(), tasks.html:6973-
+     6977) — этот блок показывает ровно те же поля, что уже должны быть на
+     доске с ранних шагов, перед выдачей. Фрихолд — отдельная формула
+     (compute_mf_freehold, тариф IPPS), в ручной перенос пока не входит. */
+  const realtyRow=(label,known,value)=>known
+    ?row(label,value)
+    :`<div class="fg"><div class="sumred">${htmlText(label)} — не хватает. Заполните через «Редактировать» сделку, здесь это поле не собирается.</div></div>`;
+  const realtySection=(realty&&!fh)?(()=>{
+    const rates=d.rates||{};
+    const purpose=(d.payTo&&d.payTo.purpose)||d.object;
+    const docsOk=d.docs&&d.docs.inv, receiptOk=d.docs&&d.docs.receipt;
+    return `<div class="card"><div class="card-title">Инвойс и курс</div>
+      ${realtyRow('Инвойс, ฿',d.amountThb,money(d.amountThb,'฿'))}
+      ${realtyRow('Курс покупки ฿/USDT',num(rates.usdtThb)!=null,htmlText(String(rates.usdtThb)))}
+      ${realtyRow('Курс клиенту',num(rates.client)!=null,htmlText(String(rates.client)))}
+      ${row('Комиссия компании',(d.companyPct==null?1:d.companyPct)+' %')}
+      ${realtyRow('Назначение платежа',!!purpose,htmlText(purpose||''))}
+      ${realtyRow('Документы (инвойс застройщика)',docsOk,'загружен')}
+      ${realtyRow('Документы (подтверждение оплаты)',receiptOk,'загружен')}
+    </div>`;
+  })():'';
+
   /* Pay-Out (выдача) */
   const knownSource=payoutHuman(d)!=='не выбран';
   const knownPayoutAmount=po.usdt!=null;
@@ -8919,6 +8947,7 @@ function manualCloseScreen(d){
     </div>
     <button class="btn btn-outline btn-sm" onclick="manualCloseCancel(${d.id})">Отмена</button></header>
     <div class="card"><div class="card-title">Получение (Pay-In)</div>${payinSection}</div>
+    ${realtySection}
     <div class="card"><div class="card-title">Выдача (Pay-Out)</div>${payoutSection}</div>
     <div class="agbox">${agentsBlock(d,'manualClose',null)}</div>
     <div class="card"><div class="card-title">Чек / инвойс оплаты</div>${fileBlock(d,'receipt','Чек об оплате','PDF, PNG, JPG, WEBP')}</div>
