@@ -7192,6 +7192,17 @@ def stand_crm_close(stand_deal_id):
         if manual:
             if not stand_deal.get('manual') or stand_deal.get('step') != 'manual':
                 return jsonify({'success': False, 'error': 'manual_origin_mismatch'}), 409
+        elif 'manualOverride' in payload:
+            override_error = _stand_manual_close_apply_override(
+                state, stand_deal, payload.get('manualOverride'), actor,
+                verify=verify_transfer)
+            if override_error:
+                status = (409 if override_error in ('manual_override_not_applicable', 'already_closed')
+                          else 422 if override_error in (
+                              'payin_hash_unverified', 'payin_hash_already_used', 'payin_amount_mismatch',
+                              'payout_hash_unverified', 'payout_hash_already_used', 'payout_amount_mismatch')
+                          else 400)
+                return jsonify({'success': False, 'error': override_error}), status
         else:
             if stand_deal.get('manual'):
                 return jsonify({'success': False, 'error': 'legacy_manual_origin'}), 409
