@@ -93,6 +93,28 @@ def test_rejects_payin_amount_mismatch():
         state, deal, override, 'manager', verify=confirmed_echo) == 'payin_amount_mismatch'
 
 
+def test_payin_amount_mismatch_tolerance_matches_frontend_payin_tol():
+    """Допуск сверки суммы должен совпадать с фронтовой PAYIN_TOL=5 USDT
+    (static/stand/tasks.html:9344), а не с допуском в 1 цент/копейку."""
+    # Разница $3 — внутри допуска (<=5): проверка прихода проходит целиком.
+    state, deal = board(type='Оплата недвижимости', kind='Лизхолд')
+    override = {'reason': REASON,
+                'payin': {'method': 'Крипта', 'amountUsdt': 100, 'hashes': [
+                    {'hash': '3' * 64, 'network': 'trc20',
+                     'receiver': 'TReceiverWallet111111111111', 'amount': 97}]}}
+    assert A._stand_manual_close_apply_override(
+        state, deal, override, 'manager', verify=confirmed_echo) is None
+
+    # Разница $6 — вне допуска (>5): отклоняем как mismatch.
+    state, deal = board()
+    override = {'reason': REASON,
+                'payin': {'method': 'Крипта', 'amountUsdt': 100, 'hashes': [
+                    {'hash': '4' * 64, 'network': 'trc20',
+                     'receiver': 'TReceiverWallet111111111111', 'amount': 94}]}}
+    assert A._stand_manual_close_apply_override(
+        state, deal, override, 'manager', verify=confirmed_echo) == 'payin_amount_mismatch'
+
+
 def test_rejects_missing_evidence_for_non_crypto_payin():
     state, deal = board()
     override = {'reason': REASON,
@@ -106,6 +128,21 @@ def test_rejects_missing_payout_evidence_for_exchange():
     override = {'reason': REASON,
                 'payin': {'method': 'Крипта', 'amountUsdt': 100, 'hashes': [
                     {'hash': 'd' * 64, 'network': 'trc20',
+                     'receiver': 'TReceiverWallet111111111111', 'amount': 100}]},
+                'payout': {'source': 'cash', 'amountUsdt': 90}}
+    assert A._stand_manual_close_apply_override(
+        state, deal, override, 'manager', verify=confirmed_echo) == 'payout_evidence_missing'
+
+
+def test_rejects_payout_evidence_present_only_as_developer_invoice():
+    """'inv' — инвойс застройщика (только для realty), не подходит как
+    доказательство расхода exchange-сделки: нужен именно receipt (единый
+    слот на фронте для прихода и расхода, Task 5)."""
+    state, deal = board(type='Обмен валюты',
+                        files={'inv': [{'file': 'invoice.pdf'}]})
+    override = {'reason': REASON,
+                'payin': {'method': 'Крипта', 'amountUsdt': 100, 'hashes': [
+                    {'hash': '5' * 64, 'network': 'trc20',
                      'receiver': 'TReceiverWallet111111111111', 'amount': 100}]},
                 'payout': {'source': 'cash', 'amountUsdt': 90}}
     assert A._stand_manual_close_apply_override(

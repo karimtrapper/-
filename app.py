@@ -8284,7 +8284,7 @@ def _stand_manual_close_verify_hashes(state, hashes, declared_amount, verify, us
             'amount': verified_amount, 'from': checked.get('from'), 'to': receiver,
             'verified': True, 'verifiedAt': checked.get('verifiedAt'),
         })
-    if abs(verified_sum - Decimal(str(declared_amount))) > Decimal('0.01'):
+    if abs(verified_sum - Decimal(str(declared_amount))) > Decimal('5'):
         return None, f'{side}_amount_mismatch'
     return entries, None
 
@@ -8304,10 +8304,10 @@ def _stand_manual_close_apply_override(state, stand_deal, override, actor, *, ve
     мутирована) или один из строковых кодов ошибки — вызывающий код
     превращает их в HTTP-статус.
 
-    Примечание по интерфейсу: бриф ссылается на именованную константу
-    `PAYIN_TOL` в app.py:10295 — такой константы в кодовой базе нет (там код
-    про комиссию исходящего перевода). Используем допуск в 1 цент/копейку —
-    ту же точность, что везде в деньгах этого файла (`Decimal('0.01')`)."""
+    Примечание по интерфейсу: `PAYIN_TOL` — не константа app.py, а фронтовая
+    (`static/stand/tasks.html:9344: var PAYIN_TOL=5`); здесь зеркалим то же
+    значение (`Decimal('5')`, 5 USDT) для сравнения заявленной и подтверждённой
+    по сети суммы прихода/расхода."""
     if stand_deal.get('originMode') == 'manual':
         return 'manual_override_not_applicable'
     if stand_deal.get('closed'):
@@ -8357,9 +8357,11 @@ def _stand_manual_close_apply_override(state, stand_deal, override, actor, *, ve
             if problem:
                 return problem
         else:
+            # Один слот receipt на приход и расход (fileBlock(d,'receipt',...)
+            # на фронте, Task 5) — не отдельный инвойс-слот ('inv' — это
+            # инвойс застройщика, только для realty-сделок, сюда не подходит).
             has_receipt = bool((stand_deal.get('files') or {}).get('receipt'))
-            has_invoice = bool((stand_deal.get('files') or {}).get('inv'))
-            if not has_receipt and not has_invoice:
+            if not has_receipt:
                 return 'payout_evidence_missing'
 
     agents = override.get('agents')
