@@ -90,17 +90,27 @@
     bottom.setAttribute('aria-label','Разделы');
     bottom.style.setProperty('--shell-columns',panelRoles.has(state.role) ? 4 : 3);
     bottom.innerHTML = links(true);
-    const strip=document.createElement('div');
-    strip.innerHTML=sectionNav();
-    document.body.prepend(top,mobile,strip.firstElementChild);
+    // Секционные вкладки (17 разделов CRM + «Аналитика» задачника) — только
+    // внутри CRM и задачника (там живёт раздел «Аналитика»). На Калькуляторе
+    // и Панели секций нет: ряд протекал туда и был виден/кликабелен без
+    // смысла (находка №14 аудита ui-2026-10-17, открытый вопрос №11 DESIGN.md).
+    const showSectionStrip = state.page === 'crm' || state.page === 'tasks';
+    document.body.prepend(top,mobile);
+    if (showSectionStrip) {
+      const strip=document.createElement('div');
+      strip.innerHTML=sectionNav();
+      document.body.insertBefore(strip.firstElementChild, mobile.nextSibling);
+    }
     document.body.append(bottom);
     const sectionList=document.querySelector('.site-shell-section-list');
-    document.querySelectorAll('[data-shell-scroll]').forEach(button=>button.addEventListener('click',()=>{
-      sectionList.scrollBy({left:Number(button.dataset.shellScroll)*Math.max(240,sectionList.clientWidth-48),behavior:'smooth'});
-    }));
-    sectionList.addEventListener('scroll',updateSectionArrows,{passive:true});
-    window.addEventListener('resize',updateSectionArrows);
-    updateSectionArrows();
+    if (sectionList) {
+      document.querySelectorAll('[data-shell-scroll]').forEach(button=>button.addEventListener('click',()=>{
+        sectionList.scrollBy({left:Number(button.dataset.shellScroll)*Math.max(240,sectionList.clientWidth-48),behavior:'smooth'});
+      }));
+      sectionList.addEventListener('scroll',updateSectionArrows,{passive:true});
+      window.addEventListener('resize',updateSectionArrows);
+      updateSectionArrows();
+    }
     document.querySelectorAll('[data-shell-section]').forEach(link=>link.addEventListener('click',event=>{
       const section=link.dataset.shellSection;
       if (state.page==='crm' && section!=='analytics' && typeof showSection==='function') {
