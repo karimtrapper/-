@@ -3405,9 +3405,15 @@ async function refsSync(quiet){
     const codes=new Set(prod.map(a=>a.code));
     /* Ручные агенты — id вида 'm:<n>' (см. refAdd), с числовыми id из /api/referrers
        им никогда не совпасть, переименовывать при коллизии больше не нужно. */
-    const own=refs().filter(x=>!x.prod&&!codes.has(x.code));
-    S.refs=prod.concat(own);
-    save();render();
+    const current=refs(), own=current.filter(x=>!x.prod&&!codes.has(x.code));
+    const next=prod.concat(own);
+    /* Смена порядка полей в ответе не меняет справочник. Загрузка страницы
+       не должна выдавать новую версию общей доски без реального изменения. */
+    const canonical=list=>list.map(ref=>Object.keys(ref).sort().map(key=>[key,ref[key]]));
+    if(JSON.stringify(canonical(current))!==JSON.stringify(canonical(next))){
+      S.refs=next;save();
+    }
+    render();
     if(!quiet)toast('Рефереры из базы стенда: '+prod.length);
     return true;
   }catch(e){if(!quiet)toast('Справочник рефереров недоступен — агенты не обновлены');return false;}
