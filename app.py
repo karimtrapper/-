@@ -8389,6 +8389,29 @@ def _stand_manual_close_apply_override(state, stand_deal, override, actor, *, ve
             # инвойс застройщика, только для realty-сделок, сюда не подходит).
             if not _stand_valid_receipt(stand_deal):
                 return 'payout_evidence_missing'
+    elif kind == 'mf_realty':
+        # Недвижимость (Лизхолд/Аренда): «выдача» — это не USDT на кошелёк
+        # получателя, а перевод батов в MF Corp по уже известному инвойсу.
+        # Та же рубрика «известно/не хватает», что crmGaps() проверяет для
+        # обычного закрытия через s27 (tasks.html:6973-6977) — у реальной
+        # СД-1489 эти факты уже на доске с шагов s4-s12, ручной перенос их
+        # не собирает заново, только требует присутствия и пропускает дальше
+        # в _create_deal_impl/_apply_mf_realty, который считает прибыль той
+        # же compute_mf_realty, что и обычная CRM-форма.
+        if _stand_number(stand_deal.get('amountThb')) <= 0:
+            return 'realty_invoice_missing'
+        rates = stand_deal.get('rates') or {}
+        if (_stand_number(rates.get('usdtThb')) <= 0
+                or _stand_number(rates.get('client')) <= 0):
+            return 'realty_rate_missing'
+        if not ((stand_deal.get('payTo') or {}).get('purpose') or stand_deal.get('object')):
+            return 'realty_purpose_missing'
+        if not (stand_deal.get('mfPayout')
+                or (stand_deal.get('payout') or {}).get('hashes')):
+            return 'realty_transfer_missing'
+        docs = stand_deal.get('docs') or {}
+        if not (docs.get('inv') and docs.get('receipt')):
+            return 'realty_docs_missing'
 
     agents = override.get('agents')
     if agents is not None and not isinstance(agents, list):

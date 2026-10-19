@@ -20,6 +20,14 @@ def board(**overrides):
     return state, deal
 
 
+REALTY_FACTS = {
+    'amountThb': 50000, 'companyPct': 1, 'rates': {'usdtThb': 36.0, 'client': 35.0},
+    'payTo': {'purpose': 'Оплата аренды виллы'},
+    'mfPayout': [{'hash': 'f' * 64, 'net': 'TRC20', 'amount': 1388.89}],
+    'docs': {'inv': True, 'receipt': True},
+}
+
+
 def confirmed_echo(ref, network, sender, receiver, amount):
     """Фейковый verify: подтверждает перевод суммой, которую ему передали —
     без обращения к сети, как того требует бриф (не монкипатчим network I/O)."""
@@ -90,7 +98,7 @@ def test_allows_restating_hash_already_recorded_on_same_deal():
     хеша, это переподтверждение своего же факта. Должно пройти, а не упасть
     с payin_hash_already_used, и не задвоить запись в payinHashes."""
     tx_hash = '9' * 64
-    state, deal = board(type='Оплата недвижимости', kind='Лизхолд',
+    state, deal = board(type='Оплата недвижимости', kind='Лизхолд', **REALTY_FACTS,
                         payinHashes=[{'hash': tx_hash, 'network': 'TRC20', 'amount': 100,
                                       'verified': True}])
     override = {'reason': REASON,
@@ -136,7 +144,7 @@ def test_payin_amount_mismatch_tolerance_matches_frontend_payin_tol():
     """Допуск сверки суммы должен совпадать с фронтовой PAYIN_TOL=5 USDT
     (static/stand/tasks.html:9344), а не с допуском в 1 цент/копейку."""
     # Разница $3 — внутри допуска (<=5): проверка прихода проходит целиком.
-    state, deal = board(type='Оплата недвижимости', kind='Лизхолд')
+    state, deal = board(type='Оплата недвижимости', kind='Лизхолд', **REALTY_FACTS)
     override = {'reason': REASON,
                 'payin': {'method': 'Крипта', 'amountUsdt': 100, 'hashes': [
                     {'hash': '3' * 64, 'network': 'trc20',
@@ -189,7 +197,7 @@ def test_rejects_payout_evidence_present_only_as_developer_invoice():
 
 
 def test_applies_override_and_logs_reason_on_success():
-    state, deal = board(type='Оплата недвижимости', kind='Лизхолд')
+    state, deal = board(type='Оплата недвижимости', kind='Лизхолд', **REALTY_FACTS)
     override = {'reason': REASON,
                 'payin': {'method': 'Крипта', 'amountUsdt': 100, 'hashes': [
                     {'hash': 'e' * 64, 'network': 'trc20',
@@ -206,7 +214,7 @@ def test_applies_override_and_logs_reason_on_success():
 def test_rejects_invalid_agents_shape():
     """Доп. проверка (сверх 9 из брифа): шаг 8 валидации — agents, если
     передан, должен быть списком, а не произвольным значением."""
-    state, deal = board(type='Оплата недвижимости', kind='Лизхолд')
+    state, deal = board(type='Оплата недвижимости', kind='Лизхолд', **REALTY_FACTS)
     override = {'reason': REASON,
                 'payin': {'method': 'Крипта', 'amountUsdt': 100, 'hashes': [
                     {'hash': '2' * 64, 'network': 'trc20',
