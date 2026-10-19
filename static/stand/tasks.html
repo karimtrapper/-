@@ -526,7 +526,7 @@ a.hash:hover{background:#BAE6FD}
 .tgtime{font-size:11px;color:#6A7D93;text-align:right;margin-top:6px}
 
 .build{font-size:11px;color:var(--navy-400);border:1px solid rgba(255,255,255,.18);border-radius:999px;padding:2px 8px;margin-left:10px}
-.toast{position:fixed;top:18px;left:50%;transform:translateX(-50%);z-index:999;background:var(--navy-700);color:#fff;padding:14px 24px;border-radius:var(--r-sm);font-size:15px;font-weight:600;box-shadow:0 10px 30px rgba(0,0,0,.25);opacity:0;pointer-events:none;transition:opacity .2s}
+.toast{position:fixed;top:18px;left:50%;transform:translateX(-50%);z-index:999;background:var(--navy-700);color:#fff;padding:14px 24px;border-radius:var(--r-sm);font-size:14px;font-weight:600;box-shadow:0 10px 30px rgba(0,0,0,.25);opacity:0;pointer-events:none;transition:opacity .2s}
 .toast.on{opacity:1}
 .toast.error{background:#9f1239}
 /* min-width:0 — иначе колонка грида не сжимается ниже своего min-content
@@ -754,6 +754,7 @@ a.hash:hover{background:#BAE6FD}
 .deal-screen .task-action .goalnums{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:var(--ds-md)}
 .deal-screen .task-action .goalnums>div{background:var(--ds-page);padding:var(--ds-md) var(--ds-lg);border-radius:var(--ds-control);min-width:0}
 .deal-screen .policy-send-goal .goalnums>div{align-self:start}
+.deal-screen .policy-pack-heading{font-size:var(--ds-body);font-weight:var(--ds-semibold);color:var(--ds-ink)}
 .deal-screen .task-action .goalnums .k{font-size:var(--ds-caption)!important;font-weight:var(--ds-regular)!important;text-transform:none;letter-spacing:normal;color:var(--ds-muted)}
 .deal-screen .task-action .goalnums .v{font-size:var(--ds-emphasis)!important;font-weight:var(--ds-semibold)!important;overflow:hidden}
 .deal-screen .task-action .goalnums .v.big{font-size:var(--ds-display)!important;font-weight:var(--ds-bold)!important}
@@ -10381,21 +10382,25 @@ function pcCard(d,x,share,w){
    на хеш и идёт спрашивать в чат. */
 /* Отправки по задаче: список частей и строка добавления. Сумма берётся из хеша,
    если он есть во входящих; иначе её вводят или добираем остаток задачи. */
-function sendBlock(x,edit,multi){
+function sendBlock(x,edit,multi,policy){
   const l=sendList(x),sum=sendSum(x),need=pcAmount(x)||0,left=sendLeft(x),ok=sendDone(x);
   const status={pending:'Ждём подтверждения',confirmed:'Подтверждено',failed:'Ошибка перевода',mismatch:'Не совпали реквизиты / сумма',error:'Сеть недоступна — повторим проверку'};
   const canDemo=demoAllowed()&&x.demoTransfers&&(canSwitchRole()||S.role==='teodor'||(!multi&&S.role===stepWho(x,'s23')));
-  const rows=l.map((t,i)=>`<div class="hashbox" style="margin:8px 0">
+  const rows=l.map((t,i)=>{const hash=String(t.hash||t.ref||'');
+    const explorerLink=policy&&/^(?:0x)?[a-fA-F0-9]{64}$/.test(hash)&&!x.demoTransfers
+      ?`<a class="btn btn-outline btn-sm" href="${htmlText(explorer(hash,t.net||'TRC20'))}" target="_blank" rel="noopener noreferrer">${(t.net||'TRC20').toUpperCase().replace('-','')==='ERC20'?'Etherscan':'TronScan'}</a>`:'';
+    return `<div class="hashbox" style="margin:8px 0">
       <div class="hrow"><b class="${t.status==='confirmed'?'pos':''}">${usd(t.status==='confirmed'?t.verifiedAmount:t.amount)}</b>
       <span class="net">${htmlText(t.net||'TRC-20')}</span><b>${htmlText(status[t.status]||status.pending)}</b>
       ${x.demoTransfers?'<span class="src">DEMO</span>':''}</div>
-      <p class="addr" style="word-break:break-all">${htmlText(t.ref)}</p>
+      ${policy?`<div class="hrow">${addressDisclosure(hash||'хеш не указан')}${explorerLink}</div>`:
+        `<p class="addr" style="word-break:break-all">${htmlText(t.ref)}</p>`}
       ${t.checkError?`<p class="fh neg">${htmlText(t.checkError)}</p>`:''}
-      <div class="row sops"><button class="btn btn-outline btn-sm" onclick="copyAsk(${htmlText(JSON.stringify(String(t.ref)))})">Копировать</button>
+      <div class="row sops">${policy?'':`<button class="btn btn-outline btn-sm" onclick="copyAsk(${htmlText(JSON.stringify(String(t.ref)))})">Копировать</button>`}
       ${edit&&x.outgoingReview?`<button class="btn btn-outline btn-sm" onclick="outgoingReviewAction(${x.id},'remove',${htmlText(JSON.stringify(t.hash||t.ref))})">Убрать из отправки</button>`:''}
       ${edit&&!x.outgoingReview&&t.status!=='confirmed'?`<button class="btn btn-outline btn-sm" onclick="sendDel(${x.id},${i})">Убрать</button>`:''}
       ${canDemo&&t.status!=='confirmed'?`<button class="btn btn-outline btn-sm" onclick="demoSend(${x.id},${i},'confirmed')">Вебхук · демо — перевод подтверждён в сети</button>
-      <button class="btn btn-outline btn-sm" onclick="demoSend(${x.id},${i},'failed')">Вебхук · демо — перевод не прошёл</button>`:''}</div></div>`).join('');
+      <button class="btn btn-outline btn-sm" onclick="demoSend(${x.id},${i},'failed')">Вебхук · демо — перевод не прошёл</button>`:''}</div></div>`;}).join('');
   return `<div class="hashbox" style="margin-top:10px">
     ${rows||'<div class="hempty">Переводов ещё нет</div>'}
     ${edit?`<div class="fr" style="margin-top:10px">
@@ -10445,13 +10450,16 @@ function taskFacts(d,x){
    переводов несколько, и одного поля на всю пачку не хватает. */
 function packTasks(d,edit){
   const mem=cnvMembers(d), out=pcOut(d), c=convOf(d), w=dealWallet(d);
+  const policy=!!w?.purpose;
   const got=d.prepay?null:(c?hashSum(c.txs):(d.pay.usdt||null));
   const multi=!w||w.multisig;
   const fld=multi?'tx':'hash';
   const done=mem.filter(x=>pcSends(x)&&sendDone(x)).length;
   const sends=mem.filter(x=>pcSends(x)).length;
   return `<div class="card" style="background:var(--navy-50);box-shadow:none;margin-bottom:16px">
-    <div class="sec po" style="margin:0 0 4px">${c?'ЗАДАЧИ ПО ЭТОЙ ПАЧКЕ · '+mem.length:'ЧТО ОТПРАВЛЯЕМ'}</div>
+    <div class="sec po${policy?' policy-pack-heading':''}" style="margin:0 0 4px">${policy?
+      (c?'Задачи по этой пачке · '+mem.length:'Что отправляем'):
+      (c?'ЗАДАЧИ ПО ЭТОЙ ПАЧКЕ · '+mem.length:'ЧТО ОТПРАВЛЯЕМ')}</div>
     ${edit?`<p class="fh" style="margin:0 0 10px">${sends} ${sends===1?'перевод':'перевода'} с кошелька. По ${sends===1?'нему':'каждому'} ${multi?'завешиваем транзакцию и вносим ссылку':'вносим хеш отправки'} — можно частями, суммы складываются. Перевод засчитывается после подтверждения суммы и адресов. Подтверждено: ${done} из ${sends}.</p>`
       :`<p class="fh" style="margin:0 0 10px">Что уходит с кошелька и за что. Сделки без перевода помечены отдельно.</p>`}
     ${mem.map(x=>{
@@ -10473,10 +10481,10 @@ function packTasks(d,edit){
         ${taskFacts(d,x)}
         <div class="payrow">
           <div style="min-width:0"><div class="k">Адрес получателя · ${htmlText(sendTo(x))}</div>
-            <div class="v addr">${tr.addr||'адрес не указан'}</div></div>
-          <button class="btn btn-outline btn-sm" style="white-space:nowrap"
-            onclick="copyAsk(${JSON.stringify(tr.addr||'').replace(/"/g,'&quot;')})">копировать адрес</button></div>
-        ${sendBlock(x,edit,multi)}
+            <div class="v${policy?'':' addr'}">${policy?addressDisclosure(tr.addr||'адрес не указан'):tr.addr||'адрес не указан'}</div></div>
+          ${policy?'':`<button class="btn btn-outline btn-sm" style="white-space:nowrap"
+            onclick="copyAsk(${JSON.stringify(tr.addr||'').replace(/"/g,'&quot;')})">копировать адрес</button>`}</div>
+        ${sendBlock(x,edit,multi,policy)}
       </div>`;}).join('')}
     <p class="fh" style="margin-top:10px">Всего уйдёт с кошелька <b>${usd(out)}</b>${
       got!=null?` из пришедших <b>${usd(got)}</b>`:''}${
