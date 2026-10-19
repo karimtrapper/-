@@ -27,6 +27,7 @@ function fn(name){return html.match(new RegExp(`^(?:async )?function ${name}\\([
   // После отказа сохранения ни одно зависимое действие не вызывает API.
   ctx.S.role='operator';ctx.STAND=true;ctx.standClosing=false;ctx.standWaitSaved=async()=>({ok:false,error:'Конкретный отказ'});
   ctx.fetch=()=>{throw new Error('Нельзя вызывать API после отказа сохранения');};
+  ctx.deal=()=>d;ctx.standClone=structuredClone;ctx.crmPayloadFinal=()=>({});
   for(const name of ['freeholdLossAck','prepayAction','docIssue','crmEvidence','crmPushClose','standCloseLose']){
     vm.runInContext(fn(name),ctx);
     await ctx[name](1);

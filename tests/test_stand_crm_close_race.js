@@ -26,7 +26,7 @@ async function main() {
     S, STAND: true, STAND_SHARED: ['deals', 'open'],
     standBusy: false, standPush: false, standSaveScheduled: false, standClosing: false,
     standVer: 10, standBase: {deals: [structuredClone(original)], open: 1474},
-    lastPointer: 0, location: {href: ''}, Date, setTimeout, clearTimeout, AbortController,
+    lastPointer: 0, brokerSentSubmitPointer:false, location: {href: ''}, Date, setTimeout, clearTimeout, AbortController,
     deal: id => S.deals.find(d => d.id === id),
     now: () => '28.09', log: (d, msg) => d.log.push(msg),
     render: () => {}, toast: msg => toasts.push(msg),
@@ -65,7 +65,7 @@ async function main() {
   ctx.sentToggle(1474);
   const sent = await putStarted.promise;
   assert.equal(sent.deals[0].sentToClient, true);
-  const closing = ctx.crmPushClose(1474);
+  const closing = ctx.crmPushClose(1474,10);
   pendingGet.resolve({status: 200, json: async () => ({success: true,
     version: 10, data: {deals: [stale]}})});
   await pulling;
@@ -75,6 +75,9 @@ async function main() {
   pendingPut.resolve({status: 200, json: async () => ({success: true,
     version: 11, data: sent})});
   await closing;
+  assert.equal(requests.filter(x => x.url.includes('crm-close')).length, 0, 'autosave must not upgrade the version of the reviewed form');
+  assert.ok(toasts.some(x => x.includes('обновите страницу')));
+  await ctx.crmPushClose(1474,11);
   assert.equal(requests.filter(x => x.url.includes('crm-close')).length, 1);
   assert.equal(S.deals[0].crmDealId, 2);
   assert.equal(S.deals[0].closed, true);

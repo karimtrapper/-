@@ -167,6 +167,15 @@ textarea.fc{min-height:74px;resize:vertical;line-height:1.5}
 .create-error-alert{background:var(--ds-decision);border:1px solid var(--ds-decision-border);
   color:var(--ds-decision-ink);border-radius:var(--ds-control);font-size:var(--ds-body);
   line-height:1.55;padding:var(--ds-sm) var(--ds-md);margin:var(--ds-sm) 0 var(--ds-md)}
+.s27-close-warning{background:var(--ds-decision);border:1px solid var(--ds-decision-border);
+  color:var(--ds-decision-ink);border-radius:var(--ds-control);font-size:var(--ds-body);
+  padding:var(--ds-sm) var(--ds-md);margin:var(--ds-md) 0;overflow-wrap:anywhere}
+.s27-fact-pending{color:var(--ds-decision-ink);white-space:normal;overflow-wrap:anywhere}
+.s27-close-actions{margin-top:var(--ds-lg)}
+.s27-sent-action{width:100%;margin-top:var(--ds-lg)}
+.s27-sent-note{margin-top:var(--ds-lg)}
+.s27-sent-hint{text-align:center;margin-top:var(--ds-sm)}
+
 table{width:100%;border-collapse:collapse;font-size:14px}
 th{background:var(--navy-50);color:var(--text-sec);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.03em;padding:10px 12px;text-align:left;border-bottom:2px solid var(--border);white-space:nowrap}
 td{padding:11px 12px;border-bottom:1px solid var(--border-light);vertical-align:middle}
@@ -4426,7 +4435,7 @@ function dealSummaryBlock(d){
     (ev?`<div style="margin-top:6px">${ev.payoutBtn}</div>`:''),'перевод в сети',edit));
   outRows.push(row('Инвойс и чек',htmlText((d.payTo||{}).inv||d.invNo||'номер не указан')+' · '+(receipt?'чек: '+htmlText(receipt.file):'чека нет')+
     (ev&&ev.receiptBtn?`<div style="margin-top:6px">${ev.receiptBtn}</div>`:''),'оплата инвойса',edit));
-  if(ev)outRows.push(row('Подтверждения',ev.sentBtn+ev.warnings+ev.resendBtn,'перед закрытием',null));
+  if(ev&&(ev.warnings||ev.resendBtn))outRows.push(row('Проверка',ev.warnings+ev.resendBtn,'перед закрытием',null));
   /* 3. Агент и прибыль — переиспользуем agentsBlock (тот же редактор, что в editOpen),
      не рисуем свою вёрстку. Выплаты — серверные (pv.data.agents), не client-side econ(). */
   const list=d.agents||[];
@@ -7218,35 +7227,73 @@ function crmEditDiff(d){
   });
   return out;
 }
-/* Кнопки подтверждения факта серверу (/close-evidence) — общие для полной коробки
-   (вид оператора вне s27) и для встраивания прямо в строки «Итога сделки» на s27. */
+/* Readiness comes from the same server rules used by the atomic close. Cache by
+   board version; rendering never writes acknowledgements or verification dates. */
+const CRM_CLOSE_STATUS=new Map();
+function crmCloseStatus(d){
+  if(d.manual)return {facts:[],missing:[],version:standVer};
+  const key=d.id+':'+standVer;
+  if(CRM_CLOSE_STATUS.has(key))return CRM_CLOSE_STATUS.get(key);
+  const pending={pending:true,version:standVer};
+  CRM_CLOSE_STATUS.set(key,pending);
+  fetch('/api/stand/deals/'+d.id+'/close-evidence',{credentials:'same-origin'})
+    .then(r=>r.json()).then(j=>{
+      CRM_CLOSE_STATUS.set(key,j.success?j:{error:true});
+    }).catch(()=>CRM_CLOSE_STATUS.set(key,{error:true}))
+    .finally(()=>render());
+  return pending;
+}
+function crmCloseReason(fact){
+  return ({verified_payin_missing:'Нет подтверждённого в сети хеша прихода',
+    verified_partner_payin_missing:'Нет подтверждённого в сети прихода партнёра',
+    network_payout_proof_missing:'Нет подтверждённого в сети хеша выплаты',
+    payout_fact_missing:'Не заполнены сумма и получатель выплаты',
+    invoice_payment_or_receipt_missing:'Нет оплаты инвойса или файла чека',
+    sent_receipt_missing:'Отметьте отправку чека клиенту',
+    operator_receipt_acceptance_missing:'Чек должен приложить или подтвердить операционист',
+    operator_confirmation_missing:'Нужно подтверждение операциониста: '+
+      (fact.kind==='payin'?'получение денег':'выдача денег'),
+    demo_history_requires_review:'Нужна проверка истории демонстрационных переводов',
+    freehold_route_invalid:'Для фрихолда требуется маршрут IPPS SWIFT'})[fact.reason]||
+    'Не подтверждён факт: '+({payin:'приход',payout:'выплата',receipt:'оплата инвойса и чек',sent:'отправка чека'}[fact.kind]||'данные сделки');
+}
+function crmCloseBlockers(d){
+  const status=crmCloseStatus(d);
+  if(status.pending)return ['Проверяем факты закрытия на сервере'];
+  if(status.error)return ['Не удалось проверить факты — обновите страницу'];
+  if(status.version!==standVer)return ['Данные изменились — обновите страницу и проверьте итог'];
+  return (status.facts||[]).filter(f=>!f.ready).map(crmCloseReason);
+}
 function crmEvidenceParts(d,compact){
   if(d.manual)return null;
-  const id=d.id, esc=htmlText;
-  const networkOut=['coins','ipps_swift'].includes(d.postConv)||['coins','client'].includes(d.paySrc);
-  const networkPayin=d.payType==='Крипта'&&(!(d.payinHashes||[]).length||
-    !(d.payinHashes||[]).every(h=>h.verified));
-  const routeRecipient=(d.transfer||{}).addr||(d.payTo||{}).acc||
-    (d.payout||{}).bankCardId||(d.payout||{}).founder||d.client||'не указан';
-  const canRole=role=>S.role===role||S.role==='admin';
-  /* compact=true — кнопка уже стоит рядом со строкой, где всё перечисленное видно,
-     повторять способ/сумму/адрес в тексте кнопки не нужно (приёмка Карима 17.10) */
-  const payinBtn=`<button class="btn btn-outline btn-sm" ${networkPayin||!canRole(d.payType==='Наличные'?'operator':'manager')?'disabled':''} onclick="crmEvidence(${id},'payin')">${compact?`Подтвердить · ${d.payType==='Наличные'?'оператор':'менеджер'}`:`Подтвердить получение · ${esc(payinSourceLabel(d))} · ${esc(moneyKop(econ(d).payin||0,'USDT'))} · ${d.payType==='Наличные'?'оператор':'менеджер'}`}</button>`;
-  const payoutBtn=`<button class="btn btn-outline btn-sm" ${networkOut&&!d.serverTransferComplete||!canRole(networkOut?'manager':'operator')?'disabled':''} onclick="crmEvidence(${id},'payout')">${compact?`Подтвердить · ${networkOut?'менеджер':'оператор'}`:`Подтвердить оплату · ${esc(payoutHuman(d))} · ${esc(moneyKop(econ(d).cost||0,'USDT'))} · ${esc(txShort(routeRecipient))} · ${networkOut?'менеджер':'оператор'}`}</button>`;
-  const receiptBtn=d.type==='Оплата недвижимости'?`<button class="btn btn-outline btn-sm" ${!canRole('operator')?'disabled':''} onclick="crmEvidence(${id},'receipt')">${compact?'Подтвердить · оператор':`Подтвердить оплату инвойса · ${esc((d.payTo||{}).acc||'получатель на доске')} · оператор`}</button>`:'';
-  const sentBtn=`<button class="btn btn-outline btn-sm" ${!canRole('manager')?'disabled':''} onclick="crmEvidence(${id},'sent')">Подтвердить отправку чека · менеджер</button>`;
-  const warnings=(networkPayin?'<p class="fh">Сначала проверьте входящий перевод по сети.</p>':'')+
-    (networkOut&&!d.serverTransferComplete?'<p class="fh">Сначала дождитесь серверного подтверждения сетевого перевода.</p>':'');
-  const resendBtn=(networkOut&&canRole('operator')&&(d.transfer?.sends||[]).some(t=>t.status==='confirmed'&&(!t.from||!t.to)))
-    ?`<button class="btn btn-outline btn-sm" onclick="checkSends(${id})">Повторно проверить перевод в сети</button>`:'';
-  return {payinBtn,payoutBtn,receiptBtn,sentBtn,warnings,resendBtn};
+  const status=crmCloseStatus(d), facts=status.facts||[];
+  const part=kind=>{
+    const fact=facts.find(f=>f.kind===kind);
+    if(!fact)return '<span class="fh">'+htmlText(crmCloseBlockers(d)[0]||'Проверяем факт')+'</span>';
+    if(fact.ready){
+      const stamp=fact.checked_at?new Date(fact.checked_at).toLocaleString('ru-RU'):
+        kind==='sent'?'дата отметки не сохранена':fact.system?'дата проверки не сохранена':'дата подтверждения не сохранена';
+      const label=kind==='sent'?'Чек отправлен клиенту':fact.system?'проверено системой':'подтверждено сотрудником';
+      return '<span class="fh">'+htmlText(label+' · '+stamp)+'</span>';
+    }
+    const warning='<span class="s27-fact-pending">'+htmlText(compact?'Не подтверждено':crmCloseReason(fact))+'</span>';
+    if(['operator_confirmation_missing','operator_receipt_acceptance_missing'].includes(fact.reason))return warning+
+      `<button class="btn btn-outline btn-sm" ${['operator','admin'].includes(S.role)?'':'disabled'} onclick="crmEvidence(${d.id},'${kind}')">Подтвердить · оператор</button>`;
+    return warning;
+  };
+  const resendBtn=['operator','admin'].includes(S.role)&&
+    (d.transfer?.sends||[]).some(t=>t.status==='confirmed'&&(!t.from||!t.to))
+    ?`<button class="btn btn-outline btn-sm" onclick="checkSends(${d.id})">Повторно проверить перевод в сети</button>`:'';
+  return {payinBtn:part('payin'),payoutBtn:part('payout'),
+    receiptBtn:d.type==='Оплата недвижимости'?part('receipt'):'',
+    sentBtn:'',warnings:'',resendBtn};
 }
 function crmEvidencePanel(d){
   const p=crmEvidenceParts(d);
   if(!p)return '';
   return `<div class="box box-blue" style="margin:10px 0">
       <b>Подтверждения перед закрытием</b>
-      <p class="fh">Сотрудник подтверждает сохранённые суммы и получателя. Сетевой перевод должен быть проверен системой.</p>
+      <p class="fh">Проверенные системой факты не требуют отдельного подтверждения. Ручные факты подтверждает ответственный операционист.</p>
       <div class="row" style="flex-wrap:wrap;gap:6px;margin-top:7px">${p.payinBtn}${p.payoutBtn}${p.receiptBtn}${p.sentBtn}</div>
       ${p.warnings}${p.resendBtn}
     </div>`;
@@ -7371,12 +7418,19 @@ function crmFactsMismatchMessage(error){
     ?'Цифры или переводы отличаются от сохранённой сделки. Верните значения из доски и проверьте факты.'
     :null;
 }
-async function crmPushClose(id){
+async function crmPushClose(id,reviewedVersion){
   if(standClosing)return;
   standClosing=true;
   try{
+    // Freeze the form before awaiting autosave. Never substitute a silently
+    // refreshed/merged board version for the version rendered on this button.
+    const shown=deal(id);
+    const reviewedCrm=shown?standClone(crmPayloadFinal(shown)):null;
     if(STAND&&!await standRequireSaved())return;
     const d=deal(id);
+    if(d&&!d.manual&&(typeof reviewedVersion!=='number'||reviewedVersion!==standVer)){
+      toast('Данные изменились — обновите страницу и проверьте итог сделки');return;
+    }
     if(!d){toast('Сделка изменилась — обновите доску');return;}
     const manual=d.manual===true;
     if(manual){
@@ -7388,8 +7442,8 @@ async function crmPushClose(id){
       const gaps=crmGaps(d);if(gaps.length){toast('До закрытия заполните: '+gaps[0].label);return;}
       if(!d.pay.invoicePaid&&d.type==='Оплата недвижимости'){toast('Нужна оплата инвойса и чек');return;}
     }
-    const crm=crmPayloadFinal(d);
-    const body={version:standVer,crm};
+    const crm=manual?crmPayloadFinal(d):reviewedCrm;
+    const body={version:manual?standVer:reviewedVersion,crm};
     const url='/api/stand/deals/'+id+'/crm-close';
     const send=async()=>{
       const controller=new AbortController(), timer=setTimeout(()=>controller.abort(),20000);
@@ -7411,10 +7465,11 @@ async function crmPushClose(id){
       j=await r.json();
     }
     if(!j.success){
+      if(j.error==='conflict'){
+        toast(j.detail||'Данные изменились — обновите страницу и проверьте итог сделки');return;
+      }
       if(j.error==='close_evidence_missing'){
-        toast('Нужны подтверждения: '+(j.details||[]).map(x=>x.label+' ('+
-          (x.required_role==='operator'?'оператор':'менеджер')+')').join(', ')+
-          '. Кнопки находятся в карточке CRM.');
+        toast('До закрытия: '+(j.details||[]).map(x=>x.label+(x.reason?' — '+crmCloseReason(x):'')).join(', '));
         return;
       }
       toast(crmFactsMismatchMessage(j.error)||'CRM не закрыла сделку: '+(j.error||r.status));return;
@@ -11290,9 +11345,12 @@ function stepCard(d){
       : [['Курс клиенту, ₽/฿',d.rates.client],['Курс обмена RUB→USDT',d.rates.broker],['Хеши обмена',inHashes]])
       /* личный кошелёк закрывает отправку сервером (settle), минуя act s23 — тогда хеш
          лежит в pay.outHash и в отправках, а pay.tx пуст (приёмка 25.09) */
-      .concat([['Транзакция отправки',d.pay.tx||d.pay.outHash||((sendList(d).find(x=>x.status==='confirmed')||{}).ref)],
-      ['Чек оплаты инвойса',receiptFiles.length?((d.docMeta||{}).receipt||{}).file:null]]);
+      .concat([['Транзакция отправки',d.pay.tx||d.pay.outHash||((sendList(d).find(x=>x.status==='confirmed')||{}).ref)||((sendList(d).find(x=>x.status==='confirmed')||{}).hash)],
+      ['Чек оплаты инвойса',receiptFiles.length?receiptFiles[0].file:null]]);
     const okMiss=ok.filter(x=>!x[1]).length, miss=okMiss+crmGaps(d).length;
+    const closeBlockers=crmCloseBlockers(d).concat(ok.filter(x=>!x[1]).map(x=>'Не заполнено: '+x[0]));
+    if(prepayCloseReason(d))closeBlockers.push(prepayCloseReason(d));
+    const reviewedVersion=standVer;
     /* Чек — главное на этом шаге: сумма, получатель и файл крупно в самом верху,
        «Чек отправлен клиенту» — явная главная кнопка сразу под ним. Служебное
        (CRM-превью, список полей) — ниже и мельче, по иерархии важности (Карим, 25.09) */
@@ -11307,9 +11365,9 @@ function stepCard(d){
           <button class="btn btn-primary" onclick="docOpen(${d.id},'receipt',${i})">Открыть</button>
           <button class="btn btn-secondary" onclick="docDownload(${d.id},'receipt',${i})">Скачать</button>
         </div></div>`).join('')}
-      <button class="btn btn-success btn-lg" style="width:100%;margin-top:14px" onclick="sentToggle(${d.id})">
-        ${d.sentToClient?'✓ Чек отправлен клиенту':'Отметить — чек отправлен клиенту'}</button>
-      <p class="fh" style="text-align:center;margin-top:6px">${d.sentToClient?('отмечено · '+(d.sentAt||'')):'отправьте чек в чат клиента, затем отметьте здесь'}</p>
+      ${d.sentToClient?'<p class="fh s27-sent-note">✓ Чек отправлен клиенту'+(d.sentAt?' · '+safe(d.sentAt):'')+'</p>':
+        `<button class="btn btn-primary btn-lg s27-sent-action" onclick="sentToggle(${d.id})">Отметить — чек отправлен клиенту</button>
+        <p class="fh s27-sent-hint">Отправьте чек в чат клиента, затем отметьте здесь</p>`}
     </div>`
     :`<div class="alert a-warn"><div>Чека нет — операционист ещё не приложил его на шаге оплаты.</div></div>`}
 
@@ -11321,11 +11379,10 @@ function stepCard(d){
       <span class="sub">те же поля, что «Редактировать» в CRM — поправьте, если нужно, и сохраните</span></div>
     ${crmForm(d)}
     <!--note-->
-    <div class="row${(miss||!d.sentToClient)?'':' mainrow'}" style="margin-top:14px">
-      <button class="btn btn-success" ${(miss||!d.sentToClient||prepayCloseReason(d))?'disabled':''} onclick="crmPushClose(${d.id})">Сохранить в CRM и закрыть «Успешно»</button>
+    ${closeBlockers.length?`<div class="s27-close-warning" role="status"><div>${closeBlockers.map(htmlText).join('<br>')}</div></div>`:''}
+    <div class="row s27-close-actions${(miss||closeBlockers.length||!d.sentToClient)?'':' mainrow'}">
+      <button class="btn btn-primary" ${(miss||closeBlockers.length||!d.sentToClient||prepayCloseReason(d)||standBusy||standSaveScheduled)?'disabled':''} onclick="crmPushClose(${d.id},${reviewedVersion})">Сохранить в CRM и закрыть</button>
       <button class="btn btn-outline" onclick="editOpen(${d.id})">Поправить данные сделки</button></div>
-    ${!d.sentToClient&&!miss?`<p class="fh">Сначала отметьте наверху, что чек отправлен клиенту.</p>`:''}
-    ${prepayCloseReason(d)?`<p class="fh" role="status">${htmlText(prepayCloseReason(d))}.</p>`:''}
     </div>`;},
   }[d.step];
   if(!f) return `<div class="card">Шаг «${d.step}» в прототипе не реализован.</div>`;
@@ -11769,7 +11826,7 @@ async function act(id,step){
     if(!d.sentToClient){toast('Отметьте, что чек отправлен клиенту');return;}
     const gaps=crmGaps(d);if(gaps.length){toast('До закрытия заполните: '+gaps[0].label);return;}
     if(!d.pay.invoicePaid||!d.docs.receipt){toast('Нужны оплата инвойса и чек');return;}
-    if(STAND){crmPushClose(d.id);return;}closeDeal(d,'Успешно завершена');return;}
+    if(STAND){toast('Проверьте итог и нажмите «Сохранить в CRM и закрыть»');return;}closeDeal(d,'Успешно завершена');return;}
 }
 
 /* ---------- поступления ---------- */

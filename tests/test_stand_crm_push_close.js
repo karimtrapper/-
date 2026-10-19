@@ -60,7 +60,7 @@ function fixture(responses, confirmAnswer) {
       {status: 409, json: {success: false, requires_confirmation: true, warning: 'Расход выше остатка'}},
       {status: 200, json: {success: true, deal: {id: 42}}},
     ], true);
-    await ctx.crmPushClose(1);
+    await ctx.crmPushClose(1,10);
     const fetches = calls.filter(c => c.type === 'fetch');
     assert.equal(fetches.length, 2, 'должно быть два запроса: первый и повтор с подтверждением');
     assert.equal(fetches[0].body.crm.confirm_payout_tx_overage, undefined);
@@ -77,7 +77,7 @@ function fixture(responses, confirmAnswer) {
       {status: 409, json: {success: false, requires_confirmation: true, warning: 'QA: превышение $100'}},
       {status: 200, json: {success: true, deal: {id: 15}, warning: 'QA: превышение $100'}},
     ], true);
-    await ctx.crmPushClose(1);
+    await ctx.crmPushClose(1,10);
     assert.equal(d.crmDealId, 15);
     assert.equal(d.closed, true);
     assert.ok(toasts.some(x => x.includes('QA: превышение $100')),
@@ -88,7 +88,7 @@ function fixture(responses, confirmAnswer) {
     const {ctx, d, toasts, calls} = fixture([
       {status: 409, json: {success: false, requires_confirmation: true, warning: 'Расход выше остатка'}},
     ], false);
-    await ctx.crmPushClose(1);
+    await ctx.crmPushClose(1,10);
     const fetches = calls.filter(c => c.type === 'fetch');
     assert.equal(fetches.length, 1, 'отказ — второго запроса быть не должно');
     assert.equal(d.crmDealId, null);
@@ -100,7 +100,7 @@ function fixture(responses, confirmAnswer) {
     const {ctx, d, calls} = fixture([
       {status: 200, json: {success: true, deal: {id: 7}}},
     ], true);
-    await ctx.crmPushClose(1);
+    await ctx.crmPushClose(1,10);
     const fetches = calls.filter(c => c.type === 'fetch');
     assert.equal(fetches.length, 1);
     assert.equal(d.crmDealId, 7);
@@ -110,7 +110,7 @@ function fixture(responses, confirmAnswer) {
   {
     const {ctx, d, toasts} = fixture([], true);
     ctx.fetch = () => Promise.reject(new Error('synthetic timeout'));
-    await ctx.crmPushClose(1);
+    await ctx.crmPushClose(1,10);
     assert.equal(d.crmDealId, null);
     assert.equal(d.closed, undefined);
     assert.ok(!toasts.some(t => t.includes('Сделка закрыта')));
