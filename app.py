@@ -6675,15 +6675,89 @@ def stand_transfer_claim():
                  'walletId': policy['walletId'], 'amount': str(policy['amount']),
                  'fingerprint': policy['fingerprint']}
         main['transferClaim'] = claim
+        if actor == 'teodor' and policy['wallet'].owner_can_alone:
+            main['transferConfirmation'] = {'byId': user.id, 'byName': claim['byName'],
+                'role': actor, 'at': claim['at'], 'claimFingerprint': claim['fingerprint'],
+                'ownerAlone': True}
         main['assigneeAdminId'] = user.id
         main.setdefault('log', []).append({'at': claim['at'], 'role': actor,
             'by': user.id, 'text': f"{claim['byName']} взял отправку {claim['amount']} USDT"})
+        old_version = row.version or 0
+        won = db.query(StandState).filter(StandState.id == row.id,
+                  StandState.version == old_version).update({
+            StandState.data: json.dumps(state, ensure_ascii=False),
+            StandState.version: old_version + 1,
+            StandState.updated_by: claim['byName'],
+            StandState.updated_at: datetime.utcnow()}, synchronize_session=False)
+        if won != 1:
+            db.rollback()
+            latest = db.query(StandState).filter_by(id=1).first()
+            latest_state = json.loads(latest.data or '{}') if latest else {}
+            latest_main = _stand_batch_main(latest_state, deal_id)
+            taken = (latest_main or {}).get('transferClaim') or {}
+            name = taken.get('byName') or 'другой сотрудник'
+            return jsonify(success=False, error=f'Шаг уже взял {name}', taken_by=name), 409
+        db.commit()
+        return jsonify(success=True, version=old_version + 1, data=_stand_strip_files(state), claim=claim)
+    finally:
+        db.close()
+
+
+@app.route('/api/stand/transfer/confirm', methods=['POST'])
+def stand_transfer_confirm():
+    if not STAND_MODE:
+        return jsonify(success=False, error='stand_only'), 404
+    payload = request.get_json(silent=True) or {}
+    actor, actor_id = current_role(), flask_session.get('user_id')
+    if actor_id is None:
+        return jsonify(success=False, error='Требуется вход сотрудника'), 403
+    try:
+        deal_id = int(payload.get('dealId'))
+    except (TypeError, ValueError):
+        return jsonify(success=False, error='dealId обязателен'), 400
+    db = get_session()
+    try:
+        if engine.dialect.name == 'sqlite':
+            db.execute(text('BEGIN IMMEDIATE'))
+        row = _stand_row(db, lock=True)
+        state = json.loads(row.data or '{}')
+        main = _stand_batch_main(state, deal_id)
+        if not main or main.get('step') != 's24':
+            return jsonify(success=False, error='Шаг подтверждения недоступен'), 409
+        try:
+            policy = _stand_transfer_policy(db, state, main)
+        except ValueError as exc:
+            return jsonify(success=False, error=str(exc)), 409
+        if not policy:
+            return jsonify(success=False, error='Для этого кошелька действует прежний порядок подписи'), 409
+        claim = main.get('transferClaim') or {}
+        if not claim or claim.get('fingerprint') != policy['fingerprint']:
+            return jsonify(success=False, error='Отправка не взята или поручение изменилось'), 409
+        if claim.get('byId') == actor_id:
+            return jsonify(success=False, error='Нельзя подтвердить собственную отправку'), 403
+        user = db.query(AdminUser).filter_by(id=actor_id).first()
+        if (not user or user.login_disabled or user.role != actor or
+                actor not in _stand_policy_roles(policy['wallet'], 'confirmer_roles')):
+            return jsonify(success=False, error='Эта роль не подтверждает перевод'), 403
+        if payload.get('version') != row.version:
+            return jsonify(success=False, error='Доска изменилась — обновите её', version=row.version,
+                           data=_stand_strip_files(state)), 409
+        existing = main.get('transferConfirmation')
+        if existing and existing.get('byId') != actor_id:
+            return jsonify(success=False, error='Перевод уже подтвердил другой сотрудник'), 409
+        confirmation = existing or {'byId': user.id, 'byName': user.display_name or user.username,
+            'role': actor, 'at': int(time.time() * 1000),
+            'claimFingerprint': claim['fingerprint'], 'ownerAlone': False}
+        main['transferConfirmation'] = confirmation
+        main.setdefault('log', []).append({'at': confirmation['at'], 'role': actor,
+            'by': user.id, 'text': f"{confirmation['byName']} подтвердил отправку; ожидается Success в сети"})
         row.data = json.dumps(state, ensure_ascii=False)
         row.version = (row.version or 0) + 1
-        row.updated_by = claim['byName']
+        row.updated_by = confirmation['byName']
         row.updated_at = datetime.utcnow()
         db.commit()
-        return jsonify(success=True, version=row.version, data=_stand_strip_files(state), claim=claim)
+        return jsonify(success=True, version=row.version, data=_stand_strip_files(state),
+                       confirmation=confirmation)
     finally:
         db.close()
 
@@ -7918,16 +7992,22 @@ def _stand_transfer_policy(db, state, main):
     if not main:
         return None
     wallet_id = stand_prepay.wallet_id(state, main)
+    mirror = stand_prepay.wallet(state, main) or {}
+    source_addr = mirror.get('addr') or ((main.get('payinCustom') or {}).get('addr')
+                                         if wallet_id == 'custom' else None)
     try:
         registry_id = int(wallet_id)
     except (TypeError, ValueError):
+        if source_addr in POLICY_WALLET_ADDRESSES:
+            raise ValueError('Кошелёк с политикой подписей выбирают по записи реестра')
         return None
     wallet = db.query(Wallet).filter_by(id=registry_id).first()
+    if source_addr in POLICY_WALLET_ADDRESSES and (not wallet or wallet.address != source_addr):
+        raise ValueError('Адрес кошелька с политикой не совпадает с записью реестра')
     if not wallet or wallet.address not in POLICY_WALLET_ADDRESSES:
         return None
     if not wallet.active or wallet.purpose not in ('realty', 'exchange'):
         raise ValueError('Кошелёк отправки недоступен')
-    mirror = stand_prepay.wallet(state, main) or {}
     if mirror.get('addr') != wallet.address:
         raise ValueError('Адрес кошелька отправки не совпадает с реестром')
     members = _stand_members(state, main['id'])
@@ -9917,6 +9997,26 @@ def _stand_state_events(previous, state, actor, version):
 def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=None,
                             allow_crm_close=False):
     from stand_workflow import rerate_attempt, rerate_problem
+    if db is not None:
+        protected_wallets = {w.id: w for w in db.query(Wallet).filter(
+            Wallet.address.in_(POLICY_WALLET_ADDRESSES)).all()}
+        by_address = {w.address: w for w in protected_wallets.values()}
+        for mirror in new_state.get('wallets') or []:
+            try:
+                mirror_id = int(mirror.get('id'))
+            except (TypeError, ValueError):
+                mirror_id = None
+            registry = protected_wallets.get(mirror_id) or by_address.get(mirror.get('addr'))
+            if not registry:
+                continue
+            if (mirror_id != registry.id or mirror.get('addr') != registry.address
+                    or mirror.get('purpose') != registry.purpose
+                    or mirror.get('limit_usd') != registry.limit_usd
+                    or mirror.get('initiator_roles') != _stand_policy_roles(registry, 'initiator_roles')
+                    or mirror.get('confirmer_roles') != _stand_policy_roles(registry, 'confirmer_roles')
+                    or mirror.get('owner_can_alone') != registry.owner_can_alone
+                    or mirror.get('signer_addresses') != json.loads(registry.signer_addresses or '{}')):
+                return 'Правила кошелька берутся только из реестра'
     prior_deals = {d.get('id'): d for d in previous.get('deals', [])}
     for deal in new_state.get('deals') or []:
         before = prior_deals.get(deal.get('id'))
@@ -9981,7 +10081,26 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
                     return str(exc)
                 if not after_policy or after_policy['fingerprint'] != unclaimed_policy['fingerprint']:
                     return 'После поручения нельзя менять кошелёк, сумму или получателя'
+        if db is not None and before.get('step') == 's22' and deal.get('step') == 's23':
+            old_source = stand_prepay.wallet_id(previous, before)
+            new_source = stand_prepay.wallet_id(new_state, deal)
+            try:
+                old_registry = db.query(Wallet).filter_by(id=int(old_source)).first()
+            except (TypeError, ValueError):
+                old_registry = None
+            if old_registry and old_registry.address in POLICY_WALLET_ADDRESSES and old_source != new_source:
+                return 'Кошелёк отправки закреплён до передачи на подпись'
+            try:
+                new_policy = _stand_transfer_policy(db, new_state,
+                                _stand_batch_main(new_state, deal.get('id')))
+            except ValueError as exc:
+                return str(exc)
+            if new_policy and old_source != new_source:
+                return 'Кошелёк отправки закреплён до передачи на подпись'
         if db is not None and batch_claim:
+            if (before.get('step') == 's23' and before != deal and
+                    actor_id == batch_claim.get('byId') and actor != batch_claim.get('role')):
+                return 'Роль сотрудника изменилась — нужна повторная сверка отправки'
             new_main = _stand_batch_main(new_state, deal.get('id'))
             if not old_main or not new_main or old_main.get('id') != new_main.get('id'):
                 return 'После взятия отправки нельзя менять состав пачки'
@@ -9994,6 +10113,9 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
             if ((before.get('transfer') or {}).get('sends') != (deal.get('transfer') or {}).get('sends')
                     and actor_id != batch_claim.get('byId')):
                 return 'Хеши отправки записывает сотрудник, взявший задачу'
+            if (old_main.get('step') == 's23' and before.get('step') != deal.get('step')
+                    and actor_id != batch_claim.get('byId')):
+                return 'Шаг отправки завершает сотрудник, взявший задачу'
         if before.get('recipientWarnings') != deal.get('recipientWarnings'):
             return 'Сверку адреса получения фиксирует только сервер'
         if before.get('s14Ping') != deal.get('s14Ping'):
@@ -10367,6 +10489,8 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
             return 'freehold_loss_ack_server_only'
         if (_stand_is_crypto(deal)
                 or (before and (_stand_is_crypto(before)))):
+            if (deal.get('payinCustom') or {}).get('addr') in POLICY_WALLET_ADDRESSES:
+                return 'Кошелёк с политикой подписей выбирают из реестра'
             if not before and (deal.get('walletId') in ('custom', 'teodor-erc')
                                or deal.get('payinCustom')):
                 return 'Новый кошелёк прихода выбирают на s11'
@@ -10759,6 +10883,24 @@ def _stand_settle_verified(state, members):
     if any(d.get('outgoingReview') and d.get('kind') == 'Фрихолд'
            and not _stand_payto_confirmed(d) for d in members):
         return False
+    policy_main = _stand_batch_main(state, members[0].get('id')) if members else None
+    try:
+        policy = _stand_transfer_policy(get_session(), state, policy_main) if policy_main else None
+    except ValueError:
+        return False
+    if policy:
+        claim = policy_main.get('transferClaim') or {}
+        confirmation = policy_main.get('transferConfirmation') or {}
+        if (claim.get('fingerprint') != policy['fingerprint'] or
+                confirmation.get('claimFingerprint') != claim.get('fingerprint') or
+                not claim.get('byId') or not confirmation.get('byId')):
+            return False
+        if confirmation.get('ownerAlone'):
+            if (claim.get('byId') != confirmation.get('byId') or
+                    claim.get('role') != 'teodor' or not policy['wallet'].owner_can_alone):
+                return False
+        elif claim.get('byId') == confirmation.get('byId'):
+            return False
     changed = False
     for deal in members:
         if deal.get('postConv') != 'refund' or deal.get('serverSettled') or deal.get('closed'):
@@ -10838,7 +10980,9 @@ def _stand_settle_verified(state, members):
                 return bool((deal.get('transfer') or {}).get('back'))
             return False
         outgoing = [d for d in members if required_send(d)]
-        if ((not multisig or main.get('step') == 's24') and outgoing
+        signed_step = ((main.get('step') in ('s23', 's24')) if policy else
+                       (not multisig or main.get('step') == 's24'))
+        if (signed_step and outgoing
                 and _stand_send_complete(main)
                 and all(_stand_send_complete(d) for d in outgoing)):
             sends = [s for s in (main.get('transfer') or {}).get('sends') or []
@@ -11460,7 +11604,8 @@ def _stand_check_transfers(deal_id=None, *, poll=False):
         wallet_id = stand_prepay.wallet_id(snapshot, main or {})
         wallet = stand_prepay.wallet(snapshot, main or {})
         demo_multisig_wait = bool(main and main.get('step') == 's23'
-                                  and (wallet or {}).get('multisig', wallet_id not in ('teodor', 'andrey')))
+                                  and (wallet or {}).get('multisig', wallet_id not in ('teodor', 'andrey'))
+                                  and not (main.get('transferConfirmation') or {}).get('ownerAlone'))
         if key[0] is None:
             result = {'status': 'mismatch', 'checkError': 'Хеш и ссылка не совпадают или некорректны'}
         elif deal.get('outgoingReview') and key[0] in (outgoing_review.claims(snapshot, member_id, exclude_own_payout=bool(deal.get('serverTransferComplete'))) | registry_claims):
@@ -11572,6 +11717,23 @@ def stand_transfers_check():
         deal_id = int(data.get('dealId'))
     except (TypeError, ValueError):
         return jsonify({'success': False, 'error': 'dealId обязателен'}), 400
+    db = get_session()
+    try:
+        state = json.loads(_stand_row(db).data or '{}')
+        main = _stand_batch_main(state, deal_id)
+        try:
+            policy = _stand_transfer_policy(db, state, main) if main else None
+        except ValueError as exc:
+            return jsonify(success=False, error=str(exc)), 409
+        if policy and main.get('step') == 's24':
+            claim = main.get('transferClaim') or {}
+            actor_id = flask_session.get('user_id')
+            if actor_id and actor_id == claim.get('byId'):
+                return jsonify(success=False, error='Нельзя подтвердить собственную отправку'), 403
+            if not main.get('transferConfirmation'):
+                return jsonify(success=False, error='Сначала подтвердите отправку своей ролью'), 409
+    finally:
+        db.close()
     result = _stand_check_transfers(deal_id)
     if result and result.get('httpStatus'):
         return jsonify(result), result['httpStatus']
@@ -11615,9 +11777,27 @@ def stand_transfers_demo():
         multi = (wallet or {}).get('multisig', wallet_id not in ('teodor', 'andrey'))
         required = 'teodor' if multi and main.get('step') == 's24' else (
             'findir' if multi else (wallet or {}).get('role') or 'teodor')
-        if role not in ('admin', required):
+        try:
+            policy = _stand_transfer_policy(db, state, main)
+        except ValueError as exc:
+            return jsonify(success=False, error=str(exc)), 409
+        if policy:
+            claim = main.get('transferClaim') or {}
+            confirmation = main.get('transferConfirmation') or {}
+            if main.get('step') == 's23':
+                required = claim.get('role')
+                if claim.get('byId') != flask_session.get('user_id'):
+                    return jsonify(success=False, error='Сначала возьмите отправку'), 403
+            elif main.get('step') == 's24':
+                if claim.get('byId') == flask_session.get('user_id'):
+                    return jsonify(success=False, error='Нельзя подтвердить собственную отправку'), 403
+                required = confirmation.get('role')
+                if confirmation.get('byId') != flask_session.get('user_id'):
+                    return jsonify(success=False, error='Сначала подтвердите отправку'), 403
+        if (policy and role != required) or (not policy and role not in ('admin', required)):
             return jsonify({'success': False, 'error': 'Недостаточно прав'}), 403
-        if outcome == 'confirmed' and multi and main.get('step') != 's24':
+        if outcome == 'confirmed' and multi and main.get('step') != 's24' and not (
+                policy and (main.get('transferConfirmation') or {}).get('ownerAlone')):
             return jsonify({'success': False, 'error': 'Нужна вторая подпись на s24'}), 409
         if not re.fullmatch(rf'demo:{deal_id}:[A-Za-z0-9_-]+', str(ref or '')):
             return jsonify({'success': False, 'error': 'Неверный demo ref'}), 400
@@ -11770,6 +11950,52 @@ def stand_incoming_ack_recipient():
         row.updated_at = datetime.utcnow()
         db.commit()
         return jsonify(success=True, version=row.version, data=_stand_strip_files(state), warning=warning)
+    finally:
+        db.close()
+
+
+@app.route('/api/stand/payin/reconcile-recipient', methods=['POST'])
+def stand_payin_reconcile_recipient():
+    """Operator explicitly routes an uncredited s14 receipt to its actual owned wallet."""
+    if not STAND_MODE:
+        return jsonify(success=False, error='stand_only'), 404
+    actor, actor_id = current_role(), flask_session.get('user_id')
+    if actor_id is None or actor not in ('operator', 'admin'):
+        return jsonify(success=False, error='Кошелёк прихода сверяет операционист'), 403
+    payload = request.get_json(silent=True) or {}
+    db = get_session()
+    try:
+        if engine.dialect.name == 'sqlite':
+            db.execute(text('BEGIN IMMEDIATE'))
+        row = _stand_row(db, lock=True)
+        if payload.get('version') != row.version:
+            return jsonify(success=False, error='Доска изменилась — обновите её'), 409
+        state = json.loads(row.data or '{}')
+        deal = next((d for d in state.get('deals') or [] if d.get('id') == payload.get('dealId')), None)
+        if not deal or deal.get('step') != 's14' or deal.get('payinHashes'):
+            return jsonify(success=False, error='Маршрут меняют до первого засчитанного прихода'), 409
+        warning = next((w for w in deal.get('recipientWarnings') or []
+                        if w.get('hash') == _payin_hash_key(payload.get('hash'))
+                        and w.get('acknowledgedById')), None)
+        if not warning:
+            return jsonify(success=False, error='Сначала подтвердите расхождение адреса'), 409
+        network, current = _stand_payin_target(state, deal)
+        if current != warning.get('expected'):
+            return jsonify(success=False, error='Ожидаемый адрес изменился — повторите проверку'), 409
+        wallet = db.query(Wallet).filter_by(address=warning.get('actual'), active=True,
+                                            accepts_payin=True).first()
+        if not wallet or _stand_wallet_network(wallet) != network:
+            return jsonify(success=False, error='Фактический адрес не принадлежит активному кошельку приёма из реестра'), 409
+        deal['walletId'] = wallet.id
+        deal.pop('payinCustom', None)
+        deal.setdefault('log', []).append({'at': int(time.time() * 1000), 'role': actor,
+            'by': actor_id, 'text': f"После сверки хеша {warning['hash']} фактический кошелёк прихода: {wallet.address}"})
+        row.data = json.dumps(state, ensure_ascii=False)
+        row.version = (row.version or 0) + 1
+        row.updated_by = flask_session.get('display_name') or flask_session.get('username') or actor
+        row.updated_at = datetime.utcnow()
+        db.commit()
+        return jsonify(success=True, version=row.version, data=_stand_strip_files(state), walletId=wallet.id)
     finally:
         db.close()
 
