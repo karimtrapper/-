@@ -7357,6 +7357,20 @@ async function crmEvidence(id,kind){
   }catch(e){toast('Сервер не подтвердил факт — проверьте доску');}
   finally{standClosing=false;}
 }
+/* Код ошибок «цифры/переводы отличаются от сохранённой сделки» (app.py:_stand_crm_fact_problem)
+   — общий для crmPushClose и manualCloseSubmit, т.к. _stand_crm_fact_problem выполняется
+   безусловно после обеих веток (обычного закрытия и override), tasks.html было бы два
+   места с одним и тем же текстом (задача 6, замечание ревью). Возвращает null, если код
+   ошибки не из этого класса — вызывающий код сам решает, чем заменить. */
+const CRM_FACTS_MISMATCH=['locked_invoice_mismatch','transfer_sent_mismatch','payin_facts_mismatch',
+  'payout_facts_mismatch','payin_amount_mismatch','payout_amount_mismatch',
+  'payout_source_mismatch','recipient_mismatch','custom_facts_mismatch',
+  'custom_origin_mismatch','company_percent_mismatch','buy_rate_mismatch'];
+function crmFactsMismatchMessage(error){
+  return CRM_FACTS_MISMATCH.includes(error)
+    ?'Цифры или переводы отличаются от сохранённой сделки. Верните значения из доски и проверьте факты.'
+    :null;
+}
 async function crmPushClose(id){
   if(standClosing)return;
   standClosing=true;
@@ -7403,12 +7417,7 @@ async function crmPushClose(id){
           '. Кнопки находятся в карточке CRM.');
         return;
       }
-      const facts=['locked_invoice_mismatch','transfer_sent_mismatch','payin_facts_mismatch',
-        'payout_facts_mismatch','payin_amount_mismatch','payout_amount_mismatch',
-        'payout_source_mismatch','recipient_mismatch','custom_facts_mismatch',
-        'custom_origin_mismatch','company_percent_mismatch','buy_rate_mismatch'];
-      toast(facts.includes(j.error)?'Цифры или переводы отличаются от сохранённой сделки. Верните значения из доски и проверьте факты.'
-        :'CRM не закрыла сделку: '+(j.error||r.status));return;
+      toast(crmFactsMismatchMessage(j.error)||'CRM не закрыла сделку: '+(j.error||r.status));return;
     }
     const cd=j.deal||{};
     if(!cd.id||!j.data||!j.data.deals.some(x=>x.id===id&&x.closed&&x.crmDealId===cd.id)){
@@ -7494,9 +7503,10 @@ function manualClosePayload(d){
 }
 /* Коды ошибок ручного переноса (app.py:_stand_manual_close_apply_override) — предметный
    тост вместо общего «не закрыли», чтобы менеджер понимал, какое поле на этом экране
-   поправить (приёмка Карима 19.10: кнопка трогает деньги, молчать нельзя). Коды общего
-   crm-close (conflict, close_evidence_missing и т.п.) сюда намеренно не добавлены —
-   на них остаётся общий тост ниже, как у crmPushClose. */
+   поправить (приёмка Карима 19.10: кнопка трогает деньги, молчать нельзя). Коды
+   «цифры отличаются от доски» (_stand_crm_fact_problem) сюда не входят — для них своя
+   понятная фраза через crmFactsMismatchMessage, общая с crmPushClose. Другие общие
+   crm-close коды (conflict, close_evidence_missing и т.п.) остаются на общем тосте ниже. */
 const MANUAL_CLOSE_ERRORS={
   manual_override_not_applicable:'Эта сделка уже оформлена как ручной черновик — перенос через эту форму не подходит',
   already_closed:'Сделка уже закрыта',
@@ -7547,7 +7557,12 @@ async function manualCloseSubmit(id){
       j=await r.json();
     }
     if(!j.success){
-      toast(MANUAL_CLOSE_ERRORS[j.error]||('Перенос не выполнен: '+(j.error||r.status)));
+      /* _stand_crm_fact_problem (app.py:7135) выполняется безусловно и после override-ветки
+         тоже — если manualCloseMerge когда-нибудь разойдётся с тем, что сервер реально
+         применил на доску, менеджер должен увидеть ту же понятную фразу, что у
+         crmPushClose, а не сырой код ошибки (замечание ревью задачи 6). */
+      toast(MANUAL_CLOSE_ERRORS[j.error]||crmFactsMismatchMessage(j.error)||
+        ('Перенос не выполнен: '+(j.error||r.status)));
       return;
     }
     const cd=j.deal||{};

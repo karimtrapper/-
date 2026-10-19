@@ -13,7 +13,9 @@ function source(name, async = false) {
   return match[0];
 }
 function constSource(name) {
-  const re = new RegExp('^const ' + name + '=\\{[^]*?^\\};', 'm');
+  // Лениво до первой ';' после '=' — подходит и для однострочного объекта (BROKER_FEE),
+  // и для многострочных массива/объекта (CRM_FACTS_MISMATCH, MANUAL_CLOSE_ERRORS).
+  const re = new RegExp('^const ' + name + '=.*?;', 'ms');
   const match = html.match(re);
   assert.ok(match, `${name} missing`);
   return match[0];
@@ -22,12 +24,16 @@ function constSource(name) {
 // Только то, что manualClosePayload/manualCloseSubmit реально вызывают. crmPayloadFinal
 // намеренно подменён стабом — его собственный расчёт прибыли проверяют другие тесты,
 // здесь важно только то, что manualClosePayload кладёт его результат в body.crm.
+// hashSum/brokerSend/BROKER_FEE/payinParts — цепочка зависимостей для нерублёвой ветки
+// amountUsdt (T5): она реально вызывает payinParts, а не только упоминает его в коде.
 const SCRIPT = [
   source('num'), source('val'), source('need'),
   source('isCrypto'), source('payCur'), source('exchangeSpec'),
+  source('hashSum'), constSource('BROKER_FEE'), source('brokerSend'), source('payinParts'),
   source('clientRubPaid'), source('payoutHuman'), source('mfList'),
   source('manualCloseFormState'), source('manualCloseMerge'),
   source('manualClosePayload'), constSource('MANUAL_CLOSE_ERRORS'),
+  constSource('CRM_FACTS_MISMATCH'), source('crmFactsMismatchMessage'),
   source('manualCloseSubmit', true),
 ].join('\n');
 
@@ -42,9 +48,19 @@ function fullyKnownDeal(id) {
     agents: [], rates: {}, docs: {}, files: {}};
 }
 
-function makeCtx(deal, reasonText) {
+// Рублёвая сделка без amountUsdt, но с известным методом/расходом — открыты только
+// mc_payin_amount_rub и mc_payin_rate (T5: нерублёвая математика через payinParts).
+function nonCryptoMissingAmountDeal(id) {
+  return {id, code: 'СД-' + id, client: 'Клиент', manager: 'Елизавета',
+    type: 'Обмен валюты', kind: 'Обмен', pair: 'RUB → USDT',
+    payType: 'СБП', amountUsdt: null, amountRub: null, incomeAmount: null,
+    payinHashes: [], paySrc: 'coins', payout: {usdt: 450, hashes: [{amount: 450, network: 'TRC20', hash: 'TRXOUT' + id}]},
+    agents: [], rates: {}, docs: {}, files: {}};
+}
+
+function makeCtx(deal, reasonText, extraFields) {
   const S = {deals: [deal], manualCloseDraft: {[deal.id]: true}, manualCloseForm: {}, incomes: []};
-  const domFields = {mc_reason: reasonText};
+  const domFields = {mc_reason: reasonText, ...(extraFields || {})};
   const toasts = [];
   const fetchCalls = [];
   const ctx = {
@@ -113,6 +129,42 @@ async function main() {
     assert.ok(!S.manualCloseDraft[4], 'черновик ручного переноса должен быть очищен после успеха');
     assert.ok(toasts.some(t => t.includes('CRM #99')), 'ожидали тост с номером сделки CRM');
     console.log('T4 success clears S.manualCloseDraft[id] PASS');
+  }
+
+  // T5 (ревью задачи 6): для рублёвой сделки без amountUsdt payload считает его той же
+  // формулой, что payinParts (курс минус удержание брокера) — не своей отдельной.
+  // Сервер не проверяет эту цифру ни с чем (нет on-chain квитанции для РУБ), поэтому
+  // ошибка здесь тихо осталась бы фактом на доске — отдельный тест обязателен.
+  {
+    const {ctx, S} = makeCtx(nonCryptoMissingAmountDeal(5),
+      'Причина закрытия вручную — достаточно длинная',
+      {mc_payin_amount_rub: '100000', mc_payin_rate: '95'});
+    const payload = ctx.manualClosePayload(S.deals[0]);
+    const d = S.deals[0];
+    const expected = ctx.payinParts({...d, incomeAmount: 100000, amountRub: 100000,
+      rates: {...d.rates, broker: 95}})[0].usdt;
+    assert.ok(Number.isFinite(expected) && expected > 0, 'ожидали конечный положительный расчёт payinParts для сверки');
+    assert.equal(payload.manualOverride.payin.amountUsdt, expected,
+      'amountUsdt должен совпасть с payinParts() на тех же входных данных, а не со своей формулой');
+    assert.equal(payload.manualOverride.payin.amountRub, 100000);
+    assert.equal(payload.manualOverride.payin.rate, 95);
+    console.log('T5 non-crypto amountUsdt matches payinParts() output PASS (' + expected + ')');
+  }
+
+  // T6 (ревью задачи 6): _stand_crm_fact_problem выполняется безусловно и после ветки
+  // override тоже — код «цифры отличаются от доски» должен показать ту же понятную фразу,
+  // что у crmPushClose, а не сырой код ошибки (на случай, если manualCloseMerge когда-то
+  // разойдётся с тем, что сервер реально применил на доску).
+  {
+    const {ctx, toasts} = makeCtx(fullyKnownDeal(6), 'Причина закрытия вручную — достаточно длинная');
+    ctx._fetchImpl = () => Promise.resolve({status: 409,
+      json: async () => ({success: false, error: 'payin_facts_mismatch'})});
+    await ctx.manualCloseSubmit(6);
+    assert.ok(toasts.some(t => t.includes('Цифры или переводы отличаются от сохранённой сделки')),
+      'ожидали ту же дружелюбную фразу, что у crmPushClose: ' + JSON.stringify(toasts));
+    assert.ok(!toasts.some(t => t.includes('payin_facts_mismatch')),
+      'не должен показывать сырой код ошибки для этого класса');
+    console.log('T6 facts-mismatch code reuses crmPushClose\'s friendly message PASS');
   }
 }
 
