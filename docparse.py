@@ -174,7 +174,8 @@ FIELD_OWNER = {
                  'client_birth_date', 'client_national_id'],
     'invoice': ['invoice_no', 'invoice_date', 'invoice_amount', 'invoice_currency',
                 'recipient_name', 'recipient_bank', 'recipient_account',
-                'recipient_swift', 'recipient_bik', 'recipient_bank_address'],
+                'recipient_swift', 'recipient_bik', 'recipient_bank_address',
+                'property_address'],
     'spa': ['lease_term', 'lease_start_date', 'contract_ref', 'rent_amount',
             'deposit_amount', 'project_name', 'unit_no', 'property_address'],
 }
@@ -452,10 +453,14 @@ def merge(results: list[dict]) -> dict:
     складываем в `conflicts`, менеджер разрешает руками.
     """
     fields, provenance, conflicts, masked, slots = {}, {}, {}, set(), {}
+    # Поле может принадлежать нескольким типам документов сразу (например,
+    # «Объект» — и инвойсу, и SPA): собираем множество владельцев, а не
+    # перезаписываем последним, иначе второй владелец в FIELD_OWNER тихо
+    # вытесняет первого и его значение больше никогда не побеждает.
     owned_by = {}
     for kind, keys in FIELD_OWNER.items():
         for key in keys:
-            owned_by[key] = kind
+            owned_by.setdefault(key, set()).add(kind)
 
     for res in results:
         src = res.get('_file') or '?'
@@ -467,7 +472,7 @@ def merge(results: list[dict]) -> dict:
                     masked.add(key)
                 continue
             val = normalize(key, val.strip()) if isinstance(val, str) else val
-            is_owner = owned_by.get(key) == kind
+            is_owner = kind in owned_by.get(key, ())
             if key not in fields:
                 fields[key], provenance[key] = val, src
                 if kind:
