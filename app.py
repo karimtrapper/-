@@ -518,6 +518,83 @@ DEAL_KIND_LABELS = {
     'mf_freehold': 'недвижимость: фрихолд (SWIFT застройщику)',
 }
 
+
+class DealKindCanon(str, Enum):
+    FREEHOLD = 'freehold'
+    LEASEHOLD = 'leasehold'
+    RENTAL = 'rental'
+    EXCHANGE = 'exchange'
+
+
+class PayInCanon(str, Enum):
+    REQUISITES = 'requisites'
+    CASH = 'cash'
+    CRYPTO = 'crypto'
+    SBP = 'sbp'
+
+
+# Единственный источник истины: какие комбинации (тип сделки, способ Pay-In)
+# проверены вживую на стенде. Всё остальное — видимо, но неактивно при
+# создании/смене, пока Карим не проверит флоу лично.
+VERIFIED_FLOWS = {
+    (DealKindCanon.FREEHOLD.value, PayInCanon.REQUISITES.value),
+    (DealKindCanon.LEASEHOLD.value, PayInCanon.REQUISITES.value),
+}
+
+_STAND_KIND_CANON = {
+    'Фрихолд': DealKindCanon.FREEHOLD.value,
+    'Лизхолд': DealKindCanon.LEASEHOLD.value,
+    'Аренда': DealKindCanon.RENTAL.value,
+}
+
+_STAND_PAYTYPE_CANON = {
+    'По реквизитам': PayInCanon.REQUISITES.value,
+    'СБП': PayInCanon.SBP.value,
+    'Крипта': PayInCanon.CRYPTO.value,
+    'Наличные': PayInCanon.CASH.value,
+}
+
+_LEGACY_KIND_CANON = {
+    'mf_freehold': DealKindCanon.FREEHOLD.value,
+    'mf_realty': DealKindCanon.LEASEHOLD.value,
+    'rental': DealKindCanon.RENTAL.value,
+    'exchange': DealKindCanon.EXCHANGE.value,
+    'custom': DealKindCanon.EXCHANGE.value,
+}
+
+_LEGACY_PAYIN_CANON = {
+    'flow_sole_reqs': PayInCanon.REQUISITES.value,
+    'sber_reqs': PayInCanon.REQUISITES.value,
+    'sber_wl': PayInCanon.SBP.value,
+    'spp_doverka': PayInCanon.SBP.value,
+    'crypto_direct': PayInCanon.CRYPTO.value,
+    'partners_cash': PayInCanon.CASH.value,
+}
+
+
+def canonical_deal_kind_from_stand(deal_type, kind):
+    if deal_type == 'Обмен валюты':
+        return DealKindCanon.EXCHANGE.value
+    return _STAND_KIND_CANON.get(kind)
+
+
+def canonical_payin_from_stand(pay_type):
+    return _STAND_PAYTYPE_CANON.get(pay_type)
+
+
+def canonical_deal_kind_from_legacy(deal_kind):
+    return _LEGACY_KIND_CANON.get(deal_kind)
+
+
+def canonical_payin_from_legacy(payin_method):
+    return _LEGACY_PAYIN_CANON.get(payin_method)
+
+
+def is_verified_flow(deal_kind_canon, payin_canon):
+    if deal_kind_canon is None or payin_canon is None:
+        return False
+    return (deal_kind_canon, payin_canon) in VERIFIED_FLOWS
+
 class PayOutMethod(str, Enum):
     OFFICE = "office"
     COURIER = "courier"
