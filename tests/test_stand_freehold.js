@@ -641,7 +641,7 @@ console.log('test_stand_freehold.js: OK');
   const d={id:9101,client:'Synthetic',type:'Оплата недвижимости',kind:'Фрихолд',
     payType:'Крипта',amountUsdt:98800,rates:{},docs:{},log:[],pay:{},payout:{},
     step:'s11',source:'test'};
-  const ctx=run(['overview','money','htmlText'],[],{S:{role:'manager'},ROLES:{},SOURCES:{test:'Тест'},
+  const ctx=run(['overview','money','htmlText','sourceRefLabel'],[],{S:{role:'manager'},ROLES:{},SOURCES:{test:'Тест'},
     approx:()=>({thb:97500,pay:98800,sign:'USDT',thbSign:'$'}),
     fake:()=>({}),econ:()=>({parts:[{fact:98799.5}],ready:false,multi:false,payin:98799.5}),
     docListRows:()=>({issued:[],client:[]}),isCrypto:x=>x.payType==='Крипта',

@@ -4,7 +4,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 
 const html = fs.readFileSync(path.join(__dirname, '../static/stand/tasks.html'), 'utf8');
-const source = ['htmlText', 'logWhen', 'logMeta', 'viewDeal', 'pathCard', 'ctxCard', 'prepayCloseReason'].map(name => {
+const source = ['htmlText', 'logWhen', 'logMeta', 'viewDeal', 'pathCard', 'ctxCard', 'prepayCloseReason', 'sourceRefLabel'].map(name => {
   const found = html.match(new RegExp(`^function ${name}\\([^]*?^}`, 'm'));
   assert.ok(found, name);
   return found[0];
