@@ -136,6 +136,7 @@ limiter = Limiter(get_remote_address, app=app, default_limits=[])
 # Публичные пути — без авторизации
 PUBLIC_PATHS = [
     '/api/rates', '/api/calculate',           # Калькулятор
+    '/api/deal-flow-config',                  # Список проверенных связок тип+Pay-In (нужен и калькулятору)
     '/api/kyc/status/', '/api/kyc/submit',    # KYC для клиентов
     '/api/partner/',                           # Партнёрский калькулятор
     '/api/ref/',                               # Реферальная статистика
@@ -597,6 +598,11 @@ def is_verified_flow(deal_kind_canon, payin_canon):
     if deal_kind_canon is None or payin_canon is None:
         return False
     return (deal_kind_canon, payin_canon) in VERIFIED_FLOWS
+
+
+@app.route('/api/deal-flow-config', methods=['GET'])
+def deal_flow_config():
+    return jsonify({'verified': [list(pair) for pair in VERIFIED_FLOWS]})
 
 class PayOutMethod(str, Enum):
     OFFICE = "office"

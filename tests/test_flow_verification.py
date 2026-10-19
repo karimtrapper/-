@@ -1,5 +1,7 @@
 from app import (
     DEAL_KIND_LABELS,
+    VERIFIED_FLOWS,
+    app,
     canonical_deal_kind_from_stand,
     canonical_payin_from_stand,
     canonical_deal_kind_from_legacy,
@@ -79,3 +81,11 @@ def test_unknown_native_values_translate_to_none():
 
 def test_deal_kind_labels_has_rental_for_legacy_crm_analytics_parity():
     assert DEAL_KIND_LABELS.get('rental') == 'Аренда'
+
+
+def test_deal_flow_config_endpoint_returns_verified_pairs():
+    with app.test_client() as c:
+        resp = c.get('/api/deal-flow-config')
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert sorted(tuple(p) for p in body['verified']) == sorted(VERIFIED_FLOWS)
