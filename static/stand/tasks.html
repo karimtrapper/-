@@ -753,6 +753,7 @@ a.hash:hover{background:#BAE6FD}
 .deal-screen .task-action .goalt{font-size:var(--ds-display)!important;font-weight:var(--ds-bold)!important;line-height:1.25;margin-bottom:var(--ds-lg)}
 .deal-screen .task-action .goalnums{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:var(--ds-md)}
 .deal-screen .task-action .goalnums>div{background:var(--ds-page);padding:var(--ds-md) var(--ds-lg);border-radius:var(--ds-control);min-width:0}
+.deal-screen .policy-send-goal .goalnums>div{align-self:start}
 .deal-screen .task-action .goalnums .k{font-size:var(--ds-caption)!important;font-weight:var(--ds-regular)!important;text-transform:none;letter-spacing:normal;color:var(--ds-muted)}
 .deal-screen .task-action .goalnums .v{font-size:var(--ds-emphasis)!important;font-weight:var(--ds-semibold)!important;overflow:hidden}
 .deal-screen .task-action .goalnums .v.big{font-size:var(--ds-display)!important;font-weight:var(--ds-bold)!important}
@@ -2404,6 +2405,10 @@ function dealWallet(d){
 }
 function needsSecondSign(d){const w=dealWallet(d);return !w||w.multisig;}
 function policyInitiators(w){return (w?.initiator_roles||[]).concat(w?.owner_can_alone?['teodor']:[]);}
+function policyRoleNames(list){
+  const names={operator:'операционист',findir:'финансист',teodor:'владелец'};
+  return [...new Set(list||[])].map(role=>names[role]||role).join(' / ');
+}
 function policySignerCards(w){
   if(!w?.purpose)return '';
   const names={operator:'Операционист',findir:'Финансист',teodor:'Владелец'};
@@ -6591,9 +6596,12 @@ function dealTaskPath(d,branch){
 }
 function dealTaskPathCard(d,branch){
   const path=dealTaskPath(d,branch);
+  const wallet=dealWallet(d);
   return `<div class="card side deal-path"><h4>Путь сделки</h4><ol>${path.steps.map((k,i)=>
     `<li class="${i<path.index||path.done?'done':i===path.index?'current':'next'}"><span class="path-dot"></span>
-      <div><b>${htmlText(k==='refund'?'Возместить оплату':STEPS[k]?.title||k)}</b><small>${i===path.index&&!path.done?'Сейчас · ':''}${htmlText(k==='refund'?(ROLES[prepayRefundRole(d)]||{}).t:(ROLES[stepWho(d,k)]||{}).t||'')}</small></div></li>`).join('')}</ol></div>`;
+      <div><b>${htmlText(k==='refund'?'Возместить оплату':STEPS[k]?.title||k)}</b><small>${i===path.index&&!path.done?'Сейчас · ':''}${htmlText(wallet?.purpose&&k==='s23'?policyRoleNames(policyInitiators(wallet)):
+        wallet?.purpose&&k==='s24'?policyRoleNames(wallet.confirmer_roles):
+        k==='refund'?(ROLES[prepayRefundRole(d)]||{}).t:(ROLES[stepWho(d,k)]||{}).t||'')}</small></div></li>`).join('')}</ol></div>`;
 }
 function taskBranchSet(branch){S.taskBranch=branch;S.view='task';saveUi();render();}
 function prepayBranchAssignee(d,branch){
@@ -6840,7 +6848,7 @@ function overview(d,st,mine,p,wh){
       ${d.kind==='Фрихолд'
         ?row('Инвойс застройщику',usdMark(d,E.invoiceUsd)+(d.invoiceCurrency==='thb'&&d.invoiceThb?' (по инвойсу '+money(d.invoiceThb,'฿')+')':''))
           +row('Тариф IPPS',ippsTariff(d).label)
-          +row('Отправлено в IPPS',usd(E.sentUsd),'комиссия '+E.feePercent+'% + '+E.feeFixed+' $ = '+usd(E.bankFee))
+          +row('Отправлено в IPPS',usd(E.sentUsd),'комиссия '+E.feePercent+'% + '+usd(E.feeFixed)+' = '+usd(E.bankFee))
           +row('Дойдёт застройщику',usdMark(d,E.invoiceUsd))
         :row('Инвойс застройщику',money(E.invoice,'฿'))
           +row('Отправлено в компанию',money(E.sentThb,'฿'),'комиссия '+E.companyPct.toFixed(2)+'% = '+money(E.feeThb,'฿')+' / '+usd(E.feeUsd))
@@ -10154,18 +10162,20 @@ function stepGoal(d){
         nums:[['Ждём USDT',plan!=null?usd(plan):'—'],['Курс заявки',d.rates.broker||'—'],
               ['Ушло брокеру',(c&&c.sent?moneyKop(c.sent,'₽'):money2(rub,'₽'))+(n>1?' · '+n+' '+plural(n,'сделка','сделки','сделок'):'')]],
         sub:c&&c.sent?'сумма клиента '+money2(c.clientRubTotal!=null?c.clientRubTotal:rub,'₽')+' · не отправлено брокеру '+moneyKop(c.held,'₽'):''};})();
-    case 's22': if(d.prepay)return {t:'Согласовать заявку IPPS',nums:[['В IPPS',usd(d.prepay.amount)],['Источник',d.prepay.wallet.addr||'—'],['Застройщику',usd(d.invoiceUsd||0)]],sub:'Оплата идёт параллельно с конвертацией у брокера'};
+    case 's22': if(d.prepay)return {t:'Согласовать заявку IPPS',nums:[['В IPPS',usd(d.prepay.amount)],['Источник',d.prepay.wallet.addr||'—',d.prepay.wallet.name],['Застройщику',usd(d.invoiceUsd||0)]],sub:'Оплата идёт параллельно с конвертацией у брокера'};
       return {t:'Решить, куда уходят пришедшие USDT',
       nums:[['На кошельке',(function(){const c=convOf(d);const g=c?hashSum(c.txs):d.pay.usdt;return g?usd(g):'—';})()],
-            ['Кошелёк',(dealWallet(d)||{}).name||'не выбран'],
-            ['Подпись',dealWallet(d)?(needsSecondSign(d)?'нужна вторая':'одна, владелец'):'—']]};
+            ['Кошелёк',dealWallet(d)?.purpose?dealWallet(d).addr:(dealWallet(d)||{}).name||'не выбран',dealWallet(d)?.purpose?dealWallet(d).name:null],
+            ['Подпись',dealWallet(d)?.purpose?
+              `${policyRoleNames(policyInitiators(dealWallet(d)))} → ${policyRoleNames(dealWallet(d).confirmer_roles)}`:
+              dealWallet(d)?(needsSecondSign(d)?'нужна вторая':'одна, владелец'):'—']]};
     case 's23': {
       const n=cnvMembers(d).filter(x=>pcSends(x)).length;
       /* цель — зачем уходят деньги, а не «чем платим получателю» (аудит 27.09 №4) */
       return {t:sendActionHead(d),
       nums:[['К отправке',moneyKop(pcOut(d),'USDT')],
             ['Куда',d.ippsPayoutOrder?.address||d.transfer?.addr||'не указан'],
-            ['С кошелька',(dealWallet(d)||{}).addr||'не выбран']]};}
+            ['С кошелька',(dealWallet(d)||{}).addr||'не выбран',dealWallet(d)?.purpose?dealWallet(d).name:null]]};}
     case 's24': {
       const n=cnvMembers(d).filter(x=>pcSends(x)).length;
       return {t:'Проверить суть сделки и подписать перевод в кошельке',
@@ -10220,13 +10230,13 @@ function goalCard(d){
       'Отправьте USDT с кошелька',s24:'Одобрите перевод',s25:d.pay?.coinsNotified?'Сверьте баты на SCB':'Известите Coins',
     s26:d.kind==='Фрихолд'?'Приложите MT103':'Оплатите инвойс',s27:'Закройте сделку'};
   const machine=v=>/^(T[A-Za-z0-9]{32,}|0x[A-Fa-f0-9]{40,})$/.test(String(v||''));
-  return `<div class="card goal" style="margin-bottom:16px">
+  return `<div class="card goal${d.step==='s23'&&dealWallet(d)?.purpose?' policy-send-goal':''}" style="margin-bottom:16px">
     <div class="goalt">${htmlText(titles[d.step]||g.t)}</div>
     ${d.prepay&&convOf(d)?.status!=='received'?`<p class="prepay-notice"><b>Оплата наперёд.</b> ${S.role==='teodor'?'USDT брокера ещё не пришли; возмещение вам после конвертации.':
       'Оплата застройщику и конвертация идут параллельно; возмещение после получения USDT.'}</p>`:''}
     <div class="goalnums">${(g.nums||[]).slice(0,3).map((n,i)=>`<div><span class="k">${htmlText(n[0])}</span><span class="v${i===0?' big':''}${machine(n[1])?' addr-value':''}">${machine(n[1])
       ?addressDisclosure(n[1])
-      :htmlText(n[1])}</span></div>`).join('')}</div>
+      :htmlText(n[1])}</span>${n[2]?`<small>${htmlText(n[2])}</small>`:''}</div>`).join('')}</div>
     ${g.sub?`<p class="fh" style="margin-top:8px">${htmlText(g.sub)}</p>`:''}
     ${(g.rows||[]).filter(r=>r[1]).length?`<div class="goalrows">${g.rows.filter(r=>r[1]).map(r=>`<div class="payrow">
       <div><div class="k">${htmlText(r[0])}</div><div class="v">${htmlText(r[1])}</div></div>
@@ -10236,16 +10246,14 @@ function goalCard(d){
 }
 function walletLine(w){
   return `<div class="derived" style="margin-top:12px">
-    <span>${addressDisclosure(w.addr)}<small>${htmlText(w.name)} · ${htmlText(w.owner)}</small>
+    <span>${addressDisclosure(w.addr)}<small>${htmlText(w.name)}${w.purpose?'':' · '+htmlText(w.owner)}</small>
     <span style="color:var(--text-muted)"> — ${w.purpose?'подписи по правилам кошелька':w.multisig
       ? 'мультисиг: подписывает фин дир, одобряет Теодор'
       : 'личный: владелец отправляет сам, шаг второй подписи пропускается'}</span></span></div>`;
 }
 function walletPolicyLine(w){
   if(!w?.purpose||!Array.isArray(w.initiator_roles)||!w.initiator_roles.length)return '';
-  const names={operator:'операционист',findir:'финансист',teodor:'владелец'};
-  const roles=list=>(list||[]).map(r=>names[r]||r).join(' / ');
-  return `<div class="derived" style="margin-top:8px">С кошелька <b>${htmlText(w.name)}</b> · начинает ${htmlText(roles(policyInitiators(w)))} · подтверждает ${htmlText(roles(w.confirmer_roles))}</div>`;
+  return `<div class="derived" style="margin-top:8px">С кошелька <b>${htmlText(w.name)}</b> · начинает ${htmlText(policyRoleNames(policyInitiators(w)))} · подтверждает ${htmlText(policyRoleNames(w.confirmer_roles))}${w.owner_can_alone?' · владелец может отправить сам, без второй подписи':''}</div>`;
 }
 /* Выбранный кошелёк уже виден в карточках выбора — строку с ним не дублируем (27.09) */
 function walletBlock(d,key){
@@ -11128,8 +11136,8 @@ function stepCard(d){
     </div>
 
     ${(function(){const w=c&&walletById(c.walletId);
-      return w?`<div class="derived" style="margin-top:12px"><span>Ждём на <b>${htmlText(w.name)}</b> · ${htmlText(w.owner)} · ${addressDisclosure(w.addr)}${
-        w.purpose?' — подписи по правилам кошелька':w.multisig?' — мультисиг: отправлять будет фин дир со второй подписью':' — личный кошелёк: владелец отправит сам, вторая подпись не нужна'}</span></div>${walletPolicyLine(w)}`
+      return w?`<div class="derived" style="margin-top:12px"><span>Ждём на <b>${htmlText(w.name)}</b>${w.purpose?'':' · '+htmlText(w.owner)}</span><span>${addressDisclosure(w.addr)}</span>${
+        w.purpose?'':`<span>${w.multisig?'Мультисиг: отправлять будет фин дир со второй подписью':'Личный кошелёк: владелец отправит сам, вторая подпись не нужна'}</span>`}</div>${walletPolicyLine(w)}`
       :`<div class="alert a-warn" style="margin-top:12px"><div>Кошелёк получения не выбран — непонятно, куда смотреть и кто будет отправлять дальше.</div></div>`;})()}
     ${(c?.recipientWarnings||[]).map(w=>`<div class="alert a-warn" style="margin-top:10px"><div>
       <b>Перевод ${addressDisclosure(w.hash)} пришёл на другой кошелёк</b><br>
@@ -11190,7 +11198,7 @@ function stepCard(d){
     </div>
 
     ${(gap!=null&&gap<-0.01)?`<div class="alert a-warn"><div><b>Пришло меньше, чем ждали.</b> Разница ${usd(Math.abs(gap))} — либо брокер недослал, либо ждём второй перевод. Добавьте его, когда придёт, или закройте шаг как есть: прибыль посчитается от фактической суммы.</div></div>`:''}
-    <div class="alert a-info"><div>Сервер проверяет перевод и свободный остаток. В пачку засчитывается выбранная доля; доли разных переводов суммируются. Дальше прибыль считается от фактически засчитанной суммы.</div></div>
+    <div class="${walletById(c?.walletId)?.purpose?'derived':'alert a-info'}"><div>Сервер проверяет перевод и свободный остаток. В пачку засчитывается выбранная доля; доли разных переводов суммируются. Дальше прибыль считается от фактически засчитанной суммы.</div></div>
     <div class="row"><button class="btn btn-success" onclick="act(${d.id},'s18w')">${d.prepay?'USDT получены — завершить конвертацию':'USDT получены — решить, что с ними делать'}</button>
     <button class="btn btn-outline" onclick="toast('В прототипе не реализовано — в жизни это запрос брокеру')">Брокер задерживает</button></div></div>`;},
 
@@ -11206,7 +11214,7 @@ function stepCard(d){
       if(!payToConfirmed(d))return S.role==='manager'?payToConfirmBlock(d):'<div class="card">Ждём подтверждение актуальных реквизитов менеджером.</div>';
       if(!['operator','admin'].includes(S.role))return '<div class="card">Операционист согласует заявку с IPPS и поручит перевод.</div>';
       return `<div class="card"><div class="card-title">Согласовать заявку IPPS и поручить перевод</div>
-        <div class="alert a-info"><div>Реквизиты застройщика подтверждены менеджером. Получите от IPPS адрес и сеть для этой заявки, затем поручите перевод.</div></div>
+        <div class="${w?.purpose?'derived':'alert a-info'}"><div>Реквизиты застройщика подтверждены менеджером. Получите от IPPS адрес и сеть для этой заявки, затем поручите перевод.</div></div>
         <div class="derived">${d.prepay?'Источник наперёд: '+htmlText(d.prepay.wallet.name):'Пришло '+(got!=null?usd(got):'—')} · расчёт по заявке ${usd(expected)} USDT</div>
         ${w?walletPolicyLine(w):''}
         <div class="fr" style="margin-top:12px">
@@ -11214,18 +11222,18 @@ function stepCard(d){
           <div class="fg"><label class="fl">Сеть<span class="rq">*</span></label><select class="fc" id="fh_order_net"><option value="">— выбрать —</option><option>TRC-20</option></select><p class="fh">Сейчас поддерживается только TRC-20 для исходящего IPPS.</p></div>
           <div class="fg w2"><label class="fl">Адрес из подтверждения IPPS<span class="rq">*</span></label><input class="fc addr" id="fh_order_addr" value="${htmlText((d.transfer||{}).addr||IPPS_WALLET)}" placeholder="полный адрес получателя"><p class="fh">Предложен известный адрес IPPS; это не подтверждение. Сверьте в группе или замените по сообщению IPPS.</p></div>
         </div>
-        <label class="fh" style="display:flex;gap:8px;align-items:flex-start"><input type="checkbox" id="fh_order_ack"> Подтверждаю: указал в группе IPPS сумму, сеть и адрес, получил подтверждение и поручаю ${d.prepay&&!d.prepay.wallet.multisig?'владельцу кошелька':'финдиру'} исходящий перевод.</label>
+        <label class="fh" style="display:flex;gap:8px;align-items:flex-start"><input type="checkbox" id="fh_order_ack"> Подтверждаю: указал в группе IPPS сумму, сеть и адрес, получил подтверждение и поручаю ${w?.purpose?'участникам отправки':d.prepay&&!d.prepay.wallet.multisig?'владельцу кошелька':'финдиру'} исходящий перевод.</label>
         ${payToReady(d)?`<div class="derived" style="margin-top:12px"><b>Предпросмотр заявки для сверки в группе</b><pre style="white-space:pre-wrap;font-size:12px;margin:6px 0 0">${htmlText(ippsApplicationText(d,d.payTo||{}))}</pre>
           <button class="btn btn-outline btn-sm" style="margin-top:8px" onclick="freeholdIpPsCopyGroup(${d.id})">Копировать текст для группы</button>
           <p class="fh">Копирование ничего не отправляет. Перед поручением отдельно подтвердите все детали.</p></div>`:''}
         ${order.confirmedAt?`<div class="alert a-ok"><div>Поручение сохранено ${htmlText(order.network||'')} · ${usd(order.amount)}. Для изменения реквизитов используйте возврат с вопросом.</div></div>`:''}
-        <div class="row"><button class="btn btn-primary" ${order.confirmedAt||!payToReady(d)?'disabled':''} onclick="act(${d.id},'s22')">Поручить ${d.prepay&&!d.prepay.wallet.multisig?'владельцу кошелька':'финдиру'} исходящий перевод</button></div></div>`;
+        <div class="row"><button class="btn btn-primary" ${order.confirmedAt||!payToReady(d)?'disabled':''} onclick="act(${d.id},'s22')">Поручить ${w?.purpose?'':d.prepay&&!d.prepay.wallet.multisig?'владельцу кошелька ':'финдиру '}исходящий перевод</button></div></div>`;
     }
     return `<div class="card"><div class="card-title">Что делаем с USDT
       <span class="sub">${got?usd(got)+' на кошельке':'сумма не определена'}${c?' · '+c.name+' · '+mem.length+' '+plural(mem.length,'сделка','сделки','сделок'):''}</span></div>
-    ${w?walletLine(w):`<div class="alert a-warn"><div>Кошелёк не выбран — вернитесь на шаг отправки брокеру и укажите, куда пришли USDT.</div></div>`}
+    ${w&&!w.purpose?walletLine(w):!w?`<div class="alert a-warn"><div>Кошелёк не выбран — вернитесь на шаг отправки брокеру и укажите, куда пришли USDT.</div></div>`:''}
     ${w?walletPolicyLine(w):''}
-    <div class="alert a-info"><div>${d.kind==='Фрихолд'
+    <div class="${w?.purpose?'derived':'alert a-info'}"><div>${d.kind==='Фрихолд'
       ?'USDT пришли на кошелёк. В IPPS их ещё нет: они уйдут, только если мы сами отправим перевод.'
       :'USDT пришли на кошелёк. В Coins их ещё нет: туда они попадут, только если мы сами поставим задачу и отправим.'}</div></div>
     ${(c&&!mem.some(x=>sendList(x).length))?`<details style="margin:-4px 0 12px" ${S.txUnlink?'open':''}><summary class="fh" style="cursor:pointer">Не тот приход или USDT пришли на другой кошелёк — отвязать и вернуться на «Ждём USDT»</summary>
@@ -11247,13 +11255,15 @@ function stepCard(d){
           : ` · останется на кошельке <b>${usd(left)}</b>`)}</span></div>
     ${(left!=null&&left<-0.01)?`<div class="alert a-warn"><div><b>По задачам уходит больше, чем пришло</b> — не хватает ${usd(Math.abs(left))}. Либо сумма по какой-то сделке завышена, либо часть денег придёт отдельным переводом.</div></div>`:''}
     ${undone?`<div class="alert a-warn"><div>Не выбрано назначение по ${undone} ${undone===1?'сделке':'сделкам'} — без этого владельцу кошелька непонятно, что отправлять.</div></div>`:
+      w?.purpose?`<div class="derived">Назначение выбрано. Отправку начинает ${htmlText(policyRoleNames(policyInitiators(w)))}, подтверждает ${htmlText(policyRoleNames(w.confirmer_roles))}${w.owner_can_alone?'; владелец может отправить сам, без второй подписи':''}.</div>`:
       `<div class="alert a-ok"><div>${needsSecondSign(d)
         ? 'Кошелёк с мультисигом: <b>'+walletSigner(w)+'</b> подписывает переводы, <b>Теодор</b> одобряет — тогда они уходят в сеть.'
         : 'Личный кошелёк <b>'+((w||{}).owner||'владельца')+'</b>: он отправляет сам и нажимает «Отправил». Хеши проверит система, расхождения — операционист. Второй подписи нет.'}</div></div>`}
     ${(function(){
       /* Кнопка называет, что произойдёт: кому уходит перевод (аудит 27.09 №26) */
       const t=!mem.some(x=>pcSends(x))?(d.type==='Оплата недвижимости'?'Дальше — оплата инвойса':'Дальше')
-        :(needsSecondSign(d)?'Передать фин диру на подпись':'Передать '+toWhom((w||{}).owner)+' на отправку');
+        :w?.purpose?'Поручить отправку':
+          (needsSecondSign(d)?'Передать фин диру на подпись':'Передать '+toWhom((w||{}).owner)+' на отправку');
       return `<div class="row"><button class="btn btn-success" onclick="act(${d.id},'s22')">${t}</button></div>`;})()}</div>`;},
 
   s23:()=>{
@@ -11271,8 +11281,8 @@ function stepCard(d){
       const needsApproval=policyNeedsApproval(d,policyWallet);
       const approval=d.transferOwnerApproval;
       if(!claim||String(claim.byId)!==String(standMeId))return `<div class="card"><div class="card-title">Отправка с кошелька ${htmlText(policyWallet.name)}</div>
-        ${walletLine(policyWallet)}${policySignerCards(policyWallet)}
-        ${needsApproval?`<div class="alert ${approval?'a-info':'a-warn'}"><div>${approval?
+        ${walletPolicyLine(policyWallet)}${policySignerCards(policyWallet)}
+        ${needsApproval?`<div class="${approval?'derived':'alert a-warn'}"><div>${approval?
           `Согласование владельца на отправку свыше ${usd(policyWallet.limit_usd)} отметил ${htmlText(approval.byName)}.`:
           `Для отправки свыше ${usd(policyWallet.limit_usd)} нужно согласование владельца.`}</div></div>`:''}
         ${needsApproval&&!approval&&policyApprovalActor(S.role)&&!claim?
@@ -11280,10 +11290,10 @@ function stepCard(d){
         ${claim?`<div class="alert a-warn"><div>Шаг уже взял ${htmlText(claim.byName||'другой сотрудник')}.</div></div>`:
           policyInitiators(policyWallet).includes(S.role)?
           `<div class="row"><button class="btn btn-primary" ${needsApproval&&!approval?'disabled':''} onclick="transferClaim(${d.id})">Беру</button></div>`:
-          '<div class="alert a-info"><div>Эта роль не начинает отправку с выбранного кошелька.</div></div>'}</div>`;
+          '<div class="derived">Эта роль не начинает отправку с выбранного кошелька.</div>'}</div>`;
     }
     return `<div class="card s23-action-fields">
-    ${policyWallet?.purpose?policySignerCards(policyWallet):''}
+    ${policyWallet?.purpose?walletPolicyLine(policyWallet)+policySignerCards(policyWallet):''}
     ${foundTx&&S.role==='teodor'?`<div class="alert a-warn">В сети уже есть перевод · ${new Date(foundTx.timestamp_ms).toLocaleString('ru-RU',{timeZone:'Europe/Moscow'})} МСК ·
       <a href="https://tronscan.org/#/transaction/${encodeURIComponent(foundTx.hash)}" target="_blank" rel="noopener noreferrer">${htmlText(txShort(foundTx.hash))} · TronScan</a>
       <button class="btn btn-outline btn-sm" onclick="copyAsk(${jsLiteralAttr(foundTx.hash)})">Копировать хеш</button></div>`:''}
@@ -11313,7 +11323,7 @@ function stepCard(d){
       return (w&&w.multisig)?`
       <div class="fg"><label class="fl">Что проверили — это увидит подтверждающий сотрудник</label>
         <textarea class="fc" id="c" placeholder="Деньги на кошельке, адреса сверены с задачами операциониста">${d.pay.check||''}</textarea></div>
-      <div class="alert a-info"><div>${w.purpose?`Подписи с кошелька ${htmlText(w.name)}: ${htmlText(walletSends(w))}. ${d.transferConfirmation?.ownerAlone?'Владелец ведёт перевод один; завершение только после Success в сети.':'Следующий сотрудник подтвердит перевод; завершение только после Success в сети.'}`:
+      <div class="${w.purpose?'derived':'alert a-info'}"><div>${w.purpose?`Подписи с кошелька ${htmlText(w.name)}: ${htmlText(walletSends(w))}. ${d.transferConfirmation?.ownerAlone?'Владелец ведёт перевод один; завершение только после Success в сети.':'Следующий сотрудник подтвердит перевод; завершение только после Success в сети.'}`:
         `Кошелёк с мультисигом: <b>${walletSigner(w)}</b> завешивает каждый перевод и подписывает первым — будет 1 из 2, дальше одобряет Теодор. Транзакция живёт сутки: не одобрят — завешивать заново.`}</div></div>
       <div class="row"><button class="btn btn-primary" onclick="act(${d.id},'s23')">${w.purpose?(d.transferConfirmation?.ownerAlone?'Проверить перевод в сети':'Передать на подтверждение'):'Подписал — передать Теодору'}</button></div>`
       :`
@@ -11331,10 +11341,10 @@ function stepCard(d){
     return `<div class="card"><div class="card-title">Суть сделки<span class="sub">по шаблону из Telegram — проверьте и подпишите</span></div>
     ${signSummary(d)}
     ${policy?policySignerCards(policyWallet):''}
-    <div class="alert a-info"><div><b>Подпишите перевод в кошельке — дальше всё пойдёт само.</b> Как только сеть подтвердит перевод, ${d.kind==='Фрихолд'?'операционист перейдёт к учёту MT103 по согласованной заявке':'операционист известит Coins'}.</div></div>
+    <div class="${policy?'derived':'alert a-info'}"><div><b>Подпишите перевод в кошельке — дальше всё пойдёт само.</b> Как только сеть подтвердит перевод, ${d.kind==='Фрихолд'?'операционист перейдёт к учёту MT103 по согласованной заявке':'операционист известит Coins'}.</div></div>
     ${sObj&&sObj.debt?`<div class="box box-amber"><b>Это возмещение вам.</b> Вы выдали баты со своего кошелька,
       сейчас подписываете возврат ${usd(d.pay.usdt)} себе же на ${addressDisclosure((d.transfer||{}).addr||'адрес не указан')}.</div>`:''}
-    <div class="alert a-info"><div><b>${policy?htmlText(d.transferClaim?.byName||'Инициатор'):'Фин дир'} проверил:</b> ${d.pay.check?htmlText(d.pay.check):'комментарий не оставлен'}</div></div>
+    <div class="${policy?'derived':'alert a-info'}"><div><b>${policy?htmlText(d.transferClaim?.byName||'Инициатор'):'Фин дир'} проверил:</b> ${d.pay.check?htmlText(d.pay.check):'комментарий не оставлен'}</div></div>
     <div class="row">${policy&&String(d.transferClaim?.byId)===String(standMeId)?
       '<div class="alert a-warn"><div>Сотрудник, начавший отправку, не может подтвердить её сам.</div></div>':
       `<button class="btn btn-primary" onclick="act(${d.id},'s24')">Подписал — проверить перевод</button>`}</div>
