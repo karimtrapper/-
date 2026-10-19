@@ -99,9 +99,11 @@ def test_all_mobile_crm_sections_design_gate(stand_ui):
     page.set_viewport_size({'width': 375, 'height': 844})
     page.locator('.site-shell-section-list [data-shell-section="deals"]').click()
     expect(page.locator('#dealsTable tr')).to_have_count(1)
-    details = page.locator('#dealsTable tr').get_by_role('button', name='Детали', exact=True)
-    expect(details).to_be_visible()
-    details.click()
+    # Строка — сама ссылка, без отдельной кнопки «Детали» (находка №15
+    # аудита ui-2026-10-17: DESIGN.md запрещает кнопку «Открыть» в строке списка).
+    row = page.locator('#dealsTable tr').first
+    expect(row).to_have_class(re.compile('crm-deal-row'))
+    row.click()
     expect(page.locator('#dealModal')).to_be_visible()
     page.screenshot(path=str(EVIDENCE / 'deals-details-375.png'), full_page=True)
     page.locator('#dealModal .modal-close').click()

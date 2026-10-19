@@ -5,7 +5,9 @@ const path = require('node:path');
 const vm = require('node:vm');
 
 const html = fs.readFileSync(path.join(__dirname, '../static/crm/crm.html'), 'utf8');
-assert.match(html, /<button class="nav-tab" data-section="admins" data-shell-label="Сотрудники">🔐 Админы<\/button>/);
+// Эмодзи убраны из вкладки (находка №6 аудита ui-2026-10-17) — текст и так
+// совпадает с data-shell-label, который nav-shell.js подставляет после mount.
+assert.match(html, /<button class="nav-tab" data-section="admins" data-shell-label="Сотрудники">Админы<\/button>/);
 
 const start = html.indexOf('async function loadAdmins() {');
 const end = html.indexOf('/* Роли живут только на стенде:', start);

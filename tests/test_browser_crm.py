@@ -291,7 +291,9 @@ def test_custom_deal_create_edit_reload_preserves_money(ui):
     page.wait_for_load_state('networkidle')
     row = page.locator('#dealsTable tr').filter(has_text='QA Browser Client')
     expect(row).to_have_count(1)
-    row.get_by_role('button', name='Детали', exact=True).click()
+    # Строка — сама ссылка, отдельной кнопки «Детали» больше нет (находка
+    # №15 аудита ui-2026-10-17: DESIGN.md запрещает кнопку «Открыть» в строке).
+    row.click()
     expect(page.locator('#dealModal')).to_be_visible()
     page.locator('#dealModal').get_by_role('button', name='Редактировать', exact=True).click()
     expect(page.locator('#customPayoutAmount')).to_have_value('970')

@@ -841,12 +841,12 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             <button class="nav-tab active" data-section="dashboard">Дашборд</button>
             <button class="nav-tab" data-section="deals" data-shell-label="Сделки">Сделки</button>
             <a class="nav-tab stand-only" href="/tasks?section=analytics" style="display:none;text-decoration:none;">Аналитика</a>
-            <button class="nav-tab" data-section="documents" data-shell-label="Документы">📄 Документы</button>
-            <button class="nav-tab" data-section="closing" data-shell-label="Закрытие">🔒 Закрытие</button>
-            <button class="nav-tab" data-section="exchangers" data-shell-label="Обменники">🔁 Обменники</button>
+            <button class="nav-tab" data-section="documents" data-shell-label="Документы">Документы</button>
+            <button class="nav-tab" data-section="closing" data-shell-label="Закрытие">Закрытие</button>
+            <button class="nav-tab" data-section="exchangers" data-shell-label="Обменники">Обменники</button>
             <button class="nav-tab" data-section="balance" data-shell-label="Баланс">Баланс</button>
-            <button class="nav-tab" data-section="incomes" data-shell-label="Поступления">💵 Поступления</button>
-            <button class="nav-tab" data-section="conversions" data-shell-label="Конвертации">🔄 Конвертации</button>
+            <button class="nav-tab" data-section="incomes" data-shell-label="Поступления">Поступления</button>
+            <button class="nav-tab" data-section="conversions" data-shell-label="Конвертации">Конвертации</button>
             <button class="nav-tab" data-section="reimbursements" data-shell-label="Возмещения">Возмещения</button>
             <button class="nav-tab" data-section="transactions" data-shell-label="Транзакции">Транзакции</button>
             <button class="nav-tab" data-section="managers" data-shell-label="Менеджеры">Менеджеры</button>
@@ -855,7 +855,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             <button class="nav-tab" data-section="partners" data-shell-label="Партнёры">Партнёры</button>
             <button class="nav-tab" data-section="referrers" data-shell-label="Рефереры">Рефереры</button>
             <button class="nav-tab" data-section="payoutRequests" data-shell-label="Заявки на выплату">Заявки на выплату<span id="payoutRequestsBadge" class="payout-nav-count"></span></button>
-            <button class="nav-tab" data-section="admins" data-shell-label="Сотрудники">🔐 Админы</button>
+            <button class="nav-tab" data-section="admins" data-shell-label="Сотрудники">Админы</button>
             <button class="nav-tab stand-only" data-section="myTelegram" data-shell-label="Мой Telegram" style="display:none;">Мой Telegram</button>
         </div>
     </nav>
@@ -1035,8 +1035,8 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                                 <th>ID</th>
                                 <th>Дата</th>
                                 <th>Клиент</th>
-                                <th>Pay-In USDT</th>
-                                <th>Pay-Out</th>
+                                <th>Получено USDT</th>
+                                <th>Оплата</th>
                                 <th>Прибыль</th>
                                 <th>Статус</th>
                             </tr>
@@ -1116,12 +1116,11 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                                 <th>Менеджер</th>
                                 <th>Клиент</th>
                                 <th>Партнёр</th>
-                                <th>Метод Pay-In</th>
+                                <th>Метод получения</th>
                                 <th>Сумма USDT</th>
-                                <th>Pay-Out THB</th>
+                                <th>Оплата, ฿</th>
                                 <th>Прибыль</th>
                                 <th>Статус</th>
-                                <th>Действия</th>
                             </tr>
                         </thead>
                         <tbody id="dealsTable">
@@ -3875,6 +3874,13 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 .replace(/'/g, '&#39;');
         }
 
+        // Линейная иконка «ожидание» (⏳) — та же гарнитура, что у остальных
+        // SVG в проекте (viewBox 24, обводка 1.8). Эмодзи вместо иконок
+        // запрещены DESIGN.md (находка №6 аудита ui-2026-10-17).
+        function icoWait() {
+            return '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px;margin-right:2px"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>';
+        }
+
         // ==================== Toast уведомления ====================
         function showToast(message, type = 'success', duration = null) {
             // Ошибки и предупреждения висят дольше: их нужно прочитать, а не заметить
@@ -4708,7 +4714,8 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     document.getElementById('dealsTable').innerHTML = data.deals.map(deal => {
                         const profitUnknown = deal.payout_source === 'founder_personal' && !deal.is_reimbursed && deal.payout_amount_usdt == null;
                         return `
-                        <tr>
+                        <tr class="crm-deal-row" tabindex="0" onclick="showDealDetails(${deal.id})"
+                            onkeydown="if(event.key==='Enter'){showDealDetails(${deal.id})}" style="cursor:pointer">
                             <td>#${deal.id}</td>
                             <td>${formatDate(deal.created_at)}</td>
                             <td>${escapeHtml(deal.manager_name) || '—'}</td>
@@ -4730,9 +4737,6 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                                 ${profitUnknown ? '⏳ ожид.' : (deal.net_profit_usdt != null ? '$' + deal.net_profit_usdt.toFixed(2) : (deal.profit_usdt != null ? '$' + deal.profit_usdt.toFixed(2) : '—'))}
                             </td>
                             <td><span class="pill badge badge-${deal.status}">${getStatusLabel(deal.status)}</span></td>
-                            <td>
-                                <button class="btn btn-sm btn-secondary" onclick="showDealDetails(${deal.id}, this)">Детали</button>
-                            </td>
                         </tr>
                     `}).join('');
 
@@ -11320,6 +11324,19 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         const cnvNum = v => (v === null || v === undefined || isNaN(v)) ? '—'
             : Number(v).toLocaleString('ru-RU', {minimumFractionDigits: 2, maximumFractionDigits: 2});
 
+        // Обратное к cnvNum: «536 274,36» (или просто «536274.36», если человек
+        // печатает по-английски) → число. Поле «Конвертировать» показывало
+        // сырое 536274.36 рядом с «Сумма» в формате 536 274,36 ₽ — два формата
+        // одного числа на экране (находка №7 аудита ui-2026-10-17). Парсер
+        // нужен, чтобы при вводе в русском формате на бэкенд всё равно уходило
+        // чистое число, как раньше у type="number".
+        function parseRuMoney(str) {
+            const cleaned = String(str ?? '').replace(/[^\d.,-]/g, '').replace(/\s/g, '');
+            const normalized = cleaned.includes(',') ? cleaned.replace(/\./g, '').replace(',', '.') : cleaned;
+            const n = Number(normalized);
+            return Number.isFinite(n) ? n : 0;
+        }
+
         // Когда отправка известна фактом, ставка выводится обратным счётом:
         // по выписке она гуляла (0,2006 % 11.08 против 0,4005 % 13.08)
         // Откуда взято удержание: строки выписки → расчёт по ставке → разница
@@ -11441,7 +11458,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                            `<div style="font-size:0.8rem"><a href="#" style="color:#64748b"
                               onclick="setIncomeActive(${i.id}, true);return false">вернуть на счёт</a></div>`;
                 } else if (i.conv_state === 'pending') {
-                    conv = '<span style="color:#94a3b8">⏳ лежит на счёте</span>' +
+                    conv = `<span style="color:#94a3b8">${icoWait()}лежит на счёте</span>` +
                            (i.keep_active
                              ? `<div style="font-size:0.8rem"><a href="#" style="color:#94a3b8"
                                   onclick="setIncomeActive(${i.id}, false);return false">вернуть в историю</a></div>`
@@ -11475,9 +11492,9 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     <td>${(i.operation_date || '').slice(0, 10)}</td>
                     <td>${i.payer || '—'}</td>
                     <td>${sum}</td>
-                    <td>${selectable ? `<input type="number" step="0.01" class="incAmt"
-                          data-id="${i.id}" value="${incomeSel.get(i.id) ?? i.free_rub}"
-                          style="width:130px" onchange="syncIncomeAmount(this)"
+                    <td>${selectable ? `<input type="text" inputmode="decimal" class="incAmt"
+                          data-id="${i.id}" value="${cnvNum(incomeSel.get(i.id) ?? i.free_rub)}"
+                          style="width:130px" onchange="syncIncomeAmount(this)" onblur="reformatIncomeAmount(this)"
                           title="Сколько из этого прихода конвертируем — можно частично">` : '—'}</td>
                     <td>${i.kind === 'acquiring' ? 'СБП' : 'реквизиты'}</td>
                     <td>${escapeHtml(incomeAccountLabel(i))}${i.source_tag === 'manual_crm'
@@ -11492,10 +11509,15 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             syncIncomeSelection();
         }
 
+        // Внутренние коды source_tag, которые ставит сам бэкенд (а не операционист
+        // руками через editIncome) — человеку показываем не код, а что это значит
+        // (находка №8 аудита ui-2026-10-17: «manual_stand» сырым текстом в колонке)
+        const SOURCE_TAG_LABELS = {manual_stand: 'вручную на стенде', manual_crm: 'вручную из CRM'};
+
         // Откуда деньги: ручная метка важнее, потом сделка обменника из WL-бота,
         // потом сделка CalcCRM. По СБП без разметки было не понять, чей это клиент
         function incomeSource(i) {
-            if (i.source_tag) return i.source_tag;
+            if (i.source_tag) return escapeHtml(SOURCE_TAG_LABELS[i.source_tag] || i.source_tag);
             if (i.wl) {
                 // Мерчант отвечает «чей обменник», автор — «кто завёл сделку»:
                 // на счёте все оплаты по СБП выглядят одинаково
@@ -11523,14 +11545,20 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             const id = Number(cb.value);
             if (!cb.checked) { incomeSel.delete(id); return syncIncomeSelection(); }
             const amt = document.querySelector(`.incAmt[data-id="${id}"]`);
-            incomeSel.set(id, Number(amt?.value || cb.dataset.free || 0));
+            incomeSel.set(id, amt?.value ? parseRuMoney(amt.value) : Number(cb.dataset.free || 0));
             syncIncomeSelection();
         }
 
         function syncIncomeAmount(inp) {
             const id = Number(inp.dataset.id);
-            if (incomeSel.has(id)) incomeSel.set(id, Number(inp.value || 0));
+            if (incomeSel.has(id)) incomeSel.set(id, parseRuMoney(inp.value));
             syncIncomeSelection();
+        }
+
+        // Пока поле в фокусе — не трогаем, чтобы не прыгал курсор; на blur
+        // приводим к тому же формату, что в колонке «Сумма» (536 274,36).
+        function reformatIncomeAmount(inp) {
+            inp.value = cnvNum(parseRuMoney(inp.value));
         }
 
         function selectedIncomes() {
@@ -11623,6 +11651,17 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             loadIncomes();
         }
 
+        // Словарь статусов конвертации (ConversionStatus в app.py) — на экране
+        // был сырой код enum'а (находка №9 аудита ui-2026-10-17: «received»
+        // английским во всей колонке «Статус»)
+        const CONV_STATUS_LABELS = {
+            draft: 'собираем состав', sent: 'ушло брокеру — ждём USDT',
+            received: 'получено', cancelled: 'отменена',
+        };
+        function convStatusLabel(status) {
+            return escapeHtml(CONV_STATUS_LABELS[status] || status || '—');
+        }
+
         async function loadConversions() {
             const d = await (await fetch('/api/conversions')).json();
             if (!d.success) return;
@@ -11635,7 +11674,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     <td>${cnvNum(c.sent_rub)} ₽</td><td>${c.rate_rub_usdt || '—'}</td>
                     <td>${cnvNum(c.received_usdt)}</td>
                     <td>${c.delta_usdt ? cnvNum(c.delta_usdt) : '—'}</td>
-                    <td>${c.status || '—'}</td></tr>`).join('')
+                    <td><span class="pill${c.status === 'received' ? ' pill-money' : c.status === 'cancelled' ? ' pill-late' : ''}">${convStatusLabel(c.status)}</span></td></tr>`).join('')
                 || '<tr><td colspan="10">Пачек пока нет</td></tr>';
         }
 
