@@ -23,6 +23,8 @@ body.nav-shell-tasks .task-list { --task-list-shadow:0 1px 3px rgba(15,23,42,.05
 .task-list-avatar { display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:50%;background:var(--navy-100);color:var(--navy-600);font-size:12px; }
 .task-list-person-count { color:var(--navy-500);font-weight:400; }
 .task-list-wait-row { padding-left:56px; }
+.task-list-wait-row-remind { grid-template-columns:minmax(0,1fr) auto auto; }
+.task-list-remind { justify-self:end; white-space:nowrap; }
 .task-list-empty { padding:24px;border-top:1px solid var(--border-light);color:var(--navy-600);font-size:14px;line-height:1.5; }
 .task-list-empty strong { display:block;margin-bottom:4px;color:var(--navy-900);font-size:16px; }
 .task-list-pending { border-color:var(--navy-200);box-shadow:var(--task-list-shadow); }
@@ -80,6 +82,8 @@ body.nav-shell-tasks .task-list { --task-list-shadow:0 1px 3px rgba(15,23,42,.05
   .task-list-arrow { display:none; }
   .task-list-person { padding:12px 16px 8px; }
   .task-list-wait-row { padding-left:16px; }
+  .task-list-wait-row-remind { grid-template-columns:minmax(0,1fr) auto; }
+  .task-list-remind { grid-column:2;margin-top:8px; }
   .task-list-empty { padding:16px; }
   .task-list-filters { padding:8px 16px; }
   .task-deals-heading { display:none; }
