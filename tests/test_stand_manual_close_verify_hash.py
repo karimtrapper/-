@@ -74,6 +74,15 @@ def test_verify_hash_rejects_unknown_deal(monkeypatch):
     assert response.status_code == 404
 
 
+def test_verify_hash_rejects_non_dict_json_body(monkeypatch):
+    # Valid JSON that is not an object (e.g. a list) must not crash the route
+    # with an uncaught AttributeError on data.get(...) -> plain Flask 500.
+    uid = _setup(monkeypatch)
+    response = _client(uid).post('/api/stand/manual-close/verify-hash', json=[1, 2, 3])
+    assert response.status_code == 400
+    assert response.json == {'success': False, 'error': 'invalid_payload'}
+
+
 def test_verify_hash_returns_confirmed_for_matching_transfer(monkeypatch):
     uid = _setup(monkeypatch)
     calls = []

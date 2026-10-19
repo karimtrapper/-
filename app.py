@@ -11990,6 +11990,8 @@ def stand_manual_close_verify_hash():
     if current_role() not in ('manager', 'admin'):
         return jsonify({'success': False, 'error': 'forbidden'}), 403
     data = request.get_json(silent=True) or {}
+    if not isinstance(data, dict):
+        return jsonify({'success': False, 'error': 'invalid_payload'}), 400
     try:
         deal_id = int(data.get('dealId'))
     except (TypeError, ValueError):
