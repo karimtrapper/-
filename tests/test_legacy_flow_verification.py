@@ -71,6 +71,9 @@ def test_legacy_create_unverified_combo_rejected_for_admin_without_confirm():
     resp = _client_as('admin').post('/api/deals', json=_rental_cash_payload())
     assert resp.status_code == 409, resp.json
     assert resp.json['requires_confirmation'] is True
+    # Отличает эту причину 409 от requires_confirmation по payout-tx-overage —
+    # фронт должен показать свой confirm-диалог, не общий.
+    assert resp.json['unverified_flow'] is True
 
 
 def test_legacy_create_unverified_combo_allowed_for_admin_with_confirm():

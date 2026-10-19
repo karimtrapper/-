@@ -1171,6 +1171,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                                 <option value="custom">Кастомная — нестандартные валюты</option>
                                 <option value="mf_realty">Недвижимость через MF Corp</option>
                                 <option value="mf_freehold">Недвижимость фрихолд</option>
+                                <option value="rental">Аренда</option>
                             </select>
                         </div>
                     </div>
@@ -1394,6 +1395,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                                          показывается только когда открыта старая сделка с этим методом -->
                                     <option value="spp_doverka" data-legacy="1" hidden>СБП (Доверка, архив)</option>
                                 </select>
+                                <div id="flowGateHint" style="display:none;margin-top:6px;font-size:12px;color:var(--coral,#e05c4a)">Флоу в проверке — пока проводите через Карима</div>
                             </div>
                             <div class="form-group" id="payinRubGroup">
                                 <label class="form-label">Сумма RUB</label>
@@ -5799,6 +5801,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
            подтвердил. Если /api/auth/me вообще не ответил — считаем окружение
            непроверенным и не рисуем боевые ссылки (fail-closed), см. standLinkState(). */
         let AUTH_STAND = null;  // null — ещё не проверено или проверка не удалась
+        let CRM_ROLE = null;  // роль текущего пользователя из того же /api/auth/me
         async function loadAuthStand() {
             try {
                 const res = await fetch(`${API_URL}/api/auth/me`);
@@ -5808,7 +5811,8 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                    а не «прод»: !!undefined===false молча выдавал бы такой ответ за
                    подтверждённый прод (QA перепроверка, FAIL №5, 28.09). */
                 AUTH_STAND = (d && d.success && d.user && typeof d.user.stand === 'boolean') ? d.user.stand : null;
-            } catch (e) { AUTH_STAND = null; }
+                CRM_ROLE = (d && d.success && d.user) ? (d.user.role || 'admin') : null;
+            } catch (e) { AUTH_STAND = null; CRM_ROLE = null; }
             applyStandMobileNav();
             refreshStandDependentLinks();
         }
@@ -5846,6 +5850,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         // а не после захода в «Аккаунты».
         document.addEventListener('DOMContentLoaded', loadStandRoles);
         document.addEventListener('DOMContentLoaded', loadAuthStand);
+        document.addEventListener('DOMContentLoaded', fetchDealFlowConfig);
         async function loadStandRoles() {
             try {
                 const res = await fetch(`${API_URL}/api/stand/roles`);
@@ -6911,6 +6916,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 
         // Show/hide fields based on payin method
         document.getElementById('payinMethod').addEventListener('change', applyPayinMethodFields);
+        document.getElementById('payinMethod').addEventListener('change', applyFlowGateOptions);
         // Метод прихода меняет ответ на вопрос «возмещать ли»: крипта = деньги
         // уже у нас, рубли = фаундер отправил наперёд
         document.getElementById('payinMethod').addEventListener('change', syncPayoutSettledDefault);
@@ -7589,9 +7595,63 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         });
 
         // ==================== Custom Deal ====================
+        // ===== Гейт непроверенных флоу (тип сделки + способ Pay-In) =====
+        // Единственный источник истины — VERIFIED_FLOWS на сервере (app.py),
+        // отданный через /api/deal-flow-config; эти две карты — только перевод
+        // локальных значений select'ов в канонические ключи сервера.
+        const CRM_KIND_CANON = {'mf_freehold':'freehold','mf_realty':'leasehold','rental':'rental',
+            'exchange':'exchange','custom':'exchange'};
+        const CRM_PAYIN_CANON = {'flow_sole_reqs':'requisites','sber_reqs':'requisites','sber_wl':'sbp',
+            'spp_doverka':'sbp','crypto_direct':'crypto','partners_cash':'cash'};
+        let CRM_VERIFIED_FLOWS = [];
+        async function fetchDealFlowConfig() {
+            try {
+                const res = await fetch(`${API_URL}/api/deal-flow-config`);
+                const json = await res.json();
+                if (json.verified) CRM_VERIFIED_FLOWS = json.verified;
+            } catch (e) { console.error('fetchDealFlowConfig error', e); }
+            applyFlowGateOptions();
+        }
+        function crmComboVerified(kind, payinMethod) {
+            const kc = CRM_KIND_CANON[kind], pc = CRM_PAYIN_CANON[payinMethod];
+            if (!kc || !pc) return false;
+            return CRM_VERIFIED_FLOWS.some(p => p[0] === kc && p[1] === pc);
+        }
+        /* Чипы недоступны менеджеру на уровне <option disabled> (нативный select
+           сам не даёт выбрать такой пункт) — admin не получает disabled вовсе,
+           иначе он не смог бы выбрать непроверенный вариант вообще; вместо этого
+           ему показывается подсказка и confirm() перед отправкой формы (submit). */
+        function applyFlowGateOptions() {
+            const kindSel = document.getElementById('dealKindSelect');
+            const payinSel = document.getElementById('payinMethod');
+            if (!kindSel || !payinSel) return;
+            const isAdmin = CRM_ROLE === 'admin';
+            Array.from(kindSel.options).forEach(opt => {
+                if (!opt.value) return;
+                const otherSet = !!payinSel.value;
+                const verified = crmComboVerified(opt.value, payinSel.value);
+                const blocked = otherSet && !verified && !isAdmin;
+                opt.disabled = blocked;
+                opt.title = (otherSet && !verified) ? 'Флоу в проверке — пока проводите через Карима' : '';
+            });
+            Array.from(payinSel.options).forEach(opt => {
+                if (!opt.value || opt.hasAttribute('data-legacy')) return;
+                const otherSet = !!kindSel.value;
+                const verified = crmComboVerified(kindSel.value, opt.value);
+                const blocked = otherSet && !verified && !isAdmin;
+                opt.disabled = blocked;
+                opt.title = (otherSet && !verified) ? 'Флоу в проверке — пока проводите через Карима' : '';
+            });
+            const hint = document.getElementById('flowGateHint');
+            if (hint) {
+                const unverified = kindSel.value && payinSel.value && !crmComboVerified(kindSel.value, payinSel.value);
+                hint.style.display = (isAdmin && unverified) ? 'block' : 'none';
+            }
+        }
         // ===== Тип сделки (селект в шапке формы) =====
         function onDealKindChange() {
             const kind = document.getElementById('dealKindSelect').value;
+            applyFlowGateOptions();
             const custom = document.getElementById('customDealToggle');
             const mf = document.getElementById('mfDealToggle');
             const fh = document.getElementById('fhDealToggle');
@@ -7609,6 +7669,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             sel.value = document.getElementById('mfDealToggle')?.checked ? 'mf_realty'
                 : document.getElementById('fhDealToggle')?.checked ? 'mf_freehold'
                 : (document.getElementById('customDealToggle')?.checked ? 'custom' : 'exchange');
+            applyFlowGateOptions();
         }
 
         // Оба типа недвижимости прячут обычную выдачу и блок расчёта прибыли.
@@ -9220,7 +9281,17 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     body: JSON.stringify(data)
                 });
                 let result = await response.json();
-                if (response.status === 409 && result.requires_confirmation) {
+                if (response.status === 409 && result.requires_confirmation && result.unverified_flow) {
+                    const confirmed = await showConfirm('Непроверенный флоу, продолжить?', 'Да, продолжить');
+                    if (!confirmed) return;
+                    data.unverified_confirmed = true;
+                    response = await fetch(url, {
+                        method,
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(data)
+                    });
+                    result = await response.json();
+                } else if (response.status === 409 && result.requires_confirmation) {
                     const confirmed = await showConfirm(
                         `${result.warning}\n\nЭта доля будет учтена как сумма к возмещению по сделке, хотя превышает доступный остаток перевода. Вы уверены, что хотите сохранить её?`,
                         'Да, сохранить');

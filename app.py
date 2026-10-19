@@ -619,7 +619,7 @@ def _legacy_unverified_flow_problem(is_creation, old_kind, old_payin_method,
     if current_role() == 'admin':
         if data.get('unverified_confirmed') is True:
             return None
-        return ({'success': False, 'requires_confirmation': True,
+        return ({'success': False, 'requires_confirmation': True, 'unverified_flow': True,
                 'warning': 'Непроверенный флоу. Требуется подтверждение (unverified_confirmed=true).'}, 409)
     return ({'success': False, 'error': 'Этот флоу (тип сделки + способ оплаты) ещё не проверен. '
             'Проведите сделку через Карима.'}, 400)
