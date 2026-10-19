@@ -884,6 +884,21 @@ body.wave4a.nav-shell-crm #create .sber-income-row {
   body.wave4a.nav-shell-crm .section :is(.table-container, .rx-scroll) {
     width: 100%; max-width: 100%; min-width: 0; overflow: visible !important;
   }
+  /* Дашборд → «Маржа», «Юнит-экономика», «По каналам»: .unit-econ-table —
+     широкая таблица сравнения (900px min-width), а не список «метка —
+     значение». overflow:visible выше оставлял её обрезанной html,body'ом
+     (overflow-x:clip), заголовки метрик в первой узкой колонке рвались по
+     буквам. Разрешаем собственный горизонтальный скролл — таблица помещается
+     целиком или скроллится, но не обрезается (находка из допечатки аудита
+     ui-2026-10-17 — CRM → Аналитика/Дашборд на 375px). */
+  body.wave4a.nav-shell-crm #dashboard .table-container {
+    overflow-x: auto !important; -webkit-overflow-scrolling: touch;
+  }
+  body.wave4a.nav-shell-crm #dashboard .unit-econ-table,
+  body.wave4a.nav-shell-crm #dashboard .unit-econ-table th,
+  body.wave4a.nav-shell-crm #dashboard .unit-econ-table td {
+    overflow-wrap: normal !important; word-break: normal !important; white-space: normal;
+  }
   body.wave4a.nav-shell-crm .section table.crm-mobile-table {
     display: block; width: 100% !important; min-width: 0 !important;
     max-width: 100%; border: 0; background: transparent;
