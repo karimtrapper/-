@@ -1215,6 +1215,9 @@ let S=load();
 /* Ручной перенос в CRM минуя задачник живёт только в памяти этой вкладки — на сервер
    не уходит и в STAND_SHARED не попадает (Карим, 19.10). */
 if(!S.manualCloseDraft||typeof S.manualCloseDraft!=='object')S.manualCloseDraft={};
+/* Черновик полей ручного переноса (хеши, которые ещё не хотим писать в саму сделку) —
+   тоже только в памяти вкладки, по той же причине, что и manualCloseDraft (задача 5). */
+if(!S.manualCloseForm||typeof S.manualCloseForm!=='object')S.manualCloseForm={};
 
 function load(){
   /* На стенде стартовое состояние приходит с сервера, из браузера не читаем */
@@ -6538,6 +6541,7 @@ function prepayBranchStatus(d,branch){
 }
 function viewDeal(d){
   if(!d)return '<div class="card">Сделка не найдена. <button class="btn btn-sm btn-outline" onclick="back()">Назад</button></div>';
+  if(S.manualCloseDraft&&S.manualCloseDraft[d.id])return manualCloseScreen(d);
   const st=STEPS[d.step]||{title:(d.manual?'внесена вручную':d.step),n:'',who:null};
   const who=stepWho(d);
   const mine=!d.closed&&(who===S.role||(S.role==='admin'&&d.step==='s27'));
@@ -8630,6 +8634,146 @@ function manualCloseOpen(id){
 function manualCloseCancel(id){
   delete S.manualCloseDraft[id];
   render();
+}
+/* Черновик хешей для ручного переноса: отдельно от d.payinHashes/d.payout, пока сделку
+   не отправили (задача 6) — предпросмотр через verify-hash не должен портить сам факт
+   на доске до подтверждения менеджером. */
+function manualCloseFormState(id){
+  const f=S.manualCloseForm[id]=S.manualCloseForm[id]||{};
+  f.payin=f.payin||{};f.payin.hashes=f.payin.hashes||[];
+  f.payout=f.payout||{};f.payout.hashes=f.payout.hashes||[];
+  return f;
+}
+function mcHashAdd(id,which){
+  manualCloseFormState(id)[which].hashes.push({amount:null,network:'TRC20',hash:'',receiver:'',sender:''});
+  render();
+}
+function mcHashDel(id,which,i){ manualCloseFormState(id)[which].hashes.splice(i,1); render(); }
+function mcHashSet(id,which,i,k,v){
+  const h=manualCloseFormState(id)[which].hashes[i]; if(!h)return;
+  h[k]=(k==='amount')?(v===''?null:Number(String(v).replace(/\s/g,'').replace(',','.'))):v;
+  render();
+}
+function mcPayinTxPick(id,txId){
+  const t=txPool().find(x=>x.id===Number(txId)); if(!t)return;
+  const f=manualCloseFormState(id);
+  if(!f.payin.hashes.some(h=>h.hash===t.hash))
+    f.payin.hashes.push({amount:t.amount,network:t.net,hash:t.hash,receiver:'',sender:''});
+  render();
+}
+/* Предпросмотр через ту же ручку, что проверяет менеджер/админ до отправки (задача 1):
+   только читает сеть, ничего не сохраняет — авторитетная проверка на самом закрытии. */
+function mcHashCheck(id,which,i){
+  const h=manualCloseFormState(id)[which].hashes[i]; if(!h||!h.hash)return;
+  h._check={pending:true};render();
+  fetch('/api/stand/manual-close/verify-hash',{method:'POST',credentials:'same-origin',
+    headers:{'Content-Type':'application/json'},body:JSON.stringify({dealId:id,direction:which,
+      network:h.network,hash:h.hash,sender:h.sender||null,receiver:h.receiver||null,amount:h.amount})})
+    .then(r=>r.json()).then(j=>{h._check=j.success?{ok:true,amount:j.verifiedAmount,at:j.verifiedAt}
+      :{ok:false,error:j.error||'не подтверждён'};})
+    .catch(()=>{h._check={ok:false,error:'сервер недоступен'};})
+    .finally(render);
+}
+/* Экран ручного переноса сделки в CRM минуя задачник (задача 5, Карим 19.10): известные
+   факты сделки — строкой со значением и кнопкой «Поправить» (тот же приём, что в «Итоге
+   сделки» на s27), недостающие — открытыми полями. Правильно собрать payload для отправки —
+   задача 6; здесь только рендер и id/название полей, которые она будет читать. */
+function manualCloseScreen(d){
+  const crypto=isCrypto(d), fh=d.kind==='Фрихолд', realty=d.type==='Оплата недвижимости';
+  const paid=clientRubPaid(d), po=d.payout||{}, f=manualCloseFormState(d.id);
+  const payHashes=(fh||realty)?mfList(d):(po.hashes||[]);
+  const row=(label,value,hint)=>`<div class="sumrow"><div class="sumlab">${label}</div><div class="sumval">${value}</div>
+    <div class="sumsrc">${htmlText(hint||'известно')}</div><button class="btn btn-outline btn-sm" onclick="editOpen(${d.id})">Поправить</button></div>`;
+  const netOpts=n=>['TRC20','ERC20','BEP20','Arbitrum','Solana'].map(x=>`<option${n===x?' selected':''}>${x}</option>`).join('');
+  const hashEditor=(which,list,pool)=>`<div class="fg">
+    <label class="fl">${which==='payin'?'Хеш прихода':'Хеш выдачи'}</label>
+    ${pool?`<select class="fc" onchange="if(this.value)mcPayinTxPick(${d.id},this.value)">
+      <option value="">— выбрать из входящих —</option>
+      ${txPool().filter(t=>!txUsed(t.hash)||(d.payinHashes||[]).some(h=>h.hash===t.hash)).map(t=>
+        `<option value="${t.id}">${usd(t.amount)} · ${htmlText(t.net)} · ${htmlText(t.at)} · ${htmlText(t.hash)}</option>`).join('')}
+      </select>`:''}
+    <div class="hashbox" style="margin-top:8px">${list.map((h,i)=>`<div class="hrow" style="flex-wrap:wrap">
+      <input class="fc num" style="max-width:110px" value="${h.amount==null?'':h.amount}" placeholder="USDT"
+        onchange="mcHashSet(${d.id},'${which}',${i},'amount',this.value)">
+      <select class="fc" style="max-width:104px" onchange="mcHashSet(${d.id},'${which}',${i},'network',this.value)">${netOpts(h.network)}</select>
+      <input class="fc" style="flex:1;min-width:160px" value="${htmlText(h.hash)}" placeholder="хеш транзакции"
+        onchange="mcHashSet(${d.id},'${which}',${i},'hash',this.value)">
+      <input class="fc" style="flex:1;min-width:140px" value="${htmlText(h.receiver||'')}" placeholder="получатель"
+        onchange="mcHashSet(${d.id},'${which}',${i},'receiver',this.value)">
+      <input class="fc" style="flex:1;min-width:140px" value="${htmlText(h.sender||'')}" placeholder="отправитель (опц.)"
+        onchange="mcHashSet(${d.id},'${which}',${i},'sender',this.value)">
+      <button class="btn btn-outline btn-sm" onclick="mcHashCheck(${d.id},'${which}',${i})">Проверить</button>
+      <button class="btn btn-outline btn-sm" onclick="mcHashDel(${d.id},'${which}',${i})">×</button>
+      ${h._check?(h._check.pending?'<span class="fh">проверяем…</span>'
+        :h._check.ok?'<span class="fh">подтверждён в сети</span>'
+        :`<span class="sumred">${htmlText(h._check.error||'не подтверждён')}</span>`):''}
+      </div>`).join('')}</div>
+    <button class="btn btn-outline btn-sm" style="margin-top:6px" onclick="mcHashAdd(${d.id},'${which}')">+ хеш вручную</button>
+  </div>`;
+
+  /* Pay-In (получение) */
+  const knownMethod=!!d.payType;
+  const knownAmount=crypto?d.amountUsdt!=null:(paid.rub!=null||d.amountRub!=null||d.incomeAmount!=null);
+  const knownHashes=(d.payinHashes||[]).length>0;
+  const knownBankConfirm=paid.rub!=null||d.manualBankReceipt?.status==='confirmed';
+  if(crypto&&!knownHashes&&!f.payin.hashes.length)
+    f.payin.hashes.push({amount:null,network:'TRC20',hash:'',receiver:'',sender:''});
+  const payinSection=[
+    knownMethod?row('Способ оплаты',htmlText(d.payType))
+      :`<div class="fg"><label class="fl">Способ оплаты<span class="rq">*</span></label>
+          <select class="fc" id="mc_payin_method"><option value="">— выбрать —</option>
+          ${['По реквизитам','СБП','Крипта','Наличные'].map(x=>`<option>${x}</option>`).join('')}</select></div>`,
+    knownAmount?row('Клиент заплатил',crypto?moneyKop(d.amountUsdt,'USDT'):moneyKop(paid.rub??d.amountRub??d.incomeAmount,'₽'),
+        paid.date?('приход '+paid.date):null)
+      :`<div class="fg"><label class="fl">Сумма ${crypto?'USDT':'₽'}<span class="rq">*</span></label>
+          <input class="fc num" id="mc_payin_amount_${crypto?'usdt':'rub'}" placeholder="${crypto?'сумма в USDT':'сумма в рублях'}"></div>`,
+    crypto?'':(num((d.rates||{}).broker)!=null?row('Курс брокера',htmlText(String(d.rates.broker).replace('.',','))+' ₽/USDT')
+      :`<div class="fg"><label class="fl">Курс ₽/USDT</label><input class="fc num" id="mc_payin_rate" placeholder="курс брокера"></div>`),
+    crypto
+      ?(knownHashes?row('Хеш прихода',d.payinHashes.map(h=>hashCell(d,h)).join(''))
+        :hashEditor('payin',f.payin.hashes,true))
+      :(knownBankConfirm?row('Приход по счёту',htmlText('подтверждён вручную'+(paid.date?' · '+paid.date:'')))
+        :`<div class="fg"><label class="fl"><input type="checkbox" id="mc_payin_manual_bank_confirmed"> Деньги на счету подтверждены вручную</label>
+            <input class="fc" id="mc_payin_date" placeholder="дата зачисления, если знаете" style="margin-top:6px"></div>`)
+  ].join('');
+
+  /* Pay-Out (выдача) */
+  const knownSource=payoutHuman(d)!=='не выбран';
+  const knownPayoutAmount=po.usdt!=null;
+  const knownPayoutHashes=payHashes.length>0;
+  if(!knownPayoutHashes&&!f.payout.hashes.length)
+    f.payout.hashes.push({amount:null,network:'TRC20',hash:'',receiver:'',sender:''});
+  const payoutSection=[
+    knownSource?row('Способ выдачи',htmlText(payoutHuman(d)))
+      :`<div class="fg"><label class="fl">Источник выдачи<span class="rq">*</span></label>
+          <select class="fc" id="mc_payout_source"><option value="">— выбрать —</option>
+          ${Object.keys(SOURCES_PAY).map(k=>`<option value="${k}">${htmlText(SOURCES_PAY[k].t)}</option>`).join('')}</select></div>`,
+    knownPayoutAmount?row('Списано USDT',moneyKop(po.usdt,'USDT'))
+      :`<div class="fg"><label class="fl">Сумма USDT<span class="rq">*</span></label>
+          <input class="fc num" id="mc_payout_amount_usdt" placeholder="сумма выдачи в USDT"></div>`,
+    knownPayoutHashes?row('Хеш выдачи',payHashes.map(h=>hashCell(d,h)).join(''))
+      :hashEditor('payout',f.payout.hashes,false)
+  ].join('');
+
+  return `<div class="deal-screen manual-close-screen">
+    <div class="deal-breadcrumb">Задачник / ${htmlText(d.code)} / Ручной перенос в CRM</div>
+    <header class="deal-head"><div>
+      <p class="deal-code">${htmlText(d.code)} · ${htmlText(d.kind||d.type)}</p>
+      <h1>Закрыть вручную: ${htmlText(d.client||'без имени')}</h1>
+      <p>Перенос минуя задачник — заполните то, чего не хватает, остальное уже известно.</p>
+    </div>
+    <button class="btn btn-outline btn-sm" onclick="manualCloseCancel(${d.id})">Отмена</button></header>
+    <div class="card"><div class="card-title">Получение (Pay-In)</div>${payinSection}</div>
+    <div class="card"><div class="card-title">Выдача (Pay-Out)</div>${payoutSection}</div>
+    <div class="agbox">${agentsBlock(d,'manualClose',null)}</div>
+    <div class="card"><div class="card-title">Чек / инвойс оплаты</div>${fileBlock(d,'receipt','Чек об оплате','PDF, PNG, JPG, WEBP')}</div>
+    <div class="card"><div class="fg"><label class="fl">Причина закрытия вручную<span class="rq">*</span></label>
+      <textarea class="fc" id="mc_reason" rows="3" placeholder="Почему переносим в CRM минуя задачник"></textarea></div></div>
+    <div class="row" style="margin-top:14px">
+      <button class="btn btn-outline" onclick="manualCloseCancel(${d.id})">Отмена</button>
+      <button class="btn btn-primary" id="mc_submit" onclick="manualCloseSubmit(${d.id})">Подтвердить перенос и закрыть</button>
+    </div>
+  </div>`;
 }
 function val(id){const e=document.getElementById(id);return e?e.value.trim():'';}
 /* Кнопка, которая молча не срабатывает, читается как «дальше не идёт». Поэтому
