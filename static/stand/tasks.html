@@ -184,6 +184,7 @@ tr:last-child td{border-bottom:none}
 .chip:hover{border-color:var(--navy-400)}
 .chip.on{background:var(--navy-800);color:#fff;border-color:var(--navy-800)}
 .chip.disabled{opacity:.45;cursor:not-allowed}
+.chip.pending{background:var(--ds-decision);border-color:var(--ds-decision-border);color:var(--ds-decision-ink)}
 
 .derived{display:flex;align-items:center;gap:9px;flex-wrap:wrap;padding:11px 14px;background:var(--navy-50);border:1px solid var(--border);border-radius:var(--r-sm);font-size:13.5px;color:var(--navy-600)}
 .derived svg{color:var(--navy-400);flex-shrink:0}
@@ -5927,8 +5928,11 @@ function viewCreateBody(D,srcCard){
     </div>
 
     <div class="fg"><label class="fl">Тип запроса<span class="rq">*</span></label>
-      <div class="chips">${['Оплата недвижимости','Обмен валюты'].map(x=>
-        `<span class="chip ${D.type===x?'on':''}" onclick="draftSet('type',${JSON.stringify(x).replace(/"/g,'&quot;')})">${x}</span>`).join('')}</div></div>
+      <div class="chips">${['Оплата недвижимости','Обмен валюты'].map(x=>{
+        const verified=draftTypeVerified(x),selected=D.type===x;
+        const cls=selected?(verified?'on':'pending'):(verified?'':'disabled');
+        return `<span class="chip ${cls}" ${verified?'':'title="Флоу в проверке — пока проводите через Карима"'} onclick="draftSetGated('type',${JSON.stringify(x).replace(/"/g,'&quot;')})">${x}</span>`;
+      }).join('')}</div></div>
 
     ${D.type==='Обмен валюты'?`<div class="fg"><label class="fl">Валютная пара<span class="rq">*</span></label>
       <div class="chips">${PAIRS.map(x=>
@@ -5937,7 +5941,8 @@ function viewCreateBody(D,srcCard){
 
     ${D.type==='Оплата недвижимости'?`<div class="fg"><label class="fl">Тип сделки<span class="rq">*</span></label>
       <div class="chips">${['Лизхолд','Фрихолд','Аренда'].map(x=>{
-        const verified=draftComboVerified(D.type,x,D.payType),cls=D.kind===x?'on':(verified?'':'disabled');
+        const verified=draftComboVerified(D.type,x,D.payType),selected=D.kind===x;
+        const cls=selected?(verified?'on':'pending'):(verified?'':'disabled');
         return `<span class="chip ${cls}" ${verified?'':'title="Флоу в проверке — пока проводите через Карима"'} onclick="draftSetGated('kind',${JSON.stringify(x).replace(/"/g,'&quot;')})">${x}</span>`;
       }).join('')}</div></div>`:''}
 
@@ -5955,7 +5960,8 @@ function viewCreateBody(D,srcCard){
 
     <div class="fg"><label class="fl">Как клиент платит<span class="rq">*</span></label>
       <div class="chips">${payWays(D).map(x=>{
-        const verified=draftComboVerified(D.type,D.kind,x),cls=D.payType===x?'on':(verified?'':'disabled');
+        const verified=draftComboVerified(D.type,D.kind,x),selected=D.payType===x;
+        const cls=selected?(verified?'on':'pending'):(verified?'':'disabled');
         return `<span class="chip ${cls}" ${verified?'':'title="Флоу в проверке — пока проводите через Карима"'} onclick="draftSetGated('payType',${JSON.stringify(x).replace(/"/g,'&quot;')})">${x}</span>`;
       }).join('')}</div></div>
 
@@ -6119,14 +6125,22 @@ function draftComboVerified(type,kind,payType){
   if(!kc||!pc)return false;
   return (STAND_VERIFIED_FLOWS||[]).some(p=>p[0]===kc&&p[1]===pc);
 }
-/* Чип выбора типа/способа идёт через этот сеттер вместо draftSet напрямую:
-   непроверенную комбинацию менеджер выбрать не может (чип и так visible-but-
-   disabled), admin может — но только после явного confirm(), который
-   проставляет unverified_confirmed на драфте для сервера. */
+/* «Тип запроса» — Обмен валюты сам по себе никогда не входит в VERIFIED_FLOWS
+   (там только недвижимость), поэтому проверяется отдельно от kind/payType:
+   иначе выбор «Оплата недвижимости» без ещё выбранного kind тоже считался бы
+   непроверенным и блокировался бы преждевременно. */
+function draftTypeVerified(type){
+  return type==='Оплата недвижимости';
+}
+/* Чип всегда идёт через этот сеттер вместо draftSet напрямую: непроверенную
+   комбинацию менеджер выбрать не может (чип и так visible-but-disabled),
+   admin может — но только после явного confirm(), который проставляет
+   unverified_confirmed на драфте для сервера. */
 function draftSetGated(k,v){
   const D=S.draft;
-  const nextKind=k==='kind'?v:D.kind, nextPayType=k==='payType'?v:D.payType;
-  if(draftComboVerified(D.type,nextKind,nextPayType)){draftSet(k,v);return;}
+  const nextType=k==='type'?v:D.type, nextKind=k==='kind'?v:D.kind, nextPayType=k==='payType'?v:D.payType;
+  const verified=k==='type'?draftTypeVerified(nextType):draftComboVerified(nextType,nextKind,nextPayType);
+  if(verified){draftSet(k,v);return;}
   if(standMe==='admin'){
     if(!confirm('Непроверенный флоу, продолжить?'))return;
     D.unverified_confirmed=true;

@@ -51,6 +51,19 @@ function ctx() {
 }
 console.log('draftComboVerified: OK');
 
+// ── draftTypeVerified: «Тип запроса» — Обмен валюты никогда не проверен,
+// независимо от kind/payType; Оплата недвижимости сама по себе нейтральна ──
+
+{
+  const context = {};
+  vm.createContext(context);
+  vm.runInContext(fn('draftTypeVerified'), context);
+  assert.equal(context.draftTypeVerified('Оплата недвижимости'), true);
+  assert.equal(context.draftTypeVerified('Обмен валюты'), false,
+    'Обычный обмен — непроверенный тип сам по себе, как Аренда для kind');
+}
+console.log('draftTypeVerified: OK');
+
 // ── newDeal переносит unverified_confirmed из драфта в сделку ────────────
 
 function newDealCtx() {
