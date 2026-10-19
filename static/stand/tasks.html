@@ -457,6 +457,7 @@ a.hash:hover{background:#BAE6FD}
 .chk{display:flex;align-items:center;gap:9px;font-size:13.5px;margin:8px 0;cursor:pointer}
 .chk input{width:17px;height:17px;cursor:pointer}
 .fh{font-size:12px;color:var(--text-muted);margin-top:6px;line-height:1.45}
+.create-flow-hint{font-size:var(--ds-caption);color:var(--ds-muted);margin-top:var(--ds-xs)}
 .src{display:inline-block;margin-left:6px;font-size:11.5px;font-weight:600;letter-spacing:.03em;
   color:var(--text-muted);background:var(--navy-50);border:1px solid var(--border-light);
   border-radius:5px;padding:1px 6px;text-transform:lowercase}
@@ -5985,6 +5986,7 @@ function viewCreateBody(D,srcCard){
         const cls=selected?(verified?'on':'pending'):(verified?'':'disabled');
         return `<span class="chip ${cls}" ${verified?'':'title="Флоу в проверке — пока проводите через Карима"'} onclick="draftSetGated('payType',${JSON.stringify(x).replace(/"/g,'&quot;')})">${x}</span>`;
       }).join('')}</div></div>
+    <p class="fh create-flow-hint">Серые варианты ещё не проверены — проводите через Карима</p>
 
 
     <div class="fg"><label class="fl">Что просит клиент<span class="rq">*</span></label>
