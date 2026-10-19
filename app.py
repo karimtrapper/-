@@ -2719,7 +2719,8 @@ def _stand_seed_wallets():
             if not w:
                 w = Wallet(address=address, blockchain=blockchain, label=label,
                           is_monitored=True, is_balance=False,
-                          is_multisig=multisig, accepts_payin=payin, owner=owner)
+                          is_multisig=multisig, accepts_payin=payin, owner=owner,
+                          not_for_new_deals=True)
                 db.add(w)
                 continue
             # Флаги — только если ещё не заданы: is_multisig/accepts_payin по
@@ -2746,9 +2747,6 @@ def _stand_seed_wallets():
             wallet.owner_can_alone = policy['owner_can_alone']
             wallet.signer_addresses = json.dumps(signer_addresses)
             wallet.not_for_new_deals = False
-        for wallet in db.query(Wallet).all():
-            if wallet.address not in policy_seed:
-                wallet.not_for_new_deals = True
         db.commit()
         print('[STAND] Реестр кошельков засеян')
     except Exception as exc:
@@ -3456,6 +3454,9 @@ _WALLET_REGISTRY_COLUMNS = [
 try:
     with engine.connect() as conn:
         is_pg = 'postgresql' in DATABASE_URL
+        from sqlalchemy import inspect as _inspect_wallet_schema
+        new_deal_flag = 'not_for_new_deals' not in {
+            col['name'] for col in _inspect_wallet_schema(engine).get_columns('wallets')}
         for col, coltype in _WALLET_REGISTRY_COLUMNS:
             sql_type = coltype if is_pg else coltype.replace('BOOLEAN DEFAULT FALSE', 'BOOLEAN DEFAULT 0')
             if is_pg:
@@ -3463,6 +3464,10 @@ try:
             else:
                 try: conn.execute(text(f"ALTER TABLE wallets ADD COLUMN {col} {sql_type}"))
                 except: pass
+        if new_deal_flag:
+            conn.execute(text("UPDATE wallets SET not_for_new_deals = 1 WHERE address NOT IN "
+                              "('TDuDeRiwrLLN3hnnA57G5yM6ibg58A6wZk', "
+                              "'TA6S3RBEY57jq8fXEVVsU6H9JZ18inenG4')"))
         conn.commit()
 except Exception as e:
     print(f"ℹ️ wallet_registry migration: {e}")
@@ -9801,6 +9806,11 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
     new_convs = {c.get('id'): c for c in new_state.get('convs', [])}
     if len(new_convs) != len(new_state.get('convs', [])):
         return 'Нельзя дублировать пачку на доске'
+    prior_convs = {c.get('id'): c for c in previous.get('convs', [])}
+    for conv in new_state.get('convs') or []:
+        before_conv = prior_convs.get(conv.get('id')) or {}
+        if before_conv.get('recipientWarnings') != conv.get('recipientWarnings'):
+            return 'Сверку адреса получения фиксирует только сервер'
     old = {d.get('id'): d for d in previous.get('deals', [])}
     for deal in new_state.get('deals') or []:
         before = old.get(deal.get('id'))
@@ -9823,6 +9833,8 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
                             'Проведите сделку через Карима.')
     for deal in new_state.get('deals') or []:
         before = old.get(deal.get('id')) or {}
+        if before.get('recipientWarnings') != deal.get('recipientWarnings'):
+            return 'Сверку адреса получения фиксирует только сервер'
         if before.get('s14Ping') != deal.get('s14Ping'):
             return 'Пинг операционисту отправляет только сервер'
         if (before.get('commissionSends') or []) != (deal.get('commissionSends') or []):
@@ -11539,6 +11551,68 @@ def _payin_hash_key(value):
     return raw
 
 
+def _stand_recipient_warning(holder, tx_hash, expected, actual):
+    warnings = holder.setdefault('recipientWarnings', [])
+    warning = next((w for w in warnings if w.get('hash') == tx_hash and
+                    w.get('expected') == expected and w.get('actual') == actual), None)
+    if warning is None:
+        warning = {'hash': tx_hash, 'expected': expected, 'actual': actual,
+                   'acknowledgedById': None, 'acknowledgedAt': None}
+        warnings.append(warning)
+    return warning
+
+
+def _stand_source_known(db, state, address):
+    if not address:
+        return False
+    if db.query(Wallet).filter(Wallet.address == address).first():
+        return True
+    return any(t.get('status') == 'confirmed' and t.get('from') == address
+               for c in state.get('convs') or [] for t in c.get('txs') or []) or any(
+        h.get('verified') is True and h.get('from') == address
+        for d in state.get('deals') or [] for h in d.get('payinHashes') or [])
+
+
+@app.route('/api/stand/incoming/ack-recipient', methods=['POST'])
+def stand_incoming_ack_recipient():
+    if not STAND_MODE:
+        return jsonify(success=False, error='stand_only'), 404
+    actor, actor_id = current_role(), flask_session.get('user_id')
+    if actor_id is None or actor not in ('operator', 'findir', 'manager', 'admin'):
+        return jsonify(success=False, error='Недостаточно прав для сверки адреса'), 403
+    payload = request.get_json(silent=True) or {}
+    db = get_session()
+    try:
+        if engine.dialect.name == 'sqlite':
+            db.execute(text('BEGIN IMMEDIATE'))
+        row = _stand_row(db, lock=True)
+        if payload.get('version') != row.version:
+            return jsonify(success=False, error='Доска изменилась — обновите её'), 409
+        state = json.loads(row.data or '{}')
+        deal = next((d for d in state.get('deals') or [] if d.get('id') == payload.get('dealId')), None)
+        if not deal:
+            return jsonify(success=False, error='Сделка не найдена'), 404
+        conv = next((c for c in state.get('convs') or [] if c.get('id') == deal.get('cnvId')), None)
+        holder = conv if conv and conv.get('status') == 'sent' else deal
+        warning = next((w for w in holder.get('recipientWarnings') or []
+                        if w.get('hash') == _payin_hash_key(payload.get('hash'))
+                        and w.get('expected') == payload.get('expected')
+                        and w.get('actual') == payload.get('actual')), None)
+        if not warning or not any(valid_address(warning['expected'], net) and
+                                   valid_address(warning['actual'], net) for net in ('trc20', 'erc20')):
+            return jsonify(success=False, error='Предупреждение не найдено'), 409
+        warning['acknowledgedById'] = actor_id
+        warning['acknowledgedAt'] = int(time.time() * 1000)
+        row.data = json.dumps(state, ensure_ascii=False)
+        row.version = (row.version or 0) + 1
+        row.updated_by = flask_session.get('display_name') or flask_session.get('username') or actor
+        row.updated_at = datetime.utcnow()
+        db.commit()
+        return jsonify(success=True, version=row.version, data=_stand_strip_files(state), warning=warning)
+    finally:
+        db.close()
+
+
 def _payin_find(db, value, lock=True):
     """Canonical lookup also sees old uppercase/0x spellings without rewriting them."""
     from sqlalchemy import func
@@ -11758,7 +11832,7 @@ def stand_incoming_check():
             return jsonify({'success': False, 'error': 'У кошелька пачки нет корректного адреса'}), 409
     finally:
         db.close()
-    checked = verify_transfer(tx_hash, network, None, receiver, None)
+    checked = verify_transfer(tx_hash, network, None, None, None)
     if checked['status'] != 'confirmed':
         return jsonify({'success': False, 'status': checked['status'],
                         'error': checked.get('checkError') or 'Перевод ещё не подтверждён'}), 422
@@ -11778,6 +11852,22 @@ def stand_incoming_check():
         current_receiver = stand_wallet_address(state, conv.get('walletId'))
         if current_receiver != receiver:
             return jsonify({'success': False, 'error': 'Кошелёк пачки изменился'}), 409
+        actual_receiver = checked.get('to')
+        if not actual_receiver or not valid_address(actual_receiver, network):
+            return jsonify(success=False, error='Сеть не подтвердила адрес получения'), 422
+        warnings = conv.get('recipientWarnings') or []
+        acknowledged = any(w.get('hash') == tx_hash and w.get('actual') == actual_receiver
+                           and w.get('acknowledgedById') for w in warnings)
+        if actual_receiver != receiver or (warnings and not acknowledged and
+                any(w.get('hash') == tx_hash for w in warnings)):
+            warning = (_stand_recipient_warning(conv, tx_hash, receiver, actual_receiver)
+                       if actual_receiver != receiver else
+                       next(w for w in warnings if w.get('hash') == tx_hash))
+            row.data = json.dumps(state, ensure_ascii=False)
+            row.version = (row.version or 0) + 1
+            db.commit()
+            return jsonify(success=False, error='Перевод пришёл на другой кошелёк — проверьте адрес и подтвердите расхождение',
+                           warning=warning, version=row.version, data=_stand_strip_files(state)), 409
         early = bool(conv.get('sentTs') and checked['timestampMs'] < conv['sentTs'])
         from decimal import Decimal, InvalidOperation
         _stand_import_legacy_payins(db, row, state, tx_hash)
@@ -11802,7 +11892,9 @@ def stand_incoming_check():
             return jsonify(success=False, error='Превышена сумма перевода: ' + _payin_ledger_hint(info), ledger=info), 409
         if data.get('preview') is True:
             db.commit()
-            return jsonify(success=True, ledger=info, hash=tx_hash, network=network, early=early)
+            return jsonify(success=True, ledger=info, hash=tx_hash, network=network, early=early,
+                           sourceKnown=_stand_source_known(db, state, checked.get('from')),
+                           sourceAddress=checked.get('from'))
         if early and data.get('confirmBeforeRubSend') is not True:
             return jsonify(success=False, error='Перевод был раньше отправки рублей. Подтвердите, что это перевод брокера по этой пачке.'), 409
         try:
@@ -12132,7 +12224,14 @@ def _stand_payin_target(state, deal):
     не из отдельного справочника задачника. Свой кошелёк, введённый вручную и не
     сохранённый в реестр (`payinCustom`), резолвится напрямую из сделки."""
     from sqlalchemy import func
-    wallet_id = deal.get('walletId') or 'grusha'
+    wallet_id = deal.get('walletId')
+    if not wallet_id:
+        purpose = {'Оплата недвижимости': 'realty', 'Обмен валюты': 'exchange'}.get(deal.get('type'))
+        if purpose:
+            selected = get_session().query(Wallet).filter_by(purpose=purpose, active=True,
+                                                             accepts_payin=True).first()
+            wallet_id = selected.id if selected else None
+    wallet_id = wallet_id or 'grusha'
     if wallet_id == 'custom':
         custom = deal.get('payinCustom') or {}
         if not isinstance(custom, dict):
@@ -12314,7 +12413,7 @@ def stand_payin_check():
     tx_hash = normalize_ref(data.get('hash'), network)
     if not tx_hash or tx_hash.startswith('demo:'):
         return jsonify({'success': False, 'error': 'Хеш или ссылка не соответствует сети сделки'}), 400
-    checked = verify_transfer(tx_hash, network, None, receiver, None)
+    checked = verify_transfer(tx_hash, network, None, None, None)
     # Роль уже зафиксирована до чтения доски: current_role() закрывает scoped-сессию.
     if checked['status'] != 'confirmed':
         return jsonify({'success': False, 'status': checked['status'],
@@ -12333,6 +12432,22 @@ def stand_payin_check():
             return jsonify({'success': False, 'error': 'Способ оплаты изменился — повторите проверку'}), 409
         if _stand_payin_target(state, deal) != (network, receiver):
             return jsonify({'success': False, 'error': 'Сеть или кошелёк прихода изменились — повторите проверку'}), 409
+        actual_receiver = checked.get('to')
+        if not actual_receiver or not valid_address(actual_receiver, network):
+            return jsonify(success=False, error='Сеть не подтвердила адрес получения'), 422
+        warnings = deal.get('recipientWarnings') or []
+        acknowledged = any(w.get('hash') == tx_hash and w.get('actual') == actual_receiver
+                           and w.get('acknowledgedById') for w in warnings)
+        if actual_receiver.lower() != receiver.lower() or (not acknowledged and
+                any(w.get('hash') == tx_hash for w in warnings)):
+            warning = (_stand_recipient_warning(deal, tx_hash, receiver, actual_receiver)
+                       if actual_receiver.lower() != receiver.lower() else
+                       next(w for w in warnings if w.get('hash') == tx_hash))
+            row.data = json.dumps(state, ensure_ascii=False)
+            row.version = (row.version or 0) + 1
+            db.commit()
+            return jsonify(success=False, error='Перевод пришёл на другой кошелёк — проверьте адрес и подтвердите расхождение',
+                           warning=warning, version=row.version, data=_stand_strip_files(state)), 409
         used = any(normalize_network(h.get('network') or 'trc20') == network
                    and normalize_ref(h.get('hash'), network) == tx_hash
                    for d in state.get('deals', []) for h in d.get('payinHashes') or []) or any(
@@ -12370,7 +12485,8 @@ def stand_payin_check():
         payer = deal.get('payerWallet')
         tx = {'hash': tx_hash, 'network': network.upper(), 'amount': checked['verifiedAmount'],
               'from': sender, 'to': receiver, 'verified': True,
-              'verifiedAt': checked['verifiedAt'], 'timestampMs': checked.get('timestampMs')}
+              'verifiedAt': checked['verifiedAt'], 'timestampMs': checked.get('timestampMs'),
+              'sourceKnown': _stand_source_known(db, state, sender)}
         if cash_partner:
             tx['ledgerUseId'] = use.id
         if not cash_partner and payer and sender and (payer.lower() != sender.lower() if network == 'erc20'

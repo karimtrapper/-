@@ -2066,7 +2066,10 @@ const WALLETS=[
 function crmWalletToLegacy(w){
   return {id:String(w.id), name:w.label||((w.owner?w.owner+' · ':'')+w.address),
     owner:w.owner||'владелец не указан', role:w.is_multisig?'findir':'teodor',
-    addr:w.address, multisig:!!w.is_multisig};
+    addr:w.address, multisig:!!w.is_multisig,purpose:w.purpose||null,
+    limit_usd:w.limit_usd,initiator_roles:w.initiator_roles||[],
+    confirmer_roles:w.confirmer_roles||[],owner_can_alone:!!w.owner_can_alone,
+    signer_addresses:w.signer_addresses||{},not_for_new_deals:!!w.not_for_new_deals};
 }
 function syncWalletRegistry(){
   /* Легаси id ('grusha'/'vitaly'/'andrey'/'teodor'/'teodor-erc') резолвятся по
@@ -2129,15 +2132,18 @@ function walletOptionText(w){
   return htmlText(w.addr||w.address)+' · '+((w.addr||w.address||'').startsWith('0x')?'ERC-20':'TRC-20')+
     ' · '+htmlText(w.owner||'владелец не указан')+((w.multisig||w.is_multisig)?' · мультисиг':' · личный');
 }
-function crmPayinChoices(net,selected){return uniqueWallets(CRM_WALLETS.filter(w=>w.accepts_payin&&crmWalletNet(w)===net),selected);}
+function crmPayinChoices(net,selected){return uniqueWallets(CRM_WALLETS.filter(w=>w.accepts_payin&&crmWalletNet(w)===net&&
+  (!w.not_for_new_deals||String(w.id)===String(selected))),selected);}
 function payinWalletView(w){
   return {id:String(w.id),name:w.label||w.owner||w.address,owner:w.owner||'—',
     addr:w.address,net:crmWalletNet(w),multisig:!!w.is_multisig};
 }
-function payinDefaultWallet(net){
+function walletPurpose(d){return d?.type==='Обмен валюты'?'exchange':d?.type==='Оплата недвижимости'?'realty':null;}
+function payinDefaultWallet(net,d){
   const choices=crmPayinChoices(net);
   if(!choices.length)return null;
-  return payinWalletView(choices.find(w=>w.is_multisig)||choices[0]);
+  const purpose=walletPurpose(d);
+  return payinWalletView((purpose&&choices.find(w=>w.purpose===purpose))||choices[0]);
 }
 function payinWallet(d){
   if(d.walletId==='custom'){const c=d.payinCustom||{};
@@ -2155,7 +2161,7 @@ function payinWallet(d){
     const w=crmWalletById(d.walletId);
     if(w)return payinWalletView(w);
   }
-  return payinDefaultWallet('TRC-20')||{id:null,name:'—',owner:'—',addr:'',net:'TRC-20',multisig:false};
+  return payinDefaultWallet('TRC-20',d)||{id:null,name:'—',owner:'—',addr:'',net:'TRC-20',multisig:false};
 }
 function payinNet(d){return (payinWallet(d)||{}).net||'TRC-20';}
 function payToCrypto(w){
@@ -2187,7 +2193,7 @@ function payinNetworkSet(id,net){
   if(net!=='TRC-20'&&net!=='ERC-20'){toast('Неизвестная сеть');return;}
   const d=deal(id);
   if(payinNet(d)===net&&S.payinCustomEdit!==id)return;
-  const def=payinDefaultWallet(net);
+  const def=payinDefaultWallet(net,d);
   if(def)payinWalletSet(id,def.id);
   else{toast('В реестре нет кошельков сети '+net+' с приёмом оплаты от клиентов');render();}
 }
@@ -2331,7 +2337,8 @@ function walletSends(w){return w.multisig?'мультисиг — подписы
    показываем: брокер или клиент прислали бы USDT в никуда. Когда выбор уже закреплён
    (деньги пришли), показываем только выбранный. */
 function walletCards(d,cur,fn,disabled,name,choices){
-  const source=uniqueWallets(choices||wallets(),cur?.id);
+  const source=uniqueWallets((choices||wallets()).filter(w=>disabled||!w.not_for_new_deals||
+    String(w.id)===String(cur?.id)),cur?.id);
   const pool=disabled?source.filter(w=>cur&&(w.id===cur.id||
     (choices&&w.addr===cur.addr))):source;
   let list=pool.filter(w=>addrValid(w.addr,'TRC-20'));
@@ -2606,7 +2613,8 @@ async function standAction(path,payload){
     const j=await r.json();
     if(j.success){if(j.data){standVer=j.version;standBase=standClone(j.data);standApply(j.data);render();}return j;}
     if(j.error==='stand_blocked'){toast('Канал проверки сети недоступен. Перевод остаётся неподтверждённым');return null;}
-    toast(j.detail||j.error||'Не удалось проверить');return null;
+    if(j.warning&&j.data){standVer=j.version;standBase=standClone(j.data);standApply(j.data);render();}
+    toast(j.detail||j.error||'Не удалось проверить');return j.warning?j:null;
   }catch(e){toast('Проверка недоступна — перевод остаётся неподтверждённым');return null;}
   finally{standBusy=false;if(standPush){standPush=false;setTimeout(standSave,120);}}
 }
@@ -8127,6 +8135,7 @@ function cnvTxShareBlock(d){
     <div class="hrow"><input class="fc num" id="w_share" type="number" min="0.000001" max="${t.free_usdt}" step="0.000001" value="${p.amount}" ${t.free_usdt>0?'':'disabled'}
       oninput="S.incomingShare.amount=this.value;this.setCustomValidity(Number(this.value)>${t.free_usdt}?'Сумма больше свободного остатка':'');this.reportValidity()">
     <button class="btn btn-secondary btn-sm" style="min-height:44px;height:44px" ${t.free_usdt>0?'':'disabled'} onclick="cnvTxAllocate(${d.id})">Засчитать долю</button></div>
+    <p class="fh">Источник: ${p.sourceKnown?'знакомый (брокер/биржа из списка)':'новый адрес — проверить перед приёмом'} · ${esc(p.sourceAddress||'адрес не определён')}</p>
     <p class="fh">Можно уменьшить сумму. Остаток останется доступен другим пачкам.</p>
     ${p.early?`<div class="alert a-warn"><div>Этот перевод раньше отправки рублей брокеру.
       <label><input type="checkbox" id="w_confirm_early" ${p.confirmed?'checked':''}
@@ -8143,7 +8152,13 @@ async function cnvTxManual(id,selectedHash=null,selectedNetwork=null){
   S.incomingShare=null;
   const j=await standAction('/api/stand/incoming/check',{dealId:id,hash,network,preview:true});
   if(j&&j.ledger){S.incomingShare={dealId:id,cnvId:c.id,hash:j.hash,network:j.network,
-    ledger:j.ledger,amount:j.ledger.free_usdt,early:j.early};render();}
+    ledger:j.ledger,amount:j.ledger.free_usdt,early:j.early,
+    sourceKnown:j.sourceKnown,sourceAddress:j.sourceAddress};render();}
+}
+async function cnvRecipientAck(id,warning){
+  const j=await standAction('/api/stand/incoming/ack-recipient',{
+    dealId:id,hash:warning.hash,expected:warning.expected,actual:warning.actual,version:standVer});
+  if(j?.success)toast('Расхождение адреса подтверждено. Выберите фактический кошелёк и повторите проверку.');
 }
 async function cnvTxAllocate(id){
   const p=S.incomingShare;if(!p||p.dealId!==id)return;
@@ -10795,6 +10810,9 @@ function stepCard(d){
     </div>`:''}</div>`,
 
   s14:()=>`<div class="card${d.cashPartnerUsdt?' cash-pay':''}"><div class="card-title">Ждём приход<span class="sub">${d.cashPartnerUsdt?'USDT от партнёра на наш кошелёк':isCrypto(d)?'USDT на кошелёк':`рубли на счёт в ${htmlText(rubReceivingBankLabel(d))}`}</span></div>
+    ${(d.recipientWarnings||[]).map(w=>`<div class="alert a-warn"><div><b>Перевод ${esc(w.hash)} на другой кошелёк</b><br>Ожидали: ${esc(w.expected)}<br>Фактически: ${esc(w.actual)}<br>
+      ${w.acknowledgedById?'Расхождение подтверждено. Выберите фактический кошелёк и повторите проверку.':
+        `<button class="btn btn-outline btn-sm" onclick='cnvRecipientAck(${d.id},${JSON.stringify(w).replace(/'/g,"&#39;")})'>Подтверждаю расхождение адреса</button>`}</div></div>`).join('')}
     ${d.cashPartnerUsdt?`<p class="fh">Клиент передал наличные партнёру. Подписанные документы с Flow Sole остаются в деле. Каждый перевод USDT проверяется отдельно.</p>
       <div class="fg"><label class="fl">Наш кошелёк · TRC-20</label><div class="fc cash-wallet">${htmlText((payinWallet(d)||{}).addr||'—')}</div></div>
       ${(d.payinHashes||[]).length?`<div class="hashbox">${d.payinHashes.map(h=>`<div class="hrow"><b>+${money(h.amount,'USDT')}</b>${hashLink(h.hash,'TRC20')}<span class="src">сеть ✓</span></div>`).join('')}
@@ -10824,7 +10842,7 @@ function stepCard(d){
         <b class="${f?'':'pos'}">+${money(h.amount,'USDT')}</b>${Number(h.amount)<=10&&!f?' <span class="src">тестовый</span>':''}
         ${hashLink(h.hash,h.network||'TRC20')}
         ${h.verified?'<span class="src">сеть ✓</span>':''}
-        <span class="fh" style="margin:0">${h.from?'с '+h.from:'отправитель не опознан'}</span>
+        <span class="fh" style="margin:0">${h.from?'с '+esc(h.from):'отправитель не опознан'} · ${h.sourceKnown?'знакомый (брокер/биржа из списка)':'новый адрес — проверить перед приёмом'}</span>
         ${f?`<span class="neg">${h.unknownSender?'не опознан как клиент':'не кошелёк клиента'} — в сумму не идёт</span>
           <button class="btn btn-secondary btn-sm" onclick="payinSenderOk(${d.id},${i})">Это клиент — засчитать</button>
           <button class="btn btn-outline btn-sm" onclick="payinDrop(${d.id},${i})">Не наш — убрать</button>`
@@ -10982,8 +11000,8 @@ function stepCard(d){
         <span class="fh" id="b_sent_time_hint">Если перевод уже сделан, укажите время из платёжного документа по Москве. После подтверждения изменить его нельзя.</span>
         <span class="fh" id="b_sent_time_error" role="status"></span></div>
       <div class="fg w2"><label class="fl">Куда брокер пришлёт USDT · TRC-20<span class="rq">*</span></label>
-        <input type="hidden" id="b2" value="${walletById(d.walletId)?d.walletId:''}">
-        ${walletCards(d,walletById(d.walletId),'walletPick',false,'b2w_'+d.id)}</div>
+        <input type="hidden" id="b2" value="${walletById(d.walletId)?.id||payinDefaultWallet('TRC-20',d)?.id||''}">
+        ${walletCards(d,walletById(d.walletId)||walletById(payinDefaultWallet('TRC-20',d)?.id),'walletPick',false,'b2w_'+d.id)}</div>
     </div>
     <details class="deal-detail s18-detail"><summary>Состав пачки · ${1+sel.length+crmSel.length} поступл.</summary>
     ${s18CrmUnavailable(d)?`<p class="fh">${htmlText(s18CrmUnavailable(d))}</p>`:''}
@@ -11045,6 +11063,13 @@ function stepCard(d){
       return w?`<div class="derived" style="margin-top:12px"><span>Ждём на <b>${w.name}</b> · ${w.owner} · <span class="addr">${w.addr}</span>${
         w.multisig?' — мультисиг: отправлять будет фин дир со второй подписью':' — личный кошелёк: владелец отправит сам, вторая подпись не нужна'}</span></div>`
       :`<div class="alert a-warn" style="margin-top:12px"><div>Кошелёк получения не выбран — непонятно, куда смотреть и кто будет отправлять дальше.</div></div>`;})()}
+    ${(c?.recipientWarnings||[]).map(w=>`<div class="alert a-warn" style="margin-top:10px"><div>
+      <b>Перевод ${esc(w.hash)} пришёл на другой кошелёк</b><br>
+      Ожидали: <span class="addr">${esc(w.expected)}</span><br>
+      Фактически: <span class="addr">${esc(w.actual)}</span><br>
+      ${w.acknowledgedById?'Расхождение подтверждено. Выберите фактический кошелёк и повторите проверку.':
+        `<button class="btn btn-outline btn-sm" onclick='cnvRecipientAck(${d.id},${JSON.stringify(w).replace(/'/g,"&#39;")})'>Подтверждаю расхождение адреса</button>`}
+      </div></div>`).join('')}
     ${(function(){
       /* Брокер прислал USDT не на тот кошелёк — пачку перенастраивают, пока подтверждённых
          приходов нет; подтверждённый сначала отвязывают (Карим, 25.09). */

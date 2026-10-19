@@ -365,7 +365,7 @@ def verify_transfer(ref, network, sender, receiver, amount, *, demo=False,
     if amount is not None and sender is None:
         return _result('mismatch', checkError='Не задан кошелёк отправителя')
     if ((sender is not None and not valid_address(sender, network))
-            or not valid_address(receiver, network)):
+            or (receiver is not None and not valid_address(receiver, network))):
         return _result('mismatch', checkError='Адрес отправителя или получателя не определён')
     if demo:
         if not re.fullmatch(r'demo:[0-9]+:[A-Za-z0-9_-]+', tx_hash or ''):
@@ -413,7 +413,7 @@ def verify_transfer(ref, network, sender, receiver, amount, *, demo=False,
             matches = [t for t in transfers
                        if t.get('contract_address') == TRON_USDT
                        and (sender is None or t.get('from_address') == sender)
-                       and t.get('to_address') == receiver
+                       and (receiver is None or t.get('to_address') == receiver)
                        and t.get('type', 'Transfer') == 'Transfer' and t.get('status', 0) == 0]
             actual = sum((_amount(t.get('amount_str')) or Decimal(0)) /
                          (Decimal(10) ** int(t.get('decimals') or 6)) for t in matches)
@@ -459,17 +459,22 @@ def verify_transfer(ref, network, sender, receiver, amount, *, demo=False,
                         and re.fullmatch(r'0x[0-9a-fA-F]{64}', str(topics[1]))
                         and re.fullmatch(r'0x[0-9a-fA-F]{64}', str(topics[2]))))
                     and (sender is None or '0x' + str(topics[1])[-40:].lower() == sender.lower())
-                    and '0x' + str(topics[2])[-40:].lower() == receiver.lower()):
+                    and (receiver is None or '0x' + str(topics[2])[-40:].lower() == receiver.lower())):
                     matches.append(log)
             actual = sum(Decimal(int(str(t.get('data') or '0x0'), 16)) / Decimal(1_000_000)
                          for t in matches)
     except (requests.RequestException, ValueError, TypeError, InvalidOperation, _ChannelError) as exc:
         return _result('error', checkError=str(exc)[:160])
     actual_from = sender or (matches[0].get('from_address') if network == 'trc20' and matches else None)
+    actual_to = (matches[0].get('to_address') if network == 'trc20' else
+                 '0x' + str(matches[0]['topics'][2])[-40:].lower()) if matches else receiver
+    if receiver is None and len({(t.get('to_address') if network == 'trc20' else
+                                  '0x' + str(t['topics'][2])[-40:].lower()) for t in matches}) > 1:
+        return _result('mismatch', checkError='В хеше несколько получателей USDT — нужна ручная сверка')
     if network == 'erc20' and sender is None and matches:
         actual_from = '0x' + str(matches[0]['topics'][1])[-40:].lower()
     if not matches or actual <= 0 or (required is not None and abs(actual - required) > Decimal('0.01')):
-        return _result('mismatch', verifiedAmount=float(actual), **{'from': sender, 'to': receiver},
+        return _result('mismatch', verifiedAmount=float(actual), **{'from': actual_from, 'to': actual_to},
                        checkError='Токен, адреса или сумма не совпали')
     return _result('confirmed', verifiedAmount=float(actual), timestampMs=timestamp_ms,
-                   **{'from': actual_from, 'to': receiver})
+                   **{'from': actual_from, 'to': actual_to})
