@@ -10162,6 +10162,31 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
             mirror['confirmer_roles'] = _stand_policy_roles(registry, 'confirmer_roles')
             mirror['owner_can_alone'] = registry.owner_can_alone
             mirror['signer_addresses'] = json.loads(registry.signer_addresses or '{}')
+        # Browser JSON round-trips 15000.0 to 15000. A policy sender may view
+        # s23 before claiming it; that numeric no-op must not look like a
+        # financial edit owned by the legacy multisig role. Preserve the
+        # stored representation, while genuine amount changes still reach the
+        # fingerprint and role guards below.
+        old_deals_by_id = {item.get('id'): item for item in previous.get('deals') or []}
+        for incoming in new_state.get('deals') or []:
+            before = old_deals_by_id.get(incoming.get('id'))
+            if not before or before.get('step') != 's23':
+                continue
+            try:
+                main = _stand_batch_main(previous, before.get('id'))
+                policy = _stand_transfer_policy(db, previous, main) if main else None
+            except ValueError:
+                continue
+            if not policy:
+                continue
+            old_transfer = before.get('transfer') or {}
+            new_transfer = incoming.get('transfer') or {}
+            old_raw, new_raw = old_transfer.get('amount'), new_transfer.get('amount')
+            if ('amount' in old_transfer and 'amount' in new_transfer
+                    and not isinstance(old_raw, bool) and not isinstance(new_raw, bool)
+                    and old_raw != new_raw and _amount(old_raw) is not None
+                    and _amount(old_raw) == _amount(new_raw)):
+                new_transfer['amount'] = old_raw
     prior_deals = {d.get('id'): d for d in previous.get('deals', [])}
     for deal in new_state.get('deals') or []:
         before = prior_deals.get(deal.get('id'))
