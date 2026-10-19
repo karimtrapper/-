@@ -1624,6 +1624,15 @@ class Wallet(Base):
     is_multisig = Column(Boolean, default=False)  # подписывает фин дир, одобряет Теодор
     accepts_payin = Column(Boolean, default=False)  # принимаем оплату от клиентов
     owner = Column(String(100), nullable=True)
+    # Signature policy is opt-in. A NULL purpose keeps every legacy wallet on
+    # the historical send path, even when it is hidden from new deal selectors.
+    purpose = Column(String(20), nullable=True)
+    limit_usd = Column(Float, nullable=True)
+    initiator_roles = Column(Text, nullable=True)       # JSON role list
+    confirmer_roles = Column(Text, nullable=True)       # JSON role list
+    owner_can_alone = Column(Boolean, default=False)
+    signer_addresses = Column(Text, nullable=True)      # JSON role -> public address
+    not_for_new_deals = Column(Boolean, default=False)
     operations = relationship("WalletOperation", back_populates="wallet", cascade="all, delete-orphan")
 
     def to_dict(self, session=None):
@@ -1646,6 +1655,13 @@ class Wallet(Base):
             'is_multisig': bool(self.is_multisig),
             'accepts_payin': bool(self.accepts_payin),
             'owner': self.owner,
+            'purpose': self.purpose,
+            'limit_usd': self.limit_usd,
+            'initiator_roles': json.loads(self.initiator_roles or '[]'),
+            'confirmer_roles': json.loads(self.confirmer_roles or '[]'),
+            'owner_can_alone': bool(self.owner_can_alone),
+            'signer_addresses': json.loads(self.signer_addresses or '{}'),
+            'not_for_new_deals': bool(self.not_for_new_deals),
             'system_balance': round(system_balance, 2)
         }
 
@@ -2679,6 +2695,23 @@ def _stand_seed_wallets():
         ('TWBgeUo74DehAPgw5cKTdYUTXtJELqwwqn', 'TRON', False, True, 'Андрей', None),
         ('0x68aEA0F5386a57b48953F6fFF2f22D29D00D9ba9', 'ETH', False, True, 'Теодор', 'Теодор · ERC-20'),
     ]
+    policy_seed = {
+        'TDuDeRiwrLLN3hnnA57G5yM6ibg58A6wZk': {
+            'label': 'Груша Недвижимость', 'purpose': 'realty', 'limit_usd': None,
+            'initiator_roles': ['operator', 'findir'], 'confirmer_roles': ['teodor'],
+            'owner_can_alone': True,
+        },
+        'TA6S3RBEY57jq8fXEVVsU6H9JZ18inenG4': {
+            'label': 'Груша Обменник', 'purpose': 'exchange', 'limit_usd': 10000,
+            'initiator_roles': ['operator'], 'confirmer_roles': ['findir', 'teodor'],
+            'owner_can_alone': False,
+        },
+    }
+    signer_addresses = {
+        'operator': 'TAXgSzqBJzcstEkTBu4FJvEBH8SdxfV3QC',
+        'findir': 'TDsLTB3uHKhTcB3hWRaKByg3pLtrMAHcgd',
+        'teodor': 'TUzvaUjzRN5XLqDqbWB2VRKWQRtukXFYrN',
+    }
     db = SessionLocal()
     try:
         for address, blockchain, multisig, payin, owner, label in seed:
@@ -2696,6 +2729,26 @@ def _stand_seed_wallets():
                 w.is_multisig = multisig
                 w.accepts_payin = payin
                 w.owner = owner
+        for address, policy in policy_seed.items():
+            wallet = db.query(Wallet).filter(Wallet.address == address).first()
+            if not wallet:
+                wallet = Wallet(address=address, blockchain='TRON', active=True,
+                                is_monitored=True, is_balance=False,
+                                is_multisig=True, accepts_payin=True, owner='компания')
+                db.add(wallet)
+            # These exact addresses have an immutable operational policy. The
+            # public wallet API may edit display metadata, never signer rights.
+            wallet.label = policy['label'] if not wallet.label else wallet.label
+            wallet.purpose = policy['purpose']
+            wallet.limit_usd = policy['limit_usd']
+            wallet.initiator_roles = json.dumps(policy['initiator_roles'])
+            wallet.confirmer_roles = json.dumps(policy['confirmer_roles'])
+            wallet.owner_can_alone = policy['owner_can_alone']
+            wallet.signer_addresses = json.dumps(signer_addresses)
+            wallet.not_for_new_deals = False
+        for wallet in db.query(Wallet).all():
+            if wallet.address not in policy_seed:
+                wallet.not_for_new_deals = True
         db.commit()
         print('[STAND] Реестр кошельков засеян')
     except Exception as exc:
@@ -3395,7 +3448,10 @@ except Exception as e:
 # старый код продолжает работать на мигрированной БД без правок.
 _WALLET_REGISTRY_COLUMNS = [
     ('is_multisig', 'BOOLEAN DEFAULT FALSE'), ('accepts_payin', 'BOOLEAN DEFAULT FALSE'),
-    ('owner', 'VARCHAR(100)'),
+    ('owner', 'VARCHAR(100)'), ('purpose', 'VARCHAR(20)'),
+    ('limit_usd', 'DOUBLE PRECISION'), ('initiator_roles', 'TEXT'),
+    ('confirmer_roles', 'TEXT'), ('owner_can_alone', 'BOOLEAN DEFAULT FALSE'),
+    ('signer_addresses', 'TEXT'), ('not_for_new_deals', 'BOOLEAN DEFAULT FALSE'),
 ]
 try:
     with engine.connect() as conn:
@@ -19237,6 +19293,14 @@ def _wallet_registry_fields(data):
 
 
 WALLET_EDIT_ROLES = ('admin', 'operator', 'findir')
+POLICY_WALLET_ADDRESSES = frozenset((
+    'TDuDeRiwrLLN3hnnA57G5yM6ibg58A6wZk',
+    'TA6S3RBEY57jq8fXEVVsU6H9JZ18inenG4',
+))
+POLICY_WALLET_FIELDS = frozenset((
+    'purpose', 'limit_usd', 'initiator_roles', 'confirmer_roles',
+    'owner_can_alone', 'signer_addresses', 'not_for_new_deals',
+))
 
 
 def _wallet_edit_denied():
@@ -19277,6 +19341,8 @@ def add_wallet():
         address = data.get('address', '').strip()
         if not address:
             return jsonify({'success': False, 'error': 'Адрес обязателен'}), 400
+        if set(data) & POLICY_WALLET_FIELDS:
+            return jsonify({'success': False, 'error': 'Правила подписи меняются только миграцией'}), 403
 
         # Адрес-двойник (× вместо x и прочие гомоглифы) чиним здесь, а не только
         # в форме: кошелёк заводят и через API, и кривой адрес потом навсегда
@@ -19306,6 +19372,9 @@ def add_wallet():
             Wallet.address.ilike(address) if address.startswith('0x')
             else Wallet.address == address).first()
         if existing:
+            if existing.address in POLICY_WALLET_ADDRESSES and (
+                    set(data) & {'is_multisig', 'accepts_payin', 'owner', 'active'}):
+                return jsonify({'success': False, 'error': 'Правила служебного кошелька закреплены'}), 403
             # Если уже есть, просто включаем нужный флаг
             if data.get('is_monitored'): existing.is_monitored = True
             if data.get('is_balance'): existing.is_balance = True
@@ -19717,6 +19786,8 @@ def delete_wallet(wallet_id):
         wallet = session.query(Wallet).filter(Wallet.id == wallet_id).first()
         if not wallet:
             return jsonify({'success': False, 'error': 'Кошелёк не найден'}), 404
+        if wallet.address in POLICY_WALLET_ADDRESSES:
+            return jsonify({'success': False, 'error': 'Служебный кошелёк нельзя удалить'}), 403
         
 
         # Отвязываем кошелек от всех сделок перед удалением
@@ -19747,6 +19818,11 @@ def update_wallet(wallet_id):
         wallet = session.query(Wallet).filter(Wallet.id == wallet_id).first()
         if not wallet:
             return jsonify({'success': False, 'error': 'Кошелёк не найден'}), 404
+        if set(data) & POLICY_WALLET_FIELDS:
+            return jsonify({'success': False, 'error': 'Правила подписи меняются только миграцией'}), 403
+        if wallet.address in POLICY_WALLET_ADDRESSES and (
+                set(data) & {'is_multisig', 'accepts_payin', 'owner', 'active'}):
+            return jsonify({'success': False, 'error': 'Правила служебного кошелька закреплены'}), 403
 
         if 'label' in data:
             wallet.label = (data.get('label') or '').strip()[:100]
