@@ -473,8 +473,10 @@ console.log('test_stand_freehold.js: OK');
     invoiceCurrency:'usd',amountUsdt:'98800',agents:[],rq:'',note:''};
   let rendered='';
   const ctx=run(['viewCreateBody','draftSet','draftFreeholdPreview','draftValid','draftAmounts',
-    'freeholdSend','freeholdFee','askModes','ippsTariff','pairOf'],['IPPS_TARIFFS','PAIRS','PAIR_PAYCUR'],{
+    'freeholdSend','freeholdFee','askModes','ippsTariff','pairOf','draftComboVerified','draftTypeVerified'],
+    ['IPPS_TARIFFS','PAIRS','PAIR_PAYCUR','STAND_KIND_CANON','STAND_PAYTYPE_CANON'],{
     STAND:true,S:{draft:D},SOURCES:{none:'Без переписки'},clientFind:()=>[],clientById:()=>null,
+    STAND_VERIFIED_FLOWS:[['freehold','requisites'],['leasehold','requisites']],
     payWays:()=>['Крипта','По реквизитам'],draftAgentsBlock:()=>'',refFind:()=>[],
     htmlText:s=>String(s||''),
     save:()=>{},render:()=>{rendered=ctx.viewCreateBody(D,'');},toast:()=>{},
