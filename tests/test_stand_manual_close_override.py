@@ -177,6 +177,76 @@ def test_rejects_invalid_agents_shape():
         state, deal, override, 'manager', verify=confirmed_echo) == 'agents_invalid'
 
 
+def test_rejects_non_dict_override_without_crashing():
+    """override сам может быть не-dict истинным значением (строка/список/число) —
+    не должно уронить функцию в AttributeError, должен вернуться код ошибки."""
+    state, deal = board()
+    for bad_override in ('просто строка', [1, 2, 3], 42):
+        assert A._stand_manual_close_apply_override(
+            state, deal, bad_override, 'manager') == 'manual_override_reason_required'
+
+
+def test_rejects_non_dict_payin_without_crashing():
+    """override['payin'] не-dict истинное значение — не AttributeError на
+    payin.get('method'), а обычный код отсутствующего способа прихода."""
+    state, deal = board()
+    override = {'reason': REASON, 'payin': 'крипта, но строкой'}
+    assert A._stand_manual_close_apply_override(
+        state, deal, override, 'manager') == 'payin_method_required'
+
+
+def test_rejects_non_iterable_payin_hashes_without_crashing():
+    """override['payin']['hashes'] — не-list истинное значение (например
+    int) — не TypeError на `for item in hashes`, а payin_hash_required."""
+    state, deal = board()
+    override = {'reason': REASON,
+                'payin': {'method': 'Крипта', 'amountUsdt': 100, 'hashes': 12345}}
+    assert A._stand_manual_close_apply_override(
+        state, deal, override, 'manager') == 'payin_hash_required'
+
+
+def test_rejects_non_dict_payout_without_crashing():
+    """override['payout'] не-dict истинное значение для exchange-сделки —
+    не AttributeError на payout.get('source'), а payout_source_required."""
+    state, deal = board(type='Обмен валюты')
+    override = {'reason': REASON,
+                'payin': {'method': 'Крипта', 'amountUsdt': 100, 'hashes': [
+                    {'hash': '6' * 64, 'network': 'trc20',
+                     'receiver': 'TReceiverWallet111111111111', 'amount': 100}]},
+                'payout': 'наличка, но строкой'}
+    assert A._stand_manual_close_apply_override(
+        state, deal, override, 'manager', verify=confirmed_echo) == 'payout_source_required'
+
+
+def test_rejects_non_iterable_payout_hashes_without_crashing():
+    """override['payout']['hashes'] — не-list истинное значение — не
+    TypeError, а payout_hash_required."""
+    state, deal = board(type='Обмен валюты')
+    override = {'reason': REASON,
+                'payin': {'method': 'Крипта', 'amountUsdt': 100, 'hashes': [
+                    {'hash': '7' * 64, 'network': 'trc20',
+                     'receiver': 'TReceiverWallet111111111111', 'amount': 100}]},
+                'payout': {'source': 'coins', 'amountUsdt': 90, 'hashes': {'not': 'a list'}}}
+    assert A._stand_manual_close_apply_override(
+        state, deal, override, 'manager', verify=confirmed_echo) == 'payout_hash_required'
+
+
+def test_rejects_hash_reused_between_payin_and_payout_in_same_submission():
+    """Топовый риск-сценарий из плана: один и тот же хеш подсунут и как приход,
+    и как расход в одной заявке — должен быть отклонён, а не засчитан дважды."""
+    tx_hash = '8' * 64
+    state, deal = board(type='Обмен валюты')
+    override = {'reason': REASON,
+                'payin': {'method': 'Крипта', 'amountUsdt': 100, 'hashes': [
+                    {'hash': tx_hash, 'network': 'trc20',
+                     'receiver': 'TReceiverWallet111111111111', 'amount': 100}]},
+                'payout': {'source': 'coins', 'amountUsdt': 100, 'hashes': [
+                    {'hash': tx_hash, 'network': 'trc20',
+                     'receiver': 'TReceiverWallet111111111111', 'amount': 100}]}}
+    assert A._stand_manual_close_apply_override(
+        state, deal, override, 'manager', verify=confirmed_echo) == 'payout_hash_already_used'
+
+
 def test_applies_payout_override_for_exchange_deal():
     """Доп. проверка (сверх 9 из брифа): расходная сторона для exchange-сделки
     применяется аналогично приходной — крипто-хеш расхода тоже проверяется и

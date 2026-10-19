@@ -8257,7 +8257,7 @@ def _stand_manual_close_verify_hashes(state, hashes, declared_amount, verify, us
 
     Возвращает (list_новых_записей, код_ошибки_или_None). `side` — 'payin'
     или 'payout', только для префикса кода ошибки."""
-    if not hashes:
+    if not isinstance(hashes, list) or not hashes:
         return None, f'{side}_hash_required'
     from decimal import Decimal
     entries = []
@@ -8312,11 +8312,12 @@ def _stand_manual_close_apply_override(state, stand_deal, override, actor, *, ve
         return 'manual_override_not_applicable'
     if stand_deal.get('closed'):
         return 'already_closed'
-    override = override or {}
+    override = override if isinstance(override, dict) else {}
     reason = str(override.get('reason') or '').strip()
     if len(reason) < 10:
         return 'manual_override_reason_required'
-    payin = override.get('payin') or {}
+    payin = override.get('payin')
+    payin = payin if isinstance(payin, dict) else {}
     if not payin.get('method'):
         return 'payin_method_required'
     payin_amount = _stand_number(payin.get('amountUsdt'))
@@ -8345,7 +8346,8 @@ def _stand_manual_close_apply_override(state, stand_deal, override, actor, *, ve
     payout_amount = None
     payout_entries = []
     if kind == 'exchange':
-        payout = override.get('payout') or {}
+        payout = override.get('payout')
+        payout = payout if isinstance(payout, dict) else {}
         if not payout.get('source'):
             return 'payout_source_required'
         payout_amount = _stand_number(payout.get('amountUsdt'))
