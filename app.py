@@ -7184,8 +7184,16 @@ def stand_crm_close(stand_deal_id):
                 'payload': _stand_bitrix_payload(crm_row),
                 'updatedAt': datetime.utcnow().isoformat(),
             }
-        closed.setdefault('log', []).append('Внесена в CRM: сделка #' + str(crm_id))
-        closed['log'].append('Закрыта: Успешно завершена')
+        # Голые строки в log ломали «С какого времени» в задачнике: JS берёт
+        # last.at, а у строки это встроенный String.prototype.at — не
+        # timestamp, а функция, и since() печатал «NaN дн» (находка №5
+        # аудита ui-2026-10-17). Пишем тем же форматом, что и остальной log.
+        _at = int(time.time() * 1000)
+        _ts = stand_now().strftime('%d.%m, %H:%M')
+        closed.setdefault('log', []).append(
+            {'at': _at, 'ts': _ts, 'role': actor, 'text': 'Внесена в CRM: сделка #' + str(crm_id)})
+        closed['log'].append(
+            {'at': _at, 'ts': _ts, 'role': actor, 'text': 'Закрыта: Успешно завершена'})
         problem = _stand_guard_transition(state, updated, actor,
                                           flask_session.get('user_id'), db,
                                           allow_crm_close=True)
@@ -7348,8 +7356,15 @@ def stand_crm_close_lose(stand_deal_id):
             closed['bitrixSync'] = {'status': 'pending', 'kind': 'lose',
                                     'bitrix_deal_id': bitrix_id,
                                     'updatedAt': datetime.utcnow().isoformat()}
-        closed.setdefault('log', []).append('Отказ сохранён в CRM: сделка #' + str(crm_id))
-        closed['log'].append('Закрыта: ' + reason)
+        # См. комментарий в stand_crm_close: голые строки в log давали «NaN
+        # дн» в задачнике (находка №5 аудита ui-2026-10-17).
+        _at = int(time.time() * 1000)
+        _ts = stand_now().strftime('%d.%m, %H:%M')
+        _actor = current_role()
+        closed.setdefault('log', []).append(
+            {'at': _at, 'ts': _ts, 'role': _actor, 'text': 'Отказ сохранён в CRM: сделка #' + str(crm_id)})
+        closed['log'].append(
+            {'at': _at, 'ts': _ts, 'role': _actor, 'text': 'Закрыта: ' + reason})
         problem = _stand_guard_transition(state, updated, current_role(),
                                           flask_session.get('user_id'), db,
                                           allow_crm_close=True)
