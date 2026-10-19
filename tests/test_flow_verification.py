@@ -1,4 +1,5 @@
 from app import (
+    DEAL_KIND_LABELS,
     canonical_deal_kind_from_stand,
     canonical_payin_from_stand,
     canonical_deal_kind_from_legacy,
@@ -74,3 +75,7 @@ def test_unknown_native_values_translate_to_none():
     assert canonical_payin_from_stand('НечтоНовое') is None
     assert canonical_deal_kind_from_legacy('НечтоНовое') is None
     assert canonical_payin_from_legacy('НечтоНовое') is None
+
+
+def test_deal_kind_labels_has_rental_for_legacy_crm_analytics_parity():
+    assert DEAL_KIND_LABELS.get('rental') == 'Аренда'
