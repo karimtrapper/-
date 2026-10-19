@@ -5572,7 +5572,12 @@ def _stand_restore_files(previous, incoming):
         if not isinstance(target, dict):
             return
         if not isinstance(target.get('files'), dict):
-            target['files'] = prev_target.get('files', {})
+            if isinstance(prev_target.get('files'), dict):
+                target['files'] = prev_target['files']
+            elif 'files' in target:
+                target['files'] = {}
+            else:
+                return
         if not isinstance(target.get('files'), dict):
             return
         prev_files = prev_target.get('files', {}) if isinstance(prev_target.get('files'), dict) else {}
@@ -10184,7 +10189,7 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
             old_raw, new_raw = old_transfer.get('amount'), new_transfer.get('amount')
             if ('amount' in old_transfer and 'amount' in new_transfer
                     and not isinstance(old_raw, bool) and not isinstance(new_raw, bool)
-                    and old_raw != new_raw and _amount(old_raw) is not None
+                    and _amount(old_raw) is not None
                     and _amount(old_raw) == _amount(new_raw)):
                 new_transfer['amount'] = old_raw
     prior_deals = {d.get('id'): d for d in previous.get('deals', [])}
