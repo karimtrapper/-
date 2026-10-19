@@ -10179,6 +10179,12 @@ function walletLine(w){
     <button class="btn btn-outline btn-sm" style="margin-left:auto;white-space:nowrap"
       onclick="copyAsk(${JSON.stringify(w.addr).replace(/"/g,'&quot;')})">Копировать адрес</button></div>`;
 }
+function walletPolicyLine(w){
+  if(!w?.purpose||!Array.isArray(w.initiator_roles)||!w.initiator_roles.length)return '';
+  const names={operator:'операционист',findir:'финансист',teodor:'владелец'};
+  const roles=list=>(list||[]).map(r=>names[r]||r).join(' / ');
+  return `<div class="derived" style="margin-top:8px">С кошелька <b>${htmlText(w.name)}</b> · начинает ${htmlText(roles(w.initiator_roles))} · подтверждает ${htmlText(roles(w.confirmer_roles))}</div>`;
+}
 /* Выбранный кошелёк уже виден в карточках выбора — строку с ним не дублируем (27.09) */
 function walletBlock(d,key){
   key=key||'wallet_'+d.id;
@@ -11140,6 +11146,7 @@ function stepCard(d){
       return `<div class="card"><div class="card-title">Согласовать заявку IPPS и поручить перевод</div>
         <div class="alert a-info"><div>Реквизиты застройщика подтверждены менеджером. Получите от IPPS адрес и сеть для этой заявки, затем поручите перевод.</div></div>
         <div class="derived">${d.prepay?'Источник наперёд: '+htmlText(d.prepay.wallet.name):'Пришло '+(got!=null?usd(got):'—')} · расчёт по заявке ${usd(expected)} USDT</div>
+        ${w?walletPolicyLine(w):''}
         <div class="fr" style="margin-top:12px">
           <div class="fg"><label class="fl">Подтверждённая сумма, USDT<span class="rq">*</span></label><input class="fc num" id="fh_order_amount" readonly value="${expected}"></div>
           <div class="fg"><label class="fl">Сеть<span class="rq">*</span></label><select class="fc" id="fh_order_net"><option value="">— выбрать —</option><option>TRC-20</option></select><p class="fh">Сейчас поддерживается только TRC-20 для исходящего IPPS.</p></div>
@@ -11155,6 +11162,7 @@ function stepCard(d){
     return `<div class="card"><div class="card-title">Что делаем с USDT
       <span class="sub">${got?usd(got)+' на кошельке':'сумма не определена'}${c?' · '+c.name+' · '+mem.length+' '+plural(mem.length,'сделка','сделки','сделок'):''}</span></div>
     ${w?walletLine(w):`<div class="alert a-warn"><div>Кошелёк не выбран — вернитесь на шаг отправки брокеру и укажите, куда пришли USDT.</div></div>`}
+    ${w?walletPolicyLine(w):''}
     <div class="alert a-info"><div>${d.kind==='Фрихолд'
       ?'USDT пришли на кошелёк. В IPPS их ещё нет: они уйдут, только если мы сами отправим перевод.'
       :'USDT пришли на кошелёк. В Coins их ещё нет: туда они попадут, только если мы сами поставим задачу и отправим.'}</div></div>
