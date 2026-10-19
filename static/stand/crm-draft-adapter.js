@@ -230,7 +230,8 @@ function crmDraftSnapshot(active) {
     subtype:document.getElementById('crmDraftRealtySubtype')?.value,
     tariff:document.getElementById('crmDraftTariff')?.value,
     invoiceCurrency:document.getElementById('crmDraftInvoiceCurrency')?.value,
-    invoiceThb:document.getElementById('crmDraftInvoiceThb')?.value};
+    invoiceThb:document.getElementById('crmDraftInvoiceThb')?.value,
+    manualTx:active.manualTx||null};
 }
 function crmDraftCapture() {
   if(crmDraftActive)crmDraftLive.set(crmDraftActive.id,crmDraftSnapshot(crmDraftActive));
@@ -241,6 +242,11 @@ function crmDraftRestore(active,snapshot) {
     const v=snapshot.values[el.id||el.name||`#${i}`];
     if(v!==undefined){if(el.type==='checkbox')el.checked=!!v;else el.value=v;}
   });
+  active.manualTx=snapshot.manualTx||null;
+  if(active.manualTx){
+    const hint=active.root.getElementById('payinTxWarn');
+    if(hint){hint.textContent='Сумма '+active.manualTx.amount.toFixed(2)+' USDT подтверждена сетью';hint.style.display='block';}
+  }
   active.core.sberParts=snapshot.sberParts;
   active.core.resetPayinTxPool(snapshot.payinTxPool||[]);
   active.core.payinExtra=snapshot.payinExtra||[];
