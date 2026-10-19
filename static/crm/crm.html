@@ -338,6 +338,8 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 }
 .custom-select-opt:hover { background: var(--navy-100); }
 .custom-select-opt.selected { background: var(--coral-light); font-weight: 600; }
+.custom-select-opt.disabled { opacity: .45; cursor: not-allowed; }
+.custom-select-opt.disabled:hover { background: none; }
 
 /* Клиент-комбобокс */
 .client-dropdown {
@@ -3790,6 +3792,18 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         });
 
         // ==================== Кастомный Select ====================
+        // Непроверенный флоу (TKS-7, независимый QA 19.10): disabled/hidden/title
+        // у исходного <option> должны переноситься на кастомный div — иначе
+        // клик по видимо-обычной строке применял непроверенный способ оплаты,
+        // хотя сервер и так бы его отклонил при сабмите.
+        function customSelectOptMarkup(o, i, selectedVal) {
+            const cls = ['custom-select-opt'];
+            if (o.value === selectedVal) cls.push('selected');
+            if (o.disabled) cls.push('disabled');
+            const titleAttr = o.disabled && o.title ? ` title="${escapeHtml(o.title)}"` : '';
+            const hiddenStyle = o.hidden ? ' style="display:none"' : '';
+            return `<div class="${cls.join(' ')}" data-index="${i}" data-value="${o.value}"${titleAttr}${hiddenStyle}>${o.text}</div>`;
+        }
         function upgradeSelect(select) {
             if (select.dataset.upgraded || select.style.display === 'none') return;
             select.dataset.upgraded = 'true';
@@ -3811,7 +3825,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 const opts = Array.from(select.options);
                 const selectedVal = select.value;
                 btn.textContent = select.selectedOptions[0]?.text || 'Выберите...';
-                list.innerHTML = opts.map((o, i) => `<div class="custom-select-opt ${o.value === selectedVal ? 'selected' : ''}" data-index="${i}" data-value="${o.value}">${o.text}</div>`).join('');
+                list.innerHTML = opts.map((o, i) => customSelectOptMarkup(o, i, selectedVal)).join('');
             }
             renderOptions();
 
@@ -3828,7 +3842,10 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 
             list.addEventListener('click', (e) => {
                 const opt = e.target.closest('.custom-select-opt');
-                if (!opt) return;
+                // disabled — тот же непроверенный флоу, что и в задачнике (TKS-7):
+                // видимый, но невыбираемый пункт не должен применяться по клику
+                // (независимый QA, 19.10 — без этой проверки клик применялся всегда).
+                if (!opt || opt.classList.contains('disabled')) return;
                 select.selectedIndex = parseInt(opt.dataset.index);
                 select.dispatchEvent(new Event('change', { bubbles: true }));
                 btn.textContent = opt.textContent;
