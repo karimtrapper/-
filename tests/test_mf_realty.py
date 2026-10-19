@@ -295,6 +295,9 @@ def _mf_payload(**extra):
         'invoice_amount_thb': 622370,
         'buy_rate_thb_usdt': 33.22,
         'company_percent': 1,
+        # Эти тесты — про финансовую математику лизхолда, а не про гейт
+        # непроверенных флоу; crypto_direct здесь несущественный фон.
+        'unverified_confirmed': True,
     }
     data.update(extra)
     return data
@@ -350,6 +353,7 @@ class TestApi:
         deal = tc.post('/api/deals', json={
             'client_name': 'Ordinary', 'deal_type': 'pay_in', 'payin_method': 'crypto_direct',
             'payin_amount_usdt': 1000, 'payout_amount_usdt': 970, 'payout_method': 'transfer',
+            'unverified_confirmed': True,
         }).json['deal']
         assert deal['deal_kind'] == 'exchange'
         assert deal['company_fee_usdt'] is None
@@ -382,6 +386,7 @@ class TestRevshareBaseMf:
             'deal_type': 'pay_in', 'payin_method': 'crypto_direct',
             'payin_amount_usdt': 512000, 'invoice_amount_thb': 16742400,
             'buy_rate_thb_usdt': 33.20, 'company_percent': 0.9,
+            'unverified_confirmed': True,
             'agents': [
                 {'name': 'Lidia SID', 'tier': 1, 'comp_model': 'markup', 'percent': 0.5},
                 {'name': 'Valera', 'tier': 2, 'comp_model': 'revshare', 'percent': 10},
@@ -398,6 +403,7 @@ class TestRevshareBaseMf:
             'deal_type': 'pay_in', 'payin_method': 'crypto_direct',
             'payin_amount_usdt': 512000, 'invoice_amount_thb': 16742400,
             'buy_rate_thb_usdt': 33.20, 'company_percent': 0.9,
+            'unverified_confirmed': True,
             'agents': [
                 {'name': 'Lidia SID', 'tier': 1, 'comp_model': 'markup', 'percent': 0.5},
                 {'name': 'Valera', 'tier': 2, 'comp_model': 'crypto_share', 'percent': 10},
@@ -412,6 +418,7 @@ class TestRevshareBaseMf:
             'deal_type': 'pay_in', 'payin_method': 'crypto_direct',
             'payin_amount_usdt': 512000, 'invoice_amount_thb': 16742400,
             'buy_rate_thb_usdt': 33.20, 'company_percent': 0.9,
+            'unverified_confirmed': True,
             'agents': [
                 {'name': 'Lidia SID', 'tier': 1, 'comp_model': 'markup', 'percent': 0.5},
                 {'name': 'Valera', 'tier': 2, 'comp_model': 'revshare', 'percent': 10},

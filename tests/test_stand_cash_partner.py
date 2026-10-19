@@ -31,7 +31,12 @@ def _setup(monkeypatch, state=None):
 def test_cash_method_preserves_signed_docs_and_can_restore_before_receipt(monkeypatch):
     client = _setup(monkeypatch)
     original = client.get('/api/stand/state').json['data']['deals'][0]
-    changed = client.post('/api/stand/payin/cash-method', json={'dealId': 1483})
+    # Лизхолд+Наличные непроверен — временно admin+confirmed для переключения,
+    # предмет теста (сохранение подписанных документов), не сам гейт.
+    monkeypatch.setattr(m, 'current_role', lambda: 'admin')
+    changed = client.post('/api/stand/payin/cash-method',
+        json={'dealId': 1483, 'unverified_confirmed': True})
+    monkeypatch.setattr(m, 'current_role', lambda: 'operator')
     assert changed.status_code == 200, changed.json
     deal = changed.json['data']['deals'][0]
     assert deal['payType'] == 'Наличные' and deal['cashPartnerUsdt'] is True
@@ -60,7 +65,10 @@ def test_cash_method_denied_after_bank_credit_and_for_manager(monkeypatch):
 
 def test_two_partner_hashes_use_shared_ledger_and_block_duplicate(monkeypatch):
     client = _setup(monkeypatch)
-    assert client.post('/api/stand/payin/cash-method', json={'dealId': 1483}).status_code == 200
+    monkeypatch.setattr(m, 'current_role', lambda: 'admin')
+    assert client.post('/api/stand/payin/cash-method',
+        json={'dealId': 1483, 'unverified_confirmed': True}).status_code == 200
+    monkeypatch.setattr(m, 'current_role', lambda: 'operator')
     first, second = uuid.uuid4().hex * 2, uuid.uuid4().hex * 2
     def verified(ref, network, sender, receiver, amount):
         return {'status': 'confirmed', 'verifiedAmount': 120 if ref == first else 80,
@@ -110,7 +118,10 @@ def test_two_partner_hashes_use_shared_ledger_and_block_duplicate(monkeypatch):
 
 def test_partner_hash_already_allocated_in_crm_is_rejected(monkeypatch):
     client = _setup(monkeypatch)
-    assert client.post('/api/stand/payin/cash-method', json={'dealId': 1483}).status_code == 200
+    monkeypatch.setattr(m, 'current_role', lambda: 'admin')
+    assert client.post('/api/stand/payin/cash-method',
+        json={'dealId': 1483, 'unverified_confirmed': True}).status_code == 200
+    monkeypatch.setattr(m, 'current_role', lambda: 'operator')
     ref = uuid.uuid4().hex * 2
     db = m.get_session()
     try:
@@ -131,7 +142,10 @@ def test_partner_hash_already_allocated_in_crm_is_rejected(monkeypatch):
 
 def test_incoming_list_shows_available_wallet_transfers(monkeypatch):
     client = _setup(monkeypatch)
-    assert client.post('/api/stand/payin/cash-method', json={'dealId': 1483}).status_code == 200
+    monkeypatch.setattr(m, 'current_role', lambda: 'admin')
+    assert client.post('/api/stand/payin/cash-method',
+        json={'dealId': 1483, 'unverified_confirmed': True}).status_code == 200
+    monkeypatch.setattr(m, 'current_role', lambda: 'operator')
     available, occupied = uuid.uuid4().hex * 2, uuid.uuid4().hex * 2
     db = m.get_session()
     try:

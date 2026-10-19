@@ -65,6 +65,7 @@ def _post_lose(tc, name='Иван', bitrix_id=101, reason='не устроил �
     return tc.post('/api/deals', json={
         'status': 'lose', 'deal_type': 'pay_in', 'client_name': name,
         'lose_reason': reason, 'bitrix_deal_id': bitrix_id,
+        'unverified_confirmed': True,
     })
 
 
@@ -72,6 +73,7 @@ def _post_won(tc, name='Иван', profit=100.0):
     return tc.post('/api/deals', json={
         'status': 'completed', 'deal_type': 'pay_in', 'client_name': name,
         'payin_amount_usdt': 1000.0, 'profit_usdt': profit, 'skip_sync': True,
+        'unverified_confirmed': True,
     })
 
 

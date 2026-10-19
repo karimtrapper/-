@@ -44,7 +44,18 @@ def cli(monkeypatch):
     monkeypatch.setattr(appmod, 'send_deal_completed_webhook', lambda *a, **kw: None)
     monkeypatch.setattr(appmod, '_tron_tx_amount', lambda h: None)
     monkeypatch.setattr(appmod, '_tron_tx_info', lambda h: None)
+    db = get_session()
+    try:
+        admin = appmod.AdminUser(username='flow-gate-admin-' + uuid.uuid4().hex[:8],
+                            role='admin', password_hash='unused')
+        db.add(admin)
+        db.commit()
+        admin_id = admin.id
+    finally:
+        db.close()
     with flask_app.test_client() as c:
+        with c.session_transaction() as sess:
+            sess['user_id'] = admin_id
         yield c
 
 
@@ -85,6 +96,7 @@ def _deal(cli, from_address, wallet_id_in_payload, cost=306.0, thb=10000.0):
     return cli.post('/api/deals', json={
         'client_name': 'Roman - Grusha', 'status': 'pending',
         'payin_method': 'sber_reqs', 'payin_amount_rub': 27352.12,
+        'unverified_confirmed': True,
         'payin_amount_usdt': 323.55,
         'payout_method': 'transfer', 'payout_source': 'founder_personal',
         'payout_founder_name': 'Андрей', 'payout_amount_thb': thb,
@@ -185,6 +197,7 @@ def test_свои_баты_кошелёк_выбирает_человек(cli):
     r = cli.post('/api/deals', json={
         'client_name': 'Мэкс - Grusha', 'status': 'pending',
         'payin_method': 'sber_reqs', 'payin_amount_rub': 49866.76,
+        'unverified_confirmed': True,
         'payin_amount_usdt': 589.88,
         'payout_method': 'transfer', 'payout_source': 'founder_personal',
         'payout_founder_name': 'Теодор', 'payout_amount_thb': 18000.0,

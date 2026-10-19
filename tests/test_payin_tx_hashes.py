@@ -67,6 +67,7 @@ def _payload(**extra):
         'client_name': 'Crypto Parts',
         'deal_type': 'pay_in',
         'payin_method': 'crypto_direct',
+        'unverified_confirmed': True,
         'payin_amount_usdt': 300000,
         'payout_amount_thb': 10000000,
         'payout_method': 'transfer',

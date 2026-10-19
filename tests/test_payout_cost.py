@@ -36,7 +36,18 @@ def cli(monkeypatch):
     monkeypatch.setenv('LOCAL_NO_AUTH', '1')
     monkeypatch.setattr(appmod, 'sync_deals_to_gsheet', lambda *a, **kw: None)
     monkeypatch.setattr(appmod, '_send_deal_telegram', lambda *a, **kw: None)
+    db = get_session()
+    try:
+        admin = appmod.AdminUser(username='payout-cost-admin-' + uuid.uuid4().hex[:8],
+                                 role='admin', password_hash='unused')
+        db.add(admin)
+        db.commit()
+        admin_id = admin.id
+    finally:
+        db.close()
     with flask_app.test_client() as c:
+        with c.session_transaction() as sess:
+            sess['user_id'] = admin_id
         yield c
 
 
@@ -63,7 +74,7 @@ ROMAN = {
     'payin_method': 'sber_reqs', 'payin_amount_rub': 34755, 'payin_amount_usdt': 408.04,
     'payout_method': 'transfer', 'payout_source': 'founder_personal',
     'payout_founder_name': 'Андрей', 'payout_amount_thb': 12500,
-    'skip_sync': True,
+    'skip_sync': True, 'unverified_confirmed': True,
 }
 
 

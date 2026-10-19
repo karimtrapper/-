@@ -34,7 +34,18 @@ def cli(monkeypatch):
     monkeypatch.setenv('LOCAL_NO_AUTH', '1')
     monkeypatch.setattr(appmod, 'sync_deals_to_gsheet', lambda *a, **kw: None)
     monkeypatch.setattr(appmod, '_send_deal_telegram', lambda *a, **kw: None)
+    db = get_session()
+    try:
+        admin = appmod.AdminUser(username='flow-gate-admin-' + uuid.uuid4().hex[:8],
+                            role='admin', password_hash='unused')
+        db.add(admin)
+        db.commit()
+        admin_id = admin.id
+    finally:
+        db.close()
     with flask_app.test_client() as c:
+        with c.session_transaction() as sess:
+            sess['user_id'] = admin_id
         yield c
 
 
@@ -1128,6 +1139,7 @@ def test_сделка_заведённая_после_пачки_получае�
     r = cli.post('/api/deals', json={
         'deal_type': 'pay_in', 'status': 'pending', 'client_name': 'Olya',
         'payin_method': 'sber_reqs', 'payin_amount_rub': 83000.0,
+        'unverified_confirmed': True,
         'payin_parts': [{'uuid': inc_uuid, 'amount_rub': 83000.0}],
         'payout_source': 'bank_card', 'bank_card_id': card_id,
         'payout_method': 'transfer', 'payout_amount_thb': 30000.0,

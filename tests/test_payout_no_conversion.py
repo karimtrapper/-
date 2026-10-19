@@ -44,7 +44,18 @@ def cli(monkeypatch):
     monkeypatch.setattr(appmod, 'send_deal_completed_webhook', lambda *a, **kw: None)
     monkeypatch.setattr(appmod, '_tron_tx_amount', lambda h: None)
     monkeypatch.setattr(appmod, 'CONVERSIONS_LAUNCH_DATE', '2026-01-01')
+    db = get_session()
+    try:
+        admin = appmod.AdminUser(username='flow-gate-admin-' + uuid.uuid4().hex[:8],
+                            role='admin', password_hash='unused')
+        db.add(admin)
+        db.commit()
+        admin_id = admin.id
+    finally:
+        db.close()
     with flask_app.test_client() as c:
+        with c.session_transaction() as sess:
+            sess['user_id'] = admin_id
         yield c
 
 
@@ -90,6 +101,7 @@ def _payload(wallet_id, **over):
     data = {
         'client_name': 'Вадим', 'status': 'pending',
         'payin_method': 'sber_reqs', 'payin_amount_rub': 40000.0,
+        'unverified_confirmed': True,
         'payin_amount_usdt': 470.55,
         'payout_method': 'atm', 'payout_source': 'founder_personal',
         'payout_founder_name': 'Теодор', 'payout_wallet_id': wallet_id,

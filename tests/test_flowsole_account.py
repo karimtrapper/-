@@ -79,12 +79,19 @@ def test_crm_and_s14_flowsole_share_batch_and_profit(monkeypatch):
         'version': pending.json['version'], 'actualAmount': '10000'})
     assert confirmed.status_code == 200, confirmed.json
     stand_uuid = 'manual:' + confirmed.json['data']['deals'][0]['manualBankReceipt']['id']
+    # current_role() внутри _create_deal_impl используется ТОЛЬКО гейтом
+    # непроверенных флоу (проверено: других current_role()-веток в функции
+    # нет) — временная подмена на admin не трогает агентов/рефералку/прибыль,
+    # которые считает остальной тест под ролью operator.
+    monkeypatch.setattr(m, 'current_role', lambda: 'admin')
     made = client.post('/api/deals', json={
         'deal_type': 'pay_in', 'status': 'pending', 'skip_sync': True,
         'client_name': 'Flow Sole test ' + uuid.uuid4().hex[:8],
         'payin_method': 'flow_sole_reqs', 'payin_amount_rub': 20000,
         'payout_method': 'transfer', 'payout_source': 'cash_batch',
-        'payout_amount_usdt': 150, 'needs_reimbursement': False})
+        'payout_amount_usdt': 150, 'needs_reimbursement': False,
+        'unverified_confirmed': True})
+    monkeypatch.setattr(m, 'current_role', lambda: 'operator')
     assert made.status_code == 201, made.json
     deal_id = made.json['deal']['id']
     missing = client.post(f'/api/deals/{deal_id}/manual-rub-income',

@@ -39,7 +39,18 @@ def cli(monkeypatch):
     monkeypatch.setattr(appmod, 'send_deal_completed_webhook', lambda *a, **kw: None)
     monkeypatch.setattr(appmod, '_tron_tx_amount', lambda h: None)
     monkeypatch.setattr(appmod, 'CONVERSIONS_LAUNCH_DATE', '2026-01-01')
+    db = get_session()
+    try:
+        admin = appmod.AdminUser(username='flow-gate-admin-' + uuid.uuid4().hex[:8],
+                            role='admin', password_hash='unused')
+        db.add(admin)
+        db.commit()
+        admin_id = admin.id
+    finally:
+        db.close()
     with flask_app.test_client() as c:
+        with c.session_transaction() as sess:
+            sess['user_id'] = admin_id
         yield c
 
 
@@ -95,6 +106,7 @@ def _deal_with_income(cli, wallet_id, rub=34755.0, cost=383.14, thb=12500.0):
     deal = cli.post('/api/deals', json={
         'client_name': 'Roman - Grusha', 'status': 'pending',
         'payin_method': 'sber_reqs', 'payin_amount_rub': rub,
+        'unverified_confirmed': True,
         'payout_method': 'transfer', 'payout_source': 'founder_personal',
         'payout_founder_name': 'Андрей', 'payout_wallet_id': wallet_id,
         'payout_amount_thb': thb, 'skip_sync': True,
@@ -194,6 +206,7 @@ def test_без_себестоимости_автозачёта_нет(cli):
     deal = cli.post('/api/deals', json={
         'client_name': 'Roman - Grusha', 'status': 'pending',
         'payin_method': 'sber_reqs', 'payin_amount_rub': 34755.0,
+        'unverified_confirmed': True,
         'payout_method': 'transfer', 'payout_source': 'founder_personal',
         'payout_founder_name': 'Андрей', 'payout_wallet_id': wid,
         'payout_amount_thb': 12500.0, 'skip_sync': True,
@@ -256,6 +269,7 @@ def test_сделка_без_долга_не_попадает_в_автозач�
     deal = cli.post('/api/deals', json={
         'client_name': 'Радимир', 'status': 'pending',
         'payin_method': 'sber_reqs', 'payin_amount_rub': 30535.46,
+        'unverified_confirmed': True,
         'payout_method': 'transfer', 'payout_source': 'founder_personal',
         'payout_founder_name': 'Андрей', 'payout_wallet_id': wid,
         'payout_amount_thb': 11500.0, 'needs_reimbursement': False, 'skip_sync': True,
@@ -307,6 +321,7 @@ def test_раскладка_cnv_0002(cli):
         deal = cli.post('/api/deals', json={
             'client_name': 'Клиент IPPS', 'status': 'pending',
             'payin_method': 'sber_reqs', 'payin_amount_rub': rub,
+            'unverified_confirmed': True,
             'payout_method': 'transfer', 'payout_source': 'founder_personal',
             'payout_founder_name': 'Андрей', 'payout_wallet_id': wid,
             'payout_amount_thb': thb, 'needs_reimbursement': False, 'skip_sync': True,
@@ -353,6 +368,7 @@ def test_раскладка_без_себестоимости_не_сходит�
     deal = cli.post('/api/deals', json={
         'client_name': 'Roman - Grusha', 'status': 'pending',
         'payin_method': 'sber_reqs', 'payin_amount_rub': 34755.0,
+        'unverified_confirmed': True,
         'payout_method': 'transfer', 'payout_source': 'founder_personal',
         'payout_founder_name': 'Андрей', 'payout_wallet_id': wid,
         'payout_amount_thb': 12500.0, 'skip_sync': True,

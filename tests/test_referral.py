@@ -280,6 +280,7 @@ class TestAutoPopulateReferrer:
             'client_id': client_with_referrer.id,
             'deal_type': 'pay_in',
             'payin_method': 'crypto_direct',
+            'unverified_confirmed': True,
             'payin_amount_usdt': 500,
             'payout_amount_usdt': 485,
             'payout_method': 'transfer',
@@ -295,6 +296,7 @@ class TestAutoPopulateReferrer:
             'client_id': client_with_referrer.id,
             'deal_type': 'pay_in',
             'payin_method': 'crypto_direct',
+            'unverified_confirmed': True,
             'payin_amount_usdt': 100,
             'payout_amount_usdt': 97,
             'payout_method': 'transfer',
@@ -313,6 +315,7 @@ class TestAutoPopulateReferrer:
             'client_id': c.id,
             'deal_type': 'pay_in',
             'payin_method': 'crypto_direct',
+            'unverified_confirmed': True,
             'payin_amount_usdt': 100,
             'payout_amount_usdt': 97,
             'payout_method': 'transfer',
@@ -337,6 +340,7 @@ class TestReferrerCodeResolution:
             'client_id': client_id,
             'deal_type': 'pay_in',
             'payin_method': 'crypto_direct',
+            'unverified_confirmed': True,
             'payin_amount_usdt': 1000,
             'payout_amount_usdt': 970,
             'payout_method': 'transfer',
@@ -475,6 +479,7 @@ class TestAutoReferrerPayout:
             'client_id': client_with_referrer.id,
             'deal_type': 'pay_in',
             'payin_method': 'crypto_direct',
+            'unverified_confirmed': True,
             'payin_amount_usdt': 1000,
             'payout_amount_usdt': 970,
             'payout_method': 'transfer',
@@ -495,6 +500,7 @@ class TestAutoReferrerPayout:
             'client_id': client_with_referrer.id,
             'deal_type': 'pay_in',
             'payin_method': 'crypto_direct',
+            'unverified_confirmed': True,
             'payin_amount_usdt': 1000,
             'payout_amount_usdt': 970,
             'payout_method': 'transfer',
@@ -516,6 +522,7 @@ class TestAutoReferrerPayout:
         resp = tc.post('/api/deals', json={
             'client_id': c.id, 'deal_type': 'pay_in',
             'payin_method': 'crypto_direct',
+            'unverified_confirmed': True,
             'payin_amount_usdt': 1000, 'payout_amount_usdt': 970,
             'payout_method': 'transfer',
         })
@@ -533,6 +540,7 @@ class TestPayReferrer:
         resp = tc.post('/api/deals', json={
             'client_id': client_id, 'deal_type': 'pay_in',
             'payin_method': 'crypto_direct',
+            'unverified_confirmed': True,
             'payin_amount_usdt': payin, 'payout_amount_usdt': payout,
             'payout_method': 'transfer',
         })
@@ -571,6 +579,7 @@ class TestReferrerDealsCard:
         resp = tc.post('/api/deals', json={
             'client_id': client_id, 'deal_type': 'pay_in',
             'payin_method': 'crypto_direct',
+            'unverified_confirmed': True,
             'payin_amount_usdt': payin, 'payout_amount_usdt': payout,
             'payout_method': 'transfer',
         })
@@ -609,6 +618,7 @@ class TestReferrerDealsCard:
         tc.post('/api/deals', json={
             'client_id': cid, 'deal_type': 'pay_in', 'is_custom': True,
             'payin_method': 'crypto_direct',
+            'unverified_confirmed': True,
             'payin_amount_usdt': 58409.06, 'payout_amount_usdt': 55615.91,
             'payout_method': 'transfer', 'profit_usdt': 2793.15,
             'agents': [
@@ -640,6 +650,7 @@ class TestMultiAgentAPI:
         resp = tc.post('/api/deals', json={
             'client_id': cid, 'deal_type': 'pay_in', 'is_custom': True,
             'payin_method': 'crypto_direct',
+            'unverified_confirmed': True,
             'payin_amount_usdt': 58409.06, 'payout_amount_usdt': 55615.91,
             'payout_method': 'transfer',
             'profit_usdt': 2793.15,
@@ -684,6 +695,7 @@ class TestPublicStats:
         resp = tc.post('/api/deals', json={
             'client_id': client_with_referrer.id, 'deal_type': 'pay_in',
             'payin_method': 'crypto_direct',
+            'unverified_confirmed': True,
             'payin_amount_usdt': 500, 'payout_amount_usdt': 485,
             'payout_method': 'transfer',
         })
@@ -702,6 +714,7 @@ class TestPublicStats:
         resp = tc.post('/api/deals', json={
             'client_id': client_with_referrer.id, 'deal_type': 'pay_in',
             'payin_method': 'crypto_direct',
+            'unverified_confirmed': True,
             'payin_amount_usdt': 500, 'payout_amount_usdt': 485,
             'payout_method': 'transfer',
         })
@@ -755,6 +768,7 @@ class TestReimbursementRefreshesAgents:
         resp = tc.post('/api/deals', json={
             'client_id': c.id, 'deal_type': 'pay_in',
             'payin_method': 'partners_cash', 'payin_amount_usdt': 5245,
+            'unverified_confirmed': True,
             'payout_method': 'transfer', 'payout_source': 'founder_personal',
             'payout_amount_thb': 165000, 'status': 'pending',
         })
@@ -794,6 +808,7 @@ class TestAgentNameResolve:
         d = tc.post('/api/deals', json={
             'client_name': 'Link By Name', 'deal_type': 'pay_in',
             'payin_method': 'crypto_direct', 'payin_amount_usdt': 1000,
+            'unverified_confirmed': True,
             'payout_method': 'transfer', 'payout_source': 'binance',
             'payout_amount_thb': 33000, 'status': 'completed',
             'agents': [{'name': 'Валера Тест', 'tier': 1,
@@ -807,6 +822,7 @@ class TestAgentNameResolve:
         d = tc.post('/api/deals', json={
             'client_name': 'Link Case', 'deal_type': 'pay_in',
             'payin_method': 'crypto_direct', 'payin_amount_usdt': 1000,
+            'unverified_confirmed': True,
             'payout_method': 'transfer', 'payout_source': 'binance',
             'payout_amount_thb': 33000, 'status': 'completed',
             'agents': [{'name': '  lidia sid thailand ', 'tier': 1,
@@ -818,6 +834,7 @@ class TestAgentNameResolve:
         d = tc.post('/api/deals', json={
             'client_name': 'Manual Agent', 'deal_type': 'pay_in',
             'payin_method': 'crypto_direct', 'payin_amount_usdt': 1000,
+            'unverified_confirmed': True,
             'payout_method': 'transfer', 'payout_source': 'binance',
             'payout_amount_thb': 33000, 'status': 'completed',
             'agents': [{'name': 'Никому Неизвестный', 'tier': 1,
@@ -832,6 +849,7 @@ class TestAgentNameResolve:
         d = tc.post('/api/deals', json={
             'client_name': 'Twins', 'deal_type': 'pay_in',
             'payin_method': 'crypto_direct', 'payin_amount_usdt': 1000,
+            'unverified_confirmed': True,
             'payout_method': 'transfer', 'payout_source': 'binance',
             'payout_amount_thb': 33000, 'status': 'completed',
             'agents': [{'name': 'Тёзка', 'tier': 1, 'comp_model': 'revshare', 'percent': 10}]}).json['deal']

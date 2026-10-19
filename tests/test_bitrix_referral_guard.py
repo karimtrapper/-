@@ -15,17 +15,29 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 os.environ.setdefault('SECRET_KEY', 'test-secret-key-for-pytest')
 os.environ['REESTR_SYNC_ENABLED'] = '0'
 
+import uuid
 import pytest
 
 import deal_chat_analyzer as dca
-from app import app as flask_app, get_session, Client, Deal, DealAgent
+from app import app as flask_app, get_session, AdminUser, Client, Deal, DealAgent
 
 
 @pytest.fixture
 def cli(monkeypatch):
     flask_app.config['TESTING'] = True
     monkeypatch.setenv('LOCAL_NO_AUTH', '1')
+    db = get_session()
+    try:
+        admin = AdminUser(username='flow-gate-admin-' + uuid.uuid4().hex[:8],
+                            role='admin', password_hash='unused')
+        db.add(admin)
+        db.commit()
+        admin_id = admin.id
+    finally:
+        db.close()
     with flask_app.test_client() as c:
+        with c.session_transaction() as sess:
+            sess['user_id'] = admin_id
         yield c
 
 
@@ -89,6 +101,7 @@ class TestWonIdempotency:
     PAYLOAD = {
         'client_name': 'Roman - Grusha', 'status': 'pending', 'bitrix_deal_id': 1041,
         'payin_method': 'spp_doverka', 'payin_amount_rub': 30000,
+        'unverified_confirmed': True,
         'payout_amount_thb': 12000, 'payout_method': 'transfer', 'skip_sync': True,
     }
 
@@ -137,7 +150,8 @@ class TestNotLead:
     """«Не обращение» — не победа и не отказ, из конверсии выпадает совсем."""
 
     BASE = {'client_name': 'Случайный - Grusha', 'status': 'not_lead',
-            'lose_reason': 'не обращение', 'bitrix_deal_id': 1050}
+            'lose_reason': 'не обращение', 'bitrix_deal_id': 1050,
+            'unverified_confirmed': True}
 
     @pytest.fixture(autouse=True)
     def clean_db(self):
@@ -187,7 +201,8 @@ class TestNotLead:
                                      'skip_sync': True})
         before = cli.get('/api/analytics/conversion').get_json()
         cli.post('/api/deals', json={'client_name': 'Ушедший', 'status': 'lose',
-                                     'lose_reason': 'не устроил курс', 'bitrix_deal_id': 1051})
+                                     'lose_reason': 'не устроил курс', 'bitrix_deal_id': 1051,
+                                     'unverified_confirmed': True})
         after = cli.get('/api/analytics/conversion').get_json()
         assert after['totals'] != before['totals']
 
@@ -208,6 +223,7 @@ class TestNotLead:
         won = cli.post('/api/deals', json={
             'client_name': 'Случайный - Grusha', 'status': 'pending', 'bitrix_deal_id': 1050,
             'payout_amount_thb': 5000, 'payout_method': 'transfer', 'skip_sync': True,
+            'unverified_confirmed': True,
         }).get_json()
         assert won['success'] is True and not won.get('duplicate')
 

@@ -162,8 +162,19 @@ def test_stale_version_and_forged_crm_id_rejected(monkeypatch):
 def test_foreign_bitrix_origin_cannot_link_existing_crm(monkeypatch):
     uid = _setup(monkeypatch)
     client = _client(uid)
-    unrelated = client.post('/api/deals', json={**_crm(), 'bitrix_deal_id': 456789,
-                                                'status': 'completed', 'skip_sync': True})
+    db = m.get_session()
+    try:
+        admin = m.AdminUser(username='t24-' + secrets.token_hex(6),
+                            display_name='T24 Admin (fixture)', role='admin',
+                            password_hash='unused')
+        db.add(admin)
+        db.commit()
+        admin_id = admin.id
+    finally:
+        db.close()
+    unrelated = _client(admin_id).post('/api/deals', json={**_crm(), 'bitrix_deal_id': 456789,
+                                                'status': 'completed', 'skip_sync': True,
+                                                'unverified_confirmed': True})
     assert unrelated.status_code == 201, unrelated.json
     foreign_id = unrelated.json['deal']['id']
     before = _counts()

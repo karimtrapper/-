@@ -299,6 +299,7 @@ def _payload(**over):
     base = {
         'client_name': 'elena imaikina',
         'payin_method': 'partners_cash',
+        'unverified_confirmed': True,
         'payin_amount_rub': 600000,
         'payin_amount_usdt': 6920.0,
         'payin_partner_name': 'FOEX',

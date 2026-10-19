@@ -14,9 +14,10 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 os.environ.setdefault('SECRET_KEY', 'test-secret-key-for-pytest')
 os.environ['REESTR_SYNC_ENABLED'] = '0'
 
+import uuid
 import pytest
 
-from app import (BankCard, CardAllocation, CardTopup, CashBatchStatus, Deal,
+from app import (AdminUser, BankCard, CardAllocation, CardTopup, CashBatchStatus, Deal,
                  DealStatus, app as flask_app, get_session, _card_avg_rate,
                  _card_latest_purchase_rate)
 
@@ -42,7 +43,18 @@ def clean_db():
 def client(monkeypatch):
     monkeypatch.setenv('LOCAL_NO_AUTH', '1')
     flask_app.config['TESTING'] = True
+    db = get_session()
+    try:
+        admin = AdminUser(username='flow-gate-admin-' + uuid.uuid4().hex[:8],
+                            role='admin', password_hash='unused')
+        db.add(admin)
+        db.commit()
+        admin_id = admin.id
+    finally:
+        db.close()
     with flask_app.test_client() as c:
+        with c.session_transaction() as sess:
+            sess['user_id'] = admin_id
         yield c
 
 
@@ -99,7 +111,7 @@ def _deal_payload(card_id, payout_thb, **over):
         'payin_amount_usdt': 1000.0, 'payout_source': 'bank_card',
         'bank_card_id': card_id, 'payout_amount_thb': payout_thb,
         'payout_amount_usdt': round(payout_thb / 33.5213, 2),
-        'skip_sync': True,
+        'skip_sync': True, 'unverified_confirmed': True,
     }
     payload.update(over)
     return payload
@@ -363,6 +375,7 @@ def test_cost_and_profit_filled_from_card_rate_on_update(client):
     created = client.post('/api/deals', json={
         'deal_type': 'pay_in', 'status': 'pending', 'client_name': 'Alex - Grusha',
         'payin_method': 'crypto_direct', 'payin_amount_usdt': 268.65,
+        'unverified_confirmed': True,
         'skip_sync': True,
     }).get_json()['deal']
 

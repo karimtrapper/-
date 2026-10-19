@@ -19,6 +19,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 os.environ.setdefault('SECRET_KEY', 'test-secret-key-for-pytest')
 os.environ['REESTR_SYNC_ENABLED'] = '0'
 
+import uuid
 import pytest
 
 import app as appmod
@@ -62,7 +63,18 @@ def sent(monkeypatch):
 def client(monkeypatch):
     monkeypatch.setenv('LOCAL_NO_AUTH', '1')
     flask_app.config['TESTING'] = True
+    db = get_session()
+    try:
+        admin = appmod.AdminUser(username='flow-gate-admin-' + uuid.uuid4().hex[:8],
+                            role='admin', password_hash='unused')
+        db.add(admin)
+        db.commit()
+        admin_id = admin.id
+    finally:
+        db.close()
     with flask_app.test_client() as c:
+        with c.session_transaction() as sess:
+            sess['user_id'] = admin_id
         yield c
 
 
@@ -88,6 +100,7 @@ def _payload(card_id, **over):
         'deal_type': 'pay_in', 'status': 'pending',
         'client_name': 'grusha & радимир (sansiri)', 'manager_name': 'карим',
         'payin_method': 'sber_wl', 'payin_amount_rub': 30750.72,
+        'unverified_confirmed': True,
         'payout_source': 'bank_card', 'bank_card_id': card_id,
         'payout_method': 'transfer', 'payout_amount_thb': 10700.0,
         'payout_amount_usdt': 319.2,

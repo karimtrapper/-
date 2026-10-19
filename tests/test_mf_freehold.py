@@ -227,6 +227,9 @@ def _fh_payload(**extra):
         'invoice_amount_usd': 39010.91,
         'transfer_fee_percent': 0.8,
         'transfer_fee_fixed_usd': 50,
+        # Эти тесты — про финансовую математику фрихолда, а не про гейт
+        # непроверенных флоу; crypto_direct здесь несущественный фон.
+        'unverified_confirmed': True,
     }
     data.update(extra)
     return data
@@ -290,6 +293,7 @@ class TestApi:
             'client_name': 'MF Realty', 'deal_kind': 'mf_realty', 'deal_type': 'pay_in',
             'payin_method': 'crypto_direct', 'payin_amount_usdt': 19929.17,
             'invoice_amount_thb': 622370, 'buy_rate_thb_usdt': 33.22, 'company_percent': 1,
+            'unverified_confirmed': True,
         }).json['deal']
         assert approx(deal['net_profit_usdt'], 1194.37)
         assert deal['transfer_sent_usd'] is None
@@ -298,6 +302,7 @@ class TestApi:
         deal = tc.post('/api/deals', json={
             'client_name': 'Ordinary', 'deal_type': 'pay_in', 'payin_method': 'crypto_direct',
             'payin_amount_usdt': 1000, 'payout_amount_usdt': 970, 'payout_method': 'transfer',
+            'unverified_confirmed': True,
         }).json['deal']
         assert deal['deal_kind'] == 'exchange'
         assert deal['transfer_fee_usd'] is None
@@ -536,6 +541,7 @@ class TestRealtyPayloadGuard:
         r = tc.post('/api/deals', json={
             'client_name': 'Порча', 'deal_kind': 'mf_freehold', 'deal_type': 'pay_in',
             'payin_method': 'crypto_direct', 'payin_amount_usdt': 999,
+            'unverified_confirmed': True,
         })
         assert r.status_code == 400
         assert 'фрихолд' in r.json['error'].lower()
@@ -544,6 +550,7 @@ class TestRealtyPayloadGuard:
         r = tc.post('/api/deals', json={
             'client_name': 'Порча', 'deal_kind': 'mf_realty', 'deal_type': 'pay_in',
             'payin_method': 'crypto_direct', 'payin_amount_usdt': 999,
+            'unverified_confirmed': True,
         })
         assert r.status_code == 400
 
@@ -552,8 +559,10 @@ class TestRealtyPayloadGuard:
         did = tc.post('/api/deals', json={
             'client_name': 'Обычная', 'deal_type': 'pay_in', 'payin_method': 'crypto_direct',
             'payin_amount_usdt': 999.32, 'payout_amount_usdt': 979, 'payout_method': 'transfer',
+            'unverified_confirmed': True,
         }).json['deal']['id']
-        r = tc.put(f'/api/deals/{did}', json={'deal_kind': 'mf_freehold'})
+        r = tc.put(f'/api/deals/{did}', json={'deal_kind': 'mf_freehold',
+                                              'unverified_confirmed': True})
         assert r.status_code == 400
         after = tc.get(f'/api/deals/{did}').json['deal']
         assert after['deal_kind'] == 'exchange', 'сделка осталась прежней'

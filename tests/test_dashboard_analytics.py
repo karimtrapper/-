@@ -506,12 +506,14 @@ class TestChannels:
         res = tc.post('/api/deals', json={
             'client_name': 'Тест Канал', 'status': 'pending',
             'payin_method': 'crypto_direct', 'payin_amount_usdt': 1,
+            'unverified_confirmed': True,
             'source_channel': 'insta',
         })
         assert res.get_json()['deal']['source_channel'] == 'insta'
         res2 = tc.post('/api/deals', json={
             'status': 'lose', 'deal_type': 'pay_in', 'client_name': 'Лося',
             'lose_reason': 'тест', 'bitrix_deal_id': 999001, 'source_channel': 'site',
+            'unverified_confirmed': True,
         })
         assert res2.get_json()['deal']['source_channel'] == 'site'
 

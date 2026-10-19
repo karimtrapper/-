@@ -600,6 +600,31 @@ def is_verified_flow(deal_kind_canon, payin_canon):
     return (deal_kind_canon, payin_canon) in VERIFIED_FLOWS
 
 
+def _legacy_unverified_flow_problem(is_creation, old_kind, old_payin_method,
+                                    new_kind, new_payin_method, data):
+    """Гейт на непроверенный флоу для /api/deals (легаси CRM): создание и
+    смена deal_kind/payin_method. Возвращает (json_body, status) либо None."""
+    new_payin_value = new_payin_method.value if new_payin_method else None
+    new_canon = (canonical_deal_kind_from_legacy(new_kind),
+                 canonical_payin_from_legacy(new_payin_value))
+    if is_creation:
+        combo_changed = True
+    else:
+        old_payin_value = old_payin_method.value if old_payin_method else None
+        old_canon = (canonical_deal_kind_from_legacy(old_kind),
+                     canonical_payin_from_legacy(old_payin_value))
+        combo_changed = new_canon != old_canon
+    if not combo_changed or is_verified_flow(*new_canon):
+        return None
+    if current_role() == 'admin':
+        if data.get('unverified_confirmed') is True:
+            return None
+        return ({'success': False, 'requires_confirmation': True,
+                'warning': 'Непроверенный флоу. Требуется подтверждение (unverified_confirmed=true).'}, 409)
+    return ({'success': False, 'error': 'Этот флоу (тип сделки + способ оплаты) ещё не проверен. '
+            'Проведите сделку через Карима.'}, 400)
+
+
 @app.route('/api/deal-flow-config', methods=['GET'])
 def deal_flow_config():
     return jsonify({'verified': [list(pair) for pair in VERIFIED_FLOWS]})
@@ -7241,7 +7266,10 @@ def stand_crm_close(stand_deal_id):
             db.info['stand_payin_hashes'] = {
                 _payin_hash_key(t.get('hash')) for t in stand_deal.get('payinHashes') or []}
         try:
-            result = _create_deal_impl(db, data=crm_data, defer_commit=True)
+            # Комбинация уже прошла гейт на стенде (создание/смена способа) —
+            # см. комментарий в _create_deal_impl.
+            result = _create_deal_impl(db, data=crm_data, defer_commit=True,
+                                       skip_flow_gate=True)
         finally:
             db.info.pop('stand_payin_origin', None)
             db.info.pop('stand_payin_hashes', None)
@@ -7424,7 +7452,10 @@ def stand_crm_close_lose(stand_deal_id):
                     'skip_sync': True}
         if bitrix_id:
             crm_data['bitrix_deal_id'] = bitrix_id
-        result = _create_deal_impl(db, data=crm_data, defer_commit=True)
+        # LOSE-зеркало без реального платежа — флоу-гейт здесь неприменим
+        # (нет deal_kind/payin_method), см. комментарий в _create_deal_impl.
+        result = _create_deal_impl(db, data=crm_data, defer_commit=True,
+                                   skip_flow_gate=True)
         response, status = result if isinstance(result, tuple) else (result, 200)
         created = response.get_json() or {}
         if status >= 400 or not created.get('success'):
@@ -11750,6 +11781,17 @@ def stand_payin_cash_method():
                     i.get('dealId') == deal['id'] and _stand_number(i.get('rub')) > 0
                     for i in state.get('incomes') or [])):
             return jsonify(success=False, error='Банковский приход уже засчитан или сверяется'), 409
+        new_payin_canon = canonical_payin_from_stand('По реквизитам' if restoring else 'Наличные')
+        deal_kind_canon = canonical_deal_kind_from_stand(deal.get('type'), deal.get('kind'))
+        if not is_verified_flow(deal_kind_canon, new_payin_canon):
+            if actor == 'admin':
+                if data.get('unverified_confirmed') is not True:
+                    return jsonify(success=False, requires_confirmation=True,
+                        warning='Непроверенный флоу. Требуется подтверждение (unverified_confirmed=true).'), 409
+            else:
+                return jsonify(success=False,
+                    error='Этот флоу (тип сделки + способ оплаты) ещё не проверен. '
+                          'Проведите сделку через Карима.'), 409
         deal['payType'] = 'По реквизитам' if restoring else 'Наличные'
         deal['cashPartnerUsdt'] = False if restoring else True
         deal.setdefault('log', []).append({'at': int(time.time() * 1000), 'role': actor,
@@ -16605,7 +16647,7 @@ def create_deal():
     return _create_deal_impl()
 
 
-def _create_deal_impl(session=None, *, data=None, defer_commit=False):
+def _create_deal_impl(session=None, *, data=None, defer_commit=False, skip_flow_gate=False):
     """Existing CRM create validation; stand close may share its DB transaction."""
     own_session = session is None
     if own_session:
@@ -16894,6 +16936,18 @@ def _create_deal_impl(session=None, *, data=None, defer_commit=False):
                 and deal.payin_amount_usdt):
             deal.status = DealStatus.COMPLETED
 
+        # skip_flow_gate=True только для внутренних вызовов (stand_crm_close,
+        # stand_crm_close_lose): они зеркалят в CRM сделку, уже прошедшую этот
+        # же гейт на стенде при создании/смене способа (_stand_guard_transition,
+        # /api/stand/payin/cash-method) — повторная проверка здесь избыточна и
+        # ошибочно блокирует обычное закрытие уже одобренной сделки.
+        if not skip_flow_gate:
+            flow_problem = _legacy_unverified_flow_problem(
+                True, None, None, deal.deal_kind, deal.payin_method, data)
+            if flow_problem:
+                session.rollback()
+                return jsonify(flow_problem[0]), flow_problem[1]
+
         # Тип недвижимости без своих полей — протёкшее состояние формы, не сделка
         realty_error = realty_payload_error(deal)
         if realty_error:
@@ -16987,7 +17041,8 @@ def update_deal(deal_id):
             return jsonify({'success': True, 'deal': deal.to_dict()})
         old_status = deal.status
         old_kind = deal.deal_kind
-        
+        old_payin_method = deal.payin_method
+
         # Обновляем дату если передана
         if data.get('created_at'):
             try:
@@ -17211,6 +17266,12 @@ def update_deal(deal_id):
                 _refresh_deal_agents(session, deal)
             else:
                 _mirror_legacy_agent(session, deal)
+
+        flow_problem = _legacy_unverified_flow_problem(
+            False, old_kind, old_payin_method, deal.deal_kind, deal.payin_method, data)
+        if flow_problem:
+            session.rollback()
+            return jsonify(flow_problem[0]), flow_problem[1]
 
         realty_error = realty_payload_error(deal)
         if realty_error:
