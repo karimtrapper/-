@@ -8357,7 +8357,7 @@ def _stand_manual_close_apply_override(state, stand_deal, override, actor, *, ve
         if problem:
             return problem
     else:
-        has_receipt = bool((stand_deal.get('files') or {}).get('receipt'))
+        has_receipt = _stand_valid_receipt(stand_deal)
         if (not payin.get('hashes') and not has_receipt
                 and not payin.get('manualBankConfirmed')):
             return 'payin_evidence_missing'
@@ -8387,8 +8387,7 @@ def _stand_manual_close_apply_override(state, stand_deal, override, actor, *, ve
             # Один слот receipt на приход и расход (fileBlock(d,'receipt',...)
             # на фронте, Task 5) — не отдельный инвойс-слот ('inv' — это
             # инвойс застройщика, только для realty-сделок, сюда не подходит).
-            has_receipt = bool((stand_deal.get('files') or {}).get('receipt'))
-            if not has_receipt:
+            if not _stand_valid_receipt(stand_deal):
                 return 'payout_evidence_missing'
 
     agents = override.get('agents')
