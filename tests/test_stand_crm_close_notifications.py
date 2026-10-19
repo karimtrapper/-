@@ -85,14 +85,35 @@ def _client(uid):
     return client
 
 
+def _draft_admin_uid():
+    """Отдельный admin-пользователь только для unverified_confirmed в _manual_draft —
+    эти синтетические сделки (Обмен валюты / Лизхолд без привязанного payType)
+    непроверены гейтом, а менеджер их создать больше не может. Весь остальной
+    тест (close, проверка уведомлений) остаётся на исходном manager uid."""
+    db = A.get_session()
+    try:
+        admin = A.AdminUser(username='notif-admin-' + secrets.token_hex(6),
+                             display_name='Notif Admin', role='admin', password_hash='unused')
+        db.add(admin)
+        db.commit()
+        return admin.id
+    finally:
+        db.close()
+
+
 def _manual_draft(uid, kind):
-    """Создаёт ручную сделку на доске; возвращает текущую версию стенда."""
+    """Создаёт ручную сделку на доске; возвращает текущую версию стенда.
+
+    PUT выполняется от отдельного admin-uid с unverified_confirmed=true (см.
+    _draft_admin_uid) — исходный manager uid для этого запроса не используется,
+    но остаётся прежним для close и проверки уведомлений."""
     deal = copy.deepcopy(EXCHANGE_DEAL)
+    deal['unverified_confirmed'] = True
     if kind == 'leasehold':
         deal.update(type='Оплата недвижимости', kind='Лизхолд', amountThb=622370,
                     invoiceUsd=None, amountUsdt=19929.17, rates={'usdtThb': 33.22},
                     ippsTariff=None)
-    created = _client(uid).put('/api/stand/state', json={
+    created = _client(_draft_admin_uid()).put('/api/stand/state', json={
         'version': 1, 'data': {'deals': [deal], 'notes': []}})
     assert created.status_code == 200, created.json
     return created.json['version']
