@@ -1,0 +1,235 @@
+{
+ "blueText": [],
+ "bluePlaques": [],
+ "scaleViolations": [],
+ "toast": null,
+ "fontFaces": [
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:loaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:loaded",
+  "Inter:loaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:loaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:loaded",
+  "Inter:loaded",
+  "Inter:unloaded",
+  "Inter:loaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:loaded",
+  "Inter:loaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded"
+ ],
+ "interLoaded": true,
+ "stylesheets": [
+  "http://127.0.0.1:24558/static/stand/vendor/inter-v20/font.css",
+  "http://127.0.0.1:24558/static/nav-shell.css?v=6",
+  "http://127.0.0.1:24558/static/task-list.css?v=6"
+ ],
+ "url": "/tasks",
+ "innerWidth": 375,
+ "scrollWidth": 375,
+ "bodyScrollWidth": 375,
+ "hScroll": false,
+ "expectedWidth": 375,
+ "layoutViewportExpanded": false,
+ "visualViewportWidth": 375,
+ "docClientWidth": 375,
+ "overflowOffenders": [],
+ "fontSizes": {
+  "16px": 10,
+  "12px": 6,
+  "14px": 52,
+  "22px": 4
+ },
+ "fontWeights": {
+  "400": 29,
+  "600": 39,
+  "700": 4
+ },
+ "families": [
+  "Inter",
+  "ui-monospace"
+ ],
+ "addrNodes": [
+  {
+   "text": "TA6S3RBE…18inenG4",
+   "title": "",
+   "mono": true,
+   "lines": 2,
+   "whiteSpace": "nowrap",
+   "wrapAnywhere": "normal",
+   "shortForm": true,
+   "full": false,
+   "cutAtEdge": false
+  }
+ ],
+ "addrClipped": [],
+ "addrUnshortened": [],
+ "fullAddresses": [
+  "TKkeEVf2zySaWTLyX2qPwvi6kcdHRuPxkJ",
+  "TWBgeUo74DehAPgw5cKTdYUTXtJELqwwqn",
+  "TVmgzMQ2zwV2DVPscBf98WRRdhrcpf5x5p",
+  "TDuDeRiwrLLN3hnnA57G5yM6ibg58A6wZk"
+ ],
+ "mfstrAddresses": [],
+ "signerAddrsVisible": {
+  "operator": false,
+  "findir": false,
+  "teodor": false
+ },
+ "coralButtons": [
+  "USDT получены — решить, что с ними делать"
+ ],
+ "smallTargets": [],
+ "smallSmCount": 6,
+ "emoji": [],
+ "moneyPrefixBad": [],
+ "dollarSuffixBad": [],
+ "title": "Синтетика 1602",
+ "focusTargets": {
+  "primary": null,
+  "outline": {
+   "focused": true,
+   "text": "Копировать",
+   "id": null,
+   "focusVisible": true,
+   "outlineWidth": "2px",
+   "outlineStyle": "solid",
+   "outlineColor": "rgb(194, 65, 12)",
+   "outlineOffset": "2px",
+   "boxShadow": "none"
+  },
+  "input": {
+   "focused": true,
+   "text": "450 000,00 ₽",
+   "id": null,
+   "focusVisible": true,
+   "outlineWidth": "2px",
+   "outlineStyle": "solid",
+   "outlineColor": "rgb(194, 65, 12)",
+   "outlineOffset": "2px",
+   "boxShadow": "rgba(249, 115, 22, 0.12) 0px 0px 0px 3px"
+  },
+  "select": {
+   "focused": true,
+   "text": "— сменить кошелёк пачки —\n          TKke",
+   "id": null,
+   "focusVisible": true,
+   "outlineWidth": "2px",
+   "outlineStyle": "solid",
+   "outlineColor": "rgb(194, 65, 12)",
+   "outlineOffset": "2px",
+   "boxShadow": "rgba(249, 115, 22, 0.12) 0px 0px 0px 3px"
+  },
+  "textarea": null,
+  "checkbox": null,
+  "summary": {
+   "focused": true,
+   "text": "?Пользователь · операционист",
+   "id": null,
+   "focusVisible": true,
+   "outlineWidth": "2px",
+   "outlineStyle": "solid",
+   "outlineColor": "rgb(194, 65, 12)",
+   "outlineOffset": "2px",
+   "boxShadow": "none"
+  }
+ },
+ "focusProbe": [
+  {
+   "tag": "A",
+   "text": "Сделки",
+   "outlineWidth": "2px",
+   "outlineStyle": "solid",
+   "outlineColor": "rgb(194, 65, 12)",
+   "outlineOffset": "-2px",
+   "boxShadow": "none",
+   "visible": true
+  },
+  {
+   "tag": "A",
+   "text": "Документы",
+   "outlineWidth": "2px",
+   "outlineStyle": "solid",
+   "outlineColor": "rgb(194, 65, 12)",
+   "outlineOffset": "-2px",
+   "boxShadow": "none",
+   "visible": true
+  },
+  {
+   "tag": "A",
+   "text": "Закрытие",
+   "outlineWidth": "2px",
+   "outlineStyle": "solid",
+   "outlineColor": "rgb(194, 65, 12)",
+   "outlineOffset": "-2px",
+   "boxShadow": "none",
+   "visible": true
+  },
+  {
+   "tag": "A",
+   "text": "Обменники",
+   "outlineWidth": "2px",
+   "outlineStyle": "solid",
+   "outlineColor": "rgb(194, 65, 12)",
+   "outlineOffset": "-2px",
+   "boxShadow": "none",
+   "visible": true
+  }
+ ],
+ "open": {
+  "deal": 1602,
+  "role": "operator",
+  "width": "375",
+  "versionBefore": 2,
+  "versionAfter": 2,
+  "viewMutated": false,
+  "deltaPaths": [],
+  "deltaSummary": {},
+  "deltaDealIds": [],
+  "topLevelDelta": [],
+  "semanticPaths": [],
+  "semanticChange": false,
+  "noopVersionBump": false
+ },
+ "capture": {
+  "metricsViewport": [
+   375,
+   812
+  ],
+  "tallImageViewport": [
+   375,
+   2752
+  ],
+  "tallImageIsResizedViewport": true,
+  "firstScreenFile": "deal1602_s18w__operator__375__first-screen.png"
+ }
+}

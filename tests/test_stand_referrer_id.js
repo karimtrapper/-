@@ -155,3 +155,66 @@ function run(names, context) {
   assert.equal(stale.name, 'Мой старый агент');
   console.log('crmPayload referrer_id: 7 проверок PASS (включая защиту от коллизии по имени)');
 }
+
+// ---------- refsSync(true): тихая синхронизация не пишет доску, если справочник не изменился ----------
+// Каждое сохранение поднимает версию доски; лишнее сохранение при загрузке даёт фоновые 409 соседним
+// сессиям (DESIGN, чек-лист №13: просмотр экрана не меняет stand_state.version). Изменение справочника
+// по-прежнему сохраняется.
+(async () => {
+  const response = referrers => ({json: async () => ({success: true, referrers})});
+  const base = [
+    {id: 501, name: 'Ромка', code: 'ROM', lang: 'ru', comp_model: 'revshare', default_percent: 10,
+      payout_currency: 'USDT', telegram: '@rom', active: true},
+    {id: 502, name: 'TEST служебный', code: 'TST', active: true},      // TEST* отфильтровывается
+  ];
+  const makeCtx = (referrers, own = []) => {
+    const calls = {save: 0, render: 0, toast: []};
+    const S = {refs: own.slice()};
+    const ctx = run(['refsSync', 'refs'], {
+      S, refsInit: () => [], fetch: async () => response(referrers),
+      save: () => { calls.save++; }, render: () => { calls.render++; },
+      toast: message => calls.toast.push(message),
+    });
+    return {ctx, S, calls};
+  };
+  // 1) первая синхронизация: справочник меняется — сохранение обязано произойти
+  let {ctx, S, calls} = makeCtx(base, [{id: 'm:1', name: 'Свой агент', code: '', prod: false}]);
+  assert.equal(await ctx.refsSync(true), true);
+  assert.equal(calls.save, 1, 'изменённый справочник сохраняется');
+  assert.deepEqual(S.refs.map(r => r.id), [501, 'm:1']);
+  // 2) повторная тихая синхронизация того же содержимого — без сохранения
+  const settled = JSON.parse(JSON.stringify(S.refs));
+  ({ctx, S, calls} = makeCtx(base, settled));
+  assert.equal(await ctx.refsSync(true), true);
+  assert.equal(calls.save, 0, 'тихая синхронизация без изменений не пишет доску');
+  assert.deepEqual(S.refs, settled);
+  // 3) реферер изменился в базе (процент) — сохранение снова нужно
+  const changed = base.map(r => r.id === 501 ? {...r, default_percent: 12} : r);
+  ({ctx, S, calls} = makeCtx(changed, settled));
+  assert.equal(await ctx.refsSync(true), true);
+  assert.equal(calls.save, 1, 'изменившийся реферер сохраняется');
+  assert.equal(S.refs.find(r => r.id === 501).percent, 12);
+  // 4) появился новый реферер — сохранение нужно
+  const added = base.concat([{id: 503, name: 'Новый', code: 'NEW', active: true}]);
+  ({ctx, S, calls} = makeCtx(added, settled));
+  await ctx.refsSync(true);
+  assert.equal(calls.save, 1, 'новый реферер сохраняется');
+  assert.ok(S.refs.some(r => r.id === 503));
+  // 5) ручная синхронизация без изменений: тост и перерисовка сохраняются, доска не пишется
+  ({ctx, S, calls} = makeCtx(base, settled));
+  assert.equal(await ctx.refsSync(false), true);
+  assert.equal(calls.save, 0, 'ручная синхронизация без изменений не пишет доску');
+  assert.ok(calls.render >= 1, 'ручная синхронизация перерисовывает экран');
+  assert.ok(calls.toast.length >= 1, 'ручная синхронизация сообщает результат');
+  // 6) ручная синхронизация с изменением: одно сохранение, перерисовка и тост
+  ({ctx, S, calls} = makeCtx(changed, settled));
+  assert.equal(await ctx.refsSync(false), true);
+  assert.equal(calls.save, 1, 'ручная синхронизация с изменением сохраняет');
+  assert.ok(calls.render >= 1 && calls.toast.length >= 1);
+  // 7) после сохранения изменений повторный опрос тех же данных больше не пишет (состояние уже на доске)
+  const persisted = JSON.parse(JSON.stringify(S.refs));
+  ({ctx, S, calls} = makeCtx(changed, persisted));
+  await ctx.refsSync(true);
+  assert.equal(calls.save, 0, 'повторный опрос после сохранения не пишет доску');
+  console.log('refsSync: без изменений — 0 сохранений (тихо и вручную), с изменениями — 1 — 14 проверок PASS');
+})().catch(error => { console.error(error); process.exitCode = 1; });

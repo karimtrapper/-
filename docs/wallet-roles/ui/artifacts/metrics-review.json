@@ -1,0 +1,594 @@
+{
+ "issues": {
+  "hScroll": [],
+  "layoutViewportExpanded": [],
+  "moneyPrefixBad": [],
+  "dollarSuffixBad": [],
+  "blueText": [
+   [
+    "deal1601_s18w__manager__375.png",
+    [
+     {
+      "node": "a",
+      "color": "rgb(0, 0, 238)",
+      "text": "ЦНВ-1601"
+     }
+    ]
+   ],
+   [
+    "deal1602_s18w__manager__375.png",
+    [
+     {
+      "node": "a",
+      "color": "rgb(0, 0, 238)",
+      "text": "ЦНВ-1602"
+     },
+     {
+      "node": "div.sec",
+      "color": "rgb(3, 105, 161)",
+      "text": "Оплата"
+     }
+    ]
+   ],
+   [
+    "deal1604_s22__manager__375.png",
+    [
+     {
+      "node": "div.sec",
+      "color": "rgb(3, 105, 161)",
+      "text": "Оплата"
+     }
+    ]
+   ],
+   [
+    "deal1601_s18w__manager__1280.png",
+    [
+     {
+      "node": "a",
+      "color": "rgb(0, 0, 238)",
+      "text": "ЦНВ-1601"
+     }
+    ]
+   ],
+   [
+    "deal1602_s18w__manager__1280.png",
+    [
+     {
+      "node": "a",
+      "color": "rgb(0, 0, 238)",
+      "text": "ЦНВ-1602"
+     },
+     {
+      "node": "div.sec",
+      "color": "rgb(3, 105, 161)",
+      "text": "Оплата"
+     }
+    ]
+   ],
+   [
+    "deal1604_s22__manager__1280.png",
+    [
+     {
+      "node": "div.sec",
+      "color": "rgb(3, 105, 161)",
+      "text": "Оплата"
+     }
+    ]
+   ],
+   [
+    "deal1612_s23__findir__375.png",
+    [
+     {
+      "node": "div.sec",
+      "color": "rgb(3, 105, 161)",
+      "text": "Оплата"
+     }
+    ]
+   ],
+   [
+    "deal1612_s23__teodor__375.png",
+    [
+     {
+      "node": "div.sec",
+      "color": "rgb(3, 105, 161)",
+      "text": "Оплата"
+     }
+    ]
+   ],
+   [
+    "deal1612_s23__manager__375.png",
+    [
+     {
+      "node": "div.sec",
+      "color": "rgb(3, 105, 161)",
+      "text": "Оплата"
+     }
+    ]
+   ],
+   [
+    "deal1610_s23__manager__375.png",
+    [
+     {
+      "node": "div.sec",
+      "color": "rgb(3, 105, 161)",
+      "text": "Оплата"
+     }
+    ]
+   ],
+   [
+    "deal1612_s23__findir__1280.png",
+    [
+     {
+      "node": "div.sec",
+      "color": "rgb(3, 105, 161)",
+      "text": "Оплата"
+     }
+    ]
+   ],
+   [
+    "deal1612_s23__teodor__1280.png",
+    [
+     {
+      "node": "div.sec",
+      "color": "rgb(3, 105, 161)",
+      "text": "Оплата"
+     }
+    ]
+   ],
+   [
+    "deal1612_s23__manager__1280.png",
+    [
+     {
+      "node": "div.sec",
+      "color": "rgb(3, 105, 161)",
+      "text": "Оплата"
+     }
+    ]
+   ],
+   [
+    "deal1610_s23__manager__1280.png",
+    [
+     {
+      "node": "div.sec",
+      "color": "rgb(3, 105, 161)",
+      "text": "Оплата"
+     }
+    ]
+   ],
+   [
+    "s24_claimer_cannot_confirm__operator__375.png",
+    [
+     {
+      "node": "div.sec",
+      "color": "rgb(3, 105, 161)",
+      "text": "Оплата"
+     }
+    ]
+   ],
+   [
+    "s24_claimer_cannot_confirm__operator__1280.png",
+    [
+     {
+      "node": "div.sec",
+      "color": "rgb(3, 105, 161)",
+      "text": "Оплата"
+     }
+    ]
+   ]
+  ],
+  "bluePlaques": [],
+  "addrClipped": [
+   [
+    "deal1604_s22__operator__375.png",
+    [
+     ""
+    ]
+   ],
+   [
+    "deal1604_s22__operator__1280.png",
+    [
+     ""
+    ]
+   ]
+  ],
+  "addrUnshortened": [
+   [
+    "signer_address_expanded__operator__375.png",
+    [
+     "TQgQCBXkewuW4RoieDKFP9Ko2SopBh8jso"
+    ]
+   ],
+   [
+    "signer_address_expanded__operator__1280.png",
+    [
+     "TQgQCBXkewuW4RoieDKFP9Ko2SopBh8jso"
+    ]
+   ]
+  ],
+  "mfstrAddresses": [],
+  "scaleViolations": [],
+  "smallTargets": [
+   [
+    "deal1601_s18w__manager__375.png",
+    [
+     {
+      "tag": "A",
+      "text": "ЦНВ-1601",
+      "h": 17
+     },
+     {
+      "tag": "BUTTON",
+      "text": "Редактировать",
+      "h": 44
+     }
+    ]
+   ],
+   [
+    "deal1602_s18w__manager__375.png",
+    [
+     {
+      "tag": "A",
+      "text": "ЦНВ-1602",
+      "h": 17
+     },
+     {
+      "tag": "BUTTON",
+      "text": "Редактировать",
+      "h": 44
+     }
+    ]
+   ],
+   [
+    "deal1603_s22__operator__375.png",
+    [
+     {
+      "tag": "BUTTON",
+      "text": "Редактировать",
+      "h": 44
+     }
+    ]
+   ],
+   [
+    "deal1603_s22__manager__375.png",
+    [
+     {
+      "tag": "BUTTON",
+      "text": "Реквизиты верны — можно платить",
+      "h": 44
+     }
+    ]
+   ],
+   [
+    "deal1604_s22__operator__375.png",
+    [
+     {
+      "tag": "BUTTON",
+      "text": "Поручить отправку",
+      "h": 44
+     }
+    ]
+   ],
+   [
+    "deal1604_s22__manager__375.png",
+    [
+     {
+      "tag": "BUTTON",
+      "text": "Редактировать",
+      "h": 44
+     }
+    ]
+   ],
+   [
+    "deal1601_s18w__manager__1280.png",
+    [
+     {
+      "tag": "A",
+      "text": "ЦНВ-1601",
+      "h": 17
+     }
+    ]
+   ],
+   [
+    "deal1602_s18w__manager__1280.png",
+    [
+     {
+      "tag": "A",
+      "text": "ЦНВ-1602",
+      "h": 17
+     }
+    ]
+   ],
+   [
+    "deal1611_s23__operator__375.png",
+    [
+     {
+      "tag": "BUTTON",
+      "text": "Беру",
+      "h": 44
+     }
+    ]
+   ],
+   [
+    "deal1611_s23__findir__375.png",
+    [
+     {
+      "tag": "BUTTON",
+      "text": "Беру",
+      "h": 44
+     }
+    ]
+   ],
+   [
+    "deal1611_s23__teodor__375.png",
+    [
+     {
+      "tag": "BUTTON",
+      "text": "Беру",
+      "h": 44
+     }
+    ]
+   ],
+   [
+    "deal1611_s23__manager__375.png",
+    [
+     {
+      "tag": "BUTTON",
+      "text": "Реквизиты верны — можно платить",
+      "h": 44
+     }
+    ]
+   ],
+   [
+    "deal1612_s23__operator__375.png",
+    [
+     {
+      "tag": "BUTTON",
+      "text": "Беру",
+      "h": 44
+     }
+    ]
+   ],
+   [
+    "deal1612_s23__findir__375.png",
+    [
+     {
+      "tag": "BUTTON",
+      "text": "Редактировать",
+      "h": 44
+     }
+    ]
+   ],
+   [
+    "deal1612_s23__teodor__375.png",
+    [
+     {
+      "tag": "BUTTON",
+      "text": "Редактировать",
+      "h": 44
+     }
+    ]
+   ],
+   [
+    "deal1612_s23__manager__375.png",
+    [
+     {
+      "tag": "BUTTON",
+      "text": "Редактировать",
+      "h": 44
+     }
+    ]
+   ],
+   [
+    "deal1605_s23__operator__375.png",
+    [
+     {
+      "tag": "BUTTON",
+      "text": "Редактировать",
+      "h": 44
+     }
+    ]
+   ],
+   [
+    "deal1605_s23__findir__375.png",
+    [
+     {
+      "tag": "BUTTON",
+      "text": "Отправил",
+      "h": 44
+     }
+    ]
+   ],
+   [
+    "deal1605_s23__teodor__375.png",
+    [
+     {
+      "tag": "BUTTON",
+      "text": "Редактировать",
+      "h": 44
+     }
+    ]
+   ],
+   [
+    "deal1605_s23__manager__375.png",
+    [
+     {
+      "tag": "BUTTON",
+      "text": "Реквизиты верны — можно платить",
+      "h": 44
+     }
+    ]
+   ],
+   [
+    "deal1610_s23__operator__375.png",
+    [
+     {
+      "tag": "BUTTON",
+      "text": "Беру",
+      "h": 44
+     }
+    ]
+   ],
+   [
+    "deal1610_s23__manager__375.png",
+    [
+     {
+      "tag": "BUTTON",
+      "text": "Редактировать",
+      "h": 44
+     }
+    ]
+   ],
+   [
+    "deal1610_claim_over_limit__operator__375.png",
+    [
+     {
+      "tag": "BUTTON",
+      "text": "Беру",
+      "h": 44
+     }
+    ]
+   ],
+   [
+    "signer_address_expanded__operator__375.png",
+    [
+     {
+      "tag": "BUTTON",
+      "text": "Беру",
+      "h": 44
+     }
+    ]
+   ],
+   [
+    "claim_before__operator__375.png",
+    [
+     {
+      "tag": "BUTTON",
+      "text": "Беру",
+      "h": 44
+     }
+    ]
+   ],
+   [
+    "claim_winner__operator__375.png",
+    [
+     {
+      "tag": "BUTTON",
+      "text": "Передать на подтверждение",
+      "h": 44
+     }
+    ]
+   ],
+   [
+    "claim_loser_fresh_owner__teodor__375.png",
+    [
+     {
+      "tag": "BUTTON",
+      "text": "Редактировать",
+      "h": 44
+     }
+    ]
+   ],
+   [
+    "s24_claimer_cannot_confirm__operator__375.png",
+    [
+     {
+      "tag": "BUTTON",
+      "text": "Редактировать",
+      "h": 44
+     }
+    ]
+   ],
+   [
+    "s24_confirmer__findir__375.png",
+    [
+     {
+      "tag": "BUTTON",
+      "text": "Подписал — проверить перевод",
+      "h": 44
+     }
+    ]
+   ],
+   [
+    "s24_confirmer__teodor__375.png",
+    [
+     {
+      "tag": "BUTTON",
+      "text": "Подписал — проверить перевод",
+      "h": 44
+     }
+    ]
+   ],
+   [
+    "s24_after_confirm__findir__375.png",
+    [
+     {
+      "tag": "BUTTON",
+      "text": "Подписал — проверить перевод",
+      "h": 44
+     }
+    ]
+   ],
+   [
+    "owner_alone_claimed__teodor__375.png",
+    [
+     {
+      "tag": "BUTTON",
+      "text": "Проверить перевод в сети",
+      "h": 44
+     }
+    ]
+   ],
+   [
+    "crm_exchange_payout_big__findir__375.png",
+    [
+     {
+      "tag": "INPUT",
+      "text": "on",
+      "h": 13
+     }
+    ]
+   ],
+   [
+    "crm_exchange_payout_big__teodor__375.png",
+    [
+     {
+      "tag": "INPUT",
+      "text": "on",
+      "h": 13
+     }
+    ]
+   ],
+   [
+    "crm_exchange_payout_big__findir__1280.png",
+    [
+     {
+      "tag": "INPUT",
+      "text": "on",
+      "h": 13
+     }
+    ]
+   ],
+   [
+    "crm_exchange_payout_big__teodor__1280.png",
+    [
+     {
+      "tag": "INPUT",
+      "text": "on",
+      "h": 13
+     }
+    ]
+   ],
+   [
+    "crm_exchange_payout_big_after_approval__teodor__1280.png",
+    [
+     {
+      "tag": "INPUT",
+      "text": "on",
+      "h": 13
+     }
+    ]
+   ]
+  ]
+ },
+ "focused_count": 60
+}

@@ -1,0 +1,59 @@
+{
+ "harness_version": "wallet-roles-ui r8 (2026-10-19): r7 + full untruncated state diffs (normalised path summary), combined final assertion (nothing masked), regex endsWith fix + refs-only correction 2026-10-20",
+ "source_freeze": {
+  "sha256": {
+   "app.py": "bdd3aaf335f8398e",
+   "static/stand/tasks.html": "9616565599035dec",
+   "static/crm/crm.html": "e3c1372f5a3af5ad",
+   "stand_transfers.py": "6db1df1db4e8ab87",
+   "stand_prepay.py": "4c6258a32e009eba",
+   "stand_browser.py": "aedc2973a2cff158"
+  },
+  "head": "62f1460465ba597574e4ba4f399cb2614bcde4e1",
+  "dirty_sources": [],
+  "clean": true
+ },
+ "actions": [
+  {
+   "note": "assert",
+   "message": "реферер QAREF1 из справочника сохранён в доске после первой синхронизации (refs=['QAREF1'])",
+   "ok": true
+  },
+  {
+   "note": "refs unchanged reload",
+   "versionBefore": 2,
+   "versionAfter": 2
+  },
+  {
+   "note": "assert",
+   "message": "повторная загрузка без изменений справочника не растит версию (2 -> 2)",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "реальное изменение справочника сохраняется (refs=['QAREF2', 'QAREF1'], версия 2 -> 3)",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "повторный refsSync без изменений не растит версию (3 -> 3)",
+   "ok": true
+  },
+  {
+   "note": "refs changed then unchanged reload",
+   "versions": [
+    2,
+    3,
+    3
+   ]
+  },
+  {
+   "note": "assert",
+   "message": "после сохранения изменения повторная загрузка версию не растит (3 -> 3)",
+   "ok": true
+  }
+ ],
+ "failed": [],
+ "rejected_puts": [],
+ "external_requests_blocked": []
+}

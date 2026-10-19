@@ -33,7 +33,7 @@ const refHtml = fs.readFileSync(path.join(__dirname, '../static/referrer/index.h
   const source = extractIndented(crmHtml, 'copyAdminInvite');
   function invite(origin) {
     const copied = [];
-    const ctx = { applyStandMobileNav: () => {},
+    const ctx = { applyStandMobileNav: () => {}, refreshPayoutWalletPolicy: () => {},
       location: {origin},
       navigator: {clipboard: {writeText: async t => { copied.push(t); return Promise.resolve(); }}},
       showToast: () => {}, prompt: () => {},
@@ -58,7 +58,7 @@ const refHtml = fs.readFileSync(path.join(__dirname, '../static/referrer/index.h
   const authSrc = extractIndented(crmHtml, 'loadAuthStand', 'async function')
     + '\n' + extractIndented(crmHtml, 'refreshStandDependentLinks');
   (async () => {
-    const ctx = { applyStandMobileNav: () => {},
+    const ctx = { applyStandMobileNav: () => {}, refreshPayoutWalletPolicy: () => {},
       API_URL: '', AUTH_STAND: null,
       fetch: async () => ({json: async () => ({success: true, user: {id: 1}})}), // поля stand нет
     };
@@ -75,7 +75,7 @@ const refHtml = fs.readFileSync(path.join(__dirname, '../static/referrer/index.h
   (async () => {
     const opened = [];
     const st = {textContent: '', innerHTML: ''};
-    const ctx = { applyStandMobileNav: () => {},
+    const ctx = { applyStandMobileNav: () => {}, refreshPayoutWalletPolicy: () => {},
       document: {getElementById: () => st},
       fetch: async (url) => {
         if (String(url).includes('/api/health')) return {json: async () => ({success: true})}; // поля stand нет
@@ -105,7 +105,7 @@ const refHtml = fs.readFileSync(path.join(__dirname, '../static/referrer/index.h
   assert.ok(line, 'не нашли рендер doc_payment_url');
   const expr = line.trim().slice(2, -1); // ${ ... } -> ...
   function renderLine(isStand, unverified) {
-    const ctx = { applyStandMobileNav: () => {},
+    const ctx = { applyStandMobileNav: () => {}, refreshPayoutWalletPolicy: () => {},
       deal: {doc_payment_url: 'https://payments.example.test/pay/real-order'},
       escapeHtml: x => x,
       standLinkState: () => ({isStand, unverified}),

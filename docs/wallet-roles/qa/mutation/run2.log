@@ -1,0 +1,14 @@
+BASELINE baseline exit=0 fence_ok=True killed=None 227 passed, 1025 warnings in 5.63s
+M1-self-confirm-id-guard mutated exit=1 fence_ok=True killed=True 5 failed, 222 passed, 1020 warnings in 5.67s
+M2-settle-needs-confirmation mutated exit=1 fence_ok=True killed=False 1 failed, 226 passed, 1025 warnings in 5.60s
+M3-settle-owner-alone-validation mutated exit=1 fence_ok=True killed=True 1 failed, 226 passed, 1025 warnings in 5.39s
+M4-settle-self-confirmation mutated exit=1 fence_ok=True killed=True 1 failed, 226 passed, 1025 warnings in 5.09s
+M5-put-guard-transfer-markers mutated exit=1 fence_ok=True killed=True 2 failed, 225 passed, 1015 warnings in 5.21s
+M6-put-guard-recipient-warnings mutated exit=1 fence_ok=True killed=True 1 failed, 226 passed, 1021 warnings in 5.20s
+M7-claim-role-eligibility mutated exit=1 fence_ok=True killed=True 9 failed, 218 passed, 1019 warnings in 5.12s
+M8-claim-limit-inclusive mutated exit=1 fence_ok=True killed=True 1 failed, 226 passed, 1025 warnings in 5.24s
+M9-crm-approval-required mutated exit=1 fence_ok=True killed=True 30 failed, 197 passed, 1019 warnings in 5.23s
+M10-crm-approver-role mutated exit=0 fence_ok=True killed=False 227 passed, 1025 warnings in 4.99s
+M11-crm-limit-inclusive mutated exit=1 fence_ok=True killed=True 2 failed, 225 passed, 1025 warnings in 4.98s
+M12-tron-receiver-case-insensitive mutated exit=1 fence_ok=True killed=True 1 failed, 226 passed, 1025 warnings in 5.01s
+SURVIVORS_OR_UNPROVEN: ['M2-settle-needs-confirmation', 'M10-crm-approver-role']

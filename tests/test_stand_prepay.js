@@ -27,7 +27,7 @@ for(const name of ['STEPS','FLOW_RUB','FLOW_USDT','FLOW_ALIAS','SOURCES_PAY']){
   vm.runInContext(html.match(new RegExp(`^const ${name}\\s*=[^]*?;`,'m'))[0].replace(/^const /,'var '),ctx);
 }
 for(const name of ['uniqueWallets','walletOptionText','prepayCanStart','prepayStepDone','prepayRefundRole','prepayPanel','flowOf','progress',
-  'stepTitle','taskBranchesForRole','myTasks','reqOpen','go','sendList','freeholdFee','freeholdSend','dealWallet','hashSum','econ','act','cnvTxTime','cnvTxHint','cnvTxShareBlock']){
+  'stepTitle','taskBranchesForRole','myTasks','reqOpen','go','sendList','freeholdFee','freeholdSend','dealWallet','hashSum','econ','act','cnvTxTime','cnvTxHint','cnvTxShareBlock','txShort','jsLiteralAttr','addressDisclosure']){
   vm.runInContext(fn(name),ctx);
 }
 assert.match(ctx.cnvTxTime(Date.UTC(2026,9,16,9,47)), /16\.10.*12:47/);

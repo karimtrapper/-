@@ -1,0 +1,300 @@
+[
+ {
+  "mutant": "BASELINE",
+  "status": "baseline",
+  "exit": 0,
+  "failed": [],
+  "summary": "227 passed, 1025 warnings in 5.63s",
+  "fence_ok": true,
+  "fence": "NETWORK_FENCE attempts=0 unexpected=0 report=/tmp/calccrm-t19-fence-reports/20261019T233940-28901.json"
+ },
+ {
+  "mutant": "M1-self-confirm-id-guard",
+  "status": "mutated",
+  "exit": 1,
+  "failed": [
+   "tests/test_wallet_roles_confirm_qa.py::test_claimer_cannot_confirm_own_transfer[TDuDeRiwrLLN3hnnA57G5yM6ibg58A6wZk-operator]",
+   "tests/test_wallet_roles_confirm_qa.py::test_claimer_cannot_confirm_own_transfer[TDuDeRiwrLLN3hnnA57G5yM6ibg58A6wZk-findir]",
+   "tests/test_wallet_roles_confirm_qa.py::test_claimer_cannot_confirm_own_transfer[TA6S3RBEY57jq8fXEVVsU6H9JZ18inenG4-operator]",
+   "tests/test_wallet_roles_confirm_qa.py::test_role_change_of_same_actor_cannot_approve_self[teodor]",
+   "tests/test_wallet_roles_confirm_qa.py::test_role_change_of_same_actor_cannot_approve_self[findir]"
+  ],
+  "summary": "5 failed, 222 passed, 1020 warnings in 5.67s",
+  "fence_ok": true,
+  "fence": "NETWORK_FENCE attempts=0 unexpected=0 report=/tmp/calccrm-t19-fence-reports/20261019T233947-29009.json",
+  "expected_witness": "role_change_of_same_actor",
+  "witness_failures": [
+   "tests/test_wallet_roles_confirm_qa.py::test_role_change_of_same_actor_cannot_approve_self[teodor]",
+   "tests/test_wallet_roles_confirm_qa.py::test_role_change_of_same_actor_cannot_approve_self[findir]"
+  ],
+  "incidental_failures": [
+   "tests/test_wallet_roles_confirm_qa.py::test_claimer_cannot_confirm_own_transfer[TDuDeRiwrLLN3hnnA57G5yM6ibg58A6wZk-operator]",
+   "tests/test_wallet_roles_confirm_qa.py::test_claimer_cannot_confirm_own_transfer[TDuDeRiwrLLN3hnnA57G5yM6ibg58A6wZk-findir]",
+   "tests/test_wallet_roles_confirm_qa.py::test_claimer_cannot_confirm_own_transfer[TA6S3RBEY57jq8fXEVVsU6H9JZ18inenG4-operator]"
+  ],
+  "killed": true
+ },
+ {
+  "mutant": "M2-settle-needs-confirmation",
+  "status": "mutated",
+  "exit": 1,
+  "failed": [
+   "tests/test_wallet_roles_confirm_qa.py::test_poller_settle_gate_rejects_confirmation_without_actor_id"
+  ],
+  "summary": "1 failed, 226 passed, 1025 warnings in 5.60s",
+  "fence_ok": true,
+  "fence": "NETWORK_FENCE attempts=0 unexpected=0 report=/tmp/calccrm-t19-fence-reports/20261019T233953-29084.json",
+  "expected_witness": "poller_settle_gate_requires_confirmation",
+  "witness_failures": [],
+  "incidental_failures": [
+   "tests/test_wallet_roles_confirm_qa.py::test_poller_settle_gate_rejects_confirmation_without_actor_id"
+  ],
+  "killed": false
+ },
+ {
+  "mutant": "M3-settle-owner-alone-validation",
+  "status": "mutated",
+  "exit": 1,
+  "failed": [
+   "tests/test_wallet_roles_confirm_qa.py::test_poller_settle_gate_rejects_forged_owner_alone_marker"
+  ],
+  "summary": "1 failed, 226 passed, 1025 warnings in 5.39s",
+  "fence_ok": true,
+  "fence": "NETWORK_FENCE attempts=0 unexpected=0 report=/tmp/calccrm-t19-fence-reports/20261019T233959-29172.json",
+  "expected_witness": "forged_owner_alone_marker",
+  "witness_failures": [
+   "tests/test_wallet_roles_confirm_qa.py::test_poller_settle_gate_rejects_forged_owner_alone_marker"
+  ],
+  "incidental_failures": [],
+  "killed": true
+ },
+ {
+  "mutant": "M4-settle-self-confirmation",
+  "status": "mutated",
+  "exit": 1,
+  "failed": [
+   "tests/test_wallet_roles_confirm_qa.py::test_poller_settle_gate_rejects_self_confirmation_marker"
+  ],
+  "summary": "1 failed, 226 passed, 1025 warnings in 5.09s",
+  "fence_ok": true,
+  "fence": "NETWORK_FENCE attempts=0 unexpected=0 report=/tmp/calccrm-t19-fence-reports/20261019T234005-29250.json",
+  "expected_witness": "self_confirmation_marker",
+  "witness_failures": [
+   "tests/test_wallet_roles_confirm_qa.py::test_poller_settle_gate_rejects_self_confirmation_marker"
+  ],
+  "incidental_failures": [],
+  "killed": true
+ },
+ {
+  "mutant": "M5-put-guard-transfer-markers",
+  "status": "mutated",
+  "exit": 1,
+  "failed": [
+   "tests/test_wallet_roles_claim_qa.py::test_state_put_cannot_forge_remove_or_edit_claim",
+   "tests/test_wallet_roles_confirm_qa.py::test_owner_alone_flag_cannot_be_forged_through_state_put"
+  ],
+  "summary": "2 failed, 225 passed, 1015 warnings in 5.21s",
+  "fence_ok": true,
+  "fence": "NETWORK_FENCE attempts=0 unexpected=0 report=/tmp/calccrm-t19-fence-reports/20261019T234011-29331.json",
+  "expected_witness": "forge",
+  "witness_failures": [
+   "tests/test_wallet_roles_claim_qa.py::test_state_put_cannot_forge_remove_or_edit_claim",
+   "tests/test_wallet_roles_confirm_qa.py::test_owner_alone_flag_cannot_be_forged_through_state_put"
+  ],
+  "incidental_failures": [],
+  "killed": true
+ },
+ {
+  "mutant": "M6-put-guard-recipient-warnings",
+  "status": "mutated",
+  "exit": 1,
+  "failed": [
+   "tests/test_wallet_roles_payin_qa.py::test_forged_state_put_cannot_add_remove_or_acknowledge_warning"
+  ],
+  "summary": "1 failed, 226 passed, 1021 warnings in 5.20s",
+  "fence_ok": true,
+  "fence": "NETWORK_FENCE attempts=0 unexpected=0 report=/tmp/calccrm-t19-fence-reports/20261019T234018-29527.json",
+  "expected_witness": "forged_state_put",
+  "witness_failures": [
+   "tests/test_wallet_roles_payin_qa.py::test_forged_state_put_cannot_add_remove_or_acknowledge_warning"
+  ],
+  "incidental_failures": [],
+  "killed": true
+ },
+ {
+  "mutant": "M7-claim-role-eligibility",
+  "status": "mutated",
+  "exit": 1,
+  "failed": [
+   "tests/test_wallet_roles_claim_qa.py::test_realty_wallet_other_roles_cannot_claim[manager]",
+   "tests/test_wallet_roles_claim_qa.py::test_realty_wallet_other_roles_cannot_claim[admin]",
+   "tests/test_wallet_roles_claim_qa.py::test_realty_wallet_other_roles_cannot_claim[buyer]",
+   "tests/test_wallet_roles_claim_qa.py::test_realty_wallet_other_roles_cannot_claim[findir_x]",
+   "tests/test_wallet_roles_claim_qa.py::test_exchange_wallet_only_operator_initiates",
+   "tests/test_wallet_roles_claim_qa.py::test_spoofed_session_role_does_not_grant_access",
+   "tests/test_wallet_roles_claim_qa.py::test_role_change_in_db_applies_immediately",
+   "tests/test_wallet_roles_claim_qa.py::test_prepay_wallet_with_policy_address_is_governed",
+   "tests/test_wallet_roles_confirm_qa.py::test_owner_alone_never_available_for_exchange_or_other_roles"
+  ],
+  "summary": "9 failed, 218 passed, 1019 warnings in 5.12s",
+  "fence_ok": true,
+  "fence": "NETWORK_FENCE attempts=0 unexpected=0 report=/tmp/calccrm-t19-fence-reports/20261019T234024-29733.json",
+  "expected_witness": "other_roles",
+  "witness_failures": [
+   "tests/test_wallet_roles_claim_qa.py::test_realty_wallet_other_roles_cannot_claim[manager]",
+   "tests/test_wallet_roles_claim_qa.py::test_realty_wallet_other_roles_cannot_claim[admin]",
+   "tests/test_wallet_roles_claim_qa.py::test_realty_wallet_other_roles_cannot_claim[buyer]",
+   "tests/test_wallet_roles_claim_qa.py::test_realty_wallet_other_roles_cannot_claim[findir_x]",
+   "tests/test_wallet_roles_confirm_qa.py::test_owner_alone_never_available_for_exchange_or_other_roles"
+  ],
+  "incidental_failures": [
+   "tests/test_wallet_roles_claim_qa.py::test_exchange_wallet_only_operator_initiates",
+   "tests/test_wallet_roles_claim_qa.py::test_spoofed_session_role_does_not_grant_access",
+   "tests/test_wallet_roles_claim_qa.py::test_role_change_in_db_applies_immediately",
+   "tests/test_wallet_roles_claim_qa.py::test_prepay_wallet_with_policy_address_is_governed"
+  ],
+  "killed": true
+ },
+ {
+  "mutant": "M8-claim-limit-inclusive",
+  "status": "mutated",
+  "exit": 1,
+  "failed": [
+   "tests/test_wallet_roles_claim_qa.py::test_exchange_claim_limit_is_inclusive_and_needs_owner_approval[10000-True]"
+  ],
+  "summary": "1 failed, 226 passed, 1025 warnings in 5.24s",
+  "fence_ok": true,
+  "fence": "NETWORK_FENCE attempts=0 unexpected=0 report=/tmp/calccrm-t19-fence-reports/20261019T234030-29779.json",
+  "expected_witness": "limit_is_inclusive",
+  "witness_failures": [
+   "tests/test_wallet_roles_claim_qa.py::test_exchange_claim_limit_is_inclusive_and_needs_owner_approval[10000-True]"
+  ],
+  "incidental_failures": [],
+  "killed": true
+ },
+ {
+  "mutant": "M9-crm-approval-required",
+  "status": "mutated",
+  "exit": 1,
+  "failed": [
+   "tests/test_wallet_roles_crm_qa.py::test_over_limit_without_flag_is_400_and_nothing_is_saved[operator-10000.01]",
+   "tests/test_wallet_roles_crm_qa.py::test_over_limit_without_flag_is_400_and_nothing_is_saved[operator-10000.5]",
+   "tests/test_wallet_roles_crm_qa.py::test_over_limit_without_flag_is_400_and_nothing_is_saved[operator-15000]",
+   "tests/test_wallet_roles_crm_qa.py::test_over_limit_without_flag_is_400_and_nothing_is_saved[operator-1000000]",
+   "tests/test_wallet_roles_crm_qa.py::test_over_limit_without_flag_is_400_and_nothing_is_saved[manager-10000.01]",
+   "tests/test_wallet_roles_crm_qa.py::test_over_limit_without_flag_is_400_and_nothing_is_saved[manager-10000.5]",
+   "tests/test_wallet_roles_crm_qa.py::test_over_limit_without_flag_is_400_and_nothing_is_saved[manager-15000]",
+   "tests/test_wallet_roles_crm_qa.py::test_over_limit_without_flag_is_400_and_nothing_is_saved[manager-1000000]",
+   "tests/test_wallet_roles_crm_qa.py::test_over_limit_without_flag_is_400_and_nothing_is_saved[admin-10000.01]",
+   "tests/test_wallet_roles_crm_qa.py::test_over_limit_without_flag_is_400_and_nothing_is_saved[admin-10000.5]",
+   "tests/test_wallet_roles_crm_qa.py::test_over_limit_without_flag_is_400_and_nothing_is_saved[admin-15000]",
+   "tests/test_wallet_roles_crm_qa.py::test_over_limit_without_flag_is_400_and_nothing_is_saved[admin-1000000]",
+   "tests/test_wallet_roles_crm_qa.py::test_over_limit_without_flag_is_400_and_nothing_is_saved[findir-10000.01]",
+   "tests/test_wallet_roles_crm_qa.py::test_over_limit_without_flag_is_400_and_nothing_is_saved[findir-10000.5]",
+   "tests/test_wallet_roles_crm_qa.py::test_over_limit_without_flag_is_400_and_nothing_is_saved[findir-15000]",
+   "tests/test_wallet_roles_crm_qa.py::test_over_limit_without_flag_is_400_and_nothing_is_saved[findir-1000000]",
+   "tests/test_wallet_roles_crm_qa.py::test_over_limit_without_flag_is_400_and_nothing_is_saved[teodor-10000.01]",
+   "tests/test_wallet_roles_crm_qa.py::test_over_limit_without_flag_is_400_and_nothing_is_saved[teodor-10000.5]",
+   "tests/test_wallet_roles_crm_qa.py::test_over_limit_without_flag_is_400_and_nothing_is_saved[teodor-15000]",
+   "tests/test_wallet_roles_crm_qa.py::test_over_limit_without_flag_is_400_and_nothing_is_saved[teodor-1000000]",
+   "tests/test_wallet_roles_crm_qa.py::test_new_exchange_deal_without_wallet_defaults_to_exchange_wallet_and_limit",
+   "tests/test_wallet_roles_crm_qa.py::test_public_skip_sync_flag_cannot_suppress_default_wallet_gate",
+   "tests/test_wallet_roles_crm_qa.py::test_legacy_deal_over_limit_is_readable_and_other_fields_editable",
+   "tests/test_wallet_roles_crm_qa.py::test_update_cannot_raise_amount_over_limit_without_flag",
+   "tests/test_wallet_roles_crm_qa.py::test_update_with_owner_flag_passes_then_changes_invalidate_it",
+   "tests/test_wallet_roles_crm_qa.py::test_explicit_false_revokes_approval",
+   "tests/test_wallet_roles_crm_qa.py::test_cannot_escape_limit_by_moving_deal_to_other_wallet_or_back",
+   "tests/test_wallet_roles_crm_qa.py::test_update_with_transfer_parts_over_limit_needs_approval",
+   "tests/test_wallet_roles_crm_qa.py::test_doverka_confirm_cannot_finalize_over_limit_policy_deal_without_approval",
+   "tests/test_wallet_roles_crm_qa.py::test_doverka_confirm_refuses_when_approved_amount_changed_underneath"
+  ],
+  "summary": "30 failed, 197 passed, 1019 warnings in 5.23s",
+  "fence_ok": true,
+  "fence": "NETWORK_FENCE attempts=0 unexpected=0 report=/tmp/calccrm-t19-fence-reports/20261019T234036-29817.json",
+  "expected_witness": "over_limit_without_flag",
+  "witness_failures": [
+   "tests/test_wallet_roles_crm_qa.py::test_over_limit_without_flag_is_400_and_nothing_is_saved[operator-10000.01]",
+   "tests/test_wallet_roles_crm_qa.py::test_over_limit_without_flag_is_400_and_nothing_is_saved[operator-10000.5]",
+   "tests/test_wallet_roles_crm_qa.py::test_over_limit_without_flag_is_400_and_nothing_is_saved[operator-15000]",
+   "tests/test_wallet_roles_crm_qa.py::test_over_limit_without_flag_is_400_and_nothing_is_saved[operator-1000000]",
+   "tests/test_wallet_roles_crm_qa.py::test_over_limit_without_flag_is_400_and_nothing_is_saved[manager-10000.01]",
+   "tests/test_wallet_roles_crm_qa.py::test_over_limit_without_flag_is_400_and_nothing_is_saved[manager-10000.5]",
+   "tests/test_wallet_roles_crm_qa.py::test_over_limit_without_flag_is_400_and_nothing_is_saved[manager-15000]",
+   "tests/test_wallet_roles_crm_qa.py::test_over_limit_without_flag_is_400_and_nothing_is_saved[manager-1000000]",
+   "tests/test_wallet_roles_crm_qa.py::test_over_limit_without_flag_is_400_and_nothing_is_saved[admin-10000.01]",
+   "tests/test_wallet_roles_crm_qa.py::test_over_limit_without_flag_is_400_and_nothing_is_saved[admin-10000.5]",
+   "tests/test_wallet_roles_crm_qa.py::test_over_limit_without_flag_is_400_and_nothing_is_saved[admin-15000]",
+   "tests/test_wallet_roles_crm_qa.py::test_over_limit_without_flag_is_400_and_nothing_is_saved[admin-1000000]",
+   "tests/test_wallet_roles_crm_qa.py::test_over_limit_without_flag_is_400_and_nothing_is_saved[findir-10000.01]",
+   "tests/test_wallet_roles_crm_qa.py::test_over_limit_without_flag_is_400_and_nothing_is_saved[findir-10000.5]",
+   "tests/test_wallet_roles_crm_qa.py::test_over_limit_without_flag_is_400_and_nothing_is_saved[findir-15000]",
+   "tests/test_wallet_roles_crm_qa.py::test_over_limit_without_flag_is_400_and_nothing_is_saved[findir-1000000]",
+   "tests/test_wallet_roles_crm_qa.py::test_over_limit_without_flag_is_400_and_nothing_is_saved[teodor-10000.01]",
+   "tests/test_wallet_roles_crm_qa.py::test_over_limit_without_flag_is_400_and_nothing_is_saved[teodor-10000.5]",
+   "tests/test_wallet_roles_crm_qa.py::test_over_limit_without_flag_is_400_and_nothing_is_saved[teodor-15000]",
+   "tests/test_wallet_roles_crm_qa.py::test_over_limit_without_flag_is_400_and_nothing_is_saved[teodor-1000000]",
+   "tests/test_wallet_roles_crm_qa.py::test_update_cannot_raise_amount_over_limit_without_flag"
+  ],
+  "incidental_failures": [
+   "tests/test_wallet_roles_crm_qa.py::test_new_exchange_deal_without_wallet_defaults_to_exchange_wallet_and_limit",
+   "tests/test_wallet_roles_crm_qa.py::test_public_skip_sync_flag_cannot_suppress_default_wallet_gate",
+   "tests/test_wallet_roles_crm_qa.py::test_legacy_deal_over_limit_is_readable_and_other_fields_editable",
+   "tests/test_wallet_roles_crm_qa.py::test_update_with_owner_flag_passes_then_changes_invalidate_it",
+   "tests/test_wallet_roles_crm_qa.py::test_explicit_false_revokes_approval",
+   "tests/test_wallet_roles_crm_qa.py::test_cannot_escape_limit_by_moving_deal_to_other_wallet_or_back",
+   "tests/test_wallet_roles_crm_qa.py::test_update_with_transfer_parts_over_limit_needs_approval",
+   "tests/test_wallet_roles_crm_qa.py::test_doverka_confirm_cannot_finalize_over_limit_policy_deal_without_approval",
+   "tests/test_wallet_roles_crm_qa.py::test_doverka_confirm_refuses_when_approved_amount_changed_underneath"
+  ],
+  "killed": true
+ },
+ {
+  "mutant": "M10-crm-approver-role",
+  "status": "mutated",
+  "exit": 0,
+  "failed": [],
+  "summary": "227 passed, 1025 warnings in 4.99s",
+  "fence_ok": true,
+  "fence": "NETWORK_FENCE attempts=0 unexpected=0 report=/tmp/calccrm-t19-fence-reports/20261019T234042-29868.json",
+  "expected_witness": "other_roles",
+  "witness_failures": [],
+  "incidental_failures": [],
+  "killed": false
+ },
+ {
+  "mutant": "M11-crm-limit-inclusive",
+  "status": "mutated",
+  "exit": 1,
+  "failed": [
+   "tests/test_wallet_roles_crm_qa.py::test_up_to_limit_inclusive_needs_no_approval[10000]",
+   "tests/test_wallet_roles_crm_qa.py::test_up_to_limit_inclusive_needs_no_approval[10000.0]"
+  ],
+  "summary": "2 failed, 225 passed, 1025 warnings in 4.98s",
+  "fence_ok": true,
+  "fence": "NETWORK_FENCE attempts=0 unexpected=0 report=/tmp/calccrm-t19-fence-reports/20261019T234048-29917.json",
+  "expected_witness": "inclusive",
+  "witness_failures": [
+   "tests/test_wallet_roles_crm_qa.py::test_up_to_limit_inclusive_needs_no_approval[10000]",
+   "tests/test_wallet_roles_crm_qa.py::test_up_to_limit_inclusive_needs_no_approval[10000.0]"
+  ],
+  "incidental_failures": [],
+  "killed": true
+ },
+ {
+  "mutant": "M12-tron-receiver-case-insensitive",
+  "status": "mutated",
+  "exit": 1,
+  "failed": [
+   "tests/test_wallet_roles_payin_qa.py::test_tron_receiver_compare_is_case_sensitive"
+  ],
+  "summary": "1 failed, 226 passed, 1025 warnings in 5.01s",
+  "fence_ok": true,
+  "fence": "NETWORK_FENCE attempts=0 unexpected=0 report=/tmp/calccrm-t19-fence-reports/20261019T234054-29989.json",
+  "expected_witness": "case_sensitive",
+  "witness_failures": [
+   "tests/test_wallet_roles_payin_qa.py::test_tron_receiver_compare_is_case_sensitive"
+  ],
+  "incidental_failures": [],
+  "killed": true
+ }
+]

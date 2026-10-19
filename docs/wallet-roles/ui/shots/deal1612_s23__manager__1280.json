@@ -1,0 +1,133 @@
+{
+ "blueText": [
+  {
+   "node": "div.sec",
+   "color": "rgb(3, 105, 161)",
+   "text": "Оплата"
+  }
+ ],
+ "bluePlaques": [],
+ "scaleViolations": [],
+ "toast": null,
+ "fontFaces": [
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:loaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:loaded",
+  "Inter:loaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:loaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:loaded",
+  "Inter:loaded",
+  "Inter:unloaded",
+  "Inter:loaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:loaded",
+  "Inter:loaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded"
+ ],
+ "interLoaded": true,
+ "stylesheets": [
+  "http://127.0.0.1:24558/static/stand/vendor/inter-v20/font.css",
+  "http://127.0.0.1:24558/static/nav-shell.css?v=6",
+  "http://127.0.0.1:24558/static/task-list.css?v=6"
+ ],
+ "url": "/tasks",
+ "innerWidth": 1280,
+ "scrollWidth": 1280,
+ "bodyScrollWidth": 1280,
+ "hScroll": false,
+ "expectedWidth": 1280,
+ "layoutViewportExpanded": false,
+ "visualViewportWidth": 1280,
+ "docClientWidth": 1280,
+ "overflowOffenders": [],
+ "fontSizes": {
+  "16px": 12,
+  "14px": 109,
+  "12px": 7,
+  "22px": 2
+ },
+ "fontWeights": {
+  "400": 88,
+  "600": 39,
+  "700": 3
+ },
+ "families": [
+  "Inter"
+ ],
+ "addrNodes": [],
+ "addrClipped": [],
+ "addrUnshortened": [],
+ "fullAddresses": [],
+ "mfstrAddresses": [],
+ "signerAddrsVisible": {
+  "operator": false,
+  "findir": false,
+  "teodor": false
+ },
+ "coralButtons": [],
+ "smallTargets": [],
+ "smallSmCount": 6,
+ "emoji": [
+  "✎",
+  "✎"
+ ],
+ "moneyPrefixBad": [],
+ "dollarSuffixBad": [],
+ "title": "Синтетика 1612",
+ "open": {
+  "deal": 1612,
+  "role": "manager",
+  "width": "1280",
+  "versionBefore": 4,
+  "versionAfter": 4,
+  "viewMutated": false,
+  "deltaPaths": [],
+  "deltaSummary": {},
+  "deltaDealIds": [],
+  "topLevelDelta": [],
+  "semanticPaths": [],
+  "semanticChange": false,
+  "noopVersionBump": false
+ },
+ "capture": {
+  "metricsViewport": [
+   1280,
+   800
+  ],
+  "tallImageViewport": [
+   1280,
+   2111
+  ],
+  "tallImageIsResizedViewport": true,
+  "firstScreenFile": "deal1612_s23__manager__1280__first-screen.png"
+ }
+}

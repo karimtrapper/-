@@ -8,7 +8,8 @@ const ctx={S:{convs:[]},deal:()=>({id:1}),convOf:()=>({id:7}),val:k=>values[k],
   esc:String,document:{getElementById:()=>null},
   standAction:async (url,p)=>{calls.push(p);return p.preview?{hash:p.hash,network:'trc20',ledger:{amount_usdt:200,used_usdt:100,free_usdt:100,deal_ids:[1487]}}:{tx:{amount:100}};}};
 vm.createContext(ctx);
-for(const name of ['cnvTxHint','cnvTxShareBlock','cnvTxManual','cnvTxAllocate']){
+ctx.htmlText=String;
+for(const name of ['cnvTxHint','cnvTxShareBlock','cnvTxManual','cnvTxAllocate','txShort','jsLiteralAttr','addressDisclosure']){
   assert.ok(fn(name),name+' exists');vm.runInContext(fn(name),ctx);
 }
 (async()=>{

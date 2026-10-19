@@ -11,18 +11,20 @@ const fn = name => {
 };
 const elements = new Map();
 const el = id => {
-  if (!elements.has(id)) elements.set(id, {style: {}, value: '', files: [], innerHTML: '', textContent: ''});
+  if (!elements.has(id)) elements.set(id, {style: {}, value: '', files: [], innerHTML: '', textContent: '',
+    replaceChildren() {}, append() {}});
   return elements.get(id);
 };
 const calls = [];
-const ctx = {document: {getElementById: el}, Date,
+const ctx = {document: {getElementById: el, createElement: () => ({style: {}, append() {}, setAttribute() {}})}, Date,
+  editingDealId: null, payoutRegistryWallets: [],
   sberSetKindFilter: (...args) => calls.push(['kind', ...args]),
   sberLoadIncomes: () => calls.push(['load']),
   loadCustomWlTransactions: () => calls.push(['wl']),
   loadCustomCryptoTransactions: () => calls.push(['crypto'])};
 vm.createContext(ctx);
 vm.runInContext(['methodUsesSberPool', 'flowToday', 'flowShow',
-  'applyPayinMethodFields', 'onCustomPayinMethodChange'].map(fn).join('\n'), ctx);
+  'walletPolicyText', 'renderCrmWalletAddress', 'refreshPayinWalletPolicy', 'applyPayinMethodFields', 'onCustomPayinMethodChange'].map(fn).join('\n'), ctx);
 
 el('payinMethod').value = 'flow_sole_reqs';
 vm.runInContext('applyPayinMethodFields()', ctx);

@@ -16,11 +16,11 @@ const ctx={S:{role:'operator',convs:[],deals:[]},DRAFTS:{},STAND:true,standDemoE
   moneyKop:String,money:String,log:()=>{},quoteUsed:()=>null,
   go:(d,step)=>{if(d.prepay)d.prepay.brokerStep=step;else d.step=step;},txPool:()=>ctx.pool,
   pool:[],approx:()=>({pay:100}),payinGot:()=>100,payinForeign:()=>false,PAYIN_TOL:.005,
-  afterPayin:d=>{d.step='s22';},convOf:()=>ctx.S.convs[0],
+  afterPayin:d=>{d.step='s22';},convOf:()=>ctx.S.convs[0],payinDefaultWallet:()=>null,
   standAction:async(path,payload)=>{ctx.request={path,payload};return {success:true};},
 };
 vm.createContext(ctx);
-for(const name of ['demoAllowed','act','payinSettle','cnvWalletFix','seedDemo','seedLeaseholdTest','transferMode',
+for(const name of ['demoAllowed','walletPurpose','act','payinSettle','cnvWalletFix','seedDemo','seedLeaseholdTest','transferMode',
   'brokerSentTimeValue','brokerSentTimeParse','brokerSentTimeDraft','brokerSentAmount','brokerSentParse',
   's18ClientRub','s18ClientTotal','brokerPlanShares'])vm.runInContext(fn(name),ctx);
 (async()=>{

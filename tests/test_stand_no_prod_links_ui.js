@@ -100,7 +100,7 @@ const refHtml = fs.readFileSync(path.join(__dirname, '../static/referrer/index.h
   async function run(healthBehavior) {
     const opened = [];
     const st = {textContent: '', innerHTML: ''};
-    const ctx = { applyStandMobileNav: () => {},
+    const ctx = { applyStandMobileNav: () => {}, refreshPayoutWalletPolicy: () => {},
       document: {getElementById: () => st},
       fetch: async (url) => {
         if (String(url).includes('/api/health')) {
@@ -175,7 +175,7 @@ const refHtml = fs.readFileSync(path.join(__dirname, '../static/referrer/index.h
 
   async function scenario(authResponse) {
     const list = {innerHTML: ''};
-    const ctx = { applyStandMobileNav: () => {},
+    const ctx = { applyStandMobileNav: () => {}, refreshPayoutWalletPolicy: () => {},
       _referrersCache: [referrer],
       STAND_ROLES: null, AUTH_STAND: null,
       API_URL: '',

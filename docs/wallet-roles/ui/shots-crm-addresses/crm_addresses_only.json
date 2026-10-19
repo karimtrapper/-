@@ -1,0 +1,100 @@
+{
+ "harness_version": "wallet-roles-ui r8 (2026-10-19): r7 + full untruncated state diffs (normalised path summary), combined final assertion (nothing masked), regex endsWith fix + crm-only",
+ "source_freeze": {
+  "sha256": {
+   "app.py": "bdd3aaf335f8398e",
+   "static/stand/tasks.html": "9616565599035dec",
+   "static/crm/crm.html": "e3c1372f5a3af5ad",
+   "stand_transfers.py": "6db1df1db4e8ab87",
+   "stand_prepay.py": "4c6258a32e009eba",
+   "stand_browser.py": "aedc2973a2cff158"
+  },
+  "head": "62f1460465ba597574e4ba4f399cb2614bcde4e1",
+  "dirty_sources": [],
+  "clean": true
+ },
+ "actions": [
+  {
+   "note": "assert",
+   "message": "CRM выплата, кошелёк списания 375: виден короткий адрес first8…last8 ({'shortCount': 1, 'fullShownBeforeClick': False})",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "CRM выплата, кошелёк списания 375: полный адрес не выведен без клика ({'shortCount': 1, 'fullShownBeforeClick': False})",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "CRM выплата, кошелёк списания 375: по клику показан полный адрес (клик=True, полный=True)",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "CRM выплата, кошелёк списания 375: «Копировать» кладёт полный адрес в буфер (буфер='TA6S3RBEY57jq8fXEVVsU6H9JZ18inenG4')",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "CRM приход, кошелёк получения 375: виден короткий адрес first8…last8 ({'shortCount': 1, 'fullShownBeforeClick': False})",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "CRM приход, кошелёк получения 375: полный адрес не выведен без клика ({'shortCount': 1, 'fullShownBeforeClick': False})",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "CRM приход, кошелёк получения 375: по клику показан полный адрес (клик=True, полный=True)",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "CRM приход, кошелёк получения 375: «Копировать» кладёт полный адрес в буфер (буфер='TA6S3RBEY57jq8fXEVVsU6H9JZ18inenG4')",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "CRM выплата, кошелёк списания 1280: виден короткий адрес first8…last8 ({'shortCount': 1, 'fullShownBeforeClick': False})",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "CRM выплата, кошелёк списания 1280: полный адрес не выведен без клика ({'shortCount': 1, 'fullShownBeforeClick': False})",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "CRM выплата, кошелёк списания 1280: по клику показан полный адрес (клик=True, полный=True)",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "CRM выплата, кошелёк списания 1280: «Копировать» кладёт полный адрес в буфер (буфер='TA6S3RBEY57jq8fXEVVsU6H9JZ18inenG4')",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "CRM приход, кошелёк получения 1280: виден короткий адрес first8…last8 ({'shortCount': 1, 'fullShownBeforeClick': False})",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "CRM приход, кошелёк получения 1280: полный адрес не выведен без клика ({'shortCount': 1, 'fullShownBeforeClick': False})",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "CRM приход, кошелёк получения 1280: по клику показан полный адрес (клик=True, полный=True)",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "CRM приход, кошелёк получения 1280: «Копировать» кладёт полный адрес в буфер (буфер='TA6S3RBEY57jq8fXEVVsU6H9JZ18inenG4')",
+   "ok": true
+  }
+ ],
+ "failed": [],
+ "external_requests_blocked": []
+}

@@ -104,7 +104,14 @@ const safeCtx=vm.createContext({
 const jsAttrStart=html.indexOf('function jsLiteralAttr(v){'), jsAttrEnd=html.indexOf('\n',jsAttrStart);
 assert.ok(jsAttrStart>=0&&jsAttrEnd>jsAttrStart);
 vm.runInContext(html.slice(jsAttrStart,jsAttrEnd),safeCtx);
-const goalStart=html.indexOf('function goalCard(d){'), goalEnd=html.indexOf('\n/* Адрес кошелька',goalStart);
+// goalCard now renders machine strings through addressDisclosure(); load that real helper chain.
+safeCtx.dealWallet = () => null;   // goalCard читает кошелёк политики; здесь сделка без кошелька
+for (const name of ['txShort', 'addressDisclosure', 'policyRoleNames']) {
+  const start = html.indexOf(`function ${name}(`), end = html.indexOf('\n}\n', start) + 2;
+  assert.ok(start >= 0 && end > start, name);
+  vm.runInContext(html.slice(start, end), safeCtx);
+}
+const goalStart=html.indexOf('function goalCard(d){'), goalEnd=html.indexOf('\n}\n',goalStart)+2;
 assert.ok(goalStart>=0&&goalEnd>goalStart);
 safeCtx.stepGoal=()=>({t:'Goal',rows:[['Куда платит клиент',hostileBank]]});
 safeCtx.FILLS={};

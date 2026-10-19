@@ -31,7 +31,7 @@ global.alert = console.log;
 global.prompt = () => null;
 global.document = {
   addEventListener: () => {},
-  getElementById: () => ({ innerHTML: '', style: {}, scrollIntoView: () => {}, focus: () => {}, classList: { add: ()=>{}, remove: ()=>{} }, textContent: '' })
+  getElementById: () => ({ innerHTML: '', style: {}, scrollIntoView: () => {}, focus: () => {}, classList: { add: ()=>{}, remove: ()=>{}, toggle: ()=>{} }, textContent: '' })
 };
 global.window = { addEventListener: () => {}, setTimeout: (f) => f(), history: { replaceState: ()=>{} } };
 `;

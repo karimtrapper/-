@@ -9,7 +9,7 @@ const ctx={S:{role:'operator',view:'task'},STEPS:{s27:{title:'Закрытие',
  dealTaskPath:()=>({steps:[],active:'s27',index:0}),dealTaskPathCard:()=>'',htmlText:String,
  stepCard:()=>'<button onclick="crmEvidence(1484,\'receipt\')">Оплата инвойса</button><button>Сохранить в CRM</button>',
  crmEvidencePanel:()=>'<button onclick="crmEvidence(1484,\'receipt\')">Оплата инвойса</button>',
- prepayCloseReason:()=>'',moneyKop:(n,c)=>`${n} ${c}`,
+ prepayCloseReason:()=>'',moneyKop:(n,c)=>`${n} ${c}`,dealWallet:()=>null,
 };
 vm.createContext(ctx);vm.runInContext(source('viewDeal'),ctx);
 const d={id:1484,code:'СД-1484',step:'s27',type:'Оплата недвижимости',kind:'Фрихолд',pay:{invoicePaid:true},log:[],source:'none'};

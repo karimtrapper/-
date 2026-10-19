@@ -1,0 +1,42 @@
+[
+ {
+  "path": "shots/run.json",
+  "sha256": "e5b8c47d6518a8b02612ecba2ace7644472ef6e78590f55fd20854bd729602ed",
+  "bytes": 73409
+ },
+ {
+  "path": "shots-refs-sync/refs-sync.json",
+  "sha256": "23cfc1b84455d59804cc80fa1ec9fdfc9e367b2ba2b75e6d07ddb377ca39b887",
+  "bytes": 1818
+ },
+ {
+  "path": "artifacts/metrics-review.json",
+  "sha256": "37aeafcfc7bf003816b9fd816c34c9ec3255b3d60caa39549bff8ade758d8a55",
+  "bytes": 9481
+ },
+ {
+  "path": "artifacts/visual-review.json",
+  "sha256": "757b2faa8ac053625b785ebafe7c8d7494bb80da8cee01a93c917bc0c0bb2fc6",
+  "bytes": 4401
+ },
+ {
+  "path": "artifacts/fence-refs-sync.json",
+  "sha256": "769f737fb3111f4ce74d9a89f6be54f05a47ecd2f07391ed07876001e4a59867",
+  "bytes": 126
+ },
+ {
+  "path": "artifacts/fence-ui8.json",
+  "sha256": "bd563bb687bb25bd56c175b6e981911c8de997bf89a02ce5c8ed2bcfbd11db2e",
+  "bytes": 126
+ },
+ {
+  "path": "artifacts/refs-sync.redacted.log",
+  "sha256": "b9743d83a82104a9c17b36ed04ae15552067e1f3c906c7dfd6054d965d8827df",
+  "bytes": 3467
+ },
+ {
+  "path": "artifacts/ui8.redacted.log",
+  "sha256": "bd716b97d643e06a31dff585eb74bb7e02cd65826fd67d412bc77670bdd64cb3",
+  "bytes": 421473
+ }
+]

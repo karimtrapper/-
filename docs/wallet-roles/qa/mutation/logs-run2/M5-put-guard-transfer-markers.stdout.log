@@ -1,0 +1,80 @@
+FENCED_RUN python=3.11.17 port_pool=41969-42032
+......................F................................................. [ 31%]
+F....................................................................... [ 63%]
+........................................................................ [ 95%]
+...........                                                              [100%]
+=================================== FAILURES ===================================
+_______________ test_state_put_cannot_forge_remove_or_edit_claim _______________
+tests/test_wallet_roles_claim_qa.py:245: in test_state_put_cannot_forge_remove_or_edit_claim
+    put_state(attacker, lambda d, s: d.update(transferClaim=forged), witness='фиксирует только сервер')
+tests/test_wallet_roles_claim_qa.py:236: in put_state
+    return checked_put(client, snap['version'], data, witness=witness)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/qa_wallet_roles_helpers.py:123: in checked_put
+    assert r.status_code == 409 and witness in text, (r.status_code, text[:300])
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   AssertionError: (409, '{"data": {"convs": [], "deals": [{"client": "Синтетика", "code": "СД-9001", "demoTransfers": false, "id": 9001, "kind": "Лизхолд", "log": [], "payinHashes": [], "step": "s23", "transfer": {"addr": "TQgQCBXkewuW4RoieDKFP9Ko2SopBh8jso", "amount": 5000, "net": "TRC-20", "sends": []}, "type": "Оплата не')
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+___________ test_owner_alone_flag_cannot_be_forged_through_state_put ___________
+tests/test_wallet_roles_confirm_qa.py:289: in test_owner_alone_flag_cannot_be_forged_through_state_put
+    checked_put(attacker, snap['version'], forged, witness='фиксирует только сервер')
+tests/qa_wallet_roles_helpers.py:123: in checked_put
+    assert r.status_code == 409 and witness in text, (r.status_code, text[:300])
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   AssertionError: (409, '{"data": {"convs": [], "deals": [{"assigneeAdminId": 1, "client": "Синтетика", "code": "СД-9001", "demoTransfers": false, "id": 9001, "kind": "Лизхолд", "log": [{"at": 1792442409418, "by": 1, "role": "operator", "text": "QA operator 237e взял отправку 5000 USDT"}], "payinHashes": [], "postConv": "co')
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+=============================== warnings summary ===============================
+../../../../../../../tmp/s27-venv311/lib/python3.11/site-packages/flask_limiter/extension.py:336
+  /private/tmp/s27-venv311/lib/python3.11/site-packages/flask_limiter/extension.py:336: UserWarning: Using the in-memory storage for tracking rate limits as no storage was explicitly specified. This is not recommended for production use. See: https://flask-limiter.readthedocs.io#configuring-a-storage-backend for documentation about configuring the storage backend.
+    warnings.warn(
+
+app.py:421
+  /private/var/folders/5r/g3kr7xg94cj3wwkh0nxdc4fc0000gn/T/calccrm-mut-y7lox3us/repo/app.py:421: MovedIn20Warning: The ``declarative_base()`` function is now available as sqlalchemy.orm.declarative_base(). (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+    Base = declarative_base()
+
+app.py:2537
+  /private/var/folders/5r/g3kr7xg94cj3wwkh0nxdc4fc0000gn/T/calccrm-mut-y7lox3us/repo/app.py:2537: SAWarning: Cannot correctly sort tables; there are unresolvable cycles between tables "clients, referrers", which is usually caused by mutually dependent foreign key constraints.  Foreign key constraints involving these tables will not be considered; this warning may raise an error in a future release.
+    tables=[table for table in Base.metadata.sorted_tables
+
+tests/test_wallet_roles_claim_qa.py: 42 warnings
+tests/test_wallet_roles_confirm_qa.py: 44 warnings
+tests/test_wallet_roles_payin_qa.py: 20 warnings
+  /private/var/folders/5r/g3kr7xg94cj3wwkh0nxdc4fc0000gn/T/calccrm-mut-y7lox3us/repo/app.py:2661: SAWarning: Cannot correctly sort tables; there are unresolvable cycles between tables "clients, referrers", which is usually caused by mutually dependent foreign key constraints.  Foreign key constraints involving these tables will not be considered; this warning may raise an error in a future release.
+    tables=[table for table in Base.metadata.sorted_tables
+
+tests/test_wallet_roles_claim_qa.py: 42 warnings
+tests/test_wallet_roles_confirm_qa.py: 44 warnings
+tests/test_wallet_roles_crm_qa.py: 120 warnings
+tests/test_wallet_roles_payin_qa.py: 20 warnings
+  /private/var/folders/5r/g3kr7xg94cj3wwkh0nxdc4fc0000gn/T/calccrm-mut-y7lox3us/repo/tests/qa_wallet_roles_helpers.py:143: SAWarning: Cannot correctly sort tables; there are unresolvable cycles between tables "clients, referrers", which is usually caused by mutually dependent foreign key constraints.  Foreign key constraints involving these tables will not be considered; this warning may raise an error in a future release.
+    for table in m.Base.metadata.sorted_tables:
+
+tests/test_wallet_roles_claim_qa.py: 81 warnings
+tests/test_wallet_roles_confirm_qa.py: 124 warnings
+tests/test_wallet_roles_payin_qa.py: 49 warnings
+  /private/var/folders/5r/g3kr7xg94cj3wwkh0nxdc4fc0000gn/T/calccrm-mut-y7lox3us/repo/app.py:257: LegacyAPIWarning: The Query.get() method is considered legacy as of the 1.x series of SQLAlchemy and becomes a legacy construct in 2.0. The method is now available as Session.get() (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+    user = db.query(AdminUser).get(uid)
+
+tests/test_wallet_roles_claim_qa.py: 42 warnings
+tests/test_wallet_roles_confirm_qa.py: 44 warnings
+tests/test_wallet_roles_crm_qa.py: 120 warnings
+tests/test_wallet_roles_payin_qa.py: 20 warnings
+  /private/var/folders/5r/g3kr7xg94cj3wwkh0nxdc4fc0000gn/T/calccrm-mut-y7lox3us/repo/tests/qa_wallet_roles_helpers.py:174: SAWarning: Cannot correctly sort tables; there are unresolvable cycles between tables "clients, referrers", which is usually caused by mutually dependent foreign key constraints.  Foreign key constraints involving these tables will not be considered; this warning may raise an error in a future release.
+    for table in reversed(m.Base.metadata.sorted_tables):
+
+tests/test_wallet_roles_crm_qa.py: 100 warnings
+  /private/var/folders/5r/g3kr7xg94cj3wwkh0nxdc4fc0000gn/T/calccrm-mut-y7lox3us/repo/app.py:17545: LegacyAPIWarning: The Query.get() method is considered legacy as of the 1.x series of SQLAlchemy and becomes a legacy construct in 2.0. The method is now available as Session.get() (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+    client_obj = session.query(Client).get(client_id)
+
+tests/test_wallet_roles_crm_qa.py: 100 warnings
+  /private/var/folders/5r/g3kr7xg94cj3wwkh0nxdc4fc0000gn/T/calccrm-mut-y7lox3us/repo/app.py:16775: LegacyAPIWarning: The Query.get() method is considered legacy as of the 1.x series of SQLAlchemy and becomes a legacy construct in 2.0. The method is now available as Session.get() (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+    w = session.query(Wallet).get(wallet_id)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/test_wallet_roles_claim_qa.py::test_state_put_cannot_forge_remove_or_edit_claim
+FAILED tests/test_wallet_roles_confirm_qa.py::test_owner_alone_flag_cannot_be_forged_through_state_put
+2 failed, 225 passed, 1015 warnings in 5.21s
+NETWORK_FENCE attempts=0 unexpected=0 report=/tmp/calccrm-t19-fence-reports/20261019T234011-29331.json

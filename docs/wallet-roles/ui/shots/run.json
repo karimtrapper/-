@@ -1,0 +1,2903 @@
+{
+ "shots": [
+  {
+   "name": "deal1601_s18w",
+   "role": "operator",
+   "width": "375",
+   "file": "deal1601_s18w__operator__375.png",
+   "hScroll": false,
+   "innerWidth": 375
+  },
+  {
+   "name": "deal1601_s18w",
+   "role": "manager",
+   "width": "375",
+   "file": "deal1601_s18w__manager__375.png",
+   "hScroll": false,
+   "innerWidth": 375
+  },
+  {
+   "name": "deal1602_s18w",
+   "role": "operator",
+   "width": "375",
+   "file": "deal1602_s18w__operator__375.png",
+   "hScroll": false,
+   "innerWidth": 375
+  },
+  {
+   "name": "deal1602_s18w",
+   "role": "manager",
+   "width": "375",
+   "file": "deal1602_s18w__manager__375.png",
+   "hScroll": false,
+   "innerWidth": 375
+  },
+  {
+   "name": "deal1603_s22",
+   "role": "operator",
+   "width": "375",
+   "file": "deal1603_s22__operator__375.png",
+   "hScroll": false,
+   "innerWidth": 375
+  },
+  {
+   "name": "deal1603_s22",
+   "role": "manager",
+   "width": "375",
+   "file": "deal1603_s22__manager__375.png",
+   "hScroll": false,
+   "innerWidth": 375
+  },
+  {
+   "name": "deal1604_s22",
+   "role": "operator",
+   "width": "375",
+   "file": "deal1604_s22__operator__375.png",
+   "hScroll": false,
+   "innerWidth": 375
+  },
+  {
+   "name": "deal1604_s22",
+   "role": "manager",
+   "width": "375",
+   "file": "deal1604_s22__manager__375.png",
+   "hScroll": false,
+   "innerWidth": 375
+  },
+  {
+   "name": "wrong_wallet_warning_before_ack",
+   "role": "operator",
+   "width": "375",
+   "file": "wrong_wallet_warning_before_ack__operator__375.png",
+   "hScroll": false,
+   "innerWidth": 375
+  },
+  {
+   "name": "wrong_wallet_warning_after_ack",
+   "role": "operator",
+   "width": "375",
+   "file": "wrong_wallet_warning_after_ack__operator__375.png",
+   "hScroll": false,
+   "innerWidth": 375
+  },
+  {
+   "name": "deal1601_s18w",
+   "role": "operator",
+   "width": "1280",
+   "file": "deal1601_s18w__operator__1280.png",
+   "hScroll": false,
+   "innerWidth": 1280
+  },
+  {
+   "name": "deal1601_s18w",
+   "role": "manager",
+   "width": "1280",
+   "file": "deal1601_s18w__manager__1280.png",
+   "hScroll": false,
+   "innerWidth": 1280
+  },
+  {
+   "name": "deal1602_s18w",
+   "role": "operator",
+   "width": "1280",
+   "file": "deal1602_s18w__operator__1280.png",
+   "hScroll": false,
+   "innerWidth": 1280
+  },
+  {
+   "name": "deal1602_s18w",
+   "role": "manager",
+   "width": "1280",
+   "file": "deal1602_s18w__manager__1280.png",
+   "hScroll": false,
+   "innerWidth": 1280
+  },
+  {
+   "name": "deal1603_s22",
+   "role": "operator",
+   "width": "1280",
+   "file": "deal1603_s22__operator__1280.png",
+   "hScroll": false,
+   "innerWidth": 1280
+  },
+  {
+   "name": "deal1603_s22",
+   "role": "manager",
+   "width": "1280",
+   "file": "deal1603_s22__manager__1280.png",
+   "hScroll": false,
+   "innerWidth": 1280
+  },
+  {
+   "name": "deal1604_s22",
+   "role": "operator",
+   "width": "1280",
+   "file": "deal1604_s22__operator__1280.png",
+   "hScroll": false,
+   "innerWidth": 1280
+  },
+  {
+   "name": "deal1604_s22",
+   "role": "manager",
+   "width": "1280",
+   "file": "deal1604_s22__manager__1280.png",
+   "hScroll": false,
+   "innerWidth": 1280
+  },
+  {
+   "name": "wrong_wallet_warning_before_ack",
+   "role": "operator",
+   "width": "1280",
+   "file": "wrong_wallet_warning_before_ack__operator__1280.png",
+   "hScroll": false,
+   "innerWidth": 1280
+  },
+  {
+   "name": "wrong_wallet_warning_after_ack",
+   "role": "operator",
+   "width": "1280",
+   "file": "wrong_wallet_warning_after_ack__operator__1280.png",
+   "hScroll": false,
+   "innerWidth": 1280
+  },
+  {
+   "name": "deal1611_s23",
+   "role": "operator",
+   "width": "375",
+   "file": "deal1611_s23__operator__375.png",
+   "hScroll": false,
+   "innerWidth": 375
+  },
+  {
+   "name": "deal1611_s23",
+   "role": "findir",
+   "width": "375",
+   "file": "deal1611_s23__findir__375.png",
+   "hScroll": false,
+   "innerWidth": 375
+  },
+  {
+   "name": "deal1611_s23",
+   "role": "teodor",
+   "width": "375",
+   "file": "deal1611_s23__teodor__375.png",
+   "hScroll": false,
+   "innerWidth": 375
+  },
+  {
+   "name": "deal1611_s23",
+   "role": "manager",
+   "width": "375",
+   "file": "deal1611_s23__manager__375.png",
+   "hScroll": false,
+   "innerWidth": 375
+  },
+  {
+   "name": "deal1612_s23",
+   "role": "operator",
+   "width": "375",
+   "file": "deal1612_s23__operator__375.png",
+   "hScroll": false,
+   "innerWidth": 375
+  },
+  {
+   "name": "deal1612_s23",
+   "role": "findir",
+   "width": "375",
+   "file": "deal1612_s23__findir__375.png",
+   "hScroll": false,
+   "innerWidth": 375
+  },
+  {
+   "name": "deal1612_s23",
+   "role": "teodor",
+   "width": "375",
+   "file": "deal1612_s23__teodor__375.png",
+   "hScroll": false,
+   "innerWidth": 375
+  },
+  {
+   "name": "deal1612_s23",
+   "role": "manager",
+   "width": "375",
+   "file": "deal1612_s23__manager__375.png",
+   "hScroll": false,
+   "innerWidth": 375
+  },
+  {
+   "name": "deal1605_s23",
+   "role": "operator",
+   "width": "375",
+   "file": "deal1605_s23__operator__375.png",
+   "hScroll": false,
+   "innerWidth": 375
+  },
+  {
+   "name": "deal1605_s23",
+   "role": "findir",
+   "width": "375",
+   "file": "deal1605_s23__findir__375.png",
+   "hScroll": false,
+   "innerWidth": 375
+  },
+  {
+   "name": "deal1605_s23",
+   "role": "teodor",
+   "width": "375",
+   "file": "deal1605_s23__teodor__375.png",
+   "hScroll": false,
+   "innerWidth": 375
+  },
+  {
+   "name": "deal1605_s23",
+   "role": "manager",
+   "width": "375",
+   "file": "deal1605_s23__manager__375.png",
+   "hScroll": false,
+   "innerWidth": 375
+  },
+  {
+   "name": "deal1610_s23",
+   "role": "operator",
+   "width": "375",
+   "file": "deal1610_s23__operator__375.png",
+   "hScroll": false,
+   "innerWidth": 375
+  },
+  {
+   "name": "deal1610_s23",
+   "role": "findir",
+   "width": "375",
+   "file": "deal1610_s23__findir__375.png",
+   "hScroll": false,
+   "innerWidth": 375
+  },
+  {
+   "name": "deal1610_s23",
+   "role": "teodor",
+   "width": "375",
+   "file": "deal1610_s23__teodor__375.png",
+   "hScroll": false,
+   "innerWidth": 375
+  },
+  {
+   "name": "deal1610_s23",
+   "role": "manager",
+   "width": "375",
+   "file": "deal1610_s23__manager__375.png",
+   "hScroll": false,
+   "innerWidth": 375
+  },
+  {
+   "name": "deal1610_claim_over_limit",
+   "role": "operator",
+   "width": "375",
+   "file": "deal1610_claim_over_limit__operator__375.png",
+   "hScroll": false,
+   "innerWidth": 375
+  },
+  {
+   "name": "signer_address_expanded",
+   "role": "operator",
+   "width": "375",
+   "file": "signer_address_expanded__operator__375.png",
+   "hScroll": false,
+   "innerWidth": 375
+  },
+  {
+   "name": "deal1611_s23",
+   "role": "operator",
+   "width": "1280",
+   "file": "deal1611_s23__operator__1280.png",
+   "hScroll": false,
+   "innerWidth": 1280
+  },
+  {
+   "name": "deal1611_s23",
+   "role": "findir",
+   "width": "1280",
+   "file": "deal1611_s23__findir__1280.png",
+   "hScroll": false,
+   "innerWidth": 1280
+  },
+  {
+   "name": "deal1611_s23",
+   "role": "teodor",
+   "width": "1280",
+   "file": "deal1611_s23__teodor__1280.png",
+   "hScroll": false,
+   "innerWidth": 1280
+  },
+  {
+   "name": "deal1611_s23",
+   "role": "manager",
+   "width": "1280",
+   "file": "deal1611_s23__manager__1280.png",
+   "hScroll": false,
+   "innerWidth": 1280
+  },
+  {
+   "name": "deal1612_s23",
+   "role": "operator",
+   "width": "1280",
+   "file": "deal1612_s23__operator__1280.png",
+   "hScroll": false,
+   "innerWidth": 1280
+  },
+  {
+   "name": "deal1612_s23",
+   "role": "findir",
+   "width": "1280",
+   "file": "deal1612_s23__findir__1280.png",
+   "hScroll": false,
+   "innerWidth": 1280
+  },
+  {
+   "name": "deal1612_s23",
+   "role": "teodor",
+   "width": "1280",
+   "file": "deal1612_s23__teodor__1280.png",
+   "hScroll": false,
+   "innerWidth": 1280
+  },
+  {
+   "name": "deal1612_s23",
+   "role": "manager",
+   "width": "1280",
+   "file": "deal1612_s23__manager__1280.png",
+   "hScroll": false,
+   "innerWidth": 1280
+  },
+  {
+   "name": "deal1605_s23",
+   "role": "operator",
+   "width": "1280",
+   "file": "deal1605_s23__operator__1280.png",
+   "hScroll": false,
+   "innerWidth": 1280
+  },
+  {
+   "name": "deal1605_s23",
+   "role": "findir",
+   "width": "1280",
+   "file": "deal1605_s23__findir__1280.png",
+   "hScroll": false,
+   "innerWidth": 1280
+  },
+  {
+   "name": "deal1605_s23",
+   "role": "teodor",
+   "width": "1280",
+   "file": "deal1605_s23__teodor__1280.png",
+   "hScroll": false,
+   "innerWidth": 1280
+  },
+  {
+   "name": "deal1605_s23",
+   "role": "manager",
+   "width": "1280",
+   "file": "deal1605_s23__manager__1280.png",
+   "hScroll": false,
+   "innerWidth": 1280
+  },
+  {
+   "name": "deal1610_s23",
+   "role": "operator",
+   "width": "1280",
+   "file": "deal1610_s23__operator__1280.png",
+   "hScroll": false,
+   "innerWidth": 1280
+  },
+  {
+   "name": "deal1610_s23",
+   "role": "findir",
+   "width": "1280",
+   "file": "deal1610_s23__findir__1280.png",
+   "hScroll": false,
+   "innerWidth": 1280
+  },
+  {
+   "name": "deal1610_s23",
+   "role": "teodor",
+   "width": "1280",
+   "file": "deal1610_s23__teodor__1280.png",
+   "hScroll": false,
+   "innerWidth": 1280
+  },
+  {
+   "name": "deal1610_s23",
+   "role": "manager",
+   "width": "1280",
+   "file": "deal1610_s23__manager__1280.png",
+   "hScroll": false,
+   "innerWidth": 1280
+  },
+  {
+   "name": "deal1610_claim_over_limit",
+   "role": "operator",
+   "width": "1280",
+   "file": "deal1610_claim_over_limit__operator__1280.png",
+   "hScroll": false,
+   "innerWidth": 1280
+  },
+  {
+   "name": "signer_address_expanded",
+   "role": "operator",
+   "width": "1280",
+   "file": "signer_address_expanded__operator__1280.png",
+   "hScroll": false,
+   "innerWidth": 1280
+  },
+  {
+   "name": "claim_before",
+   "role": "operator",
+   "width": "375",
+   "file": "claim_before__operator__375.png",
+   "hScroll": false,
+   "innerWidth": 375
+  },
+  {
+   "name": "claim_loser_toast",
+   "role": "findir",
+   "width": "375",
+   "file": "claim_loser_toast__findir__375.png",
+   "hScroll": false,
+   "innerWidth": 375
+  },
+  {
+   "name": "claim_winner",
+   "role": "operator",
+   "width": "375",
+   "file": "claim_winner__operator__375.png",
+   "hScroll": false,
+   "innerWidth": 375
+  },
+  {
+   "name": "claim_loser_after_poll",
+   "role": "findir",
+   "width": "375",
+   "file": "claim_loser_after_poll__findir__375.png",
+   "hScroll": false,
+   "innerWidth": 375
+  },
+  {
+   "name": "claim_loser_fresh_owner",
+   "role": "teodor",
+   "width": "375",
+   "file": "claim_loser_fresh_owner__teodor__375.png",
+   "hScroll": false,
+   "innerWidth": 375
+  },
+  {
+   "name": "claim_before",
+   "role": "operator",
+   "width": "1280",
+   "file": "claim_before__operator__1280.png",
+   "hScroll": false,
+   "innerWidth": 1280
+  },
+  {
+   "name": "claim_loser_toast",
+   "role": "findir",
+   "width": "1280",
+   "file": "claim_loser_toast__findir__1280.png",
+   "hScroll": false,
+   "innerWidth": 1280
+  },
+  {
+   "name": "claim_winner",
+   "role": "operator",
+   "width": "1280",
+   "file": "claim_winner__operator__1280.png",
+   "hScroll": false,
+   "innerWidth": 1280
+  },
+  {
+   "name": "claim_loser_after_poll",
+   "role": "findir",
+   "width": "1280",
+   "file": "claim_loser_after_poll__findir__1280.png",
+   "hScroll": false,
+   "innerWidth": 1280
+  },
+  {
+   "name": "claim_loser_fresh_owner",
+   "role": "teodor",
+   "width": "1280",
+   "file": "claim_loser_fresh_owner__teodor__1280.png",
+   "hScroll": false,
+   "innerWidth": 1280
+  },
+  {
+   "name": "s24_claimer_cannot_confirm",
+   "role": "operator",
+   "width": "375",
+   "file": "s24_claimer_cannot_confirm__operator__375.png",
+   "hScroll": false,
+   "innerWidth": 375
+  },
+  {
+   "name": "s24_confirmer",
+   "role": "findir",
+   "width": "375",
+   "file": "s24_confirmer__findir__375.png",
+   "hScroll": false,
+   "innerWidth": 375
+  },
+  {
+   "name": "s24_confirmer",
+   "role": "teodor",
+   "width": "375",
+   "file": "s24_confirmer__teodor__375.png",
+   "hScroll": false,
+   "innerWidth": 375
+  },
+  {
+   "name": "s24_after_confirm",
+   "role": "findir",
+   "width": "375",
+   "file": "s24_after_confirm__findir__375.png",
+   "hScroll": false,
+   "innerWidth": 375
+  },
+  {
+   "name": "owner_alone_claimed",
+   "role": "teodor",
+   "width": "375",
+   "file": "owner_alone_claimed__teodor__375.png",
+   "hScroll": false,
+   "innerWidth": 375
+  },
+  {
+   "name": "s24_claimer_cannot_confirm",
+   "role": "operator",
+   "width": "1280",
+   "file": "s24_claimer_cannot_confirm__operator__1280.png",
+   "hScroll": false,
+   "innerWidth": 1280
+  },
+  {
+   "name": "s24_confirmer",
+   "role": "findir",
+   "width": "1280",
+   "file": "s24_confirmer__findir__1280.png",
+   "hScroll": false,
+   "innerWidth": 1280
+  },
+  {
+   "name": "s24_confirmer",
+   "role": "teodor",
+   "width": "1280",
+   "file": "s24_confirmer__teodor__1280.png",
+   "hScroll": false,
+   "innerWidth": 1280
+  },
+  {
+   "name": "s24_after_confirm",
+   "role": "findir",
+   "width": "1280",
+   "file": "s24_after_confirm__findir__1280.png",
+   "hScroll": false,
+   "innerWidth": 1280
+  },
+  {
+   "name": "owner_alone_claimed",
+   "role": "teodor",
+   "width": "1280",
+   "file": "owner_alone_claimed__teodor__1280.png",
+   "hScroll": false,
+   "innerWidth": 1280
+  },
+  {
+   "name": "crm_page_deals",
+   "role": "operator",
+   "width": "375",
+   "file": "crm_page_deals__operator__375.png",
+   "hScroll": false,
+   "innerWidth": 375
+  },
+  {
+   "name": "crm_page_deals",
+   "role": "findir",
+   "width": "375",
+   "file": "crm_page_deals__findir__375.png",
+   "hScroll": false,
+   "innerWidth": 375
+  },
+  {
+   "name": "crm_page_deals",
+   "role": "teodor",
+   "width": "375",
+   "file": "crm_page_deals__teodor__375.png",
+   "hScroll": false,
+   "innerWidth": 375
+  },
+  {
+   "name": "crm_page_deals",
+   "role": "manager",
+   "width": "375",
+   "file": "crm_page_deals__manager__375.png",
+   "hScroll": false,
+   "innerWidth": 375
+  },
+  {
+   "name": "crm_page_deals",
+   "role": "admin",
+   "width": "375",
+   "file": "crm_page_deals__admin__375.png",
+   "hScroll": false,
+   "innerWidth": 375
+  },
+  {
+   "name": "crm_page_deals",
+   "role": "operator",
+   "width": "1280",
+   "file": "crm_page_deals__operator__1280.png",
+   "hScroll": false,
+   "innerWidth": 1280
+  },
+  {
+   "name": "crm_page_deals",
+   "role": "findir",
+   "width": "1280",
+   "file": "crm_page_deals__findir__1280.png",
+   "hScroll": false,
+   "innerWidth": 1280
+  },
+  {
+   "name": "crm_page_deals",
+   "role": "teodor",
+   "width": "1280",
+   "file": "crm_page_deals__teodor__1280.png",
+   "hScroll": false,
+   "innerWidth": 1280
+  },
+  {
+   "name": "crm_page_deals",
+   "role": "manager",
+   "width": "1280",
+   "file": "crm_page_deals__manager__1280.png",
+   "hScroll": false,
+   "innerWidth": 1280
+  },
+  {
+   "name": "crm_page_deals",
+   "role": "admin",
+   "width": "1280",
+   "file": "crm_page_deals__admin__1280.png",
+   "hScroll": false,
+   "innerWidth": 1280
+  },
+  {
+   "name": "crm_exchange_payout_big",
+   "role": "operator",
+   "width": "375",
+   "file": "crm_exchange_payout_big__operator__375.png",
+   "hScroll": false,
+   "innerWidth": 375
+  },
+  {
+   "name": "crm_exchange_payout_big",
+   "role": "findir",
+   "width": "375",
+   "file": "crm_exchange_payout_big__findir__375.png",
+   "hScroll": false,
+   "innerWidth": 375
+  },
+  {
+   "name": "crm_exchange_payout_big",
+   "role": "teodor",
+   "width": "375",
+   "file": "crm_exchange_payout_big__teodor__375.png",
+   "hScroll": false,
+   "innerWidth": 375
+  },
+  {
+   "name": "crm_exchange_payout_big",
+   "role": "manager",
+   "width": "375",
+   "file": "crm_exchange_payout_big__manager__375.png",
+   "hScroll": false,
+   "innerWidth": 375
+  },
+  {
+   "name": "crm_exchange_payout_big",
+   "role": "admin",
+   "width": "375",
+   "file": "crm_exchange_payout_big__admin__375.png",
+   "hScroll": false,
+   "innerWidth": 375
+  },
+  {
+   "name": "crm_exchange_payout_small",
+   "role": "operator",
+   "width": "375",
+   "file": "crm_exchange_payout_small__operator__375.png",
+   "hScroll": false,
+   "innerWidth": 375
+  },
+  {
+   "name": "crm_exchange_payout_big",
+   "role": "operator",
+   "width": "1280",
+   "file": "crm_exchange_payout_big__operator__1280.png",
+   "hScroll": false,
+   "innerWidth": 1280
+  },
+  {
+   "name": "crm_exchange_payout_big",
+   "role": "findir",
+   "width": "1280",
+   "file": "crm_exchange_payout_big__findir__1280.png",
+   "hScroll": false,
+   "innerWidth": 1280
+  },
+  {
+   "name": "crm_exchange_payout_big",
+   "role": "teodor",
+   "width": "1280",
+   "file": "crm_exchange_payout_big__teodor__1280.png",
+   "hScroll": false,
+   "innerWidth": 1280
+  },
+  {
+   "name": "crm_exchange_payout_big",
+   "role": "manager",
+   "width": "1280",
+   "file": "crm_exchange_payout_big__manager__1280.png",
+   "hScroll": false,
+   "innerWidth": 1280
+  },
+  {
+   "name": "crm_exchange_payout_big",
+   "role": "admin",
+   "width": "1280",
+   "file": "crm_exchange_payout_big__admin__1280.png",
+   "hScroll": false,
+   "innerWidth": 1280
+  },
+  {
+   "name": "crm_exchange_payout_small",
+   "role": "operator",
+   "width": "1280",
+   "file": "crm_exchange_payout_small__operator__1280.png",
+   "hScroll": false,
+   "innerWidth": 1280
+  },
+  {
+   "name": "crm_exchange_payout_big_after_approval",
+   "role": "teodor",
+   "width": "1280",
+   "file": "crm_exchange_payout_big_after_approval__teodor__1280.png",
+   "hScroll": false,
+   "innerWidth": 1280
+  }
+ ],
+ "actions": [
+  {
+   "note": "ack recipient 375",
+   "clicked": "подтверждаю расхождение",
+   "ok": true
+  },
+  {
+   "note": "ack recipient 1280",
+   "clicked": "подтверждаю расхождение",
+   "ok": true
+  },
+  {
+   "note": "claim over limit disabled 375",
+   "button": "^беру",
+   "disabled": true,
+   "ok": true
+  },
+  {
+   "note": "claim over limit disabled 1280",
+   "button": "^беру",
+   "disabled": true,
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "tasks s23 «С кошелька» 375: виден короткий адрес first8…last8 ({'shortCount': 1, 'fullShownBeforeClick': False})",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "tasks s23 «С кошелька» 375: по клику показан полный адрес (клик=True, полный=True)",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "tasks s23 «С кошелька» 375: «Копировать» кладёт полный адрес в буфер (буфер='TQgQCBXkewuW4RoieDKFP9Ko2SopBh8jso')",
+   "ok": true
+  },
+  {
+   "note": "claim operator 375",
+   "clicked": "^беру",
+   "ok": true
+  },
+  {
+   "note": "claim findir (stale click, optional) 375",
+   "clicked": "^беру",
+   "ok": true
+  },
+  {
+   "note": "findir second claim must lose 375",
+   "api": "/api/stand/transfer/claim",
+   "payload": {
+    "dealId": 1620
+   },
+   "response": {
+    "status": 409,
+    "body": {
+     "error": "Шаг уже взял Операционист (QA)",
+     "success": false,
+     "taken_by": "Операционист (QA)"
+    }
+   }
+  },
+  {
+   "note": "assert",
+   "message": "проигравший получает 409 с именем победителя «Операционист (QA)» (375), получен {'status': 409, 'body': {'error': 'Шаг уже взял Операционист (QA)', 'success': False, 'taken_by': 'Операционист (QA)'}}",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "на странице проигравшего стоит имя взявшего «Операционист (QA)» (375)",
+   "ok": true
+  },
+  {
+   "note": "race 375",
+   "winner_clicked": true,
+   "loser_clicked": true
+  },
+  {
+   "note": "assert",
+   "message": "tasks s23 «С кошелька» 1280: виден короткий адрес first8…last8 ({'shortCount': 1, 'fullShownBeforeClick': False})",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "tasks s23 «С кошелька» 1280: по клику показан полный адрес (клик=True, полный=True)",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "tasks s23 «С кошелька» 1280: «Копировать» кладёт полный адрес в буфер (буфер='TQgQCBXkewuW4RoieDKFP9Ko2SopBh8jso')",
+   "ok": true
+  },
+  {
+   "note": "claim operator 1280",
+   "clicked": "^беру",
+   "ok": true
+  },
+  {
+   "note": "claim findir (stale click, optional) 1280",
+   "clicked": "^беру",
+   "ok": true
+  },
+  {
+   "note": "findir second claim must lose 1280",
+   "api": "/api/stand/transfer/claim",
+   "payload": {
+    "dealId": 1630
+   },
+   "response": {
+    "status": 409,
+    "body": {
+     "error": "Шаг уже взял Операционист (QA)",
+     "success": false,
+     "taken_by": "Операционист (QA)"
+    }
+   }
+  },
+  {
+   "note": "assert",
+   "message": "проигравший получает 409 с именем победителя «Операционист (QA)» (1280), получен {'status': 409, 'body': {'error': 'Шаг уже взял Операционист (QA)', 'success': False, 'taken_by': 'Операционист (QA)'}}",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "на странице проигравшего стоит имя взявшего «Операционист (QA)» (1280)",
+   "ok": true
+  },
+  {
+   "note": "race 1280",
+   "winner_clicked": true,
+   "loser_clicked": true
+  },
+  {
+   "note": "s24 claim 375",
+   "clicked": "^беру",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "1621: клейм оператора записан сервером (375)",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "1621: сделка на шаге s24 (375)",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "1621: на экране заявителя именно s24, а не s23 (375)",
+   "ok": true
+  },
+  {
+   "note": "forged self-confirm 375",
+   "api": "/api/stand/transfer/confirm",
+   "payload": {
+    "dealId": 1621
+   },
+   "response": {
+    "status": 403,
+    "body": {
+     "error": "Нельзя подтвердить собственную отправку",
+     "success": false
+    }
+   }
+  },
+  {
+   "note": "assert",
+   "message": "заявитель не подтверждает собственную отправку: 403 (375), получен 403",
+   "ok": true
+  },
+  {
+   "note": "manager confirm (role not a confirmer or claimer) 375",
+   "api": "/api/stand/transfer/confirm",
+   "payload": {
+    "dealId": 1621
+   },
+   "response": {
+    "status": 403,
+    "body": {
+     "error": "Эта роль не подтверждает перевод",
+     "success": false
+    }
+   }
+  },
+  {
+   "note": "assert",
+   "message": "manager не подтверждает: 400/403 (375), получен 403",
+   "ok": true
+  },
+  {
+   "note": "operator confirm (role not a confirmer or claimer) 375",
+   "api": "/api/stand/transfer/confirm",
+   "payload": {
+    "dealId": 1621
+   },
+   "response": {
+    "status": 403,
+    "body": {
+     "error": "Нельзя подтвердить собственную отправку",
+     "success": false
+    }
+   }
+  },
+  {
+   "note": "assert",
+   "message": "operator не подтверждает: 400/403 (375), получен 403",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "findir видит шаг s24 (375)",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "teodor видит шаг s24 (375)",
+   "ok": true
+  },
+  {
+   "note": "s24 findir confirms 375",
+   "clicked": "подписал",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "подтверждение финансиста записано сервером (375)",
+   "ok": true
+  },
+  {
+   "note": "owner alone claim 375",
+   "clicked": "^беру",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "1622: владелец сам — подтверждение ownerAlone записано сервером (375)",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "1622: заявка владельца ещё на s23 до сети (375)",
+   "ok": true
+  },
+  {
+   "note": "s24 claim 1280",
+   "clicked": "^беру",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "1631: клейм оператора записан сервером (1280)",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "1631: сделка на шаге s24 (1280)",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "1631: на экране заявителя именно s24, а не s23 (1280)",
+   "ok": true
+  },
+  {
+   "note": "forged self-confirm 1280",
+   "api": "/api/stand/transfer/confirm",
+   "payload": {
+    "dealId": 1631
+   },
+   "response": {
+    "status": 403,
+    "body": {
+     "error": "Нельзя подтвердить собственную отправку",
+     "success": false
+    }
+   }
+  },
+  {
+   "note": "assert",
+   "message": "заявитель не подтверждает собственную отправку: 403 (1280), получен 403",
+   "ok": true
+  },
+  {
+   "note": "manager confirm (role not a confirmer or claimer) 1280",
+   "api": "/api/stand/transfer/confirm",
+   "payload": {
+    "dealId": 1631
+   },
+   "response": {
+    "status": 403,
+    "body": {
+     "error": "Эта роль не подтверждает перевод",
+     "success": false
+    }
+   }
+  },
+  {
+   "note": "assert",
+   "message": "manager не подтверждает: 400/403 (1280), получен 403",
+   "ok": true
+  },
+  {
+   "note": "operator confirm (role not a confirmer or claimer) 1280",
+   "api": "/api/stand/transfer/confirm",
+   "payload": {
+    "dealId": 1631
+   },
+   "response": {
+    "status": 403,
+    "body": {
+     "error": "Нельзя подтвердить собственную отправку",
+     "success": false
+    }
+   }
+  },
+  {
+   "note": "assert",
+   "message": "operator не подтверждает: 400/403 (1280), получен 403",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "findir видит шаг s24 (1280)",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "teodor видит шаг s24 (1280)",
+   "ok": true
+  },
+  {
+   "note": "s24 findir confirms 1280",
+   "clicked": "подписал",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "подтверждение финансиста записано сервером (1280)",
+   "ok": true
+  },
+  {
+   "note": "owner alone claim 1280",
+   "clicked": "^беру",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "1632: владелец сам — подтверждение ownerAlone записано сервером (1280)",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "1632: заявка владельца ещё на s23 до сети (1280)",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "реферер QAREF1 из справочника сохранён в доске после первой синхронизации (refs=['QAREF1'])",
+   "ok": true
+  },
+  {
+   "note": "refs unchanged reload",
+   "versionBefore": 16,
+   "versionAfter": 16
+  },
+  {
+   "note": "assert",
+   "message": "повторная загрузка без изменений справочника не растит версию (16 -> 16)",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "реальное изменение справочника сохраняется (refs=['QAREF1'], версия 16 -> 16)",
+   "ok": false
+  },
+  {
+   "note": "refs changed then unchanged reload",
+   "versions": [
+    16,
+    16,
+    16
+   ]
+  },
+  {
+   "note": "assert",
+   "message": "после сохранения изменения повторная загрузка версию не растит (16 -> 16)",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "CRM выплата, кошелёк списания 375: виден короткий адрес first8…last8 ({'shortCount': 1, 'fullShownBeforeClick': False})",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "CRM выплата, кошелёк списания 375: полный адрес не выведен без клика ({'shortCount': 1, 'fullShownBeforeClick': False})",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "CRM выплата, кошелёк списания 375: по клику показан полный адрес (клик=True, полный=True)",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "CRM выплата, кошелёк списания 375: «Копировать» кладёт полный адрес в буфер (буфер='TA6S3RBEY57jq8fXEVVsU6H9JZ18inenG4')",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "CRM приход, кошелёк получения 375: виден короткий адрес first8…last8 ({'shortCount': 1, 'fullShownBeforeClick': False})",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "CRM приход, кошелёк получения 375: полный адрес не выведен без клика ({'shortCount': 1, 'fullShownBeforeClick': False})",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "CRM приход, кошелёк получения 375: по клику показан полный адрес (клик=True, полный=True)",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "CRM приход, кошелёк получения 375: «Копировать» кладёт полный адрес в буфер (буфер='TA6S3RBEY57jq8fXEVVsU6H9JZ18inenG4')",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "CRM выплата, кошелёк списания 1280: виден короткий адрес first8…last8 ({'shortCount': 1, 'fullShownBeforeClick': False})",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "CRM выплата, кошелёк списания 1280: полный адрес не выведен без клика ({'shortCount': 1, 'fullShownBeforeClick': False})",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "CRM выплата, кошелёк списания 1280: по клику показан полный адрес (клик=True, полный=True)",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "CRM выплата, кошелёк списания 1280: «Копировать» кладёт полный адрес в буфер (буфер='TA6S3RBEY57jq8fXEVVsU6H9JZ18inenG4')",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "CRM приход, кошелёк получения 1280: виден короткий адрес first8…last8 ({'shortCount': 1, 'fullShownBeforeClick': False})",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "CRM приход, кошелёк получения 1280: полный адрес не выведен без клика ({'shortCount': 1, 'fullShownBeforeClick': False})",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "CRM приход, кошелёк получения 1280: по клику показан полный адрес (клик=True, полный=True)",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "CRM приход, кошелёк получения 1280: «Копировать» кладёт полный адрес в буфер (буфер='TA6S3RBEY57jq8fXEVVsU6H9JZ18inenG4')",
+   "ok": true
+  },
+  {
+   "note": "operator: 5000 без флага проходит",
+   "api": "PUT /api/deals/1",
+   "payload": {
+    "payout_wallet_id": 6,
+    "payout_source": "binance",
+    "payout_amount_usdt": 5000
+   },
+   "response": {
+    "status": 200,
+    "error": null,
+    "success": true
+   }
+  },
+  {
+   "note": "operator: 15000 без флага -> 400",
+   "api": "PUT /api/deals/2",
+   "payload": {
+    "payout_wallet_id": 6,
+    "payout_source": "binance",
+    "payout_amount_usdt": 15000
+   },
+   "response": {
+    "status": 400,
+    "error": "Для отправки свыше 10 000 USDT требуется подтверждение владельца",
+    "success": false
+   }
+  },
+  {
+   "note": "operator: флаг одобрения ставить не может",
+   "api": "PUT /api/deals/2",
+   "payload": {
+    "payout_wallet_id": 6,
+    "payout_source": "binance",
+    "payout_amount_usdt": 15000,
+    "payout_owner_approved": true
+   },
+   "response": {
+    "status": 403,
+    "error": "Подтверждение владельца ставит финансист или владелец",
+    "success": false
+   }
+  },
+  {
+   "note": "manager: флаг одобрения ставить не может",
+   "api": "PUT /api/deals/2",
+   "payload": {
+    "payout_wallet_id": 6,
+    "payout_source": "binance",
+    "payout_amount_usdt": 15000,
+    "payout_owner_approved": true
+   },
+   "response": {
+    "status": 403,
+    "error": "Подтверждение владельца ставит финансист или владелец",
+    "success": false
+   }
+  },
+  {
+   "note": "findir: 15000 с флагом проходит",
+   "api": "PUT /api/deals/2",
+   "payload": {
+    "payout_wallet_id": 6,
+    "payout_source": "binance",
+    "payout_amount_usdt": 15000,
+    "payout_owner_approved": true
+   },
+   "response": {
+    "status": 200,
+    "error": null,
+    "success": true
+   }
+  },
+  {
+   "note": "operator: правка суммы без нового флага сбрасывает/блокирует (не обходит)",
+   "api": "PUT /api/deals/2",
+   "payload": {
+    "payout_wallet_id": 6,
+    "payout_source": "binance",
+    "payout_amount_usdt": 15000
+   },
+   "response": {
+    "status": 200,
+    "error": null,
+    "success": true
+   }
+  }
+ ],
+ "external_requests_blocked": [],
+ "optional_static_blocked": [],
+ "console": [
+  [
+   "('findir', '375')",
+   "console.error",
+   "Failed to load resource: the server responded with a status of 409 (CONFLICT)"
+  ],
+  [
+   "('findir', '375')",
+   "console.error",
+   "Failed to load resource: the server responded with a status of 409 (CONFLICT)"
+  ],
+  [
+   "('findir', '1280')",
+   "console.error",
+   "Failed to load resource: the server responded with a status of 409 (CONFLICT)"
+  ],
+  [
+   "('findir', '1280')",
+   "console.error",
+   "Failed to load resource: the server responded with a status of 409 (CONFLICT)"
+  ],
+  [
+   "('operator', '375')",
+   "console.error",
+   "Failed to load resource: the server responded with a status of 403 (FORBIDDEN)"
+  ],
+  [
+   "('manager', '375')",
+   "console.error",
+   "Failed to load resource: the server responded with a status of 403 (FORBIDDEN)"
+  ],
+  [
+   "('operator', '375')",
+   "console.error",
+   "Failed to load resource: the server responded with a status of 403 (FORBIDDEN)"
+  ],
+  [
+   "('operator', '1280')",
+   "console.error",
+   "Failed to load resource: the server responded with a status of 403 (FORBIDDEN)"
+  ],
+  [
+   "('manager', '1280')",
+   "console.error",
+   "Failed to load resource: the server responded with a status of 403 (FORBIDDEN)"
+  ],
+  [
+   "('operator', '1280')",
+   "console.error",
+   "Failed to load resource: the server responded with a status of 403 (FORBIDDEN)"
+  ],
+  [
+   "('operator', '1280')",
+   "console.error",
+   "Error loading outgoing tx: TypeError: Failed to fetch\n    at loadOutgoingTxForBinance (http://127.0.0.1:24558/crm?section=deals:6805:40)\n    at HTMLSelectElement.<anonymous> (http://127.0.0.1:24558/crm?section=deals:7616:17)\n    at openDealEditor (http://127.0.0.1:24558/crm?section=deals:5545:69)\n    at async <anonymous>:252:30"
+  ],
+  [
+   "('operator', '1280')",
+   "console.error",
+   "Failed to load resource: the server responded with a status of 400 (BAD REQUEST)"
+  ],
+  [
+   "('operator', '1280')",
+   "console.error",
+   "Failed to load resource: the server responded with a status of 403 (FORBIDDEN)"
+  ],
+  [
+   "('manager', '1280')",
+   "console.error",
+   "Failed to load resource: the server responded with a status of 403 (FORBIDDEN)"
+  ]
+ ],
+ "scenario_errors": {},
+ "harness_version": "wallet-roles-ui r8 (2026-10-19): r7 + full untruncated state diffs (normalised path summary), combined final assertion (nothing masked), regex endsWith fix",
+ "source_freeze": {
+  "sha256": {
+   "app.py": "bdd3aaf335f8398e",
+   "static/stand/tasks.html": "9616565599035dec",
+   "static/crm/crm.html": "e3c1372f5a3af5ad",
+   "stand_transfers.py": "6db1df1db4e8ab87",
+   "stand_prepay.py": "4c6258a32e009eba",
+   "stand_browser.py": "aedc2973a2cff158"
+  },
+  "head": "62f1460465ba597574e4ba4f399cb2614bcde4e1",
+  "dirty_sources": [],
+  "clean": true
+ },
+ "failed_required_actions": [
+  "реальное изменение справочника сохраняется (refs=['QAREF1'], версия 16 -> 16)"
+ ],
+ "crm_facts": [
+  {
+   "editingDealId": 2,
+   "payoutSelectVisible": false,
+   "payoutSelected": "Груша Обменник",
+   "payoutPolicyText": "Груша Обменник · начинает операционист · подтверждает финансист или владелец · до $10 000,00 выше — с согласованием владельца",
+   "approvalCheckboxVisible": false,
+   "approvalChecked": false,
+   "payinGroupVisible": true,
+   "payinSelected": "Груша Обменник",
+   "payinPolicyText": "Груша Обменник · начинает операционист · подтверждает финансист или владелец · до $10 000,00 выше — с согласованием владельца",
+   "role": "operator",
+   "width": "375",
+   "deal": "big"
+  },
+  {
+   "editingDealId": 2,
+   "payoutSelectVisible": false,
+   "payoutSelected": "Груша Обменник",
+   "payoutPolicyText": "Груша Обменник · начинает операционист · подтверждает финансист или владелец · до $10 000,00 выше — с согласованием владельца",
+   "approvalCheckboxVisible": true,
+   "approvalChecked": false,
+   "payinGroupVisible": true,
+   "payinSelected": "Груша Обменник",
+   "payinPolicyText": "Груша Обменник · начинает операционист · подтверждает финансист или владелец · до $10 000,00 выше — с согласованием владельца",
+   "role": "findir",
+   "width": "375",
+   "deal": "big"
+  },
+  {
+   "editingDealId": 2,
+   "payoutSelectVisible": false,
+   "payoutSelected": "Груша Обменник",
+   "payoutPolicyText": "Груша Обменник · начинает операционист · подтверждает финансист или владелец · до $10 000,00 выше — с согласованием владельца",
+   "approvalCheckboxVisible": true,
+   "approvalChecked": false,
+   "payinGroupVisible": true,
+   "payinSelected": "Груша Обменник",
+   "payinPolicyText": "Груша Обменник · начинает операционист · подтверждает финансист или владелец · до $10 000,00 выше — с согласованием владельца",
+   "role": "teodor",
+   "width": "375",
+   "deal": "big"
+  },
+  {
+   "editingDealId": 2,
+   "payoutSelectVisible": false,
+   "payoutSelected": "Груша Обменник",
+   "payoutPolicyText": "Груша Обменник · начинает операционист · подтверждает финансист или владелец · до $10 000,00 выше — с согласованием владельца",
+   "approvalCheckboxVisible": false,
+   "approvalChecked": false,
+   "payinGroupVisible": true,
+   "payinSelected": "Груша Обменник",
+   "payinPolicyText": "Груша Обменник · начинает операционист · подтверждает финансист или владелец · до $10 000,00 выше — с согласованием владельца",
+   "role": "manager",
+   "width": "375",
+   "deal": "big"
+  },
+  {
+   "editingDealId": 2,
+   "payoutSelectVisible": false,
+   "payoutSelected": "Груша Обменник",
+   "payoutPolicyText": "Груша Обменник · начинает операционист · подтверждает финансист или владелец · до $10 000,00 выше — с согласованием владельца",
+   "approvalCheckboxVisible": false,
+   "approvalChecked": false,
+   "payinGroupVisible": true,
+   "payinSelected": "Груша Обменник",
+   "payinPolicyText": "Груша Обменник · начинает операционист · подтверждает финансист или владелец · до $10 000,00 выше — с согласованием владельца",
+   "role": "admin",
+   "width": "375",
+   "deal": "big"
+  },
+  {
+   "editingDealId": 1,
+   "payoutSelectVisible": false,
+   "payoutSelected": "Груша Обменник",
+   "payoutPolicyText": "Груша Обменник · начинает операционист · подтверждает финансист или владелец · до $10 000,00 выше — с согласованием владельца",
+   "approvalCheckboxVisible": false,
+   "approvalChecked": false,
+   "payinGroupVisible": true,
+   "payinSelected": "Груша Обменник",
+   "payinPolicyText": "Груша Обменник · начинает операционист · подтверждает финансист или владелец · до $10 000,00 выше — с согласованием владельца",
+   "role": "operator",
+   "width": "375",
+   "deal": "small"
+  },
+  {
+   "editingDealId": 2,
+   "payoutSelectVisible": false,
+   "payoutSelected": "Груша Обменник",
+   "payoutPolicyText": "Груша Обменник · начинает операционист · подтверждает финансист или владелец · до $10 000,00 выше — с согласованием владельца",
+   "approvalCheckboxVisible": false,
+   "approvalChecked": false,
+   "payinGroupVisible": true,
+   "payinSelected": "Груша Обменник",
+   "payinPolicyText": "Груша Обменник · начинает операционист · подтверждает финансист или владелец · до $10 000,00 выше — с согласованием владельца",
+   "role": "operator",
+   "width": "1280",
+   "deal": "big"
+  },
+  {
+   "editingDealId": 2,
+   "payoutSelectVisible": false,
+   "payoutSelected": "Груша Обменник",
+   "payoutPolicyText": "Груша Обменник · начинает операционист · подтверждает финансист или владелец · до $10 000,00 выше — с согласованием владельца",
+   "approvalCheckboxVisible": true,
+   "approvalChecked": false,
+   "payinGroupVisible": true,
+   "payinSelected": "Груша Обменник",
+   "payinPolicyText": "Груша Обменник · начинает операционист · подтверждает финансист или владелец · до $10 000,00 выше — с согласованием владельца",
+   "role": "findir",
+   "width": "1280",
+   "deal": "big"
+  },
+  {
+   "editingDealId": 2,
+   "payoutSelectVisible": false,
+   "payoutSelected": "Груша Обменник",
+   "payoutPolicyText": "Груша Обменник · начинает операционист · подтверждает финансист или владелец · до $10 000,00 выше — с согласованием владельца",
+   "approvalCheckboxVisible": true,
+   "approvalChecked": false,
+   "payinGroupVisible": true,
+   "payinSelected": "Груша Обменник",
+   "payinPolicyText": "Груша Обменник · начинает операционист · подтверждает финансист или владелец · до $10 000,00 выше — с согласованием владельца",
+   "role": "teodor",
+   "width": "1280",
+   "deal": "big"
+  },
+  {
+   "editingDealId": 2,
+   "payoutSelectVisible": false,
+   "payoutSelected": "Груша Обменник",
+   "payoutPolicyText": "Груша Обменник · начинает операционист · подтверждает финансист или владелец · до $10 000,00 выше — с согласованием владельца",
+   "approvalCheckboxVisible": false,
+   "approvalChecked": false,
+   "payinGroupVisible": true,
+   "payinSelected": "Груша Обменник",
+   "payinPolicyText": "Груша Обменник · начинает операционист · подтверждает финансист или владелец · до $10 000,00 выше — с согласованием владельца",
+   "role": "manager",
+   "width": "1280",
+   "deal": "big"
+  },
+  {
+   "editingDealId": 2,
+   "payoutSelectVisible": false,
+   "payoutSelected": "Груша Обменник",
+   "payoutPolicyText": "Груша Обменник · начинает операционист · подтверждает финансист или владелец · до $10 000,00 выше — с согласованием владельца",
+   "approvalCheckboxVisible": false,
+   "approvalChecked": false,
+   "payinGroupVisible": true,
+   "payinSelected": "Груша Обменник",
+   "payinPolicyText": "Груша Обменник · начинает операционист · подтверждает финансист или владелец · до $10 000,00 выше — с согласованием владельца",
+   "role": "admin",
+   "width": "1280",
+   "deal": "big"
+  },
+  {
+   "editingDealId": 1,
+   "payoutSelectVisible": false,
+   "payoutSelected": "Груша Обменник",
+   "payoutPolicyText": "Груша Обменник · начинает операционист · подтверждает финансист или владелец · до $10 000,00 выше — с согласованием владельца",
+   "approvalCheckboxVisible": false,
+   "approvalChecked": false,
+   "payinGroupVisible": true,
+   "payinSelected": "Груша Обменник",
+   "payinPolicyText": "Груша Обменник · начинает операционист · подтверждает финансист или владелец · до $10 000,00 выше — с согласованием владельца",
+   "role": "operator",
+   "width": "1280",
+   "deal": "small"
+  },
+  {
+   "editingDealId": 2,
+   "payoutSelectVisible": false,
+   "payoutSelected": "Груша Обменник",
+   "payoutPolicyText": "Груша Обменник · начинает операционист · подтверждает финансист или владелец · до $10 000,00 выше — с согласованием владельца",
+   "approvalCheckboxVisible": true,
+   "approvalChecked": true,
+   "payinGroupVisible": true,
+   "payinSelected": "Груша Обменник",
+   "payinPolicyText": "Груша Обменник · начинает операционист · подтверждает финансист или владелец · до $10 000,00 выше — с согласованием владельца",
+   "role": "teodor",
+   "width": "1280",
+   "deal": "big-after-approval"
+  }
+ ],
+ "version_gate": {
+  "views": 72,
+  "viewsWithVersionBump": 0,
+  "semanticViews": 0,
+  "noopVersionBumps": 0
+ },
+ "views": [
+  {
+   "deal": 1601,
+   "role": "operator",
+   "width": "375",
+   "versionBefore": 2,
+   "versionAfter": 2,
+   "viewMutated": false,
+   "deltaPaths": [],
+   "deltaSummary": {},
+   "deltaDealIds": [],
+   "topLevelDelta": [],
+   "semanticPaths": [],
+   "semanticChange": false,
+   "noopVersionBump": false
+  },
+  {
+   "deal": 1601,
+   "role": "manager",
+   "width": "375",
+   "versionBefore": 2,
+   "versionAfter": 2,
+   "viewMutated": false,
+   "deltaPaths": [],
+   "deltaSummary": {},
+   "deltaDealIds": [],
+   "topLevelDelta": [],
+   "semanticPaths": [],
+   "semanticChange": false,
+   "noopVersionBump": false
+  },
+  {
+   "deal": 1602,
+   "role": "operator",
+   "width": "375",
+   "versionBefore": 2,
+   "versionAfter": 2,
+   "viewMutated": false,
+   "deltaPaths": [],
+   "deltaSummary": {},
+   "deltaDealIds": [],
+   "topLevelDelta": [],
+   "semanticPaths": [],
+   "semanticChange": false,
+   "noopVersionBump": false
+  },
+  {
+   "deal": 1602,
+   "role": "manager",
+   "width": "375",
+   "versionBefore": 2,
+   "versionAfter": 2,
+   "viewMutated": false,
+   "deltaPaths": [],
+   "deltaSummary": {},
+   "deltaDealIds": [],
+   "topLevelDelta": [],
+   "semanticPaths": [],
+   "semanticChange": false,
+   "noopVersionBump": false
+  },
+  {
+   "deal": 1603,
+   "role": "operator",
+   "width": "375",
+   "versionBefore": 2,
+   "versionAfter": 2,
+   "viewMutated": false,
+   "deltaPaths": [],
+   "deltaSummary": {},
+   "deltaDealIds": [],
+   "topLevelDelta": [],
+   "semanticPaths": [],
+   "semanticChange": false,
+   "noopVersionBump": false
+  },
+  {
+   "deal": 1603,
+   "role": "manager",
+   "width": "375",
+   "versionBefore": 2,
+   "versionAfter": 2,
+   "viewMutated": false,
+   "deltaPaths": [],
+   "deltaSummary": {},
+   "deltaDealIds": [],
+   "topLevelDelta": [],
+   "semanticPaths": [],
+   "semanticChange": false,
+   "noopVersionBump": false
+  },
+  {
+   "deal": 1604,
+   "role": "operator",
+   "width": "375",
+   "versionBefore": 2,
+   "versionAfter": 2,
+   "viewMutated": false,
+   "deltaPaths": [],
+   "deltaSummary": {},
+   "deltaDealIds": [],
+   "topLevelDelta": [],
+   "semanticPaths": [],
+   "semanticChange": false,
+   "noopVersionBump": false
+  },
+  {
+   "deal": 1604,
+   "role": "manager",
+   "width": "375",
+   "versionBefore": 2,
+   "versionAfter": 2,
+   "viewMutated": false,
+   "deltaPaths": [],
+   "deltaSummary": {},
+   "deltaDealIds": [],
+   "topLevelDelta": [],
+   "semanticPaths": [],
+   "semanticChange": false,
+   "noopVersionBump": false
+  },
+  {
+   "deal": 1609,
+   "role": "operator",
+   "width": "375",
+   "versionBefore": 2,
+   "versionAfter": 2,
+   "viewMutated": false,
+   "deltaPaths": [],
+   "deltaSummary": {},
+   "deltaDealIds": [],
+   "topLevelDelta": [],
+   "semanticPaths": [],
+   "semanticChange": false,
+   "noopVersionBump": false
+  },
+  {
+   "deal": 1601,
+   "role": "operator",
+   "width": "1280",
+   "versionBefore": 3,
+   "versionAfter": 3,
+   "viewMutated": false,
+   "deltaPaths": [],
+   "deltaSummary": {},
+   "deltaDealIds": [],
+   "topLevelDelta": [],
+   "semanticPaths": [],
+   "semanticChange": false,
+   "noopVersionBump": false
+  },
+  {
+   "deal": 1601,
+   "role": "manager",
+   "width": "1280",
+   "versionBefore": 3,
+   "versionAfter": 3,
+   "viewMutated": false,
+   "deltaPaths": [],
+   "deltaSummary": {},
+   "deltaDealIds": [],
+   "topLevelDelta": [],
+   "semanticPaths": [],
+   "semanticChange": false,
+   "noopVersionBump": false
+  },
+  {
+   "deal": 1602,
+   "role": "operator",
+   "width": "1280",
+   "versionBefore": 3,
+   "versionAfter": 3,
+   "viewMutated": false,
+   "deltaPaths": [],
+   "deltaSummary": {},
+   "deltaDealIds": [],
+   "topLevelDelta": [],
+   "semanticPaths": [],
+   "semanticChange": false,
+   "noopVersionBump": false
+  },
+  {
+   "deal": 1602,
+   "role": "manager",
+   "width": "1280",
+   "versionBefore": 3,
+   "versionAfter": 3,
+   "viewMutated": false,
+   "deltaPaths": [],
+   "deltaSummary": {},
+   "deltaDealIds": [],
+   "topLevelDelta": [],
+   "semanticPaths": [],
+   "semanticChange": false,
+   "noopVersionBump": false
+  },
+  {
+   "deal": 1603,
+   "role": "operator",
+   "width": "1280",
+   "versionBefore": 3,
+   "versionAfter": 3,
+   "viewMutated": false,
+   "deltaPaths": [],
+   "deltaSummary": {},
+   "deltaDealIds": [],
+   "topLevelDelta": [],
+   "semanticPaths": [],
+   "semanticChange": false,
+   "noopVersionBump": false
+  },
+  {
+   "deal": 1603,
+   "role": "manager",
+   "width": "1280",
+   "versionBefore": 3,
+   "versionAfter": 3,
+   "viewMutated": false,
+   "deltaPaths": [],
+   "deltaSummary": {},
+   "deltaDealIds": [],
+   "topLevelDelta": [],
+   "semanticPaths": [],
+   "semanticChange": false,
+   "noopVersionBump": false
+  },
+  {
+   "deal": 1604,
+   "role": "operator",
+   "width": "1280",
+   "versionBefore": 3,
+   "versionAfter": 3,
+   "viewMutated": false,
+   "deltaPaths": [],
+   "deltaSummary": {},
+   "deltaDealIds": [],
+   "topLevelDelta": [],
+   "semanticPaths": [],
+   "semanticChange": false,
+   "noopVersionBump": false
+  },
+  {
+   "deal": 1604,
+   "role": "manager",
+   "width": "1280",
+   "versionBefore": 3,
+   "versionAfter": 3,
+   "viewMutated": false,
+   "deltaPaths": [],
+   "deltaSummary": {},
+   "deltaDealIds": [],
+   "topLevelDelta": [],
+   "semanticPaths": [],
+   "semanticChange": false,
+   "noopVersionBump": false
+  },
+  {
+   "deal": 1619,
+   "role": "operator",
+   "width": "1280",
+   "versionBefore": 3,
+   "versionAfter": 3,
+   "viewMutated": false,
+   "deltaPaths": [],
+   "deltaSummary": {},
+   "deltaDealIds": [],
+   "topLevelDelta": [],
+   "semanticPaths": [],
+   "semanticChange": false,
+   "noopVersionBump": false
+  },
+  {
+   "deal": 1611,
+   "role": "operator",
+   "width": "375",
+   "versionBefore": 4,
+   "versionAfter": 4,
+   "viewMutated": false,
+   "deltaPaths": [],
+   "deltaSummary": {},
+   "deltaDealIds": [],
+   "topLevelDelta": [],
+   "semanticPaths": [],
+   "semanticChange": false,
+   "noopVersionBump": false
+  },
+  {
+   "deal": 1611,
+   "role": "findir",
+   "width": "375",
+   "versionBefore": 4,
+   "versionAfter": 4,
+   "viewMutated": false,
+   "deltaPaths": [],
+   "deltaSummary": {},
+   "deltaDealIds": [],
+   "topLevelDelta": [],
+   "semanticPaths": [],
+   "semanticChange": false,
+   "noopVersionBump": false
+  },
+  {
+   "deal": 1611,
+   "role": "teodor",
+   "width": "375",
+   "versionBefore": 4,
+   "versionAfter": 4,
+   "viewMutated": false,
+   "deltaPaths": [],
+   "deltaSummary": {},
+   "deltaDealIds": [],
+   "topLevelDelta": [],
+   "semanticPaths": [],
+   "semanticChange": false,
+   "noopVersionBump": false
+  },
+  {
+   "deal": 1611,
+   "role": "manager",
+   "width": "375",
+   "versionBefore": 4,
+   "versionAfter": 4,
+   "viewMutated": false,
+   "deltaPaths": [],
+   "deltaSummary": {},
+   "deltaDealIds": [],
+   "topLevelDelta": [],
+   "semanticPaths": [],
+   "semanticChange": false,
+   "noopVersionBump": false
+  },
+  {
+   "deal": 1612,
+   "role": "operator",
+   "width": "375",
+   "versionBefore": 4,
+   "versionAfter": 4,
+   "viewMutated": false,
+   "deltaPaths": [],
+   "deltaSummary": {},
+   "deltaDealIds": [],
+   "topLevelDelta": [],
+   "semanticPaths": [],
+   "semanticChange": false,
+   "noopVersionBump": false
+  },
+  {
+   "deal": 1612,
+   "role": "findir",
+   "width": "375",
+   "versionBefore": 4,
+   "versionAfter": 4,
+   "viewMutated": false,
+   "deltaPaths": [],
+   "deltaSummary": {},
+   "deltaDealIds": [],
+   "topLevelDelta": [],
+   "semanticPaths": [],
+   "semanticChange": false,
+   "noopVersionBump": false
+  },
+  {
+   "deal": 1612,
+   "role": "teodor",
+   "width": "375",
+   "versionBefore": 4,
+   "versionAfter": 4,
+   "viewMutated": false,
+   "deltaPaths": [],
+   "deltaSummary": {},
+   "deltaDealIds": [],
+   "topLevelDelta": [],
+   "semanticPaths": [],
+   "semanticChange": false,
+   "noopVersionBump": false
+  },
+  {
+   "deal": 1612,
+   "role": "manager",
+   "width": "375",
+   "versionBefore": 4,
+   "versionAfter": 4,
+   "viewMutated": false,
+   "deltaPaths": [],
+   "deltaSummary": {},
+   "deltaDealIds": [],
+   "topLevelDelta": [],
+   "semanticPaths": [],
+   "semanticChange": false,
+   "noopVersionBump": false
+  },
+  {
+   "deal": 1605,
+   "role": "operator",
+   "width": "375",
+   "versionBefore": 4,
+   "versionAfter": 4,
+   "viewMutated": false,
+   "deltaPaths": [],
+   "deltaSummary": {},
+   "deltaDealIds": [],
+   "topLevelDelta": [],
+   "semanticPaths": [],
+   "semanticChange": false,
+   "noopVersionBump": false
+  },
+  {
+   "deal": 1605,
+   "role": "findir",
+   "width": "375",
+   "versionBefore": 4,
+   "versionAfter": 4,
+   "viewMutated": false,
+   "deltaPaths": [],
+   "deltaSummary": {},
+   "deltaDealIds": [],
+   "topLevelDelta": [],
+   "semanticPaths": [],
+   "semanticChange": false,
+   "noopVersionBump": false
+  },
+  {
+   "deal": 1605,
+   "role": "teodor",
+   "width": "375",
+   "versionBefore": 4,
+   "versionAfter": 4,
+   "viewMutated": false,
+   "deltaPaths": [],
+   "deltaSummary": {},
+   "deltaDealIds": [],
+   "topLevelDelta": [],
+   "semanticPaths": [],
+   "semanticChange": false,
+   "noopVersionBump": false
+  },
+  {
+   "deal": 1605,
+   "role": "manager",
+   "width": "375",
+   "versionBefore": 4,
+   "versionAfter": 4,
+   "viewMutated": false,
+   "deltaPaths": [],
+   "deltaSummary": {},
+   "deltaDealIds": [],
+   "topLevelDelta": [],
+   "semanticPaths": [],
+   "semanticChange": false,
+   "noopVersionBump": false
+  },
+  {
+   "deal": 1610,
+   "role": "operator",
+   "width": "375",
+   "versionBefore": 4,
+   "versionAfter": 4,
+   "viewMutated": false,
+   "deltaPaths": [],
+   "deltaSummary": {},
+   "deltaDealIds": [],
+   "topLevelDelta": [],
+   "semanticPaths": [],
+   "semanticChange": false,
+   "noopVersionBump": false
+  },
+  {
+   "deal": 1610,
+   "role": "findir",
+   "width": "375",
+   "versionBefore": 4,
+   "versionAfter": 4,
+   "viewMutated": false,
+   "deltaPaths": [],
+   "deltaSummary": {},
+   "deltaDealIds": [],
+   "topLevelDelta": [],
+   "semanticPaths": [],
+   "semanticChange": false,
+   "noopVersionBump": false
+  },
+  {
+   "deal": 1610,
+   "role": "teodor",
+   "width": "375",
+   "versionBefore": 4,
+   "versionAfter": 4,
+   "viewMutated": false,
+   "deltaPaths": [],
+   "deltaSummary": {},
+   "deltaDealIds": [],
+   "topLevelDelta": [],
+   "semanticPaths": [],
+   "semanticChange": false,
+   "noopVersionBump": false
+  },
+  {
+   "deal": 1610,
+   "role": "manager",
+   "width": "375",
+   "versionBefore": 4,
+   "versionAfter": 4,
+   "viewMutated": false,
+   "deltaPaths": [],
+   "deltaSummary": {},
+   "deltaDealIds": [],
+   "topLevelDelta": [],
+   "semanticPaths": [],
+   "semanticChange": false,
+   "noopVersionBump": false
+  },
+  {
+   "deal": 1610,
+   "role": "operator",
+   "width": "375",
+   "versionBefore": 4,
+   "versionAfter": 4,
+   "viewMutated": false,
+   "deltaPaths": [],
+   "deltaSummary": {},
+   "deltaDealIds": [],
+   "topLevelDelta": [],
+   "semanticPaths": [],
+   "semanticChange": false,
+   "noopVersionBump": false
+  },
+  {
+   "deal": 1611,
+   "role": "operator",
+   "width": "375",
+   "versionBefore": 4,
+   "versionAfter": 4,
+   "viewMutated": false,
+   "deltaPaths": [],
+   "deltaSummary": {},
+   "deltaDealIds": [],
+   "topLevelDelta": [],
+   "semanticPaths": [],
+   "semanticChange": false,
+   "noopVersionBump": false
+  },
+  {
+   "deal": 1611,
+   "role": "operator",
+   "width": "1280",
+   "versionBefore": 4,
+   "versionAfter": 4,
+   "viewMutated": false,
+   "deltaPaths": [],
+   "deltaSummary": {},
+   "deltaDealIds": [],
+   "topLevelDelta": [],
+   "semanticPaths": [],
+   "semanticChange": false,
+   "noopVersionBump": false
+  },
+  {
+   "deal": 1611,
+   "role": "findir",
+   "width": "1280",
+   "versionBefore": 4,
+   "versionAfter": 4,
+   "viewMutated": false,
+   "deltaPaths": [],
+   "deltaSummary": {},
+   "deltaDealIds": [],
+   "topLevelDelta": [],
+   "semanticPaths": [],
+   "semanticChange": false,
+   "noopVersionBump": false
+  },
+  {
+   "deal": 1611,
+   "role": "teodor",
+   "width": "1280",
+   "versionBefore": 4,
+   "versionAfter": 4,
+   "viewMutated": false,
+   "deltaPaths": [],
+   "deltaSummary": {},
+   "deltaDealIds": [],
+   "topLevelDelta": [],
+   "semanticPaths": [],
+   "semanticChange": false,
+   "noopVersionBump": false
+  },
+  {
+   "deal": 1611,
+   "role": "manager",
+   "width": "1280",
+   "versionBefore": 4,
+   "versionAfter": 4,
+   "viewMutated": false,
+   "deltaPaths": [],
+   "deltaSummary": {},
+   "deltaDealIds": [],
+   "topLevelDelta": [],
+   "semanticPaths": [],
+   "semanticChange": false,
+   "noopVersionBump": false
+  },
+  {
+   "deal": 1612,
+   "role": "operator",
+   "width": "1280",
+   "versionBefore": 4,
+   "versionAfter": 4,
+   "viewMutated": false,
+   "deltaPaths": [],
+   "deltaSummary": {},
+   "deltaDealIds": [],
+   "topLevelDelta": [],
+   "semanticPaths": [],
+   "semanticChange": false,
+   "noopVersionBump": false
+  },
+  {
+   "deal": 1612,
+   "role": "findir",
+   "width": "1280",
+   "versionBefore": 4,
+   "versionAfter": 4,
+   "viewMutated": false,
+   "deltaPaths": [],
+   "deltaSummary": {},
+   "deltaDealIds": [],
+   "topLevelDelta": [],
+   "semanticPaths": [],
+   "semanticChange": false,
+   "noopVersionBump": false
+  },
+  {
+   "deal": 1612,
+   "role": "teodor",
+   "width": "1280",
+   "versionBefore": 4,
+   "versionAfter": 4,
+   "viewMutated": false,
+   "deltaPaths": [],
+   "deltaSummary": {},
+   "deltaDealIds": [],
+   "topLevelDelta": [],
+   "semanticPaths": [],
+   "semanticChange": false,
+   "noopVersionBump": false
+  },
+  {
+   "deal": 1612,
+   "role": "manager",
+   "width": "1280",
+   "versionBefore": 4,
+   "versionAfter": 4,
+   "viewMutated": false,
+   "deltaPaths": [],
+   "deltaSummary": {},
+   "deltaDealIds": [],
+   "topLevelDelta": [],
+   "semanticPaths": [],
+   "semanticChange": false,
+   "noopVersionBump": false
+  },
+  {
+   "deal": 1605,
+   "role": "operator",
+   "width": "1280",
+   "versionBefore": 4,
+   "versionAfter": 4,
+   "viewMutated": false,
+   "deltaPaths": [],
+   "deltaSummary": {},
+   "deltaDealIds": [],
+   "topLevelDelta": [],
+   "semanticPaths": [],
+   "semanticChange": false,
+   "noopVersionBump": false
+  },
+  {
+   "deal": 1605,
+   "role": "findir",
+   "width": "1280",
+   "versionBefore": 4,
+   "versionAfter": 4,
+   "viewMutated": false,
+   "deltaPaths": [],
+   "deltaSummary": {},
+   "deltaDealIds": [],
+   "topLevelDelta": [],
+   "semanticPaths": [],
+   "semanticChange": false,
+   "noopVersionBump": false
+  },
+  {
+   "deal": 1605,
+   "role": "teodor",
+   "width": "1280",
+   "versionBefore": 4,
+   "versionAfter": 4,
+   "viewMutated": false,
+   "deltaPaths": [],
+   "deltaSummary": {},
+   "deltaDealIds": [],
+   "topLevelDelta": [],
+   "semanticPaths": [],
+   "semanticChange": false,
+   "noopVersionBump": false
+  },
+  {
+   "deal": 1605,
+   "role": "manager",
+   "width": "1280",
+   "versionBefore": 4,
+   "versionAfter": 4,
+   "viewMutated": false,
+   "deltaPaths": [],
+   "deltaSummary": {},
+   "deltaDealIds": [],
+   "topLevelDelta": [],
+   "semanticPaths": [],
+   "semanticChange": false,
+   "noopVersionBump": false
+  },
+  {
+   "deal": 1610,
+   "role": "operator",
+   "width": "1280",
+   "versionBefore": 4,
+   "versionAfter": 4,
+   "viewMutated": false,
+   "deltaPaths": [],
+   "deltaSummary": {},
+   "deltaDealIds": [],
+   "topLevelDelta": [],
+   "semanticPaths": [],
+   "semanticChange": false,
+   "noopVersionBump": false
+  },
+  {
+   "deal": 1610,
+   "role": "findir",
+   "width": "1280",
+   "versionBefore": 4,
+   "versionAfter": 4,
+   "viewMutated": false,
+   "deltaPaths": [],
+   "deltaSummary": {},
+   "deltaDealIds": [],
+   "topLevelDelta": [],
+   "semanticPaths": [],
+   "semanticChange": false,
+   "noopVersionBump": false
+  },
+  {
+   "deal": 1610,
+   "role": "teodor",
+   "width": "1280",
+   "versionBefore": 4,
+   "versionAfter": 4,
+   "viewMutated": false,
+   "deltaPaths": [],
+   "deltaSummary": {},
+   "deltaDealIds": [],
+   "topLevelDelta": [],
+   "semanticPaths": [],
+   "semanticChange": false,
+   "noopVersionBump": false
+  },
+  {
+   "deal": 1610,
+   "role": "manager",
+   "width": "1280",
+   "versionBefore": 4,
+   "versionAfter": 4,
+   "viewMutated": false,
+   "deltaPaths": [],
+   "deltaSummary": {},
+   "deltaDealIds": [],
+   "topLevelDelta": [],
+   "semanticPaths": [],
+   "semanticChange": false,
+   "noopVersionBump": false
+  },
+  {
+   "deal": 1610,
+   "role": "operator",
+   "width": "1280",
+   "versionBefore": 4,
+   "versionAfter": 4,
+   "viewMutated": false,
+   "deltaPaths": [],
+   "deltaSummary": {},
+   "deltaDealIds": [],
+   "topLevelDelta": [],
+   "semanticPaths": [],
+   "semanticChange": false,
+   "noopVersionBump": false
+  },
+  {
+   "deal": 1611,
+   "role": "operator",
+   "width": "1280",
+   "versionBefore": 4,
+   "versionAfter": 4,
+   "viewMutated": false,
+   "deltaPaths": [],
+   "deltaSummary": {},
+   "deltaDealIds": [],
+   "topLevelDelta": [],
+   "semanticPaths": [],
+   "semanticChange": false,
+   "noopVersionBump": false
+  },
+  {
+   "deal": 1620,
+   "role": "findir",
+   "width": "375",
+   "versionBefore": 4,
+   "versionAfter": 4,
+   "viewMutated": false,
+   "deltaPaths": [],
+   "deltaSummary": {},
+   "deltaDealIds": [],
+   "topLevelDelta": [],
+   "semanticPaths": [],
+   "semanticChange": false,
+   "noopVersionBump": false
+  },
+  {
+   "deal": 1620,
+   "role": "operator",
+   "width": "375",
+   "versionBefore": 4,
+   "versionAfter": 4,
+   "viewMutated": false,
+   "deltaPaths": [],
+   "deltaSummary": {},
+   "deltaDealIds": [],
+   "topLevelDelta": [],
+   "semanticPaths": [],
+   "semanticChange": false,
+   "noopVersionBump": false
+  },
+  {
+   "deal": 1620,
+   "role": "teodor",
+   "width": "375",
+   "versionBefore": 5,
+   "versionAfter": 5,
+   "viewMutated": false,
+   "deltaPaths": [],
+   "deltaSummary": {},
+   "deltaDealIds": [],
+   "topLevelDelta": [],
+   "semanticPaths": [],
+   "semanticChange": false,
+   "noopVersionBump": false
+  },
+  {
+   "deal": 1630,
+   "role": "findir",
+   "width": "1280",
+   "versionBefore": 5,
+   "versionAfter": 5,
+   "viewMutated": false,
+   "deltaPaths": [],
+   "deltaSummary": {},
+   "deltaDealIds": [],
+   "topLevelDelta": [],
+   "semanticPaths": [],
+   "semanticChange": false,
+   "noopVersionBump": false
+  },
+  {
+   "deal": 1630,
+   "role": "operator",
+   "width": "1280",
+   "versionBefore": 5,
+   "versionAfter": 5,
+   "viewMutated": false,
+   "deltaPaths": [],
+   "deltaSummary": {},
+   "deltaDealIds": [],
+   "topLevelDelta": [],
+   "semanticPaths": [],
+   "semanticChange": false,
+   "noopVersionBump": false
+  },
+  {
+   "deal": 1630,
+   "role": "teodor",
+   "width": "1280",
+   "versionBefore": 6,
+   "versionAfter": 6,
+   "viewMutated": false,
+   "deltaPaths": [],
+   "deltaSummary": {},
+   "deltaDealIds": [],
+   "topLevelDelta": [],
+   "semanticPaths": [],
+   "semanticChange": false,
+   "noopVersionBump": false
+  },
+  {
+   "deal": 1621,
+   "role": "operator",
+   "width": "375",
+   "versionBefore": 6,
+   "versionAfter": 6,
+   "viewMutated": false,
+   "deltaPaths": [],
+   "deltaSummary": {},
+   "deltaDealIds": [],
+   "topLevelDelta": [],
+   "semanticPaths": [],
+   "semanticChange": false,
+   "noopVersionBump": false
+  },
+  {
+   "deal": 1621,
+   "role": "operator",
+   "width": "375",
+   "versionBefore": 8,
+   "versionAfter": 8,
+   "viewMutated": false,
+   "deltaPaths": [],
+   "deltaSummary": {},
+   "deltaDealIds": [],
+   "topLevelDelta": [],
+   "semanticPaths": [],
+   "semanticChange": false,
+   "noopVersionBump": false
+  },
+  {
+   "deal": 1621,
+   "role": "findir",
+   "width": "375",
+   "versionBefore": 8,
+   "versionAfter": 8,
+   "viewMutated": false,
+   "deltaPaths": [],
+   "deltaSummary": {},
+   "deltaDealIds": [],
+   "topLevelDelta": [],
+   "semanticPaths": [],
+   "semanticChange": false,
+   "noopVersionBump": false
+  },
+  {
+   "deal": 1621,
+   "role": "teodor",
+   "width": "375",
+   "versionBefore": 8,
+   "versionAfter": 8,
+   "viewMutated": false,
+   "deltaPaths": [],
+   "deltaSummary": {},
+   "deltaDealIds": [],
+   "topLevelDelta": [],
+   "semanticPaths": [],
+   "semanticChange": false,
+   "noopVersionBump": false
+  },
+  {
+   "deal": 1621,
+   "role": "findir",
+   "width": "375",
+   "versionBefore": 8,
+   "versionAfter": 8,
+   "viewMutated": false,
+   "deltaPaths": [],
+   "deltaSummary": {},
+   "deltaDealIds": [],
+   "topLevelDelta": [],
+   "semanticPaths": [],
+   "semanticChange": false,
+   "noopVersionBump": false
+  },
+  {
+   "deal": 1622,
+   "role": "teodor",
+   "width": "375",
+   "versionBefore": 10,
+   "versionAfter": 10,
+   "viewMutated": false,
+   "deltaPaths": [],
+   "deltaSummary": {},
+   "deltaDealIds": [],
+   "topLevelDelta": [],
+   "semanticPaths": [],
+   "semanticChange": false,
+   "noopVersionBump": false
+  },
+  {
+   "deal": 1631,
+   "role": "operator",
+   "width": "1280",
+   "versionBefore": 11,
+   "versionAfter": 11,
+   "viewMutated": false,
+   "deltaPaths": [],
+   "deltaSummary": {},
+   "deltaDealIds": [],
+   "topLevelDelta": [],
+   "semanticPaths": [],
+   "semanticChange": false,
+   "noopVersionBump": false
+  },
+  {
+   "deal": 1631,
+   "role": "operator",
+   "width": "1280",
+   "versionBefore": 13,
+   "versionAfter": 13,
+   "viewMutated": false,
+   "deltaPaths": [],
+   "deltaSummary": {},
+   "deltaDealIds": [],
+   "topLevelDelta": [],
+   "semanticPaths": [],
+   "semanticChange": false,
+   "noopVersionBump": false
+  },
+  {
+   "deal": 1631,
+   "role": "findir",
+   "width": "1280",
+   "versionBefore": 13,
+   "versionAfter": 13,
+   "viewMutated": false,
+   "deltaPaths": [],
+   "deltaSummary": {},
+   "deltaDealIds": [],
+   "topLevelDelta": [],
+   "semanticPaths": [],
+   "semanticChange": false,
+   "noopVersionBump": false
+  },
+  {
+   "deal": 1631,
+   "role": "teodor",
+   "width": "1280",
+   "versionBefore": 13,
+   "versionAfter": 13,
+   "viewMutated": false,
+   "deltaPaths": [],
+   "deltaSummary": {},
+   "deltaDealIds": [],
+   "topLevelDelta": [],
+   "semanticPaths": [],
+   "semanticChange": false,
+   "noopVersionBump": false
+  },
+  {
+   "deal": 1631,
+   "role": "findir",
+   "width": "1280",
+   "versionBefore": 13,
+   "versionAfter": 13,
+   "viewMutated": false,
+   "deltaPaths": [],
+   "deltaSummary": {},
+   "deltaDealIds": [],
+   "topLevelDelta": [],
+   "semanticPaths": [],
+   "semanticChange": false,
+   "noopVersionBump": false
+  },
+  {
+   "deal": 1632,
+   "role": "teodor",
+   "width": "1280",
+   "versionBefore": 15,
+   "versionAfter": 15,
+   "viewMutated": false,
+   "deltaPaths": [],
+   "deltaSummary": {},
+   "deltaDealIds": [],
+   "topLevelDelta": [],
+   "semanticPaths": [],
+   "semanticChange": false,
+   "noopVersionBump": false
+  }
+ ],
+ "views_that_mutated_state": [],
+ "state_put_log": [
+  {
+   "diffPaths": [
+    "deals/1601/agents",
+    "deals/1601/clientPinned",
+    "deals/1601/compare",
+    "deals/1601/curBase",
+    "deals/1601/docLinks",
+    "deals/1601/docMeta",
+    "deals/1601/isTask",
+    "deals/1601/issued",
+    "deals/1601/manager",
+    "deals/1601/manual",
+    "deals/1601/mfPayout",
+    "deals/1601/notes",
+    "deals/1601/partNo",
+    "deals/1601/partial",
+    "deals/1601/payinExtra",
+    "deals/1601/payout/hashes",
+    "deals/1601/quotes",
+    "deals/1601/ratePick",
+    "deals/1601/ref2Paid",
+    "deals/1601/refKnown",
+    "deals/1601/refPaid",
+    "deals/1601/self",
+    "deals/1601/selfCame",
+    "deals/1601/selfRate",
+    "deals/1601/sentToClient"
+   ],
+   "diffCount": 476,
+   "diffSummary": {
+    "deals/*/agents": 16,
+    "deals/*/clientPinned": 16,
+    "deals/*/compare": 16,
+    "deals/*/curBase": 16,
+    "deals/*/docLinks": 16,
+    "deals/*/docMeta": 16,
+    "deals/*/isTask": 16,
+    "deals/*/issued": 16,
+    "deals/*/manager": 16,
+    "deals/*/manual": 16,
+    "deals/*/mfPayout": 16,
+    "deals/*/notes": 16,
+    "deals/*/partNo": 16,
+    "deals/*/partial": 16,
+    "deals/*/payinExtra": 16,
+    "deals/*/payout/hashes": 16,
+    "deals/*/quotes": 16,
+    "deals/*/ratePick": 16,
+    "deals/*/ref2Paid": 16,
+    "deals/*/refKnown": 16,
+    "deals/*/refPaid": 16,
+    "deals/*/self": 16,
+    "deals/*/selfCame": 16,
+    "deals/*/selfRate": 16,
+    "deals/*/sentToClient": 16,
+    "deals/*/source": 16,
+    "deals/*/srefOther": 16,
+    "deals/*/stepNotes": 16,
+    "deals/*/verified": 16,
+    "deals/*/pair": 6,
+    "deals/*/spread": 6
+   },
+   "diffDealIds": [
+    "1601",
+    "1602",
+    "1603",
+    "1604",
+    "1605",
+    "1609",
+    "1610",
+    "1611",
+    "1612",
+    "1619",
+    "1620",
+    "1621",
+    "1622",
+    "1630",
+    "1631",
+    "1632"
+   ],
+   "topLevelDiff": [],
+   "semanticPaths": [
+    "deals/1601/payout/hashes",
+    "deals/1602/payout/hashes",
+    "deals/1603/payout/hashes",
+    "deals/1604/payout/hashes",
+    "deals/1605/payout/hashes",
+    "deals/1609/payout/hashes",
+    "deals/1610/payout/hashes",
+    "deals/1611/payout/hashes",
+    "deals/1612/payout/hashes",
+    "deals/1619/payout/hashes",
+    "deals/1620/payout/hashes",
+    "deals/1621/payout/hashes",
+    "deals/1622/payout/hashes",
+    "deals/1630/payout/hashes",
+    "deals/1631/payout/hashes",
+    "deals/1632/payout/hashes"
+   ],
+   "semanticSummary": {
+    "deals/*/payout/hashes": 16
+   },
+   "phase": "warmup-admin",
+   "role": "admin",
+   "width": "1280",
+   "status": 200,
+   "error": null,
+   "detail": null,
+   "sentVersion": 1
+  }
+ ],
+ "http_errors": [
+  [
+   "('findir', '375')",
+   "409",
+   "/api/stand/transfer/claim"
+  ],
+  [
+   "('findir', '375')",
+   "409",
+   "/api/stand/transfer/claim"
+  ],
+  [
+   "('findir', '1280')",
+   "409",
+   "/api/stand/transfer/claim"
+  ],
+  [
+   "('findir', '1280')",
+   "409",
+   "/api/stand/transfer/claim"
+  ],
+  [
+   "('operator', '375')",
+   "403",
+   "/api/stand/transfer/confirm"
+  ],
+  [
+   "('manager', '375')",
+   "403",
+   "/api/stand/transfer/confirm"
+  ],
+  [
+   "('operator', '375')",
+   "403",
+   "/api/stand/transfer/confirm"
+  ],
+  [
+   "('operator', '1280')",
+   "403",
+   "/api/stand/transfer/confirm"
+  ],
+  [
+   "('manager', '1280')",
+   "403",
+   "/api/stand/transfer/confirm"
+  ],
+  [
+   "('operator', '1280')",
+   "403",
+   "/api/stand/transfer/confirm"
+  ],
+  [
+   "('operator', '1280')",
+   "400",
+   "/api/deals/2"
+  ],
+  [
+   "('operator', '1280')",
+   "403",
+   "/api/deals/2"
+  ],
+  [
+   "('manager', '1280')",
+   "403",
+   "/api/deals/2"
+  ]
+ ],
+ "stubbed_egress_ops": [
+  "tron_trc20_transfers",
+  "verify_transfer:3f7c3478d7",
+  "verify_transfer:6e0c799586"
+ ]
+}

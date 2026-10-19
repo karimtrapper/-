@@ -1,0 +1,270 @@
+{
+ "blueText": [],
+ "bluePlaques": [],
+ "scaleViolations": [],
+ "toast": null,
+ "fontFaces": [
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:loaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:loaded",
+  "Inter:loaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:loaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:loaded",
+  "Inter:loaded",
+  "Inter:unloaded",
+  "Inter:loaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:loaded",
+  "Inter:loaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded"
+ ],
+ "interLoaded": true,
+ "stylesheets": [
+  "http://127.0.0.1:24558/static/stand/vendor/inter-v20/font.css",
+  "http://127.0.0.1:24558/static/nav-shell.css?v=6",
+  "http://127.0.0.1:24558/static/task-list.css?v=6"
+ ],
+ "url": "/tasks",
+ "innerWidth": 375,
+ "scrollWidth": 375,
+ "bodyScrollWidth": 375,
+ "hScroll": false,
+ "expectedWidth": 375,
+ "layoutViewportExpanded": false,
+ "visualViewportWidth": 375,
+ "docClientWidth": 375,
+ "overflowOffenders": [],
+ "fontSizes": {
+  "16px": 7,
+  "12px": 5,
+  "14px": 44,
+  "22px": 4
+ },
+ "fontWeights": {
+  "400": 22,
+  "600": 34,
+  "700": 4
+ },
+ "families": [
+  "Inter",
+  "ui-monospace"
+ ],
+ "addrNodes": [
+  {
+   "text": "TQgQCBXk…opBh8jso",
+   "title": "",
+   "mono": true,
+   "lines": 2,
+   "whiteSpace": "nowrap",
+   "wrapAnywhere": "normal",
+   "shortForm": true,
+   "full": false,
+   "cutAtEdge": false
+  },
+  {
+   "text": "TA6S3RBE…18inenG4",
+   "title": "",
+   "mono": true,
+   "lines": 2,
+   "whiteSpace": "nowrap",
+   "wrapAnywhere": "normal",
+   "shortForm": true,
+   "full": false,
+   "cutAtEdge": false
+  },
+  {
+   "text": "TAXgSzqB…SdxfV3QC",
+   "title": "",
+   "mono": true,
+   "lines": 2,
+   "whiteSpace": "nowrap",
+   "wrapAnywhere": "normal",
+   "shortForm": true,
+   "full": false,
+   "cutAtEdge": false
+  },
+  {
+   "text": "TDsLTB3u…trMAHcgd",
+   "title": "",
+   "mono": true,
+   "lines": 2,
+   "whiteSpace": "nowrap",
+   "wrapAnywhere": "normal",
+   "shortForm": true,
+   "full": false,
+   "cutAtEdge": false
+  },
+  {
+   "text": "TUzvaUjz…tukXFYrN",
+   "title": "",
+   "mono": true,
+   "lines": 2,
+   "whiteSpace": "nowrap",
+   "wrapAnywhere": "normal",
+   "shortForm": true,
+   "full": false,
+   "cutAtEdge": false
+  }
+ ],
+ "addrClipped": [],
+ "addrUnshortened": [],
+ "fullAddresses": [],
+ "mfstrAddresses": [],
+ "signerAddrsVisible": {
+  "operator": true,
+  "findir": true,
+  "teodor": true
+ },
+ "coralButtons": [
+  "Беру"
+ ],
+ "smallTargets": [
+  {
+   "tag": "BUTTON",
+   "text": "Беру",
+   "h": 44
+  }
+ ],
+ "smallSmCount": 7,
+ "emoji": [],
+ "moneyPrefixBad": [],
+ "dollarSuffixBad": [],
+ "title": "Синтетика 1612",
+ "focusTargets": {
+  "primary": {
+   "focused": true,
+   "text": "Беру",
+   "id": null,
+   "focusVisible": true,
+   "outlineWidth": "2px",
+   "outlineStyle": "solid",
+   "outlineColor": "rgb(194, 65, 12)",
+   "outlineOffset": "2px",
+   "boxShadow": "none"
+  },
+  "outline": {
+   "focused": true,
+   "text": "Копировать",
+   "id": null,
+   "focusVisible": true,
+   "outlineWidth": "2px",
+   "outlineStyle": "solid",
+   "outlineColor": "rgb(194, 65, 12)",
+   "outlineOffset": "2px",
+   "boxShadow": "none"
+  },
+  "input": null,
+  "select": null,
+  "textarea": null,
+  "checkbox": null,
+  "summary": {
+   "focused": true,
+   "text": "?Пользователь · операционист",
+   "id": null,
+   "focusVisible": true,
+   "outlineWidth": "2px",
+   "outlineStyle": "solid",
+   "outlineColor": "rgb(194, 65, 12)",
+   "outlineOffset": "2px",
+   "boxShadow": "none"
+  }
+ },
+ "focusProbe": [
+  {
+   "tag": "A",
+   "text": "Сделки",
+   "outlineWidth": "2px",
+   "outlineStyle": "solid",
+   "outlineColor": "rgb(194, 65, 12)",
+   "outlineOffset": "-2px",
+   "boxShadow": "none",
+   "visible": true
+  },
+  {
+   "tag": "A",
+   "text": "Документы",
+   "outlineWidth": "2px",
+   "outlineStyle": "solid",
+   "outlineColor": "rgb(194, 65, 12)",
+   "outlineOffset": "-2px",
+   "boxShadow": "none",
+   "visible": true
+  },
+  {
+   "tag": "A",
+   "text": "Закрытие",
+   "outlineWidth": "2px",
+   "outlineStyle": "solid",
+   "outlineColor": "rgb(194, 65, 12)",
+   "outlineOffset": "-2px",
+   "boxShadow": "none",
+   "visible": true
+  },
+  {
+   "tag": "A",
+   "text": "Обменники",
+   "outlineWidth": "2px",
+   "outlineStyle": "solid",
+   "outlineColor": "rgb(194, 65, 12)",
+   "outlineOffset": "-2px",
+   "boxShadow": "none",
+   "visible": true
+  }
+ ],
+ "open": {
+  "deal": 1612,
+  "role": "operator",
+  "width": "375",
+  "versionBefore": 4,
+  "versionAfter": 4,
+  "viewMutated": false,
+  "deltaPaths": [],
+  "deltaSummary": {},
+  "deltaDealIds": [],
+  "topLevelDelta": [],
+  "semanticPaths": [],
+  "semanticChange": false,
+  "noopVersionBump": false
+ },
+ "capture": {
+  "metricsViewport": [
+   375,
+   812
+  ],
+  "tallImageViewport": [
+   375,
+   1903
+  ],
+  "tallImageIsResizedViewport": true,
+  "firstScreenFile": "deal1612_s23__operator__375__first-screen.png"
+ }
+}

@@ -1,0 +1,51 @@
+{
+ "commit": "328178fce098ee27d391528f06748592042d49e1",
+ "python": "3.11.17 /tmp/s27-venv311/bin/python (pytest 9.0.2); /tmp/qa-t15b venv absent",
+ "python_cmd": "/tmp/s27-venv311/bin/python scripts/run_fenced_pytest.py -q --disable-warnings --tb=short --junitxml=baseline/pytest.xml",
+ "python_result": {
+  "passed": 2813,
+  "skipped": 77,
+  "failed": 0,
+  "total": 2890,
+  "fence": "attempts=8 unexpected=0 /tmp/calccrm-t19-fence-reports/20261019T223717-56339.json"
+ },
+ "js_cmd": "NODE_PATH=\"/Users/karimamirov/Desktop/untitled folder/node_modules\" PLAYWRIGHT_BROWSERS_PATH=~/Library/Caches/ms-playwright /tmp/s27-venv311/bin/python scripts/run_fenced_js.py (node v25.4.0, playwright 1.59.1/Chromium 1217)",
+ "js_result": {
+  "passed": 55,
+  "failed": 6,
+  "failed_files": [
+   "test_stand_crm_close_race.js",
+   "test_stand_crm_labels.js",
+   "test_stand_hash_split.js",
+   "test_stand_mobile_tasks_nav.js",
+   "test_stand_owner_summary.js",
+   "test_t34_wallet_cards_dropdown.js"
+  ],
+  "report": "20261019T223533-js-59295.json"
+ },
+ "js_initial_without_playwright": {
+  "failed_files": [
+   "test_stand_crm_close_race.js",
+   "test_stand_crm_labels.js",
+   "test_stand_hash_split.js",
+   "test_stand_mobile_tasks_nav.js",
+   "test_stand_owner_summary.js",
+   "test_t34_wallet_cards_dropdown.js"
+  ],
+  "report": "20261019T223316-js-56358.json"
+ },
+ "js_failure_causes": {
+  "test_stand_crm_close_race.js": "assert crm-close requests 0!==1 (line78)",
+  "test_stand_crm_labels.js": "expects emoji ⚪ removed in 88db07a",
+  "test_stand_hash_split.js": "expects old \"♻️ свободно\" text",
+  "test_stand_mobile_tasks_nav.js": "real viewport layout 1133 vs 375 (line86) with browser env",
+  "test_stand_owner_summary.js": "regex for s23/s24 \"Деньги по сделке\" markup not matching tasks.html",
+  "test_t34_wallet_cards_dropdown.js": "expects \"компания · \" under selected address (line59)"
+ },
+ "sha256": {
+  "pytest.xml": "9be843cceb2367bd57b10a77a042f10d85f017d9c34339c10de02a29972231e1",
+  "pytest.log": "3ff5a257c82794939efd8d14c7f43575b06d75e9ab5d78dad6d49e4c0462cb03",
+  "js.log": "17f896c8b91d9d925c20e64ca17bd1072bddce29ee3437488eb56167e48a2adb",
+  "js-with-browser.log": "28a12d50f0fbc3b8ceaa872d15d27b7118d2752196d0efa6b753150853b48a43"
+ }
+}
