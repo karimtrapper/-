@@ -2577,6 +2577,10 @@ function htmlText(v){return String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&a
 // (viewBox 24, обводка 1.8, скруглённые концы). Эмодзи как иконки запрещены
 // DESIGN.md (находка №6 аудита ui-2026-10-17).
 function icoWait(){return '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px;margin-right:2px"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>';}
+function icoSearch(){return '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px;margin-right:4px"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>';}
+function icoBack(){return '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px;margin-right:4px"><path d="M19 12H5m6-6-6 6 6 6"/></svg>';}
+function icoCascade(){return '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px;margin-right:4px"><path d="M4 5h5v5h5v5h6m-4-4 4 4-4 4"/></svg>';}
+function icoShare(){return '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px;margin-right:4px"><path d="M4 9h16M4 15h16"/></svg>';}
 function jsLiteralAttr(v){return htmlText(JSON.stringify(String(v==null?'':v)));}
 function transferMode(id,mode){
   if(!demoAllowed()){toast('DEMO отключён в этом окружении');return;}
@@ -3482,7 +3486,7 @@ function draftAgentsBlock(D){
   const mode=D.agentsMode||((list.length&&list.every(a=>(a.tier||1)===1))?'flat':'cascade');
   return `<div class="card-title" style="font-size:14px;margin:8px 0 10px">Агенты сделки
     <span class="sub">кто привёл клиента — это агент 1-го уровня</span>
-    <span class="preset"><button class="${mode==='cascade'?'on':''}" onclick="agentsPreset('draft',0,'cascade')">⬇️ Каскадом</button><button class="${mode==='flat'?'on':''}" onclick="agentsPreset('draft',0,'flat')">🟰 В долю</button></span>
+    <span class="preset"><button class="${mode==='cascade'?'on':''}" onclick="agentsPreset('draft',0,'cascade')">${icoCascade()}Каскадом</button><button class="${mode==='flat'?'on':''}" onclick="agentsPreset('draft',0,'flat')">${icoShare()}В долю</button></span>
     <button class="btn btn-outline btn-sm" onclick="dAgentAdd()">+ Добавить агента</button></div>
   ${list.length?list.map((a,i)=>`<div class="agrow">
     <div class="agtop">
@@ -5937,7 +5941,7 @@ function viewCreateBody(D,srcCard){
           <span class="av">${htmlText((c.name||"").slice(0,2).toUpperCase())}</span>
           <div><div class="t1">${htmlText(c.name)}</div><div class="t2">${(c.totalDeals||0)+clientDeals(c.id).length} сдел.${c.docs?' · договор есть':(c.isCrm?' · Старая база · паспорт нужно загрузить в заявку':' · договора нет')}${c.tg?' · '+htmlText(c.tg):''}${c.isCrm?' <span class="badge b-pend">база CRM</span>':''}</div></div>
           <span class="t3">выбрать</span></div>`).join('')}</div>`:''}
-        ${(!D.searchCrm)?`<div class="fh" style="margin-top:8px"><a href="#" onclick="draftSet('searchCrm', true);return false" style="color:var(--coral)">🔍 Поискать в старой базе CRM</a></div>`:`<div class="fh" style="margin-top:8px"><a href="#" onclick="draftSet('searchCrm', false);return false" style="color:var(--coral)">🔙 Вернуться к новым карточкам</a></div>`}
+        ${(!D.searchCrm)?`<div class="fh" style="margin-top:8px"><a href="#" onclick="draftSet('searchCrm', true);return false" style="color:var(--coral)">${icoSearch()}Поискать в старой базе CRM</a></div>`:`<div class="fh" style="margin-top:8px"><a href="#" onclick="draftSet('searchCrm', false);return false" style="color:var(--coral)">${icoBack()}Вернуться к новым карточкам</a></div>`}
         ${(D.cq||'').trim().length>1?`<button class="btn btn-outline btn-sm" style="margin-top:8px" onclick="draftClientNew()">Создать нового клиента «${htmlText(D.cq)}»</button>`:''}
         ${(D.client||D.clientId)?`<button class="btn btn-outline btn-sm" style="margin-top:8px;margin-left:8px" onclick="draftPickBack()">Вернуть «${htmlText(D.client)}»</button>`:''}
         ${!(D.cq||'').trim()?`<p class="fh" style="margin-top:8px">Выберите клиента или добавьте нового.</p>`:''}`)}
