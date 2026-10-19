@@ -401,7 +401,15 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
     display: flex; align-items: center; min-height: 44px;
     cursor: pointer; font-family: monospace; white-space: nowrap;
 }
-.crm-wallet-address code { display: block; margin-top: 8px; overflow-wrap: anywhere; white-space: normal; }
+.crm-wallet-address code {
+    display: block; max-width: 100%; margin-top: 8px;
+    overflow-y: hidden;
+}
+#payoutWalletAddress code, #payinWalletAddress code {
+    overflow-x: auto !important;
+    overflow-wrap: normal !important; word-break: normal !important; white-space: nowrap !important;
+}
+.crm-money-token { white-space: nowrap; font-variant-numeric: tabular-nums; }
 .crm-wallet-address button {
     flex: none; min-height: 44px; border: 0; padding: 0 8px;
     background: none; color: var(--navy-700);
@@ -1796,7 +1804,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                                 <div id="payoutWalletPolicy" class="form-hint" style="margin-top:8px"></div>
                                 <label id="payoutOwnerApprovalGroup" style="display:none;margin-top:10px;align-items:flex-start;gap:8px">
                                     <input type="checkbox" id="payoutOwnerApproved" style="margin-top:3px">
-                                    <span>Подтверждаю: выплата свыше $10&nbsp;000 согласована владельцем</span>
+                                    <span>Подтверждаю: выплата свыше <span id="payoutOwnerApprovalLimit" class="crm-money-token">$10&nbsp;000</span> согласована владельцем</span>
                                 </label>
                             </div>
                             <div class="form-group">
@@ -10170,20 +10178,34 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 .catch(() => showToast('Не удалось скопировать адрес', 'error'));
             box.append(details, copy);
         }
+        function crmWalletLimitText(wallet) {
+            return '$' + Number(wallet.limit_usd).toLocaleString('ru-RU', {maximumFractionDigits: 2}).replace(/\s/g, '\u00a0');
+        }
         function walletPolicyText(wallet) {
             if (!wallet?.purpose) return '';
             const names = {operator:'операционист', findir:'финансист', teodor:'владелец'};
             const starters = [...new Set([...(wallet.initiator_roles||[]), ...(wallet.owner_can_alone?['teodor']:[])])];
             const limit = wallet.limit_usd != null
-                ? ` · до $${Number(wallet.limit_usd).toLocaleString('ru-RU', {maximumFractionDigits: 2}).replace(/\s/g, '\u00a0')}, выше — с согласованием владельца`
+                ? ` · до ${crmWalletLimitText(wallet)}, выше — с согласованием владельца`
                 : '';
             return `${wallet.label || wallet.address} · начинает ${starters.map(r=>names[r]||r).join(' или ')} · подтверждает ${(wallet.confirmer_roles||[]).map(r=>names[r]||r).join(' или ')}${limit}`;
+        }
+        function renderCrmWalletPolicy(box, wallet) {
+            const policy = walletPolicyText(wallet);
+            const amount = wallet?.limit_usd != null ? crmWalletLimitText(wallet) : '';
+            const at = amount ? policy.lastIndexOf(amount) : -1;
+            if (at < 0) { box.textContent = policy; return; }
+            const token = document.createElement('span');
+            token.className = 'crm-money-token';
+            token.textContent = amount;
+            box.replaceChildren(document.createTextNode(policy.slice(0, at)), token,
+                document.createTextNode(policy.slice(at + amount.length)));
         }
         function refreshPayinWalletPolicy() {
             const select = document.getElementById('payinWalletSelect');
             const wallet = payoutRegistryWallets.find(w => String(w.id) === select?.value);
             const box = document.getElementById('payinWalletPolicy');
-            if (box) box.textContent = walletPolicyText(wallet);
+            if (box) renderCrmWalletPolicy(box, wallet);
             renderCrmWalletAddress('payinWalletAddress', wallet);
         }
         function syncNewPayinWalletDefault() {
@@ -10205,7 +10227,10 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             if (!box || !group) return;
             renderCrmWalletAddress('payoutWalletAddress', wallet);
             if (!wallet?.purpose) { box.textContent = ''; group.style.display = 'none'; return; }
-            box.textContent = walletPolicyText(wallet);
+            renderCrmWalletPolicy(box, wallet);
+            const approvalLimit = document.getElementById('payoutOwnerApprovalLimit');
+            if (approvalLimit) approvalLimit.textContent = wallet.limit_usd == null
+                ? 'лимита кошелька' : crmWalletLimitText(wallet);
             const allowed = wallet.purpose === 'exchange' && ['findir','teodor'].includes(AUTH_ROLE);
             group.style.display = allowed ? 'flex' : 'none';
         }
