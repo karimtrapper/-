@@ -4197,7 +4197,7 @@ function payToCard(d,compact=false){
   const edit=canEdit&&ready;
   const rows=ready?payToCardFields(d).map(([k,v])=>`<div><div class="k">${htmlText(k)}</div><div class="v">${htmlText(v||'—')}</div></div>`).join(''):'';
   return `<div class="card payto-card${compact?' payto-compact':''}" style="margin-bottom:16px">
-    <div class="card-title">Реквизиты для оплаты застройщику</div>
+    <div class="card-title">Реквизиты для оплаты ${d.kind==='Аренда'?'арендодателю':'застройщику'}</div>
     <div class="fh" style="margin:2px 0 0">${payToCardStatus(d)}</div>
     ${ready?(compact?`<div class="fh" style="margin-top:8px">${htmlText([d.payTo.dev,d.payTo.bank,d.payTo.acc].filter(Boolean).join(' · '))}</div>
       <details style="margin-top:8px"><summary>Все реквизиты и комментарий</summary><div class="payto-details">${rows}</div></details>`
@@ -6635,7 +6635,7 @@ function overview(d,st,mine,p,wh){
   <div class="card" style="margin-bottom:16px"><div class="card-title">Клиент и запрос</div>
     <table class="tbl">
       ${row('Клиент',d.client,d.isOld?'знакомый, договор есть':'новый')}
-      ${row('Откуда пришёл',SOURCES[d.source],d.sourceRef||'')}
+      ${row('Откуда пришёл',SOURCES[d.source],sourceRefLabel(d.source,d.sourceRef))}
       ${row('Что делаем',d.type+(d.kind?' · '+d.kind:''))}
       ${row('Как платит',d.payType,isCrypto(d)?'сделка считается в USDT':'')}
       ${row('Объект',d.object||'не указан')}
@@ -7439,7 +7439,7 @@ function ctxCard(d){
   <summary><span class="ctxh">Что это за сделка</span><span class="ctxl">${line}</span></summary>
   <div class="facts" style="margin-top:14px">
     ${fact('Клиент',d.client,d.isOld?'знакомый — договор уже есть':'новый — нужен полный пакет')}
-    ${fact('Откуда пришёл',SOURCES[d.source],d.sourceRef||'без переписки')}
+    ${fact('Откуда пришёл',SOURCES[d.source],sourceRefLabel(d.source,d.sourceRef)||'без переписки')}
     ${fact('Что делаем',d.type+(d.kind?' · '+d.kind:''),'платит: '+(d.payType||'не указано'))}
     ${fact('Объект',d.object||'не указан',d.partial?'часть оплаты '+(d.partNo||'')+' по инвойсу на '+money(d.invoiceTotal,d.kind==='Фрихолд'?'$':'฿'):'оплата целиком')}
     ${fact('Получатель получает',apMoney(ap,'thb'),'клиент отдаёт '+apMoney(ap,'pay'))}
