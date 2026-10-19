@@ -1061,3 +1061,144 @@ def test_capture_refs_sync_only(app_env, pytestconfig):
     assert not cap.failed, cap.failed
     assert not rejected, rejected
     assert not cap.external
+
+
+MONEY_WRAP_JS = '''(selectors) => {
+  const out = [];
+  for (const sel of selectors) {
+    const root = document.querySelector(sel);
+    if (!root || root.getClientRects().length === 0) { out.push({sel, visible: false}); continue; }
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    while (walker.nextNode()) {
+      const node = walker.currentNode, text = node.nodeValue;
+      for (const m of text.matchAll(/\\$[ \\u00a0]?\\d[\\d \\u00a0]*(?:,\\d{2})?/g)) {
+        const range = document.createRange();
+        range.setStart(node, m.index); range.setEnd(node, m.index + m[0].length);
+        const tops = [...new Set([...range.getClientRects()].map(r => Math.round(r.top)))];
+        out.push({sel, amount: m[0], lines: tops.length, hasNbsp: m[0].includes('\\u00a0'), broken: tops.length > 1});
+      }
+    }
+  }
+  return out;
+}'''
+
+
+def test_capture_crm_money_wrap_only(app_env, pytestconfig):
+    """Диагностика (r8b): сумма в CRM-блоке выплаты не переносится внутри числа на 375. Запуск: -k crm_money_wrap_only."""
+    base, cookies, _ids = app_env
+    reg = registry_wallets()
+    seed_state(build_state(reg))
+    crm_ids = seed_crm_deals(reg[EXCHANGE]['id'])
+    executable = pytestconfig.getoption('--chromium-executable')
+    out = Path(__file__).parent / 'shots-crm-money-wrap'
+    out.mkdir(parents=True, exist_ok=True)
+    results = []
+    with sync_playwright() as p:
+        browser = p.chromium.launch(executable_path=executable) if executable else p.chromium.launch()
+        cap = Capture(browser, base, cookies)
+        cap.phase = 'capture'
+        for width in WIDTHS:
+            page = cap.page('findir', width)
+            page.goto(f'{base}/crm?section=deals')
+            page.wait_for_timeout(1500)
+            page.evaluate(f"openDealEditor({crm_ids['big']})")
+            page.wait_for_selector('#payoutWalletSelect', state='attached', timeout=15000)
+            page.wait_for_timeout(1800)
+            page.evaluate("() => { const g = document.getElementById('binanceGroup'); if (g) g.scrollIntoView(); }")
+            found = page.evaluate(MONEY_WRAP_JS, ['#payoutWalletPolicy', '#payoutOwnerApprovalGroup', '#payinWalletPolicy'])
+            results.append({'width': width, 'amounts': found})
+            page.locator('#binanceGroup').screenshot(path=str(out / f'crm_money_wrap__{width}.png'))
+            for item in found:
+                if item.get('broken'):
+                    cap.failed.append(f'CRM {width}: сумма {item["amount"]!r} переносится внутри числа в {item["sel"]} (nbsp в тексте: {item["hasNbsp"]})')
+        browser.close()
+    (out / 'crm_money_wrap.json').write_text(json.dumps(
+        {'harness_version': HARNESS_VERSION + ' + money-wrap', 'source_freeze': source_freeze(), 'results': results,
+         'failed': cap.failed}, ensure_ascii=False, indent=1))
+    assert not cap.failed, cap.failed
+
+
+EXPANDED_ADDRESS_JS = '''(scope) => {
+  const box = document.querySelector(scope);
+  const code = box && box.querySelector('code');
+  if (!code || code.getClientRects().length === 0) return {visible: false};
+  const range = document.createRange(); range.selectNodeContents(code);
+  const tops = [...new Set([...range.getClientRects()].map(r => Math.round(r.top)))];
+  const cs = getComputedStyle(code), rect = code.getBoundingClientRect();
+  return {visible: true, text: code.textContent, lines: tops.length, whiteSpace: cs.whiteSpace, overflowX: cs.overflowX,
+    scrollWidth: code.scrollWidth, clientWidth: code.clientWidth, right: Math.round(rect.right),
+    docScrollWidth: document.documentElement.scrollWidth, innerWidth: innerWidth};
+}'''
+
+
+def test_capture_crm_residual_final(app_env, pytestconfig):
+    """Финальная точечная проверка CRM (только findir и teodor, 375 и 1280): суммы не рвутся внутри числа;
+    развёрнутый полный адрес в одной строке без переполнения страницы; «Копировать» кладёт полный адрес.
+    Запуск: -k crm_residual_final. Пишет в shots-crm-residual/, остальные каталоги не трогает."""
+    base, cookies, _ids = app_env
+    reg = registry_wallets()
+    seed_state(build_state(reg))
+    crm_ids = seed_crm_deals(reg[EXCHANGE]['id'])
+    executable = pytestconfig.getoption('--chromium-executable')
+    out = Path(__file__).parent / 'shots-crm-residual'
+    out.mkdir(parents=True, exist_ok=True)
+    results = []
+    with sync_playwright() as p:
+        browser = p.chromium.launch(executable_path=executable) if executable else p.chromium.launch()
+        cap = Capture(browser, base, cookies)
+        cap.phase = 'capture'
+        for role in ('findir', 'teodor'):
+            for width in WIDTHS:
+                tag = f'{role}__{width}'
+                page = cap.page(role, width)
+                page.goto(f'{base}/crm?section=deals')
+                page.wait_for_timeout(1500)
+                page.evaluate(f"openDealEditor({crm_ids['big']})")
+                page.wait_for_selector('#payoutWalletSelect', state='attached', timeout=15000)
+                page.wait_for_timeout(1800)
+                page.evaluate("() => { const g = document.getElementById('binanceGroup'); if (g) g.scrollIntoView(); }")
+                entry = {'role': role, 'width': width}
+                # 1) суммы: ни одна не переносится внутри числа; чекбокс виден владельцу/финансисту
+                money = page.evaluate(MONEY_WRAP_JS, ['#payoutWalletPolicy', '#payoutOwnerApprovalGroup', '#payinWalletPolicy'])
+                entry['money'] = money
+                tokens = [m_ for m_ in money if m_.get('amount')]
+                expect(cap, any(m_['sel'] == '#payoutOwnerApprovalGroup' for m_ in tokens),
+                       f'{tag}: сумма в подписи согласования найдена и измерена')
+                for item in tokens:
+                    expect(cap, not item['broken'], f'{tag}: сумма {item["amount"]!r} в {item["sel"]} не рвётся внутри числа (строк: {item["lines"]})')
+                # 2) адреса: свёрнуто -> развернуто; одна строка, без переполнения страницы; копирование
+                for scope, label in (('#payoutWalletAddress', 'выплата'), ('#payinWalletAddress', 'приход')):
+                    before = page.evaluate(EXPANDED_ADDRESS_JS, scope)
+                    summary = page.locator(f'{scope} summary').first
+                    expect(cap, summary.count() > 0 and summary.is_visible(), f'{tag}/{label}: виден короткий адрес (summary)')
+                    summary.click()
+                    page.wait_for_timeout(300)
+                    after = page.evaluate(EXPANDED_ADDRESS_JS, scope)
+                    entry[f'address_{label}'] = {'beforeClickVisible': before.get('visible'), 'expanded': after}
+                    expect(cap, after.get('visible') and after.get('text') == EXPANDED_FULL,
+                           f'{tag}/{label}: после клика показан полный адрес ({after})')
+                    expect(cap, after.get('lines') == 1,
+                           f'{tag}/{label}: развёрнутый полный адрес в ОДНУ строку (строк: {after.get("lines")}, white-space={after.get("whiteSpace")})')
+                    expect(cap, after.get('docScrollWidth', 0) <= after.get('innerWidth', 0) + 1,
+                           f'{tag}/{label}: страница не шире экрана после раскрытия ({after.get("docScrollWidth")} > {after.get("innerWidth")})')
+                    copy = page.locator(f'{scope} button', has_text=re.compile('копир', re.I)).first
+                    if copy.count() and copy.is_visible():
+                        copy.click(timeout=8000)
+                        page.wait_for_timeout(300)
+                        clip = page.evaluate('() => navigator.clipboard.readText().catch(e => "ERR:" + e.message)')
+                        expect(cap, clip == EXPANDED_FULL, f'{tag}/{label}: «Копировать» кладёт полный адрес в буфер (буфер={clip[:50]!r})')
+                    else:
+                        expect(cap, False, f'{tag}/{label}: нет видимой кнопки «Копировать»')
+                facts = crm_facts(page)
+                entry['facts'] = facts
+                expect(cap, facts['approvalCheckboxVisible'] is True, f'{tag}: чекбокс согласования виден роли {role}')
+                page.locator('#binanceGroup').screenshot(path=str(out / f'crm_residual__{tag}.png'))
+                results.append(entry)
+        browser.close()
+    (out / 'crm_residual_final.json').write_text(json.dumps(
+        {'harness_version': HARNESS_VERSION + ' + residual-final', 'source_freeze': source_freeze(), 'results': results,
+         'actions': cap.log, 'failed': cap.failed, 'external_requests_blocked': cap.external}, ensure_ascii=False, indent=1))
+    assert not cap.failed and not cap.external, ' || '.join(cap.failed) + (f' external={cap.external[:3]}' if cap.external else '')
+
+
+EXPANDED_FULL = EXCHANGE

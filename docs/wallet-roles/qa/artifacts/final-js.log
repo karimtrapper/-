@@ -195,4 +195,4 @@ JS_TEST test_wallet_registry_dropdown.js
 JS_TEST test_wave_a_documents.js
 JS_TEST test_wave_a_exchange.js
 JS_TEST test_wave_a_rounding.js
-JS_FENCED_RESULT passed=55 failed=6 report=/tmp/calccrm-t19-fence-reports/20261019T235453-js-39038.json
+JS_FENCED_RESULT passed=55 failed=6 report=/tmp/calccrm-t19-fence-reports/20261020T004743-js-60864.json

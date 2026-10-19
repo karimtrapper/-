@@ -38,5 +38,80 @@
   "path": "artifacts/ui8.redacted.log",
   "sha256": "bd716b97d643e06a31dff585eb74bb7e02cd65826fd67d412bc77670bdd64cb3",
   "bytes": 421473
+ },
+ {
+  "path": "archive-r7/R7-RAW-SUMMARY.json",
+  "sha256": "d6225dcfb4635af00bfa8b785a1d0f6a5bed28f99a0dfd762f5447cbe206c3d1",
+  "bytes": 4826
+ },
+ {
+  "path": "archive-money-wrap-red/crm_money_wrap.json",
+  "sha256": "3b720443700e50e71c375a7fb73ff5bfc0eba53c943abde32194692807aca4b3",
+  "bytes": 1699
+ },
+ {
+  "path": "archive-money-wrap-red/crm_money_wrap__375.png",
+  "sha256": "c8a110e5f2e2db48e1de812ce9f1b9bcc512e972057e64ae399f3f7a7eb832aa",
+  "bytes": 100756
+ },
+ {
+  "path": "archive-money-wrap-red/crm_money_wrap__1280.png",
+  "sha256": "27eefb167aeba6b86edc26103685b9db35dad67072ffb7bb559e28b5303ed63b",
+  "bytes": 48888
+ },
+ {
+  "path": "archive-money-wrap-red/ui-money-wrap-before.redacted.log",
+  "sha256": "e5037def499abddfb915e719a2aaeacb59e3a36f1cee18560b9ddddf9f2edadf",
+  "bytes": 12432
+ },
+ {
+  "path": "shots-crm-residual/crm_residual_final.json",
+  "sha256": "4ac053e5f29638d76239945deb5bf9cf72439f3eee364444e495759b2a63cd03",
+  "bytes": 20767
+ },
+ {
+  "path": "shots-crm-residual/crm_residual__findir__375.png",
+  "sha256": "3098a5b8e25ce5a5e61186b47b432fe03813c1114311b7d568ea76848e140f86",
+  "bytes": 103633
+ },
+ {
+  "path": "shots-crm-residual/crm_residual__findir__1280.png",
+  "sha256": "f904eee4e16e1408159333e59e75f8a2997fa415e3d11d3ca405b3b5b1dd4346",
+  "bytes": 47991
+ },
+ {
+  "path": "shots-crm-residual/crm_residual__teodor__375.png",
+  "sha256": "3098a5b8e25ce5a5e61186b47b432fe03813c1114311b7d568ea76848e140f86",
+  "bytes": 103633
+ },
+ {
+  "path": "shots-crm-residual/crm_residual__teodor__1280.png",
+  "sha256": "f904eee4e16e1408159333e59e75f8a2997fa415e3d11d3ca405b3b5b1dd4346",
+  "bytes": 47991
+ },
+ {
+  "path": "shots-crm-residual/ui-crm-residual-final.redacted.log",
+  "sha256": "4ae1bb68a17654abc6afe554572606282db421f4d71a499c63c0bc98520e6f65",
+  "bytes": 3434
+ },
+ {
+  "path": "artifacts/fence-crm-money-wrap-red.json",
+  "sha256": "c53d371dfa3ae768ce692b462f3ea62e555ba278ca461d9698f55a426eb697fc",
+  "bytes": 126
+ },
+ {
+  "path": "artifacts/fence-crm-residual-final.json",
+  "sha256": "5f617089cae16e10e521cd7d57a2af694d9f0cc931895d0c6646f9ea1b40c5f5",
+  "bytes": 126
+ },
+ {
+  "path": "artifacts/crm-money-wrap-red.redacted.log",
+  "sha256": "e5037def499abddfb915e719a2aaeacb59e3a36f1cee18560b9ddddf9f2edadf",
+  "bytes": 12432
+ },
+ {
+  "path": "artifacts/crm-residual-final.redacted.log",
+  "sha256": "4ae1bb68a17654abc6afe554572606282db421f4d71a499c63c0bc98520e6f65",
+  "bytes": 3434
  }
 ]

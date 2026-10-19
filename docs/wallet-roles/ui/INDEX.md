@@ -103,3 +103,15 @@ HEAD 62f1460465ba597574e4ba4f399cb2614bcde4e1 · чистое дерево: True
 | wrong_wallet_warning_after_ack | operator | 375 | [png](shots/wrong_wallet_warning_after_ack__operator__375.png) | [первый экран](shots/wrong_wallet_warning_after_ack__operator__375__first-screen.png) | TOAST: Расхождение адреса подтверждено. Выберит |
 | wrong_wallet_warning_before_ack | operator | 1280 | [png](shots/wrong_wallet_warning_before_ack__operator__1280.png) | [первый экран](shots/wrong_wallet_warning_before_ack__operator__1280__first-screen.png) | — |
 | wrong_wallet_warning_before_ack | operator | 375 | [png](shots/wrong_wallet_warning_before_ack__operator__375.png) | [первый экран](shots/wrong_wallet_warning_before_ack__operator__375__first-screen.png) | — |
+
+
+## Целевые CRM-кадры после исправления суммы и адреса (`4c0e0fc`)
+
+Сняты отдельным тестом `crm_residual_final`; на PNG виден только блок выплаты, блок прихода проверен измерениями в JSON, полные редакторы CRM с блоком прихода — в основной матрице; полная матрица выше остаётся на `62f1460`. JSON: [crm_residual_final.json](shots-crm-residual/crm_residual_final.json).
+
+| Роль | 375 | 1280 |
+|---|---|---|
+| finance (findir) | [блок выплаты (приход проверен в JSON)](shots-crm-residual/crm_residual__findir__375.png) | [блок выплаты (приход проверен в JSON)](shots-crm-residual/crm_residual__findir__1280.png) |
+| владелец (teodor) | [блок выплаты (приход проверен в JSON)](shots-crm-residual/crm_residual__teodor__375.png) | [блок выплаты (приход проверен в JSON)](shots-crm-residual/crm_residual__teodor__1280.png) |
+
+Красная диагностика до исправления (`2af1517`): [JSON](archive-money-wrap-red/crm_money_wrap.json), [375](archive-money-wrap-red/crm_money_wrap__375.png), [1280](archive-money-wrap-red/crm_money_wrap__1280.png).

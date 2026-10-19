@@ -1,0 +1,111 @@
+FENCED_RUN python=3.11.17 port_pool=44775-44838
+✅ CR-05 migration applied: UNIQUE(deal_id, type) on wallet_operations
+✅ Database migration successful
+✅ Database initialized
+✅ Reestr seeded: deals=113, brokers=17, requests=37, merchants=6, wallets=8
+⚠️ Файл .env не найден
+[STAND] Реестр кошельков засеян
+F
+=================================== FAILURES ===================================
+E   AssertionError: ["CRM 375: сумма '$10 000,00' переносится внутри числа в #payoutOwnerApprovalGroup (nbsp в тексте: False)"]
+    assert not ["CRM 375: сумма '$10 000,00' переносится внутри числа в #payoutOwnerApprovalGroup (nbsp в тексте: False)"]
+     +  where ["CRM 375: сумма '$10 000,00' переносится внутри числа в #payoutOwnerApprovalGroup (nbsp в тексте: False)"] = <test_capture_wallet_roles_ui.Capture object at 0x107f87f10>.failed
+------------------------------ Captured log call -------------------------------
+INFO     werkzeug:_internal.py:97 127.0.0.1 - - [20/Oct/2026 00:43:50] "GET /crm?section=deals HTTP/1.1" 200 -
+INFO     werkzeug:_internal.py:97 127.0.0.1 - - [20/Oct/2026 00:43:50] "GET /static/stand/vendor/inter-v20/font.css HTTP/1.1" 200 -
+INFO     werkzeug:_internal.py:97 127.0.0.1 - - [20/Oct/2026 00:43:50] "GET /static/stand/vendor/chartjs-4.4.7/chart.umd.min.js HTTP/1.1" 200 -
+INFO     werkzeug:_internal.py:97 127.0.0.1 - - [20/Oct/2026 00:43:50] "GET /static/nav-shell.css?v=7 HTTP/1.1" 200 -
+INFO     werkzeug:_internal.py:97 127.0.0.1 - - [20/Oct/2026 00:43:50] "GET /static/design-layer.css?v=3 HTTP/1.1" 200 -
+INFO     werkzeug:_internal.py:97 127.0.0.1 - - [20/Oct/2026 00:43:50] "GET /static/crm/mobile-layout.js?v=1 HTTP/1.1" 200 -
+INFO     werkzeug:_internal.py:97 127.0.0.1 - - [20/Oct/2026 00:43:50] "GET /static/nav-shell.js?v=7 HTTP/1.1" 200 -
+INFO     werkzeug:_internal.py:97 127.0.0.1 - - [20/Oct/2026 00:43:50] "GET /static/visual-format.js?v=1 HTTP/1.1" 200 -
+INFO     werkzeug:_internal.py:97 127.0.0.1 - - [20/Oct/2026 00:43:50] "GET /static/stand/browser-status.js HTTP/1.1" 200 -
+INFO     werkzeug:_internal.py:97 127.0.0.1 - - [20/Oct/2026 00:43:50] "GET /static/stand/vendor/inter-v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa1ZL7W0Q5nw.woff2 HTTP/1.1" 200 -
+INFO     werkzeug:_internal.py:97 127.0.0.1 - - [20/Oct/2026 00:43:50] "GET /static/stand/vendor/inter-v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa0ZL7W0Q5n-wU.woff2 HTTP/1.1" 200 -
+INFO     werkzeug:_internal.py:97 127.0.0.1 - - [20/Oct/2026 00:43:50] "GET /api/rates HTTP/1.1" 200 -
+INFO     werkzeug:_internal.py:97 127.0.0.1 - - [20/Oct/2026 00:43:50] "GET /api/auth/me HTTP/1.1" 200 -
+INFO     werkzeug:_internal.py:97 127.0.0.1 - - [20/Oct/2026 00:43:50] "GET /api/stand/roles HTTP/1.1" 200 -
+INFO     werkzeug:_internal.py:97 127.0.0.1 - - [20/Oct/2026 00:43:50] "GET /api/auth/me HTTP/1.1" 200 -
+INFO     werkzeug:_internal.py:97 127.0.0.1 - - [20/Oct/2026 00:43:50] "GET /api/payout-requests?status=new HTTP/1.1" 200 -
+INFO     werkzeug:_internal.py:97 127.0.0.1 - - [20/Oct/2026 00:43:50] "GET /api/wallets?no_balances=true&all=true HTTP/1.1" 200 -
+INFO     werkzeug:_internal.py:97 127.0.0.1 - - [20/Oct/2026 00:43:50] "GET /api/referrers HTTP/1.1" 200 -
+INFO     werkzeug:_internal.py:97 127.0.0.1 - - [20/Oct/2026 00:43:50] "GET /api/wallets/summary HTTP/1.1" 200 -
+INFO     werkzeug:_internal.py:97 127.0.0.1 - - [20/Oct/2026 00:43:50] "GET /api/analytics/dashboard?period=30d HTTP/1.1" 200 -
+INFO     werkzeug:_internal.py:97 127.0.0.1 - - [20/Oct/2026 00:43:50] "GET /api/referrers HTTP/1.1" 200 -
+INFO     werkzeug:_internal.py:97 127.0.0.1 - - [20/Oct/2026 00:43:50] "GET /api/deals?page=1&per_page=50 HTTP/1.1" 200 -
+INFO     werkzeug:_internal.py:97 127.0.0.1 - - [20/Oct/2026 00:43:50] "GET /api/stand/nav-count HTTP/1.1" 200 -
+INFO     werkzeug:_internal.py:97 127.0.0.1 - - [20/Oct/2026 00:43:50] "GET /api/analytics/conversion?months=12 HTTP/1.1" 200 -
+INFO     werkzeug:_internal.py:97 127.0.0.1 - - [20/Oct/2026 00:43:50] "GET /api/deals?per_page=5 HTTP/1.1" 200 -
+INFO     werkzeug:_internal.py:97 127.0.0.1 - - [20/Oct/2026 00:43:52] "GET /api/managers HTTP/1.1" 200 -
+INFO     werkzeug:_internal.py:97 127.0.0.1 - - [20/Oct/2026 00:43:52] "GET /api/transactions/incoming?start_date=2025-12-01 HTTP/1.1" 200 -
+INFO     werkzeug:_internal.py:97 127.0.0.1 - - [20/Oct/2026 00:43:52] "GET /api/clients HTTP/1.1" 200 -
+INFO     werkzeug:_internal.py:97 127.0.0.1 - - [20/Oct/2026 00:43:52] "GET /api/cash/batches HTTP/1.1" 200 -
+INFO     werkzeug:_internal.py:97 127.0.0.1 - - [20/Oct/2026 00:43:52] "GET /api/cards/balance HTTP/1.1" 200 -
+INFO     werkzeug:_internal.py:97 127.0.0.1 - - [20/Oct/2026 00:43:52] "GET /api/referrers HTTP/1.1" 200 -
+INFO     werkzeug:_internal.py:97 127.0.0.1 - - [20/Oct/2026 00:43:52] "GET /api/deals/2 HTTP/1.1" 200 -
+INFO     werkzeug:_internal.py:97 127.0.0.1 - - [20/Oct/2026 00:43:54] "GET /crm?section=deals HTTP/1.1" 200 -
+INFO     werkzeug:_internal.py:97 127.0.0.1 - - [20/Oct/2026 00:43:54] "GET /static/stand/vendor/inter-v20/font.css HTTP/1.1" 200 -
+INFO     werkzeug:_internal.py:97 127.0.0.1 - - [20/Oct/2026 00:43:54] "GET /static/stand/vendor/chartjs-4.4.7/chart.umd.min.js HTTP/1.1" 200 -
+INFO     werkzeug:_internal.py:97 127.0.0.1 - - [20/Oct/2026 00:43:54] "GET /static/nav-shell.css?v=7 HTTP/1.1" 200 -
+INFO     werkzeug:_internal.py:97 127.0.0.1 - - [20/Oct/2026 00:43:54] "GET /static/design-layer.css?v=3 HTTP/1.1" 200 -
+INFO     werkzeug:_internal.py:97 127.0.0.1 - - [20/Oct/2026 00:43:54] "GET /static/nav-shell.js?v=7 HTTP/1.1" 200 -
+INFO     werkzeug:_internal.py:97 127.0.0.1 - - [20/Oct/2026 00:43:54] "GET /static/crm/mobile-layout.js?v=1 HTTP/1.1" 200 -
+INFO     werkzeug:_internal.py:97 127.0.0.1 - - [20/Oct/2026 00:43:54] "GET /static/visual-format.js?v=1 HTTP/1.1" 200 -
+INFO     werkzeug:_internal.py:97 127.0.0.1 - - [20/Oct/2026 00:43:54] "GET /static/stand/browser-status.js HTTP/1.1" 200 -
+INFO     werkzeug:_internal.py:97 127.0.0.1 - - [20/Oct/2026 00:43:54] "GET /static/stand/vendor/inter-v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa1ZL7W0Q5nw.woff2 HTTP/1.1" 200 -
+INFO     werkzeug:_internal.py:97 127.0.0.1 - - [20/Oct/2026 00:43:54] "GET /static/stand/vendor/inter-v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa0ZL7W0Q5n-wU.woff2 HTTP/1.1" 200 -
+INFO     werkzeug:_internal.py:97 127.0.0.1 - - [20/Oct/2026 00:43:54] "GET /api/rates HTTP/1.1" 200 -
+INFO     werkzeug:_internal.py:97 127.0.0.1 - - [20/Oct/2026 00:43:54] "GET /api/auth/me HTTP/1.1" 200 -
+INFO     werkzeug:_internal.py:97 127.0.0.1 - - [20/Oct/2026 00:43:54] "GET /api/stand/roles HTTP/1.1" 200 -
+INFO     werkzeug:_internal.py:97 127.0.0.1 - - [20/Oct/2026 00:43:54] "GET /api/auth/me HTTP/1.1" 200 -
+INFO     werkzeug:_internal.py:97 127.0.0.1 - - [20/Oct/2026 00:43:54] "GET /api/payout-requests?status=new HTTP/1.1" 200 -
+INFO     werkzeug:_internal.py:97 127.0.0.1 - - [20/Oct/2026 00:43:54] "GET /api/wallets?no_balances=true&all=true HTTP/1.1" 200 -
+INFO     werkzeug:_internal.py:97 127.0.0.1 - - [20/Oct/2026 00:43:54] "GET /api/wallets/summary HTTP/1.1" 200 -
+INFO     werkzeug:_internal.py:97 127.0.0.1 - - [20/Oct/2026 00:43:54] "GET /api/referrers HTTP/1.1" 200 -
+INFO     werkzeug:_internal.py:97 127.0.0.1 - - [20/Oct/2026 00:43:54] "GET /api/analytics/dashboard?period=30d HTTP/1.1" 200 -
+INFO     werkzeug:_internal.py:97 127.0.0.1 - - [20/Oct/2026 00:43:54] "GET /api/referrers HTTP/1.1" 200 -
+INFO     werkzeug:_internal.py:97 127.0.0.1 - - [20/Oct/2026 00:43:54] "GET /api/stand/nav-count HTTP/1.1" 200 -
+INFO     werkzeug:_internal.py:97 127.0.0.1 - - [20/Oct/2026 00:43:54] "GET /api/deals?page=1&per_page=50 HTTP/1.1" 200 -
+INFO     werkzeug:_internal.py:97 127.0.0.1 - - [20/Oct/2026 00:43:54] "GET /api/analytics/conversion?months=12 HTTP/1.1" 200 -
+INFO     werkzeug:_internal.py:97 127.0.0.1 - - [20/Oct/2026 00:43:54] "GET /api/deals?per_page=5 HTTP/1.1" 200 -
+INFO     werkzeug:_internal.py:97 127.0.0.1 - - [20/Oct/2026 00:43:56] "GET /api/managers HTTP/1.1" 200 -
+INFO     werkzeug:_internal.py:97 127.0.0.1 - - [20/Oct/2026 00:43:56] "GET /api/clients HTTP/1.1" 200 -
+INFO     werkzeug:_internal.py:97 127.0.0.1 - - [20/Oct/2026 00:43:56] "GET /api/transactions/incoming?start_date=2025-12-01 HTTP/1.1" 200 -
+INFO     werkzeug:_internal.py:97 127.0.0.1 - - [20/Oct/2026 00:43:56] "GET /api/cash/batches HTTP/1.1" 200 -
+INFO     werkzeug:_internal.py:97 127.0.0.1 - - [20/Oct/2026 00:43:56] "GET /api/cards/balance HTTP/1.1" 200 -
+INFO     werkzeug:_internal.py:97 127.0.0.1 - - [20/Oct/2026 00:43:56] "GET /api/referrers HTTP/1.1" 200 -
+INFO     werkzeug:_internal.py:97 127.0.0.1 - - [20/Oct/2026 00:43:56] "GET /api/deals/2 HTTP/1.1" 200 -
+/Users/karimamirov/worktrees/calccrm-wallet-roles/docs/wallet-roles/ui/test_capture_wallet_roles_ui.py:1118: AssertionError: ["CRM 375: сумма '$10 000,00' переносится внутри числа в #payoutOwnerApprovalGroup (nbsp в тексте: False)"]
+=============================== warnings summary ===============================
+../../../../private/tmp/s27-venv311/lib/python3.11/site-packages/flask_limiter/extension.py:336
+  /private/tmp/s27-venv311/lib/python3.11/site-packages/flask_limiter/extension.py:336: UserWarning: Using the in-memory storage for tracking rate limits as no storage was explicitly specified. This is not recommended for production use. See: https://flask-limiter.readthedocs.io#configuring-a-storage-backend for documentation about configuring the storage backend.
+    warnings.warn(
+
+app.py:421
+  /Users/karimamirov/worktrees/calccrm-wallet-roles/app.py:421: MovedIn20Warning: The ``declarative_base()`` function is now available as sqlalchemy.orm.declarative_base(). (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+    Base = declarative_base()
+
+app.py:2537
+  /Users/karimamirov/worktrees/calccrm-wallet-roles/app.py:2537: SAWarning: Cannot correctly sort tables; there are unresolvable cycles between tables "clients, referrers", which is usually caused by mutually dependent foreign key constraints.  Foreign key constraints involving these tables will not be considered; this warning may raise an error in a future release.
+    tables=[table for table in Base.metadata.sorted_tables
+
+docs/wallet-roles/ui/test_capture_wallet_roles_ui.py::test_capture_crm_money_wrap_only
+  /Users/karimamirov/worktrees/calccrm-wallet-roles/app.py:2661: SAWarning: Cannot correctly sort tables; there are unresolvable cycles between tables "clients, referrers", which is usually caused by mutually dependent foreign key constraints.  Foreign key constraints involving these tables will not be considered; this warning may raise an error in a future release.
+    tables=[table for table in Base.metadata.sorted_tables
+
+docs/wallet-roles/ui/test_capture_wallet_roles_ui.py: 54 warnings
+  /Users/karimamirov/worktrees/calccrm-wallet-roles/app.py:257: LegacyAPIWarning: The Query.get() method is considered legacy as of the 1.x series of SQLAlchemy and becomes a legacy construct in 2.0. The method is now available as Session.get() (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+    user = db.query(AdminUser).get(uid)
+
+docs/wallet-roles/ui/test_capture_wallet_roles_ui.py::test_capture_crm_money_wrap_only
+docs/wallet-roles/ui/test_capture_wallet_roles_ui.py::test_capture_crm_money_wrap_only
+docs/wallet-roles/ui/test_capture_wallet_roles_ui.py::test_capture_crm_money_wrap_only
+docs/wallet-roles/ui/test_capture_wallet_roles_ui.py::test_capture_crm_money_wrap_only
+  /Users/karimamirov/worktrees/calccrm-wallet-roles/app.py:5294: LegacyAPIWarning: The Query.get() method is considered legacy as of the 1.x series of SQLAlchemy and becomes a legacy construct in 2.0. The method is now available as Session.get() (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+    user = db.query(AdminUser).get(flask_session['user_id'])
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED docs/wallet-roles/ui/test_capture_wallet_roles_ui.py::test_capture_crm_money_wrap_only
+1 failed, 3 deselected, 62 warnings in 9.06s
+NETWORK_FENCE attempts=0 unexpected=0 report=/tmp/calccrm-t19-fence-reports/20261020T004358-58136.json

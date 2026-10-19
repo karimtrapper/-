@@ -16,7 +16,8 @@ const el = id => {
   return elements.get(id);
 };
 const calls = [];
-const ctx = {document: {getElementById: el, createElement: () => ({style: {}, append() {}, setAttribute() {}})}, Date,
+const ctx = {document: {getElementById: el, createElement: () => ({style: {}, append() {}, setAttribute() {}}),
+    createTextNode: text => ({text})}, Date,
   editingDealId: null, payoutRegistryWallets: [],
   sberSetKindFilter: (...args) => calls.push(['kind', ...args]),
   sberLoadIncomes: () => calls.push(['load']),
@@ -24,7 +25,8 @@ const ctx = {document: {getElementById: el, createElement: () => ({style: {}, ap
   loadCustomCryptoTransactions: () => calls.push(['crypto'])};
 vm.createContext(ctx);
 vm.runInContext(['methodUsesSberPool', 'flowToday', 'flowShow',
-  'walletPolicyText', 'renderCrmWalletAddress', 'refreshPayinWalletPolicy', 'applyPayinMethodFields', 'onCustomPayinMethodChange'].map(fn).join('\n'), ctx);
+  'crmWalletLimitText', 'walletPolicyText', 'renderCrmWalletPolicy', 'renderCrmWalletAddress',
+  'refreshPayinWalletPolicy', 'applyPayinMethodFields', 'onCustomPayinMethodChange'].map(fn).join('\n'), ctx);
 
 el('payinMethod').value = 'flow_sole_reqs';
 vm.runInContext('applyPayinMethodFields()', ctx);

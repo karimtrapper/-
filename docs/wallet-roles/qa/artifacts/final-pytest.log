@@ -1,4 +1,4 @@
-FENCED_RUN python=3.11.17 port_pool=27817-27880
+FENCED_RUN python=3.11.17 port_pool=24530-24593
 ........................................................................ [  2%]
 ........................................................................ [  4%]
 ..................sssssssssssssssssssssssssssssssssssssssssssss......... [  6%]
@@ -44,5 +44,5 @@ FENCED_RUN python=3.11.17 port_pool=27817-27880
 ........................................................................ [ 96%]
 ........................................................................ [ 98%]
 ..........................................                               [100%]
-3133 passed, 77 skipped, 7013 warnings in 256.19s (0:04:16)
-NETWORK_FENCE attempts=8 unexpected=0 report=/tmp/calccrm-t19-fence-reports/20261019T235852-39016.json
+3133 passed, 77 skipped, 7013 warnings in 264.88s (0:04:24)
+NETWORK_FENCE attempts=8 unexpected=0 report=/tmp/calccrm-t19-fence-reports/20261020T005154-60861.json

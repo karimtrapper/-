@@ -1,5 +1,5 @@
 {
- "app_head": "62f1460465ba597574e4ba4f399cb2614bcde4e1",
+ "app_head": "4c0e0fcb3ebdf4b24641203d455c0a46c8ee9bcb",
  "artifacts": [
   {
    "original_path": "/tmp/calccrm-wallet-roles-qa/baseline/pytest.xml",
@@ -32,32 +32,62 @@
    "sha256": "a1d706dd40939872a6fbe0ad2936e081c13f23bbee45a54d44b8616472198151"
   },
   {
-   "original_path": "/tmp/calccrm-wallet-roles-qa/regression-final3.xml",
+   "original_path": "/tmp/calccrm-wallet-roles-qa/regression-final4.xml",
    "repo_path": "docs/wallet-roles/qa/artifacts/final-pytest.xml",
+   "bytes": 444721,
+   "sha256": "bfa28ca33ef8396578cdac07855308ed3e0bfb987120efb02d10def0cc6c679d"
+  },
+  {
+   "original_path": "/tmp/calccrm-wallet-roles-qa/regression-final4.log",
+   "repo_path": "docs/wallet-roles/qa/artifacts/final-pytest.log",
+   "bytes": 3811,
+   "sha256": "e1dc09a8aac14056ef8d84df7eaef6e6821740047976ef036e2ab262b19ce4e4"
+  },
+  {
+   "original_path": "/tmp/calccrm-t19-fence-reports/20261020T005154-60861.json",
+   "repo_path": "docs/wallet-roles/qa/artifacts/fence-python-final.json",
+   "bytes": 1591,
+   "sha256": "ec63626f2d230519d66c883ed0ce291caa7c826e0b3648b56717be3a1bf35983"
+  },
+  {
+   "original_path": "/tmp/calccrm-wallet-roles-qa/regression-final4-js.log",
+   "repo_path": "docs/wallet-roles/qa/artifacts/final-js.log",
+   "bytes": 9782,
+   "sha256": "34c3ad8a7ebab09f836065361a5d7cf27009d86cbc419e5264294d3c49a9adc9"
+  },
+  {
+   "original_path": "/tmp/calccrm-t19-fence-reports/20261020T004743-js-60864.json",
+   "repo_path": "docs/wallet-roles/qa/artifacts/fence-js-final.json",
+   "bytes": 4623,
+   "sha256": "4e454821fbe0bc1cd8d7c8d06b704e7fd41c7b9c6c2ae10e608eb169235253e4"
+  },
+  {
+   "original_path": "/tmp/calccrm-wallet-roles-qa/regression-final3.xml",
+   "repo_path": "docs/wallet-roles/qa/artifacts/intermediate-final3/final-pytest.xml",
    "bytes": 444721,
    "sha256": "5edb586567a48811c82ae0397b6cb4ad72fd39d88c204ce7cecaace482dd7f67"
   },
   {
    "original_path": "/tmp/calccrm-wallet-roles-qa/regression-final3.log",
-   "repo_path": "docs/wallet-roles/qa/artifacts/final-pytest.log",
+   "repo_path": "docs/wallet-roles/qa/artifacts/intermediate-final3/final-pytest.log",
    "bytes": 3811,
    "sha256": "ee0c7b00e03dd32ac29895200b8f48d7ebb2c66c97d2381cc0a255fb96cb317d"
   },
   {
    "original_path": "/tmp/calccrm-t19-fence-reports/20261019T235852-39016.json",
-   "repo_path": "docs/wallet-roles/qa/artifacts/fence-python-final.json",
+   "repo_path": "docs/wallet-roles/qa/artifacts/intermediate-final3/fence-python-final.json",
    "bytes": 1591,
    "sha256": "ddb6f2669fef81f542b59ca8e9b40f29e82143df80e85e73ba61436683b0b484"
   },
   {
    "original_path": "/tmp/calccrm-wallet-roles-qa/regression-final3-js.log",
-   "repo_path": "docs/wallet-roles/qa/artifacts/final-js.log",
+   "repo_path": "docs/wallet-roles/qa/artifacts/intermediate-final3/final-js.log",
    "bytes": 9782,
    "sha256": "eb44fff74319506c2e3e748712857d177f8ae0bddab2245ea8b20ef9a6e12393"
   },
   {
    "original_path": "/tmp/calccrm-t19-fence-reports/20261019T235453-js-39038.json",
-   "repo_path": "docs/wallet-roles/qa/artifacts/fence-js-final.json",
+   "repo_path": "docs/wallet-roles/qa/artifacts/intermediate-final3/fence-js-final.json",
    "bytes": 4623,
    "sha256": "1a9d349b79c7a0126fbee12b7aafbc4fd1aa21d1e8b99acf753fa496122f3596"
   },
