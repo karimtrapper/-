@@ -28,6 +28,10 @@
     const rows = [...table.querySelectorAll('tbody > tr')];
     table.classList.add('crm-mobile-table');
     if (!rows.length) return;
+    if (table.classList.contains('unit-econ-table')) {
+      enhanceUnitEconTable(table, rows, headers);
+      return;
+    }
     rows.forEach(row => {
       if (row.dataset.crmCardReady === '1') return;
       const cells = [...row.children].filter(cell => cell.tagName === 'TD');
@@ -35,16 +39,6 @@
       row.dataset.crmCardReady = '1';
       if (cells.length === 1 && cells[0].colSpan > 1) {
         row.classList.add('crm-mobile-empty-row');
-        return;
-      }
-      const metricTitle = row.querySelector(':scope > th');
-      if (metricTitle && table.classList.contains('unit-econ-table')) {
-        metricTitle.dataset.crmCardRole = 'title';
-        cells.forEach((cell, index) => {
-          cell.dataset.crmLabel = headers[index + 1] || `Показатель ${index + 1}`;
-          cell.dataset.crmCardRole = index === 0 ? 'amount' : 'extra';
-        });
-        addDetailsButton(row, metricTitle);
         return;
       }
       const meaningful = index => cells[index] && cells[index].textContent.trim() && !cells[index].querySelector('input[type="checkbox"]');
@@ -67,6 +61,83 @@
       });
       if (action >= 0) return;
       addDetailsButton(row, cells[titleIndex], section);
+    });
+  }
+
+  /* Дашборд (.unit-econ-table — «Маржа», «Юнит-экономика», «По каналам»):
+     вертикальный список «метка — значение» вместо широкой таблицы сравнения
+     и кнопки «Детали» — переход по тапу на всю строку, как .crm-deal-row
+     (находка №15 по аналогии; редизайн дашборда ui-2026-10-17, 375px). */
+  function headerName(th) {
+    if (!th) return '';
+    const clone = th.cloneNode(true);
+    clone.querySelectorAll('.ue-sub').forEach(sub => sub.remove());
+    return clone.textContent.trim();
+  }
+
+  function enhanceUnitEconTable(table, rows, headers) {
+    const headerCells = [...table.querySelectorAll('thead tr:last-child th')];
+    const subs = headerCells.map(th => {
+      const sub = th.querySelector('.ue-sub');
+      return sub ? sub.textContent.trim() : '';
+    });
+    rows.forEach(row => {
+      if (row.dataset.crmCardReady === '1') return;
+      const cells = [...row.children].filter(cell => cell.tagName === 'TD');
+      if (!cells.length) return;
+      row.dataset.crmCardReady = '1';
+      if (cells.length === 1 && cells[0].colSpan > 1) {
+        row.classList.add('crm-mobile-empty-row');
+        return;
+      }
+      const metricTitle = row.querySelector(':scope > th');
+      if (metricTitle) {
+        // marginsTable: th — название метрики, td×N — значения по периодам.
+        // Первый период виден всегда, остальные — вертикальным списком по тапу.
+        metricTitle.dataset.crmCardRole = 'title';
+        cells.forEach((cell, index) => {
+          cell.dataset.crmLabel = headerName(headerCells[index + 1]) || `Показатель ${index + 1}`;
+          cell.dataset.crmCardRole = index === 0 ? 'amount' : 'extra';
+        });
+        if (cells.length > 1) makeRowExpandable(row);
+        return;
+      }
+      if (table.id === 'channelsTable') {
+        // channelsTable: первая ячейка — название канала, остальные — метрики.
+        cells[0].dataset.crmCardRole = 'title';
+        cells.forEach((cell, index) => {
+          if (index === 0) return;
+          cell.dataset.crmLabel = headerName(headerCells[index]) || `Поле ${index + 1}`;
+          cell.dataset.crmCardRole = 'extra';
+        });
+        makeRowExpandable(row);
+        return;
+      }
+      // unitEconTable: один <tr> с N метриками → плоский вертикальный список
+      // «метка — значение», пояснение метрики — мелким текстом под меткой.
+      cells.forEach((cell, index) => {
+        cell.dataset.crmCardRole = 'metric';
+        cell.dataset.crmLabel = headerName(headerCells[index]) || `Показатель ${index + 1}`;
+        cell.dataset.crmSub = subs[index] || '';
+      });
+    });
+  }
+
+  function makeRowExpandable(row) {
+    row.classList.add('crm-mobile-expandable');
+    row.tabIndex = 0;
+    row.setAttribute('role', 'button');
+    row.setAttribute('aria-expanded', 'false');
+    const toggle = () => {
+      const open = row.classList.toggle('crm-mobile-expanded');
+      row.setAttribute('aria-expanded', String(open));
+    };
+    row.addEventListener('click', event => {
+      if (event.target.closest('a, button, input, label')) return;
+      toggle();
+    });
+    row.addEventListener('keydown', event => {
+      if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); toggle(); }
     });
   }
 
