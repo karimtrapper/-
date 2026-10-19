@@ -123,9 +123,19 @@ def test_verified_rate_handoff_generates_service_note(board):
 def test_browser_defaults_do_not_edit_other_roles_task(board):
     install, clients = board
     install('s5', {'amountRub': 100000})
+    # Second role's task is pre-seeded via admin+confirmed (unrelated to this
+    # test's subject) so the manager PUT under test only edits pre-existing
+    # deals — the flow-verification gate doesn't re-check unchanged combos,
+    # keeping the manager-vs-other-role behavior under test unaffected.
+    seed_state = clients('admin').get('/api/stand/state').json
+    seeded = copy.deepcopy(seed_state['data'])
+    seeded['deals'].append({'id': 1475, 'type': 'Обмен валюты', 'step': 's5',
+                            'amountRub': 200000, 'unverified_confirmed': True})
+    seed_saved = clients('admin').put('/api/stand/state',
+        json={'version': seed_state['version'], 'data': seeded})
+    assert seed_saved.status_code == 200, seed_saved.json
     def mutate(state):
         state['deals'][0].update(compare=False, selfCame=False, quotes=[], ratePick={}, payout=None)
-        state['deals'].append({'id': 1475, 'type': 'Обмен валюты', 'step': 's5', 'amountRub': 200000})
     response = put_board(clients('manager'), mutate)
     assert response.status_code == 200, response.json
     assert len(response.json['data']['deals']) == 2
@@ -157,8 +167,9 @@ def test_fresh_and_reset_board_counterparties_are_server_owned(board, reset):
         import json
         assert json.loads(db.get(m.StandState, 1).data)['cps'] == catalog
     state = current['data']
-    state['deals'] = [{'id': 1474, 'step': 's5', 'type': 'Обмен валюты', 'pair': 'RUB → USDT', 'log': []}]
-    saved = clients('manager').put('/api/stand/state', json={'version': current['version'], 'data': state})
+    state['deals'] = [{'id': 1474, 'step': 's5', 'type': 'Обмен валюты', 'pair': 'RUB → USDT',
+                       'log': [], 'unverified_confirmed': True}]
+    saved = clients('admin').put('/api/stand/state', json={'version': current['version'], 'data': state})
     assert saved.status_code == 200, saved.json
     broker = next(c for c in catalog if 'rub' in c['dirs'])
     result = clients('operator').post('/api/stand/quote', json={'version': saved.json['version'],

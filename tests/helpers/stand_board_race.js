@@ -3,6 +3,11 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('nod
 const html=fs.readFileSync('static/stand/tasks.html','utf8');
 const started=Date.now(),trace=(what,x)=>console.log(JSON.stringify({ms:Date.now()-started,what,...x}));
 const cookies=JSON.parse(process.env.BOARD_RACE_COOKIES),base=process.env.BOARD_RACE_URL;
+// marina создаёт новую сделку с комбинацией, несущественной для гонки/мерджа
+// (предмет этого теста), поэтому её сессия — admin, чтобы не упереться в
+// гейт непроверенных флоу (тип сделки + способ Pay-In); newDeal() ниже также
+// несёт unverified_confirmed:true.
+const adminCookie=process.env.BOARD_RACE_ADMIN_COOKIE||cookies[0];
 function source(name,async=false){const m=html.match(new RegExp('^'+(async?'async ':'')+'function '+name+'\\([^]*?^}','m'));assert.ok(m,name);return m[0];}
 function barrier(){let resolve;const promise=new Promise(r=>resolve=r);return {promise,resolve};}
 function tab(role,cookie){
@@ -23,9 +28,10 @@ function tab(role,cookie){
  return ctx;
 }
 const newDeal=()=>({id:1472,code:'СД-1472',client:'Concurrency synthetic',type:'Обмен валюты',
- payType:'По реквизитам',amountRub:100000,step:'s5',closed:false,log:[],quotes:[{dir:'rub',cpId:'broker',name:'Broker',rate:85}]});
+ payType:'По реквизитам',amountRub:100000,step:'s5',closed:false,log:[],quotes:[{dir:'rub',cpId:'broker',name:'Broker',rate:85}],
+ unverified_confirmed:true});
 (async()=>{
- const marina=tab('manager',cookies[0]),artem=tab('operator',cookies[1]);
+ const marina=tab('manager',adminCookie),artem=tab('operator',cookies[1]);
  await Promise.all([marina.standPull(true),artem.standPull(true)]);
  if(process.argv[2]==='late_poll'){
   marina.hold={ready:barrier(),release:barrier()};

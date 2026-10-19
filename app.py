@@ -9358,6 +9358,25 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
         return 'Нельзя дублировать пачку на доске'
     old = {d.get('id'): d for d in previous.get('deals', [])}
     for deal in new_state.get('deals') or []:
+        before = old.get(deal.get('id'))
+        if deal.get('type') in ('Обмен валюты', 'Оплата недвижимости'):
+            new_kind_canon = canonical_deal_kind_from_stand(deal.get('type'), deal.get('kind'))
+            new_payin_canon = canonical_payin_from_stand(deal.get('payType'))
+            if before is not None:
+                old_kind_canon = canonical_deal_kind_from_stand(before.get('type'), before.get('kind'))
+                old_payin_canon = canonical_payin_from_stand(before.get('payType'))
+                combo_changed = (new_kind_canon, new_payin_canon) != (old_kind_canon, old_payin_canon)
+            else:
+                combo_changed = True
+            if combo_changed and not is_verified_flow(new_kind_canon, new_payin_canon):
+                if actor == 'admin':
+                    if deal.get('unverified_confirmed') is not True:
+                        return ('Непроверенный флоу. Требуется подтверждение '
+                                '(unverified_confirmed=true).')
+                else:
+                    return ('Этот флоу (тип сделки + способ оплаты) ещё не проверен. '
+                            'Проведите сделку через Карима.')
+    for deal in new_state.get('deals') or []:
         before = old.get(deal.get('id')) or {}
         if before.get('s14Ping') != deal.get('s14Ping'):
             return 'Пинг операционисту отправляет только сервер'

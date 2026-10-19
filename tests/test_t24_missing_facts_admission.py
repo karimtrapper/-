@@ -23,9 +23,12 @@ def _setup(monkeypatch):
         operator = m.AdminUser(username='t24mf-' + secrets.token_hex(6),
                                display_name='T24 MF Operator', role='operator',
                                password_hash='unused')
-        db.add(manager); db.add(operator)
+        admin = m.AdminUser(username='t24mf-admin-' + secrets.token_hex(6),
+                            display_name='T24 MF Admin (fixture)', role='admin',
+                            password_hash='unused')
+        db.add(manager); db.add(operator); db.add(admin)
         db.flush()
-        mgr_id, op_id = manager.id, operator.id
+        mgr_id, op_id, admin_id = manager.id, operator.id, admin.id
         row = db.query(m.StandState).filter_by(id=1).first()
         if row is None:
             row = m.StandState(id=1)
@@ -34,7 +37,7 @@ def _setup(monkeypatch):
         row.version = 1
         row.generation = secrets.token_hex(16)
         db.commit()
-        return mgr_id, op_id
+        return mgr_id, op_id, admin_id
     finally:
         db.close()
 
@@ -55,7 +58,7 @@ def _counts():
 def test_cash_payin_requires_persisted_basis(
         monkeypatch, claimed_usdt, rub_amount, broker_rate, expected_status):
     """Manager/operator use only real endpoints; no evidence rows are seeded."""
-    mgr_id, op_id = _setup(monkeypatch)
+    mgr_id, op_id, admin_id = _setup(monkeypatch)
     # Earlier full-suite port-zero fixtures can leave a listener in the
     # fenced pool. Bind atomically from its far end; use only the exact ports
     # granted by the wrapper's sandbox profile.
@@ -74,6 +77,7 @@ def test_cash_payin_requires_persisted_basis(
     serializer = m.app.session_interface.get_signing_serializer(m.app)
     mgr_headers = {'Cookie': 'session=' + serializer.dumps({'user_id': mgr_id})}
     op_headers = {'Cookie': 'session=' + serializer.dumps({'user_id': op_id})}
+    admin_headers = {'Cookie': 'session=' + serializer.dumps({'user_id': admin_id})}
     base = f'http://127.0.0.1:{port}/api/stand'
     baseline = _counts()
     log = []
@@ -83,9 +87,10 @@ def test_cash_payin_requires_persisted_basis(
             deal = {'id': deal_id, 'code': f'СД-{deal_id}', 'client': 'T24 MF probe',
                     'type': 'Обмен валюты', 'step': 's5', 'closed': False,
                     'crmDealId': None, 'sentToClient': False, 'payType': 'Наличные',
+                    'unverified_confirmed': True,
                     'pay': {}, 'log': []}
             r1 = t.put(base + '/state', json={'version': 1,
-                       'data': {'deals': [deal], 'notes': []}}, headers=mgr_headers, timeout=10)
+                       'data': {'deals': [deal], 'notes': []}}, headers=admin_headers, timeout=10)
             log.append(('create_draft', r1.status_code, r1.json().get('error')))
             assert r1.status_code == 200, r1.json()
 

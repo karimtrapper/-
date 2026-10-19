@@ -202,7 +202,7 @@ def test_board_reset_rotates_origin_generation(monkeypatch):
         db.close()
     state = admin_client.get('/api/stand/state').json
     fresh = _board()
-    fresh['deals'][0].update(step='s5', sentToClient=False)
+    fresh['deals'][0].update(step='s5', sentToClient=False, unverified_confirmed=True)
     put = admin_client.put('/api/stand/state',
                            json={'version': state['version'], 'data': fresh})
     assert put.status_code == 200, put.json
@@ -815,6 +815,10 @@ def test_rates_and_company_sent_match_persisted_board(monkeypatch):
 
 
 def _manual_draft(monkeypatch, kind='exchange'):
+    """Синтетический черновик для тестов close/workflow — создаётся от имени
+    admin с unverified_confirmed=True, т.к. kind здесь (exchange/Фрихолд без
+    payType/Лизхолд/Аренда) — несущественный фон для другой бизнес-логики,
+    а не предмет проверки флоу-гейта (см. gate-unverified-flows plan Task 4)."""
     uid = _setup(monkeypatch)
     db = m.get_session()
     try:
@@ -823,11 +827,17 @@ def _manual_draft(monkeypatch, kind='exchange'):
         row.generation = secrets.token_hex(16)
         row.version = 1
         db.commit()
+        admin = m.AdminUser(username='t24-' + secrets.token_hex(6),
+                            display_name='T24 Admin (fixture)', role='admin',
+                            password_hash='unused')
+        db.add(admin)
+        db.commit()
+        admin_id = admin.id
     finally:
         db.close()
     deal = copy.deepcopy(_board()['deals'][0])
     deal.update(manual=True, manualNew=False, step='manual', sentToClient=False,
-                files={}, isTask=False,
+                files={}, isTask=False, unverified_confirmed=True,
                 docLinks={'invoice': 'https://docs.invalid/invoice',
                           'contract': 'https://docs.invalid/contract',
                           'payment': 'https://docs.invalid/payment'})
@@ -838,8 +848,7 @@ def _manual_draft(monkeypatch, kind='exchange'):
                     amountUsdt=39533.77 if kind == 'Фрихолд' else 19929.17,
                     rates={'usdtThb': 33.22} if kind != 'Фрихолд' else {},
                     ippsTariff='bank' if kind == 'Фрихолд' else None)
-    client = _client(uid)
-    created = client.put('/api/stand/state', json={'version': 1,
+    created = _client(admin_id).put('/api/stand/state', json={'version': 1,
                          'data': {'deals': [deal], 'notes': []}})
     assert created.status_code == 200, created.json
     assert created.json['data']['deals'][0]['originMode'] == 'manual'
@@ -931,9 +940,19 @@ def test_workflow_entry_cannot_skip_to_s27_then_close(monkeypatch):
     finally:
         db.close()
     client = _client(uid)
+    db = m.get_session()
+    try:
+        admin = m.AdminUser(username='t24-' + secrets.token_hex(6),
+                            display_name='T24 Admin (fixture)', role='admin',
+                            password_hash='unused')
+        db.add(admin)
+        db.commit()
+        admin_id = admin.id
+    finally:
+        db.close()
     deal = copy.deepcopy(_board()['deals'][0])
-    deal.update(step='s5', sentToClient=False)
-    initial = client.put('/api/stand/state', json={'version': 1,
+    deal.update(step='s5', sentToClient=False, unverified_confirmed=True)
+    initial = _client(admin_id).put('/api/stand/state', json={'version': 1,
                          'data': {'deals': [deal], 'notes': []}})
     assert initial.status_code == 200, initial.json
     advanced = copy.deepcopy(initial.json['data'])
@@ -968,10 +987,23 @@ def test_staged_http_workflow_cannot_fabricate_completion(monkeypatch, property_
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     cookie = m.app.session_interface.get_signing_serializer(m.app).dumps({'user_id': uid})
+    db = m.get_session()
+    try:
+        admin = m.AdminUser(username='t24-' + secrets.token_hex(6),
+                            display_name='T24 Admin (fixture)', role='admin',
+                            password_hash='unused')
+        db.add(admin)
+        db.commit()
+        admin_id = admin.id
+    finally:
+        db.close()
+    admin_cookie = m.app.session_interface.get_signing_serializer(m.app).dumps({'user_id': admin_id})
     base = f'http://127.0.0.1:{port}/api/stand'
     headers = {'Cookie': 'session=' + cookie}
+    admin_headers = {'Cookie': 'session=' + admin_cookie}
     deal = copy.deepcopy(_board()['deals'][0])
-    deal.update(step='s8' if property_deal else 's5', sentToClient=False)
+    deal.update(step='s8' if property_deal else 's5', sentToClient=False,
+                unverified_confirmed=True)
     if property_deal:
         deal.update(type='Оплата недвижимости', kind='Фрихолд',
                     postConv=route, payType='Крипта', invoiceUsd=100,
@@ -987,7 +1019,7 @@ def test_staged_http_workflow_cannot_fabricate_completion(monkeypatch, property_
         with requests.Session() as transport:
             start = transport.put(base + '/state',
                 json={'version': 1, 'data': {'deals': [deal], 'notes': []}},
-                headers=headers, timeout=10)
+                headers=admin_headers, timeout=10)
             assert start.status_code == 200, start.json()
             forged = start.json()['data']
             forged_deal = forged['deals'][0]
@@ -1120,7 +1152,18 @@ def test_operator_evidence_has_role_origin_and_money_binding(monkeypatch):
         'data': forged}).status_code == 409
     cash = copy.deepcopy(state['data'])
     cash['deals'][0]['payType'] = 'Наличные'
-    saved = manager.put('/api/stand/state', json={'version': 1, 'data': cash})
+    cash['deals'][0]['unverified_confirmed'] = True
+    db = m.get_session()
+    try:
+        admin = m.AdminUser(username='t24-' + secrets.token_hex(6),
+                            display_name='T24 Admin (fixture)', role='admin',
+                            password_hash='unused')
+        db.add(admin)
+        db.commit()
+        admin_id = admin.id
+    finally:
+        db.close()
+    saved = _client(admin_id).put('/api/stand/state', json={'version': 1, 'data': cash})
     assert saved.status_code == 200, saved.json
     version = saved.json['version']
     assert manager.post(path, json={'version': version,
@@ -1445,8 +1488,19 @@ def test_manual_close_requires_route_money_on_saved_board(monkeypatch, kind, mis
         deal.pop('amountThb', None)
     else:
         deal['rates'] = {}
+    deal['unverified_confirmed'] = True
     board['deals'].append(deal)
-    saved = client.put('/api/stand/state', json={'version': state['version'], 'data': board})
+    db = m.get_session()
+    try:
+        admin = m.AdminUser(username='t24-' + secrets.token_hex(6),
+                            display_name='T24 Admin (fixture)', role='admin',
+                            password_hash='unused')
+        db.add(admin)
+        db.commit()
+        admin_id = admin.id
+    finally:
+        db.close()
+    saved = _client(admin_id).put('/api/stand/state', json={'version': state['version'], 'data': board})
     assert saved.status_code == 200, saved.json
     assert saved.json['data']['deals'][1]['originMode'] == 'manual'
     version = saved.json['version']
@@ -1490,8 +1544,19 @@ def test_manual_custom_requires_saved_usdt_basis(monkeypatch, missing_side):
     for field in ('crmAt', 'closedAt', 'closeReason'):
         deal.pop(field, None)
     deal['customData'].pop(missing_side + 'Usdt')
+    deal['unverified_confirmed'] = True
     board['deals'].append(deal)
-    saved = client.put('/api/stand/state', json={'version': state['version'], 'data': board})
+    db = m.get_session()
+    try:
+        admin = m.AdminUser(username='t24-' + secrets.token_hex(6),
+                            display_name='T24 Admin (fixture)', role='admin',
+                            password_hash='unused')
+        db.add(admin)
+        db.commit()
+        admin_id = admin.id
+    finally:
+        db.close()
+    saved = _client(admin_id).put('/api/stand/state', json={'version': state['version'], 'data': board})
     assert saved.status_code == 200, saved.json
     baseline = _counts()
     response = client.post('/api/stand/deals/1475/crm-close',

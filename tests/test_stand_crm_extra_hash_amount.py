@@ -25,6 +25,10 @@ def _setup(monkeypatch):
                               display_name='T24 extra manager', role='manager',
                               password_hash='unused')
         db.add(manager)
+        admin = m.AdminUser(username='t24-extra-admin-' + secrets.token_hex(6),
+                            display_name='T24 extra admin (fixture)', role='admin',
+                            password_hash='unused')
+        db.add(admin)
         db.flush()
         row = db.query(m.StandState).filter_by(id=1).first()
         if row is None:
@@ -34,7 +38,7 @@ def _setup(monkeypatch):
         row.version = 1
         row.generation = secrets.token_hex(16)
         db.commit()
-        return manager.id
+        return manager.id, admin.id
     finally:
         db.close()
 
@@ -60,12 +64,14 @@ def _server():
 
 @pytest.mark.parametrize('legacy_amount', [False, True])
 def test_manual_crypto_extra_canonical_and_legacy_hash_amounts(monkeypatch, legacy_amount):
-    uid = _setup(monkeypatch)
+    uid, admin_uid = _setup(monkeypatch)
     port, server = _server()
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     cookie = m.app.session_interface.get_signing_serializer(m.app).dumps({'user_id': uid})
+    admin_cookie = m.app.session_interface.get_signing_serializer(m.app).dumps({'user_id': admin_uid})
     headers = {'Cookie': 'session=' + cookie}
+    admin_headers = {'Cookie': 'session=' + admin_cookie}
     base = f'http://127.0.0.1:{port}/api/stand'
     stand_id = 1481
     extra_tx = {'hash': EXTRA_HASH, 'amount': 20} if legacy_amount else {
@@ -75,6 +81,7 @@ def test_manual_crypto_extra_canonical_and_legacy_hash_amounts(monkeypatch, lega
         'type': 'Обмен валюты', 'manual': True, 'manualNew': False,
         'step': 'manual', 'closed': False, 'crmDealId': None,
         'sentToClient': False, 'isTask': False, 'files': {}, 'log': [],
+        'unverified_confirmed': True,
         'payType': 'Крипта', 'paySrc': 'cash', 'amountUsdt': 100,
         'payinHashes': [{'hash': MAIN_HASH, 'amount': 100, 'network': 'TRC20'}],
         'payinExtra': [{'method': 'crypto_direct', 'amount_usdt': 20,
@@ -94,7 +101,7 @@ def test_manual_crypto_extra_canonical_and_legacy_hash_amounts(monkeypatch, lega
            'payout_amount_usdt': 90, 'payout_amount_thb': 3000}
     try:
         with requests.Session() as transport:
-            created = transport.put(base + '/state', headers=headers,
+            created = transport.put(base + '/state', headers=admin_headers,
                 json={'version': 1, 'data': board}, timeout=10)
             assert created.status_code == 200, created.text
             assert created.json()['data']['deals'][0]['originMode'] == 'manual'
@@ -202,12 +209,14 @@ def test_manual_crypto_extra_canonical_and_legacy_hash_amounts(monkeypatch, lega
                                      'main_extra', 'extra_extra', 'distinct'])
 def test_manual_extra_raw_hash_reuse(monkeypatch, variant):
     """Real PUT/close: one raw receipt must not fund multiple allocated parts."""
-    uid = _setup(monkeypatch)
+    uid, admin_uid = _setup(monkeypatch)
     port, server = _server()
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     cookie = m.app.session_interface.get_signing_serializer(m.app).dumps({'user_id': uid})
+    admin_cookie = m.app.session_interface.get_signing_serializer(m.app).dumps({'user_id': admin_uid})
     headers = {'Cookie': 'session=' + cookie}
+    admin_headers = {'Cookie': 'session=' + admin_cookie}
     base = f'http://127.0.0.1:{port}/api/stand'
     if variant.startswith('main_') and variant != 'main_extra':
         main_specs = [(MAIN_HASH, 50),
@@ -236,6 +245,7 @@ def test_manual_extra_raw_hash_reuse(monkeypatch, variant):
         'type': 'Обмен валюты', 'manual': True, 'manualNew': False,
         'step': 'manual', 'closed': False, 'crmDealId': None,
         'sentToClient': False, 'isTask': False, 'files': {}, 'log': [],
+        'unverified_confirmed': True,
         'payType': 'Крипта', 'paySrc': 'cash', 'amountUsdt': 100,
         'payinHashes': board_main,
         'payinExtra': board_extras, 'payout': {'usdt': 90, 'thb': 3000}, 'pay': {},
@@ -249,7 +259,7 @@ def test_manual_extra_raw_hash_reuse(monkeypatch, variant):
            'payout_amount_thb': 3000}
     try:
         with requests.Session() as transport:
-            created = transport.put(base + '/state', headers=headers,
+            created = transport.put(base + '/state', headers=admin_headers,
                                     json={'version': 1, 'data': board}, timeout=10)
             assert created.status_code == 200, created.text
             version = created.json()['version']

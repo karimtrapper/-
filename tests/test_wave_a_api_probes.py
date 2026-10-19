@@ -1,6 +1,7 @@
 """Isolated API probes for the 2026-10-14 stand audit."""
 import copy
 import json
+import secrets
 
 import requests
 
@@ -8,6 +9,21 @@ from tests.test_stand_board_concurrency import board_server
 from tests.test_stand_dm import dm, note, sends, log_status
 import app as appmod
 import stand_notify as notify
+
+
+def _admin_header():
+    """Отдельный admin-cookie для PUT, создающих/меняющих непроверенный флоу
+    (тип сделки + способ Pay-In) в этих тестах — сама комбинация здесь не
+    предмет проверки (эти тесты про версии/гонки/нормализацию), а фон; см.
+    gate-unverified-flows plan Task 4/9."""
+    with appmod.SessionLocal() as db:
+        admin = appmod.AdminUser(username='wave-a-admin-' + secrets.token_hex(6),
+                                 role='admin', password_hash='unused')
+        db.add(admin)
+        db.commit()
+        admin_id = admin.id
+    serializer = appmod.app.session_interface.get_signing_serializer(appmod.app)
+    return {'Cookie': 'session=' + serializer.dumps({'user_id': admin_id})}
 
 
 def test_missing_version_cannot_overwrite_newer_money(board_server):
@@ -18,9 +34,9 @@ def test_missing_version_cannot_overwrite_newer_money(board_server):
     initial = requests.get(base, headers=manager, timeout=5).json()
     board = {'deals': [{
         'id': 98501, 'client': 'Synthetic', 'type': 'Обмен валюты',
-        'step': 's4', 'amountRub': 100000, 'log': [],
+        'step': 's4', 'amountRub': 100000, 'log': [], 'unverified_confirmed': True,
     }], 'notes': []}
-    created = requests.put(base, headers=manager, timeout=5,
+    created = requests.put(base, headers=_admin_header(), timeout=5,
                            json={'version': initial['version'], 'data': board})
     assert created.status_code == 200, created.text
     handed_off = copy.deepcopy(created.json()['data'])
@@ -62,9 +78,9 @@ def test_operator_cannot_skip_tasks_by_direct_put(board_server):
     initial = requests.get(base, headers=manager, timeout=5).json()
     board = {'deals': [{
         'id': 98502, 'client': 'Synthetic', 'type': 'Обмен валюты',
-        'step': 's4', 'amountRub': 100000, 'log': [],
+        'step': 's4', 'amountRub': 100000, 'log': [], 'unverified_confirmed': True,
     }], 'notes': []}
-    created = requests.put(base, headers=manager, timeout=5,
+    created = requests.put(base, headers=_admin_header(), timeout=5,
                            json={'version': initial['version'], 'data': board})
     assert created.status_code == 200, created.text
     handed_off = copy.deepcopy(created.json()['data'])
@@ -177,17 +193,19 @@ def test_second_application_with_unchanged_first_s5_is_accepted(board_server):
     manager = {'Cookie': json.loads(board_server['BOARD_RACE_COOKIES'])[0]}
     first = {'id': 98511, 'code': 'СД-98511', 'client': 'Synthetic A',
              'type': 'Обмен валюты', 'pair': 'RUB → USDT', 'step': 's5',
-             'amountRub': 100000, 'log': [], 'isTask': True, 'partial': False}
+             'amountRub': 100000, 'log': [], 'isTask': True, 'partial': False,
+             'unverified_confirmed': True}
     initial = requests.get(base, headers=manager, timeout=5).json()
-    created = requests.put(base, headers=manager, timeout=5, json={
+    created = requests.put(base, headers=_admin_header(), timeout=5, json={
         'version': initial['version'], 'data': {'deals': [first], 'notes': []}})
     assert created.status_code == 200, created.text
     second = {'id': 98512, 'code': 'СД-98512', 'client': 'Synthetic B',
               'type': 'Обмен валюты', 'pair': 'THB → USDT', 'step': 's5',
-              'amountThb': 50000, 'log': [], 'isTask': True}
+              'amountThb': 50000, 'log': [], 'isTask': True,
+              'unverified_confirmed': True}
     board = copy.deepcopy(created.json()['data'])
     board['deals'].insert(0, second)
-    added = requests.put(base, headers=manager, timeout=5, json={
+    added = requests.put(base, headers=_admin_header(), timeout=5, json={
         'version': created.json()['version'], 'data': board})
     after = requests.get(base, headers=manager, timeout=5).json()
     print('SECOND_APPLICATION_CLEAN', json.dumps({
@@ -202,9 +220,10 @@ def test_second_application_accepted_if_browser_adds_exact_defaults(board_server
     manager = {'Cookie': json.loads(board_server['BOARD_RACE_COOKIES'])[0]}
     first = {'id': 98513, 'code': 'СД-98513', 'client': 'Synthetic A',
              'type': 'Обмен валюты', 'pair': 'RUB → USDT', 'step': 's5',
-             'amountRub': 100000, 'log': [], 'isTask': True, 'partial': False}
+             'amountRub': 100000, 'log': [], 'isTask': True, 'partial': False,
+             'unverified_confirmed': True}
     initial = requests.get(base, headers=manager, timeout=5).json()
-    created = requests.put(base, headers=manager, timeout=5, json={
+    created = requests.put(base, headers=_admin_header(), timeout=5, json={
         'version': initial['version'], 'data': {'deals': [first], 'notes': []}})
     assert created.status_code == 200, created.text
     board = copy.deepcopy(created.json()['data'])
@@ -212,8 +231,8 @@ def test_second_application_accepted_if_browser_adds_exact_defaults(board_server
     board['deals'][0]['compare'] = False
     board['deals'].insert(0, {'id': 98514, 'client': 'Synthetic B',
         'type': 'Обмен валюты', 'pair': 'THB → USDT', 'step': 's5',
-        'amountThb': 50000, 'log': [], 'isTask': True})
-    added = requests.put(base, headers=manager, timeout=5, json={
+        'amountThb': 50000, 'log': [], 'isTask': True, 'unverified_confirmed': True})
+    added = requests.put(base, headers=_admin_header(), timeout=5, json={
         'version': created.json()['version'], 'data': board})
     print('SECOND_APPLICATION_NORMALIZED', json.dumps({
         'status': added.status_code, 'error': added.json().get('error'),

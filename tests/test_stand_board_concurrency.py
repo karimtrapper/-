@@ -29,6 +29,15 @@ def board_server(monkeypatch):
             db.add(user)
             db.flush()
             users.append(user.id)
+        # Отдельный admin-cookie — не добавляется в BOARD_RACE_COOKIES, чтобы не
+        # ломать существующую распаковку `manager, operator = [...]` у других
+        # потребителей фикстуры; нужен тестам, создающим непроверенный флоу
+        # (тип сделки + способ Pay-In) как несущественный фон для другой логики.
+        admin_user = m.AdminUser(username=f'race-admin-{secrets.token_hex(4)}',
+                                 role='admin', password_hash='unused')
+        db.add(admin_user)
+        db.flush()
+        admin_id = admin_user.id
         db.commit()
     finally:
         db.close()
@@ -40,7 +49,8 @@ def board_server(monkeypatch):
     thread.start()
     serializer = m.app.session_interface.get_signing_serializer(m.app)
     env = dict(os.environ, BOARD_RACE_URL=f'http://127.0.0.1:{port}',
-               BOARD_RACE_COOKIES=json.dumps(['session='+serializer.dumps({'user_id': uid}) for uid in users]))
+               BOARD_RACE_COOKIES=json.dumps(['session='+serializer.dumps({'user_id': uid}) for uid in users]),
+               BOARD_RACE_ADMIN_COOKIE='session='+serializer.dumps({'user_id': admin_id}))
     yield env
     server.shutdown()
     thread.join(5)
@@ -66,11 +76,12 @@ def test_stale_or_incomplete_board_cannot_delete_persisted_deal(board_server):
     import requests
     base = board_server['BOARD_RACE_URL'] + '/api/stand/state'
     manager, operator = [{'Cookie': c} for c in json.loads(board_server['BOARD_RACE_COOKIES'])]
+    admin = {'Cookie': board_server['BOARD_RACE_ADMIN_COOKIE']}
     initial = requests.get(base, headers=operator, timeout=5).json()
-    saved = requests.put(base, headers=manager, timeout=5, json={
+    saved = requests.put(base, headers=admin, timeout=5, json={
         'version': initial['version'], 'data': {'deals': [{
             'id': 1472, 'client': 'Synthetic persisted', 'type': 'Обмен валюты',
-            'step': 's5', 'amountRub': 100000}], 'notes': []}})
+            'step': 's5', 'amountRub': 100000, 'unverified_confirmed': True}], 'notes': []}})
     assert saved.status_code == 200, saved.json()
     stale = requests.put(base, headers=operator, timeout=5,
                          json={'version': initial['version'], 'data': initial['data']})
