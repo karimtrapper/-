@@ -2180,6 +2180,7 @@ function createDealFromCalc() {
 
     const r = state.lastResult;
     const comment = document.getElementById('paymentComment')?.value?.trim() || '';
+    const kindAndPayin = calcDealKindAndPayin(state.dealCategory, state.method);
 
     // Маппинг данных калькулятора → поля CRM
     const dealData = {
@@ -2190,10 +2191,8 @@ function createDealFromCalc() {
         profit_usdt: r.profit_usdt || null,
         profit_percent: r.profit_percent_actual || r.profit_percent || null,
         exchange_rate: r.final_rate || null,
-        // Сценарий «doverka» в калькуляторе давно означает просто СБП (провайдер
-        // Доверка не используется с мая) → сделка создаётся живым методом sber_wl,
-        // иначе она падала в архивный spp_doverka и путала отчёты
-        payin_method: state.method === 'doverka' ? 'sber_wl' : 'crypto_direct',
+        deal_kind: kindAndPayin.deal_kind,
+        payin_method: kindAndPayin.payin_method,
         notes: comment,
         scenario: r.scenario || '',
         method: state.method,
@@ -2237,6 +2236,30 @@ state.propProfit = 2.0;                   // прибыль Grusha по недв
 //   • фрихолд — доп-расход на перевод застройщику (комиссия % + фикс $)
 //   • другое  — поле «что за сделка»
 //   • лизхолд / обмен — без доп-полей, обычный обмен
+// Хэндовер в CRM (createDealFromCalc) должен передавать то, что РЕАЛЬНО выбрал
+// пользователь, а не захардкоженный exchange — иначе гейт непроверенных флоу
+// (app.py VERIFIED_FLOWS) блокирует даже проверенные связки (фрихолд/лизхолд
+// по реквизитам). У недвижимости в калькуляторе нет отдельного выбора способа
+// оплаты клиента (method — это источник КУРСА: СБП/брокер/свой курс, не способ
+// оплаты) — по факту фрихолд/лизхолд всегда идут через банковские реквизиты
+// (IPPS/Flow Sole), поэтому для этих категорий payin_method фиксирован.
+function calcDealKindAndPayin(dealCategory, method) {
+    const DEAL_KIND_BY_CATEGORY = {
+        property_freehold: 'mf_freehold',
+        property_leasehold: 'mf_realty',
+        other: 'custom',
+        exchange: 'exchange'
+    };
+    const deal_kind = DEAL_KIND_BY_CATEGORY[dealCategory] || 'exchange';
+    if (deal_kind === 'mf_freehold' || deal_kind === 'mf_realty') {
+        return { deal_kind, payin_method: 'sber_reqs' };
+    }
+    // Сценарий «doverka» в калькуляторе давно означает просто СБП (провайдер
+    // Доверка не используется с мая) → сделка создаётся живым методом sber_wl,
+    // иначе она падала в архивный spp_doverka и путала отчёты
+    return { deal_kind, payin_method: method === 'doverka' ? 'sber_wl' : 'crypto_direct' };
+}
+
 function switchDealCategory(cat) {
     state.dealCategory = cat;
     try { localStorage.setItem('grusha_deal_category', cat); } catch(e) {}

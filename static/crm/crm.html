@@ -7666,9 +7666,14 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         function syncDealKindSelect() {
             const sel = document.getElementById('dealKindSelect');
             if (!sel) return;
+            // rental, как и exchange, не имеет своего чекбокса — без явной
+            // проверки текущего значения эта функция (вызванная безусловно из
+            // onDealKindChange → toggle*Deal) молча откатывала выбранную
+            // Аренду обратно на «Обычная (обмен)» сразу после выбора.
             sel.value = document.getElementById('mfDealToggle')?.checked ? 'mf_realty'
                 : document.getElementById('fhDealToggle')?.checked ? 'mf_freehold'
-                : (document.getElementById('customDealToggle')?.checked ? 'custom' : 'exchange');
+                : (document.getElementById('customDealToggle')?.checked ? 'custom'
+                    : (sel.value === 'rental' ? 'rental' : 'exchange'));
             applyFlowGateOptions();
         }
 
@@ -13733,10 +13738,22 @@ ${Math.abs(c.debits_delta_rub) < 0.01
             const form = document.getElementById('createDealForm');
             if (!form) return;
 
+            // Тип сделки — то, что реально выбрали в калькуляторе (Фрихолд/Лизхолд/
+            // Обмен/Другое), а не молчаливый exchange по умолчанию; onDealKindChange
+            // синхронизирует чекбоксы недвижимости и applyFlowGateOptions.
+            if (data.deal_kind) {
+                const dealKindSelect = document.getElementById('dealKindSelect');
+                if (dealKindSelect) {
+                    dealKindSelect.value = data.deal_kind;
+                    onDealKindChange();
+                }
+            }
+
             // Метод Pay-In
             if (data.payin_method) {
                 const payinMethod = form.querySelector('[name="payin_method"]');
                 if (payinMethod) payinMethod.value = data.payin_method;
+                applyFlowGateOptions();
             }
 
             // Сумма RUB
