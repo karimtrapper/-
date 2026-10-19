@@ -1212,6 +1212,9 @@ const ROLES={
   admin:{t:'Админ',n:'Карим'}
 };
 let S=load();
+/* Ручной перенос в CRM минуя задачник живёт только в памяти этой вкладки — на сервер
+   не уходит и в STAND_SHARED не попадает (Карим, 19.10). */
+if(!S.manualCloseDraft||typeof S.manualCloseDraft!=='object')S.manualCloseDraft={};
 
 function load(){
   /* На стенде стартовое состояние приходит с сервера, из браузера не читаем */
@@ -6602,6 +6605,7 @@ function viewDeal(d){
   return `<div class="deal-screen"><div class="deal-breadcrumb">Задачник / ${htmlText(d.code)}</div>
   <header class="deal-head"><div><p class="deal-code">${htmlText(d.code)} · ${htmlText(d.kind||d.type)}${d.prepay?' · оплата наперёд':''}</p>
     <h1>${htmlText(d.client)}</h1><p>${htmlText([d.object,d.dev,d.manager?'менеджер '+d.manager:''].filter(Boolean).join(' · '))}</p></div>
+    ${['manager','admin'].includes(S.role)&&!d.closed&&!d.manual?`<button class="btn btn-outline btn-sm" onclick="manualCloseAsk(${d.id})">Перенести в CRM и закрыть</button>`:''}
     ${view==='task'&&branchPath?`<div class="deal-progress"><span>${htmlText(branchPath.active==='refund'?'Возместить оплату':STEPS[branchPath.active]?.title||'Конвертация завершена')}</span>
       <b>Шаг ${branchPath.index+1} из ${branchPath.steps.length}</b><i><span style="width:${Math.round((branchPath.index+1)/Math.max(1,branchPath.steps.length)*100)}%"></span></i></div>`:''}</header>
   ${(function(){
@@ -8612,6 +8616,20 @@ function askClose(id){
   const r=prompt('Причина закрытия:\n'+CLOSE_REASONS.map((x,i)=>(i+1)+'. '+x).join('\n'),'1');
   if(!r)return;const reason=CLOSE_REASONS[Number(r)-1]||CLOSE_REASONS[0];
   if(STAND)standCloseLose(id,reason);else closeDeal(d,reason);
+}
+/* Ручной перенос в CRM минуя задачник (Карим, 19.10): кнопка только спрашивает подтверждение
+   и ставит клиентский флаг — экран черновика и отправка в CRM собираются следующими задачами. */
+function manualCloseAsk(id){
+  if(!confirm('Открыть ручной перенос сделки в CRM минуя задачник?'))return;
+  manualCloseOpen(id);
+}
+function manualCloseOpen(id){
+  S.manualCloseDraft[id]=true;
+  render();
+}
+function manualCloseCancel(id){
+  delete S.manualCloseDraft[id];
+  render();
 }
 function val(id){const e=document.getElementById(id);return e?e.value.trim():'';}
 /* Кнопка, которая молча не срабатывает, читается как «дальше не идёт». Поэтому
