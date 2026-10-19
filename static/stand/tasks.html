@@ -8909,6 +8909,17 @@ function manualCloseScreen(d){
     const rates=d.rates||{};
     const purpose=(d.payTo&&d.payTo.purpose)||d.object;
     const docsOk=d.docs&&d.docs.inv, receiptOk=d.docs&&d.docs.receipt;
+    /* Предпросмотр прибыли — та же инфраструктура, что dealSummaryBlock уже
+       использует для s27 (crmPreviewFor → /api/stand/crm-preview, та же
+       compute_mf_realty). Отрицательная прибыль красным — тот же #dc2626,
+       что уже принят для этой формулы в CRM (static/crm/crm.html, калькулятор
+       недвижимости), не новый стиль. */
+    const pv=crmPreviewFor(d);
+    let profit='<span class="fh">считаем по формуле CRM…</span>';
+    if(pv&&pv.error)profit=`<span class="sumred">не посчитать: ${htmlText(pv.error)}</span>`;
+    else if(pv&&pv.data){const p=pv.data, neg=p.profit_usdt<0;
+      profit=`<b style="${neg?'color:#dc2626':''}">${moneyKop(p.profit_usdt,'USDT')}</b>`+
+        (neg?' · проверьте курс и сумму прихода':'');}
     return `<div class="card"><div class="card-title">Инвойс и курс</div>
       ${realtyRow('Инвойс, ฿',d.amountThb,money(d.amountThb,'฿'))}
       ${realtyRow('Курс покупки ฿/USDT',num(rates.usdtThb)!=null,htmlText(String(rates.usdtThb)))}
@@ -8917,6 +8928,7 @@ function manualCloseScreen(d){
       ${realtyRow('Назначение платежа',!!purpose,htmlText(purpose||''))}
       ${realtyRow('Документы (инвойс застройщика)',docsOk,'загружен')}
       ${realtyRow('Документы (подтверждение оплаты)',receiptOk,'загружен')}
+      ${row('Прибыль (предпросмотр)',profit,'формула CRM, считает сервер')}
     </div>`;
   })():'';
 

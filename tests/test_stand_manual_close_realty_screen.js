@@ -32,11 +32,17 @@ const SOURCES_PAY = {
   founder: {t: 'Кошелёк фаундера'}, client: {t: 'USDT клиенту на кошелёк'},
 };
 
-function makeCtx(deal) {
+function makeCtx(deal, preview) {
   const S = {deals: [deal], incomes: [], role: 'admin', manualCloseForm: {}};
   const ctx = {
     S, SOURCES_PAY,
     render: () => {}, toast: () => {}, fetch: () => Promise.reject(new Error('not used in render')),
+    // crmPreviewFor's own correctness (the real /api/stand/crm-preview fetch +
+    // cache wrapper) is already exercised elsewhere (dealSummaryBlock's s27
+    // use) - stubbed here the same way test_stand_manual_close_submit.js
+    // stubs crmPayloadFinal, so this test is scoped to realtySection's own
+    // consumption of {data:{profit_usdt}}/{error}, not crmPreviewFor itself.
+    crmPreviewFor: () => preview || {pending: true},
   };
   vm.createContext(ctx);
   vm.runInContext(SCRIPT, ctx);
@@ -103,6 +109,24 @@ function main() {
     assert.ok(!out.includes('Инвойс и курс'),
       'блок «Инвойс и курс» не должен рисоваться для сделок обмена валюты');
     console.log('T3 realty section absent for exchange deals PASS');
+  }
+
+  // T4: отрицательная прибыль в предпросмотре подсвечена тем же #dc2626, что
+  // уже принят для compute_mf_realty в CRM (static/crm/crm.html) - не новый
+  // стиль. Положительная прибыль - без цвета.
+  {
+    const ctxNeg = makeCtx(realtyKnownDeal(), {data: {profit_usdt: -2248.84, profit_percent: -98.7}});
+    const outNeg = ctxNeg.manualCloseScreen(ctxNeg.S.deals[0]);
+    assert.ok(outNeg.includes('color:#dc2626'),
+      'ожидали красный #dc2626 на отрицательной прибыли в предпросмотре');
+    assert.ok(outNeg.includes('проверьте курс и сумму прихода'),
+      'ожидали предупреждающую подпись при отрицательной прибыли');
+
+    const ctxPos = makeCtx(realtyKnownDeal(), {data: {profit_usdt: 6.16, profit_percent: 0.27}});
+    const outPos = ctxPos.manualCloseScreen(ctxPos.S.deals[0]);
+    assert.ok(!outPos.includes('color:#dc2626'),
+      'не должно быть красного цвета на положительной прибыли');
+    console.log('T4 negative profit preview highlighted #dc2626, positive is not PASS');
   }
 
   console.log('ALL PASS');
