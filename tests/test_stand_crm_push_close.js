@@ -10,7 +10,9 @@ const vm = require('node:vm');
 const html = fs.readFileSync(path.join(__dirname, '../static/stand/tasks.html'), 'utf8');
 const found = html.match(/^async function crmPushClose\([^]*?^}/m);
 assert.ok(found, 'нет функции crmPushClose');
-const source = ['standSaveError','standRequireSaved'].map(n=>html.match(new RegExp(`^(?:async )?function ${n}\\([^]*?^}`,'m'))[0]).join('\n')+'\n'+found[0];
+const constSrc = name => { const m = html.match(new RegExp('^const ' + name + '=.*?;', 'ms')); assert.ok(m, name); return m[0]; };
+const source = ['standSaveError','standRequireSaved','crmFactsMismatchMessage'].map(n=>html.match(new RegExp(`^(?:async )?function ${n}\\([^]*?^}`,'m'))[0]).join('\n')
+  +'\n'+constSrc('CRM_FACTS_MISMATCH')+'\n'+constSrc('MANUAL_CLOSE_ERRORS')+'\n'+found[0];
 
 function fixture(responses, confirmAnswer) {
   const d = {id: 1, code: 'СД-1', crmDealId: null, sentToClient: true,
@@ -116,5 +118,16 @@ function fixture(responses, confirmAnswer) {
     assert.ok(!toasts.some(t => t.includes('Сделка закрыта')));
     assert.equal(ctx.standClosing, false);
   }
-  console.log('stand crmPushClose: 5 сценариев PASS');
+  // Обязательный хеш прихода: код сервера переводится настоящим словарём MANUAL_CLOSE_ERRORS.
+  for (const [code, text] of [['payin_hash_required', 'Добавьте хотя бы один хеш прихода'],
+                              ['payin_hash_invalid', 'Хеш прихода написан неверно — проверьте сеть и сам хеш'],
+                              ['payin_hash_unverified', 'Хеш прихода не подтверждён в сети'],
+                              ['payin_hash_already_used', 'Этот хеш прихода уже использован в другой сделке']]) {
+    const {ctx, d, toasts} = fixture([{status: 400, json: {success: false, error: code}}], true);
+    await ctx.crmPushClose(1,10);
+    assert.ok(toasts.includes(text), code + ' → ' + JSON.stringify(toasts));
+    assert.equal(d.crmDealId, null);
+    assert.ok(!toasts.some(t => t.includes(code)), 'сырой код не показываем');
+  }
+  console.log('stand crmPushClose: 5 сценариев + хеш прихода PASS');
 })();

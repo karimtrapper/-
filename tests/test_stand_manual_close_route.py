@@ -19,10 +19,10 @@ pytestmark = pytest.mark.usefixtures('stand_demo_environment')
 REASON = 'Клиент на связи, перевёл через кассу — проверено вручную менеджером'
 
 
-def confirmed_echo(ref, network, sender, receiver, amount):
+def confirmed_echo(ref, network, sender, receiver, amount, **kwargs):
     """Фейковый verify: подтверждает перевод суммой, которую ему передали —
     без обращения к сети (как в tests/test_stand_manual_close_override.py)."""
-    return {'status': 'confirmed', 'verifiedAmount': float(amount or 0),
+    return {'status': 'confirmed', 'verifiedAmount': float(100 if amount is None else amount),
             'verifiedAt': '2026-01-01T00:00:00Z', 'from': sender or 'TSenderWallet11111111111111'}
 
 
@@ -265,8 +265,10 @@ def test_normal_s27_close_still_works_without_override(monkeypatch):
     assert response.json['deal']['status'] == 'completed'
 
 
-def test_manual_origin_close_still_works_without_override(monkeypatch):
+def _manual_origin_client(monkeypatch, payin_hashes):
     monkeypatch.setattr(m, 'STAND_MODE', True)
+    from tests.payin_registry import ensure_payin_wallet
+    ensure_payin_wallet()  # получатель прихода — наш кошелёк реестра
     m._stand_migrate()
     db = m.get_session()
     try:
@@ -279,6 +281,7 @@ def test_manual_origin_close_still_works_without_override(monkeypatch):
             'id': 1490, 'code': 'СД-1490', 'client': 'Synthetic Manual',
             'type': 'Обмен валюты', 'step': 'manual', 'closed': False, 'crmDealId': None,
             'sentToClient': False, 'pay': {}, 'amountUsdt': 100, 'payout': {'usdt': 90},
+            'payType': 'Крипта', 'payinHashes': payin_hashes,
             'files': {}, 'log': [], 'manual': True, 'manualNew': False, 'isTask': False,
             'originMode': 'manual',
         }
@@ -292,15 +295,78 @@ def test_manual_origin_close_still_works_without_override(monkeypatch):
         db.commit()
     finally:
         db.close()
-    client = _client(uid)
+    return _client(uid)
+
+
+def _manual_origin_crm(tx_hash):
+    return {'deal_kind': 'exchange', 'client_name': 'Synthetic Manual',
+            'manager_name': 'Елизавета', 'payin_method': 'crypto_direct',
+            'payin_amount_usdt': 100, 'payout_method': 'transfer',
+            'payout_source': 'cash_batch', 'payout_amount_usdt': 90,
+            'payin_tx_hashes': [{'hash': tx_hash, 'network': 'trc20', 'amount_usdt': 100}] if tx_hash else []}
+
+
+def test_manual_origin_close_works_with_network_verified_payin_hash(monkeypatch):
+    tx = secrets.token_hex(32)
+    client = _manual_origin_client(monkeypatch, [
+        {'hash': tx, 'net': 'TRC20', 'amount': 100, 'from': 'TSenderWallet11111111111111',
+         'to': 'TReceiverWallet111111111111'}])
+    seen = []
+    def verify(ref, network, sender, receiver, amount, **kw):
+        seen.append((ref, sender, receiver))
+        return confirmed_echo(ref, network, sender, receiver, amount)
+    monkeypatch.setattr(m, 'verify_transfer', verify)
     response = client.post('/api/stand/deals/1490/crm-close', json={
-        'version': 1,
-        'crm': {'deal_kind': 'exchange', 'client_name': 'Synthetic Manual',
-                'manager_name': 'Елизавета', 'payin_method': 'sber_reqs',
-                'payin_amount_usdt': 100, 'payout_method': 'transfer',
-                'payout_source': 'cash_batch', 'payout_amount_usdt': 90}})
+        'version': 1, 'crm': _manual_origin_crm(tx)})
     assert response.status_code == 201, response.json
     assert response.json['deal']['status'] == 'completed'
+    # адрес получателя и отправителя не теряются при проверке сетью
+    assert seen == [(tx, 'TSenderWallet11111111111111', 'TReceiverWallet111111111111')]
+    # результат сети записан на доску как серверный факт прихода
+    board = json.loads(m.get_session().get(m.StandState, 1).data)['deals'][0]['payinHashes'][0]
+    assert board['verified'] is True and board['verifiedAt'] and board['from'] == 'TSenderWallet11111111111111'
+
+
+def test_manual_origin_network_sender_is_recorded_and_payer_wallet_still_blocks(monkeypatch):
+    tx = secrets.token_hex(32)
+    client = _manual_origin_client(monkeypatch, [{'hash': tx, 'net': 'TRC20', 'amount': 100}])
+    monkeypatch.setattr(m, 'verify_transfer', lambda ref, network, sender, receiver, amount, **kw: {
+        'status': 'confirmed', 'verifiedAmount': 100.0, 'verifiedAt': '2026-10-18T12:00:00Z',
+        'from': 'TNetworkSender1111111111111', 'to': 'TReceiverWallet111111111111'})
+    assert client.post('/api/stand/deals/1490/crm-close', json={
+        'version': 1, 'crm': _manual_origin_crm(tx)}).status_code == 201
+    board = json.loads(m.get_session().get(m.StandState, 1).data)['deals'][0]['payinHashes'][0]
+    assert board['from'] == 'TNetworkSender1111111111111'  # адрес отправителя — результат сети
+    # Фрихолд: проверка плательщика не обходится — адрес сети против payerWallet.
+    deal = {'kind': 'Фрихолд', 'payType': 'Крипта', 'payerWallet': 'TPayer111111111111111111111',
+            'invoiceUsd': 100, 'ippsTariff': 'bank', 'payinHashes': [board]}
+    crm = {'deal_kind': 'mf_freehold', 'payin_method': 'crypto_direct', 'payin_amount_usdt': 100}
+    assert m._stand_crm_fact_problem(deal, crm, 'mf_freehold') == 'payin_basis_unverified'
+
+
+def test_manual_origin_close_without_payin_hash_is_rejected(monkeypatch):
+    client = _manual_origin_client(monkeypatch, [])
+    monkeypatch.setattr(m, 'verify_transfer', confirmed_echo)
+    response = client.post('/api/stand/deals/1490/crm-close', json={
+        'version': 1, 'crm': _manual_origin_crm(None)})
+    assert response.status_code == 400 and response.json['error'] == 'payin_hash_required'
+
+
+def test_manual_origin_close_with_malformed_payin_hash_is_rejected(monkeypatch):
+    client = _manual_origin_client(monkeypatch, [{'hash': 'not-a-hash', 'net': 'TRC20', 'amount': 100}])
+    monkeypatch.setattr(m, 'verify_transfer', confirmed_echo)
+    response = client.post('/api/stand/deals/1490/crm-close', json={
+        'version': 1, 'crm': _manual_origin_crm(None)})
+    assert response.status_code == 400 and response.json['error'] == 'payin_hash_invalid'
+
+
+def test_manual_origin_close_with_unconfirmed_payin_hash_is_rejected(monkeypatch):
+    tx = secrets.token_hex(32)
+    client = _manual_origin_client(monkeypatch, [{'hash': tx, 'net': 'TRC20', 'amount': 100}])
+    monkeypatch.setattr(m, 'verify_transfer', lambda *args, **kw: {'status': 'pending'})
+    response = client.post('/api/stand/deals/1490/crm-close', json={
+        'version': 1, 'crm': _manual_origin_crm(tx)})
+    assert response.status_code == 422 and response.json['error'] == 'payin_hash_unverified'
 
 
 def test_crm_close_lose_route_unaffected(monkeypatch):
@@ -311,3 +377,98 @@ def test_crm_close_lose_route_unaffected(monkeypatch):
                            json={'version': 1, 'reason': 'Ушёл к конкуренту'})
     assert response.status_code in (200, 201, 409)
     assert 'error' not in response.json or response.status_code != 500
+
+
+# ---- контракт настоящего verify_transfer: UI хранит у хеша только сумму/сеть/хеш ----------
+
+_B58 = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
+REAL_SENDER = 'T' + ''.join(secrets.choice(_B58) for _ in range(33))
+REAL_RECEIVER = 'T' + ''.join(secrets.choice(_B58) for _ in range(33))  # наш кошелёк, регистрируется в тестах
+
+
+def _real_verifier(monkeypatch, tx, outputs, confirmed=True):
+    from tests.payin_registry import ensure_payin_wallet
+    ensure_payin_wallet(REAL_RECEIVER)
+    """Настоящий stand_transfers.verify_transfer; подменён только транспорт get (без сети)."""
+    from stand_transfers import verify_transfer as real, TRON_USDT
+
+    class Response:
+        status_code = 200
+
+        def __init__(self, data):
+            self._data = data
+
+        def json(self):
+            return self._data
+
+    data = {'hash': tx, 'confirmed': confirmed, 'contractRet': 'SUCCESS', 'revert': False,
+            'timestamp': 1700000001000, 'trc20TransferInfo': [
+                dict({'contract_address': TRON_USDT, 'to_address': to,
+                      'amount_str': str(int(amount * 1_000_000)), 'decimals': 6},
+                     **({'from_address': frm} if frm else {}))
+                for frm, to, amount in outputs]}
+    monkeypatch.setattr(m, 'verify_transfer', lambda *a, **k: real(
+        *a, get=lambda *x, **y: Response(data), **k))
+
+
+def test_manual_origin_raw_ui_hash_is_verified_by_real_verifier_with_observed_addresses(monkeypatch):
+    tx = secrets.token_hex(32)
+    client = _manual_origin_client(monkeypatch, [{'hash': tx, 'network': 'trc20', 'amount': 100}])
+    _real_verifier(monkeypatch, tx, [(REAL_SENDER, REAL_RECEIVER, 100)])
+    response = client.post('/api/stand/deals/1490/crm-close', json={
+        'version': 1, 'crm': _manual_origin_crm(tx)})
+    assert response.status_code == 201, response.json
+    saved = json.loads(m.get_session().get(m.StandState, 1).data)['deals'][0]['payinHashes'][0]
+    assert saved['verified'] is True and saved['from'] == REAL_SENDER
+    assert 'unknownSender' not in saved
+
+
+def test_manual_origin_real_verifier_rejects_wrong_amount_and_pending(monkeypatch):
+    tx = secrets.token_hex(32)
+    client = _manual_origin_client(monkeypatch, [{'hash': tx, 'network': 'trc20', 'amount': 100}])
+    _real_verifier(monkeypatch, tx, [(REAL_SENDER, REAL_RECEIVER, 50)])
+    wrong = client.post('/api/stand/deals/1490/crm-close', json={
+        'version': 1, 'crm': _manual_origin_crm(tx)})
+    assert wrong.status_code == 422 and wrong.json['error'] == 'payin_amount_mismatch'
+    _real_verifier(monkeypatch, tx, [(REAL_SENDER, REAL_RECEIVER, 100)], confirmed=False)
+    pending = client.post('/api/stand/deals/1490/crm-close', json={
+        'version': 1, 'crm': _manual_origin_crm(tx)})
+    assert pending.status_code == 422 and pending.json['error'] == 'payin_hash_unverified'
+
+
+def test_manual_origin_network_without_sender_marks_unknown_sender_and_typed_sender_is_checked(monkeypatch):
+    from tests.payin_registry import ensure_payin_wallet
+    ensure_payin_wallet(REAL_RECEIVER)
+    no_sender = lambda *a, **k: {'status': 'confirmed', 'verifiedAmount': 100.0,
+                                 'verifiedAt': '2026-10-18T12:00:00Z', 'from': None, 'to': REAL_RECEIVER}
+    # введённый отправитель обязан совпасть с наблюдённым — сеть его не назвала → отказ
+    tx = secrets.token_hex(32)
+    client = _manual_origin_client(monkeypatch, [
+        {'hash': tx, 'network': 'trc20', 'amount': 100, 'from': 'TTypedByManager1111111111111'}])
+    monkeypatch.setattr(m, 'verify_transfer', no_sender)
+    refused = client.post('/api/stand/deals/1490/crm-close', json={
+        'version': 1, 'crm': _manual_origin_crm(tx)})
+    assert refused.status_code == 422 and refused.json['error'] == 'payin_hash_unverified'
+    # hash-only: сеть подтвердила перевод без отправителя — помечаем неизвестного отправителя
+    tx = secrets.token_hex(32)
+    client = _manual_origin_client(monkeypatch, [{'hash': tx, 'network': 'trc20', 'amount': 100}])
+    monkeypatch.setattr(m, 'verify_transfer', no_sender)
+    assert client.post('/api/stand/deals/1490/crm-close', json={
+        'version': 1, 'crm': _manual_origin_crm(tx)}).status_code == 201
+    saved = json.loads(m.get_session().get(m.StandState, 1).data)['deals'][0]['payinHashes'][0]
+    assert saved['from'] is None and saved['unknownSender'] is True
+    deal = {'kind': 'Фрихолд', 'payType': 'Крипта', 'payerWallet': 'TTypedByManager1111111111111',
+            'invoiceUsd': 100, 'ippsTariff': 'bank', 'payinHashes': [saved]}
+    crm = {'deal_kind': 'mf_freehold', 'payin_method': 'crypto_direct', 'payin_amount_usdt': 100}
+    assert m._stand_crm_fact_problem(deal, crm, 'mf_freehold') == 'payin_basis_unverified'
+
+
+def test_manual_origin_payin_receiver_must_be_our_active_registry_wallet(monkeypatch):
+    tx = secrets.token_hex(32)
+    client = _manual_origin_client(monkeypatch, [{'hash': tx, 'network': 'trc20', 'amount': 100}])
+    _real_verifier(monkeypatch, tx, [(REAL_SENDER, 'T' + 'Z' * 33, 100)])  # получатель не в реестре
+    refused = client.post('/api/stand/deals/1490/crm-close', json={
+        'version': 1, 'crm': _manual_origin_crm(tx)})
+    assert refused.status_code == 422 and refused.json['error'] == 'payin_wallet_not_registered'
+    board = json.loads(m.get_session().get(m.StandState, 1).data)['deals'][0]
+    assert board['closed'] is False

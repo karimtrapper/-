@@ -18,6 +18,11 @@ EXTRA_HASH = 'b' * 64
 
 def _setup(monkeypatch):
     monkeypatch.setattr(m, 'STAND_MODE', True)
+    # Хеш прихода USDT обязателен и у ручной сделки; сеть подтверждает его автоматически.
+    from tests.test_stand_crm_close_atomic import _echo_verify
+    monkeypatch.setattr(m, 'verify_transfer', _echo_verify)
+    from tests.payin_registry import ensure_payin_wallet
+    ensure_payin_wallet()  # получатель прихода — наш кошелёк реестра
     m._stand_migrate()
     db = m.get_session()
     try:
@@ -278,6 +283,14 @@ def test_manual_extra_raw_hash_reuse(monkeypatch, variant):
                 assert response.status_code == 201, response.text
                 assert after == (before[0] + 1, before[1] + 1)
                 assert state['data']['deals'][0]['crmDealId'] == response.json()['deal']['id']
+            elif variant == 'main_main':
+                # Один и тот же хеш дважды в main: обязательная проверка прихода ловит
+                # повтор раньше, чем _stand_crm_fact_problem (было 409 payin_extra_duplicate_hash).
+                assert response.status_code == 422, response.text
+                assert response.json()['error'] == 'payin_hash_already_used'
+                assert after == before
+                assert state['version'] == version
+                assert state['data']['deals'][0] == saved_board
             else:
                 assert response.status_code == 409, response.text
                 assert response.json()['error'] == 'payin_extra_duplicate_hash'

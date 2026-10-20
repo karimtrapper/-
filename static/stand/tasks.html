@@ -7714,7 +7714,9 @@ async function crmPushClose(id,reviewedVersion){
         toast('До закрытия: '+(j.details||[]).map(x=>x.label+(x.reason?' — '+crmCloseReason(x):'')).join(', '));
         return;
       }
-      toast(crmFactsMismatchMessage(j.error)||'CRM не закрыла сделку: '+(j.error||r.status));return;
+      /* Ошибки хеша прихода переводятся тем же словарём, что и у ручного переноса */
+      const hashMsg=/^payin_hash_/.test(j.error||'')&&typeof MANUAL_CLOSE_ERRORS!=='undefined'?MANUAL_CLOSE_ERRORS[j.error]:null;
+      toast(crmFactsMismatchMessage(j.error)||hashMsg||'CRM не закрыла сделку: '+(j.error||r.status));return;
     }
     const cd=j.deal||{};
     if(!cd.id||!j.data||!j.data.deals.some(x=>x.id===id&&x.closed&&x.crmDealId===cd.id)){
@@ -8240,7 +8242,7 @@ function hashRows(d,ei){
       <input class="fc" value="${(h.hash||'').replace(/"/g,'&quot;')}" placeholder="хеш транзакции"
         onchange="pihSet(${d.id},${ref},${i},'hash',this.value)">
       <button class="btn btn-outline btn-sm" onclick="pihDel(${d.id},${ref},${i})">×</button>
-    </div>`).join(''):`<div class="hempty">Транзакций нет — приход посчитается по курсу, как ожидание</div>`}
+    </div>`).join(''):`<div class="hempty">Транзакций нет — приход посчитается по курсу, как ожидание; для закрытия нужен хеш получения USDT</div>`}
     <button class="btn btn-outline btn-sm" onclick="pihAdd(${d.id},${ref})">+ транзакция</button>
     ${list.length?`<span class="hsum">по хэшам: <b>${usd(hashSum(list))}</b></span>`:''}
   </div>`;
@@ -8929,7 +8931,7 @@ function viewEditLegacy(){
               <input class="fc" value="${(h.hash||'').replace(/"/g,'&quot;')}" onchange="pihSet(${d.id},null,${i},'hash',this.value)">
               <button class="btn btn-outline btn-sm" onclick="pihDel(${d.id},null,${i})">×</button></div>`).join('')}
             <span class="hsum">по хэшам: <b>${usd(hashSum(d.payinHashes))}</b></span></div>`
-          :`<p class="fh">Транзакций нет — приход посчитается по курсу, как ожидание</p>`}
+          :`<p class="fh">Транзакций нет — приход посчитается по курсу, как ожидание; для закрытия нужен хеш получения USDT</p>`}
         </div>
         ${crypto?'<div class="fg"></div>':`<div class="fg"><label class="fl">Курс RUB/USDT</label>
           <input class="fc num" id="e_broker" name="payin_rate_rub_usdt" value="${d.rates.broker||''}" placeholder="₽ за 1 USDT"></div>`}

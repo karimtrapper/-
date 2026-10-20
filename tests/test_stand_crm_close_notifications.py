@@ -21,6 +21,7 @@ import secrets
 import app as A
 
 STAND_DEAL_ID = 1474
+PAYIN = {'hash': '', 'amount': 0}  # хеш прихода текущего ручного черновика
 GSHEET_AND_WEBHOOK = ('send_deal_completed_webhook', 'sync_deals_to_gsheet',
                       'sync_referrer_reward_to_gsheet', 'sync_realty_deal_to_gsheet')
 LOW_LEVEL_SENDERS = ('send_telegram_notification', 'send_referrer_dm')
@@ -57,6 +58,11 @@ LEASEHOLD_CRM = {
 def _stand_setup(monkeypatch):
     """Стенд в режиме STAND_MODE, пустая доска и менеджер; возвращает user id."""
     monkeypatch.setattr(A, 'STAND_MODE', True)
+    # Хеш прихода USDT обязателен и у ручной сделки: сеть подтверждает его автоматически.
+    from tests.test_stand_crm_close_atomic import _echo_verify
+    monkeypatch.setattr(A, 'verify_transfer', _echo_verify)
+    from tests.payin_registry import ensure_payin_wallet
+    ensure_payin_wallet()  # получатель прихода — наш кошелёк реестра
     A._stand_migrate()
     db = A.get_session()
     try:
@@ -109,10 +115,13 @@ def _manual_draft(uid, kind):
     но остаётся прежним для close и проверки уведомлений."""
     deal = copy.deepcopy(EXCHANGE_DEAL)
     deal['unverified_confirmed'] = True
+    PAYIN['hash'] = secrets.token_hex(32)  # свой на каждый черновик: доли PayinTx не копятся
     if kind == 'leasehold':
         deal.update(type='Оплата недвижимости', kind='Лизхолд', amountThb=622370,
                     invoiceUsd=None, amountUsdt=19929.17, rates={'usdtThb': 33.22},
                     ippsTariff=None)
+    deal['payinHashes'] = [{'hash': PAYIN['hash'], 'network': 'trc20', 'amount': deal['amountUsdt']}]
+    PAYIN['amount'] = deal['amountUsdt']
     created = _client(_draft_admin_uid()).put('/api/stand/state', json={
         'version': 1, 'data': {'deals': [deal], 'notes': []}})
     assert created.status_code == 200, created.json
@@ -120,6 +129,8 @@ def _manual_draft(uid, kind):
 
 
 def _close(client, version, crm):
+    crm = {**crm, 'payin_tx_hashes': [{'hash': PAYIN['hash'], 'network': 'trc20',
+                                       'amount_usdt': PAYIN['amount']}]}
     return client.post(f'/api/stand/deals/{STAND_DEAL_ID}/crm-close',
                        json={'version': version, 'crm': crm})
 

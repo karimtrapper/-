@@ -1000,12 +1000,51 @@ def test_rates_and_company_sent_match_persisted_board(monkeypatch):
     assert _counts() == (baseline[0] + 1, baseline[1] + 1)
 
 
+def _board_hash_amount(ref):
+    """Сумма хеша, как её хранит текущая доска (режим наблюдения сети: сумму знает сеть)."""
+    db = m.SessionLocal()
+    try:
+        row = db.query(m.StandState).filter_by(id=1).first()
+        for deal in json.loads(row.data or '{}').get('deals', []) if row else []:
+            for item in deal.get('payinHashes') or []:
+                if isinstance(item, dict) and str(item.get('hash') or '').lower() == str(ref).lower():
+                    return item.get('amount')
+    finally:
+        db.close()
+    return 0
+
+
+def _echo_verify(ref, network, sender, receiver, amount, **kwargs):
+    seen = _board_hash_amount(ref) if amount is None else amount
+    return {'status': 'confirmed', 'verifiedAmount': float(seen or 0),
+            'verifiedAt': '2026-10-18T12:00:00Z',
+            'from': sender or 'TSenderWallet11111111111111',
+            'to': receiver or 'TReceiverWallet111111111111'}
+
+
+def _manual_payin_crm():
+    """Хеш и сумма прихода ручного черновика текущей доски — для статических crm-словарей."""
+    item = _seeded_payin()[0]
+    return {'payin_tx_hashes': [{'hash': item['hash'], 'network': 'trc20',
+                                 'amount_usdt': item['amount']}]}
+
+
+def _custom_payin(deal, amount=1000):
+    """Custom-черновик: единственный хеш доски совпадает с customData.payinTxHash и суммой."""
+    deal['payinHashes'][0]['amount'] = amount
+    deal['customData']['payinTxHash'] = deal['payinHashes'][0]['hash']
+
+
 def _manual_draft(monkeypatch, kind='exchange'):
     """Синтетический черновик для тестов close/workflow — создаётся от имени
     admin с unverified_confirmed=True, т.к. kind здесь (exchange/Фрихолд без
     payType/Лизхолд/Аренда) — несущественный фон для другой бизнес-логики,
     а не предмет проверки флоу-гейта (см. gate-unverified-flows plan Task 4)."""
     uid = _setup(monkeypatch)
+    # Хеш прихода USDT обязателен и у ручного черновика; сеть подтверждает его автоматически.
+    monkeypatch.setattr(m, 'verify_transfer', _echo_verify)
+    from tests.payin_registry import ensure_payin_wallet
+    ensure_payin_wallet()  # получатель прихода — наш кошелёк реестра
     db = m.get_session()
     try:
         row = db.query(m.StandState).filter_by(id=1).one()
@@ -1034,6 +1073,8 @@ def _manual_draft(monkeypatch, kind='exchange'):
                     amountUsdt=39533.77 if kind == 'Фрихолд' else 19929.17,
                     rates={'usdtThb': 33.22} if kind != 'Фрихолд' else {},
                     ippsTariff='bank' if kind == 'Фрихолд' else None)
+    deal['payinHashes'] = [{'hash': secrets.token_hex(32), 'network': 'trc20',
+                            'amount': deal['amountUsdt'], 'fixtureSeed': True}]
     created = _client(admin_id).put('/api/stand/state', json={'version': 1,
                          'data': {'deals': [deal], 'notes': []}})
     assert created.status_code == 200, created.json
@@ -1645,7 +1686,7 @@ def test_workflow_cannot_be_relabelled_manual_and_legacy_manual_stays_unlinked(m
 ])
 def test_manual_standard_types_close_once(monkeypatch, kind, crm):
     uid, version = _manual_draft(monkeypatch, kind)
-    crm = {**crm, 'doc_invoice_url': 'https://docs.invalid/invoice',
+    crm = {**crm, **_manual_payin_crm(), 'doc_invoice_url': 'https://docs.invalid/invoice',
            'doc_contract_url': 'https://docs.invalid/contract',
            'doc_payment_url': 'https://docs.invalid/payment'}
     before = _counts()
@@ -1656,9 +1697,9 @@ def test_manual_standard_types_close_once(monkeypatch, kind, crm):
 
 
 @pytest.mark.parametrize('kind,missing,error', [
-    ('exchange', 'payin', 'payin_basis_missing'),
+    ('exchange', 'payin', 'payin_hash_required'),
     ('exchange', 'payout', 'payout_basis_missing'),
-    ('Фрихолд', 'payin', 'payin_basis_missing'),
+    ('Фрихолд', 'payin', 'payin_hash_required'),
     ('Лизхолд', 'invoice', 'invoice_basis_missing'),
     ('Аренда', 'buy_rate', 'buy_rate_board_missing'),
 ])
@@ -1686,8 +1727,14 @@ def test_manual_close_requires_route_money_on_saved_board(monkeypatch, kind, mis
                 closed=False, crmDealId=None, sentToClient=False, log=[])
     for field in ('crmAt', 'closedAt', 'closeReason'):
         deal.pop(field, None)
+    first_hash = deal['payinHashes'][0]
+    # Второй черновик получает свой хеш: чужой (уже закрытой сделки) занят.
+    fresh = secrets.token_hex(32)
+    deal['payinHashes'] = [dict(first_hash, hash=fresh)]
+    crm = {**crm, 'payin_tx_hashes': [{'hash': fresh, 'network': 'trc20',
+                                       'amount_usdt': first_hash['amount']}]}
     if missing == 'payin':
-        deal.pop('amountUsdt', None)
+        deal['payinHashes'] = []  # без хеша прихода ручной черновик не закрывается
     elif missing == 'payout':
         deal['payout'] = {}
     elif missing == 'invoice':
@@ -1713,7 +1760,7 @@ def test_manual_close_requires_route_money_on_saved_board(monkeypatch, kind, mis
     baseline = _counts()
     response = client.post('/api/stand/deals/1475/crm-close',
                            json={'version': version, 'crm': crm})
-    assert response.status_code == 409 and response.json['error'] == error, response.json
+    assert response.status_code == (400 if missing == 'payin' else 409) and response.json['error'] == error, response.json
     assert _counts() == baseline
     unchanged = client.get('/api/stand/state').json
     assert unchanged['version'] == version and unchanged['data'] == saved.json['data']
@@ -1729,6 +1776,7 @@ def test_manual_custom_requires_saved_usdt_basis(monkeypatch, missing_side):
         'payinUsdt': 1000,
         'payoutCurrency': 'THB', 'payoutAmount': 30000,
         'payoutRate': 31.5, 'payoutUsdt': 952.38})
+    _custom_payin(board['deals'][0])
     saved = client.put('/api/stand/state', json={'version': version, 'data': board})
     assert saved.status_code == 200, saved.json
     crm = {**_crm(), 'is_custom': True, 'payin_amount_usdt': 1000,
@@ -1749,6 +1797,10 @@ def test_manual_custom_requires_saved_usdt_basis(monkeypatch, missing_side):
                 closed=False, crmDealId=None, sentToClient=False, log=[])
     for field in ('crmAt', 'closedAt', 'closeReason'):
         deal.pop(field, None)
+    fresh = secrets.token_hex(32)  # у второго черновика свой хеш: чужой уже закрыт
+    deal['payinHashes'][0]['hash'] = fresh
+    deal['customData']['payinTxHash'] = fresh
+    crm['payin_tx_hashes'][0]['hash'] = fresh
     deal['customData'].pop(missing_side + 'Usdt')
     deal['unverified_confirmed'] = True
     board['deals'].append(deal)
@@ -1802,6 +1854,7 @@ def test_manual_custom_uses_persisted_fields_and_rejects_invalid_money(monkeypat
                     'payinRate': 92, 'payinUsdt': 1000,
                     'payoutCurrency': 'THB', 'payoutAmount': 30000,
                     'payoutRate': 31.5, 'payoutUsdt': 952.38})
+    _custom_payin(edited['deals'][0])
     put = client.put('/api/stand/state', json={'version': version, 'data': edited})
     assert put.status_code == 200, put.json
     version = put.json['version']
@@ -1831,7 +1884,7 @@ def test_manual_custom_singular_incoming_hash_matches_t17_contract(monkeypatch):
     client = _client(uid)
     current = client.get('/api/stand/state').json
     edited = copy.deepcopy(current['data'])
-    hash_value = 'a' * 64
+    hash_value = secrets.token_hex(32)
     edited['deals'][0].update(custom=True,
         customData={'payinCurrency': 'RUB', 'payinAmount': 92000,
                     'payinRate': 92, 'payinUsdt': 1000,

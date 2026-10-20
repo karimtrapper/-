@@ -8042,6 +8042,49 @@ def stand_crm_close(stand_deal_id):
         if manual:
             if not stand_deal.get('manual') or stand_deal.get('step') != 'manual':
                 return jsonify({'success': False, 'error': 'manual_origin_mismatch'}), 409
+            # «Внести целиком»: хеш прихода USDT обязателен и здесь, сеть проверяет его сама.
+            payin_hashes = [
+                {'hash': h.get('hash'), 'network': h.get('network') or h.get('net') or 'TRC20',
+                 'sender': h.get('from') or h.get('from_address') or h.get('sender'),
+                 'receiver': h.get('to') or h.get('to_address') or h.get('receiver'),
+                 'amount': h.get('amount')}
+                for h in stand_deal.get('payinHashes') or [] if isinstance(h, dict)]
+            # Сумма CRM сверяется с доской позже (_stand_crm_fact_problem); здесь — сами хеши.
+            declared = (sum(_stand_number(h['amount']) for h in payin_hashes)
+                        if all(_stand_number(h['amount']) > 0 for h in payin_hashes)
+                        else _stand_number((payload.get('crm') or {}).get('payin_amount_usdt')))
+            checked_entries, hash_error = _stand_manual_close_verify_hashes(
+                state, payin_hashes, declared, _stand_override_payin_verify(verify_transfer),
+                set(), 'payin', exclude_deal_id=stand_deal_id)
+            if hash_error:
+                return jsonify({'success': False, 'error': hash_error}), (
+                    422 if hash_error in ('payin_hash_unverified', 'payin_hash_already_used',
+                                          'payin_amount_mismatch') else 400)
+            wallet_problem = _stand_payin_wallet_problem(db, stand_deal, checked_entries)
+            if wallet_problem:  # получатель — наш активный кошелёк реестра (и выбранный в сделке)
+                return jsonify({'success': False, 'error': wallet_problem}), 422
+            # Результат сетевой проверки становится серверным фактом приходa: фрихолд и
+            # прочие правила требуют verified у хеша. Метаданные и payerWallet не трогаем.
+            verified_by_hash = {(normalize_network(entry.get('network')), entry['hash']): entry
+                                for entry in checked_entries or []}
+            for item in stand_deal.get('payinHashes') or []:
+                if not isinstance(item, dict):
+                    continue
+                network = normalize_network(item.get('network') or item.get('net') or 'TRC20')
+                entry = verified_by_hash.get((network, normalize_ref(item.get('hash'), network)))
+                if entry:
+                    item['verified'] = True
+                    item['verifiedAt'] = entry.get('verifiedAt')
+                    if _stand_number(item.get('amount')) <= 0:  # сумму hash-only читает сеть
+                        item['amount'] = entry.get('amount')
+                    # Адрес отправителя — результат сети, а не ввод менеджера. Если сеть его
+                    # не отдала, введённому не верим: хеш помечается как с неизвестным отправителем.
+                    if entry.get('from'):
+                        item['from'] = entry['from']
+                        item.pop('unknownSender', None)
+                    else:
+                        item['from'] = None
+                        item['unknownSender'] = True
         elif 'manualOverride' in payload:
             override_error = _stand_manual_close_apply_override(
                 state, stand_deal, payload.get('manualOverride'), actor,
