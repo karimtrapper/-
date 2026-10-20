@@ -341,6 +341,28 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 .custom-select-opt.disabled { opacity: .45; cursor: not-allowed; }
 .custom-select-opt.disabled:hover { background: none; }
 
+/* DESIGN.md: every CRM picker uses the same field geometry as text inputs. */
+.form-control, .custom-select-btn, select {
+    min-height: 44px; border: 1px solid #CBD5E1; border-radius: 8px;
+    background-color: #FFFFFF; color: #0F172A;
+    font: 600 16px/1.4 Inter, system-ui, sans-serif;
+}
+.form-control, select { padding: 0 12px; }
+select, .custom-select-btn {
+    text-align: left; padding-right: 36px;
+    appearance: none; -webkit-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'%3E%3Cpath fill='%23475569' d='M3 5h10L8 11z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 12px center;
+}
+.custom-select-btn { padding-left: 12px; }
+.form-control:hover, select:hover, .custom-select-btn:hover { border-color: #64748B; }
+.form-control:focus, select:focus, .custom-select-btn:focus,
+.custom-select-wrap.open .custom-select-btn {
+    outline: 2px solid #C2410C; outline-offset: 2px;
+    border-color: #CBD5E1; box-shadow: none;
+}
+select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color: #64748B; cursor: not-allowed; }
+
 /* Клиент-комбобокс */
 .client-dropdown {
     position: absolute; top: 100%; left: 0; right: 0; z-index: 50;
