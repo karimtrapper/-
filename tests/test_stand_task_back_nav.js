@@ -25,8 +25,9 @@ const server = http.createServer((req, res) => {
 async function main() {
   await new Promise(resolve => server.listen(Number(process.env.CALCCRM_FENCE_PORT_START) || 0, '127.0.0.1', resolve));
   const base = `http://127.0.0.1:${server.address().port}`;
-  const browser = await chromium.launch({ headless:true, executablePath:process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH || undefined });
+  let browser;
   try {
+    browser = await chromium.launch({ headless:true, executablePath:process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH || undefined });
     const context = await browser.newContext({ ...devices['iPhone 15'], viewport:{ width:375, height:812 } });
     const page = await context.newPage();
     await page.goto(`${base}/crm`);
@@ -94,7 +95,7 @@ async function main() {
     await context.close();
     console.log('PASS mobile task back nav: history, scroll, filter, next, header, 700/701/767/768px');
   } finally {
-    await browser.close();
+    if (browser) await browser.close();
     await new Promise(resolve => server.close(resolve));
   }
 }
