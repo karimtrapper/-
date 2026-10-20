@@ -217,7 +217,7 @@ def test_flow_sole_custom_keeps_incoming_picker_and_manual_hash(ui):
     page, errors, _, _ = ui
     page.route('**/api/transactions/incoming?*', lambda route: route.fulfill(json={
         'success': True, 'available': [{
-            'amount_usdt': 1000, 'tx_hash': 'synthetic-flow-sole-hash',
+            'amount_usdt': 500, 'tx_hash': 'synthetic-flow-sole-hash',
             'from_address': 'synthetic', 'timestamp': '2026-10-20T12:00:00Z'}]}))
     page.locator('.nav-create-btn').click()
     expect(page.locator('#create')).to_be_visible()
@@ -227,6 +227,11 @@ def test_flow_sole_custom_keeps_incoming_picker_and_manual_hash(ui):
     assert standard_width <= 436, standard_width
     choose(page, '#payinMethod', 'Flow Sole')
     expect(page.locator('#flowSoleReqsStandard')).to_have_text('СГБ · р/с …0261')
+    page.locator('[name="payin_amount_usdt"]').fill('1000')
+    standard_tx = page.locator('#payinTxSelect')
+    standard_tx.locator('..').locator('.custom-select-btn').click()
+    standard_tx.locator('..').locator('.custom-select-opt').filter(has_text='synthetic').click()
+    expect(page.locator('[name="payin_amount_usdt"]')).to_have_value('1000')
     assert page.evaluate('document.documentElement.scrollWidth') <= standard_width
     choose(page, '#dealKindSelect', 'Кастомная — нестандартные валюты')
     custom_width = page.evaluate('document.documentElement.scrollWidth')
@@ -248,10 +253,34 @@ def test_flow_sole_custom_keeps_incoming_picker_and_manual_hash(ui):
     tx_select.locator('..').locator('.custom-select-btn').click()
     tx_select.locator('..').locator('.custom-select-opt').filter(has_text='synthetic').click()
     expect(page.locator('#customPayinAmount')).to_have_value('99300')
+    expect(page.locator('#customPayinUsdt')).to_have_value('1000')
+    expect(page.locator('#customPayinPickerInfo')).to_contain_text('Введено $1000.00, в сети $500.00')
     expect(page.locator('#customPayinTxHash')).to_have_value('synthetic-flow-sole-hash')
     page.locator('#customPayinTxHash').fill('manual-flow-sole-hash')
     expect(page.locator('#customPayinTxHash')).to_have_value('manual-flow-sole-hash')
     assert not errors, errors
+
+
+def test_flow_sole_custom_reopens_draft_usdt_and_profit(ui):
+    page, errors, server_errors, base = ui
+    response = page.request.post(base + '/api/deals', data={
+        'client_name': 'Synthetic Flow draft', 'deal_type': 'pay_in',
+        'status': 'pending', 'is_custom': True,
+        'payin_method': 'sber_reqs', 'payin_account_key': 'flow_sole',
+        'payin_amount_rub': 99300, 'payin_amount_usdt': 1000,
+        'payin_rate_rub_usdt': 99.3, 'custom_payin_currency': 'RUB',
+        'custom_payin_amount': 99300, 'custom_payin_rate': 99.3,
+        'custom_payout_currency': 'USDT', 'custom_payout_amount': 970,
+        'payout_amount_usdt': 970, 'payout_method': 'transfer',
+    })
+    assert response.status == 201, response.text()
+    deal_id = response.json()['deal']['id']
+    page.evaluate('(id) => openDealEditor(id)', deal_id)
+    expect(page.locator('#customPayinUsdt')).to_have_value('1000')
+    expect(page.locator('#customPayinRate')).to_have_value('99.3000')
+    expect(page.locator('#customProfitUsdt')).to_have_value('$30.00')
+    expect(page.locator('#flowSoleCustomStatus')).to_contain_text('не подтверждено в сети')
+    assert not errors and not server_errors, (errors, server_errors)
 
 
 def test_selected_acquiring_keeps_client_paid_hint_in_main_and_extra(ui):

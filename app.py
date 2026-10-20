@@ -5658,6 +5658,92 @@ def get_payin_tx(tx_hash):
         session.close()
 
 
+@app.route('/api/deals/<int:deal_id>/verify-payin', methods=['POST'])
+def verify_flow_sole_payin(deal_id):
+    """Confirm a saved Flow Sole quote against the chain without changing its USDT."""
+    session = get_session()
+    try:
+        deal = session.query(Deal).filter(Deal.id == deal_id).with_for_update().first()
+        if not deal:
+            return jsonify({'success': False, 'error': 'Сделка не найдена'}), 404
+        if deal.payin_account_key != 'flow_sole':
+            return jsonify({'success': False, 'error': 'Сверка доступна только для Flow Sole'}), 400
+        try:
+            raw_parts = json.loads(deal.payin_tx_hashes) if deal.payin_tx_hashes else []
+        except (ValueError, TypeError):
+            raw_parts = []
+        if deal.payin_tx_hash and (not isinstance(raw_parts, list) or not raw_parts or any(
+                not isinstance(p, dict) or p.get('network') not in ('trc20', 'erc20')
+                for p in raw_parts)):
+            return jsonify({'success': False, 'error': 'Для сверки выберите сеть каждого hash: TRC-20 или ERC-20'}), 409
+        parts = _payin_tx_parts(deal)
+        if not parts or not deal.payin_amount_usdt or deal.payin_amount_usdt <= 0:
+            return jsonify({'success': False, 'error': 'Укажите USDT и hash прихода'}), 400
+        chain_total = 0.0
+        claimed_total = 0.0
+        differences = []
+        network_amounts = []
+        allocation_parts = []
+        for part in parts:
+            network = _normalize_tx_network(part.get('network'))
+            tx_hash = part['hash']
+            try:
+                if network == 'trc20':
+                    amount = _tron_confirmed_payin_amount(tx_hash)
+                elif network == 'erc20':
+                    amount = (_etherscan_tx_info(tx_hash) or {}).get('amount_usdt')
+                else:
+                    return jsonify({'success': False, 'error': 'Укажите сеть прихода'}), 400
+            except TransactionVerificationError as exc:
+                return jsonify({'success': False, 'error': str(exc)}), 409
+            if amount is None:
+                return jsonify({'success': False, 'error': 'Сеть пока не подтвердила hash; USDT сохранены как черновые',
+                                'tx_hash': tx_hash}), 409
+            chain_total += float(amount)
+            network_amounts.append((tx_hash, network, float(amount)))
+            claimed = part.get('amount_usdt')
+            # A stored JSON amount is an explicit allocation. The scalar
+            # payin_tx_hash fallback is never proof of an explicit share.
+            explicit = bool(deal.payin_tx_hashes) and claimed is not None
+            if explicit and (claimed is None or float(claimed) <= 0 or float(claimed) > float(amount) + 0.01):
+                differences.append({'tx_hash': tx_hash, 'entered_usdt': claimed,
+                                    'chain_usdt': round(float(amount), 2)})
+            share = float(claimed) if explicit and claimed is not None else float(amount)
+            claimed_total += share
+            allocation_parts.append({'hash': tx_hash, 'network': network,
+                                     'amount_usdt': share})
+        chain_total = round(chain_total, 2)
+        claimed_total = round(claimed_total, 2)
+        entered = round(float(deal.payin_amount_usdt), 2)
+        if differences or abs(entered - claimed_total) > 0.01:
+            return jsonify({'success': False,
+                            'error': f'Расхождение: введено ${entered:.2f}, по hash подтверждается ${claimed_total:.2f} (в сети ${chain_total:.2f}). Исправьте сумму, долю или hash; ввод не изменён.',
+                            'entered_usdt': entered, 'claimed_usdt': claimed_total,
+                            'chain_usdt': chain_total,
+                            'differences': differences}), 409
+        try:
+            _sync_payin_tx_uses(session, deal, allocation_parts)
+        except ValueError as exc:
+            session.rollback()
+            return jsonify({'success': False, 'error': str(exc)}), 409
+        for tx_hash, network, amount in network_amounts:
+            tx = session.query(PayinTx).filter(PayinTx.tx_hash == tx_hash).first()
+            if tx.used_usdt() > amount + 0.01:
+                session.rollback()
+                return jsonify({'success': False, 'error': 'Hash уже распределён между сделками сверх суммы в сети',
+                                'tx_hash': tx_hash}), 409
+            tx.amount_usdt = amount
+            tx.source = 'tronscan' if network == 'trc20' else 'etherscan'
+            tx.notes = None
+        deal.payin_tx_verified = True
+        session.commit()
+        return jsonify({'success': True, 'verified': True, 'entered_usdt': entered,
+                        'claimed_usdt': claimed_total, 'chain_usdt': chain_total,
+                        'deal': deal.to_dict()})
+    finally:
+        session.close()
+
+
 # ── Конвертации рублёвых поступлений ────────────────────────────────────────
 
 def _converted_by_income(session, income_ids):
@@ -8011,6 +8097,35 @@ def _payin_tx_parts(deal):
     return []
 
 
+def _flow_sole_confirmation_error(deal):
+    """A Flow Sole quote may have profit, but cannot be settled before chain proof."""
+    if deal.payin_account_key == 'flow_sole' and not deal.payin_tx_verified:
+        return 'Flow Sole: приход USDT не подтверждено в сети — сначала сверьте hash'
+    return None
+
+
+def _flow_sole_proof_signature(deal):
+    """Compare the proof's meaning, not legacy single-hash vs JSON encoding."""
+    parts = _payin_tx_parts(deal)
+    if not deal.payin_tx_hashes:
+        # _payin_tx_parts fills a scalar hash with the deal's USDT for the
+        # old ledger. That value was never an explicit share instruction.
+        parts = [dict(p, amount_usdt=None) for p in parts]
+    return (deal.payin_account_key, deal.payin_amount_usdt,
+            tuple(sorted((p['hash'], _normalize_tx_network(p.get('network')),
+                          p.get('amount_usdt'))
+                         for p in parts)))
+
+
+def _requested_payout_hashes(data):
+    """Only actual outgoing hashes, excluding planned payout amounts."""
+    hashes = {p['hash'] for p in _normalize_payout_transfers(
+        data.get('payout_tx_hashes')) if p.get('hash')}
+    if data.get('payout_tx_hash'):
+        hashes.add(str(data['payout_tx_hash']).strip())
+    return hashes
+
+
 def _payin_tx_get_or_create(session, tx_hash, claim_usdt, part=None):
     """Перевод из реестра, при отсутствии — заводит.
 
@@ -8221,6 +8336,9 @@ def create_deal():
             return jsonify({'success': False, 'error': str(e)}), 400
         if payin_account_key and data.get('payin_parts'):
             return jsonify({'success': False, 'error': 'Flow Sole не использует пул приходов Сбера'}), 400
+        if payin_account_key and _requested_payout_hashes(data):
+            return jsonify({'success': False,
+                            'error': 'Flow Sole: фактическую выдачу можно записать после подтверждения hash прихода'}), 409
         
         # Парсим дату если передана
         created_at = None
@@ -8425,7 +8543,8 @@ def create_deal():
 
         # Выдача с карты: снимаем баты с остатка и берём себестоимость по курсу
         # карты. Обязательно до пересчёта финансов — прибыль считается из неё
-        card_warning = _sync_card_allocation(session, deal)
+        card_warning = (None if _flow_sole_confirmation_error(deal)
+                        else _sync_card_allocation(session, deal))
 
         # Забор приходов Сбера из пула под части сделки (sber_reqs)
         if data.get('payin_parts'):
@@ -8451,7 +8570,7 @@ def create_deal():
 
         # Доли сделки во входящих переводах: один перевод может обслуживать
         # несколько сделок, поэтому учёт ведётся реестром, а не флагом «занят»
-        if deal.payin_tx_hashes or deal.payin_tx_hash:
+        if (deal.payin_tx_hashes or deal.payin_tx_hash) and deal.payin_account_key != 'flow_sole':
             _sync_payin_tx_uses(session, deal, _payin_tx_parts(deal))
 
         # Пересчёт выплаты рефереру и чистой прибыли (фронт мог не знать
@@ -8491,6 +8610,12 @@ def create_deal():
 
         _clear_profit_if_payin_unknown(deal)
 
+        if deal.status in (DealStatus.COMPLETED, DealStatus.VERIFIED):
+            confirmation_error = _flow_sole_confirmation_error(deal)
+            if confirmation_error:
+                session.rollback()
+                return jsonify({'success': False, 'error': confirmation_error}), 409
+
         if tx_warnings and data.get('confirm_payout_tx_overage') is not True:
             session.rollback()
             return jsonify({'success': False, 'requires_confirmation': True,
@@ -8506,6 +8631,7 @@ def create_deal():
         # известны — держать сделку в pending нечего: прибыль посчитана.
         if (deal.status == DealStatus.PENDING
                 and deal.needs_reimbursement is False
+                and not _flow_sole_confirmation_error(deal)
                 and deal.deal_kind not in REALTY_KINDS   # у недвижимости свой «Завершить»
                 and deal.payout_amount_usdt
                 and deal.payin_amount_usdt):
@@ -8518,7 +8644,8 @@ def create_deal():
             return jsonify({'success': False, 'error': realty_error}), 400
 
         # Автоматическое списание с кошелька при создании
-        if deal.payout_source == PayOutSource.BINANCE and deal.payout_wallet_id and deal.payout_amount_usdt:
+        if (deal.payout_source == PayOutSource.BINANCE and deal.payout_wallet_id
+                and deal.payout_amount_usdt and not _flow_sole_confirmation_error(deal)):
             op = WalletOperation(
                 wallet_id=deal.payout_wallet_id,
                 type='expense',
@@ -8613,6 +8740,10 @@ def update_deal(deal_id):
             if data.get('payin_parts'):
                 return jsonify({'success': False, 'error': 'Flow Sole не использует пул приходов Сбера'}), 400
             data['payin_parts'] = []  # release old Sber claims on a method switch
+        original_flow_proof = _flow_sole_proof_signature(deal)
+        original_payout_hashes = set(_payout_hash_list(deal))
+        if deal.payout_tx_hash:
+            original_payout_hashes.add(deal.payout_tx_hash)
         deal.payin_account_key = payin_account_key
         bank_fields_changed = any(key in data for key in (
             'payin_parts', 'payin_extra', 'payin_amount_rub', 'payin_method'))
@@ -8663,7 +8794,8 @@ def update_deal(deal_id):
         # Приход крипты частями: пустой список = вернуться к одиночному хэшу из формы
         if 'payin_tx_hashes' in data:
             _apply_payin_tx_hashes(deal, data.get('payin_tx_hashes'))
-            _sync_payin_tx_uses(session, deal, _payin_tx_parts(deal))
+            if deal.payin_account_key != 'flow_sole':
+                _sync_payin_tx_uses(session, deal, _payin_tx_parts(deal))
 
         # Дополнительные приходы. Суммы основной части вычисляем ДО записи
         # агрегатов: если поле не пришло в payload, восстанавливаем её вычитанием
@@ -8680,6 +8812,14 @@ def update_deal(deal_id):
             _apply_payin_extra(session, deal,
                                data.get('payin_extra', old_extra),
                                main_usdt=main_usdt, main_rub=main_rub)
+
+        if (deal.payin_account_key == 'flow_sole'
+                and (not deal.payin_tx_verified
+                     or original_flow_proof != _flow_sole_proof_signature(deal))
+                and _requested_payout_hashes(data) - original_payout_hashes):
+            session.rollback()
+            return jsonify({'success': False,
+                            'error': 'Flow Sole: фактическую выдачу можно записать после подтверждения hash прихода'}), 409
 
         # Пересчёт needs_reimbursement если не передан явно, но изменился payout_amount_thb
         if 'needs_reimbursement' not in data and deal.reimbursement_id is None:
@@ -8725,7 +8865,10 @@ def update_deal(deal_id):
                 deal.bank_card_id = new_card_id
 
         # Управление списанием с Binance кошелька при сохранении/завершении
-        if deal.payout_source == PayOutSource.BINANCE and deal.payout_wallet_id and deal.payout_amount_usdt:
+        if (deal.payout_source == PayOutSource.BINANCE and deal.payout_wallet_id
+                and deal.payout_amount_usdt and not _flow_sole_confirmation_error(deal)
+                and (deal.payin_account_key != 'flow_sole'
+                     or original_flow_proof == _flow_sole_proof_signature(deal))):
             # Ищем существующую операцию для этой сделки
             existing_op = session.query(WalletOperation).filter(
                 WalletOperation.deal_id == deal.id,
@@ -8795,7 +8938,10 @@ def update_deal(deal_id):
         # «Прибыль $0.00» при 268.65 − 251.42 = 17.23, а у сделки с агентом на
         # revshare от нулевой прибыли обнулилась бы и выплата партнёру
         tx_warnings = []
-        card_warning = _sync_card_allocation(session, deal)
+        card_warning = (None if _flow_sole_confirmation_error(deal)
+                        or (deal.payin_account_key == 'flow_sole'
+                            and original_flow_proof != _flow_sole_proof_signature(deal))
+                        else _sync_card_allocation(session, deal))
 
         if deal.deal_kind in REALTY_KINDS:
             if deal.deal_kind == MF_REALTY_KIND:
@@ -8861,7 +9007,19 @@ def update_deal(deal_id):
             session.rollback()
             return jsonify({'success': False, 'error': no_conv_error}), 400
 
+        if original_flow_proof != _flow_sole_proof_signature(deal):
+            deal.payin_tx_verified = False
+            if deal.payin_account_key == 'flow_sole':
+                session.query(PayinTxUse).filter(PayinTxUse.deal_id == deal.id).delete()
+
         _clear_profit_if_payin_unknown(deal)
+
+        if deal.status in (DealStatus.COMPLETED, DealStatus.VERIFIED):
+            confirmation_error = _flow_sole_confirmation_error(deal)
+            if confirmation_error and (old_status != deal.status or
+                    original_flow_proof != _flow_sole_proof_signature(deal)):
+                session.rollback()
+                return jsonify({'success': False, 'error': confirmation_error}), 409
 
         if tx_warnings and data.get('confirm_payout_tx_overage') is not True:
             session.rollback()
@@ -8874,6 +9032,7 @@ def update_deal(deal_id):
         # приоритетнее: решение оператора не перебиваем.
         if ('status' not in data
                 and deal.needs_reimbursement is False
+                and not _flow_sole_confirmation_error(deal)
                 and deal.reimbursement_id is None
                 and deal.deal_kind not in REALTY_KINDS
                 and deal.status == DealStatus.PENDING
@@ -10644,6 +10803,42 @@ def _tron_tx_usdt_amount(tx_hash):
         try:
             decimals = int(t.get('decimals') or 6)
             total += float(t.get('amount_str') or t.get('amount') or 0) / (10 ** decimals)
+        except (TypeError, ValueError):
+            continue
+    return round(total, 6) or None
+
+
+def _tron_confirmed_payin_amount(tx_hash):
+    """Strict TRC-20 proof for Flow Sole; unknown, pending and failed stay drafts.
+
+    The historical amount helper above intentionally keeps its existing contract.
+    TronScan transaction-info documents confirmed, revert and contractRet as
+    separate fields, so a Transfer event alone is not proof of success.
+    """
+    if os.environ.get('PYTEST_CURRENT_TEST'):
+        return None
+    try:
+        response = requests.get('https://apilist.tronscanapi.com/api/transaction-info',
+                                headers=_TRONSCAN_HEADERS, timeout=6,
+                                params={'hash': tx_hash})
+        if response.status_code != 200:
+            return None
+        data = response.json() or {}
+    except Exception:
+        return None
+    if (data.get('hash') != tx_hash or data.get('confirmed') is not True
+            or data.get('revert') is not False or data.get('contractRet') != 'SUCCESS'):
+        return None
+    transfers = data.get('trc20TransferInfo') or []
+    if isinstance(transfers, dict):
+        transfers = [transfers]
+    total = 0.0
+    for transfer in transfers:
+        if transfer.get('contract_address') != USDT_TRC20_CONTRACT:
+            continue
+        try:
+            decimals = int(transfer.get('decimals') or 6)
+            total += float(transfer.get('amount_str') or transfer.get('amount') or 0) / (10 ** decimals)
         except (TypeError, ValueError):
             continue
     return round(total, 6) or None
@@ -13442,6 +13637,10 @@ def create_reimbursement():
         if already_settled:
             return jsonify({'success': False, 'error': 'Сделки уже возмещены — обнови страницу',
                             'deal_ids': already_settled}), 409
+        unverified_flow = [d.id for d in deals if _flow_sole_confirmation_error(d)]
+        if unverified_flow:
+            return jsonify({'success': False, 'error': 'Flow Sole: приход USDT не подтверждено в сети',
+                            'deal_ids': unverified_flow}), 409
 
         # ── Переводы: сколько берём из каждого ────────────────────────────
         # Раньше ничто не мешало ввести тот же хэш второй раз и «возместить» одни
