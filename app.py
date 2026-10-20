@@ -2482,7 +2482,7 @@ class Agreement(Base):
     docs = relationship('AgreementDoc', back_populates='agreement',
                         cascade='all, delete-orphan', order_by='AgreementDoc.id')
 
-    def to_dict(self, with_docs=True):
+    def to_dict(self, with_docs=True, include_deleted=False):
         d = {'id': self.id, 'client_id': self.client_id, 'client_name': self.client_name,
              'client_key': self.client_key, 'route_key': self.route_key,
              'deal_type': self.deal_type, 'number': self.number, 'status': self.status,
@@ -2492,7 +2492,8 @@ class Agreement(Base):
              'created_at': self.created_at.isoformat() if self.created_at else None,
              'signed_at': self.signed_at.isoformat() if self.signed_at else None}
         if with_docs:
-            d['docs'] = [x.to_dict() for x in self.docs]
+            d['docs'] = [x.to_dict() for x in self.docs
+                         if include_deleted or x.deleted_at is None]
         return d
 
 
@@ -2516,6 +2517,8 @@ class AgreementDoc(Base):
     drive_url = Column(String(500))
     data = deferred(Column(LargeBinary))
     created_at = Column(DateTime, default=datetime.utcnow)
+    deleted_at = Column(DateTime)
+    deleted_by = Column(String(100))
 
     agreement = relationship('Agreement', back_populates='docs')
 
@@ -2523,7 +2526,9 @@ class AgreementDoc(Base):
         return {'id': self.id, 'kind': self.kind, 'number': self.number, 'seq': self.seq or 0,
                 'filename': self.filename, 'size': self.size, 'mime': self.mime,
                 'drive_url': self.drive_url,
-                'created_at': self.created_at.isoformat() if self.created_at else None}
+                'created_at': self.created_at.isoformat() if self.created_at else None,
+                'deleted_at': self.deleted_at.isoformat() if self.deleted_at else None,
+                'deleted_by': self.deleted_by}
 
 
 class StandFile(Base):
@@ -2648,6 +2653,18 @@ Base.metadata.create_all(
     tables=[table for table in Base.metadata.sorted_tables
             if table.name not in STAND_ONLY_TABLES],
 )
+
+
+def _migrate_agreement_doc_soft_delete():
+    from sqlalchemy import inspect, text
+    with engine.begin() as conn:
+        existing = {column['name'] for column in inspect(conn).get_columns('agreement_docs')}
+        for name, ddl in (('deleted_at', 'TIMESTAMP'), ('deleted_by', 'VARCHAR(100)')):
+            if name not in existing:
+                conn.execute(text(f'ALTER TABLE agreement_docs ADD COLUMN {name} {ddl}'))
+
+
+_migrate_agreement_doc_soft_delete()
 
 
 def _stand_seed_users():
@@ -5513,7 +5530,8 @@ def _stand_public_state(state, role):
     if role in ('manager', 'admin') or not isinstance(state, dict):
         return state
     public = dict(state)
-    public['deals'] = [{k: v for k, v in deal.items() if k != '_managerDraft'}
+    public['deals'] = [{k: v for k, v in deal.items()
+                        if k not in ('_managerDraft', 'deletedFiles')}
                        for deal in state.get('deals', [])]
     return public
 
@@ -5543,18 +5561,20 @@ def _stand_strip_files(data):
     for deal in data['deals']:
         d = dict(deal)
         def _strip(target):
-            if 'files' in target and isinstance(target['files'], dict):
-                target['files'] = dict(target['files'])
-                for k, flist in target['files'].items():
-                    target['files'][k] = []
+            for field in ('files', 'deletedFiles'):
+                if field not in target or not isinstance(target[field], dict):
+                    continue
+                target[field] = dict(target[field])
+                for k, flist in target[field].items():
+                    target[field][k] = []
                     for f in flist:
                         if not isinstance(f, dict):
-                            target['files'][k].append(f)
+                            target[field][k].append(f)
                             continue
                         fc = dict(f)
                         if 'data' in fc and fc['data'] and fc['data'] != '__detached__':
                             fc['data'] = '__detached__'
-                        target['files'][k].append(fc)
+                        target[field][k].append(fc)
         _strip(d)
         if '_managerDraft' in d and isinstance(d['_managerDraft'], dict):
             d['_managerDraft'] = dict(d['_managerDraft'])
@@ -5832,12 +5852,20 @@ def stand_file_upload():
     actor, actor_id = current_role(), flask_session.get('user_id')
     if not actor or not actor_id:
         return jsonify(success=False, error='unauthorized'), 401
+    extra = request.form.get('extra') == '1'
+    if extra and actor not in ('manager', 'operator', 'admin'):
+        return jsonify(success=False, error='Документы загружают менеджер, операционист или администратор'), 403
     try:
         deal_id = int(request.form.get('dealId'))
         kind = request.form.get('kind')
+        document_type = request.form.get('documentType') if extra else None
+        if extra and (kind != 'additional' or document_type not in {'receipt', 'inv', 'spa', 'pass', 'other'}):
+            raise ValueError('Неизвестный тип документа')
         if kind not in {'pass', 'inv', 'spa', 'ipds', 'signed', 'receipt',
-                        STAND_CLIENT_PAYIN_KIND, STAND_BANK_CREDIT_KIND}:
+                        STAND_CLIENT_PAYIN_KIND, STAND_BANK_CREDIT_KIND, 'additional'}:
             raise ValueError('Неизвестный тип вложения')
+        if kind == 'additional' and not extra:
+            raise ValueError('Дополнительное вложение требует выбора типа документа')
         upload = request.files.get('file')
         if not upload:
             raise ValueError('Файл не приложен')
@@ -5858,14 +5886,22 @@ def stand_file_upload():
         deal = next((d for d in state.get('deals', []) if d.get('id') == deal_id), None)
         if not deal:
             return jsonify(success=False, error='Сделка не найдена'), 404
-        if deal.get('closed'):
+        if actor == 'manager' and deal.get('manager'):
+            manager = db.get(AdminUser, actor_id)
+            if deal['manager'].strip().casefold() not in {
+                    (manager.display_name or '').strip().casefold(),
+                    (manager.username or '').strip().casefold()}:
+                return jsonify(success=False, error='Документы этой сделки меняет её менеджер'), 403
+        if deal.get('closed') and not extra:
             return jsonify(success=False, error='Сделка закрыта'), 409
-        use_draft = (actor in ('manager', 'admin') and kind in {'pass', 'inv', 'spa', 'ipds'}
+        use_draft = (not extra and actor in ('manager', 'admin') and kind in {'pass', 'inv', 'spa', 'ipds'}
                      and deal.get('step') in ('s4', 's5', 's6', 's8')
                      and not (deal.get('step') == 's8' and (deal.get('docs') or {}).get(kind)))
         target = deal.setdefault('_managerDraft', {}) if use_draft else deal
         files = target.setdefault('files', {}).setdefault(kind, [])
         sha = stand_file_storage.digest(raw)
+        if any(f.get('sha256') == sha for f in (deal.get('deletedFiles') or {}).get(kind, [])):
+            return jsonify(success=False, error='Этот файл был удалён. Администратор может восстановить его.'), 409
         duplicate = next((f for f in files if f.get('sha256') == sha or (
             str(f.get('data') or '').startswith('data:')
             and stand_file_storage.digest(stand_file_storage.decode(f)) == sha)), None)
@@ -5877,28 +5913,122 @@ def stand_file_upload():
                 'at': stand_now().strftime('%d.%m, %H:%M'), 'demo': False,
                 'uploadedById': actor_id, 'uploadedBy': author,
                 'data': 'data:' + mime + ';base64,' + base64.b64encode(raw).decode()}
+        if extra:
+            item['documentType'] = document_type
         if kind == STAND_CLIENT_PAYIN_KIND:
             item['note'] = ''
         files.append(item)
-        if kind not in (STAND_CLIENT_PAYIN_KIND, STAND_BANK_CREDIT_KIND):
+        if kind not in (STAND_CLIENT_PAYIN_KIND, STAND_BANK_CREDIT_KIND, 'additional'):
             target.setdefault('docs', {})[kind] = True
             first = files[0]
             target.setdefault('docMeta', {})[kind] = {
                 'file': first['file'] + (f' и ещё {len(files)-1}' if len(files) > 1 else ''),
                 'size': first.get('size'), 'at': first.get('at')}
         if not use_draft:
-            text = ('Чек клиента прикреплён · ' + name + ' · ' + author if kind == STAND_CLIENT_PAYIN_KIND
+            text = ('Приложен документ ' + name + ' · ' + author if extra
+                    else 'Чек клиента прикреплён · ' + name + ' · ' + author if kind == STAND_CLIENT_PAYIN_KIND
                     else 'Выписка о зачислении прикреплена · ' + name + ' · ' + author if kind == STAND_BANK_CREDIT_KIND
                     else 'Приложен файл: ' + kind + ' · ' + name)
             deal.setdefault('log', []).append({'text': text, 'role': actor,
                 'at': int(time.time() * 1000), 'ts': stand_now().strftime('%d.%m, %H:%M')})
-        problem = _stand_guard_transition(previous, state, actor, actor_id, db)
+        # An extra attachment is a scoped server mutation of files and log.
+        # Step ownership rules apply to workflow actions, not this attachment.
+        problem = None if extra else _stand_guard_transition(previous, state, actor, actor_id, db)
         if problem:
             return jsonify(success=False, error=problem), 403
         if duplicate:
             return jsonify(success=True, duplicate=True, message='Файл уже загружен',
                            version=row.version, data=_stand_strip_files(previous))
         _stand_externalize_files(db, row, state, actor=actor_id, previous=previous)
+        row.data = json.dumps(state, ensure_ascii=False)
+        row.version = (row.version or 0) + 1
+        row.updated_by, row.updated_at = author, datetime.utcnow()
+        db.commit()
+        return jsonify(success=True, version=row.version, data=_stand_strip_files(state))
+    except ValueError as exc:
+        db.rollback()
+        return jsonify(success=False, error=str(exc)), 400
+    finally:
+        db.close()
+
+
+@app.route('/api/stand/files/<int:deal_id>/<kind>/<file_id>', methods=['PATCH'])
+def stand_file_change(deal_id, kind, file_id):
+    """Move a deal attachment between the active and recoverable lists."""
+    if not STAND_MODE:
+        return jsonify(success=False, error='stand_only'), 404
+    actor, actor_id = current_role(), flask_session.get('user_id')
+    if not actor_id or actor not in ('manager', 'operator', 'admin'):
+        return jsonify(success=False, error='Недостаточно прав для документов'), 403
+    action = (request.get_json(silent=True) or {}).get('action')
+    if action not in ('delete', 'restore'):
+        return jsonify(success=False, error='Неизвестное действие'), 400
+    if action == 'restore' and actor != 'admin':
+        return jsonify(success=False, error='Восстановление доступно только администратору'), 403
+    draft = request.args.get('draft') == '1'
+    if draft and actor not in ('manager', 'admin'):
+        return jsonify(success=False, error='Черновик документов доступен только менеджеру'), 403
+    db = get_session()
+    try:
+        if engine.dialect.name == 'sqlite':
+            from sqlalchemy import text
+            db.execute(text('BEGIN IMMEDIATE'))
+        row = _stand_row(db, lock=True)
+        state = json.loads(row.data or '{}')
+        deal = next((d for d in state.get('deals', []) if d.get('id') == deal_id), None)
+        if not deal:
+            return jsonify(success=False, error='Сделка не найдена'), 404
+        if actor == 'manager' and deal.get('manager'):
+            manager = db.get(AdminUser, actor_id)
+            if deal['manager'].strip().casefold() not in {
+                    (manager.display_name or '').strip().casefold(),
+                    (manager.username or '').strip().casefold()}:
+                return jsonify(success=False, error='Документы этой сделки меняет её менеджер'), 403
+        target = deal.setdefault('_managerDraft', {}) if draft else deal
+        if action == 'delete' and actor != 'admin':
+            crm_id = deal.get('crmDealId')
+            try:
+                crm_deal = db.get(Deal, int(crm_id)) if crm_id else None
+            except (TypeError, ValueError):
+                crm_deal = None
+            if (deal.get('closed') and deal.get('closeReason') == 'Успешно завершена'
+                    or crm_deal and crm_deal.status == DealStatus.COMPLETED):
+                return jsonify(success=False, error='Сделка закрыта, удаление документов — только администратором'), 403
+        source_key, dest_key = (('deletedFiles', 'files') if action == 'restore'
+                                else ('files', 'deletedFiles'))
+        source = (target.get(source_key) or {}).get(kind) or []
+        item = next((f for f in source if isinstance(f, dict)
+                     and (f.get('id') == file_id or f.get('storageId') == file_id)), None)
+        if not item:
+            return jsonify(success=False, error='Файл не найден'), 404
+        previous = json.loads(row.data or '{}')
+        target.setdefault(source_key, {})[kind] = [f for f in source if f is not item]
+        target.setdefault(dest_key, {}).setdefault(kind, []).append(item)
+        if kind not in (STAND_CLIENT_PAYIN_KIND, STAND_BANK_CREDIT_KIND, 'additional'):
+            active = target.get('files', {}).get(kind) or []
+            target.setdefault('docs', {})[kind] = bool(active)
+            if active:
+                first = active[0]
+                target.setdefault('docMeta', {})[kind] = {
+                    'file': first.get('file', '') + (f' и ещё {len(active)-1}' if len(active) > 1 else ''),
+                    'size': first.get('size'), 'at': first.get('at')}
+            else:
+                target.setdefault('docMeta', {}).pop(kind, None)
+        user = db.get(AdminUser, actor_id)
+        author = user.display_name or user.username
+        stamp = stand_now()
+        event = 'Удалён документ ' if action == 'delete' else 'Восстановлен документ '
+        deal.setdefault('log', []).append({
+            'text': event + item.get('file', 'файл') + ' · ' + author + ' · ' + stamp.strftime('%d.%m, %H:%M'),
+            'role': actor, 'by': author, 'at': int(time.time() * 1000),
+            'ts': stamp.strftime('%d.%m, %H:%M')})
+        if action == 'delete':
+            stand_file_storage.mark_deleted(db, StandFile, previous, state)
+        else:
+            stored = db.get(StandFile, item.get('storageId')) if item.get('storageId') else None
+            if stored:
+                stored.deleted_at = None
+            _stand_externalize_files(db, row, state, actor=actor_id, previous=previous)
         row.data = json.dumps(state, ensure_ascii=False)
         row.version = (row.version or 0) + 1
         row.updated_by, row.updated_at = author, datetime.utcnow()
@@ -6885,6 +7015,52 @@ def stand_state_put():
             _stand_restore_files(previous, payload['data'])
         except ValueError:
             return jsonify({'success': False, 'error': 'invalid_file_marker', 'version': row.version or 0, 'data': _stand_strip_files(previous)}), 409
+        # Deleted attachments are server owned. An older board snapshot cannot
+        # silently erase the recovery list or restore a file by editing JSON.
+        prior_deals = {d.get('id'): d for d in previous.get('deals', [])}
+        def _file_keys(target):
+            return {(kind, f.get('storageId') or f.get('id') or json.dumps(f, sort_keys=True))
+                    for kind, files in (target.get('files') or {}).items()
+                    if isinstance(files, list) for f in files if isinstance(f, dict)}
+        for incoming_deal in payload['data'].get('deals', []):
+            prior_deal = prior_deals.get(incoming_deal.get('id')) or {}
+            for old_target, new_target in ((prior_deal, incoming_deal),
+                                           (prior_deal.get('_managerDraft') or {},
+                                            incoming_deal.get('_managerDraft') or {})):
+                if old_target is not prior_deal and actor not in ('manager', 'admin'):
+                    continue  # The projection has no private draft; it is copied below.
+                old_deleted = old_target.get('deletedFiles', {})
+                def _public_deleted(value):
+                    return _stand_strip_files({'deals': [{'deletedFiles': value}]})['deals'][0]['deletedFiles']
+                if ('deletedFiles' in new_target and
+                        new_target['deletedFiles'] != _public_deleted(old_deleted)):
+                    return jsonify(success=False, error='deleted_files_server_only'), 409
+                if old_deleted:
+                    new_target['deletedFiles'] = old_deleted
+                added = _file_keys(new_target) - _file_keys(old_target)
+                if added and actor not in ('manager', 'operator', 'admin'):
+                    return jsonify(success=False, error='Недостаточно прав для документов'), 403
+                if added and actor == 'manager' and prior_deal.get('manager'):
+                    user = db.get(AdminUser, actor_id)
+                    if prior_deal['manager'].strip().casefold() not in {
+                            (user.display_name or '').strip().casefold(),
+                            (user.username or '').strip().casefold()}:
+                        return jsonify(success=False, error='Документы этой сделки меняет её менеджер'), 403
+            old_files = _file_keys(prior_deal) | _file_keys(prior_deal.get('_managerDraft') or {})
+            new_draft = ((incoming_deal.get('_managerDraft') or {}) if actor in ('manager', 'admin')
+                         else (prior_deal.get('_managerDraft') or {}))
+            new_files = _file_keys(incoming_deal) | _file_keys(new_draft)
+            if old_files - new_files:
+                crm_id = prior_deal.get('crmDealId')
+                try:
+                    crm_deal = db.get(Deal, int(crm_id)) if crm_id else None
+                except (TypeError, ValueError):
+                    crm_deal = None
+                if actor != 'admin' and (prior_deal.get('closed') and
+                        prior_deal.get('closeReason') == 'Успешно завершена'
+                        or crm_deal and crm_deal.status == DealStatus.COMPLETED):
+                    return jsonify(success=False, error='Сделка закрыта, удаление документов — только администратором'), 403
+                return jsonify(success=False, error='Удаляйте документы кнопкой «Удалить»'), 409
         # Other roles receive a projected board. Preserve the hidden draft in
         # their versioned PUT, and reject any attempt to forge it explicitly.
         if actor not in ('manager', 'admin'):
@@ -14293,7 +14469,8 @@ def stand_docs_zip():
             if isinstance(own, dict) and own.get('docId'):
                 current[kind] = own['docId']
         ids = [current[k] for k in ('dog', 'app', 'bill') if k in current]
-        docs = db.query(AgreementDoc).filter(AgreementDoc.id.in_(ids)).all() if ids else []
+        docs = db.query(AgreementDoc).filter(AgreementDoc.id.in_(ids),
+            AgreementDoc.deleted_at.is_(None)).all() if ids else []
         # только файлы договора этой сделки — чужой docId в состоянии не вытащит лишнего
         docs = [x for x in docs if x.agreement_id == pack.get('agreementId')]
         if not docs:
@@ -27314,7 +27491,8 @@ def docs_get_agreement(agreement_id):
         a = db.query(Agreement).filter(Agreement.id == agreement_id).first()
         if not a:
             return jsonify({'success': False, 'error': 'not_found'}), 404
-        return jsonify({'success': True, 'agreement': a.to_dict()})
+        return jsonify({'success': True,
+                        'agreement': a.to_dict(include_deleted=current_role() == 'admin')})
     finally:
         db.close()
 
@@ -27731,25 +27909,125 @@ def docs_add_payment(agreement_id):
 @app.route('/api/docs/agreements/<int:agreement_id>/upload', methods=['POST'])
 def docs_upload_signed(agreement_id):
     """Подписанные клиентом документы возвращаются в тот же договор."""
+    role, actor_id = current_role(), flask_session.get('user_id')
+    if not actor_id or role not in ('manager', 'operator', 'admin'):
+        return jsonify(success=False, error='Недостаточно прав для документов'), 403
+    kind = request.form.get('kind') or 'signed'
+    if kind not in {'signed', 'receipt', 'source_invoice', 'source_spa',
+                    'source_passport', 'source_other'}:
+        return jsonify(success=False, error='Неизвестный тип документа'), 400
     db = get_session()
     try:
         a = db.query(Agreement).filter(Agreement.id == agreement_id).first()
         if not a:
             return jsonify({'success': False, 'error': 'not_found'}), 404
-        kind = request.form.get('kind') or 'signed'
+        if role == 'manager':
+            _, _, linked = _docs_linked_deals(db, agreement_id)
+            if not _docs_manager_allowed(db, linked, actor_id):
+                return jsonify(success=False, error='Документы этой сделки меняет её менеджер'), 403
         saved = 0
         for f in request.files.getlist('files'):
-            raw = f.read()
-            if not raw:
-                continue
-            _docs_save(db, a.id, kind, None, a.payments_count or 1, f.filename, raw,
-                       f.mimetype or 'application/octet-stream')
+            raw = f.read(stand_file_storage.FILE_LIMIT + 1)
+            name = stand_file_storage.safe_name(f.filename)
+            try:
+                stand_file_storage.validate(raw, f.mimetype, name)
+            except ValueError as exc:
+                db.rollback()
+                return jsonify(success=False, error=str(exc)), 400
+            _docs_save(db, a.id, kind, None, a.payments_count or 1, name, raw, f.mimetype)
             saved += 1
         if kind == 'signed' and saved:
             a.status = 'signed'
             a.signed_at = datetime.utcnow()
         db.commit()
         return jsonify({'success': True, 'saved': saved, 'agreement': a.to_dict()})
+    finally:
+        db.close()
+
+
+def _docs_linked_deals(db, agreement_id, doc_id=None):
+    if not STAND_MODE:
+        return None, None, []
+    row = _stand_row(db, lock=True)
+    state = json.loads(row.data or '{}')
+    linked = []
+    for deal in state.get('deals', []):
+        pack = deal.get('docPack') or {}
+        refs = (deal.get('docsIssued') or []) + list((deal.get('issued') or {}).values())
+        if (pack.get('agreementId') == agreement_id or
+                doc_id is not None and any(isinstance(ref, dict) and ref.get('docId') == doc_id
+                                           for ref in refs)):
+            linked.append(deal)
+    return row, state, linked
+
+
+def _docs_delete_blocked(db, agreement, linked):
+    if any(d.get('closed') and d.get('closeReason') == 'Успешно завершена' for d in linked):
+        return True
+    ids = [d.get('crmDealId') for d in linked if d.get('crmDealId')]
+    if ids and db.query(Deal.id).filter(Deal.id.in_(ids), Deal.status == DealStatus.COMPLETED).first():
+        return True
+    return bool(agreement.client_id and db.query(Deal.id).filter(
+        Deal.client_id == agreement.client_id, Deal.status == DealStatus.COMPLETED).first())
+
+
+def _docs_manager_allowed(db, linked, actor_id):
+    user = db.get(AdminUser, actor_id)
+    names = {(user.display_name or '').strip().casefold(),
+             (user.username or '').strip().casefold()}
+    return all(not deal.get('manager') or deal['manager'].strip().casefold() in names
+               for deal in linked)
+
+
+@app.route('/api/docs/file/<int:doc_id>', methods=['PATCH'])
+def docs_change_file(doc_id):
+    role, actor_id = current_role(), flask_session.get('user_id')
+    if not actor_id or role not in ('manager', 'operator', 'admin'):
+        return jsonify(success=False, error='Недостаточно прав для документов'), 403
+    action = (request.get_json(silent=True) or {}).get('action')
+    if action not in ('delete', 'restore'):
+        return jsonify(success=False, error='Неизвестное действие'), 400
+    if action == 'restore' and role != 'admin':
+        return jsonify(success=False, error='Восстановление доступно только администратору'), 403
+    db = get_session()
+    try:
+        if engine.dialect.name == 'sqlite':
+            from sqlalchemy import text
+            db.execute(text('BEGIN IMMEDIATE'))
+        doc = db.get(AgreementDoc, doc_id)
+        if not doc:
+            return jsonify(success=False, error='Файл не найден'), 404
+        agreement = db.get(Agreement, doc.agreement_id)
+        row, state, linked = _docs_linked_deals(db, doc.agreement_id, doc_id)
+        if role == 'manager' and not _docs_manager_allowed(db, linked, actor_id):
+            return jsonify(success=False, error='Документы этой сделки меняет её менеджер'), 403
+        if action == 'delete' and role != 'admin' and _docs_delete_blocked(db, agreement, linked):
+            return jsonify(success=False, error='Сделка закрыта, удаление документов — только администратором'), 403
+        if bool(doc.deleted_at) == (action == 'delete'):
+            return jsonify(success=False, error='Состояние документа уже изменилось'), 409
+        user = db.get(AdminUser, actor_id)
+        author = user.display_name or user.username
+        stamp = stand_now()
+        doc.deleted_at = datetime.utcnow() if action == 'delete' else None
+        doc.deleted_by = author if action == 'delete' else None
+        for deal in linked:
+            for ref in (deal.get('docsIssued') or []) + list((deal.get('issued') or {}).values()):
+                if isinstance(ref, dict) and ref.get('docId') == doc_id:
+                    if action == 'delete':
+                        ref['deletedAt'] = stamp.isoformat()
+                    else:
+                        ref.pop('deletedAt', None)
+            event = 'Удалён документ ' if action == 'delete' else 'Восстановлен документ '
+            deal.setdefault('log', []).append({
+                'text': event + doc.filename + ' · ' + author + ' · ' + stamp.strftime('%d.%m, %H:%M'),
+                'role': role, 'by': author, 'at': int(time.time() * 1000),
+                'ts': stamp.strftime('%d.%m, %H:%M')})
+        if row and linked:
+            row.data = json.dumps(state, ensure_ascii=False)
+            row.version = (row.version or 0) + 1
+            row.updated_by, row.updated_at = author, datetime.utcnow()
+        db.commit()
+        return jsonify(success=True, agreement=agreement.to_dict(include_deleted=role == 'admin'))
     finally:
         db.close()
 
@@ -27778,7 +28056,7 @@ def docs_download(doc_id):
     db = get_session()
     try:
         d = db.query(AgreementDoc).filter(AgreementDoc.id == doc_id).first()
-        if not d or d.data is None:
+        if not d or d.deleted_at is not None or d.data is None:
             return jsonify({'success': False, 'error': 'not_found'}), 404
         from flask import Response
         from urllib.parse import quote
@@ -27790,11 +28068,17 @@ def docs_download(doc_id):
 
 @app.route('/api/docs/agreements/<int:agreement_id>', methods=['DELETE'])
 def docs_delete_agreement(agreement_id):
+    role, actor_id = current_role(), flask_session.get('user_id')
+    if STAND_MODE and (not actor_id or role not in ('manager', 'operator', 'admin')):
+        return jsonify(success=False, error='Недостаточно прав для документов'), 403
     db = get_session()
     try:
         a = db.query(Agreement).filter(Agreement.id == agreement_id).first()
         if not a:
             return jsonify({'success': False, 'error': 'not_found'}), 404
+        _, _, linked = _docs_linked_deals(db, agreement_id)
+        if linked or _docs_delete_blocked(db, a, linked):
+            return jsonify(success=False, error='Договор связан со сделкой. Удаляйте файлы по одному.'), 409
         db.delete(a)
         db.commit()
         return jsonify({'success': True})
