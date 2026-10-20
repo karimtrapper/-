@@ -5586,6 +5586,51 @@ def _stand_public_state(state, role):
     return public
 
 
+_DEAL_ID_VIEW_ARG_KEYS = ('deal_id', 'won_id', 'stand_deal_id')
+
+
+@app.after_request
+def _log_deal_refusals(response):
+    """Журнал отказов: одна строка в лог на каждый 400/403/409/422
+    на /api/stand/* и /api/deals*.
+
+    Единая точка вместо логирования в каждом хендлере. Без тела запроса,
+    без персональных данных клиента — только время, пользователь/роль,
+    маршрут, код, причина (текст из ответа) и id сделки, если он известен.
+    """
+    if response.status_code not in (400, 403, 409, 422):
+        return response
+    path = request.path
+    if not (path.startswith('/api/stand/') or path.startswith('/api/deals')):
+        return response
+
+    deal_id = None
+    for key in _DEAL_ID_VIEW_ARG_KEYS:
+        if request.view_args and key in request.view_args:
+            deal_id = request.view_args[key]
+            break
+
+    reason = None
+    if response.mimetype == 'application/json':
+        body = response.get_json(silent=True)
+        if isinstance(body, dict):
+            reason = body.get('error') or body.get('message')
+            if deal_id is None:
+                deal_id = body.get('deal_id')
+
+    uid = flask_session.get('user_id')
+    who = flask_session.get('username') or uid or 'anon'
+    role = current_role() if uid else None
+
+    app.logger.warning(
+        'deal_refusal time=%s user=%s role=%s route=%s status=%s deal_id=%s reason=%s',
+        datetime.utcnow().isoformat(), who, role or '-', path,
+        response.status_code, deal_id if deal_id is not None else '-',
+        reason or '-',
+    )
+    return response
+
+
 @app.after_request
 def _stand_project_private_drafts(response):
     # Actions besides /state also return a fresh board snapshot. Project all
