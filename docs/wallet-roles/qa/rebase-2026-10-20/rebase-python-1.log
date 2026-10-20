@@ -1,0 +1,598 @@
+FENCED_RUN python=3.11.17 port_pool=24546-24609
+........................................................................ [  2%]
+........................................................................ [  4%]
+..................sssssssssssssssssssssssssssssssssssssssssssss......... [  6%]
+........................................................................ [  8%]
+........................................................................ [ 10%]
+........................................................................ [ 13%]
+........................................................................ [ 15%]
+.........sss............................................................ [ 17%]
+..........sssssssssssss....ss........................................... [ 19%]
+........................................................................ [ 21%]
+........................................................................ [ 23%]
+...........ssss......................................................... [ 26%]
+........................................................................ [ 28%]
+........................................................................ [ 30%]
+........................................................................ [ 32%]
+........ssssssss........................................................ [ 34%]
+........................................................................ [ 36%]
+........................................................................ [ 39%]
+........................................................................ [ 41%]
+........................................................................ [ 43%]
+........................................................................ [ 45%]
+........................................................................ [ 47%]
+........................................................................ [ 50%]
+........................................................................ [ 52%]
+........................................................................ [ 54%]
+........................................................................ [ 56%]
+........................................................................ [ 58%]
+.................................................................s...... [ 60%]
+........................................................................ [ 63%]
+........................................................................ [ 65%]
+........................................................................ [ 67%]
+........................................................................ [ 69%]
+........................................................................ [ 71%]
+........................................................................ [ 73%]
+........................................................................ [ 76%]
+........................................................................ [ 78%]
+........................................................................ [ 80%]
+........................................................................ [ 82%]
+........................................................................ [ 84%]
+......s................................................................. [ 86%]
+........................................................................ [ 89%]
+.............................FFFF.F..................................... [ 91%]
+....................FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF..................... [ 93%]
+.................F..........F..FFFFFFFFFFFFFFF..FFFF.........F..FF...... [ 95%]
+........................................................................ [ 97%]
+.......................................................................  [100%]
+=================================== FAILURES ===================================
+_______________ test_close_within_limit_on_exchange_wallet_works _______________
+tests/test_wallet_roles_close_qa.py:78: in test_close_within_limit_on_exchange_wallet_works
+    assert r.status_code in (200, 201), r.json
+E   AssertionError: {'data': {'deals': [{'amountUsdt': 5100, 'client': 'Synthetic QA', 'closed': False, 'code': 'СД-1474', ...}], 'incomes...d': 'payout', 'label': 'Выплата', 'ready': False, ...}], 'error': 'close_evidence_missing', 'missing': ['payout'], ...}
+E   assert 409 in (200, 201)
+E    +  where 409 = <WrapperTestResponse streamed [409 CONFLICT]>.status_code
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+___________ test_close_over_limit_without_board_approval_is_refused ____________
+tests/test_wallet_roles_close_qa.py:85: in test_close_over_limit_without_board_approval_is_refused
+    assert r.status_code == 400, r.json
+E   AssertionError: {'data': {'deals': [{'amountUsdt': 15100, 'client': 'Synthetic QA', 'closed': False, 'code': 'СД-1474', ...}], 'income...d': 'payout', 'label': 'Выплата', 'ready': False, ...}], 'error': 'close_evidence_missing', 'missing': ['payout'], ...}
+E   assert 409 == 400
+E    +  where 409 = <WrapperTestResponse streamed [409 CONFLICT]>.status_code
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+_____________ test_closing_user_cannot_supply_owner_flag[manager] ______________
+tests/test_wallet_roles_close_qa.py:95: in test_closing_user_cannot_supply_owner_flag
+    assert r.status_code in (400, 403), r.json
+E   AssertionError: {'data': {'deals': [{'amountUsdt': 15100, 'client': 'Synthetic QA', 'closed': False, 'code': 'СД-1474', ...}], 'income...d': 'payout', 'label': 'Выплата', 'ready': False, ...}], 'error': 'close_evidence_missing', 'missing': ['payout'], ...}
+E   assert 409 in (400, 403)
+E    +  where 409 = <WrapperTestResponse streamed [409 CONFLICT]>.status_code
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+______________ test_closing_user_cannot_supply_owner_flag[admin] _______________
+tests/test_wallet_roles_close_qa.py:95: in test_closing_user_cannot_supply_owner_flag
+    assert r.status_code in (400, 403), r.json
+E   AssertionError: {'data': {'deals': [{'amountUsdt': 15100, 'client': 'Synthetic QA', 'closed': False, 'code': 'СД-1474', ...}], 'income...d': 'payout', 'label': 'Выплата', 'ready': False, ...}], 'error': 'close_evidence_missing', 'missing': ['payout'], ...}
+E   assert 409 in (400, 403)
+E    +  where 409 = <WrapperTestResponse streamed [409 CONFLICT]>.status_code
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+_________________ test_close_on_legacy_wallet_has_no_new_limit _________________
+tests/test_wallet_roles_close_qa.py:102: in test_close_on_legacy_wallet_has_no_new_limit
+    assert r.status_code in (200, 201), r.json
+E   AssertionError: {'data': {'deals': [{'amountUsdt': 15100, 'client': 'Synthetic QA', 'closed': False, 'code': 'СД-1474', ...}], 'income...d': 'payout', 'label': 'Выплата', 'ready': False, ...}], 'error': 'close_evidence_missing', 'missing': ['payout'], ...}
+E   assert 409 in (200, 201)
+E    +  where 409 = <WrapperTestResponse streamed [409 CONFLICT]>.status_code
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+_______________ test_up_to_limit_inclusive_needs_no_approval[1] ________________
+tests/test_wallet_roles_crm_qa.py:83: in test_up_to_limit_inclusive_needs_no_approval
+    assert r.status_code in (200, 201), r.get_json()
+E   AssertionError: {'error': 'Этот флоу (тип сделки + способ оплаты) ещё не проверен. Проведите сделку через Карима.', 'success': False}
+E   assert 400 in (200, 201)
+E    +  where 400 = <WrapperTestResponse streamed [400 BAD REQUEST]>.status_code
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+______________ test_up_to_limit_inclusive_needs_no_approval[5000] ______________
+tests/test_wallet_roles_crm_qa.py:83: in test_up_to_limit_inclusive_needs_no_approval
+    assert r.status_code in (200, 201), r.get_json()
+E   AssertionError: {'error': 'Этот флоу (тип сделки + способ оплаты) ещё не проверен. Проведите сделку через Карима.', 'success': False}
+E   assert 400 in (200, 201)
+E    +  where 400 = <WrapperTestResponse streamed [400 BAD REQUEST]>.status_code
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+____________ test_up_to_limit_inclusive_needs_no_approval[9999.99] _____________
+tests/test_wallet_roles_crm_qa.py:83: in test_up_to_limit_inclusive_needs_no_approval
+    assert r.status_code in (200, 201), r.get_json()
+E   AssertionError: {'error': 'Этот флоу (тип сделки + способ оплаты) ещё не проверен. Проведите сделку через Карима.', 'success': False}
+E   assert 400 in (200, 201)
+E    +  where 400 = <WrapperTestResponse streamed [400 BAD REQUEST]>.status_code
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+_____________ test_up_to_limit_inclusive_needs_no_approval[10000] ______________
+tests/test_wallet_roles_crm_qa.py:83: in test_up_to_limit_inclusive_needs_no_approval
+    assert r.status_code in (200, 201), r.get_json()
+E   AssertionError: {'error': 'Этот флоу (тип сделки + способ оплаты) ещё не проверен. Проведите сделку через Карима.', 'success': False}
+E   assert 400 in (200, 201)
+E    +  where 400 = <WrapperTestResponse streamed [400 BAD REQUEST]>.status_code
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+____________ test_up_to_limit_inclusive_needs_no_approval[10000.0] _____________
+tests/test_wallet_roles_crm_qa.py:83: in test_up_to_limit_inclusive_needs_no_approval
+    assert r.status_code in (200, 201), r.get_json()
+E   AssertionError: {'error': 'Этот флоу (тип сделки + способ оплаты) ещё не проверен. Проведите сделку через Карима.', 'success': False}
+E   assert 400 in (200, 201)
+E    +  where 400 = <WrapperTestResponse streamed [400 BAD REQUEST]>.status_code
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+_ test_over_limit_without_flag_is_400_and_nothing_is_saved[operator-10000.01] __
+tests/test_wallet_roles_crm_qa.py:93: in test_over_limit_without_flag_is_400_and_nothing_is_saved
+    assert MSG in r.get_json()['error']
+E   AssertionError: assert 'Для отправки свыше 10 000 USDT требуется подтверждение владельца' in 'Этот флоу (тип сделки + способ оплаты) ещё не проверен. Проведите сделку через Карима.'
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+__ test_over_limit_without_flag_is_400_and_nothing_is_saved[operator-10000.5] __
+tests/test_wallet_roles_crm_qa.py:93: in test_over_limit_without_flag_is_400_and_nothing_is_saved
+    assert MSG in r.get_json()['error']
+E   AssertionError: assert 'Для отправки свыше 10 000 USDT требуется подтверждение владельца' in 'Этот флоу (тип сделки + способ оплаты) ещё не проверен. Проведите сделку через Карима.'
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+___ test_over_limit_without_flag_is_400_and_nothing_is_saved[operator-15000] ___
+tests/test_wallet_roles_crm_qa.py:93: in test_over_limit_without_flag_is_400_and_nothing_is_saved
+    assert MSG in r.get_json()['error']
+E   AssertionError: assert 'Для отправки свыше 10 000 USDT требуется подтверждение владельца' in 'Этот флоу (тип сделки + способ оплаты) ещё не проверен. Проведите сделку через Карима.'
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+__ test_over_limit_without_flag_is_400_and_nothing_is_saved[operator-1000000] __
+tests/test_wallet_roles_crm_qa.py:93: in test_over_limit_without_flag_is_400_and_nothing_is_saved
+    assert MSG in r.get_json()['error']
+E   AssertionError: assert 'Для отправки свыше 10 000 USDT требуется подтверждение владельца' in 'Этот флоу (тип сделки + способ оплаты) ещё не проверен. Проведите сделку через Карима.'
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+__ test_over_limit_without_flag_is_400_and_nothing_is_saved[manager-10000.01] __
+tests/test_wallet_roles_crm_qa.py:93: in test_over_limit_without_flag_is_400_and_nothing_is_saved
+    assert MSG in r.get_json()['error']
+E   AssertionError: assert 'Для отправки свыше 10 000 USDT требуется подтверждение владельца' in 'Этот флоу (тип сделки + способ оплаты) ещё не проверен. Проведите сделку через Карима.'
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+__ test_over_limit_without_flag_is_400_and_nothing_is_saved[manager-10000.5] ___
+tests/test_wallet_roles_crm_qa.py:93: in test_over_limit_without_flag_is_400_and_nothing_is_saved
+    assert MSG in r.get_json()['error']
+E   AssertionError: assert 'Для отправки свыше 10 000 USDT требуется подтверждение владельца' in 'Этот флоу (тип сделки + способ оплаты) ещё не проверен. Проведите сделку через Карима.'
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+___ test_over_limit_without_flag_is_400_and_nothing_is_saved[manager-15000] ____
+tests/test_wallet_roles_crm_qa.py:93: in test_over_limit_without_flag_is_400_and_nothing_is_saved
+    assert MSG in r.get_json()['error']
+E   AssertionError: assert 'Для отправки свыше 10 000 USDT требуется подтверждение владельца' in 'Этот флоу (тип сделки + способ оплаты) ещё не проверен. Проведите сделку через Карима.'
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+__ test_over_limit_without_flag_is_400_and_nothing_is_saved[manager-1000000] ___
+tests/test_wallet_roles_crm_qa.py:93: in test_over_limit_without_flag_is_400_and_nothing_is_saved
+    assert MSG in r.get_json()['error']
+E   AssertionError: assert 'Для отправки свыше 10 000 USDT требуется подтверждение владельца' in 'Этот флоу (тип сделки + способ оплаты) ещё не проверен. Проведите сделку через Карима.'
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+___ test_over_limit_without_flag_is_400_and_nothing_is_saved[admin-10000.01] ___
+tests/test_wallet_roles_crm_qa.py:92: in test_over_limit_without_flag_is_400_and_nothing_is_saved
+    assert r.status_code == 400, r.get_json()
+E   AssertionError: {'requires_confirmation': True, 'success': False, 'unverified_flow': True, 'warning': 'Непроверенный флоу. Требуется подтверждение (unverified_confirmed=true).'}
+E   assert 409 == 400
+E    +  where 409 = <WrapperTestResponse streamed [409 CONFLICT]>.status_code
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+___ test_over_limit_without_flag_is_400_and_nothing_is_saved[admin-10000.5] ____
+tests/test_wallet_roles_crm_qa.py:92: in test_over_limit_without_flag_is_400_and_nothing_is_saved
+    assert r.status_code == 400, r.get_json()
+E   AssertionError: {'requires_confirmation': True, 'success': False, 'unverified_flow': True, 'warning': 'Непроверенный флоу. Требуется подтверждение (unverified_confirmed=true).'}
+E   assert 409 == 400
+E    +  where 409 = <WrapperTestResponse streamed [409 CONFLICT]>.status_code
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+____ test_over_limit_without_flag_is_400_and_nothing_is_saved[admin-15000] _____
+tests/test_wallet_roles_crm_qa.py:92: in test_over_limit_without_flag_is_400_and_nothing_is_saved
+    assert r.status_code == 400, r.get_json()
+E   AssertionError: {'requires_confirmation': True, 'success': False, 'unverified_flow': True, 'warning': 'Непроверенный флоу. Требуется подтверждение (unverified_confirmed=true).'}
+E   assert 409 == 400
+E    +  where 409 = <WrapperTestResponse streamed [409 CONFLICT]>.status_code
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+___ test_over_limit_without_flag_is_400_and_nothing_is_saved[admin-1000000] ____
+tests/test_wallet_roles_crm_qa.py:92: in test_over_limit_without_flag_is_400_and_nothing_is_saved
+    assert r.status_code == 400, r.get_json()
+E   AssertionError: {'requires_confirmation': True, 'success': False, 'unverified_flow': True, 'warning': 'Непроверенный флоу. Требуется подтверждение (unverified_confirmed=true).'}
+E   assert 409 == 400
+E    +  where 409 = <WrapperTestResponse streamed [409 CONFLICT]>.status_code
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+__ test_over_limit_without_flag_is_400_and_nothing_is_saved[findir-10000.01] ___
+tests/test_wallet_roles_crm_qa.py:93: in test_over_limit_without_flag_is_400_and_nothing_is_saved
+    assert MSG in r.get_json()['error']
+E   AssertionError: assert 'Для отправки свыше 10 000 USDT требуется подтверждение владельца' in 'Этот флоу (тип сделки + способ оплаты) ещё не проверен. Проведите сделку через Карима.'
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+___ test_over_limit_without_flag_is_400_and_nothing_is_saved[findir-10000.5] ___
+tests/test_wallet_roles_crm_qa.py:93: in test_over_limit_without_flag_is_400_and_nothing_is_saved
+    assert MSG in r.get_json()['error']
+E   AssertionError: assert 'Для отправки свыше 10 000 USDT требуется подтверждение владельца' in 'Этот флоу (тип сделки + способ оплаты) ещё не проверен. Проведите сделку через Карима.'
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+____ test_over_limit_without_flag_is_400_and_nothing_is_saved[findir-15000] ____
+tests/test_wallet_roles_crm_qa.py:93: in test_over_limit_without_flag_is_400_and_nothing_is_saved
+    assert MSG in r.get_json()['error']
+E   AssertionError: assert 'Для отправки свыше 10 000 USDT требуется подтверждение владельца' in 'Этот флоу (тип сделки + способ оплаты) ещё не проверен. Проведите сделку через Карима.'
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+___ test_over_limit_without_flag_is_400_and_nothing_is_saved[findir-1000000] ___
+tests/test_wallet_roles_crm_qa.py:93: in test_over_limit_without_flag_is_400_and_nothing_is_saved
+    assert MSG in r.get_json()['error']
+E   AssertionError: assert 'Для отправки свыше 10 000 USDT требуется подтверждение владельца' in 'Этот флоу (тип сделки + способ оплаты) ещё не проверен. Проведите сделку через Карима.'
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+__ test_over_limit_without_flag_is_400_and_nothing_is_saved[teodor-10000.01] ___
+tests/test_wallet_roles_crm_qa.py:93: in test_over_limit_without_flag_is_400_and_nothing_is_saved
+    assert MSG in r.get_json()['error']
+E   AssertionError: assert 'Для отправки свыше 10 000 USDT требуется подтверждение владельца' in 'Этот флоу (тип сделки + способ оплаты) ещё не проверен. Проведите сделку через Карима.'
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+___ test_over_limit_without_flag_is_400_and_nothing_is_saved[teodor-10000.5] ___
+tests/test_wallet_roles_crm_qa.py:93: in test_over_limit_without_flag_is_400_and_nothing_is_saved
+    assert MSG in r.get_json()['error']
+E   AssertionError: assert 'Для отправки свыше 10 000 USDT требуется подтверждение владельца' in 'Этот флоу (тип сделки + способ оплаты) ещё не проверен. Проведите сделку через Карима.'
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+____ test_over_limit_without_flag_is_400_and_nothing_is_saved[teodor-15000] ____
+tests/test_wallet_roles_crm_qa.py:93: in test_over_limit_without_flag_is_400_and_nothing_is_saved
+    assert MSG in r.get_json()['error']
+E   AssertionError: assert 'Для отправки свыше 10 000 USDT требуется подтверждение владельца' in 'Этот флоу (тип сделки + способ оплаты) ещё не проверен. Проведите сделку через Карима.'
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+___ test_over_limit_without_flag_is_400_and_nothing_is_saved[teodor-1000000] ___
+tests/test_wallet_roles_crm_qa.py:93: in test_over_limit_without_flag_is_400_and_nothing_is_saved
+    assert MSG in r.get_json()['error']
+E   AssertionError: assert 'Для отправки свыше 10 000 USDT требуется подтверждение владельца' in 'Этот флоу (тип сделки + способ оплаты) ещё не проверен. Проведите сделку через Карима.'
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+_ test_over_limit_with_flag_from_owner_or_financier_passes_and_is_stamped[findir] _
+tests/test_wallet_roles_crm_qa.py:100: in test_over_limit_with_flag_from_owner_or_financier_passes_and_is_stamped
+    assert r.status_code in (200, 201), r.get_json()
+E   AssertionError: {'error': 'Этот флоу (тип сделки + способ оплаты) ещё не проверен. Проведите сделку через Карима.', 'success': False}
+E   assert 400 in (200, 201)
+E    +  where 400 = <WrapperTestResponse streamed [400 BAD REQUEST]>.status_code
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+_ test_over_limit_with_flag_from_owner_or_financier_passes_and_is_stamped[teodor] _
+tests/test_wallet_roles_crm_qa.py:100: in test_over_limit_with_flag_from_owner_or_financier_passes_and_is_stamped
+    assert r.status_code in (200, 201), r.get_json()
+E   AssertionError: {'error': 'Этот флоу (тип сделки + способ оплаты) ещё не проверен. Проведите сделку через Карима.', 'success': False}
+E   assert 400 in (200, 201)
+E    +  where 400 = <WrapperTestResponse streamed [400 BAD REQUEST]>.status_code
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+_________ test_over_limit_flag_from_other_roles_is_rejected[operator] __________
+tests/test_wallet_roles_crm_qa.py:111: in test_over_limit_flag_from_other_roles_is_rejected
+    assert r.status_code == 403, r.get_json()
+E   AssertionError: {'error': 'Этот флоу (тип сделки + способ оплаты) ещё не проверен. Проведите сделку через Карима.', 'success': False}
+E   assert 400 == 403
+E    +  where 400 = <WrapperTestResponse streamed [400 BAD REQUEST]>.status_code
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+__________ test_over_limit_flag_from_other_roles_is_rejected[manager] __________
+tests/test_wallet_roles_crm_qa.py:111: in test_over_limit_flag_from_other_roles_is_rejected
+    assert r.status_code == 403, r.get_json()
+E   AssertionError: {'error': 'Этот флоу (тип сделки + способ оплаты) ещё не проверен. Проведите сделку через Карима.', 'success': False}
+E   assert 400 == 403
+E    +  where 400 = <WrapperTestResponse streamed [400 BAD REQUEST]>.status_code
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+___________ test_over_limit_flag_from_other_roles_is_rejected[admin] ___________
+tests/test_wallet_roles_crm_qa.py:111: in test_over_limit_flag_from_other_roles_is_rejected
+    assert r.status_code == 403, r.get_json()
+E   AssertionError: {'requires_confirmation': True, 'success': False, 'unverified_flow': True, 'warning': 'Непроверенный флоу. Требуется подтверждение (unverified_confirmed=true).'}
+E   assert 409 == 403
+E    +  where 409 = <WrapperTestResponse streamed [409 CONFLICT]>.status_code
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+___________ test_over_limit_flag_from_other_roles_is_rejected[buyer] ___________
+tests/test_wallet_roles_crm_qa.py:111: in test_over_limit_flag_from_other_roles_is_rejected
+    assert r.status_code == 403, r.get_json()
+E   AssertionError: {'error': 'Этот флоу (тип сделки + способ оплаты) ещё не проверен. Проведите сделку через Карима.', 'success': False}
+E   assert 400 == 403
+E    +  where 400 = <WrapperTestResponse streamed [400 BAD REQUEST]>.status_code
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+_ test_new_exchange_deal_without_wallet_defaults_to_exchange_wallet_and_limit __
+tests/test_wallet_roles_crm_qa.py:159: in test_new_exchange_deal_without_wallet_defaults_to_exchange_wallet_and_limit
+    assert r.status_code in (200, 201)
+E   assert 400 in (200, 201)
+E    +  where 400 = <WrapperTestResponse streamed [400 BAD REQUEST]>.status_code
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+__________________ test_realty_wallet_has_no_crm_amount_limit __________________
+tests/test_wallet_roles_crm_qa.py:205: in test_realty_wallet_has_no_crm_amount_limit
+    assert r.status_code in (200, 201), r.get_json()
+E   AssertionError: {'error': 'Этот флоу (тип сделки + способ оплаты) ещё не проверен. Проведите сделку через Карима.', 'success': False}
+E   assert 400 in (200, 201)
+E    +  where 400 = <WrapperTestResponse streamed [400 BAD REQUEST]>.status_code
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+___________ test_update_cannot_raise_amount_over_limit_without_flag ____________
+tests/test_wallet_roles_crm_qa.py:254: in test_update_cannot_raise_amount_over_limit_without_flag
+    did, name = make_deal(amount=5000)
+                ^^^^^^^^^^^^^^^^^^^^^^
+tests/test_wallet_roles_crm_qa.py:249: in make_deal
+    assert r.status_code in (200, 201), r.get_json()
+E   AssertionError: {'error': 'Этот флоу (тип сделки + способ оплаты) ещё не проверен. Проведите сделку через Карима.', 'success': False}
+E   assert 400 in (200, 201)
+E    +  where 400 = <WrapperTestResponse streamed [400 BAD REQUEST]>.status_code
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+________ test_update_with_owner_flag_passes_then_changes_invalidate_it _________
+tests/test_wallet_roles_crm_qa.py:265: in test_update_with_owner_flag_passes_then_changes_invalidate_it
+    did, name = make_deal(amount=5000)
+                ^^^^^^^^^^^^^^^^^^^^^^
+tests/test_wallet_roles_crm_qa.py:249: in make_deal
+    assert r.status_code in (200, 201), r.get_json()
+E   AssertionError: {'error': 'Этот флоу (тип сделки + способ оплаты) ещё не проверен. Проведите сделку через Карима.', 'success': False}
+E   assert 400 in (200, 201)
+E    +  where 400 = <WrapperTestResponse streamed [400 BAD REQUEST]>.status_code
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+___ test_existing_approved_record_edit_with_non_bool_flag_keeps_state[false] ___
+tests/test_wallet_roles_crm_qa.py:284: in test_existing_approved_record_edit_with_non_bool_flag_keeps_state
+    did, name = make_deal('findir', amount=15000, payout_owner_approved=True)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/test_wallet_roles_crm_qa.py:249: in make_deal
+    assert r.status_code in (200, 201), r.get_json()
+E   AssertionError: {'error': 'Этот флоу (тип сделки + способ оплаты) ещё не проверен. Проведите сделку через Карима.', 'success': False}
+E   assert 400 in (200, 201)
+E    +  where 400 = <WrapperTestResponse streamed [400 BAD REQUEST]>.status_code
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+___ test_existing_approved_record_edit_with_non_bool_flag_keeps_state[False] ___
+tests/test_wallet_roles_crm_qa.py:284: in test_existing_approved_record_edit_with_non_bool_flag_keeps_state
+    did, name = make_deal('findir', amount=15000, payout_owner_approved=True)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/test_wallet_roles_crm_qa.py:249: in make_deal
+    assert r.status_code in (200, 201), r.get_json()
+E   AssertionError: {'error': 'Этот флоу (тип сделки + способ оплаты) ещё не проверен. Проведите сделку через Карима.', 'success': False}
+E   assert 400 in (200, 201)
+E    +  where 400 = <WrapperTestResponse streamed [400 BAD REQUEST]>.status_code
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+___ test_existing_approved_record_edit_with_non_bool_flag_keeps_state[true] ____
+tests/test_wallet_roles_crm_qa.py:284: in test_existing_approved_record_edit_with_non_bool_flag_keeps_state
+    did, name = make_deal('findir', amount=15000, payout_owner_approved=True)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/test_wallet_roles_crm_qa.py:249: in make_deal
+    assert r.status_code in (200, 201), r.get_json()
+E   AssertionError: {'error': 'Этот флоу (тип сделки + способ оплаты) ещё не проверен. Проведите сделку через Карима.', 'success': False}
+E   assert 400 in (200, 201)
+E    +  where 400 = <WrapperTestResponse streamed [400 BAD REQUEST]>.status_code
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+_____ test_existing_approved_record_edit_with_non_bool_flag_keeps_state[0] _____
+tests/test_wallet_roles_crm_qa.py:284: in test_existing_approved_record_edit_with_non_bool_flag_keeps_state
+    did, name = make_deal('findir', amount=15000, payout_owner_approved=True)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/test_wallet_roles_crm_qa.py:249: in make_deal
+    assert r.status_code in (200, 201), r.get_json()
+E   AssertionError: {'error': 'Этот флоу (тип сделки + способ оплаты) ещё не проверен. Проведите сделку через Карима.', 'success': False}
+E   assert 400 in (200, 201)
+E    +  where 400 = <WrapperTestResponse streamed [400 BAD REQUEST]>.status_code
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+_____ test_existing_approved_record_edit_with_non_bool_flag_keeps_state[1] _____
+tests/test_wallet_roles_crm_qa.py:284: in test_existing_approved_record_edit_with_non_bool_flag_keeps_state
+    did, name = make_deal('findir', amount=15000, payout_owner_approved=True)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/test_wallet_roles_crm_qa.py:249: in make_deal
+    assert r.status_code in (200, 201), r.get_json()
+E   AssertionError: {'error': 'Этот флоу (тип сделки + способ оплаты) ещё не проверен. Проведите сделку через Карима.', 'success': False}
+E   assert 400 in (200, 201)
+E    +  where 400 = <WrapperTestResponse streamed [400 BAD REQUEST]>.status_code
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+___ test_existing_approved_record_edit_with_non_bool_flag_keeps_state[None] ____
+tests/test_wallet_roles_crm_qa.py:284: in test_existing_approved_record_edit_with_non_bool_flag_keeps_state
+    did, name = make_deal('findir', amount=15000, payout_owner_approved=True)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/test_wallet_roles_crm_qa.py:249: in make_deal
+    assert r.status_code in (200, 201), r.get_json()
+E   AssertionError: {'error': 'Этот флоу (тип сделки + способ оплаты) ещё не проверен. Проведите сделку через Карима.', 'success': False}
+E   assert 400 in (200, 201)
+E    +  where 400 = <WrapperTestResponse streamed [400 BAD REQUEST]>.status_code
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+___ test_existing_approved_record_edit_with_non_bool_flag_keeps_state[junk6] ___
+tests/test_wallet_roles_crm_qa.py:284: in test_existing_approved_record_edit_with_non_bool_flag_keeps_state
+    did, name = make_deal('findir', amount=15000, payout_owner_approved=True)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/test_wallet_roles_crm_qa.py:249: in make_deal
+    assert r.status_code in (200, 201), r.get_json()
+E   AssertionError: {'error': 'Этот флоу (тип сделки + способ оплаты) ещё не проверен. Проведите сделку через Карима.', 'success': False}
+E   assert 400 in (200, 201)
+E    +  where 400 = <WrapperTestResponse streamed [400 BAD REQUEST]>.status_code
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+___ test_existing_approved_record_edit_with_non_bool_flag_keeps_state[junk7] ___
+tests/test_wallet_roles_crm_qa.py:284: in test_existing_approved_record_edit_with_non_bool_flag_keeps_state
+    did, name = make_deal('findir', amount=15000, payout_owner_approved=True)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/test_wallet_roles_crm_qa.py:249: in make_deal
+    assert r.status_code in (200, 201), r.get_json()
+E   AssertionError: {'error': 'Этот флоу (тип сделки + способ оплаты) ещё не проверен. Проведите сделку через Карима.', 'success': False}
+E   assert 400 in (200, 201)
+E    +  where 400 = <WrapperTestResponse streamed [400 BAD REQUEST]>.status_code
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+_____________________ test_explicit_false_revokes_approval _____________________
+tests/test_wallet_roles_crm_qa.py:296: in test_explicit_false_revokes_approval
+    did, name = make_deal('findir', amount=15000, payout_owner_approved=True)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/test_wallet_roles_crm_qa.py:249: in make_deal
+    assert r.status_code in (200, 201), r.get_json()
+E   AssertionError: {'error': 'Этот флоу (тип сделки + способ оплаты) ещё не проверен. Проведите сделку через Карима.', 'success': False}
+E   assert 400 in (200, 201)
+E    +  where 400 = <WrapperTestResponse streamed [400 BAD REQUEST]>.status_code
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+_______ test_cannot_escape_limit_by_moving_deal_to_other_wallet_or_back ________
+tests/test_wallet_roles_crm_qa.py:307: in test_cannot_escape_limit_by_moving_deal_to_other_wallet_or_back
+    assert r.status_code in (200, 201), r.get_json()
+E   AssertionError: {'error': 'Этот флоу (тип сделки + способ оплаты) ещё не проверен. Проведите сделку через Карима.', 'success': False}
+E   assert 400 in (200, 201)
+E    +  where 400 = <WrapperTestResponse streamed [400 BAD REQUEST]>.status_code
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+_____________ test_user_cannot_set_approval_through_generic_fields _____________
+tests/test_wallet_roles_crm_qa.py:330: in test_user_cannot_set_approval_through_generic_fields
+    did, name = make_deal(amount=5000)
+                ^^^^^^^^^^^^^^^^^^^^^^
+tests/test_wallet_roles_crm_qa.py:249: in make_deal
+    assert r.status_code in (200, 201), r.get_json()
+E   AssertionError: {'error': 'Этот флоу (тип сделки + способ оплаты) ещё не проверен. Проведите сделку через Карима.', 'success': False}
+E   assert 400 in (200, 201)
+E    +  where 400 = <WrapperTestResponse streamed [400 BAD REQUEST]>.status_code
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+___ test_update_with_transfer_parts_cannot_move_policy_deal_to_legacy_wallet ___
+tests/test_wallet_roles_crm_qa.py:349: in test_update_with_transfer_parts_cannot_move_policy_deal_to_legacy_wallet
+    did, name = make_deal(amount=5000)
+                ^^^^^^^^^^^^^^^^^^^^^^
+tests/test_wallet_roles_crm_qa.py:249: in make_deal
+    assert r.status_code in (200, 201), r.get_json()
+E   AssertionError: {'error': 'Этот флоу (тип сделки + способ оплаты) ещё не проверен. Проведите сделку через Карима.', 'success': False}
+E   assert 400 in (200, 201)
+E    +  where 400 = <WrapperTestResponse streamed [400 BAD REQUEST]>.status_code
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+__________ test_update_with_transfer_parts_over_limit_needs_approval ___________
+tests/test_wallet_roles_crm_qa.py:359: in test_update_with_transfer_parts_over_limit_needs_approval
+    did, name = make_deal(amount=5000)
+                ^^^^^^^^^^^^^^^^^^^^^^
+tests/test_wallet_roles_crm_qa.py:249: in make_deal
+    assert r.status_code in (200, 201), r.get_json()
+E   AssertionError: {'error': 'Этот флоу (тип сделки + способ оплаты) ещё не проверен. Проведите сделку через Карима.', 'success': False}
+E   assert 400 in (200, 201)
+E    +  where 400 = <WrapperTestResponse streamed [400 BAD REQUEST]>.status_code
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+________ test_doverka_confirm_works_for_approved_under_limit_and_legacy ________
+tests/test_wallet_roles_crm_qa.py:416: in test_doverka_confirm_works_for_approved_under_limit_and_legacy
+    assert r.status_code in (200, 201)
+E   assert 400 in (200, 201)
+E    +  where 400 = <WrapperTestResponse streamed [400 BAD REQUEST]>.status_code
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+_____ test_doverka_confirm_refuses_when_approved_amount_changed_underneath _____
+tests/test_wallet_roles_crm_qa.py:436: in test_doverka_confirm_refuses_when_approved_amount_changed_underneath
+    did = deal_row(name)['id']
+          ^^^^^^^^^^^^^^^^^^^^
+E   TypeError: 'NoneType' object is not subscriptable
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+_______ test_crypto_payin_defaults_to_exchange_wallet_for_exchange_deal ________
+tests/test_wallet_roles_crm_qa.py:463: in test_crypto_payin_defaults_to_exchange_wallet_for_exchange_deal
+    assert r.status_code in (200, 201), r.get_json()
+E   AssertionError: {'error': 'Этот флоу (тип сделки + способ оплаты) ещё не проверен. Проведите сделку через Карима.', 'success': False}
+E   assert 400 in (200, 201)
+E    +  where 400 = <WrapperTestResponse streamed [400 BAD REQUEST]>.status_code
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+______________ test_crypto_payin_explicit_registry_wallet_is_kept ______________
+tests/test_wallet_roles_crm_qa.py:470: in test_crypto_payin_explicit_registry_wallet_is_kept
+    assert r.status_code in (200, 201), r.get_json()
+E   AssertionError: {'error': 'Этот флоу (тип сделки + способ оплаты) ещё не проверен. Проведите сделку через Карима.', 'success': False}
+E   assert 400 in (200, 201)
+E    +  where 400 = <WrapperTestResponse streamed [400 BAD REQUEST]>.status_code
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+__________________ test_non_crypto_payin_never_keeps_a_wallet __________________
+tests/test_wallet_roles_crm_qa.py:502: in test_non_crypto_payin_never_keeps_a_wallet
+    assert r.status_code in (200, 201), r.get_json()
+E   AssertionError: {'error': 'Этот флоу (тип сделки + способ оплаты) ещё не проверен. Проведите сделку через Карима.', 'success': False}
+E   assert 400 in (200, 201)
+E    +  where 400 = <WrapperTestResponse streamed [400 BAD REQUEST]>.status_code
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+______________ test_incoming_hash_to_expected_wallet_is_accepted _______________
+tests/test_wallet_roles_crm_qa.py:582: in test_incoming_hash_to_expected_wallet_is_accepted
+    assert r.status_code in (200, 201), r.get_json()
+E   AssertionError: {'error': 'Этот флоу (тип сделки + способ оплаты) ещё не проверен. Проведите сделку через Карима.', 'success': False}
+E   assert 400 in (200, 201)
+E    +  where 400 = <WrapperTestResponse streamed [400 BAD REQUEST]>.status_code
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+_________ test_incoming_hash_to_other_wallet_is_not_silently_credited __________
+tests/test_wallet_roles_crm_qa.py:598: in test_incoming_hash_to_other_wallet_is_not_silently_credited
+    assert ok.status_code in (200, 201), ok.get_json()
+E   AssertionError: {'error': 'Этот флоу (тип сделки + способ оплаты) ещё не проверен. Проведите сделку через Карима.', 'success': False}
+E   assert 400 in (200, 201)
+E    +  where 400 = <WrapperTestResponse streamed [400 BAD REQUEST]>.status_code
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+=========================== short test summary info ============================
+FAILED tests/test_wallet_roles_close_qa.py::test_close_within_limit_on_exchange_wallet_works
+FAILED tests/test_wallet_roles_close_qa.py::test_close_over_limit_without_board_approval_is_refused
+FAILED tests/test_wallet_roles_close_qa.py::test_closing_user_cannot_supply_owner_flag[manager]
+FAILED tests/test_wallet_roles_close_qa.py::test_closing_user_cannot_supply_owner_flag[admin]
+FAILED tests/test_wallet_roles_close_qa.py::test_close_on_legacy_wallet_has_no_new_limit
+FAILED tests/test_wallet_roles_crm_qa.py::test_up_to_limit_inclusive_needs_no_approval[1]
+FAILED tests/test_wallet_roles_crm_qa.py::test_up_to_limit_inclusive_needs_no_approval[5000]
+FAILED tests/test_wallet_roles_crm_qa.py::test_up_to_limit_inclusive_needs_no_approval[9999.99]
+FAILED tests/test_wallet_roles_crm_qa.py::test_up_to_limit_inclusive_needs_no_approval[10000]
+FAILED tests/test_wallet_roles_crm_qa.py::test_up_to_limit_inclusive_needs_no_approval[10000.0]
+FAILED tests/test_wallet_roles_crm_qa.py::test_over_limit_without_flag_is_400_and_nothing_is_saved[operator-10000.01]
+FAILED tests/test_wallet_roles_crm_qa.py::test_over_limit_without_flag_is_400_and_nothing_is_saved[operator-10000.5]
+FAILED tests/test_wallet_roles_crm_qa.py::test_over_limit_without_flag_is_400_and_nothing_is_saved[operator-15000]
+FAILED tests/test_wallet_roles_crm_qa.py::test_over_limit_without_flag_is_400_and_nothing_is_saved[operator-1000000]
+FAILED tests/test_wallet_roles_crm_qa.py::test_over_limit_without_flag_is_400_and_nothing_is_saved[manager-10000.01]
+FAILED tests/test_wallet_roles_crm_qa.py::test_over_limit_without_flag_is_400_and_nothing_is_saved[manager-10000.5]
+FAILED tests/test_wallet_roles_crm_qa.py::test_over_limit_without_flag_is_400_and_nothing_is_saved[manager-15000]
+FAILED tests/test_wallet_roles_crm_qa.py::test_over_limit_without_flag_is_400_and_nothing_is_saved[manager-1000000]
+FAILED tests/test_wallet_roles_crm_qa.py::test_over_limit_without_flag_is_400_and_nothing_is_saved[admin-10000.01]
+FAILED tests/test_wallet_roles_crm_qa.py::test_over_limit_without_flag_is_400_and_nothing_is_saved[admin-10000.5]
+FAILED tests/test_wallet_roles_crm_qa.py::test_over_limit_without_flag_is_400_and_nothing_is_saved[admin-15000]
+FAILED tests/test_wallet_roles_crm_qa.py::test_over_limit_without_flag_is_400_and_nothing_is_saved[admin-1000000]
+FAILED tests/test_wallet_roles_crm_qa.py::test_over_limit_without_flag_is_400_and_nothing_is_saved[findir-10000.01]
+FAILED tests/test_wallet_roles_crm_qa.py::test_over_limit_without_flag_is_400_and_nothing_is_saved[findir-10000.5]
+FAILED tests/test_wallet_roles_crm_qa.py::test_over_limit_without_flag_is_400_and_nothing_is_saved[findir-15000]
+FAILED tests/test_wallet_roles_crm_qa.py::test_over_limit_without_flag_is_400_and_nothing_is_saved[findir-1000000]
+FAILED tests/test_wallet_roles_crm_qa.py::test_over_limit_without_flag_is_400_and_nothing_is_saved[teodor-10000.01]
+FAILED tests/test_wallet_roles_crm_qa.py::test_over_limit_without_flag_is_400_and_nothing_is_saved[teodor-10000.5]
+FAILED tests/test_wallet_roles_crm_qa.py::test_over_limit_without_flag_is_400_and_nothing_is_saved[teodor-15000]
+FAILED tests/test_wallet_roles_crm_qa.py::test_over_limit_without_flag_is_400_and_nothing_is_saved[teodor-1000000]
+FAILED tests/test_wallet_roles_crm_qa.py::test_over_limit_with_flag_from_owner_or_financier_passes_and_is_stamped[findir]
+FAILED tests/test_wallet_roles_crm_qa.py::test_over_limit_with_flag_from_owner_or_financier_passes_and_is_stamped[teodor]
+FAILED tests/test_wallet_roles_crm_qa.py::test_over_limit_flag_from_other_roles_is_rejected[operator]
+FAILED tests/test_wallet_roles_crm_qa.py::test_over_limit_flag_from_other_roles_is_rejected[manager]
+FAILED tests/test_wallet_roles_crm_qa.py::test_over_limit_flag_from_other_roles_is_rejected[admin]
+FAILED tests/test_wallet_roles_crm_qa.py::test_over_limit_flag_from_other_roles_is_rejected[buyer]
+FAILED tests/test_wallet_roles_crm_qa.py::test_new_exchange_deal_without_wallet_defaults_to_exchange_wallet_and_limit
+FAILED tests/test_wallet_roles_crm_qa.py::test_realty_wallet_has_no_crm_amount_limit
+FAILED tests/test_wallet_roles_crm_qa.py::test_update_cannot_raise_amount_over_limit_without_flag
+FAILED tests/test_wallet_roles_crm_qa.py::test_update_with_owner_flag_passes_then_changes_invalidate_it
+FAILED tests/test_wallet_roles_crm_qa.py::test_existing_approved_record_edit_with_non_bool_flag_keeps_state[false]
+FAILED tests/test_wallet_roles_crm_qa.py::test_existing_approved_record_edit_with_non_bool_flag_keeps_state[False]
+FAILED tests/test_wallet_roles_crm_qa.py::test_existing_approved_record_edit_with_non_bool_flag_keeps_state[true]
+FAILED tests/test_wallet_roles_crm_qa.py::test_existing_approved_record_edit_with_non_bool_flag_keeps_state[0]
+FAILED tests/test_wallet_roles_crm_qa.py::test_existing_approved_record_edit_with_non_bool_flag_keeps_state[1]
+FAILED tests/test_wallet_roles_crm_qa.py::test_existing_approved_record_edit_with_non_bool_flag_keeps_state[None]
+FAILED tests/test_wallet_roles_crm_qa.py::test_existing_approved_record_edit_with_non_bool_flag_keeps_state[junk6]
+FAILED tests/test_wallet_roles_crm_qa.py::test_existing_approved_record_edit_with_non_bool_flag_keeps_state[junk7]
+FAILED tests/test_wallet_roles_crm_qa.py::test_explicit_false_revokes_approval
+FAILED tests/test_wallet_roles_crm_qa.py::test_cannot_escape_limit_by_moving_deal_to_other_wallet_or_back
+FAILED tests/test_wallet_roles_crm_qa.py::test_user_cannot_set_approval_through_generic_fields
+FAILED tests/test_wallet_roles_crm_qa.py::test_update_with_transfer_parts_cannot_move_policy_deal_to_legacy_wallet
+FAILED tests/test_wallet_roles_crm_qa.py::test_update_with_transfer_parts_over_limit_needs_approval
+FAILED tests/test_wallet_roles_crm_qa.py::test_doverka_confirm_works_for_approved_under_limit_and_legacy
+FAILED tests/test_wallet_roles_crm_qa.py::test_doverka_confirm_refuses_when_approved_amount_changed_underneath
+FAILED tests/test_wallet_roles_crm_qa.py::test_crypto_payin_defaults_to_exchange_wallet_for_exchange_deal
+FAILED tests/test_wallet_roles_crm_qa.py::test_crypto_payin_explicit_registry_wallet_is_kept
+FAILED tests/test_wallet_roles_crm_qa.py::test_non_crypto_payin_never_keeps_a_wallet
+FAILED tests/test_wallet_roles_crm_qa.py::test_incoming_hash_to_expected_wallet_is_accepted
+FAILED tests/test_wallet_roles_crm_qa.py::test_incoming_hash_to_other_wallet_is_not_silently_credited
+60 failed, 3174 passed, 77 skipped, 7203 warnings in 258.28s (0:04:18)
+NETWORK_FENCE attempts=8 unexpected=0 report=/tmp/calccrm-t19-fence-reports/20261020T083433-2587.json

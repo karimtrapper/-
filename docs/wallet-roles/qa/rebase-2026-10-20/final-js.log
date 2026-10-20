@@ -1,0 +1,195 @@
+JS_TEST test_calc_deal_kind_handoff.js
+JS_TEST test_crm_custom_select_disabled.js
+JS_TEST test_crm_draft_hash_guard.js
+JS_TEST test_crm_flow_ui_gate.js
+JS_TEST test_crm_rental_select_persists.js
+JS_TEST test_flowsole_crm_ui.js
+JS_TEST test_login_setup_mode.js
+JS_TEST test_s6_freehold_amount.js
+JS_TEST test_stand_assignee_take.js
+JS_TEST test_stand_board_concurrency.js
+JS_TEST test_stand_botpin.js
+JS_TEST test_stand_client_payin_receipts.js
+JS_TEST test_stand_crm_close_race.js
+JS_TEST test_stand_crm_draft_core.js
+JS_TEST test_stand_crm_draft_payload.js
+JS_TEST test_stand_crm_labels.js
+ AssertionError [ERR_ASSERTION]: bound=false, stand=false
++ actual - expected
+
++ '@user · ждёт входа'
+- '@user · ⚪ ждёт входа'
+           ^
+
+    at /Users/karimamirov/worktrees/calccrm-wallet-roles/tests/test_stand_crm_labels.js:48:20 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: '@user · ждёт входа',
+  expected: '@user · ⚪ ждёт входа',
+  operator: 'strictEqual',
+  diff: 'simple'
+}
+
+JS_TEST test_stand_crm_locked.js
+JS_TEST test_stand_crm_push_close.js
+JS_TEST test_stand_demo_and_broker_wallet.js
+JS_TEST test_stand_docparse_dataurl.js
+JS_TEST test_stand_docparse_ui.js
+JS_TEST test_stand_files.js
+JS_TEST test_stand_files_storage.js
+JS_TEST test_stand_flow_ui_gate.js
+JS_TEST test_stand_flows_findings.js
+JS_TEST test_stand_freehold.js
+JS_TEST test_stand_freehold_close_roles.js
+JS_TEST test_stand_hash_split.js
+ row" style="display:inline-flex;gap:8px;align-items:center;flex-wrap:wrap"><details class="deal-detail"><summary class="addr">адрес не определён</summary><span class="addr">адрес не определён</span></details><button type="button" class="btn btn-outline btn-sm" onclick="copyAsk("адрес не определён")">Копировать</button></span></p>\n' +
+  '    <p class="fh">Можно уменьшить сумму. Остаток останется доступен другим пачкам.</p>\n' +
+  '    </div></div>'
+
+    at /Users/karimamirov/worktrees/calccrm-wallet-roles/tests/test_stand_hash_split.js:21:10 {
+  generatedMessage: true,
+  code: 'ERR_ASSERTION',
+  actual: '<div id="incoming_share" class="alert a-info"><div style="width:100%">\n' +
+    '    <b>Свободно $100.00 из $200.00</b>\n' +
+    '    <p class="fh">по переводу уже разнесено $100.00 (#1487), свободно $100.00 из $200.00</p>\n' +
+    '    \n' +
+    '    <label class="fl" for="w_share">Сумма на эту сделку</label>\n' +
+    '    <div class="hrow"><input class="fc num" id="w_share" type="number" min="0.000001" max="100" step="0.000001" value="100" \n' +
+    `      oninput="S.incomingShare.amount=this.value;this.setCustomValidity(Number(this.value)>100?'Сумма больше свободного остатка':'');this.reportValidity()">\n` +
+    '    <button class="btn btn-secondary btn-sm" style="min-height:44px;height:44px"  onclick="cnvTxAllocate(1)">Засчитать долю</button></div>\n' +
+    '    <p class="fh">Источник: новый адрес — проверить перед приёмом · <span class="hrow" style="display:inline-flex;gap:8px;align-items:center;flex-wrap:wrap"><details class="deal-detail"><summary class="addr">адрес не определён</summary><span class="addr">адрес не определён</span></details><button type="button" class="btn btn-outline btn-sm" onclick="copyAsk("адрес не определён")">Копировать</button></span></p>\n' +
+    '    <p class="fh">Можно уменьшить сумму. Остаток останется доступен другим пачкам.</p>\n' +
+    '...',
+  expected: /♻️ свободно \$100.00 из \$200.00/,
+  operator: 'match',
+  diff: 'simple'
+}
+
+JS_TEST test_stand_income_conv_form.js
+JS_TEST test_stand_incoming.js
+JS_TEST test_stand_leasehold.js
+JS_TEST test_stand_log_legacy.js
+JS_TEST test_stand_log_xss.js
+JS_TEST test_stand_manual_agent_ids.js
+JS_TEST test_stand_manual_bank_receipt.js
+JS_TEST test_stand_manual_close_realty_screen.js
+JS_TEST test_stand_manual_close_screen.js
+JS_TEST test_stand_manual_close_submit.js
+JS_TEST test_stand_manual_close_trigger.js
+JS_TEST test_stand_manual_origin_queue.js
+JS_TEST test_stand_manual_receipt_confirm_ui.js
+JS_TEST test_stand_mobile_tasks_nav.js
+ AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
++ actual - expected
+
+  {
++   body: 1133,
++   html: 1133,
++   nav: 1133,
++   viewport: 1133,
+-   body: 375,
+-   html: 375,
+-   nav: 375,
+-   viewport: 375,
+    viewportMeta: 'width=device-width, initial-scale=1.0, shrink-to-fit=no'
+  }
+
+    at main (/Users/karimamirov/worktrees/calccrm-wallet-roles/tests/test_stand_mobile_tasks_nav.js:86:12) {
+  generatedMessage: true,
+  code: 'ERR_ASSERTION',
+  actual: [Object],
+  expected: [Object],
+  operator: 'deepStrictEqual',
+  diff: 'simple'
+}
+
+JS_TEST test_stand_no_prod_links.js
+JS_TEST test_stand_no_prod_links_ui.js
+JS_TEST test_stand_ops.js
+JS_TEST test_stand_outgoing_pick_list.js
+JS_TEST test_stand_owner_summary.js
+ en;gap:12px;flex-wrap:wrap}\n' +
+    '.card-title .sub{font-size:12.5px;font-weight:500;color:var(--text-sec)}\n' +
+    '.cols{display:grid;grid-template-columns:1fr 310px;gap:16px;align-items:start}\n' +
+    '.cols.cols-create-compact{grid-template-columns:minmax(0,1fr)}\n' +
+    '.fh.create-next{font-size:12.5px;line-height:1.4;color:var(--navy-600);margin-bottom:0}\n' +
+    '.badge{display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:20px;font-size:12px;font-weight:600;white-space:nowrap}\n' +
+    '.b-new{background:var(--coral-light);color:#9A3412}\n' +
+    '.b-work{background:var(--blue-light);color:#1E40AF}\n' +
+    '.b-done{background:#D1FAE5;color:var(--green-darker)}\n' +
+    '.b-wait{background:var(--navy-100);color:var(--navy-600)}\n' +
+    '.b-pend{background:var(--amber-light);color:#92400E}\n' +
+    '.b-lose{background:var(--red-light);color:#991B1B}\n' +
+    '.btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;padding:12px 20px;border:none;border-radius:var(--r-sm);font-size:14px;font-weight:600;min-height:48px;cursor:pointer}\n' +
+    '.btn-primary{background:var(--coral);color:#fff}.btn-primary:hover{background:var(--coral-hover)}\n' +
+    '.btn-success{background:var(--green);color:#fff}.btn-success:hover{background:var(--green-dark)}\n' +
+    '.btn-secondary{background:var(--navy-100);color:var(--navy-700)}.btn-secondary:hover{background:var(--navy-200)}\n' +
+    '.btn-outline{background:none;border:1.5px solid var(--border);color:var(--text-sec)}.btn-outline:hover{border-color:var(--navy-400);color:var(--text)}\n' +
+    '.btn-sm{padding:8px 14px;font-size:14px;min-height:36p'... 891060 more characters,
+  expected: /view==='task'&&branch!=='conversion'&&\['s23','s24'\]\.includes\(d\.step\)&&\['teodor','findir','admin'\]\.includes\(S\.role\)\)body\+=`<details class="card"><summary>Деньги по сделке<\/summary>\$\{ownerSummary\(d\)\}<\/details>`/,
+  operator: 'match',
+  diff: 'simple'
+}
+
+Node.js v25.4.0
+
+JS_TEST test_stand_payin_api_manual.js
+JS_TEST test_stand_payto_card.js
+JS_TEST test_stand_prepay.js
+JS_TEST test_stand_referrer_id.js
+JS_TEST test_stand_release_minor.js
+JS_TEST test_stand_remaining_links.js
+JS_TEST test_stand_rerate.js
+JS_TEST test_stand_rub_account_switch.js
+JS_TEST test_stand_rub_s14.js
+JS_TEST test_stand_s14_operator.js
+JS_TEST test_stand_s14_ping.js
+JS_TEST test_stand_s18_crm_incomes.js
+JS_TEST test_stand_single_confirm.js
+JS_TEST test_t30_wallet_mapping.js
+JS_TEST test_t31_erc_payin.js
+JS_TEST test_t33_custom_wallet_flow.js
+JS_TEST test_t34_parallel.js
+JS_TEST test_t34_wallet_cards_dropdown.js
+T34 wallet dropdown OK
+ node:assert:860
+    throw err;
+    ^
+
+AssertionError [ERR_ASSERTION]: владелец показан под выбранным адресом
+    at Object.<anonymous> (/Users/karimamirov/worktrees/calccrm-wallet-roles/tests/test_t34_wallet_cards_dropdown.js:59:8)
+    at Module._compile (node:internal/modules/cjs/loader:1803:14)
+    at Module._extensions..js (node:internal/modules/cjs/loader:1934:10)
+    at Module.load (node:internal/modules/cjs/loader:1524:32)
+    at Module._load (node:internal/modules/cjs/loader:1326:12)
+    at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:245:24)
+    at Module.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:154:5)
+    at node:internal/main/run_main_module:33:47 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: '<div class="wallet-picker-row"><select class="fc" aria-label="Кошелёк" name="wallet" \n' +
+    '      onchange="walletPick(5,this.value)">\n' +
+    '    \n' +
+    '    <option value="vitaly" selected>\n' +
+    '      TKkeEVf2zySaWTLyX2qPwvi6kcdHRuPxkJ</option><option value="andrey">\n' +
+    '      TWBgeUo74DehAPgw5cKTdYUTXtJELqwwqn</option><option value="teodor">\n' +
+    '      TVmgzMQ2zwV2DVPscBf98WRRdhrcpf5x5p</option><option value="11">\n' +
+    '      TAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA</option><option value="12">\n' +
+    '      TBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB</option>\n' +
+    '  </select><button type="button" class="btn btn-outline btn-sm" onclick="copyAsk(&quot;TKkeEVf2zySaWTLyX2qPwvi6kcdHRuPxkJ&quot;)">Копировать адрес</button></div>\n' +
+    '  ',
+  expected: /компания · /,
+  operator: 'match',
+  diff: 'simple'
+}
+
+Node.js v25.4.0
+
+JS_TEST test_t36_draft_resolve_2.js
+JS_TEST test_t37_crm_clients_ui.js
+JS_TEST test_wallet_registry_dropdown.js
+JS_TEST test_wave_a_documents.js
+JS_TEST test_wave_a_exchange.js
+JS_TEST test_wave_a_rounding.js
+JS_FENCED_RESULT passed=66 failed=5 report=/tmp/calccrm-t19-fence-reports/20261020T084223-js-9872.json
