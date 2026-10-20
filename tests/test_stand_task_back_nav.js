@@ -43,6 +43,7 @@ async function main() {
       });
       S.open = null; S.role = 'admin'; S.tab = 'tasks'; S.manualCloseDraft = {}; S.manualCloseForm = {};
       render(); showTaskListSection('all'); setTaskDealFilter('leasehold');
+      NavShell.mount({ stand:true, page:'tasks', active:'tasks', section:'tasks', role:'admin', name:'QA', count:0 });
       scrollTo(0, 520);
     });
     await page.waitForFunction(() => scrollY > 100);
@@ -54,10 +55,12 @@ async function main() {
     assert.equal(before.section, 'all');
     assert.equal(before.ids.length, 10);
 
+    const baseHistoryLength = await page.evaluate(() => history.length);
     await page.locator('.task-list-panel.on [data-task-id]').nth(5).click();
     assert.equal(await page.evaluate(() => S.open), before.ids[5]);
     assert.equal(await page.evaluate(() => history.state?.__calccrmTaskCard), true);
-    for (const [width, mobile] of [[700,true], [701,false], [767,false], [768,false]]) {
+    assert.equal(await page.evaluate(() => history.length), baseHistoryLength + 1);
+    for (const [width, mobile] of [[699,true], [700,true], [701,false], [767,false], [768,false]]) {
       await page.setViewportSize({ width, height:812 });
       const shown = await page.evaluate(() => ({
         mobile:getComputedStyle(document.querySelector('.task-card-nav')).display !== 'none',
@@ -69,6 +72,12 @@ async function main() {
     await page.getByRole('button', { name:'Следующая задача ›' }).click();
     assert.equal(await page.evaluate(() => S.open), before.ids[6]);
     assert.equal(await page.evaluate(() => history.state?.__calccrmTaskCard), true);
+    assert.equal(await page.evaluate(() => history.length), baseHistoryLength + 1);
+    for (let index = 7; index < before.ids.length; index++) {
+      await page.getByRole('button', { name:'Следующая задача ›' }).click();
+      assert.equal(await page.evaluate(() => S.open), before.ids[index]);
+    }
+    assert.equal(await page.getByRole('button', { name:'Следующая задача ›' }).isDisabled(), true);
     await page.getByRole('button', { name:'‹ Все задачи' }).click();
     await page.waitForFunction(() => S.open === null);
     await page.waitForFunction(expected => Math.abs(scrollY - expected) <= 2, before.scroll);
@@ -84,16 +93,26 @@ async function main() {
     await page.setViewportSize({ width:375, height:812 });
 
     await page.locator('.task-list-panel.on [data-task-id]').nth(5).click();
-    await page.locator('.top-nav a[href="/tasks"]').evaluate(link => link.click());
+    await page.locator('.site-shell-mobile-head a[href="/tasks"]').tap();
     await page.waitForFunction(() => S.open === null);
     assert.equal(await page.evaluate(() => history.state?.__calccrmTaskCard), undefined);
+    await page.locator('.task-list-panel.on [data-task-id]').nth(5).click();
+    const autoScroll = await page.evaluate(() => taskListScrollY);
+    await page.evaluate(() => { S.open = null; render(); });
+    await page.waitForFunction(() => S.open === null && !history.state?.__calccrmTaskCard);
+    await page.waitForFunction(expected => Math.abs(scrollY - expected) <= 2, autoScroll);
+    await page.locator('.task-list-panel.on [data-task-id]').nth(5).click();
+    await page.setViewportSize({ width:768, height:812 });
+    await page.evaluate(() => back());
+    await page.waitForFunction(() => S.open === null && !history.state?.__calccrmTaskCard);
+    await page.setViewportSize({ width:375, height:812 });
     await page.locator('.task-list-panel.on [data-task-id]').nth(5).click();
     await page.goBack();
     await page.waitForFunction(() => S.open === null);
     await page.goBack();
     await page.waitForURL(`${base}/crm`);
     await context.close();
-    console.log('PASS mobile task back nav: history, scroll, filter, next, header, 700/701/767/768px');
+    console.log('PASS mobile task back nav: history, scroll, filter, next, header tap, 699/700/701/767/768px');
   } finally {
     if (browser) await browser.close();
     await new Promise(resolve => server.close(resolve));

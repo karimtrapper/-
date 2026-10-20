@@ -64,6 +64,8 @@ body.nav-shell-on.nav-shell-crm > nav.nav { display:none !important; }
   .site-shell-top { display:none; }
   .site-shell-sections { top:52px; }
   .site-shell-mobile-head { position:sticky;top:0;z-index:210;height:52px;display:flex;align-items:center;gap:8px;padding:0 16px;background:rgba(255,255,255,.97);border-bottom:1px solid #E2E8F0;backdrop-filter:blur(10px);font:700 16px Inter,system-ui,sans-serif;color:#0F172A; }
+  .site-shell-mobile-head > .task-mobile-title { display:inline-flex;align-items:center;min-height:44px;color:inherit;text-decoration:none; }
+  .site-shell-mobile-head > .task-mobile-title:focus-visible { outline:2px solid #C2410C;outline-offset:2px; }
   .site-shell-mobile-head .site-shell-profile { margin-left:auto;min-width:0;flex:0 1 auto; }
   .site-shell-mobile-head .site-shell-profile>summary { min-width:0;color:#334155; }
   .site-shell-mobile-head .site-shell-avatar { color:#fff; }

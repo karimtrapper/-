@@ -5300,7 +5300,28 @@ function seedEx(){
 }
 
 /* ============ рендер ============ */
+function syncTaskHeaderLink(){
+  const title=document.querySelector('.site-shell-mobile-head')?.firstElementChild;
+  if(!title||!['SPAN','A'].includes(title.tagName))return;
+  const tag=S.open?'a':'span';
+  const next=document.createElement(tag);
+  next.className='task-mobile-title';
+  next.textContent=S.tab==='analytics'?'Аналитика':'Задачник';
+  if(S.open)next.href='/tasks';
+  title.replaceWith(next);
+}
 function render(){
+  if(!S.open&&taskCardHistoryPushed){
+    taskCardHistoryPushed=false;
+    if(S.tab==='tasks'){
+      history.back();
+      restoreTaskListScroll();
+    }else{
+      history.replaceState({...history.state,__calccrmTaskCard:false},'',location.href);
+      if(taskCardScrollRestoration!==null)history.scrollRestoration=taskCardScrollRestoration;
+      taskCardScrollRestoration=null;
+    }
+  }
   document.body.classList.toggle('shell-deal-open',!!S.open);
   document.getElementById('who').textContent=ROLES[S.role].n+' · '+ROLES[S.role].t.toLowerCase();
   /* На стенде роль даёт логин. Переключатель оставлен админу — Кариму нужно
@@ -5317,6 +5338,7 @@ function render(){
     ? `<button class="ghost" onclick="refsSync()">Рефереры из базы</button> <button class="ghost" onclick="resetAll()">Сбросить всё</button>` : '';
   document.getElementById('bell').innerHTML=bellHtml();
   if(window.NavShell) NavShell.update({count:myTaskCount(S.role),viewRole:S.role,section:S.tab==='analytics'?'analytics':'tasks',active:S.tab==='analytics'?'crm':'tasks'});
+  syncTaskHeaderLink();
   const app=document.getElementById('app');
   let main;
   if(S.edit)main=viewEdit();                       /* правка — отдельный экран, как в CRM */
@@ -5370,6 +5392,9 @@ function rememberTaskList(id,branch){
 }
 function closeTaskView(){
   S.open=null;S.draft=null;S.tab='tasks';saveUi();render();
+  restoreTaskListScroll();
+}
+function restoreTaskListScroll(){
   requestAnimationFrame(()=>requestAnimationFrame(()=>{
     if(taskListScrollY!==null)window.scrollTo(0,taskListScrollY);
     if(taskCardScrollRestoration!==null){
@@ -5379,7 +5404,7 @@ function closeTaskView(){
   }));
 }
 function closeTaskToList(){
-  if(mobileTaskCard()&&taskCardHistoryPushed){history.back();return;}
+  if(taskCardHistoryPushed){history.back();return;}
   closeTaskView();
 }
 function pushTaskCardHistory(wasOpen){
@@ -5392,7 +5417,7 @@ function pushTaskCardHistory(wasOpen){
 window.addEventListener('popstate',()=>{
   if(!taskCardHistoryPushed)return;
   taskCardHistoryPushed=false;
-  if(S.open&&mobileTaskCard())closeTaskView();
+  if(S.open)closeTaskView();
 });
 document.addEventListener('click',event=>{
   if(!S.open||!mobileTaskCard())return;
@@ -5413,7 +5438,7 @@ function nextTask(){
 function setInspectRole(role){S.inspectRole=role;saveUi();render();}
 function setView(v){S.view=v;saveUi();render();}
 function back(){
-  if(mobileTaskCard()&&S.open){closeTaskToList();return;}
+  if(S.open&&(mobileTaskCard()||taskCardHistoryPushed)){closeTaskToList();return;}
   S.open=null;S.draft=null;saveUi();render();
 }
 /* Черновики полей, которые читаются только по кнопке: комментарии, ответ курса, хеш.
