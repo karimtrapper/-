@@ -16,7 +16,7 @@ def parse_sber_acquiring(purpose):
     text_ = purpose or ''
     low = text_.lower()
     if 'эквайринг' not in low and 'мерчант' not in low:
-        return {'kind': 'transfer', 'merchant': None, 'fee_rub': 0.0}
+        return {'kind': 'transfer', 'merchant': None, 'fee_rub': 0.0, 'fee_known': True}
     fee = 0.0
     m = _ACQ_FEE_RE.search(text_)
     if m:
@@ -26,4 +26,5 @@ def parse_sber_acquiring(purpose):
         except ValueError:
             fee = 0.0
     mer = _ACQ_MERCHANT_RE.search(text_)
-    return {'kind': 'acquiring', 'merchant': mer.group(1) if mer else None, 'fee_rub': fee}
+    return {'kind': 'acquiring', 'merchant': mer.group(1) if mer else None,
+            'fee_rub': fee, 'fee_known': bool(m)}

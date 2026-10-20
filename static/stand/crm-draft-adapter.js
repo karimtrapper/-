@@ -54,7 +54,8 @@ function crmDraftParts(d) {
     uuid:p.uuid || (String(p.incId||'').startsWith('sber:')?String(p.incId).slice(5):null),
     amount_rub:p.amountRub||0,payer:p.payer||'',date:(p.date||'').slice(0,10),
     note:p.note||'',kind:p.kind==='acquiring'?'acquiring':'transfer',
-    fee_rub:p.fee||0,net_rub:p.net??p.amountRub,
+    fee_rub:p.fee??null,net_rub:p.net??p.amountRub,
+    ...(p.rubIsNet===true?{payin_rub_is_net:true}:{}),
   }));
 }
 function crmDraftSafeFetch(url,options) {
@@ -154,6 +155,9 @@ function crmDraftFill(active,d) {
   crmDraftValue(root,'dealKindSelect',kind);
   crmDraftValue(root,'payinMethod',method);
   crmDraftValue(root,'payin_amount_rub',d.amountRub);
+  const rubHint=root.getElementById('payinRubHint');
+  if(rubHint)rubHint.textContent=d.rubIsNet===true
+    ?'после комиссии банка':'до комиссии банка (сделка заведена до 20.10)';
   // Crypto freehold's amountUsdt is the contract plan. Pay-In is the
   // verified receipt and must not be prefilled from that plan.
   crmDraftValue(root,'payin_amount_usdt',kind==='mf_freehold'&&d.payType==='Крипта'
@@ -303,6 +307,8 @@ async function crmDraftMount(id) {
     };
     active.core=createCrmDraftCore(shadow,{
       form:formFields,editingDealId:d.manualNew?null:id,
+      payinRubIsNet:d.rubIsNet===true,
+      flowReceipt:d.manualBankReceipt||null,
       loadWallets:selected=>crmDraftLoadWallets(active,selected),
       fetch:crmDraftSafeFetch,toast:message=>toast(message),escapeHtml:crmDraftEsc,
       formatNumber:v=>Number(v||0).toLocaleString('ru-RU',{maximumFractionDigits:2}),
@@ -698,17 +704,19 @@ function crmDraftCommitCustom(a,d,before) {
   const payinCurrency=crmDraftRead(r,'customPayinCurrency');
   const payoutCurrency=crmDraftRead(r,'customPayoutCurrency');
   const payinRate=num('customPayinRate'),payoutRate=num('customPayoutRate');
+  const flowSole=crmDraftRead(r,'customPayinMethod')==='flow_sole_reqs';
+  const hasPayinHash=!!crmDraftRead(r,'customPayinTxHash').trim();
   if(!(payinAmount>0&&payoutAmount>0)){
     toast('Укажите суммы Pay-In и Pay-Out');return false;
   }
-  if((payinCurrency!=='USDT'&&!(payinRate>0))||
+  if((!flowSole&&payinCurrency!=='USDT'&&!(payinRate>0))||
      (payoutCurrency!=='USDT'&&!(payoutRate>0))){
     toast('Укажите курс Pay-In и Pay-Out к USDT');return false;
   }
   a.core.calcCustomProfit();
   const payinUsdt=payinCurrency==='USDT'?payinAmount:num('customPayinUsdt');
   const payoutUsdt=payoutCurrency==='USDT'?payoutAmount:num('customPayoutUsdt');
-  if(!(payinUsdt>0&&payoutUsdt>0)){
+  if((!flowSole&&!(payinUsdt>0))||!(payoutUsdt>0)){
     toast('Расчёт USDT не завершён');return false;
   }
   const name=crmDraftRead(r,'clientSearchInput').trim();
@@ -727,7 +735,8 @@ function crmDraftCommitCustom(a,d,before) {
   const c={payinCurrency,payinAmount,payinRate:payinCurrency==='USDT'?null:payinRate,
     payinUsdt,payoutCurrency,payoutAmount,
     payoutRate:payoutCurrency==='USDT'?null:payoutRate,payoutUsdt,
-    profit:payinUsdt-payoutUsdt,netProfit:a.core.customAgentsRecalc(),
+    profit:flowSole&&!hasPayinHash?null:payinUsdt-payoutUsdt,
+    netProfit:flowSole&&!hasPayinHash?null:a.core.customAgentsRecalc(),
     usdtMode:a.core.customUsdtMode,
     payinMethod:crmDraftRead(r,'customPayinMethod'),
     payoutMethod:crmDraftRead(r,'customPayoutMethod'),
@@ -737,19 +746,19 @@ function crmDraftCommitCustom(a,d,before) {
   const methods={sber_reqs:'По реквизитам',flow_sole_reqs:'По реквизитам',sber_wl:'СБП',crypto_direct:'Крипта',partners_cash:'Наличные'};
   d.payType=methods[c.payinMethod]||d.payType;
   d.amountRub=payinCurrency==='RUB'?payinAmount:null;
-  d.amountUsdt=payinUsdt;
+  d.amountUsdt=flowSole&&!hasPayinHash?null:payinUsdt;
   d.amountThb=payoutCurrency==='THB'?payoutAmount:null;
   d.payout={...(d.payout||{}),method:c.payoutMethod,source:'Binance',
     thb:d.amountThb,usdt:payoutUsdt};
   d.paySrc='coins';
   d.rates=d.rates||{};
-  d.rates.broker=payinCurrency==='RUB'?payinRate:null;
+  d.rates.broker=payinCurrency==='RUB'&&hasPayinHash?payinRate:null;
   const prior=new Set((d.payinParts||[]).map(p=>p.incId).filter(Boolean));
   d.payinParts=a.core.sberParts.map(p=>({uuid:p.uuid||null,
     incId:p.uuid?'sber:'+p.uuid:null,amountRub:crmDraftNum(p.amount_rub),
     payer:p.payer||'',date:p.date||'',note:p.note||'',
-    kind:p.kind==='acquiring'?'acquiring':'bank',fee:crmDraftNum(p.fee_rub)||0,
-    net:crmDraftNum(p.net_rub)}));
+    kind:p.kind==='acquiring'?'acquiring':'bank',fee:crmDraftNum(p.fee_rub),
+    net:crmDraftNum(p.net_rub),...(p.payin_rub_is_net===true?{rubIsNet:true}:{})}));
   const selected=new Set(d.payinParts.map(p=>p.incId).filter(Boolean));
   incomes().forEach(x=>{if(prior.has(x.id)&&!selected.has(x.id)&&x.dealId===d.id)x.dealId=null;
     if(selected.has(x.id)&&!x.dealId)x.dealId=d.id;});
@@ -836,8 +845,8 @@ function crmDraftCommit(id) {
   d.payinParts=a.core.sberParts.map(p=>({uuid:p.uuid||null,
     incId:p.uuid?'sber:'+p.uuid:null,amountRub:crmDraftNum(p.amount_rub),
     payer:p.payer||'',date:p.date||'',note:p.note||'',
-    kind:p.kind==='acquiring'?'acquiring':'bank',fee:crmDraftNum(p.fee_rub)||0,
-    net:crmDraftNum(p.net_rub)}));
+    kind:p.kind==='acquiring'?'acquiring':'bank',fee:crmDraftNum(p.fee_rub),
+    net:crmDraftNum(p.net_rub),...(p.payin_rub_is_net===true?{rubIsNet:true}:{})}));
   const next=new Set(d.payinParts.map(p=>p.incId).filter(Boolean));
   incomes().forEach(x=>{if(old.has(x.id)&&!next.has(x.id)&&x.dealId===id)x.dealId=null;
     if(next.has(x.id)&&!x.dealId)x.dealId=id;});

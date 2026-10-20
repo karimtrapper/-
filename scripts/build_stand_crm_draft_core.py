@@ -21,9 +21,9 @@ SLICES = [
     ("        function customAgentsPreset(", "        // ===== Виджет агентов для СТАНДАРТНОЙ формы"),
     ("        // Что считаем производным: 'rate'", "        // Подбор входящей транзакции в кастомной сделке"),
     ("        async function onCustomPayinMethodChange()", "        let _customDealSubmitting = false;"),
-    ("        function upgradeSelect(select)", "        // ==================== HTML escape"),
+    ("        function customSelectOptMarkup(o, i, selectedVal)", "        // ==================== HTML escape"),
     ("        function formatDate(dateStr)", "        function getStatusLabel("),
-    ("        function reportInvalidField(form)", "        document.getElementById('createDealForm').addEventListener('submit'"),
+    ("        function reportInvalidField(form, changes = null)", "        document.getElementById('createDealForm').addEventListener('submit'"),
     ("        function _agentsCascade(", "        function customAgentsPreset("),
     ("        function _stdProfitVolume(", "        function stdAgentsPreset("),
     ("        function _stdApplyAgents(", "        // Что считаем производным"),
@@ -32,7 +32,7 @@ SLICES = [
     ("        function payoutTxPoolTotal(", "        function renderPayoutTxPool("),
     ("        function noConversionOn(", "        // ===== «Деньги за выдачу уже у нас»"),
     ("        async function loadCashBatchesForSelect(", "        // Update card info when selected"),
-    ("        function methodUsesSberPool(", "        function setPayinMethodValue("),
+    ("        function methodUsesSberPool(", "        function flowShow("),
     ("        function peHashes(", "        function applyPayinMethodFields("),
     ("        function applyPayinMethodFields()", "        // ==================== Сбер (реквизиты):"),
     ("        function sberSfx()", "        function sberSetKindFilter("),
@@ -182,7 +182,7 @@ def main():
         raise SystemExit('CRM FH preview error rendering changed')
     pieces[fh_preview_index] = preview.replace(old, '${escapeHtml(data.error)}')
     select_index = next(i for i, (start, _) in enumerate(SLICES)
-                        if start == "        function upgradeSelect(select)")
+                        if start == "        function customSelectOptMarkup(o, i, selectedVal)")
     select_code = pieces[select_index]
     for old, new in [
         ("document.addEventListener('click', (e) => {", "root.addEventListener('click', (e) => {"),
@@ -271,6 +271,19 @@ window.createCrmDraftCore = function createCrmDraftCore(root, adapters) {
     let mfPayoutAdding = false;
     let payinMode = 'rate';
     const editingDealId = adapters.editingDealId;
+    const editingPayinRubIsNet = adapters.payinRubIsNet === true;
+    function flowShow(suffix, show) {
+        const hint = document.getElementById('flowAccountHint' + suffix);
+        if (hint) hint.style.display = show ? 'block' : 'none';
+        const group = document.getElementById('flowManualGroup' + suffix);
+        if (group) {
+            const receipt = adapters.flowReceipt;
+            group.style.display = show && receipt ? 'block' : 'none';
+            if (show && receipt) group.textContent = 'Ранее подтверждённый приход: '
+                + Number(receipt.actualAmount || 0).toLocaleString('ru-RU') + ' ₽'
+                + (receipt.confirmedAt ? ' · ' + receipt.confirmedAt : '');
+        }
+    }
     let _mfLast = null;
     let _fhLast = null;
     let stdAgents = [];

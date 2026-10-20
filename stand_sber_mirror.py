@@ -67,8 +67,11 @@ def _board_income(row):
     kind = 'эквайринг' if acquiring['kind'] == 'acquiring' else 'банк'
     return {'id': 'sber:' + row.uuid, 'uuid': row.uuid, 'source': 'sber',
             'date': day, 'arrivedAt': operation, 'payer': row.payer or '',
-            'rub': row.amount_rub, 'grossRub': round(row.amount_rub + acquiring['fee_rub'], 2),
-            'feeRub': round(acquiring['fee_rub'], 2), 'kind': kind,
+            'rub': row.amount_rub,
+            'grossRub': (round(row.amount_rub + acquiring['fee_rub'], 2)
+                         if acquiring['fee_known'] else None),
+            'feeRub': round(acquiring['fee_rub'], 2) if acquiring['fee_known'] else None,
+            'feeKnown': acquiring['fee_known'], 'kind': kind,
             'acc': '…2118 · Сбер эквайринг' if kind == 'эквайринг' else _sber_account_label(),
             'accSource': 'sber_notifier_purpose_acquiring' if kind == 'эквайринг' else 'sber_notifier_single_account',
             'purpose': row.purpose or '', 'docNumber': row.doc_number or '',

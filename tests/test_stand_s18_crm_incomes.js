@@ -36,7 +36,7 @@ const ctx = {DRAFTS:{}, S: {deals: [main], incomes}, d: main, ap: {rub: 10000},
   avgUsdt: () => 33, approx: () => ({thb: 0}), econ: () => ({sentUsd: 0})};
 vm.createContext(ctx);
 vm.runInContext(['MF','FLOWSOLE'].map(name=>html.match(new RegExp('^const '+name+'=[^]*?};', 'm'))[0]).join('\n'),ctx);
-vm.runInContext(['pendingEx', 's18Sber', 's18AccountIdentity', 's18AccountKey', 's18AccountLabel', 's18Rub', 's18CrmUnavailable', 's18CrmRows',
+vm.runInContext(['incomeRubBasis', 'partRubBasis', 'pendingEx', 's18Sber', 's18AccountIdentity', 's18AccountKey', 's18AccountLabel', 's18Rub', 's18CrmUnavailable', 's18CrmRows',
   's18DateKey', 's18DateLabel', 's18FilteredRows', 's18CrmSection',
   's18ClientRub', 's18ClientTotal', 'brokerSentAmount', 'brokerPlanShares', 'brokerSentParse',
   'brokerSentTimeValue', 'brokerSentTimeParse', 'brokerSentTimeDraft', 'convMargin', 'convMarginBlock'].map(fn).join('\n')+

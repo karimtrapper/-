@@ -29,6 +29,19 @@ window.createCrmDraftCore = function createCrmDraftCore(root, adapters) {
     let mfPayoutAdding = false;
     let payinMode = 'rate';
     const editingDealId = adapters.editingDealId;
+    const editingPayinRubIsNet = adapters.payinRubIsNet === true;
+    function flowShow(suffix, show) {
+        const hint = document.getElementById('flowAccountHint' + suffix);
+        if (hint) hint.style.display = show ? 'block' : 'none';
+        const group = document.getElementById('flowManualGroup' + suffix);
+        if (group) {
+            const receipt = adapters.flowReceipt;
+            group.style.display = show && receipt ? 'block' : 'none';
+            if (show && receipt) group.textContent = 'Ранее подтверждённый приход: '
+                + Number(receipt.actualAmount || 0).toLocaleString('ru-RU') + ' ₽'
+                + (receipt.confirmedAt ? ' · ' + receipt.confirmedAt : '');
+        }
+    }
     let _mfLast = null;
     let _fhLast = null;
     let stdAgents = [];
@@ -227,7 +240,7 @@ window.createCrmDraftCore = function createCrmDraftCore(root, adapters) {
         function customAgentsRecalc() {
             const { profit, volume } = _customFormProfitVolume();
             const net = _agentsCascade(profit, volume, customAgents);
-            customAgents.forEach((a, i) => { const el = document.getElementById('caPay' + i); if (el) el.textContent = '$' + (a._payout || 0).toFixed(2); });
+            customAgents.forEach((a, i) => { const el = document.getElementById('caPay' + i); if (el) el.textContent = (a._payout || 0).toFixed(2) + ' USDT'; });
             const total = customAgents.reduce((s, a) => s + (a._payout || 0), 0);
             const netEl = document.getElementById('agentsBlockCustomNet');
             if (netEl) netEl.innerHTML = customAgents.length
@@ -344,6 +357,15 @@ window.createCrmDraftCore = function createCrmDraftCore(root, adapters) {
 
         async function onCustomPayinMethodChange() {
             const method = document.getElementById('customPayinMethod').value;
+            flowShow('C', method === 'flow_sole_reqs');
+            const flowSole = method === 'flow_sole_reqs';
+            const rate = document.getElementById('customPayinRate');
+            rate.readOnly = flowSole;
+            if (flowSole) {
+                document.getElementById('customPayinCurrency').value = 'RUB';
+                customUsdtMode.payin = 'usdt';
+                calcCustomProfit();
+            }
             const picker = document.getElementById('customPayinPicker');
             const label = document.getElementById('customPickerLabel');
             const select = document.getElementById('customPayinTxSelect');
@@ -365,7 +387,7 @@ window.createCrmDraftCore = function createCrmDraftCore(root, adapters) {
                 picker.style.display = 'flex';
                 label.textContent = 'Выбрать Сбер-транзакцию (WL Bot)';
                 await loadCustomWlTransactions();
-            } else if (method === 'crypto_direct') {
+            } else if (method === 'crypto_direct' || method === 'flow_sole_reqs') {
                 picker.style.display = 'flex';
                 label.textContent = 'Выбрать входящую крипто-транзакцию';
                 await loadCustomCryptoTransactions();
@@ -439,8 +461,11 @@ window.createCrmDraftCore = function createCrmDraftCore(root, adapters) {
                 customUsdtMode.payin = 'usdt';  // используем точный клиентский USDT
                 info.textContent = `${tx.display_name} · ${Number(tx.amount_rub).toLocaleString('ru')} ₽ → $${parseFloat(tx.amount_usdt).toFixed(2)} · курс ${parseFloat(tx.final_rate).toFixed(2)}`;
             } else if (tx.kind === 'crypto') {
-                document.getElementById('customPayinCurrency').value = 'USDT';
-                document.getElementById('customPayinAmount').value = parseFloat(tx.amount_usdt).toFixed(2);
+                const flowSole = document.getElementById('customPayinMethod').value === 'flow_sole_reqs';
+                if (!flowSole) {
+                    document.getElementById('customPayinCurrency').value = 'USDT';
+                    document.getElementById('customPayinAmount').value = parseFloat(tx.amount_usdt).toFixed(2);
+                }
                 document.getElementById('customPayinUsdt').value = parseFloat(tx.amount_usdt).toFixed(2);
                 document.getElementById('customPayinTxHash').value = tx.tx_hash;
                 customUsdtMode.payin = 'usdt';
@@ -449,6 +474,14 @@ window.createCrmDraftCore = function createCrmDraftCore(root, adapters) {
             calcCustomProfit();
         }
 
+        function customSelectOptMarkup(o, i, selectedVal) {
+            const cls = ['custom-select-opt'];
+            if (o.value === selectedVal) cls.push('selected');
+            if (o.disabled) cls.push('disabled');
+            const titleAttr = o.disabled && o.title ? ` title="${escapeHtml(o.title)}"` : '';
+            const hiddenStyle = o.hidden ? ' style="display:none"' : '';
+            return `<div class="${cls.join(' ')}" data-index="${i}" data-value="${escapeHtml(o.value)}"${titleAttr}${hiddenStyle}>${escapeHtml(o.text)}</div>`;
+        }
         function upgradeSelect(select) {
             if (select.dataset.upgraded || select.style.display === 'none') return;
             select.dataset.upgraded = 'true';
@@ -470,7 +503,7 @@ window.createCrmDraftCore = function createCrmDraftCore(root, adapters) {
                 const opts = Array.from(select.options);
                 const selectedVal = select.value;
                 btn.textContent = select.selectedOptions[0]?.text || 'Выберите...';
-                list.innerHTML = opts.map((o, i) => `<div class="custom-select-opt ${o.value === selectedVal ? 'selected' : ''}" data-index="${i}" data-value="${escapeHtml(o.value)}">${escapeHtml(o.text)}</div>`).join('');
+                list.innerHTML = opts.map((o, i) => customSelectOptMarkup(o, i, selectedVal)).join('');
             }
             renderOptions();
 
@@ -487,7 +520,10 @@ window.createCrmDraftCore = function createCrmDraftCore(root, adapters) {
 
             list.addEventListener('click', (e) => {
                 const opt = e.target.closest('.custom-select-opt');
-                if (!opt) return;
+                // disabled — тот же непроверенный флоу, что и в задачнике (TKS-7):
+                // видимый, но невыбираемый пункт не должен применяться по клику
+                // (независимый QA, 19.10 — без этой проверки клик применялся всегда).
+                if (!opt || opt.classList.contains('disabled')) return;
                 select.selectedIndex = parseInt(opt.dataset.index);
                 select.dispatchEvent(new Event('change', { bubbles: true }));
                 btn.textContent = opt.textContent;
@@ -528,14 +564,22 @@ window.createCrmDraftCore = function createCrmDraftCore(root, adapters) {
         function formatDate(dateStr) {
             if (!dateStr) return '-';
             const date = new Date(dateStr);
-            return date.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+            if (Number.isNaN(date.getTime())) return '-';
+            const dateOnly = /^\d{4}-\d{2}-\d{2}$/.test(dateStr)
+                || /[T ]00:00:00(?:\.0+)?(?:Z|[+-]\d{2}:?\d{2})?$/.test(dateStr);
+            const options = { day: '2-digit', month: '2-digit' };
+            if (!dateOnly) Object.assign(options, { hour: '2-digit', minute: '2-digit' });
+            return date.toLocaleDateString('ru-RU', options);
         }
 
-        function reportInvalidField(form) {
+        function reportInvalidField(form, changes = null) {
             /* Возвращает true, если форму отправлять нельзя, и объясняет почему.
                Нативная валидация тут не годится: невалидное поле часто скрыто
                (кастомная сделка, недвижимость), и браузер просто ничего не делает. */
             for (const el of form.elements) {
+                // Legacy records can have empty required selects. An unrelated
+                // edit must not force a fabricated source/method into that record.
+                if (changes && el.name && !Object.prototype.hasOwnProperty.call(changes, el.name)) continue;
                 if (el.willValidate && !el.checkValidity()) {
                     const group = el.closest('.form-group');
                     const label = group ? (group.querySelector('.form-label') || {}).textContent : '';
@@ -797,10 +841,8 @@ window.createCrmDraftCore = function createCrmDraftCore(root, adapters) {
         }
 
         function methodUsesSberPool(method) { return method === 'sber_reqs' || method === 'sber_wl'; }
-
-        // Архивные методы (spp_doverka) убраны из выпадашки, но у старых сделок они
-        // в базе: если просто присвоить value, селект останется пустым и сохранение
-        // молча сменит метод. Поэтому опцию для такого значения раскрываем обратно.
+        let flowExistingReceipt = false;
+        let flowExistingParts = [];
 
         function peHashes(p) {
             // Старые части хранили один tx_hash — открываем их без миграции
@@ -972,14 +1014,14 @@ window.createCrmDraftCore = function createCrmDraftCore(root, adapters) {
             const inc = sberIncomesCache.find(x => x.uuid === uuid);
             const part = payinExtra[i];
             if (!inc || (part.sber_parts || []).some(x => x.uuid === uuid)) return;
-            // Как в основном блоке: в сделку идёт то, что заплатил КЛИЕНТ.
-            // У эквайринга на счёт падает меньше — банк снимает комиссию сразу
+            const amount = sberIncomeBasis(inc);
+            if (amount === null) { showToast('Комиссия банка неизвестна — сумму до комиссии определить нельзя', 'error'); return; }
             part.sber_parts = part.sber_parts || [];
             part.sber_parts.push({
-                uuid: inc.uuid, amount_rub: inc.gross_rub ?? inc.amount_rub,
+                uuid: inc.uuid, amount_rub: amount,
                 payer: inc.payer || '', date: (inc.operation_date || '').substring(0, 10),
-                kind: inc.kind || 'transfer', fee_rub: inc.fee_rub || 0,
-                net_rub: inc.amount_rub,
+                kind: inc.kind || 'transfer', fee_rub: inc.fee_rub ?? null,
+                net_rub: inc.amount_rub, ...(editingPayinRubIsNet ? {payin_rub_is_net: true} : {}),
             });
             payinExtraSberSync(i);
             // Доля USDT из пачки — как в основном блоке: если рубли уже
@@ -1138,6 +1180,7 @@ window.createCrmDraftCore = function createCrmDraftCore(root, adapters) {
                         .map(t => ({ hash: String(t.hash).trim(),
                                      amount_usdt: t.amount_usdt ?? null })),
                     sber_uuids: (p.sber_parts || []).map(x => x.uuid).filter(Boolean),
+                    ...(editingPayinRubIsNet ? {payin_rub_is_net: true} : {}),
                     note: p.note || '',
                 }));
         }
@@ -1158,6 +1201,10 @@ window.createCrmDraftCore = function createCrmDraftCore(root, adapters) {
             const exchangeRateGroup = document.getElementById('exchangeRateGroup');
 
             const isCryptoDirect = method.value === 'crypto_direct';
+            const walletGroup = document.getElementById('payinWalletGroup');
+            walletGroup.style.display = isCryptoDirect ? 'block' : 'none';
+            if (isCryptoDirect) syncNewPayinWalletDefault();
+            refreshPayinWalletPolicy();
             const isSberWL = method.value === 'sber_wl';
             const isSberReqs = method.value === 'sber_reqs';
 
@@ -1165,6 +1212,7 @@ window.createCrmDraftCore = function createCrmDraftCore(root, adapters) {
             // доступа к пулу: платёж клиента лежал в выписке эквайрингом и не
             // привязывался ни к чему, поэтому «где эти деньги» было не ответить.
             const sberGroup = document.getElementById('sberReqsGroup');
+            flowShow('', method.value === 'flow_sole_reqs');
             const usesPool = methodUsesSberPool(method.value);
             if (sberGroup) sberGroup.style.display = usesPool ? 'block' : 'none';
             if (usesPool) {
@@ -1176,13 +1224,16 @@ window.createCrmDraftCore = function createCrmDraftCore(root, adapters) {
             partnerGroup.style.display = method.value === 'partners_cash' ? 'block' : 'none';
 
             // Рубли и курс RUB/USDT
-            if (method.value === 'spp_doverka' || method.value === 'partners_cash' || isSberWL || isSberReqs) {
+            if (method.value === 'spp_doverka' || method.value === 'partners_cash' || isSberWL || isSberReqs || method.value === 'flow_sole_reqs') {
                 rubGroup.style.display = 'block';
                 rateGroup.style.display = 'block';
             } else {
                 rubGroup.style.display = 'none';
                 rateGroup.style.display = 'none';
             }
+            const flowSole = method.value === 'flow_sole_reqs';
+            document.getElementById('createDealForm').payin_rate_rub_usdt.readOnly = flowSole;
+            if (flowSole) { payinMode = 'usdt'; autoCalcUsdt(); }
 
             // Курс для клиента
             exchangeRateGroup.style.display = isCryptoDirect ? 'none' : 'block';
@@ -1229,13 +1280,13 @@ window.createCrmDraftCore = function createCrmDraftCore(root, adapters) {
         function sberAddIncome(uuid) {
             const inc = sberIncomesCache.find(i => i.uuid === uuid);
             if (!inc || sberParts.some(p => p.uuid === uuid)) return;
-            // В сделку идёт то, что заплатил КЛИЕНТ. У эквайринга на счёт падает
-            // меньше — банк удерживает комиссию сразу, поэтому берём gross,
-            // иначе курс клиента и объём сделки занижены на размер комиссии.
-            sberParts.push({ uuid: inc.uuid, amount_rub: inc.gross_rub ?? inc.amount_rub,
+            const amount = sberIncomeBasis(inc);
+            if (amount === null) { showToast('Комиссия банка неизвестна — сумму до комиссии определить нельзя', 'error'); return; }
+            sberParts.push({ uuid: inc.uuid, amount_rub: amount,
                              payer: inc.payer || '', date: (inc.operation_date || '').substring(0, 10),
                              note: '', kind: inc.kind || 'transfer',
-                             fee_rub: inc.fee_rub || 0, net_rub: inc.amount_rub });
+                             fee_rub: inc.fee_rub ?? null, net_rub: inc.amount_rub,
+                             ...(editingPayinRubIsNet ? {payin_rub_is_net: true} : {}) });
             sberRender();
             applyConversionUsdt(inc);
         }
@@ -1276,7 +1327,8 @@ window.createCrmDraftCore = function createCrmDraftCore(root, adapters) {
             const noteEl = document.getElementById('sberManualNote' + sfx);
             const amt = parseFloat(amtEl?.value) || 0;
             if (amt <= 0) { showToast('Укажите сумму прихода', 'error'); return; }
-            sberParts.push({ uuid: null, amount_rub: amt, payer: '', date: '', note: (noteEl?.value || '').trim() });
+            sberParts.push({ uuid: null, amount_rub: amt, payer: '', date: '', note: (noteEl?.value || '').trim(),
+                ...(editingPayinRubIsNet ? {payin_rub_is_net: true} : {}) });
             if (amtEl) amtEl.value = '';
             if (noteEl) noteEl.value = '';
             sberRender();
@@ -1286,16 +1338,22 @@ window.createCrmDraftCore = function createCrmDraftCore(root, adapters) {
 
         const rub2 = v => Number(v || 0).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+        function sberIncomeBasis(inc) {
+            if (editingPayinRubIsNet) return Number(inc.amount_rub);
+            if (inc.gross_rub != null) return Number(inc.gross_rub);
+            return inc.kind === 'acquiring' ? null : Number(inc.amount_rub);
+        }
+
         function sberIncomeLine(i) {
             const date = (i.operation_date || '').substring(0, 10);
             if (i.kind === 'acquiring') {
                 const mer = i.merchant ? ` · мерчант …${String(i.merchant).slice(-4)}` : '';
-                return `<span style="background:#dbeafe;color:#1d4ed8;border-radius:4px;padding:1px 5px;font-size:11px;">СБП</span> `
-                    + `<b>${rub2(i.gross_rub)} ₽</b> `
-                    + `<span style="color:#64748b;">(зачислено ${rub2(i.amount_rub)} + комиссия ${rub2(i.fee_rub)})</span>`
+                return `<span class="sber-income-kind pill" style="background:#dbeafe;color:#1d4ed8;border-radius:4px;padding:1px 5px;font-size:11px;">СБП</span> `
+                    + `<b>${i.gross_rub == null ? 'до комиссии —' : rub2(i.gross_rub) + ' ₽'}</b> `
+                    + `<span style="color:#64748b;">(зачислено ${rub2(i.amount_rub)} ₽ + комиссия ${i.fee_rub == null ? 'неизвестна' : rub2(i.fee_rub) + ' ₽'})</span>`
                     + `${mer} · ${date}`;
             }
-            return `<span style="background:#dcfce7;color:#15803d;border-radius:4px;padding:1px 5px;font-size:11px;">реквизиты</span> `
+            return `<span class="sber-income-kind pill" style="background:#dcfce7;color:#15803d;border-radius:4px;padding:1px 5px;font-size:11px;">реквизиты</span> `
                 + `<b>${rub2(i.amount_rub)} ₽</b> · ${escapeHtml(i.payer || '—')} · ${date}`;
         }
 
@@ -1309,7 +1367,7 @@ window.createCrmDraftCore = function createCrmDraftCore(root, adapters) {
                 const chosen = new Set(sberParts.filter(p => p.uuid).map(p => p.uuid));
                 const avail = sberIncomesCache.filter(i => !chosen.has(i.uuid));
                 availEl.innerHTML = avail.length ? avail.map(i => `
-                    <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 8px;border-bottom:1px solid #e0f2fe;font-size:13px;gap:8px;">
+                    <div class="sber-income-row" style="display:flex;justify-content:space-between;align-items:center;padding:6px 8px;border-bottom:1px solid #e0f2fe;font-size:13px;gap:8px;">
                         <span>${sberIncomeLine(i)}</span>
                         <button type="button" class="btn btn-success btn-sm" data-crm-action="sber-add" data-crm-event="click" data-uuid="${escapeHtml(i.uuid)}">Забрать</button>
                     </div>`).join('') : '<div style="color:#94a3b8;font-size:13px;padding:4px;">Нет незабранных приходов</div>';
@@ -1768,8 +1826,13 @@ window.createCrmDraftCore = function createCrmDraftCore(root, adapters) {
         function stdAgentsTier(i,d){ stdAgents[i].tier=Math.max(1,(stdAgents[i].tier||1)+d); stdAgentsMode=null; renderStdAgents(); calculateProfit(); }
 
         function stdAgentsField(i,k,v){ if(k==='percent'||k==='fixed_usdt') v=parseFloat(v)||0; stdAgents[i][k]=v; if(k==='referrer_id'){ const r=(_referrersCache||[]).find(x=>String(x.id)===String(v)); if(r){ stdAgents[i].name=r.name; stdAgents[i].comp_model=r.comp_model||'revshare'; stdAgents[i].percent=r.comp_model==='markup'?(r.markup_percent||0):(r.default_percent||0);} } if(k==='comp_model'||k==='referrer_id') renderStdAgents(); calculateProfit(); if(document.getElementById('mfDealToggle')?.checked) mfRecalc(); if(document.getElementById('fhDealToggle')?.checked) fhRecalc(); }
+        // Тот же паттерн текста, что в agentsBlock() задачника (static/stand/tasks.html):
+        // «N-й уровень» вместо «Ур.N», текст «Убрать» вместо иконки-эмодзи, подписи
+        // моделей комиссии без смешанного англ/рус (revshare/markup/fixed — внутренние
+        // ключи, не для экрана), $ → USDT в выплате агента (доп. находка координатора
+        // к аудиту ui-2026-10-17).
 
-        function renderStdAgents(){ const box=document.getElementById('agentsBlockStd'); if(!box) return; const refs=(_referrersCache||[]).filter(r=>r.active); box.innerHTML=stdAgents.map((a,i)=>{ const placeholder=(!a.referrer_id&&a.name)?`<option value="" selected>${escapeHtml(a.name)} (вручную)</option>`:'<option value="">— выбрать агента —</option>'; const opts=placeholder+refs.map(r=>`<option value="${r.id}" ${String(r.id)===String(a.referrer_id)?'selected':''}>${escapeHtml(r.name)}</option>`).join(''); const valField=a.comp_model==='fixed'?`<input type="number" step="any" class="form-control" value="${a.fixed_usdt||0}" data-crm-action="agent-field" data-crm-event="input" data-index="${i}" data-key="fixed_usdt" placeholder="$" style="width:90px;">`:`<input type="number" step="any" class="form-control" value="${a.percent||0}" data-crm-action="agent-field" data-crm-event="input" data-index="${i}" data-key="percent" placeholder="%" style="width:90px;">`; return `<div style="background:white;border:1px solid #d1fae5;border-radius:8px;padding:10px;margin-bottom:8px;"><div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;"><span style="display:inline-flex;align-items:center;gap:4px;background:#6366f1;color:white;border-radius:999px;padding:3px 6px 3px 10px;font-size:12px;font-weight:700;"><button type="button" data-crm-action="agent-tier" data-crm-event="click" data-index="${i}" data-delta="-1" style="border:none;background:rgba(255,255,255,.25);color:white;border-radius:50%;width:18px;height:18px;cursor:pointer;">−</button>Ур.${a.tier||1}<button type="button" data-crm-action="agent-tier" data-crm-event="click" data-index="${i}" data-delta="1" style="border:none;background:rgba(255,255,255,.25);color:white;border-radius:50%;width:18px;height:18px;cursor:pointer;">+</button></span><select class="form-control" data-crm-action="agent-field" data-crm-event="change" data-index="${i}" data-key="referrer_id" style="flex:1;">${opts}</select><button type="button" data-crm-action="agent-remove" data-crm-event="click" data-index="${i}" style="border:none;background:transparent;color:#94a3b8;font-size:16px;cursor:pointer;">🗑</button></div><div style="display:flex;align-items:center;gap:8px;"><select class="form-control" data-crm-action="agent-field" data-crm-event="change" data-index="${i}" data-key="comp_model" style="flex:1;"><option value="revshare" ${a.comp_model==='revshare'?'selected':''}>revshare (% от прибыли)</option><option value="markup" ${a.comp_model==='markup'?'selected':''}>markup (+% к курсу)</option><option value="fixed" ${a.comp_model==='fixed'?'selected':''}>fixed ($ сумма)</option><option value="crypto_share" ${a.comp_model==='crypto_share'?'selected':''}>% от прибыли в крипте (MF Corp)</option></select>${valField}<span style="min-width:90px;text-align:right;font-weight:700;color:#16a34a;" id="saPay${i}">$0</span></div></div>`; }).join(''); document.getElementById('saPreCascade')?.classList.toggle('active',stdAgentsMode==='cascade'); document.getElementById('saPreFlat')?.classList.toggle('active',stdAgentsMode==='flat'); }
+        function renderStdAgents(){ const box=document.getElementById('agentsBlockStd'); if(!box) return; const refs=(_referrersCache||[]).filter(r=>r.active); box.innerHTML=stdAgents.map((a,i)=>{ const placeholder=(!a.referrer_id&&a.name)?`<option value="" selected>${escapeHtml(a.name)} (вручную)</option>`:'<option value="">— выбрать агента —</option>'; const opts=placeholder+refs.map(r=>`<option value="${r.id}" ${String(r.id)===String(a.referrer_id)?'selected':''}>${escapeHtml(r.name)}</option>`).join(''); const valField=a.comp_model==='fixed'?`<input type="number" step="any" class="form-control" value="${a.fixed_usdt||0}" data-crm-action="agent-field" data-crm-event="input" data-index="${i}" data-key="fixed_usdt" placeholder="USDT" style="width:90px;">`:`<input type="number" step="any" class="form-control" value="${a.percent||0}" data-crm-action="agent-field" data-crm-event="input" data-index="${i}" data-key="percent" placeholder="%" style="width:90px;">`; return `<div style="background:white;border:1px solid #d1fae5;border-radius:8px;padding:10px;margin-bottom:8px;"><div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;"><span style="display:inline-flex;align-items:center;gap:4px;background:#6366f1;color:white;border-radius:999px;padding:3px 6px 3px 10px;font-size:12px;font-weight:700;"><button type="button" data-crm-action="agent-tier" data-crm-event="click" data-index="${i}" data-delta="-1" style="border:none;background:rgba(255,255,255,.25);color:white;border-radius:50%;width:18px;height:18px;cursor:pointer;">−</button>${a.tier||1}-й уровень<button type="button" data-crm-action="agent-tier" data-crm-event="click" data-index="${i}" data-delta="1" style="border:none;background:rgba(255,255,255,.25);color:white;border-radius:50%;width:18px;height:18px;cursor:pointer;">+</button></span><select class="form-control" data-crm-action="agent-field" data-crm-event="change" data-index="${i}" data-key="referrer_id" style="flex:1;">${opts}</select><button type="button" data-crm-action="agent-remove" data-crm-event="click" data-index="${i}" style="border:none;background:transparent;color:#94a3b8;font-size:13px;cursor:pointer;text-decoration:underline;">Убрать</button></div><div style="display:flex;align-items:center;gap:8px;"><select class="form-control" data-crm-action="agent-field" data-crm-event="change" data-index="${i}" data-key="comp_model" style="flex:1;"><option value="revshare" ${a.comp_model==='revshare'?'selected':''}>% от прибыли</option><option value="markup" ${a.comp_model==='markup'?'selected':''}>Наценка к курсу (% от объёма)</option><option value="fixed" ${a.comp_model==='fixed'?'selected':''}>Фикс USDT</option><option value="crypto_share" ${a.comp_model==='crypto_share'?'selected':''}>% от прибыли в крипте (MF Corp)</option></select>${valField}<span style="min-width:90px;text-align:right;font-weight:700;color:#16a34a;" id="saPay${i}">0 USDT</span></div></div>`; }).join(''); document.getElementById('saPreCascade')?.classList.toggle('active',stdAgentsMode==='cascade'); document.getElementById('saPreFlat')?.classList.toggle('active',stdAgentsMode==='flat'); }
 
         function stdAgentsRecalc(){
             // Недвижимость через MF Corp считается по своим формулам (два кармана).
@@ -1784,7 +1847,7 @@ window.createCrmDraftCore = function createCrmDraftCore(root, adapters) {
                 }
                 (_mfLast?.agents || []).forEach((a, i) => {
                     const el = document.getElementById('saPay' + i);
-                    if (el) el.textContent = '$' + (a._payout || 0).toFixed(2);
+                    if (el) el.textContent = (a._payout || 0).toFixed(2) + ' USDT';
                 });
                 return _mfLast?.crypto_remainder_usdt || 0;
             }
@@ -1799,11 +1862,11 @@ window.createCrmDraftCore = function createCrmDraftCore(root, adapters) {
                 }
                 (_fhLast?.agents || []).forEach((a, i) => {
                     const el = document.getElementById('saPay' + i);
-                    if (el) el.textContent = '$' + (a._payout || 0).toFixed(2);
+                    if (el) el.textContent = (a._payout || 0).toFixed(2) + ' USDT';
                 });
                 return _fhLast?.net_profit_usdt || 0;
             }
-            const {profit,volume}=_stdProfitVolume(); const net=_agentsCascade(profit,volume,stdAgents); stdAgents.forEach((a,i)=>{const el=document.getElementById('saPay'+i); if(el) el.textContent='$'+(a._payout||0).toFixed(2);}); const total=stdAgents.reduce((s,a)=>s+(a._payout||0),0); const netEl=document.getElementById('agentsBlockStdNet'); if(netEl) netEl.innerHTML=stdAgents.length?`Агентам всего: <b>$${total.toFixed(2)}</b> · Чистая наша: <b>$${net.toFixed(2)}</b>`:''; return net; }
+            const {profit,volume}=_stdProfitVolume(); const net=_agentsCascade(profit,volume,stdAgents); stdAgents.forEach((a,i)=>{const el=document.getElementById('saPay'+i); if(el) el.textContent=(a._payout||0).toFixed(2)+' USDT';}); const total=stdAgents.reduce((s,a)=>s+(a._payout||0),0); const netEl=document.getElementById('agentsBlockStdNet'); if(netEl) netEl.innerHTML=stdAgents.length?`Агентам всего: <b>$${total.toFixed(2)}</b> · Чистая наша: <b>$${net.toFixed(2)}</b>`:''; return net; }
 
         function stdAgentsSerialize(){ return stdAgents.filter(a=>a.referrer_id||a.name).map(a=>({referrer_id:a.referrer_id?parseInt(a.referrer_id):null,name:a.name||null,tier:a.tier||1,comp_model:a.comp_model||'revshare',percent:a.comp_model==='fixed'?0:(+a.percent||0),fixed_usdt:a.comp_model==='fixed'?(+a.fixed_usdt||0):0})); }
 

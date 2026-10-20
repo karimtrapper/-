@@ -1708,6 +1708,9 @@ class Deal(Base):
     client_name = Column(String(100))
     payin_method = Column(SQLEnum(PayInMethod), nullable=True)
     payin_amount_rub = Column(Float)
+    # Explicit marker for new entries. NULL means legacy gross forever.
+    payin_rub_is_net = Column(Boolean, nullable=True)
+    payin_allocation_status = Column(String(20), nullable=True)
     payin_amount_thb = Column(Float)
     payin_amount_usdt = Column(Float)
     payin_rate_rub_usdt = Column(Float)
@@ -1840,6 +1843,10 @@ class Deal(Base):
             'client': self.client.to_dict() if self.client else None,
             'payin_method': self.payin_method.value if self.payin_method else None,
             'payin_amount_rub': self.payin_amount_rub,
+            'payin_rub_is_net': self.payin_rub_is_net,
+            'payin_allocation_status': self.payin_allocation_status,
+            'payin_allocation_warning': ('не заданы доли по поступлениям'
+                if self.payin_allocation_status == 'needs_input' else None),
             'payin_amount_usdt': self.payin_amount_usdt,
             'payin_rate_rub_usdt': self.payin_rate_rub_usdt,
             'payin_tx_hash': self.payin_tx_hash,
@@ -2323,9 +2330,10 @@ class SberIncome(Base):
             'keep_active': bool(self.keep_active),
             'note': self.note,
             'source_tag': self.source_tag,
-            'fee_rub': round(acq['fee_rub'], 2),
+            'fee_rub': round(acq['fee_rub'], 2) if acq['fee_known'] else None,
+            'fee_known': acq['fee_known'],
             # Сколько заплатил клиент: у реквизитов = зачислено, у СБП = +комиссия
-            'gross_rub': round(net + acq['fee_rub'], 2),
+            'gross_rub': round(net + acq['fee_rub'], 2) if acq['fee_known'] else None,
         }
 
 
@@ -3253,6 +3261,21 @@ try:
         conn.commit()
 except Exception as e:
     print(f"ℹ️ payin_parts migration: {e}")
+
+# Nullable on purpose: historical deals keep gross semantics without backfill.
+try:
+    with engine.connect() as conn:
+        if 'postgresql' in DATABASE_URL:
+            conn.execute(text("ALTER TABLE deals ADD COLUMN IF NOT EXISTS payin_rub_is_net BOOLEAN"))
+            conn.execute(text("ALTER TABLE deals ADD COLUMN IF NOT EXISTS payin_allocation_status VARCHAR(20)"))
+        else:
+            try: conn.execute(text("ALTER TABLE deals ADD COLUMN payin_rub_is_net BOOLEAN"))
+            except Exception: pass
+            try: conn.execute(text("ALTER TABLE deals ADD COLUMN payin_allocation_status VARCHAR(20)"))
+            except Exception: pass
+        conn.commit()
+except Exception as e:
+    print(f"ℹ️ payin_rub_is_net migration: {e}")
 
 # Приход крипты частями: JSON-список хэшей с суммами
 try:
@@ -7739,6 +7762,17 @@ def _stand_noncrypto_payout_basis(deal):
                 and recipient.get('bank') and recipient.get('acc'))
 
 
+def _stand_income_part_basis(income, part, deal):
+    if not income:
+        return None
+    if part.get('rubIsNet', deal.get('rubIsNet')) is True:
+        return _stand_number(income.get('rub')) if income.get('rub') is not None else None
+    gross = income.get('grossRub')
+    if gross is None and income.get('kind') not in ('эквайринг', 'acquiring', 'СБП'):
+        gross = income.get('rub')
+    return _stand_number(gross) if gross is not None else None
+
+
 def _stand_close_fact_source(state, deal, kind):
     """Return verifiable provenance or a precise missing fact for a signoff."""
     if not stand_demo.enabled() and deal.get('demoTransfers') and stand_demo.evidence(state, deal):
@@ -7801,9 +7835,9 @@ def _stand_close_fact_source(state, deal, kind):
         if (_stand_rub_api_account(deal) and parts
                 and all((incomes.get(p.get('incId')) or {}).get('source') == 'sber'
                           and _stand_number(p.get('amountRub')) > 0
+                          and _stand_income_part_basis(incomes.get(p.get('incId')), p, deal) is not None
                           and abs(_stand_number(p.get('amountRub')) -
-                                  _stand_number((incomes.get(p.get('incId')) or {}).get('grossRub') or
-                                                (incomes.get(p.get('incId')) or {}).get('rub'))) < .01
+                                  _stand_income_part_basis(incomes.get(p.get('incId')), p, deal)) < .01
                           for p in parts)):
             return 'sber_mirror', None
         if (pay_type == 'Наличные' and _stand_number(
@@ -10100,18 +10134,22 @@ def _stand_broker_draft_rub(state, deal, db=None):
         for part in member['payinParts']:
             income = incomes.get(str(part.get('incId')))
             rub = _stand_broker_sent_money(part.get('amountRub'))
-            gross = _stand_broker_sent_money((income or {}).get('grossRub') or (income or {}).get('rub'))
-            if income is None or rub is None or gross is None or rub != gross:
+            is_net = part.get('rubIsNet', member.get('rubIsNet')) is True
+            net = _stand_broker_sent_money((income or {}).get('rub'))
+            gross = _stand_broker_sent_money((income or {}).get('grossRub'))
+            if gross is None and (income or {}).get('kind') not in ('эквайринг', 'acquiring'):
+                gross = net
+            basis = net if is_net else gross
+            if income is None or rub is None or basis is None or rub != basis:
                 return None
             identity = income_account_identity(income, member)
             if identity is None:
                 return None
             account_keys.add(identity)
             if income.get('source') == 'sber':
-                net = _stand_broker_sent_money(income.get('rub'))
                 if net is None:
                     return None
-                total += (rub * net / gross).quantize(Decimal('.01'), rounding=ROUND_HALF_UP)
+                total += (rub if is_net else rub * net / gross).quantize(Decimal('.01'), rounding=ROUND_HALF_UP)
             else:
                 total += rub
     if len(account_keys) != 1:
@@ -11132,6 +11170,14 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
                 return 'Ручной приход можно привязать только к пачке своей сделки'
     for deal in new_state.get('deals') or []:
         before = old.get(deal.get('id'))
+        if before and (deal.get('rubIsNet') is True) != (before.get('rubIsNet') is True):
+            return 'Семантика суммы RUB закреплена при создании сделки'
+        if deal.get('rubIsNet') is not None and type(deal.get('rubIsNet')) is not bool:
+            return 'Некорректная семантика суммы RUB'
+        if any((part.get('rubIsNet', deal.get('rubIsNet')) is True)
+               != (deal.get('rubIsNet') is True)
+               for part in deal.get('payinParts') or []):
+            return 'Семантика части прихода должна совпадать со сделкой'
         if before:
             receipt_problem = _stand_client_payin_problem(before, deal, actor, actor_id, db)
             if receipt_problem:
@@ -14266,6 +14312,7 @@ def stand_manual_bank_receipt_confirm(deal_id):
             'statementDate': receipt['statementDate'], 'statementRef': receipt['statementRef']}
         state.setdefault('incomes', []).append(income)
         deal.setdefault('payinParts', []).append({'amountRub': receipt['actualAmount'],
+            **({'rubIsNet': True} if deal.get('rubIsNet') is True else {}),
             'payer': receipt['payer'], 'date': display_date, 'kind': 'bank',
             'net': None, 'fee': None, 'incId': income_id, 'acc': income['acc'],
             'accountKey': account_key, 'crmIncomeId': registry_income.id, 'uuid': manual_uuid,
@@ -15748,7 +15795,7 @@ def _clear_profit_if_payin_unknown(deal):
     в USDT позже. Держим пусто, пока приход не проставят — тогда
     _recalculate_deal_financials посчитает по-настоящему.
     """
-    if deal.payout_amount_usdt and not deal.payin_amount_usdt:
+    if deal.payin_allocation_status == 'needs_input' or (deal.payout_amount_usdt and not deal.payin_amount_usdt):
         deal.profit_usdt = None
         deal.profit_percent = None
         deal.net_profit_usdt = None
@@ -16692,32 +16739,34 @@ def _fill_payin_usdt_from_conversion(db, deal):
     taken_by_uuid = {}
     for part in parts:
         if isinstance(part, dict) and part.get('uuid'):
-            taken_by_uuid[str(part['uuid'])] = (taken_by_uuid.get(str(part['uuid']), 0)
-                                                + float(part.get('amount_rub') or 0))
+            taken_by_uuid.setdefault(str(part['uuid']), []).append(part)
 
     usdt = 0.0
     for inc in incomes:
         share = shares.get(inc.id)
         if not share:
             return False              # хоть один приход не в полученной пачке
-        # Доля сделки и весь приход должны меряться одной линейкой. В payin_parts
-        # и в payin_amount_rub лежит БРУТТО (что заплатил клиент), а amount_rub
-        # прихода — уже за вычетом эквайринга. Деление брутто на нетто добавляло
-        # к приходу ставку комиссии: 120 738.33 / 119 893.16 = 1.00705, и сделка
-        # получала 1 405.49 USDT вместо реальных 1 395.65 — комиссия банка
-        # книжилась как наш доход. У переводов по реквизитам комиссии нет,
-        # брутто равно нетто, и поведение не меняется.
-        gross = (inc.amount_rub or 0) + parse_sber_acquiring(inc.purpose)['fee_rub']
-        taken = taken_by_uuid.get(inc.uuid)
-        if taken is None:
-            # Части не записаны: доверяем целому поступлению, только если оно
-            # и есть приход сделки. Иначе не гадаем — пусть проставят руками
-            if abs(gross - (deal.payin_amount_rub or 0)) > 1:
+        net = inc.amount_rub or 0
+        acq = parse_sber_acquiring(inc.purpose)
+        gross = net + acq['fee_rub'] if acq['fee_known'] else None
+        taken_parts = taken_by_uuid.get(inc.uuid)
+        if taken_parts is None:
+            # Without parts, only a whole receipt can be attributed safely.
+            basis = net if deal.payin_rub_is_net is True else gross
+            if basis is None or abs(basis - (deal.payin_amount_rub or 0)) > 1:
                 return False
-            taken = gross
-        if not gross:
-            return False
-        usdt += share * (taken / gross)
+            taken_parts = [{'amount_rub': basis,
+                            'payin_rub_is_net': deal.payin_rub_is_net is True}]
+        for part in taken_parts:
+            is_net = part.get('payin_rub_is_net', deal.payin_rub_is_net) is True
+            basis = net if is_net else gross
+            if not basis:
+                app.logger.warning('Deal %s: bank fee unknown for gross receipt %s', deal.id, inc.uuid)
+                return False
+            taken = float(part.get('amount_rub') or 0)
+            if taken <= 0 or taken > basis + .01:
+                return False
+            usdt += share * (taken / basis)
 
     usdt = round(usdt, 2)
     if usdt <= 0:
@@ -17815,6 +17864,7 @@ def _normalize_payin_extra(raw):
             'tx_hashes': _normalize_tx_hashes(item.get('tx_hashes')),
             'sber_uuids': [str(u) for u in (item.get('sber_uuids') or []) if u],
             'note': str(item.get('note') or '').strip(),
+            **({'payin_rub_is_net': True} if item.get('payin_rub_is_net') is True else {}),
         })
     return out
 
@@ -17944,13 +17994,49 @@ def _apply_payin_extra(session, deal, raw_extra, main_usdt, main_rub):
             except (ValueError, TypeError):
                 base = []
         known = {str(x.get('uuid')) for x in base if isinstance(x, dict) and x.get('uuid')}
+        extra_basis = {u: p.get('payin_rub_is_net') is True for p in extra for u in p['sber_uuids']}
         for uid in extra_uuids:
             if uid not in known:
                 known.add(uid)
                 base.append({'uuid': uid, 'amount_rub': None, 'payer': '',
-                             'date': '', 'note': 'доп. приход'})
+                             'date': '', 'note': 'доп. приход',
+                             **({'payin_rub_is_net': True} if extra_basis[uid] else {})})
         deal.payin_parts = json.dumps(base, ensure_ascii=False)
         _sync_sber_claims(session, deal, base)
+
+
+def _refresh_payin_allocation_status(session, deal):
+    """A gross partial extra cannot be assigned across unequal bank fees without shares."""
+    deal.payin_allocation_status = None
+    if deal.payin_rub_is_net is True:
+        return
+    for part in _payin_extra_list(deal):
+        uuids = list(dict.fromkeys(str(u) for u in part.get('sber_uuids') or [] if u))
+        if not uuids:
+            continue
+        rows = session.query(SberIncome).filter(SberIncome.uuid.in_(uuids)).all()
+        if len(rows) != len(uuids):
+            deal.payin_allocation_status = 'needs_input'
+            return
+        gross_total = 0.0
+        ratios = []
+        for row in rows:
+            parsed = parse_sber_acquiring(row.purpose)
+            if not parsed['fee_known']:
+                deal.payin_allocation_status = 'needs_input'
+                return
+            net = float(row.amount_rub or 0)
+            gross = net + parsed['fee_rub']
+            if gross <= 0:
+                deal.payin_allocation_status = 'needs_input'
+                return
+            gross_total += gross
+            ratios.append(net / gross)
+        taken = float(part.get('amount_rub') or 0)
+        if (len(rows) > 1 and 0 < taken < gross_total - .01
+                and max(ratios) - min(ratios) > 1e-9):
+            deal.payin_allocation_status = 'needs_input'
+            return
 
 
 def _normalize_payout_network(value):
@@ -18723,6 +18809,25 @@ def _crm_exchange_approval_problem(session, deal, data, *, trusted_approval=None
     return None
 
 
+def _crm_payin_basis_error(data, is_net):
+    """An explicit part basis may only restate its immutable parent basis."""
+    for key in ('payin_parts', 'payin_extra'):
+        if key not in data:
+            continue
+        for part in data.get(key) or []:
+            if not isinstance(part, dict):
+                continue
+            for item in [part, *(part.get('sber_parts') or [])]:
+                if not isinstance(item, dict) or 'payin_rub_is_net' not in item:
+                    continue
+                marker = item['payin_rub_is_net']
+                if type(marker) is not bool:
+                    return 'payin_rub_is_net части должен быть boolean', 400
+                if marker is not is_net:
+                    return 'Семантика части прихода должна совпадать со сделкой', 409
+    return None
+
+
 def _create_deal_impl(session=None, *, data=None, defer_commit=False, skip_flow_gate=False,
                       trusted_approval=None, manual_override=False):
     """Existing CRM create validation; stand close may share its DB transaction."""
@@ -18731,6 +18836,12 @@ def _create_deal_impl(session=None, *, data=None, defer_commit=False, skip_flow_
         session = get_session()
     try:
         data = dict(request.get_json() if data is None else data)
+        if ('payin_rub_is_net' in data and data['payin_rub_is_net'] is not None
+                and type(data['payin_rub_is_net']) is not bool):
+            return jsonify(success=False, error='payin_rub_is_net должен быть boolean'), 400
+        basis_problem = _crm_payin_basis_error(data, data.get('payin_rub_is_net') is True)
+        if basis_problem:
+            return jsonify(success=False, error=basis_problem[0]), basis_problem[1]
         if (data.get('payout_wallet_id') in (None, '') and not defer_commit
                 and data.get('payout_source') == PayOutSource.BINANCE.value
                 and data.get('deal_kind') in (None, '', 'exchange')):
@@ -18908,6 +19019,7 @@ def _create_deal_impl(session=None, *, data=None, defer_commit=False, skip_flow_
             client_name=client_name,
             payin_method=PayInMethod(data['payin_method']) if data.get('payin_method') else None,
             payin_amount_rub=data.get('payin_amount_rub'),
+            payin_rub_is_net=data.get('payin_rub_is_net'),
             payin_amount_usdt=data.get('payin_amount_usdt'),
             payin_rate_rub_usdt=data.get('payin_rate_rub_usdt'),
             payin_tx_hash=data.get('payin_tx_hash'),
@@ -18987,6 +19099,7 @@ def _create_deal_impl(session=None, *, data=None, defer_commit=False, skip_flow_
             _apply_payin_extra(session, deal, data['payin_extra'],
                                main_usdt=data.get('payin_amount_usdt'),
                                main_rub=data.get('payin_amount_rub'))
+            _refresh_payin_allocation_status(session, deal)
 
         # Доли сделки во входящих переводах: один перевод может обслуживать
         # несколько сделок, поэтому учёт ведётся реестром, а не флагом «занят»
@@ -19170,6 +19283,14 @@ def update_deal(deal_id):
         # allocations or timestamps (including SQLAlchemy onupdate defaults).
         if data == {}:
             return jsonify({'success': True, 'deal': deal.to_dict()})
+        if 'payin_rub_is_net' in data:
+            if type(data['payin_rub_is_net']) is not bool:
+                return jsonify(success=False, error='payin_rub_is_net должен быть boolean'), 400
+            if data['payin_rub_is_net'] is not (deal.payin_rub_is_net is True):
+                return jsonify(success=False, error='Семантика суммы RUB закреплена при создании сделки'), 409
+        basis_problem = _crm_payin_basis_error(data, deal.payin_rub_is_net is True)
+        if basis_problem:
+            return jsonify(success=False, error=basis_problem[0]), basis_problem[1]
         old_wallet = session.query(Wallet).filter_by(id=deal.payout_wallet_id).first() if deal.payout_wallet_id else None
         old_policy_wallet = bool(old_wallet and old_wallet.purpose == 'exchange'
                                  and old_wallet.address == 'TA6S3RBEY57jq8fXEVVsU6H9JZ18inenG4')
@@ -19259,6 +19380,7 @@ def update_deal(deal_id):
             _apply_payin_extra(session, deal,
                                data.get('payin_extra', old_extra),
                                main_usdt=main_usdt, main_rub=main_rub)
+            _refresh_payin_allocation_status(session, deal)
 
         # Пересчёт needs_reimbursement если не передан явно, но изменился payout_amount_thb
         if ('needs_reimbursement' not in data and deal.reimbursement_id is None

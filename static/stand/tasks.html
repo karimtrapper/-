@@ -4705,7 +4705,7 @@ function newDeal(o){
   S.seq++;
   if(!o.client) o.client=o.sourceRef||'Без имени';
   const d={id:S.seq,code:'СД-'+S.seq,createdAt:now(),step:o.step,closed:false,
-    manual:!!o.manual,manualNew:!!o.manualNew,log:[],
+    manual:!!o.manual,manualNew:!!o.manualNew,rubIsNet:true,log:[],
     source:o.source,sourceRef:o.sourceRef,bitrixCloseProof:o.bitrixCloseProof||null,client:o.client,type:o.type,
     pair:(o.type==='Обмен валюты'?(o.pair||(o.payType==='Крипта'?'USDT → THB':'RUB → THB')):null),
     direction:o.direction||o.pair||'RUB → THB',
@@ -5227,17 +5227,31 @@ function s18AccountKey(d){
 function s18AccountLabel(key){return key==='sber'?'Сбер':key==='flow_sole'?'Flow Sole':
   key?.startsWith('other:')?'Другой счёт · '+key.slice(6):
   key?.startsWith('bank:')?'Банковский счёт · ••••'+key.slice(-4):'Счёт не указан';}
+function incomeRubBasis(inc,isNet){
+  if(!inc)return null;
+  if(isNet)return Number(inc.rub)>0?Number(inc.rub):null;
+  if(inc.grossRub!=null)return Number(inc.grossRub)>0?Number(inc.grossRub):null;
+  if(inc.kind==='эквайринг'||inc.kind==='acquiring'||inc.kind==='СБП')return null;
+  return Number(inc.rub)>0?Number(inc.rub):null;
+}
+function partRubBasis(d,p){return p.rubIsNet===undefined?d.rubIsNet===true:p.rubIsNet===true;}
 function s18Rub(d){
   const parts=d.payinParts||[];
   if(!parts.length)return Number(d.incomeAmount||d.amountRub||0);
-  return Math.round(parts.reduce((sum,p)=>{
+  const value=parts.reduce((sum,p)=>{
     const inc=incomes().find(i=>String(i.id)===String(p.incId));
-    const gross=Number(inc?.grossRub||inc?.rub||0);
-    return sum+(inc?.source==='sber'&&gross?Number(p.amountRub)*Number(inc.rub)/gross:Number(p.amountRub));
-  },0)*100)/100;
+    const isNet=partRubBasis(d,p),basis=incomeRubBasis(inc,isNet);
+    if(!basis)return NaN;
+    return sum+(isNet?Number(p.amountRub):Number(p.amountRub)*Number(inc.rub)/basis);
+  },0);
+  return Number.isFinite(value)?Math.round(value*100)/100:null;
 }
 function s18CrmUnavailable(d){
   const members=[d].concat((d.conv||[]).map(deal).filter(Boolean));
+  if(members.some(x=>(x.payinParts||[]).some(p=>{
+    const inc=incomes().find(i=>String(i.id)===String(p.incId));
+    return inc?.source==='sber'&&!partRubBasis(x,p)&&incomeRubBasis(inc,false)==null;
+  })))return 'Комиссия банка по gross-приходу неизвестна. Уточните выписку перед расчётом отправки брокеру.';
   return members.some(x=>x.manualBankReceipt?.status==='confirmed'&&(x.payinParts||[]).some(p=>
     !String(p.incId).startsWith('sber:')&&!p.crmIncomeId))?
     'Ручной приход ещё не связан с общим реестром. Добавить поступления CRM можно после сверки связи. Эти рубли можно отправить отдельной пачкой.':'';
@@ -5277,7 +5291,7 @@ function rubBatchReady(x){
     const manual=x.manualBankReceipt;
     const manualOk=i&&i.source==='manual_confirmed'&&manual?.status==='confirmed'&&manual.confirmedAt&&manual.confirmedBy&&i.manualReceiptId===manual.id&&Number(p.amountRub)===Number(manual.actualAmount);
     if(!i||ids.has(String(p.incId))||i.dealId!==x.id||i.excluded||
-      !(i.source==='sber'||i.demo===true||manualOk)||Number(p.amountRub)!==Number(i.grossRub||i.rub))return false;
+      !(i.source==='sber'||i.demo===true||manualOk)||Number(p.amountRub)!==incomeRubBasis(i,partRubBasis(x,p)))return false;
     ids.add(String(p.incId));total+=Number(p.amountRub);
   }
   return Math.round(total*100)===Math.round(rub*100);
@@ -7250,7 +7264,8 @@ function crmPayload(d){
         percent:a.comp==='fixed'?0:(+a.percent||0),
         fixed_usdt:a.comp==='fixed'?(+a.fixed||0):0};
     });
-    const profit=(+c.payinUsdt||0)-(+c.payoutUsdt||0);
+    const hasPayinFact=c.payinMethod!=='flow_sole_reqs'||!!c.payinTxHash;
+    const profit=hasPayinFact?(+c.payinUsdt||0)-(+c.payoutUsdt||0):null;
     const payouts=agentPayload.map(a=>({...a}));
     let base=profit;
     [...new Set(payouts.map(a=>a.tier))].sort((a,b)=>a-b).forEach(t=>{
@@ -7266,15 +7281,18 @@ function crmPayload(d){
       client_name:d.client||null,is_custom:true,
       created_at:c.date?new Date(c.date+'T12:00:00').toISOString():null,
       payin_method:c.payinMethod||'crypto_direct',payin_tx_hash:c.payinTxHash||null,
-      payin_amount_usdt:c.payinUsdt??null,
+      payin_amount_usdt:hasPayinFact?c.payinUsdt??null:null,
+      ...(d.rubIsNet===true?{payin_rub_is_net:true}:{}),
       payin_parts:(d.payinParts||[]).map(x=>({uuid:x.uuid||String(x.incId||'').replace(/^sber:/,'')||null,
         amount_rub:x.amountRub??null,payer:x.payer||'',date:x.date||'',note:x.note||'',
-        kind:x.kind==='acquiring'?'acquiring':'transfer',fee_rub:x.fee??0,net_rub:x.net??x.amountRub??null})),
+        kind:x.kind==='acquiring'?'acquiring':'transfer',fee_rub:x.fee??null,net_rub:x.net??x.amountRub??null,
+        ...(x.rubIsNet===true||x.rubIsNet===undefined&&d.rubIsNet===true?{payin_rub_is_net:true}:{})})),
       payin_extra:(d.payinExtra||[]).map(x=>({
         method:x.method||'partners_cash',amount_rub:x.amount_rub??x.amountRub??null,
         rate_rub_usdt:x.rate_rub_usdt??num(x.rate),amount_usdt:x.amount_usdt??x.amountUsdt??null,
         partner_name:x.partner_name??x.partner??null,tx_hashes:x.tx_hashes||x.hashes||[],
-        sber_uuids:x.sber_uuids||[],note:x.note||''})),
+        sber_uuids:x.sber_uuids||[],note:x.note||'',
+        ...(x.rubIsNet===true||x.rubIsNet===undefined&&d.rubIsNet===true?{payin_rub_is_net:true}:{})})),
       custom_payin_currency:c.payinCurrency||'USDT',custom_payin_amount:c.payinAmount??null,
       custom_payin_rate:c.payinCurrency==='USDT'?null:c.payinRate??null,
       payout_method:c.payoutMethod||'office',payout_source:'binance',
@@ -7283,14 +7301,15 @@ function crmPayload(d){
       custom_payout_currency:c.payoutCurrency||'THB',custom_payout_amount:c.payoutAmount??null,
       custom_payout_rate:c.payoutCurrency==='USDT'?null:c.payoutRate??null,
       agents:agentPayload,profit_usdt:profit,
-      profit_percent:(+c.payoutUsdt)>0?profit/(+c.payoutUsdt)*100:0,
-      net_profit_usdt:c.netProfit??Math.round(base*100)/100,notes:c.notes||null};
+      profit_percent:profit!=null&&(+c.payoutUsdt)>0?profit/(+c.payoutUsdt)*100:null,
+      net_profit_usdt:profit==null?null:(c.netProfit??Math.round(base*100)/100),notes:c.notes||null};
   }
   const E=econ(d), po=d.payout||{}, rub=payCur(d)==='rub', prop=d.type==='Оплата недвижимости';
   const r2=v=>(v==null||v===''||!isFinite(v))?null:Math.round(v*100)/100;
   const hx=l=>(l||[]).filter(h=>h&&h.hash).map(h=>({hash:h.hash,network:crmNet(h.network||h.net),amount_usdt:h.amount??h.amount_usdt??null}));
   const p={client_name:d.client, client_id:typeof d.clientId==='string'&&d.clientId.startsWith('crm:')?parseInt(d.clientId.slice(4)):(d.crmClientId??null),
     manager_name:d.manager||'Елизавета', status:'completed', skip_sync:true,
+    ...(d.rubIsNet===true?{payin_rub_is_net:true}:{}),
     payin_method:d.payType==='По реквизитам'&&d.rubReceivingAccount?.mode==='flowsole'
       ?'flow_sole_reqs':PAYIN_CRM[d.payType]||'sber_reqs',
     payin_amount_rub:rub?(d.incomeAmount||d.amountRub||null):null,
@@ -7302,13 +7321,15 @@ function crmPayload(d){
     payin_tx_hashes:hx(d.payinHashes),
     payin_parts:(d.payinParts||[]).map(x=>({uuid:x.uuid||String(x.incId||'').replace(/^sber:/,'')||null,
       amount_rub:x.amountRub??null,payer:x.payer||'',date:x.date||'',note:x.note||'',
-      kind:x.kind==='acquiring'?'acquiring':'transfer',fee_rub:x.fee??0,net_rub:x.net??x.amountRub??null})),
+      kind:x.kind==='acquiring'?'acquiring':'transfer',fee_rub:x.fee??null,net_rub:x.net??x.amountRub??null,
+      ...(x.rubIsNet===true||x.rubIsNet===undefined&&d.rubIsNet===true?{payin_rub_is_net:true}:{})})),
     payin_extra:(d.payinExtra||[]).map((x,i)=>({
       method:x.method||'partners_cash',amount_rub:x.amount_rub??x.amountRub??null,
       rate_rub_usdt:x.rate_rub_usdt??num(x.rate),
       amount_usdt:x.amount_usdt??x.amountUsdt??payinParts(d)[i+1]?.usdt??null,
       partner_name:x.partner_name??x.partner??null,
-      tx_hashes:x.tx_hashes||x.hashes||[],sber_uuids:x.sber_uuids||[],note:x.note||''})),
+      tx_hashes:x.tx_hashes||x.hashes||[],sber_uuids:x.sber_uuids||[],note:x.note||'',
+      ...(x.rubIsNet===true||x.rubIsNet===undefined&&d.rubIsNet===true?{payin_rub_is_net:true}:{})})),
     doc_invoice_url:d.docLinks?.invoice||null,
     doc_contract_url:d.docLinks?.contract||null,
     doc_payment_url:d.docLinks?.payment||null,
@@ -7573,7 +7594,7 @@ function crmForm(d){
       <div class="psec pin" style="margin-top:12px">Pay-In (Получение)</div>
       <div class="fr">
         ${sel('payin_method','Метод Pay-In',PAYIN_LABEL)}
-        ${p.custom_payin_currency?ro('Сумма '+p.custom_payin_currency,p.custom_payin_amount):p.payin_amount_rub!=null||payCur(d)==='rub'?inp('payin_amount_rub','Сумма RUB'):''}
+        ${p.custom_payin_currency?ro('Сумма '+p.custom_payin_currency,p.custom_payin_amount):p.payin_amount_rub!=null||payCur(d)==='rub'?inp('payin_amount_rub','Сумма RUB',{hint:d.rubIsNet===true?'после комиссии банка':'до комиссии банка (сделка заведена до 20.10)'}):''}
         ${!p.custom_payin_currency&&payCur(d)==='rub'&&!isCrypto(d)?(()=>{const cp=clientRubPaid(d);
           return ro('Клиент заплатил, ₽',cp.rub!=null?moneyKop(cp.rub,'₽'):'нет суммы',cp.date?'приход от '+cp.date+', из частей прихода':'из подтверждённых частей прихода');})():''}
         ${inp('payin_amount_usdt','Сумма USDT')}
@@ -8577,7 +8598,7 @@ function payinIssues(d){
   parts.forEach(p=>{
     const x=incomes().find(i=>i.id===p.incId);
     if(!x||x.dealId!==d.id||x.excluded) issues.push('Часть прихода не связана с доступной записью');
-    if(x&&Number(x.grossRub||x.rub)!==Number(p.amountRub)) issues.push('Сумма части отличается от записи прихода');
+    if(x&&incomeRubBasis(x,partRubBasis(d,p))!==Number(p.amountRub)) issues.push('Сумма части отличается от записи прихода или комиссия банка неизвестна');
     const acc=x&&x.acc, purpose=x&&x.purpose;
     const manual=d.manualBankReceipt, manualAccount=manual&&x&&x.source==='manual_confirmed'&&x.manualReceiptId===manual.id&&manual.status==='confirmed'&&manual.confirmedAt&&manual.confirmedBy&&Number(p.amountRub)===Number(manual.actualAmount)&&acc===manual.bank+' · '+manual.account;
     if(!acc) issues.push('Счёт прихода не указан');
@@ -8598,11 +8619,13 @@ function payinPool(d){
       <span>выберите зачисление из банковской выписки</span></div>
     ${(d.payinParts||[]).length?(d.payinParts||[]).map((x,i)=>`<div class="sbrow taken">
       <span>${x.kind==='acquiring'?'📲':'🏦'} <b>${money(x.amountRub,'₽')}</b>
-        ${x.kind==='acquiring'?`<span class="sub2">(зачислено ${money(x.net,'₽')} + комиссия ${money(x.fee,'₽')})</span>`:''}
+        ${x.kind==='acquiring'?`<span class="sub2">(зачислено ${money(x.net,'₽')} · комиссия ${x.fee==null?'неизвестна':money(x.fee,'₽')})</span>`:''}
         <span class="sub2">· ${sberText(x.payer||'')} · ${sberText(x.date||'')} · ${sberText(x.acc||'счёт неизвестен')} · ${sberText(x.purpose||'назначение неизвестно')}</span>${x.manualReceiptId?'<span class="net"> · подтверждено оператором</span>':''}</span>
       ${x.manualReceiptId?'':`<button class="btn btn-outline btn-sm" onclick="sberDrop(${d.id},${i})">Убрать</button>`}</div>`).join(''):''}
     ${available.length?available.slice(0,6).map(x=>`<div class="sbrow">
       <span><span class="net">${sberText(x.kind)} · Сбер</span> <b>${money(x.rub,'₽')}</b>
+        ${x.grossRub!=null?`<span class="sub2">· до комиссии ${money(x.grossRub,'₽')} · комиссия ${money(x.feeRub??0,'₽')}</span>`:
+          (x.kind==='эквайринг'?'<span class="sub2">· комиссия неизвестна</span>':'')}
         <span class="sub2">· ${sberText(x.payer)} · ${sberText(x.date)} · ${sberText(x.acc||'счёт неизвестен')} · ${sberText(x.purpose||'назначение неизвестно')}</span></span>
       <button class="btn btn-sm" style="background:var(--green-dark);color:#fff;border:none" onclick="sberTake(${d.id},${sberText(JSON.stringify(x.id))})">Забрать</button></div>`).join('')
       :`<p class="fh">Свободных поступлений нет — всё разобрано по другим сделкам.</p>`}
@@ -8621,7 +8644,7 @@ function payinDone(id){
   if(!got){toast('Ничего не забрано — нечего закрывать');return;}
   const ids=(d.payinParts||[]).map(p=>p.incId);
   if(new Set(ids).size!==ids.length||(d.payinParts||[]).some(p=>!p.incId||
-      !incomes().some(x=>x.id===p.incId&&x.dealId===d.id&&!x.excluded&&!x.cnvId&&Number(x.grossRub||x.rub)===Number(p.amountRub)))){
+      !incomes().some(x=>x.id===p.incId&&x.dealId===d.id&&!x.excluded&&!x.cnvId&&incomeRubBasis(x,partRubBasis(d,p))===Number(p.amountRub)))){
     toast('Есть часть без зарегистрированного прихода — перепроверьте список');return;}
   const gap=Math.round((want-got)*100)/100;
   const issues=payinIssues(d);
@@ -8642,14 +8665,16 @@ function sberTake(id,incId){
   if(x.excluded||x.cnvId||x.dealId||(d.payinParts||[]).some(p=>p.incId===x.id)){
     toast('Приход уже занят или недоступен');return;}
   if(!Number.isFinite(Number(x.rub))||Number(x.rub)<=0){toast('У прихода нет корректной суммы');return;}
+  const isNet=d.rubIsNet===true, basis=incomeRubBasis(x,isNet);
+  if(!basis){toast('Комиссия банка неизвестна — gross-сумму нельзя определить');return;}
   x.dealId=d.id;
   d.payinParts=d.payinParts||[];
   /* Для выписки Сбера комиссия берётся из назначения: на счёт уже пришло нетто.
      Тестовые записи оставляют прежний учебный расчёт. */
   const acq=(x.kind==='эквайринг'||x.kind==='СБП');
-  d.payinParts.push({amountRub:x.source==='sber'?(x.grossRub||x.rub):x.rub,payer:x.payer,date:x.date,kind:acq?'acquiring':'bank',
+  d.payinParts.push({amountRub:basis,...(isNet?{rubIsNet:true}:{}),payer:x.payer,date:x.date,kind:acq?'acquiring':'bank',
     net:acq?(x.source==='sber'?x.rub:Math.round(x.rub*0.9904*100)/100):null,
-    fee:acq?(x.source==='sber'?(x.feeRub||0):Math.round(x.rub*0.0096*100)/100):null,incId:x.id,
+    fee:acq?(x.source==='sber'?x.feeRub:Math.round(x.rub*0.0096*100)/100):0,incId:x.id,
     acc:x.acc||null,purpose:x.purpose||null,demo:!!x.demo});
   if(d.step!=='s14'&&d.step!=='s14m') d.incomeAmount=payinSum(d);
   save();render();toast('Приход забран: '+money(x.rub,'₽'));
@@ -8911,7 +8936,8 @@ function viewEditLegacy(){
           <select class="fc" id="e_pay" onchange="editRecalc(${d.id})">${opt(['По реквизитам','СБП','Крипта','Наличные'],d.payType)}</select>
           ${d.type==='Оплата недвижимости'?'<p class="fh">чем платит клиент — получателю в любом случае уходят баты</p>':''}</div>
         ${crypto?'<div class="fg"></div>':`<div class="fg"><label class="fl">Сумма RUB</label>
-          <input class="fc num" id="e_pay_amt" name="payin_amount_rub" value="${d.amountRub||''}" placeholder="сумма в рублях"></div>`}
+          <input class="fc num" id="e_pay_amt" name="payin_amount_rub" value="${d.amountRub||''}" placeholder="сумма в рублях">
+          <p class="fh">${d.rubIsNet===true?'после комиссии банка':'до комиссии банка (сделка заведена до 20.10)'}</p></div>`}
         <div class="fg"><label class="fl">Сумма USDT</label>
           <input class="fc num" id="${crypto?'e_pay_amt':'e_usdt'}" name="payin_amount_usdt" value="${(crypto?d.amountUsdt:d.amountUsdt)||''}" placeholder="сумма в USDT">
           <p class="fh">${crypto?'сколько USDT прислал клиент':'введи сколько USDT реально пришло — курс посчитается из рублей'}</p>

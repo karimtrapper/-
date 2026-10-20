@@ -19,7 +19,9 @@ const linkedIncome = {id: 5, dealId: 8, rub: 9987.5, source: 'manual_confirmed',
   manualReceiptId: 'receipt-1', acc: 'Test Bank · 40702810900000012345',
   purpose: 'Оплата по договору'};
 const issueCtx = vm.createContext({expectOf: d => d.expect, incomes: () => [linkedIncome]});
-vm.runInContext(html.slice(issuesStart, issuesEnd), issueCtx);
+vm.runInContext(['incomeRubBasis', 'partRubBasis'].map(name =>
+  html.match(new RegExp(`^function ${name}\\([^]*?^}`, 'm'))[0]).join('\n')
+  + '\n' + html.slice(issuesStart, issuesEnd), issueCtx);
 assert.deepEqual(Array.from(vm.runInContext('payinIssues(' + JSON.stringify(linkedDeal) + ')', issueCtx)), []);
 
 const start = html.indexOf('function manualBankReceiptBlock(d){');

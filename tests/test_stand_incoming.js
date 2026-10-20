@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 
 const html = fs.readFileSync('static/stand/tasks.html', 'utf8');
-const names = ['sberFree', 'payinSum', 'payinIssues', 'payinDone', 'sberTake',
+const names = ['incomeRubBasis', 'partRubBasis', 'sberFree', 'payinSum', 'payinIssues', 'payinDone', 'sberTake',
   'rubApiAccount', 'expectOf', 'expectSet', 'payinPool'];
 const source = names.map(name => {
   const match = html.match(new RegExp(`^function ${name}\\([^]*?^}`, 'm'));

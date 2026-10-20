@@ -1369,6 +1369,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                                     <option value="partners_cash">Партнёры (наличные)</option>
                                     <option value="spp_doverka" data-legacy="1" hidden>СБП (Доверка, архив)</option>
                                 </select>
+                                <small id="flowAccountHintC" class="form-hint" style="display:none">СГБ · р/с …0261</small>
                             </div>
                             <div class="form-group" id="customPayinTxHashGroup">
                                 <label class="form-label">Хэш транзакции <span style="font-weight:400;color:#64748b;">(если есть)</span></label>
@@ -1397,14 +1398,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                             </div>
                         </div>
 
-                        <div id="flowManualGroupC" style="display:none; margin-bottom:1rem; padding:0.75rem; border:1px solid #bae6fd; border-radius:8px;">
-                            <strong>Приход Flow Sole · ФЛОУ СОЛЕ КО., ЛТД · Московский филиал БАНК СГБ · р/с 40807810819000000261</strong>
-                            <div class="form-row" style="margin-top:8px;">
-                                <div class="form-group"><label class="form-label">Сумма прихода, ₽</label><input id="flowAmountC" type="number" min="0.01" step="0.01" class="form-control"></div>
-                                <div class="form-group"><label class="form-label">Дата прихода</label><input id="flowDateC" type="date" class="form-control"></div>
-                                <div class="form-group"><label class="form-label">Файл выписки</label><input id="flowFileC" type="file" class="form-control" accept=".pdf,.png,.jpg,.jpeg,.webp"></div>
-                            </div>
-                        </div>
+                        <div id="flowManualGroupC" class="form-hint" style="display:none"></div>
 
                         <button type="button" id="customDealSubmit" class="btn btn-success" style="margin-top: 1rem;"
                             onclick="createCustomDeal()">
@@ -1435,12 +1429,14 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                                          показывается только когда открыта старая сделка с этим методом -->
                                     <option value="spp_doverka" data-legacy="1" hidden>СБП (Доверка, архив)</option>
                                 </select>
+                                <small id="flowAccountHint" class="form-hint" style="display:none">СГБ · р/с …0261</small>
                                 <div id="flowGateHint" style="display:none;margin-top:8px;font-size:12px;color:#92400E">Флоу в проверке — пока проводите через Карима</div>
                             </div>
                             <div class="form-group" id="payinRubGroup">
                                 <label class="form-label">Сумма RUB</label>
                                 <input type="number" step="any" class="form-control" name="payin_amount_rub" placeholder="100000"
                                     oninput="autoCalcUsdt()">
+                                <small id="payinRubHint" class="form-hint">после комиссии банка</small>
                             </div>
                             <div class="form-group">
                                 <label class="form-label">Сумма USDT</label>
@@ -1451,14 +1447,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                             </div>
                         </div>
 
-                        <div id="flowManualGroup" style="display:none; margin-bottom:1rem; padding:0.75rem; border:1px solid #bae6fd; border-radius:8px;">
-                            <strong>Приход Flow Sole · ФЛОУ СОЛЕ КО., ЛТД · Московский филиал БАНК СГБ · р/с 40807810819000000261</strong>
-                            <div class="form-row" style="margin-top:8px;">
-                                <div class="form-group"><label class="form-label">Сумма прихода, ₽</label><input id="flowAmount" type="number" min="0.01" step="0.01" class="form-control"></div>
-                                <div class="form-group"><label class="form-label">Дата прихода</label><input id="flowDate" type="date" class="form-control"></div>
-                                <div class="form-group"><label class="form-label">Файл выписки</label><input id="flowFile" type="file" class="form-control" accept=".pdf,.png,.jpg,.jpeg,.webp"></div>
-                            </div>
-                        </div>
+                        <div id="flowManualGroup" class="form-hint" style="display:none"></div>
 
                         <div class="form-row">
                             <div class="form-group" id="payinWalletGroup" style="display:none">
@@ -5317,6 +5306,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 
         // Глобальная переменная для режима редактирования
         let editingDealId = null;
+        let editingPayinRubIsNet = true;
         let dealFormBaseline = null;
 
         function setDealSelectValue(select, value, label) {
@@ -5451,6 +5441,9 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 
                 if (data.success) {
                     const deal = data.deal;
+                    editingPayinRubIsNet = deal.payin_rub_is_net === true;
+                    document.getElementById('payinRubHint').textContent = editingPayinRubIsNet
+                        ? 'после комиссии банка' : 'до комиссии банка (сделка заведена до 20.10)';
 
                     // Обновляем заголовок
                     document.querySelector('#create .card-title').innerHTML =
@@ -5488,8 +5481,6 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         setPayinMethodValue('customPayinMethod', deal.payin_method || '');
                         flowExistingParts = (deal.payin_parts || []).filter(p => String(p.uuid || '').startsWith('crm-manual:'));
                         flowExistingReceipt = flowExistingParts.length > 0;
-                        if (flowExistingReceipt) document.getElementById('flowAmountC').value = flowExistingParts[0].amount_rub || '';
-                        document.getElementById('flowAmountC').readOnly = flowExistingReceipt;
                         sberParts = (methodUsesSberPool(deal.payin_method) && deal.payin_parts) ? deal.payin_parts.slice() : [];
                         onCustomPayinMethodChange();
                         customUsdtMode = { payin: 'rate', payout: 'rate' };  // грузим курс → USDT производный
@@ -5525,8 +5516,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         }
                         flowExistingParts = (deal.payin_parts || []).filter(p => String(p.uuid || '').startsWith('crm-manual:'));
                         flowExistingReceipt = flowExistingParts.length > 0;
-                        if (flowExistingReceipt) document.getElementById('flowAmount').value = flowExistingParts[0].amount_rub || '';
-                        document.getElementById('flowAmount').readOnly = flowExistingReceipt;
+                        flowShow('', deal.payin_method === 'flow_sole_reqs');
                         // Части прихода Сбера (СБП и реквизиты — общий пул выписки)
                         sberParts = (methodUsesSberPool(deal.payin_method) && deal.payin_parts) ? deal.payin_parts.slice() : [];
                         if (sberParts.length) sberRender();
@@ -5670,6 +5660,8 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 
         function cancelEditMode() {
             editingDealId = null;
+            editingPayinRubIsNet = true;
+            document.getElementById('payinRubHint').textContent = 'после комиссии банка';
             dealFormBaseline = null;
             document.querySelector('#create .card-title').textContent = 'Создать новую сделку';
             document.getElementById('createDealForm').reset();
@@ -5738,6 +5730,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             const netProfit = customAgentsRecalc();
 
             const customMethod = document.getElementById('customPayinMethod')?.value || null;
+            const customHash = document.getElementById('customPayinTxHash')?.value.trim() || null;
             const data = {
                 is_custom: true,
                 manager_name: managerName,
@@ -5745,9 +5738,12 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 client_name: clientName,
                 created_at: createdAt || null,
                 payin_method: customMethod,
+                payin_tx_hash: customHash,
                 payin_parts: methodUsesSberPool(customMethod) ? sberParts : customMethod === 'flow_sole_reqs' ? flowExistingParts : [],
+                ...(editingDealId === null ? {payin_rub_is_net: true} : {}),
+                payin_amount_rub: payinCurrency === 'RUB' ? payinAmount : null,
                 payout_source: 'binance',
-                payin_amount_usdt: payinUsdt,
+                payin_amount_usdt: customMethod === 'flow_sole_reqs' && !customHash ? null : payinUsdt,
                 payout_amount_usdt: payoutUsdt,
                 payout_method: payoutMethod || null,
                 custom_payin_currency: payinCurrency,
@@ -5757,9 +5753,10 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 custom_payout_amount: payoutAmount,
                 custom_payout_rate: payoutCurrency !== 'USDT' ? payoutRate : null,
                 agents: agents,
-                profit_usdt: profit,
-                profit_percent: payinUsdt > 0 ? (profit / payinUsdt * 100) : 0,
-                net_profit_usdt: netProfit,
+                profit_usdt: customMethod === 'flow_sole_reqs' && !customHash ? null : profit,
+                profit_percent: customMethod === 'flow_sole_reqs' && !customHash ? null
+                    : payinUsdt > 0 ? (profit / payinUsdt * 100) : 0,
+                net_profit_usdt: customMethod === 'flow_sole_reqs' && !customHash ? null : netProfit,
                 notes: notes || null
             };
 
@@ -5775,7 +5772,8 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     showToast('Укажите суммы Pay-In и Pay-Out', 'error');
                     return;
                 }
-                if (data.custom_payin_currency !== 'USDT' && data.custom_payin_rate <= 0) {
+                if (data.payin_method !== 'flow_sole_reqs'
+                        && data.custom_payin_currency !== 'USDT' && data.custom_payin_rate <= 0) {
                     showToast('Укажите курс Pay-In к USDT', 'error');
                     return;
                 }
@@ -7002,36 +7000,20 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         function methodUsesSberPool(method) { return method === 'sber_reqs' || method === 'sber_wl'; }
         let flowExistingReceipt = false;
         let flowExistingParts = [];
-        function flowToday() {
-            const d = new Date();
-            return [d.getFullYear(), String(d.getMonth() + 1).padStart(2, '0'),
-                String(d.getDate()).padStart(2, '0')].join('-');
-        }
         function flowShow(suffix, show) {
             const group = document.getElementById('flowManualGroup' + suffix);
-            if (group) group.style.display = show ? 'block' : 'none';
-            const day = document.getElementById('flowDate' + suffix);
-            if (show && day && !day.value) day.value = flowToday();
-        }
-        function flowReceiptInput(suffix, hasExisting) {
-            const amount = Number(document.getElementById('flowAmount' + suffix)?.value);
-            const file = document.getElementById('flowFile' + suffix)?.files?.[0];
-            if (hasExisting && !file) return null;
-            if (!(amount > 0) || Math.abs(Math.round(amount * 100) - amount * 100) > 0.00001 || !file) {
-                showToast('Для прихода Flow Sole нужны сумма в ₽ и файл выписки', 'error');
-                return false;
+            const account = document.getElementById('flowAccountHint' + suffix);
+            if (account) account.style.display = show ? 'block' : 'none';
+            if (!group) return;
+            group.style.display = show && flowExistingReceipt ? 'block' : 'none';
+            if (show && flowExistingReceipt) {
+                group.innerHTML = flowExistingParts.map((part, index) => {
+                    const amount = Number(part.amount_rub || 0).toLocaleString('ru-RU',
+                        {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                    return `<div>Ранее сохранённый приход ${index + 1}: ${amount} ₽${part.date ? ' · ' + escapeHtml(part.date) : ''}</div>`;
+                }).join('') + (editingDealId
+                    ? `<a href="/api/deals/${editingDealId}/manual-rub-income/statement" target="_blank" rel="noopener">Выписка</a>` : '');
             }
-            const body = new FormData();
-            body.append('amount_rub', amount.toFixed(2));
-            body.append('operation_date', document.getElementById('flowDate' + suffix)?.value || flowToday());
-            body.append('file', file);
-            return body;
-        }
-        async function flowSaveReceipt(dealId, body) {
-            const response = await fetch(`${API_URL}/api/deals/${dealId}/manual-rub-income`,
-                {method: 'POST', body});
-            const result = await response.json();
-            if (!result.success) throw new Error(result.error || 'Не удалось сохранить приход');
         }
 
         // Архивные методы (spp_doverka) убраны из выпадашки, но у старых сделок они
@@ -7223,14 +7205,14 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             const inc = sberIncomesCache.find(x => x.uuid === uuid);
             const part = payinExtra[i];
             if (!inc || (part.sber_parts || []).some(x => x.uuid === uuid)) return;
-            // Как в основном блоке: в сделку идёт то, что заплатил КЛИЕНТ.
-            // У эквайринга на счёт падает меньше — банк снимает комиссию сразу
+            const amount = sberIncomeBasis(inc);
+            if (amount === null) { showToast('Комиссия банка неизвестна — сумму до комиссии определить нельзя', 'error'); return; }
             part.sber_parts = part.sber_parts || [];
             part.sber_parts.push({
-                uuid: inc.uuid, amount_rub: inc.gross_rub ?? inc.amount_rub,
+                uuid: inc.uuid, amount_rub: amount,
                 payer: inc.payer || '', date: (inc.operation_date || '').substring(0, 10),
-                kind: inc.kind || 'transfer', fee_rub: inc.fee_rub || 0,
-                net_rub: inc.amount_rub,
+                kind: inc.kind || 'transfer', fee_rub: inc.fee_rub ?? null,
+                net_rub: inc.amount_rub, ...(editingPayinRubIsNet ? {payin_rub_is_net: true} : {}),
             });
             payinExtraSberSync(i);
             // Доля USDT из пачки — как в основном блоке: если рубли уже
@@ -7389,6 +7371,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         .map(t => ({ hash: String(t.hash).trim(),
                                      amount_usdt: t.amount_usdt ?? null })),
                     sber_uuids: (p.sber_parts || []).map(x => x.uuid).filter(Boolean),
+                    ...(editingPayinRubIsNet ? {payin_rub_is_net: true} : {}),
                     note: p.note || '',
                 }));
         }
@@ -7439,6 +7422,9 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 rubGroup.style.display = 'none';
                 rateGroup.style.display = 'none';
             }
+            const flowSole = method.value === 'flow_sole_reqs';
+            document.getElementById('createDealForm').payin_rate_rub_usdt.readOnly = flowSole;
+            if (flowSole) { payinMode = 'usdt'; autoCalcUsdt(); }
 
             // Курс для клиента
             exchangeRateGroup.style.display = isCryptoDirect ? 'none' : 'block';
@@ -7493,13 +7479,13 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         function sberAddIncome(uuid) {
             const inc = sberIncomesCache.find(i => i.uuid === uuid);
             if (!inc || sberParts.some(p => p.uuid === uuid)) return;
-            // В сделку идёт то, что заплатил КЛИЕНТ. У эквайринга на счёт падает
-            // меньше — банк удерживает комиссию сразу, поэтому берём gross,
-            // иначе курс клиента и объём сделки занижены на размер комиссии.
-            sberParts.push({ uuid: inc.uuid, amount_rub: inc.gross_rub ?? inc.amount_rub,
+            const amount = sberIncomeBasis(inc);
+            if (amount === null) { showToast('Комиссия банка неизвестна — сумму до комиссии определить нельзя', 'error'); return; }
+            sberParts.push({ uuid: inc.uuid, amount_rub: amount,
                              payer: inc.payer || '', date: (inc.operation_date || '').substring(0, 10),
                              note: '', kind: inc.kind || 'transfer',
-                             fee_rub: inc.fee_rub || 0, net_rub: inc.amount_rub });
+                             fee_rub: inc.fee_rub ?? null, net_rub: inc.amount_rub,
+                             ...(editingPayinRubIsNet ? {payin_rub_is_net: true} : {}) });
             sberRender();
             applyConversionUsdt(inc);
         }
@@ -7543,7 +7529,8 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             const noteEl = document.getElementById('sberManualNote' + sfx);
             const amt = parseFloat(amtEl?.value) || 0;
             if (amt <= 0) { showToast('Укажите сумму прихода', 'error'); return; }
-            sberParts.push({ uuid: null, amount_rub: amt, payer: '', date: '', note: (noteEl?.value || '').trim() });
+            sberParts.push({ uuid: null, amount_rub: amt, payer: '', date: '', note: (noteEl?.value || '').trim(),
+                ...(editingPayinRubIsNet ? {payin_rub_is_net: true} : {}) });
             if (amtEl) amtEl.value = '';
             if (noteEl) noteEl.value = '';
             sberRender();
@@ -7552,6 +7539,12 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         function sberRemovePart(i) { sberParts.splice(i, 1); sberRender(); }
 
         const rub2 = v => Number(v || 0).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+        function sberIncomeBasis(inc) {
+            if (editingPayinRubIsNet) return Number(inc.amount_rub);
+            if (inc.gross_rub != null) return Number(inc.gross_rub);
+            return inc.kind === 'acquiring' ? null : Number(inc.amount_rub);
+        }
 
         // Строка прихода в пуле. У эквайринга (СБП) плательщик всегда «Московский банк
         // Сбербанка России» и сумма уже за вычетом комиссии — показываем, сколько
@@ -7562,8 +7555,8 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             if (i.kind === 'acquiring') {
                 const mer = i.merchant ? ` · мерчант …${String(i.merchant).slice(-4)}` : '';
                 return `<span class="sber-income-kind pill" style="background:#dbeafe;color:#1d4ed8;border-radius:4px;padding:1px 5px;font-size:11px;">СБП</span> `
-                    + `<b>${rub2(i.gross_rub)} ₽</b> `
-                    + `<span style="color:#64748b;">(зачислено ${rub2(i.amount_rub)} + комиссия ${rub2(i.fee_rub)})</span>`
+                    + `<b>${i.gross_rub == null ? 'до комиссии —' : rub2(i.gross_rub) + ' ₽'}</b> `
+                    + `<span style="color:#64748b;">(зачислено ${rub2(i.amount_rub)} ₽ + комиссия ${i.fee_rub == null ? 'неизвестна' : rub2(i.fee_rub) + ' ₽'})</span>`
                     + `${mer} · ${date}`;
             }
             return `<span class="sber-income-kind pill" style="background:#dcfce7;color:#15803d;border-radius:4px;padding:1px 5px;font-size:11px;">реквизиты</span> `
@@ -8735,6 +8728,14 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         async function onCustomPayinMethodChange() {
             const method = document.getElementById('customPayinMethod').value;
             flowShow('C', method === 'flow_sole_reqs');
+            const flowSole = method === 'flow_sole_reqs';
+            const rate = document.getElementById('customPayinRate');
+            rate.readOnly = flowSole;
+            if (flowSole) {
+                document.getElementById('customPayinCurrency').value = 'RUB';
+                customUsdtMode.payin = 'usdt';
+                calcCustomProfit();
+            }
             const picker = document.getElementById('customPayinPicker');
             const label = document.getElementById('customPickerLabel');
             const select = document.getElementById('customPayinTxSelect');
@@ -8756,7 +8757,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 picker.style.display = 'flex';
                 label.textContent = 'Выбрать Сбер-транзакцию (WL Bot)';
                 await loadCustomWlTransactions();
-            } else if (method === 'crypto_direct') {
+            } else if (method === 'crypto_direct' || method === 'flow_sole_reqs') {
                 picker.style.display = 'flex';
                 label.textContent = 'Выбрать входящую крипто-транзакцию';
                 await loadCustomCryptoTransactions();
@@ -8830,8 +8831,11 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 customUsdtMode.payin = 'usdt';  // используем точный клиентский USDT
                 info.textContent = `${tx.display_name} · ${Number(tx.amount_rub).toLocaleString('ru')} ₽ → $${parseFloat(tx.amount_usdt).toFixed(2)} · курс ${parseFloat(tx.final_rate).toFixed(2)}`;
             } else if (tx.kind === 'crypto') {
-                document.getElementById('customPayinCurrency').value = 'USDT';
-                document.getElementById('customPayinAmount').value = parseFloat(tx.amount_usdt).toFixed(2);
+                const flowSole = document.getElementById('customPayinMethod').value === 'flow_sole_reqs';
+                if (!flowSole) {
+                    document.getElementById('customPayinCurrency').value = 'USDT';
+                    document.getElementById('customPayinAmount').value = parseFloat(tx.amount_usdt).toFixed(2);
+                }
                 document.getElementById('customPayinUsdt').value = parseFloat(tx.amount_usdt).toFixed(2);
                 document.getElementById('customPayinTxHash').value = tx.tx_hash;
                 customUsdtMode.payin = 'usdt';
@@ -8854,8 +8858,6 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 
             const payoutMethod = document.getElementById('customPayoutMethod').value;
             const payinMethod = document.getElementById('customPayinMethod').value;
-            const flowBody = payinMethod === 'flow_sole_reqs' ? flowReceiptInput('C', false) : null;
-            if (flowBody === false) return;
             const payinTxHash = document.getElementById('customPayinTxHash').value.trim();
             const notes = document.getElementById('customNotes').value;
             const customDate = document.getElementById('customDealDate').value;
@@ -8869,7 +8871,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 return;
             }
 
-            if (payinCurrency !== 'USDT' && payinRate <= 0) {
+            if (payinMethod !== 'flow_sole_reqs' && payinCurrency !== 'USDT' && payinRate <= 0) {
                 showToast('Укажите курс Pay-In к USDT', 'error');
                 return;
             }
@@ -8908,8 +8910,9 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 // Pay-In
                 payin_method: payinMethod,
                 payin_tx_hash: payinTxHash || null,
-                payin_amount_rub: payinMethod === 'flow_sole_reqs' ? Number(document.getElementById('flowAmountC').value) : null,
-                payin_amount_usdt: payinMethod === 'flow_sole_reqs' ? null : payinUsdt,
+                payin_rub_is_net: true,
+                payin_amount_rub: payinCurrency === 'RUB' ? payinAmount : null,
+                payin_amount_usdt: payinMethod === 'flow_sole_reqs' && !payinTxHash ? null : payinUsdt,
                 payin_parts: methodUsesSberPool(payinMethod) ? sberParts : [],
                 payin_extra: payinExtraSerialize(),
 
@@ -8934,9 +8937,9 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 
                 // Прибыль (процент от выдачи — как считает бэкенд _recalculate_deal_financials,
                 // иначе тост показывал один %, а в БД/таблицу писался другой)
-                profit_usdt: payinMethod === 'flow_sole_reqs' ? null : profit,
-                profit_percent: payinMethod === 'flow_sole_reqs' ? null : payoutUsdt > 0 ? (profit / payoutUsdt * 100) : 0,
-                net_profit_usdt: payinMethod === 'flow_sole_reqs' ? null : netProfit,
+                profit_usdt: payinMethod === 'flow_sole_reqs' && !payinTxHash ? null : profit,
+                profit_percent: payinMethod === 'flow_sole_reqs' && !payinTxHash ? null : payoutUsdt > 0 ? (profit / payoutUsdt * 100) : 0,
+                net_profit_usdt: payinMethod === 'flow_sole_reqs' && !payinTxHash ? null : netProfit,
 
                 // Заметки
                 notes: notes || null
@@ -8952,17 +8955,13 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 const result = await response.json();
 
                 if (result.success) {
-                    if (flowBody) {
-                        try { await flowSaveReceipt(result.deal.id, flowBody); }
-                        catch (error) { showToast(`Сделка #${result.deal.id} создана, приход не сохранён: ${error.message}`, 'error', 10000); return; }
-                    }
-                    let msg = flowBody
-                        ? `Кастомная сделка #${result.deal.id} создана. Приход Flow Sole записан; прибыль появится после конвертации.`
+                    let msg = payinMethod === 'flow_sole_reqs' && !payinTxHash
+                        ? `Кастомная сделка #${result.deal.id} создана. Прибыль появится после подтверждения Pay-In.`
                         : `Кастомная сделка создана!\n\nPayIn: $${payinUsdt.toFixed(2)}\nPayOut: $${payoutUsdt.toFixed(2)}\nВаловая прибыль: $${profit.toFixed(2)}`;
-                    if (!flowBody && agents.length) {
+                    if (agents.length) {
                         msg += '\n\n' + agents.map(a => `Ур.${a.tier} ${a.name || '-'} → $${(a._payout || 0).toFixed(2)}`).join('\n');
                     }
-                    if (!flowBody) msg += `\n\nЧистая прибыль: $${netProfit.toFixed(2)}`;
+                    if (payinMethod !== 'flow_sole_reqs' || payinTxHash) msg += `\n\nЧистая прибыль: $${netProfit.toFixed(2)}`;
                     showToast(msg);
 
                     // Очистка формы
@@ -9224,13 +9223,9 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             if (data.payin_method !== 'crypto_direct') delete data.payin_wallet_id;
 
             // Части прихода Сбера (пустой список = убрать части и освободить пул)
+            if (editingDealId === null) data.payin_rub_is_net = true;
             data.payin_parts = methodUsesSberPool(data.payin_method) ? sberParts :
                 data.payin_method === 'flow_sole_reqs' ? flowExistingParts : [];
-            if (data.payin_method === 'flow_sole_reqs') {
-                data.payin_amount_rub = flowExistingReceipt && editingDealId !== null
-                    ? flowExistingParts[0].amount_rub : Number(document.getElementById('flowAmount').value);
-                if (!flowExistingReceipt || editingDealId === null) data.payin_amount_usdt = null;
-            }
 
             // Для ручного хэша сеть обязательна: по самому хэшу отличить
             // Ethereum от TRON нельзя. Выбранные из входящих всегда TRC-20.
@@ -9245,6 +9240,13 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     network: document.getElementById('payinManualNetwork')?.value || 'trc20',
                     amount_usdt: data.payin_amount_usdt ?? null,
                 }] : []);
+            if (data.payin_method === 'flow_sole_reqs' && editingDealId === null && !data.payin_tx_hashes.length) {
+                data.payin_amount_usdt = null;
+                data.payin_rate_rub_usdt = null;
+                data.profit_usdt = null;
+                data.profit_percent = null;
+                data.net_profit_usdt = null;
+            }
 
             // Дополнительные приходы (пустой список = вернуться к одному каналу).
             // Обязательно ДО отправки и на обоих режимах: без этой строки вторая
@@ -9353,12 +9355,6 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             }
 
             let data = serializeStandardDeal(this);
-            // Receipt validation/upload belongs to submit, never to the baseline
-            // serializer. Read the method before sparse PUT removes unchanged keys.
-            const flowBody = data.payin_method === 'flow_sole_reqs'
-                && (hasChanges || document.getElementById('flowFile')?.files?.length)
-                ? flowReceiptInput('', editingDealId !== null && flowExistingReceipt) : null;
-            if (flowBody === false) return;
             if (editingDealId !== null) data = dealFormDiff(data);
 
             // Защита от дублей: блокируем кнопку на время запроса (двойной клик
@@ -9404,15 +9400,6 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 
                 if (result.success) {
                     const dealId = result.deal?.id || '';
-                    if (flowBody) {
-                        try { await flowSaveReceipt(dealId, flowBody); }
-                        catch (error) {
-                            editingDealId = dealId;
-                            dealFormBaseline = JSON.parse(JSON.stringify(serializeStandardDeal(this)));
-                            showToast(`Сделка #${dealId} сохранена, но приход не записан: ${error.message}. Повторите сохранение.`, 'error', 10000);
-                            return;
-                        }
-                    }
                     showToast(isEditMode ? `Сделка #${dealId} обновлена` : `Сделка #${dealId} создана`, 'success');
                     // Остаток карты в минусе или доля больше ушедшего в сети:
                     // сделку сохранили, но цифру надо перепроверить
@@ -9420,7 +9407,6 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     this.reset();
                     flowExistingReceipt = false;
                     flowExistingParts = [];
-                    document.getElementById('flowAmount').readOnly = false;
                     stdAgents = []; renderStdAgents();
                     sberReset();
                     resetPayinTxPool([]);
@@ -13937,6 +13923,7 @@ ${Math.abs(c.debits_delta_rub) < 0.01
         function prefillDealForm(data) {
             const form = document.getElementById('createDealForm');
             if (!form) return;
+            const grossReference = Number(data.payin_gross_rub_reference) || 0;
 
             // Тип сделки — то, что реально выбрали в калькуляторе (Фрихолд/Лизхолд/
             // Обмен/Другое), а не молчаливый exchange по умолчанию; onDealKindChange
@@ -13957,19 +13944,24 @@ ${Math.abs(c.debits_delta_rub) < 0.01
             }
 
             // Сумма RUB
-            if (data.payin_amount_rub) {
+            if (grossReference > 0) {
+                form.querySelector('[name="payin_amount_rub"]').value = '';
+                document.getElementById('payinRubHint').textContent =
+                    'после комиссии банка · калькулятор: ' + formatNumber(grossReference)
+                    + ' ₽ до комиссии (справочно)';
+            } else if (data.payin_amount_rub) {
                 const rubInput = form.querySelector('[name="payin_amount_rub"]');
                 if (rubInput) rubInput.value = Math.round(data.payin_amount_rub);
             }
 
             // Сумма USDT
-            if (data.payin_amount_usdt) {
+            if (!grossReference && data.payin_amount_usdt) {
                 const usdtInput = form.querySelector('[name="payin_amount_usdt"]');
                 if (usdtInput) usdtInput.value = data.payin_amount_usdt.toFixed(2);
             }
 
             // Курс RUB/USDT
-            if (data.payin_rate_rub_usdt) {
+            if (!grossReference && data.payin_rate_rub_usdt) {
                 const rateInput = form.querySelector('[name="payin_rate_rub_usdt"]');
                 if (rateInput) rateInput.value = data.payin_rate_rub_usdt.toFixed(2);
             }
@@ -13981,13 +13973,13 @@ ${Math.abs(c.debits_delta_rub) < 0.01
             }
 
             // Прибыль USDT
-            if (data.profit_usdt) {
+            if (!grossReference && data.profit_usdt) {
                 const profitInput = form.querySelector('[name="profit_usdt"]');
                 if (profitInput) profitInput.value = data.profit_usdt.toFixed(2);
             }
 
             // Прибыль %
-            if (data.profit_percent) {
+            if (!grossReference && data.profit_percent) {
                 const profitPctInput = form.querySelector('[name="profit_percent"]');
                 if (profitPctInput) profitPctInput.value = data.profit_percent.toFixed(1);
             }
@@ -14011,7 +14003,7 @@ ${Math.abs(c.debits_delta_rub) < 0.01
             }
 
             // Если есть outgoing_usdt — данные уже рассчитаны калькулятором, заполняем напрямую
-            if (data.outgoing_usdt) {
+            if (data.outgoing_usdt && !grossReference) {
                 const profitUsdt = data.profit_usdt || 0;
                 const profitPercent = data.profit_percent || 0;
                 const outgoingUsdt = data.outgoing_usdt;
