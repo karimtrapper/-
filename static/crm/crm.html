@@ -4882,8 +4882,11 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
             if (proof.status === 'confirmed') return '';
             const mismatch = proof.status === 'mismatch';
             const fact = Number(proof.network_usdt);
+            const usdt = value => Number(value || 0).toLocaleString('ru-RU', {
+                minimumFractionDigits: 2, maximumFractionDigits: 2,
+            }) + ' USDT';
             const detail = mismatch && Number.isFinite(fact)
-                ? `: введено $${Number(proof.declared_usdt || 0).toFixed(2)}, в сети $${fact.toFixed(2)}` : '';
+                ? `: введено ${usdt(proof.declared_usdt)}, в сети ${usdt(fact)}` : '';
             return `<small style="display:block;color:${mismatch ? '#b91c1c' : '#b45309'}">${mismatch ? 'Расхождение' : 'Не подтверждено в сети'}${detail}</small>`;
         }
 
