@@ -821,6 +821,18 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 .docs-status.is-error { color:var(--red); }
 .docs-empty { padding:28px 16px; text-align:center; color:var(--text-sec); font-size:.88rem; }
 .docs-num { font-variant-numeric:tabular-nums; font-size:.86rem; color:var(--navy-700); white-space:nowrap; }
+.docs-file-row { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,2fr) auto auto;
+  gap:12px; align-items:center; padding:8px 0; border-bottom:1px solid var(--border); font-size:14px; }
+.docs-file-row a,.docs-file-row span { overflow-wrap:anywhere; }
+.docs-file-row.is-deleted { color:var(--text-sec); }
+.docs-file-kind { font-weight:600; color:var(--navy-700); }
+.docs-file-row .btn { min-height:44px; }
+#docsExtra:not([hidden]) { display:grid; gap:8px; margin-top:12px; }
+#docsExtra label { font-size:14px; font-weight:600; color:var(--navy-700); }
+#docsExtra .form-input { min-height:44px; font-size:16px; }
+@media(max-width:768px){ .docs-file-row { grid-template-columns:minmax(0,1fr) auto; }
+  .docs-file-row .docs-file-kind,.docs-file-row a,.docs-file-row>span:nth-child(2) { grid-column:1/-1; }
+  .docs-file-row .docs-num { grid-column:1; } }
 
 /* Список сгруппирован по клиентам: менеджер ищет человека, а не договор.
    Внутри карточки — его договоры по типам сделки. */
@@ -15104,7 +15116,7 @@ ${Math.abs(c.debits_delta_rub) < 0.01
         const DOCS_KIND_LABEL = {agreement:'Агентский договор', addendum:'Доп. соглашение',
             invoice:'Инвойс', signed:'Подписанный', source:'Исходник',
             source_passport:'Исходник — паспорт', source_invoice:'Исходник — инвойс',
-            source_spa:'Исходник — СПА', source_other:'Исходник'};
+            source_spa:'Исходник — СПА', source_other:'Другое', receipt:'Чек'};
 
         // Валютные пары. Слева то, что отдаёт клиент, справа — что получает
         // застройщик. Фрихолд платится в USD, лизхолд и аренда — в батах.
@@ -15644,20 +15656,34 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                 </div></div>`;
             Object.keys(bySeq).sort((x,y)=>x-y).forEach(seq=>{
                 html += `<h4 style="font-size:.85rem;margin:16px 0 6px;color:var(--text-sec);font-weight:600">${seq==1?'Договор и первый платёж':'Платёж № '+seq}</h4>`;
-                html += bySeq[seq].map(x=>`<div style="display:flex;gap:12px;align-items:center;padding:8px 0;border-bottom:1px solid var(--border-light)">
-                    <span style="min-width:180px;font-size:.85rem;color:var(--navy-700)">${DOCS_KIND_LABEL[x.kind]||x.kind}</span>
-                    <a href="/api/docs/file/${x.id}" style="font-size:.85rem">${docsEsc(x.filename)}</a>
-                    <span class="docs-num" style="color:var(--text-sec);margin-left:auto">${Math.round((x.size||0)/1024)} КБ</span>
+                html += bySeq[seq].map(x=>`<div class="docs-file-row${x.deleted_at?' is-deleted':''}">
+                    <span class="docs-file-kind">${DOCS_KIND_LABEL[x.kind]||x.kind}</span>
+                    ${x.deleted_at?`<span>${docsEsc(x.filename)} · удалён ${new Date(x.deleted_at).toLocaleString('ru-RU')} · ${docsEsc(x.deleted_by||'')}</span>`:
+                        `<a href="/api/docs/file/${x.id}">${docsEsc(x.filename)}</a>`}
+                    <span class="docs-num">${Math.round((x.size||0)/1024)} КБ</span>
+                    ${x.deleted_at?(CRM_ROLE==='admin'?`<button class="btn btn-sm" onclick="docsChangeFile(${x.id},'restore')">Восстановить</button>`:''):
+                        (['manager','operator','admin'].includes(CRM_ROLE)?`<button class="btn btn-sm" onclick="docsChangeFile(${x.id},'delete')">Удалить</button>`:'')}
                 </div>`).join('');
             });
             html += `<div style="margin-top:20px;display:flex;gap:12px;flex-wrap:wrap;align-items:center">
                 <button class="btn btn-primary" style="font-size:.85rem" onclick="docsAddPayment(${a.id})">Новый платёж</button>
+                ${['manager','operator','admin'].includes(CRM_ROLE)?`<button class="btn" onclick="docsToggleExtra()">+ Загрузить ещё</button>`:''}
                 <label class="docs-pick">Загрузить подписанные
                     <input type="file" multiple style="position:absolute;width:1px;height:1px;opacity:0" onchange="docsUploadSigned(${a.id}, this.files)">
                 </label>
                 <span id="docsDetailStatus" class="docs-status"></span>
                 <button class="btn docs-danger" style="font-size:.85rem;margin-left:auto"
                         onclick="docsDelete(${a.id})">Удалить договор</button>
+            </div>
+            <div id="docsExtra" hidden>
+                <label for="docsExtraType">Тип документа</label>
+                <select id="docsExtraType" class="form-input">
+                    ${['receipt','source_invoice','source_spa','source_passport','source_other'].map(k=>
+                        `<option value="${k}">${DOCS_KIND_LABEL[k]}</option>`).join('')}
+                </select>
+                <label for="docsExtraFile">Файл</label>
+                <input id="docsExtraFile" class="form-input" type="file" accept=".pdf,.png,.jpg,.jpeg,.webp"
+                    onchange="docsUploadExtra(${a.id},this)">
             </div>
             <div id="docsPaymentForm" style="display:none;margin-top:18px"></div>`;
             document.getElementById('docsDetailBody').innerHTML = html;
@@ -15752,23 +15778,55 @@ ${Math.abs(c.debits_delta_rub) < 0.01
             if(st) st.textContent='Удаляю…';
             const r = await fetch('/api/docs/agreements/'+id, {method:'DELETE'});
             const d = await r.json();
-            if(!d.success){ if(st){ st.classList.add('is-error'); st.textContent='Не удалось удалить'; } return; }
+            if(!d.success){ if(st){ st.classList.add('is-error'); st.textContent=d.error||'Не удалось удалить'; } return; }
             document.getElementById('docsDetail').style.display='none';
             docsState.current = null;
             await loadDocuments();
         }
 
-        async function docsUploadSigned(id, files){
+        function docsToggleExtra(){
+            const box=document.getElementById('docsExtra');
+            box.hidden=!box.hidden;
+            if(!box.hidden)document.getElementById('docsExtraType').focus();
+        }
+
+        function docsUploadExtra(id,input){
+            const kind=document.getElementById('docsExtraType').value;
+            docsUploadFiles(id,input.files,kind);
+            input.value='';
+        }
+
+        async function docsChangeFile(docId,action){
+            const doc=(docsState.current?.docs||[]).find(x=>x.id===docId);
+            if(!doc)return;
+            if(action==='delete'&&!confirm(`Удалить файл ${doc.filename}?`))return;
+            const st=document.getElementById('docsDetailStatus');
+            const r=await fetch('/api/docs/file/'+docId,{
+                method:'PATCH',headers:{'Content-Type':'application/json'},
+                body:JSON.stringify({action})});
+            const result=await r.json();
+            if(!r.ok||!result.success){st.classList.add('is-error');st.textContent=result.error||'Не удалось изменить файл';return;}
+            const agreementId=docsState.current.id;
+            await loadDocuments();
+            await docsOpen(agreementId);
+        }
+
+        async function docsUploadFiles(id, files, kind){
             const st = document.getElementById('docsDetailStatus');
             if(!files || !files.length) return;
             const fd = new FormData();
             for(const f of files) fd.append('files', f);
-            fd.append('kind','signed');
+            fd.append('kind',kind);
             st.textContent='Загружаю…';
             const r = await fetch('/api/docs/agreements/'+id+'/upload', {method:'POST', body:fd});
             const d = await r.json();
-            st.textContent = d.success ? ('Загружено: '+d.saved) : 'Ошибка загрузки';
-            if(d.success){ await loadDocuments(); docsOpen(id); }
+            st.textContent = d.success ? ('Загружено: '+d.saved) : (d.error||'Ошибка загрузки');
+            st.classList.toggle('is-error',!d.success);
+            if(d.success){ await loadDocuments(); await docsOpen(id); }
+        }
+
+        async function docsUploadSigned(id, files){
+            return docsUploadFiles(id,files,'signed');
         }
 
     </script>
