@@ -7,6 +7,7 @@ import json
 import secrets
 
 import app as m
+from tests.payin_registry import ensure_payin_wallet
 import pytest
 
 pytestmark = pytest.mark.usefixtures('stand_demo_environment')
@@ -85,12 +86,15 @@ def test_verify_hash_rejects_non_dict_json_body(monkeypatch):
 
 def test_verify_hash_returns_confirmed_for_matching_transfer(monkeypatch):
     uid = _setup(monkeypatch)
+    ensure_payin_wallet('T' + '1' * 33)
     calls = []
 
-    def fake_verify_transfer(ref, network, sender, receiver, amount):
+    def fake_verify_transfer(ref, network, sender, receiver, amount, **kwargs):
         calls.append((ref, network, sender, receiver, amount))
+        # приход читает сеть: адреса наблюдаются, получатель — наш кошелёк из реестра
         return {'status': 'confirmed', 'verifiedAmount': 100.0,
-                'verifiedAt': '2026-10-19T00:00:00+00:00', 'from': 'T' + '9' * 33}
+                'verifiedAt': '2026-10-19T00:00:00+00:00', 'from': 'T' + '9' * 33,
+                'to': 'T' + '1' * 33}
 
     monkeypatch.setattr(m, 'verify_transfer', fake_verify_transfer)
     response = _post(_client(uid))
@@ -98,7 +102,7 @@ def test_verify_hash_returns_confirmed_for_matching_transfer(monkeypatch):
     assert response.json == {'success': True, 'status': 'confirmed',
                               'verifiedAmount': 100.0,
                               'verifiedAt': '2026-10-19T00:00:00+00:00',
-                              'from': 'T' + '9' * 33}
+                              'from': 'T' + '9' * 33, 'to': 'T' + '1' * 33}
     assert len(calls) == 1
     assert calls[0][:2] == ('1' * 64, 'trc20')
 
@@ -114,9 +118,11 @@ def test_verify_hash_surfaces_unconfirmed_status(monkeypatch):
 
 def test_verify_hash_does_not_mutate_board_state(monkeypatch):
     uid = _setup(monkeypatch)
+    ensure_payin_wallet('T' + '1' * 33)
     monkeypatch.setattr(m, 'verify_transfer', lambda *a, **kw: {
         'status': 'confirmed', 'verifiedAmount': 100.0,
-        'verifiedAt': '2026-10-19T00:00:00+00:00', 'from': 'T' + '9' * 33})
+        'verifiedAt': '2026-10-19T00:00:00+00:00', 'from': 'T' + '9' * 33,
+        'to': 'T' + '1' * 33})
     db = m.get_session()
     try:
         row = db.query(m.StandState).filter_by(id=1).one()

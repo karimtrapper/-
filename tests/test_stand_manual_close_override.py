@@ -77,7 +77,7 @@ def test_rejects_unverified_hash():
     override = {'reason': REASON,
                 'payin': {'method': 'Крипта', 'amountUsdt': 100, 'hashes': [
                     {'hash': 'a' * 64, 'network': 'trc20',
-                     'receiver': 'TReceiverWallet111111111111', 'amount': 100}]}}
+                     'sender': 'TSenderWallet11111111111111', 'receiver': 'TReceiverWallet111111111111', 'amount': 100}]}}
     assert A._stand_manual_close_apply_override(
         state, deal, override, 'manager', verify=pending) == 'payin_hash_unverified'
 
@@ -90,7 +90,7 @@ def test_rejects_reused_hash():
     override = {'reason': REASON,
                 'payin': {'method': 'Крипта', 'amountUsdt': 100, 'hashes': [
                     {'hash': tx_hash, 'network': 'trc20',
-                     'receiver': 'TReceiverWallet111111111111', 'amount': 100}]}}
+                     'sender': 'TSenderWallet11111111111111', 'receiver': 'TReceiverWallet111111111111', 'amount': 100}]}}
     assert A._stand_manual_close_apply_override(
         state, deal, override, 'manager', verify=confirmed_echo) == 'payin_hash_already_used'
 
@@ -108,7 +108,7 @@ def test_allows_restating_hash_already_recorded_on_same_deal():
     override = {'reason': REASON,
                 'payin': {'method': 'Крипта', 'amountUsdt': 100, 'hashes': [
                     {'hash': tx_hash, 'network': 'trc20',
-                     'receiver': 'TReceiverWallet111111111111', 'amount': 100}]}}
+                     'sender': 'TSenderWallet11111111111111', 'receiver': 'TReceiverWallet111111111111', 'amount': 100}]}}
     result = A._stand_manual_close_apply_override(
         state, deal, override, 'manager', verify=confirmed_echo)
     assert result is None
@@ -129,7 +129,7 @@ def test_rejects_hash_used_by_different_deal_even_when_current_deal_has_its_own_
     override = {'reason': REASON,
                 'payin': {'method': 'Крипта', 'amountUsdt': 100, 'hashes': [
                     {'hash': other_hash, 'network': 'trc20',
-                     'receiver': 'TReceiverWallet111111111111', 'amount': 100}]}}
+                     'sender': 'TSenderWallet11111111111111', 'receiver': 'TReceiverWallet111111111111', 'amount': 100}]}}
     assert A._stand_manual_close_apply_override(
         state, deal, override, 'manager', verify=confirmed_echo) == 'payin_hash_already_used'
 
@@ -139,7 +139,7 @@ def test_rejects_payin_amount_mismatch():
     override = {'reason': REASON,
                 'payin': {'method': 'Крипта', 'amountUsdt': 100, 'hashes': [
                     {'hash': 'c' * 64, 'network': 'trc20',
-                     'receiver': 'TReceiverWallet111111111111', 'amount': 80}]}}
+                     'sender': 'TSenderWallet11111111111111', 'receiver': 'TReceiverWallet111111111111', 'amount': 80}]}}
     assert A._stand_manual_close_apply_override(
         state, deal, override, 'manager', verify=confirmed_echo) == 'payin_amount_mismatch'
 
@@ -152,7 +152,7 @@ def test_payin_amount_mismatch_tolerance_matches_frontend_payin_tol():
     override = {'reason': REASON,
                 'payin': {'method': 'Крипта', 'amountUsdt': 100, 'hashes': [
                     {'hash': '3' * 64, 'network': 'trc20',
-                     'receiver': 'TReceiverWallet111111111111', 'amount': 97}]}}
+                     'sender': 'TSenderWallet11111111111111', 'receiver': 'TReceiverWallet111111111111', 'amount': 97}]}}
     assert A._stand_manual_close_apply_override(
         state, deal, override, 'manager', verify=confirmed_echo) is None
 
@@ -161,7 +161,7 @@ def test_payin_amount_mismatch_tolerance_matches_frontend_payin_tol():
     override = {'reason': REASON,
                 'payin': {'method': 'Крипта', 'amountUsdt': 100, 'hashes': [
                     {'hash': '4' * 64, 'network': 'trc20',
-                     'receiver': 'TReceiverWallet111111111111', 'amount': 94}]}}
+                     'sender': 'TSenderWallet11111111111111', 'receiver': 'TReceiverWallet111111111111', 'amount': 94}]}}
     assert A._stand_manual_close_apply_override(
         state, deal, override, 'manager', verify=confirmed_echo) == 'payin_amount_mismatch'
 
@@ -182,7 +182,7 @@ def test_cash_partner_payin_still_needs_a_hash_but_no_operator_confirmation():
     assert A._stand_manual_close_apply_override(
         state, deal, override, 'manager') == 'payin_hash_required'
     override['payin']['hashes'] = [{'hash': '6' * 64, 'network': 'trc20',
-                                    'receiver': 'TReceiverWallet111111111111', 'amount': 100}]
+                                    'sender': 'TSenderWallet11111111111111', 'receiver': 'TReceiverWallet111111111111', 'amount': 100}]
     assert A._stand_manual_close_apply_override(
         state, deal, override, 'manager', verify=confirmed_echo) == 'payout_source_required'
 
@@ -190,7 +190,7 @@ def test_cash_partner_payin_still_needs_a_hash_but_no_operator_confirmation():
 def test_supplied_payin_hash_of_non_crypto_method_is_still_checked_in_network():
     state, deal = board()
     override = {'reason': REASON, 'payin': {'method': 'Наличные', 'amountUsdt': 100, 'hashes': [
-        {'hash': '5' * 64, 'network': 'trc20', 'receiver': 'TReceiverWallet111111111111', 'amount': 100}]}}
+        {'hash': '5' * 64, 'network': 'trc20', 'sender': 'TSenderWallet11111111111111', 'receiver': 'TReceiverWallet111111111111', 'amount': 100}]}}
     unverified = lambda *args: {'status': 'pending'}
     assert A._stand_manual_close_apply_override(
         state, deal, override, 'manager', verify=unverified) == 'payin_hash_unverified'
@@ -201,7 +201,7 @@ def test_rejects_missing_payout_evidence_for_exchange():
     override = {'reason': REASON,
                 'payin': {'method': 'Крипта', 'amountUsdt': 100, 'hashes': [
                     {'hash': 'd' * 64, 'network': 'trc20',
-                     'receiver': 'TReceiverWallet111111111111', 'amount': 100}]},
+                     'sender': 'TSenderWallet11111111111111', 'receiver': 'TReceiverWallet111111111111', 'amount': 100}]},
                 'payout': {'source': 'cash', 'amountUsdt': 90}}
     assert A._stand_manual_close_apply_override(
         state, deal, override, 'manager', verify=confirmed_echo) == 'payout_evidence_missing'
@@ -216,7 +216,7 @@ def test_rejects_payout_evidence_present_only_as_developer_invoice():
     override = {'reason': REASON,
                 'payin': {'method': 'Крипта', 'amountUsdt': 100, 'hashes': [
                     {'hash': '5' * 64, 'network': 'trc20',
-                     'receiver': 'TReceiverWallet111111111111', 'amount': 100}]},
+                     'sender': 'TSenderWallet11111111111111', 'receiver': 'TReceiverWallet111111111111', 'amount': 100}]},
                 'payout': {'source': 'cash', 'amountUsdt': 90}}
     assert A._stand_manual_close_apply_override(
         state, deal, override, 'manager', verify=confirmed_echo) == 'payout_evidence_missing'
@@ -227,7 +227,7 @@ def test_applies_override_and_logs_reason_on_success():
     override = {'reason': REASON,
                 'payin': {'method': 'Крипта', 'amountUsdt': 100, 'hashes': [
                     {'hash': 'e' * 64, 'network': 'trc20',
-                     'receiver': 'TReceiverWallet111111111111', 'amount': 100}]}}
+                     'sender': 'TSenderWallet11111111111111', 'receiver': 'TReceiverWallet111111111111', 'amount': 100}]}}
     result = A._stand_manual_close_apply_override(
         state, deal, override, 'manager', verify=confirmed_echo)
     assert result is None
@@ -244,7 +244,7 @@ def test_rejects_invalid_agents_shape():
     override = {'reason': REASON,
                 'payin': {'method': 'Крипта', 'amountUsdt': 100, 'hashes': [
                     {'hash': '2' * 64, 'network': 'trc20',
-                     'receiver': 'TReceiverWallet111111111111', 'amount': 100}]},
+                     'sender': 'TSenderWallet11111111111111', 'receiver': 'TReceiverWallet111111111111', 'amount': 100}]},
                 'agents': 'not-a-list'}
     assert A._stand_manual_close_apply_override(
         state, deal, override, 'manager', verify=confirmed_echo) == 'agents_invalid'
@@ -285,7 +285,7 @@ def test_rejects_non_dict_payout_without_crashing():
     override = {'reason': REASON,
                 'payin': {'method': 'Крипта', 'amountUsdt': 100, 'hashes': [
                     {'hash': '6' * 64, 'network': 'trc20',
-                     'receiver': 'TReceiverWallet111111111111', 'amount': 100}]},
+                     'sender': 'TSenderWallet11111111111111', 'receiver': 'TReceiverWallet111111111111', 'amount': 100}]},
                 'payout': 'наличка, но строкой'}
     assert A._stand_manual_close_apply_override(
         state, deal, override, 'manager', verify=confirmed_echo) == 'payout_source_required'
@@ -298,7 +298,7 @@ def test_rejects_non_iterable_payout_hashes_without_crashing():
     override = {'reason': REASON,
                 'payin': {'method': 'Крипта', 'amountUsdt': 100, 'hashes': [
                     {'hash': '7' * 64, 'network': 'trc20',
-                     'receiver': 'TReceiverWallet111111111111', 'amount': 100}]},
+                     'sender': 'TSenderWallet11111111111111', 'receiver': 'TReceiverWallet111111111111', 'amount': 100}]},
                 'payout': {'source': 'coins', 'amountUsdt': 90, 'hashes': {'not': 'a list'}}}
     assert A._stand_manual_close_apply_override(
         state, deal, override, 'manager', verify=confirmed_echo) == 'payout_hash_required'
@@ -312,10 +312,10 @@ def test_rejects_hash_reused_between_payin_and_payout_in_same_submission():
     override = {'reason': REASON,
                 'payin': {'method': 'Крипта', 'amountUsdt': 100, 'hashes': [
                     {'hash': tx_hash, 'network': 'trc20',
-                     'receiver': 'TReceiverWallet111111111111', 'amount': 100}]},
+                     'sender': 'TSenderWallet11111111111111', 'receiver': 'TReceiverWallet111111111111', 'amount': 100}]},
                 'payout': {'source': 'coins', 'amountUsdt': 100, 'hashes': [
                     {'hash': tx_hash, 'network': 'trc20',
-                     'receiver': 'TReceiverWallet111111111111', 'amount': 100}]}}
+                     'sender': 'TSenderWallet11111111111111', 'receiver': 'TReceiverWallet111111111111', 'amount': 100}]}}
     assert A._stand_manual_close_apply_override(
         state, deal, override, 'manager', verify=confirmed_echo) == 'payout_hash_already_used'
 
@@ -328,7 +328,7 @@ def test_applies_payout_override_for_exchange_deal():
     override = {'reason': REASON,
                 'payin': {'method': 'Крипта', 'amountUsdt': 100, 'hashes': [
                     {'hash': 'f' * 64, 'network': 'trc20',
-                     'receiver': 'TReceiverWallet111111111111', 'amount': 100}]},
+                     'sender': 'TSenderWallet11111111111111', 'receiver': 'TReceiverWallet111111111111', 'amount': 100}]},
                 'payout': {'source': 'coins', 'amountUsdt': 90, 'hashes': [
                     {'hash': '1' * 64, 'network': 'trc20', 'sender': 'TOurWallet1111111111111111',
                      'receiver': 'TClientWallet111111111111', 'amount': 90}]}}
@@ -352,7 +352,7 @@ def test_manager_manual_close_rental_cash_accepts_verified_facts_and_corrections
                 'payin': {'method': 'Наличные', 'amountRub': 1217600,
                           'amountUsdt': 14500, 'manualBankConfirmed': True,
                           'hashes': [{'hash': '7' * 64, 'network': 'trc20',
-                     'receiver': 'TReceiverWallet111111111111', 'amount': 14500}]},
+                     'sender': 'TSenderWallet11111111111111', 'receiver': 'TReceiverWallet111111111111', 'amount': 14500}]},
                 'payout': {'amountUsdt': 13800, 'hashes': [
                     {'hash': '9' * 64, 'network': 'trc20',
                      'receiver': 'TCompanyWallet111111111111', 'amount': 13800}]},
@@ -378,7 +378,7 @@ def test_manual_close_rental_rejects_unverified_mf_transfer():
     override = {'reason': REASON,
                 'payin': {'method': 'Наличные', 'amountUsdt': 14500,
                           'manualBankConfirmed': True, 'hashes': [{'hash': '7' * 64, 'network': 'trc20',
-                     'receiver': 'TReceiverWallet111111111111', 'amount': 14500}]},
+                     'sender': 'TSenderWallet11111111111111', 'receiver': 'TReceiverWallet111111111111', 'amount': 14500}]},
                 'payout': {'amountUsdt': 13800, 'hashes': [
                     {'hash': '9' * 64, 'network': 'trc20', 'amount': 13800}]},
                 'realty': {'invoiceThb': 455000, 'buyRate': 33.42,
@@ -398,6 +398,6 @@ def test_manual_close_rental_rejects_unverified_mf_transfer():
 def test_payin_hash_must_be_present_and_well_formed_even_if_network_mock_accepts_all(bad, error):
     state, deal = board()
     override = {'reason': REASON, 'payin': {'method': 'Наличные', 'amountUsdt': 100, 'hashes': [
-        {'hash': bad, 'network': 'trc20', 'receiver': 'TReceiverWallet111111111111', 'amount': 100}]}}
+        {'hash': bad, 'network': 'trc20', 'sender': 'TSenderWallet11111111111111', 'receiver': 'TReceiverWallet111111111111', 'amount': 100}]}}
     assert A._stand_manual_close_apply_override(
         state, deal, override, 'manager', verify=confirmed_echo) == error

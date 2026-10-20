@@ -68,7 +68,7 @@ def _override(**overrides):
         'reason': REASON,
         'payin': {'method': 'Крипта', 'amountUsdt': 100, 'hashes': [
             {'hash': 'a' * 64, 'network': 'trc20',
-             'receiver': 'TReceiverWallet111111111111', 'amount': 100}]},
+             'sender': 'TSenderWallet11111111111111', 'receiver': 'TReceiverWallet111111111111', 'amount': 100}]},
         'payout': {'source': 'cash', 'amountUsdt': 90},
     }
     override.update(overrides)
@@ -88,6 +88,8 @@ def _crm(**overrides):
 
 def _setup(board_factory=_early_board, role='manager'):
     m._stand_migrate()
+    from tests.payin_registry import ensure_payin_wallet
+    ensure_payin_wallet()  # получатель прихода — наш кошелёк из реестра
     db = m.get_session()
     try:
         user = m.AdminUser(username='t3-' + secrets.token_hex(6), display_name='T3 ' + role,

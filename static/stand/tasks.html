@@ -7837,6 +7837,10 @@ const MANUAL_CLOSE_ERRORS={
   payin_hash_required:'Добавьте хотя бы один хеш прихода',
   payin_hash_invalid:'Хеш прихода написан неверно — проверьте сеть и сам хеш',
   payin_hash_unverified:'Хеш прихода не подтверждён в сети',
+  payin_wallet_not_registered:'Получатель перевода — не наш активный кошелёк из реестра. Проверьте хеш или кошелёк в реестре',
+  payin_wallet_mismatch:'Перевод пришёл не на кошелёк, выбранный в сделке',
+  payin_receiver_unknown:'Сеть не назвала получателя перевода — проверьте хеш',
+  payin_selected_wallet_invalid:'Кошелёк, выбранный в сделке, не найден в реестре или не принимает приход',
   payin_hash_already_used:'Этот хеш прихода уже использован в другой сделке',
   payin_amount_mismatch:'Сумма прихода не совпадает с подтверждённой в сети',
   payout_source_required:'Укажите источник выдачи',
@@ -9306,13 +9310,26 @@ function mcPayinTxPick(id,txId){
    только читает сеть, ничего не сохраняет — авторитетная проверка на самом закрытии. */
 function mcHashCheck(id,which,i){
   const h=manualCloseFormState(id)[which].hashes[i]; if(!h||!h.hash)return;
+  /* ответ применяем только к той же строке с тем же хешем и сетью: пока шёл запрос, строку
+     могли убрать или переписать — адреса старого перевода в неё попасть не должны */
+  const snap={hash:h.hash,network:h.network};
+  const current=()=>manualCloseFormState(id)[which].hashes.includes(h)&&h.hash===snap.hash&&h.network===snap.network;
   h._check={pending:true};render();
   fetch('/api/stand/manual-close/verify-hash',{method:'POST',credentials:'same-origin',
     headers:{'Content-Type':'application/json'},body:JSON.stringify({dealId:id,direction:which,
       network:h.network,hash:h.hash,sender:h.sender||null,receiver:h.receiver||null,amount:h.amount})})
-    .then(r=>r.json()).then(j=>{h._check=j.success?{ok:true,amount:j.verifiedAmount,at:j.verifiedAt}
-      :{ok:false,error:j.error||'не подтверждён'};})
-    .catch(()=>{h._check={ok:false,error:'сервер недоступен'};})
+    .then(r=>r.json()).then(j=>{
+      if(!current())return;
+      if(j.success){
+        h._check={ok:true,amount:j.verifiedAmount,at:j.verifiedAt};
+        /* адреса и сумму прочитала сеть: заполняем только пустое, введённое не затираем */
+        if(which==='payin'){
+          if(!h.sender&&j.from)h.sender=j.from;
+          if(!h.receiver&&j.to)h.receiver=j.to;
+          if(h.amount==null&&j.verifiedAmount!=null)h.amount=j.verifiedAmount;
+        }
+      }else h._check={ok:false,error:MANUAL_CLOSE_ERRORS[j.error]||j.error||'не подтверждён'};})
+    .catch(()=>{if(current())h._check={ok:false,error:'сервер недоступен'};})
     .finally(render);
 }
 /* Экран ручного переноса сделки в CRM минуя задачник (задача 5, Карим 19.10): известные

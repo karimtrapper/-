@@ -58,7 +58,8 @@ def setup_case(wallet, step='s23', role='manager', route='client'):
              'receiver': DEST, 'amount': 15000}]}}
     PAYIN['ref'] = secrets.token_hex(32)
     override['payin']['hashes'] = [{'hash': PAYIN['ref'], 'network': 'TRC20',
-                                    'receiver': 'TReceiverWallet111111111111', 'amount': 15100}]
+                                    'sender': 'TSenderWallet11111111111111',
+                                    'receiver': wallet, 'amount': 15100}]  # приход — на кошелёк сделки
     crm['payin_method'] = 'sber_reqs'
     crm['payin_tx_hashes'] = [{'hash': PAYIN['ref'], 'network': 'trc20', 'amount_usdt': 15100}]
     return uid, wid, crm, override

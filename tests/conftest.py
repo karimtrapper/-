@@ -109,3 +109,21 @@ def pytest_unconfigure(config):
 def stand_demo_environment(monkeypatch):
     """Старые синтетические сценарии явно разрешают DEMO только внутри теста."""
     monkeypatch.setenv('STAND_ALLOW_DEMO', '1')
+
+
+@pytest.fixture(autouse=True)
+def cleanup_test_payin_wallets():
+    """Кошельки-фикстуры прихода (tests/payin_registry.py) не живут дольше теста."""
+    yield
+    module = sys.modules.get('app')
+    if module is None:
+        return
+    from sqlalchemy import inspect as sa_inspect
+    if not sa_inspect(module.engine).has_table('wallets'):
+        return
+    db = module.SessionLocal()
+    try:
+        db.query(module.Wallet).filter(module.Wallet.label == 'test-payin-fixture').delete()
+        db.commit()
+    finally:
+        db.close()

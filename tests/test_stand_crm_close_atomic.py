@@ -206,6 +206,8 @@ def test_manager_manual_close_rental_cash_bypasses_new_flow_gate(monkeypatch):
     uid = _setup(monkeypatch)
     transfer_hash = '9' * 64
     payin_hash = secrets.token_hex(32)  # хеш прихода обязателен всегда
+    from tests.payin_registry import ensure_payin_wallet, RECEIVER
+    ensure_payin_wallet()  # получатель прихода — наш кошелёк из реестра
     board = {'deals': [{
         'id': 1474, 'code': 'СД-1474', 'client': 'Synthetic rental',
         'type': 'Оплата недвижимости', 'kind': 'Аренда', 'step': 's14',
@@ -245,7 +247,8 @@ def test_manager_manual_close_rental_cash_bypasses_new_flow_gate(monkeypatch):
                        'payin': {'method': 'Наличные', 'amountRub': 1217600,
                                  'amountUsdt': 14500, 'manualBankConfirmed': True,
                                  'hashes': [{'hash': payin_hash, 'network': 'TRC20',
-                                             'amount': 14500}]},
+                                             'sender': 'TSenderWallet11111111111111',
+                                             'receiver': RECEIVER, 'amount': 14500}]},
                        'payout': {'amountUsdt': 13800, 'hashes': [
                            {'hash': transfer_hash, 'network': 'TRC20', 'amount': 13800}]},
                        'realty': {'invoiceThb': 500000, 'buyRate': 33.42,

@@ -52,7 +52,7 @@ def _override(**overrides):
         'reason': REASON,
         'payin': {'method': 'Наличные', 'amountUsdt': 1400, 'manualBankConfirmed': True,
                   'hashes': [{'hash': PAYIN['hash'], 'network': 'trc20',
-                              'receiver': 'TReceiverWallet111111111111', 'amount': 1400}]},
+                              'sender': 'TSenderWallet11111111111111', 'receiver': 'TReceiverWallet111111111111', 'amount': 1400}]},
     }
     override.update(overrides)
     return override
@@ -91,6 +91,8 @@ def _setup(monkeypatch, board=None, role='manager'):
     monkeypatch.setattr(m, '_tx_info_by_network', lambda tx_hash, network: None)
     m._stand_migrate()
     PAYIN['hash'] = secrets.token_hex(32)
+    from tests.payin_registry import ensure_payin_wallet
+    ensure_payin_wallet()  # получатель прихода — наш кошелёк из реестра
     db = m.get_session()
     try:
         user = m.AdminUser(username='realty-' + secrets.token_hex(6),

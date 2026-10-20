@@ -8050,7 +8050,9 @@ def stand_crm_close(stand_deal_id):
                 status = (409 if override_error in ('manual_override_not_applicable', 'already_closed')
                           else 422 if override_error in (
                               'payin_hash_unverified', 'payin_hash_already_used', 'payin_amount_mismatch',
-                              'payout_hash_unverified', 'payout_hash_already_used', 'payout_amount_mismatch')
+                              'payout_hash_unverified', 'payout_hash_already_used', 'payout_amount_mismatch',
+                              'payin_wallet_not_registered', 'payin_wallet_mismatch', 'payin_receiver_unknown',
+                              'payin_selected_wallet_invalid')
                           else 400)
                 return jsonify({'success': False, 'error': override_error}), status
             # Only the validated server route grants this exception. A JSON
@@ -9234,6 +9236,82 @@ def _stand_hash_used_elsewhere(state, network, tx_hash, exclude_deal_id=None):
         for c in state.get('convs') or [] for t in c.get('txs') or [])
 
 
+def _stand_same_address(network, left, right):
+    """TRON-адреса чувствительны к регистру, Ethereum — нет."""
+    left, right = str(left or '').strip(), str(right or '').strip()
+    return left.lower() == right.lower() if network == 'erc20' else left == right
+
+
+def _stand_override_payin_verify(verify):
+    """Сверка прихода ручного переноса по одному hash.
+
+    UI кладёт у прихода только hash, сеть и сумму, без адресов. Если оба адреса заданы,
+    работает обычная строгая сверка. Иначе адреса и сумму наблюдает сеть
+    (observe_recipient), и явно введённые отправитель, получатель и сумма (до 0,01)
+    сверяются с наблюдённым. Общий verify_transfer и проверки исходящих не меняются."""
+    from decimal import Decimal
+
+    def checked(ref, network, sender, receiver, amount):
+        if sender is not None and receiver is not None:
+            return verify(ref, network, sender, receiver, amount) or {}
+        observed = verify(ref, network, None, None, None, observe_recipient=True) or {}
+        if observed.get('status') != 'confirmed':
+            return observed
+        if sender is not None and not _stand_same_address(network, observed.get('from'), sender):
+            return dict(observed, status='mismatch', checkError='Отправитель в сети не совпал')
+        if receiver is not None and not _stand_same_address(network, observed.get('to'), receiver):
+            return dict(observed, status='mismatch', checkError='Получатель в сети не совпал')
+        if amount is not None:
+            declared, actual = _amount(amount), _amount(observed.get('verifiedAmount'))
+            if (declared is None or declared <= 0 or actual is None
+                    or abs(actual - declared) > Decimal('0.01')):
+                return dict(observed, status='mismatch', amountMismatch=True,
+                            checkError='Сумма в сети не совпала')
+        return observed
+
+    return checked
+
+
+def _stand_payin_wallet_problem(db, stand_deal, entries):
+    """Получатель прихода — наш активный кошелёк из реестра (accepts_payin) нужной сети.
+
+    Если на сделке выбран конкретный кошелёк, получатель обязан быть им, а негодный
+    выбор (нет в реестре, неактивен, не принимает приход) блокирует. Без выбора
+    подходит любой активный кошелёк реестра. Реестр только читается."""
+    from sqlalchemy import func
+    wallet_id = stand_deal.get('walletId')
+    selected, custom = None, None
+    if wallet_id == 'custom':
+        # Свой кошелёк сделки: явный адрес и сеть остаются ограничением, но получатель
+        # всё равно обязан быть активным кошельком реестра.
+        raw = stand_deal.get('payinCustom')
+        raw = raw if isinstance(raw, dict) else {}
+        custom = (normalize_network(raw.get('network')), str(raw.get('addr') or '').strip())
+        if not custom[0] or not custom[1]:
+            return 'payin_selected_wallet_invalid'
+    elif wallet_id:
+        selected = _stand_payin_wallet_row(db, wallet_id)
+        if selected is None or not selected.active or not selected.accepts_payin:
+            return 'payin_selected_wallet_invalid'
+    for entry in entries or []:
+        receiver = str(entry.get('to') or '').strip()
+        if not receiver:
+            return 'payin_receiver_unknown'
+        network = normalize_network(entry.get('network'))
+        if custom and (custom[0] != network or not _stand_same_address(network, custom[1], receiver)):
+            return 'payin_wallet_mismatch'
+        rows = db.query(Wallet).filter(
+            func.lower(Wallet.address) == receiver.lower(), Wallet.active == True,
+            Wallet.accepts_payin == True).all()
+        row = next((w for w in rows if _stand_wallet_network(w) == network
+                    and _stand_same_address(network, w.address, receiver)), None)
+        if row is None:
+            return 'payin_wallet_not_registered'
+        if selected is not None and selected.id != row.id:
+            return 'payin_wallet_mismatch'
+    return None
+
+
 def _stand_manual_close_verify_hashes(state, hashes, declared_amount, verify, used_in_submit,
                                        side, exclude_deal_id=None):
     """Проверить список вручную введённых хешей (приход или расход): каждый —
@@ -9260,9 +9338,11 @@ def _stand_manual_close_verify_hashes(state, hashes, declared_amount, verify, us
         if side == 'payin' and not tx_hash:
             return None, 'payin_hash_invalid'  # формат проверяет тот же normalize_ref, что и сеть
         sender = item.get('sender') or None
-        receiver = item.get('receiver')
+        receiver = item.get('receiver') or None  # пустая строка из UI = адрес не задан
         amount = item.get('amount')
         checked = verify(tx_hash, network, sender, receiver, amount) or {}
+        if checked.get('amountMismatch'):
+            return None, f'{side}_amount_mismatch'
         if checked.get('status') != 'confirmed':
             return None, f'{side}_hash_unverified'
         key = (network, tx_hash)
@@ -9274,7 +9354,8 @@ def _stand_manual_close_verify_hashes(state, hashes, declared_amount, verify, us
         verified_sum += Decimal(str(verified_amount if verified_amount is not None else 0))
         entries.append({
             'hash': tx_hash, 'network': (network or '').upper(),
-            'amount': verified_amount, 'from': checked.get('from'), 'to': receiver,
+            'amount': verified_amount, 'from': checked.get('from'),
+            'to': checked.get('to') or receiver,
             'verified': True, 'verifiedAt': checked.get('verifiedAt'),
         })
     if abs(verified_sum - Decimal(str(declared_amount))) > Decimal('5'):
@@ -9398,10 +9479,14 @@ def _stand_manual_close_apply_override(state, stand_deal, override, actor, *, ve
     # крипта клиента) и проверяется сетью автоматически. Файл и подтверждения других
     # людей не нужны (в том числе зависшая сверка manualBankReceipt).
     payin_entries, problem = _stand_manual_close_verify_hashes(
-        state, payin.get('hashes'), payin_amount, verify, used_hashes, 'payin',
-        exclude_deal_id=deal_id)
+        state, payin.get('hashes'), payin_amount, _stand_override_payin_verify(verify),
+        used_hashes, 'payin', exclude_deal_id=deal_id)
     if problem:
         return problem
+    if db is not None:  # чистые юнит-вызовы без БД реестр не видят; роут всегда передаёт db
+        problem = _stand_payin_wallet_problem(db, stand_deal, payin_entries)
+        if problem:
+            return problem
 
     kind = ('mf_freehold' if stand_deal.get('kind') == 'Фрихолд' else
             'mf_realty' if stand_deal.get('type') == 'Оплата недвижимости' else
@@ -13719,15 +13804,36 @@ def stand_manual_close_verify_hash():
     tx_hash = normalize_ref(data.get('hash'), network)
     if not tx_hash:
         return jsonify({'success': False, 'error': 'Хеш не соответствует сети'}), 400
-    checked = verify_transfer(tx_hash, network, data.get('sender') or None,
-                              data.get('receiver'), data.get('amount') or None)
+    if data['direction'] == 'payin':
+        # Тот же контракт, что у закрытия: hash-only, адреса наблюдает сеть, получатель — наш кошелёк.
+        # Явный amount=0 не превращаем в «сумма не задана»: submit его отвергнет, и preview тоже.
+        raw_amount = data.get('amount')
+        checked = _stand_override_payin_verify(verify_transfer)(
+            tx_hash, network, data.get('sender') or None,
+            data.get('receiver') or None, None if raw_amount in (None, '') else raw_amount)
+        if checked.get('amountMismatch'):
+            return jsonify({'success': False, 'status': 'mismatch',
+                            'error': 'payin_amount_mismatch'}), 422
+        if checked.get('status') == 'confirmed':
+            db = get_session()
+            try:
+                problem = _stand_payin_wallet_problem(db, deal, [{
+                    'to': checked.get('to') or data.get('receiver'), 'network': network}])
+            finally:
+                db.close()
+            if problem:
+                return jsonify({'success': False, 'status': 'mismatch', 'error': problem}), 422
+    else:
+        checked = verify_transfer(tx_hash, network, data.get('sender') or None,
+                                  data.get('receiver'), data.get('amount') or None)
     if checked['status'] != 'confirmed':
         return jsonify({'success': False, 'status': checked['status'],
                         'error': checked.get('checkError') or
                                  f'Перевод не найден или не подтверждён в выбранной сети {network.upper()}'}), 422
     return jsonify({'success': True, 'status': 'confirmed',
                     'verifiedAmount': checked['verifiedAmount'],
-                    'verifiedAt': checked['verifiedAt'], 'from': checked.get('from')})
+                    'verifiedAt': checked['verifiedAt'], 'from': checked.get('from'),
+                    'to': checked.get('to')})
 
 
 def _stand_manual_receipt_text(value, limit):

@@ -11,6 +11,7 @@ import pytest
 import app as m
 from tests.test_stand_single_confirm import setup_verified, change_board
 from tests.test_stand_crm_close_atomic import _setup, _client, _counts
+from tests.payin_registry import ensure_payin_wallet
 
 pytestmark = pytest.mark.usefixtures('stand_demo_environment')
 
@@ -281,6 +282,7 @@ def rental_board(monkeypatch, **patch):
     # нижний транспорт: никаких DNS/сети (stand_egress), как в test_stand_manual_close_realty.py
     monkeypatch.setattr(m, '_tx_info_by_network', lambda tx_hash, network: None)
     monkeypatch.setattr(m, '_send_deal_telegram', lambda deal, sender=None: None)
+    ensure_payin_wallet()  # получатель прихода — наш активный кошелёк реестра (помечен, чистится conftest)
     return _client(uid)
 
 
@@ -293,7 +295,10 @@ CRM = {'deal_kind': 'mf_realty', 'client_name': 'Synthetic rental', 'manager_nam
 
 
 def payin_hash(h=None, amount=14500):
-    return {'hash': h or H_P, 'network': 'trc20', 'receiver': 'TReceiverWallet111111111111', 'amount': amount}
+    # Явные отправитель и получатель = строгая сверка (echo-стаб её понимает); получатель — кошелёк
+    # реестра, созданный в rental_board. Приход «только hash» проверяют native-тесты отдельного файла.
+    return {'hash': h or H_P, 'network': 'trc20', 'sender': 'TSenderWallet11111111111111',
+            'receiver': 'TReceiverWallet111111111111', 'amount': amount}
 
 
 def override(*, hashes=True, **payout):
