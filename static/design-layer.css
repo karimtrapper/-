@@ -321,9 +321,6 @@ body.wave4a.nav-shell-crm :is(select, .custom-select-btn) {
 }
 body.wave4a.nav-shell-crm select { appearance: none !important; -webkit-appearance: none !important; }
 body.wave4a.nav-shell-crm .custom-select-btn { justify-content: flex-start !important; }
-body.wave4a.nav-shell-crm :is(select, .custom-select-btn):hover {
-  border-color: var(--navy-500) !important;
-}
 body.wave4a.nav-shell-crm :is(select, .custom-select-btn):focus-visible,
 body.wave4a.nav-shell-crm .custom-select-wrap.open .custom-select-btn {
   outline: 2px solid var(--action-coral) !important;
