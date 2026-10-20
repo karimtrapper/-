@@ -5381,20 +5381,21 @@ function polishDealActions(){
 function saveUi(){if(!STAND)save();}
 function setRole(r){S.role=r;S.draft=null;S.modal=null;S.taskBranch=null;S.tab='tasks';saveUi();render();}
 function setTab(t){S.tab=t;S.open=null;S.draft=null;S.modal=null;saveUi();render();}
-let taskListScrollY=null;
+let taskListScrollY=globalThis.history?.state?.__calccrmTaskScrollY??null;
 let taskListEntries=[];
 let taskListCursor=-1;
-let taskCardHistoryPushed=false;
+let taskCardHistoryPushed=globalThis.history?.state?.__calccrmTaskCard===true;
 let taskCardScrollRestoration=null;
 function mobileTaskCard(){return window.matchMedia('(max-width:700px)').matches;}
 function rememberTaskList(id,branch){
-  if(!mobileTaskCard()||!document.querySelector('#app .task-list'))return;
+  if(!mobileTaskCard()||!document.querySelector('#app .task-list'))return false;
   taskListScrollY=window.scrollY;
   taskListEntries=[...document.querySelectorAll('.task-list-panel.on [data-task-id]')].map(row=>({
     id:Number(row.dataset.taskId),branch:row.dataset.taskBranch||null,
     view:row.dataset.taskView||'task'
   }));
   taskListCursor=taskListEntries.findIndex(item=>item.id===Number(id)&&item.branch===(branch||null));
+  return true;
 }
 function closeTaskView(){
   S.open=null;S.draft=null;S.tab='tasks';saveUi();render();
@@ -5417,7 +5418,7 @@ function pushTaskCardHistory(wasOpen){
   if(!mobileTaskCard()||wasOpen||taskCardHistoryPushed)return;
   taskCardScrollRestoration=history.scrollRestoration;
   history.scrollRestoration='manual';
-  history.pushState({...history.state,__calccrmTaskCard:true},'',location.href);
+  history.pushState({...history.state,__calccrmTaskCard:true,__calccrmTaskScrollY:taskListScrollY},'',location.href);
   taskCardHistoryPushed=true;
 }
 window.addEventListener('popstate',()=>{
@@ -5431,8 +5432,23 @@ document.addEventListener('click',event=>{
   event.preventDefault();event.stopPropagation();
   closeTaskToList();
 },true);
-function openDeal(id){const wasOpen=!!S.open;rememberTaskList(id,null);S.open=id;S.view='deal';S.taskBranch=null;pushTaskCardHistory(wasOpen);saveUi();render();}
-function openTask(id,branch){const wasOpen=!!S.open;rememberTaskList(id,branch);S.open=id;S.view='task';S.taskBranch=branch||null;pushTaskCardHistory(wasOpen);saveUi();render();if(taskUsesThbRates())ensureThbRates();}
+function syncTaskListCursor(id,branch){
+  if(!taskListEntries.length)return;
+  taskListCursor=taskListEntries.findIndex(item=>item.id===Number(id)&&item.branch===(branch||null));
+}
+function openDeal(id){
+  const wasOpen=!!S.open,fromList=rememberTaskList(id,null);
+  if(wasOpen&&!fromList)syncTaskListCursor(id,null);
+  S.open=id;S.view='deal';S.taskBranch=null;pushTaskCardHistory(wasOpen);saveUi();render();
+  if(fromList)window.scrollTo(0,0);
+}
+function openTask(id,branch){
+  const wasOpen=!!S.open,fromList=rememberTaskList(id,branch);
+  if(wasOpen&&!fromList)syncTaskListCursor(id,branch);
+  S.open=id;S.view='task';S.taskBranch=branch||null;pushTaskCardHistory(wasOpen);saveUi();render();
+  if(fromList)window.scrollTo(0,0);
+  if(taskUsesThbRates())ensureThbRates();
+}
 function nextTask(){
   const next=taskListEntries[taskListCursor+1];
   if(!next)return;

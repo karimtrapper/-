@@ -60,6 +60,7 @@ async function main() {
     assert.equal(await page.evaluate(() => S.open), before.ids[5]);
     assert.equal(await page.evaluate(() => history.state?.__calccrmTaskCard), true);
     assert.equal(await page.evaluate(() => history.length), baseHistoryLength + 1);
+    assert.ok(await page.evaluate(() => scrollY <= 2), 'card opens at the top');
     for (const [width, mobile] of [[699,true], [700,true], [701,false], [767,false], [768,false]]) {
       await page.setViewportSize({ width, height:812 });
       const shown = await page.evaluate(() => ({
@@ -78,6 +79,9 @@ async function main() {
       assert.equal(await page.evaluate(() => S.open), before.ids[index]);
     }
     assert.equal(await page.getByRole('button', { name:'Следующая задача ›' }).isDisabled(), true);
+    await page.evaluate(id => openTask(id, null), before.ids[2]);
+    await page.getByRole('button', { name:'Следующая задача ›' }).click();
+    assert.equal(await page.evaluate(() => S.open), before.ids[3], 'next follows the newly opened card');
     await page.getByRole('button', { name:'‹ Все задачи' }).click();
     await page.waitForFunction(() => S.open === null);
     await page.waitForFunction(expected => Math.abs(scrollY - expected) <= 2, before.scroll);
@@ -107,8 +111,12 @@ async function main() {
     await page.waitForFunction(() => S.open === null && !history.state?.__calccrmTaskCard);
     await page.setViewportSize({ width:375, height:812 });
     await page.locator('.task-list-panel.on [data-task-id]').nth(5).click();
+    await page.reload();
+    await page.waitForFunction(() => typeof S !== 'undefined' && !!S.open);
+    assert.equal(await page.evaluate(() => history.state?.__calccrmTaskCard), true);
     await page.goBack();
     await page.waitForFunction(() => S.open === null);
+    assert.equal(await page.evaluate(() => history.state?.__calccrmTaskCard), undefined);
     await page.goBack();
     await page.waitForURL(`${base}/crm`);
     await context.close();
