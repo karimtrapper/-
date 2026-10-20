@@ -1333,7 +1333,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                                     <option value="partners_cash">Партнёры (наличные)</option>
                                     <option value="spp_doverka" data-legacy="1" hidden>СБП (Доверка, архив)</option>
                                 </select>
-                                <small id="flowSoleReqsCustom" style="display:none">ФЛОУ СОЛЕ КО., ЛТД · ИНН 9909773251 · КПП 770387001 · Московский филиал "БАНК СГБ" г. Москва · р/с 40807810819000000261 · к/с 30101810245250000094 · БИК 044525094</small>
+                                <small id="flowSoleReqsCustom" style="display:none" title="ФЛОУ СОЛЕ КО., ЛТД · ИНН 9909773251 · КПП 770387001 · Московский филиал БАНК СГБ г. Москва · р/с 40807810819000000261 · к/с 30101810245250000094 · БИК 044525094">СГБ · р/с …0261</small>
                             </div>
                             <div class="form-group" id="customPayinTxHashGroup">
                                 <label class="form-label">Хэш транзакции <span style="font-weight:400;color:#64748b;">(если есть)</span></label>
@@ -1389,7 +1389,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                                          показывается только когда открыта старая сделка с этим методом -->
                                     <option value="spp_doverka" data-legacy="1" hidden>СБП (Доверка, архив)</option>
                                 </select>
-                                <small id="flowSoleReqsStandard" style="display:none">ФЛОУ СОЛЕ КО., ЛТД · ИНН 9909773251 · КПП 770387001 · Московский филиал "БАНК СГБ" г. Москва · р/с 40807810819000000261 · к/с 30101810245250000094 · БИК 044525094</small>
+                                <small id="flowSoleReqsStandard" style="display:none" title="ФЛОУ СОЛЕ КО., ЛТД · ИНН 9909773251 · КПП 770387001 · Московский филиал БАНК СГБ г. Москва · р/с 40807810819000000261 · к/с 30101810245250000094 · БИК 044525094">СГБ · р/с …0261</small>
                             </div>
                             <div class="form-group" id="payinRubGroup">
                                 <label class="form-label">Сумма RUB</label>
@@ -6845,6 +6845,18 @@ select.period-btn:hover:not(.active) { color: var(--text); }
             payinExtraRender();
         }
 
+        function sberSelectedAcquiringDetails(part) {
+            const cached = sberIncomesCache.find(x => x.uuid === part.uuid);
+            const net = part.net_rub ?? cached?.amount_rub;
+            const fee = part.fee_rub ?? cached?.fee_rub;
+            const gross = net != null && fee != null ? Number(net) + Number(fee) : null;
+            const lines = [];
+            if (gross != null) lines.push(`Клиент заплатил ${rub2(gross)} ₽`);
+            if (net != null) lines.push(`Зачислено ${rub2(net)} ₽`);
+            lines.push(fee == null ? 'Комиссия неизвестна' : `Комиссия банка ${rub2(fee)} ₽`);
+            return `<span style="color:#64748b;">(${lines.join(' · ')})</span>`;
+        }
+
         function payinExtraRender() {
             const box = document.getElementById('payinExtraList');
             if (!box) return;
@@ -6885,7 +6897,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                         ${(p.sber_parts || []).map((x, k) => `
                             <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 8px;background:white;border:1px solid #bae6fd;border-radius:6px;margin-bottom:4px;font-size:13px;gap:8px;">
                                 <span>${x.kind === 'acquiring' ? '📲' : '🏦'} <b>${rub2(x.amount_rub)} ₽</b>${x.kind === 'acquiring'
-                                    ? ` <span style="color:#64748b;">(на счёт ${rub2(x.net_rub)} · комиссия ${x.fee_rub == null ? 'неизвестна' : rub2(x.fee_rub)})</span>`
+                                    ? ` ${sberSelectedAcquiringDetails(x)}`
                                     : (x.payer ? ' · ' + escapeHtml(x.payer) : '')}${x.date ? ' · ' + x.date : ''}</span>
                                 <span onclick="payinExtraSberRemove(${i}, ${k})" style="cursor:pointer;color:#ef4444;font-weight:700;padding:0 4px;">✕</span>
                             </div>`).join('')}
@@ -7191,7 +7203,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                 listEl.innerHTML = sberParts.map((p, i) => {
                     const isAcq = p.kind === 'acquiring';
                     const tail = isAcq
-                        ? `<span style="color:#64748b;">эквайринг: на счёт ${rub2(p.net_rub)} · комиссия ${p.fee_rub == null ? 'неизвестна' : rub2(p.fee_rub)}</span>`
+                        ? sberSelectedAcquiringDetails(p)
                         : (p.payer ? escapeHtml(p.payer) : '');
                     return `
                     <div style="display:flex;justify-content:space-between;align-items:center;padding:5px 8px;background:white;border:1px solid #bae6fd;border-radius:6px;margin-bottom:4px;font-size:13px;gap:8px;">
@@ -11494,10 +11506,12 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                     L.push('');
                     L.push(`Нераспределённый приход USDT этой CNV: ${money(dist.unassigned_usdt)} USDT (это не подтверждённый долг)`);
                     (dist.unassigned_incomes || []).forEach(x => L.push(
-                        `  ⚠️ ${(x.operation_date || 'дата неизвестна').slice(0, 10)} · ` +
-                        `${x.amount_rub === null ? 'сумма ₽ неизвестна' : money(x.amount_rub) + ' ₽'} · ` +
-                        `${money(x.share_usdt)} USDT уже сконвертированы в этой CNV · приход #${x.sber_income_id} не привязан к сделке; ` +
-                        'пока не включать в платёж. После привязки определите, требуется ли возмещение; если требуется — оформите отдельно по этой же CNV, без повторной конвертации.'));
+                        x.partial_deal_id
+                            ? `  ⚠️ Остаток по сделке #${x.partial_deal_id}: ${money(x.amount_rub)} ₽ / ${money(x.share_usdt)} USDT; доля не назначена, не включать в прибыль и возмещение.`
+                            : `  ⚠️ ${(x.operation_date || 'дата неизвестна').slice(0, 10)} · ` +
+                              `${x.amount_rub === null ? 'сумма ₽ неизвестна' : money(x.amount_rub) + ' ₽'} · ` +
+                              `${money(x.share_usdt)} USDT уже сконвертированы в этой CNV · приход #${x.sber_income_id} не привязан к сделке; ` +
+                              'пока не включать в платёж. После привязки определите, требуется ли возмещение; если требуется — оформите отдельно по этой же CNV, без повторной конвертации.'));
                 }
                 L.push('');
                 L.push(`Остаётся у нас: ${blocked ? 'не определено' : money(dist.stays_usdt) + ' USDT'}` +
@@ -11817,9 +11831,11 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                 ${dist.unassigned_usdt ? `<div style="margin-top:8px; color:#b45309">
                     Нераспределённый приход USDT этой CNV (не долг) <b style="float:right">${money(dist.unassigned_usdt)} USDT</b>
                     ${(dist.unassigned_incomes || []).map(x => `<div style="margin-left:14px">
-                        ${escapeHtml((x.operation_date || 'дата неизвестна').slice(0, 10))} ·
-                        ${x.amount_rub === null ? 'сумма ₽ неизвестна' : money(x.amount_rub) + ' ₽'} ·
-                        приход #${x.sber_income_id} уже сконвертирован; после привязки определите, требуется ли возмещение; если требуется — оформите отдельно по этой же CNV без повторной конвертации</div>`).join('')}
+                        ${x.partial_deal_id
+                            ? `Остаток по сделке #${x.partial_deal_id}: ${money(x.amount_rub)} ₽ / ${money(x.share_usdt)} USDT; доля не назначена, не включать в прибыль и возмещение`
+                            : `${escapeHtml((x.operation_date || 'дата неизвестна').slice(0, 10))} ·
+                               ${x.amount_rub === null ? 'сумма ₽ неизвестна' : money(x.amount_rub) + ' ₽'} ·
+                               приход #${x.sber_income_id} уже сконвертирован; после привязки определите, требуется ли возмещение; если требуется — оформите отдельно по этой же CNV без повторной конвертации`}</div>`).join('')}
                 </div>` : ''}
                 <div style="margin-top:8px; border-top:1px solid #e2e8f0; padding-top:6px">
                     Остаётся у нас <b style="float:right">${money(dist.stays_usdt)} USDT</b>

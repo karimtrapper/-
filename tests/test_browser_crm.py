@@ -222,11 +222,22 @@ def test_flow_sole_custom_keeps_incoming_picker_and_manual_hash(ui):
     page.locator('.nav-create-btn').click()
     expect(page.locator('#create')).to_be_visible()
     page.wait_for_load_state('networkidle')
+    page.set_viewport_size({'width': 375, 'height': 812})
+    standard_width = page.evaluate('document.documentElement.scrollWidth')
+    assert standard_width <= 436, standard_width
+    choose(page, '#payinMethod', 'Flow Sole')
+    expect(page.locator('#flowSoleReqsStandard')).to_have_text('СГБ · р/с …0261')
+    assert page.evaluate('document.documentElement.scrollWidth') <= standard_width
     choose(page, '#dealKindSelect', 'Кастомная — нестандартные валюты')
+    custom_width = page.evaluate('document.documentElement.scrollWidth')
+    assert custom_width <= 436, custom_width
     choose(page, '#customPayinMethod', 'Flow Sole')
+    assert page.evaluate('document.documentElement.scrollWidth') <= custom_width
+    page.set_viewport_size({'width': 1440, 'height': 900})
     expect(page.locator('#customPayinPicker')).to_be_visible()
     expect(page.locator('#customPayinTxHashGroup')).to_be_visible()
     expect(page.locator('#flowSoleReqsCustom')).to_be_visible()
+    expect(page.locator('#flowSoleReqsCustom')).to_have_text('СГБ · р/с …0261')
     expect(page.locator('#customPayinCurrency')).to_be_disabled()
     assert page.locator('#customPayinCurrency').input_value() == 'RUB'
     assert page.locator('#customPayinRate').evaluate('(el) => el.readOnly')
@@ -240,6 +251,38 @@ def test_flow_sole_custom_keeps_incoming_picker_and_manual_hash(ui):
     expect(page.locator('#customPayinTxHash')).to_have_value('synthetic-flow-sole-hash')
     page.locator('#customPayinTxHash').fill('manual-flow-sole-hash')
     expect(page.locator('#customPayinTxHash')).to_have_value('manual-flow-sole-hash')
+    assert not errors, errors
+
+
+def test_selected_acquiring_keeps_client_paid_hint_in_main_and_extra(ui):
+    page, errors, _, _ = ui
+    page.locator('.nav-create-btn').click()
+    expect(page.locator('#create')).to_be_visible()
+    page.wait_for_load_state('networkidle')
+    page.evaluate('''() => {
+        sberIncomesCache = ['main', 'extra'].map(uuid => ({
+            uuid, kind: 'acquiring', amount_rub: 98000, gross_rub: 98700,
+            fee_rub: 700, operation_date: '2026-10-20'
+        }));
+        sberAddIncome('main');
+        payinExtraAdd();
+        payinExtraSetMethod(0, 'sber_wl');
+        payinExtraSberAdd(0, 'extra');
+    }''')
+    expect(page.locator('#sberPartsList')).to_contain_text('Клиент заплатил')
+    expect(page.locator('#sberPartsList')).to_contain_text('Комиссия банка')
+    expect(page.locator('#payinExtraList')).to_contain_text('Клиент заплатил')
+    expect(page.locator('#payinExtraList')).to_contain_text('Комиссия банка')
+    expect(page.locator('[name="payin_amount_rub"]')).to_have_value('98000.00')
+
+    page.evaluate('''() => {
+        sberReset();
+        sberIncomesCache = [{uuid: 'unknown', kind: 'acquiring',
+            amount_rub: 98000, gross_rub: null, fee_rub: null}];
+        sberAddIncome('unknown');
+    }''')
+    expect(page.locator('#sberPartsList')).to_contain_text('Комиссия неизвестна')
+    expect(page.locator('#sberPartsList')).not_to_contain_text('Клиент заплатил')
     assert not errors, errors
 
 
