@@ -383,7 +383,7 @@ async function crmDraftLoadRate(active) {
 }
 async function crmDraftLoadWallets(active,selectedId) {
   try{
-    const response=await crmDraftSafeFetch('/api/wallets');
+    const response=await crmDraftSafeFetch('/api/wallets?no_balances=true&all=true');
     const data=await response.json();
     if(crmDraftActive!==active)return;
     const wallets=(data.wallets||[]).filter(w=>w.active!==false);
@@ -396,6 +396,16 @@ async function crmDraftLoadWallets(active,selectedId) {
       select.value=String(selected);
       crmDraftWalletAdd(active,select);
     }
+    const payin=active.root.getElementById('payinWalletSelect');
+    if(payin){
+      const saved=payin.value||payin.dataset.want||'';
+      const incoming=wallets.filter(w=>w.accepts_payin&&
+        (!w.not_for_new_deals||String(w.id)===String(saved)));
+      payin.replaceChildren(new Option('— не выбрано —',''),
+        ...incoming.map(w=>new Option(w.label||w.address,String(w.id))));
+      if(saved)payin.value=String(saved);
+    }
+    active.core.registryWallets=wallets;
   }catch(e){/* Local wallet list unavailable; no external fallback. */}
 }
 /* Добавление не закрывает черновик и не меняет уже выбранный кошелёк. */
@@ -531,6 +541,9 @@ function crmDraftWire(active) {
     if(el.id==='sberKindSelectC')active.core.sberKindChanged(el.value);
     if(['customPayinCurrency','customPayoutCurrency'].includes(el.id))active.core.calcCustomProfit();
     if(el.id==='payinMethod')crmDraftLayout(active);
+    if(el.id==='payinWalletSelect'){
+      el.dataset.userSelected='true';active.core.refreshPayinWalletPolicy();
+    }
     if(el.id==='sberKindSelect')active.core.sberKindChanged(el.value);
     if(el.id==='payinTxSelect')active.core.selectPayinTx(el);
     if(el.id==='payoutSource'||el.id==='bankCardSelect'){

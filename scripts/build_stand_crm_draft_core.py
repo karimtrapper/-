@@ -34,6 +34,7 @@ SLICES = [
     ("        async function loadCashBatchesForSelect(", "        // Update card info when selected"),
     ("        function methodUsesSberPool(", "        function flowShow("),
     ("        function peHashes(", "        function applyPayinMethodFields("),
+    ("        function renderCrmWalletAddress(", "        function refreshPayoutWalletPolicy("),
     ("        function applyPayinMethodFields()", "        // ==================== Сбер (реквизиты):"),
     ("        function sberSfx()", "        function sberSetKindFilter("),
     ("        function sberSetKindFilter(", "        function sberKindChanged("),
@@ -248,6 +249,7 @@ window.createCrmDraftCore = function createCrmDraftCore(root, adapters) {
         querySelector(selector) { return root.querySelector(selector); },
         querySelectorAll(selector) { return root.querySelectorAll(selector); },
         createElement(tag) { return window.document.createElement(tag); },
+        createTextNode(text) { return window.document.createTextNode(text); },
         get activeElement() { return root.activeElement; },
     };
     const API_URL = '';
@@ -270,6 +272,7 @@ window.createCrmDraftCore = function createCrmDraftCore(root, adapters) {
     let mfPayoutChecked = new Set();
     let mfPayoutAdding = false;
     let payinMode = 'rate';
+    let payoutRegistryWallets = adapters.wallets || [];
     const editingDealId = adapters.editingDealId;
     const editingPayinRubIsNet = adapters.payinRubIsNet === true;
     function flowShow(suffix, show) {
@@ -321,6 +324,12 @@ window.createCrmDraftCore = function createCrmDraftCore(root, adapters) {
         customAgentsSerialize, customAgentsLoad,
         get customAgents() { return customAgents; },
         upgradeAllSelects, reportInvalidField, applyPayinMethodFields,
+        refreshPayinWalletPolicy,
+        set registryWallets(v) {
+            payoutRegistryWallets = v || [];
+            syncNewPayinWalletDefault();
+            refreshPayinWalletPolicy();
+        },
         sberKindChanged, sberLoadIncomes, sberAddIncome, sberAddManual,
         loadCashBatchesForSelect, loadBankCardsForSelect,
         get cashBatchesData() { return cashBatchesData; },

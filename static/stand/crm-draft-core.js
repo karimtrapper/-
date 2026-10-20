@@ -6,6 +6,7 @@ window.createCrmDraftCore = function createCrmDraftCore(root, adapters) {
         querySelector(selector) { return root.querySelector(selector); },
         querySelectorAll(selector) { return root.querySelectorAll(selector); },
         createElement(tag) { return window.document.createElement(tag); },
+        createTextNode(text) { return window.document.createTextNode(text); },
         get activeElement() { return root.activeElement; },
     };
     const API_URL = '';
@@ -28,6 +29,7 @@ window.createCrmDraftCore = function createCrmDraftCore(root, adapters) {
     let mfPayoutChecked = new Set();
     let mfPayoutAdding = false;
     let payinMode = 'rate';
+    let payoutRegistryWallets = adapters.wallets || [];
     const editingDealId = adapters.editingDealId;
     const editingPayinRubIsNet = adapters.payinRubIsNet === true;
     function flowShow(suffix, show) {
@@ -1189,6 +1191,71 @@ window.createCrmDraftCore = function createCrmDraftCore(root, adapters) {
         // которая должна считать прибыль от итога, а не от основной части
         function payinExtraTotalUsdt() {
             return payinExtra.reduce((s, p) => s + (p.amount_usdt || 0), 0);
+        }
+
+        function renderCrmWalletAddress(id, wallet) {
+            const box = document.getElementById(id);
+            if (!box) return;
+            box.replaceChildren();
+            const address = wallet?.address;
+            if (!address) return;
+            const details = document.createElement('details');
+            const summary = document.createElement('summary');
+            summary.textContent = `${address.slice(0, 8)}…${address.slice(-8)} ▾`;
+            summary.title = 'Показать полный адрес';
+            const full = document.createElement('code');
+            full.textContent = address;
+            details.append(summary, full);
+            const copy = document.createElement('button');
+            copy.type = 'button';
+            copy.textContent = 'Копировать';
+            copy.setAttribute('aria-label', 'Копировать адрес кошелька');
+            copy.onclick = () => navigator.clipboard.writeText(address)
+                .then(() => { copy.textContent = 'Скопировано';
+                    setTimeout(() => { copy.textContent = 'Копировать'; }, 2000); })
+                .catch(() => showToast('Не удалось скопировать адрес', 'error'));
+            box.append(details, copy);
+        }
+        function crmWalletLimitText(wallet) {
+            return '$' + Number(wallet.limit_usd).toLocaleString('ru-RU', {maximumFractionDigits: 2}).replace(/\s/g, '\u00a0');
+        }
+        function walletPolicyText(wallet) {
+            if (!wallet?.purpose) return '';
+            const names = {operator:'операционист', findir:'финансист', teodor:'владелец'};
+            const starters = [...new Set([...(wallet.initiator_roles||[]), ...(wallet.owner_can_alone?['teodor']:[])])];
+            const limit = wallet.limit_usd != null
+                ? ` · до ${crmWalletLimitText(wallet)}, выше — с согласованием владельца`
+                : '';
+            return `${wallet.label || wallet.address} · начинает ${starters.map(r=>names[r]||r).join(' или ')} · подтверждает ${(wallet.confirmer_roles||[]).map(r=>names[r]||r).join(' или ')}${limit}`;
+        }
+        function renderCrmWalletPolicy(box, wallet) {
+            const policy = walletPolicyText(wallet);
+            const amount = wallet?.limit_usd != null ? crmWalletLimitText(wallet) : '';
+            const at = amount ? policy.lastIndexOf(amount) : -1;
+            if (at < 0) { box.textContent = policy; return; }
+            const token = document.createElement('span');
+            token.className = 'crm-money-token';
+            token.textContent = amount;
+            box.replaceChildren(document.createTextNode(policy.slice(0, at)), token,
+                document.createTextNode(policy.slice(at + amount.length)));
+        }
+        function refreshPayinWalletPolicy() {
+            const select = document.getElementById('payinWalletSelect');
+            const wallet = payoutRegistryWallets.find(w => String(w.id) === select?.value);
+            const box = document.getElementById('payinWalletPolicy');
+            if (box) renderCrmWalletPolicy(box, wallet);
+            renderCrmWalletAddress('payinWalletAddress', wallet);
+        }
+        function syncNewPayinWalletDefault() {
+            const select = document.getElementById('payinWalletSelect');
+            if (!select || editingDealId !== null || select.dataset.userSelected === 'true') return;
+            const realty = document.getElementById('mfDealToggle')?.checked ||
+                document.getElementById('fhDealToggle')?.checked;
+            const purpose = realty ? 'realty' : 'exchange';
+            const wallet = payoutRegistryWallets.find(w => w.purpose === purpose && w.accepts_payin &&
+                !w.not_for_new_deals && [...select.options].some(option => option.value === String(w.id)));
+            if (wallet) select.value = String(wallet.id);
+            refreshPayinWalletPolicy();
         }
 
         function applyPayinMethodFields() {
@@ -2546,6 +2613,12 @@ window.createCrmDraftCore = function createCrmDraftCore(root, adapters) {
         customAgentsSerialize, customAgentsLoad,
         get customAgents() { return customAgents; },
         upgradeAllSelects, reportInvalidField, applyPayinMethodFields,
+        refreshPayinWalletPolicy,
+        set registryWallets(v) {
+            payoutRegistryWallets = v || [];
+            syncNewPayinWalletDefault();
+            refreshPayinWalletPolicy();
+        },
         sberKindChanged, sberLoadIncomes, sberAddIncome, sberAddManual,
         loadCashBatchesForSelect, loadBankCardsForSelect,
         get cashBatchesData() { return cashBatchesData; },
