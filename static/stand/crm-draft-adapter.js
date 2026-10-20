@@ -54,7 +54,8 @@ function crmDraftParts(d) {
     uuid:p.uuid || (String(p.incId||'').startsWith('sber:')?String(p.incId).slice(5):null),
     amount_rub:p.amountRub||0,payer:p.payer||'',date:(p.date||'').slice(0,10),
     note:p.note||'',kind:p.kind==='acquiring'?'acquiring':'transfer',
-    fee_rub:p.fee??null,net_rub:p.net??p.amountRub,
+    fee_rub:p.fee??null,net_rub:p.net??(p.kind==='acquiring'&&d.rubIsNet!==true
+      ?p.fee!=null?(p.amountRub||0)-p.fee:null:p.amountRub),
     ...(p.rubIsNet===true?{payin_rub_is_net:true}:{}),
   }));
 }

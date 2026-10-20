@@ -1451,8 +1451,20 @@ window.createCrmDraftCore = function createCrmDraftCore(root, adapters) {
             if (listEl) {
                 listEl.innerHTML = sberParts.map((p, i) => {
                     const isAcq = p.kind === 'acquiring';
+                    const feeKnown = p.fee_rub != null;
+                    const fee = feeKnown ? rub2(p.fee_rub) + ' ₽' : 'неизвестна';
+                    const credited = editingPayinRubIsNet ? Number(p.amount_rub || 0)
+                        : p.net_rub != null ? Number(p.net_rub)
+                        : feeKnown ? Number(p.amount_rub || 0) - Number(p.fee_rub) : null;
+                    const beforeFee = editingPayinRubIsNet
+                        ? feeKnown ? Number(p.amount_rub || 0) + Number(p.fee_rub) : null
+                        : Number(p.amount_rub || 0);
                     const tail = isAcq
-                        ? `<span style="color:#64748b;">эквайринг: на счёт ${rub2(p.net_rub)} + комиссия ${rub2(p.fee_rub)}</span>`
+                        ? `<span style="color:#64748b;">эквайринг: комиссия ${fee} · `
+                          + (editingPayinRubIsNet
+                              ? `до комиссии ${beforeFee == null ? 'неизвестно' : rub2(beforeFee) + ' ₽'}`
+                              : `на счёт ${credited == null ? 'неизвестно' : rub2(credited) + ' ₽'}`)
+                          + `</span>`
                         : (p.payer ? escapeHtml(p.payer) : '');
                     return `
                     <div style="display:flex;justify-content:space-between;align-items:center;padding:5px 8px;background:white;border:1px solid #bae6fd;border-radius:6px;margin-bottom:4px;font-size:13px;gap:8px;">
@@ -1463,10 +1475,20 @@ window.createCrmDraftCore = function createCrmDraftCore(root, adapters) {
             }
             const totalEl = document.getElementById('sberPartsTotal' + sfx);
             const total = sberPartsSum();
+            const hasAcquiring = sberParts.some(p => p.kind === 'acquiring');
+            const feeUnknown = sberParts.some(p => p.kind === 'acquiring' && p.fee_rub == null);
             const feeTotal = sberParts.reduce((s, p) => s + (+p.fee_rub || 0), 0);
+            const credited = editingPayinRubIsNet ? total : sberParts.every(p =>
+                p.kind !== 'acquiring' || p.net_rub != null || p.fee_rub != null)
+                ? sberParts.reduce((s, p) => s + (p.kind !== 'acquiring' ? Number(p.amount_rub || 0)
+                    : p.net_rub != null ? Number(p.net_rub)
+                    : Number(p.amount_rub || 0) - Number(p.fee_rub)), 0) : null;
             if (totalEl) totalEl.textContent = sberParts.length
-                ? `Итого от клиента: ${rub2(total)} ₽ (частей: ${sberParts.length})`
-                  + (feeTotal ? ` · комиссия эквайринга ${rub2(feeTotal)} ₽ → на счёт ${rub2(total - feeTotal)} ₽` : '')
+                ? `${editingPayinRubIsNet ? 'Итого на счёт' : 'Итого от клиента до комиссии'}: ${rub2(total)} ₽ (частей: ${sberParts.length})`
+                  + (hasAcquiring ? ` · комиссия эквайринга ${feeUnknown ? 'неизвестна' : rub2(feeTotal) + ' ₽'}`
+                    + (editingPayinRubIsNet
+                        ? ` · до комиссии банка ${feeUnknown ? 'неизвестно' : rub2(total + feeTotal) + ' ₽'}`
+                        : ` · на счёт ${credited == null ? 'неизвестно' : rub2(credited) + ' ₽'}`) : '')
                 : '';
             // Сумма частей → в поле суммы формы
             if (sberParts.length) {
