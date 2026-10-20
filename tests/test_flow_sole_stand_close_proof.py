@@ -229,13 +229,22 @@ def test_manual_origin_close_cannot_skip_flow_proof(monkeypatch):
     db = m.get_session()
     row = db.query(m.StandState).filter_by(id=1).one()
     state = json.loads(row.data)
-    state['deals'][0].update(originMode='manual', manual=True, step='manual')
+    # _seed_evidence() auto-seeds a fixtureSeed payinHashes + cnvId for any deal
+    # without one (so other tests in this shared helper don't need boilerplate).
+    # This test wants genuinely NO proof, so it clears that seeded shortcut —
+    # otherwise the close is still blocked, just by the batch-funding check
+    # (stale cnvId/payinParts mismatch) instead of the intended hash-required path.
+    state['deals'][0].update(originMode='manual', manual=True, step='manual',
+                              payinHashes=[], cnvId=None)
     row.data = json.dumps(state)
     db.commit(); db.close()
     before = _counts()
     response = client.post('/api/stand/deals/1474/crm-close',
                            json={'version': 1, 'crm': crm})
-    assert response.status_code == 409, response.json
-    assert response.json['error'] == 'Подтвердите сумму Pay-In хэшем сети'
+    # No hash at all is a structural omission (400, code) in the manual-origin
+    # branch — distinct from the s27 path's "hash present but fails network
+    # proof" (409, friendly text) exercised above. Either way, blocked.
+    assert response.status_code == 400, response.json
+    assert response.json['error'] == 'payin_hash_required'
     assert _counts() == before
     assert client.get('/api/stand/state').json['data']['deals'][0]['closed'] is False

@@ -21306,6 +21306,45 @@ def create_manager():
     finally:
         session.close()
 
+
+@app.route('/api/managers/<int:manager_id>', methods=['PUT'])
+def update_manager(manager_id):
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict) or type(data.get('active')) is not bool:
+        return jsonify({'success': False, 'error': 'active должен быть boolean'}), 400
+    session = get_session()
+    try:
+        manager = session.query(Manager).filter(Manager.id == manager_id).first()
+        if manager is None:
+            return jsonify({'success': False, 'error': 'Менеджер не найден'}), 404
+        manager.active = data['active']
+        session.commit()
+        return jsonify({'success': True, 'manager': manager.to_dict()})
+    except Exception:
+        session.rollback()
+        app.logger.exception('Manager update error')
+        return jsonify({'success': False, 'error': 'Внутренняя ошибка сервера'}), 500
+    finally:
+        session.close()
+
+
+@app.route('/api/managers/<int:manager_id>', methods=['DELETE'])
+def delete_manager(manager_id):
+    session = get_session()
+    try:
+        manager = session.query(Manager).filter(Manager.id == manager_id).first()
+        if manager is None:
+            return jsonify({'success': False, 'error': 'Менеджер не найден'}), 404
+        manager.active = False
+        session.commit()
+        return jsonify({'success': True})
+    except Exception:
+        session.rollback()
+        app.logger.exception('Manager deactivation error')
+        return jsonify({'success': False, 'error': 'Внутренняя ошибка сервера'}), 500
+    finally:
+        session.close()
+
 # ==================== CRM API - WALLETS ====================
 
 @app.route('/api/wallets', methods=['GET'])
