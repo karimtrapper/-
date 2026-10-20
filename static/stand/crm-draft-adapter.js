@@ -676,6 +676,15 @@ function crmDraftManualHashFromPool(active,hash,network) {
   return !!hash&&active.core.payinTxPool.some(tx=>
     tx.hash===hash&&String(tx.network||'trc20').toLowerCase().replace('-','')===normalizedNetwork);
 }
+function crmDraftSavedFlowShare(deal,hash,network,declared) {
+  const normalizedNetwork=String(network||'trc20').toLowerCase().replace('-','');
+  const saved=(deal.payinHashes||[]).find(tx=>tx.hash===hash&&
+    String(tx.network||tx.net||'trc20').toLowerCase().replace('-','')===normalizedNetwork);
+  // Preserve the stored null/full-transfer contract and any historical
+  // explicit numeric share only while the hash and network stay unchanged.
+  // Never derive a replacement share from the declared amount.
+  return saved&&saved.amount!=null?saved.amount:null;
+}
 function crmDraftClientSearch(active,query) {
   const box=active.root.getElementById('clientDropdown');if(!box)return;
   const q=query.trim().toLowerCase();
@@ -807,7 +816,7 @@ function crmDraftCommitCustom(a,d,before) {
     Math.round(d.payinParts.reduce((sum,p)=>sum+(p.amountRub||0),0)*100)/100:null;
   d.payinExtra=a.core.payinExtraSerialize();
   d.payinHashes=c.payinTxHash?[{hash:c.payinTxHash,network:c.payinNetwork||'trc20',
-    amount:flowSole?null:payinUsdt}]:[];
+    amount:flowSole?crmDraftSavedFlowShare(d,c.payinTxHash,c.payinNetwork,payinUsdt):payinUsdt}]:[];
   d.notes=c.notes;
   d.agents=a.core.customAgentsSerialize().map(x=>({refId:x.referrer_id,
     name:x.name,tier:x.tier,comp:x.comp_model,percent:x.percent,fixed:x.fixed_usdt}));

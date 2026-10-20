@@ -25,6 +25,26 @@ const adapterShare = new Function('method', 'amount',
 assert.equal(adapterShare('crypto_direct', 700), 700);
 assert.equal(adapterShare('sber_reqs', 700), 700);
 assert.equal(adapterShare('flow_sole_reqs', 700), null);
-assert.match(adapter, /amount:flowSole\?null:payinUsdt/, 'custom task form keeps the same distinction');
+const poolMapping = adapter.match(/amount:d\.payType==='По реквизитам'&&d\.rubReceivingAccount\?\.mode==='flowsole'&&x\._auto\s*\?\s*null\s*:\s*crmDraftNum\(x\.amount_usdt\)/);
+assert.ok(poolMapping, 'task adapter distinguishes auto full-hash lookup from explicit pool share');
+const mappedShare = new Function('d', 'x', 'crmDraftNum', `return (${poolMapping[0].slice('amount:'.length)});`);
+const flow = {payType:'По реквизитам',rubReceivingAccount:{mode:'flowsole'}};
+assert.equal(mappedShare(flow,{amount_usdt:500,_auto:true},Number),null,
+  'a pool selection alone stays full-hash/null');
+assert.equal(mappedShare(flow,{amount_usdt:100,_auto:false},Number),100,
+  'a manually set pool share stays numeric through task adapter serialization');
+const savedShareSource = adapter.match(/^function crmDraftSavedFlowShare\([^]*?^}/m);
+assert.ok(savedShareSource, 'custom editor preserves the saved Flow Sole hash share on reopen/save');
+const savedFlowShare = new Function(`${savedShareSource[0]}; return crmDraftSavedFlowShare;`)();
+assert.equal(savedFlowShare({payinHashes:[{hash:'same',network:'trc20',amount:100}]},
+  'same','TRC20',500),100,'unchanged stored numeric share survives a changed declared amount');
+assert.equal(savedFlowShare({payinHashes:[{hash:'same',network:'trc20',amount:null}]},
+  'same','trc20',500),null,'unchanged new full-transfer hash remains null');
+assert.equal(savedFlowShare({payinHashes:[{hash:'old',network:'trc20',amount:100}]},
+  'new','trc20',500),null,'new manual hash does not inherit another transfer share');
+assert.equal(savedFlowShare({payinHashes:[{hash:'same',network:'trc20',amount:100}]},
+  'same','erc20',500),null,'changed network does not inherit a prior share');
+assert.match(adapter, /amount:flowSole\?crmDraftSavedFlowShare\(d,c\.payinTxHash,c\.payinNetwork,payinUsdt\):payinUsdt/,
+  'custom task form preserves an existing Flow Sole share without deriving a new one');
 
 console.log('CRM manual hash share: PASS');

@@ -8173,6 +8173,17 @@ def stand_crm_close(stand_deal_id):
                     and not _stand_receipt_attachment_acceptance(db, stand_deal)):
                 return jsonify({'success': False, 'error': 'invoice_not_paid'}), 409
             missing = _stand_close_evidence_status(db, row, stand_deal)
+            custom_flow_sole = (stand_deal.get('custom') is True
+                and (stand_deal.get('customData') or {}).get('payinMethod') == 'flow_sole_reqs')
+            flow_sole_draft = (custom_flow_sole or (stand_deal.get('payType') == 'По реквизитам'
+                and (stand_deal.get('rubReceivingAccount') or {}).get('mode') == 'flowsole'))
+            if flow_sole_draft:
+                # The close transaction performs strict, provider-backed
+                # Flow Sole proof after creating the pending CRM row. The
+                # older board readiness check only understands numeric
+                # conversion allocations and rejects the valid null/full-hash
+                # contract before that proof can run.
+                missing = [item for item in missing if item != 'payin']
             if missing:
                 return jsonify({'success': False, 'error': 'close_evidence_missing',
                                 'missing': missing, 'version': row.version or 0,
@@ -8965,6 +8976,11 @@ def _stand_crm_fact_problem(board, crm, kind):
     """
     from decimal import Decimal, ROUND_HALF_UP
     import math
+    custom = board.get('customData') or {}
+    flow_sole = ((board.get('payType') == 'По реквизитам'
+                  and (board.get('rubReceivingAccount') or {}).get('mode') == 'flowsole')
+                 or (board.get('custom') is True
+                     and custom.get('payinMethod') == 'flow_sole_reqs'))
 
     def money(value):
         value = _amount(value)
@@ -9043,7 +9059,6 @@ def _stand_crm_fact_problem(board, crm, kind):
     pair_custom = pair if pair and (pair[0] == 'thb' or pair[1] != 'thb') and not board.get('custom') else None
     if bool(crm.get('is_custom')) != (board.get('custom') is True or bool(pair_custom)):
         return 'custom_origin_mismatch'
-    custom = board.get('customData') or {}
     if board.get('custom') is True:
         if not custom:
             return 'custom_facts_missing'
@@ -9073,11 +9088,15 @@ def _stand_crm_fact_problem(board, crm, kind):
         custom_hash = custom.get('payinTxHash') or None
         stand_hashes = board.get('payinHashes') or []
         if custom_hash:
+            saved_hash = stand_hashes[0] if len(stand_hashes) == 1 and isinstance(stand_hashes[0], dict) else {}
+            saved_amount = money(saved_hash.get('amount'))
+            full_hash_contract = flow_sole and saved_amount is None
             if (len(stand_hashes) != 1
-                    or str(stand_hashes[0].get('hash') or '') != custom_hash
-                    or normalize_network(stand_hashes[0].get('net') or
-                                         stand_hashes[0].get('network') or 'TRC20') != 'trc20'
-                    or money(stand_hashes[0].get('amount')) != money(custom.get('payinUsdt'))):
+                    or str(saved_hash.get('hash') or '') != custom_hash
+                    or normalize_network(saved_hash.get('net') or
+                                         saved_hash.get('network') or 'TRC20') != 'trc20'
+                    or (not full_hash_contract
+                        and saved_amount != money(custom.get('payinUsdt')))):
                 return 'custom_facts_mismatch'
         elif stand_hashes:
             return 'custom_facts_mismatch'
@@ -9104,8 +9123,11 @@ def _stand_crm_fact_problem(board, crm, kind):
         return 'recipient_mismatch'
     payin_method = {'По реквизитам': 'sber_reqs', 'СБП': 'sber_wl',
                     'Крипта': 'crypto_direct', 'Наличные': 'partners_cash'}
-    expected_payin_method = ('flow_sole_reqs' if board.get('payType') == 'По реквизитам'
-        and (board.get('rubReceivingAccount') or {}).get('mode') == 'flowsole'
+    custom_flow_sole = (board.get('custom') is True
+                        and custom.get('payinMethod') == 'flow_sole_reqs')
+    expected_payin_method = ('flow_sole_reqs' if custom_flow_sole or
+        (board.get('payType') == 'По реквизитам'
+         and (board.get('rubReceivingAccount') or {}).get('mode') == 'flowsole')
         else payin_method.get(board.get('payType')))
     if board.get('payType') and crm.get('payin_method') != expected_payin_method:
         return 'payin_method_mismatch'
@@ -9127,7 +9149,13 @@ def _stand_crm_fact_problem(board, crm, kind):
                     (payer and h.get('from') and h.get('from') != payer)))
                for h in main_hashes):
             return 'payin_basis_unverified'
-    if main_hashes:
+    if flow_sole:
+        # Flow Sole stores the deal's declared share separately from the
+        # network transfer. A missing hash amount means “use the full transfer”
+        # in the strict proof path; it is not missing board pay-in basis.
+        main_usdt = money(custom.get('payinUsdt') if board.get('custom') is True
+                          else board.get('amountUsdt'))
+    elif main_hashes:
         if not all(isinstance(h, dict) and positive(h.get('amount')) is not None
                    for h in main_hashes):
             return 'payin_basis_missing'
@@ -9212,8 +9240,12 @@ def _stand_crm_fact_problem(board, crm, kind):
     crm_payin_hashes = crm.get('payin_tx_hashes')
     if (board.get('custom') is True and crm_payin_hashes is None
             and crm.get('payin_tx_hash')):
+        saved = next((h for h in board.get('payinHashes') or []
+                      if isinstance(h, dict) and h.get('hash') == crm['payin_tx_hash']), None)
+        scalar_amount = (saved.get('amount') if flow_sole and saved is not None
+                         else crm.get('payin_amount_usdt'))
         crm_payin_hashes = [{'hash': crm['payin_tx_hash'], 'network': 'trc20',
-                             'amount_usdt': crm.get('payin_amount_usdt')}]
+                             'amount_usdt': scalar_amount}]
     if (crm.get('payin_tx_hash') and crm_payin_hashes
             and crm['payin_tx_hash'] != crm_payin_hashes[0].get('hash')):
         return 'payin_facts_mismatch'

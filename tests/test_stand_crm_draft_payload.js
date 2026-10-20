@@ -59,6 +59,20 @@ assert.equal(flowDraft.payin_amount_usdt,400,
   'task CRM transfer must keep the declared draft, not the full hash amount');
 assert.equal(flowDraft.payin_tx_hashes[0].amount_usdt,500,
   'the selected hash amount remains distinct proof data for server comparison');
+const flowFullHash=ctx.crmPayload({...base,type:'Обмен валюты',kind:'',
+  payType:'По реквизитам',rubReceivingAccount:{mode:'flowsole'},
+  amountRub:50000,amountUsdt:500,payinParts:[],payinExtra:[],
+  payinHashes:[{hash:'n'.repeat(64),network:'trc20',amount:null}],rates:{broker:100}});
+assert.equal(flowFullHash.payin_amount_usdt,500);
+assert.equal(flowFullHash.payin_tx_hashes[0].amount_usdt,null,
+  'auto-selected Flow Sole hash stays a full-network proof, not an explicit share');
+const flowPoolShare=ctx.crmPayload({...base,type:'Обмен валюты',kind:'',
+  payType:'По реквизитам',rubReceivingAccount:{mode:'flowsole'},
+  amountRub:10000,amountUsdt:100,payinParts:[],payinExtra:[],
+  payinHashes:[{hash:'p'.repeat(64),network:'trc20',amount:100}],rates:{broker:100}});
+assert.equal(flowPoolShare.payin_amount_usdt,100);
+assert.equal(flowPoolShare.payin_tx_hashes[0].amount_usdt,100,
+  'an explicitly entered Flow Sole pool share survives CRM payload serialization');
 const rateOnly=ctx.crmPayload({...base,type:'Обмен валюты',kind:'',payType:'Крипта',
   amountUsdt:100,payinParts:[],payinExtra:[{method:'sber_reqs',
     amount_rub:2000,rate_rub_usdt:100,amount_usdt:null}]});
@@ -108,6 +122,21 @@ assert.equal(customWithHash.payin_tx_hash,customHash,
   'CRM custom serializer uses its singular incoming hash field');
 assert.equal(customWithHash.payin_tx_hashes,undefined,
   'do not silently invent a parallel CRM custom hash array');
+const customFlowHash='q'.repeat(64);
+const customFlowNull=ctx.crmPayload({...base,type:'Обмен валюты',kind:'',custom:true,
+  amountUsdt:500,payinHashes:[{hash:customFlowHash,network:'trc20',amount:null}],
+  customData:{payinCurrency:'RUB',payinAmount:50000,payinRate:100,payinUsdt:500,
+    payoutCurrency:'USDT',payoutAmount:450,payoutRate:null,payoutUsdt:450,
+    payinTxHash:customFlowHash,payinMethod:'flow_sole_reqs',payoutMethod:'transfer'}});
+assert.equal(customFlowNull.payin_tx_hashes[0].amount_usdt,null,
+  'new custom Flow Sole full-hash contract stays null');
+const customFlowShare=ctx.crmPayload({...base,type:'Обмен валюты',kind:'',custom:true,
+  amountUsdt:100,payinHashes:[{hash:customFlowHash,network:'trc20',amount:100}],
+  customData:{payinCurrency:'RUB',payinAmount:10000,payinRate:100,payinUsdt:100,
+    payoutCurrency:'USDT',payoutAmount:90,payoutRate:null,payoutUsdt:90,
+    payinTxHash:customFlowHash,payinMethod:'flow_sole_reqs',payoutMethod:'transfer'}});
+assert.equal(customFlowShare.payin_tx_hashes[0].amount_usdt,100,
+  'custom Flow Sole keeps a saved explicit share instead of forcing null');
 const founder=ctx.crmPayload({...base,type:'Обмен валюты',kind:'',payType:'Крипта',
   paySrc:'founder',amountUsdt:3300,amountThb:100000,
   payout:{thb:100000,settledByPayin:true,hashes:[{hash:'f'.repeat(64),amount:3205.13,

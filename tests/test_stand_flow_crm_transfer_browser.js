@@ -16,6 +16,16 @@ const card = {...source, id:9041, code:'СД-9041', type:'Обмен валют�
   amountUsdt:400, rates:{broker:100}, payinParts:[], payinExtra:[],
   payinHashes:[{hash,network:'TRC20',amount:500}], paySrc:'cash',
   payout:{usdt:350,thb:10000}, crmEdit:{}};
+const customHash='b'.repeat(64);
+const customCard = {...source, id:9042, code:'СД-9042', type:'Обмен валюты', kind:'',
+  step:'s27', closed:false, sentToClient:true, client:'Custom Flow browser',
+  manager:'Елизавета', managerUserId:11, custom:true, payType:'По реквизитам',
+  amountRub:10000, amountUsdt:100, rates:{broker:100}, payinParts:[],payinExtra:[],
+  payinHashes:[{hash:customHash,network:'TRC20',amount:100}], paySrc:'cash',
+  customData:{payinCurrency:'RUB',payinAmount:10000,payinRate:100,payinUsdt:100,
+    payoutCurrency:'USDT',payoutAmount:90,payoutRate:null,payoutUsdt:90,
+    payinMethod:'flow_sole_reqs',payoutMethod:'transfer',payinTxHash:customHash,
+    payinNetwork:'trc20',date:'',notes:''}, payout:{usdt:90,thb:null}, crmEdit:{}};
 const mime = {'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8',
   '.css':'text/css; charset=utf-8'};
 const server = http.createServer((req,res) => {
@@ -55,7 +65,7 @@ const server = http.createServer((req,res) => {
           display_name:'Test admin',username:'test'}},
         '/api/admins':{success:true,admins:[{id:11,username:'marina',
           display_name:'Елизавета',role:'manager',login_disabled:false}]},
-        '/api/stand/state':{success:true,version:1,data:{deals:[card]}},
+        '/api/stand/state':{success:true,version:1,data:{deals:[card,customCard]}},
         '/api/managers':{success:true,managers:[{id:null,user_id:11,
           name:'Елизавета',account:'marina',active:true}]},
         '/api/wallets':{success:true,wallets:[]},
@@ -93,6 +103,20 @@ const server = http.createServer((req,res) => {
     assert.equal(requests[0].crm.payin_amount_usdt,400);
     assert.equal(requests[0].crm.payin_tx_hashes[0].amount_usdt,500);
     assert.equal(await page.evaluate(()=>deal(9041).closed),false);
+    await page.evaluate(()=>{S.edit=9042;render();});
+    await page.waitForFunction(()=>document.getElementById('crmDraftHost')?.shadowRoot
+      ?.getElementById('customPayinTxHash')?.value==='b'.repeat(64));
+    const customSaved=await page.evaluate(()=>crmDraftCommit(9042));
+    assert.notEqual(customSaved,false,'custom Flow Sole editor must save the existing deal');
+    assert.equal(await page.evaluate(()=>deal(9042).payinHashes[0].amount),100,
+      'custom editor keeps the existing numeric Flow Sole share on save');
+    await page.evaluate(()=>{S.edit=null;render();S.edit=9042;render();});
+    await page.waitForFunction(()=>document.getElementById('crmDraftHost')?.shadowRoot
+      ?.getElementById('customPayinTxHash')?.value==='b'.repeat(64));
+    const customReopened=await page.evaluate(()=>crmDraftCommit(9042));
+    assert.notEqual(customReopened,false,'custom Flow Sole share remains saveable after reopen');
+    assert.equal(await page.evaluate(()=>deal(9042).payinHashes[0].amount),100,
+      'numeric share survives custom editor save/reopen');
     assert.deepEqual(errors,[]);
     console.log('stand Flow Sole CRM browser transfer: PASS');
   } finally {await browser.close();server.close();}

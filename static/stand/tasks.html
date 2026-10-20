@@ -7301,7 +7301,8 @@ function crmPayload(d){
       created_at:c.date?new Date(c.date+'T12:00:00').toISOString():null,
       payin_method:c.payinMethod||'crypto_direct',payin_tx_hash:c.payinTxHash||null,
       ...(c.payinMethod==='flow_sole_reqs'?{payin_tx_hashes:c.payinTxHash?[{
-        hash:c.payinTxHash,network:c.payinNetwork||'trc20',amount_usdt:null}]:[]}:{}),
+        hash:c.payinTxHash,network:c.payinNetwork||'trc20',
+        amount_usdt:(d.payinHashes||[]).find(h=>h.hash===c.payinTxHash)?.amount??null}]:[]}:{}),
       payin_amount_usdt:c.payinUsdt??null,
       ...(d.rubIsNet===true?{payin_rub_is_net:true}:{}),
       payin_parts:(d.payinParts||[]).map(x=>({uuid:x.uuid||String(x.incId||'').replace(/^sber:/,'')||null,
