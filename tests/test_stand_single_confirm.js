@@ -10,7 +10,7 @@ const d={id:1487,step:'s27',type:'Оплата недвижимости',kind:'�
 let status={version:7,missing:[],facts:['payin','payout','receipt','sent'].map(kind=>({kind,ready:true,
   system:kind!=='sent',checked_at:'2026-10-18T10:11:12Z'}))};
 const ctx={d,ap:{thb:100},S:{role:'manager'},standVer:7,standBusy:false,standSaveScheduled:false,
-  htmlText:String,filesOf:(d,k)=>d.files[k],isCrypto:()=>true,sendList:()=>[],
+  htmlText:String,filesOf:(d,k)=>d.files[k],receiptDocs:d=>d.files.receipt.map((f,i)=>({f,kind:'receipt',i})),isCrypto:()=>true,sendList:()=>[],
   money:(n,c)=>n+' '+c,crmGaps:()=>[],crmGapsBlock:()=>'',crmForm:()=>'',prepayCloseReason:()=>'',
   crmCloseStatus:()=>status};
 vm.createContext(ctx);

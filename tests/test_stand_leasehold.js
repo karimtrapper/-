@@ -13,9 +13,9 @@ function functions(names) {
   }).join('\n');
 }
 function run(names, context) {
-  Object.assign(context,{STAND:false,demoAllowed:()=>true});
+  Object.assign(context,{STAND:false,demoAllowed:()=>true,atob});
   vm.createContext(context);
-  vm.runInContext(functions(names), context);
+  vm.runInContext(functions(names.concat(['hasReceipt', 'fileValid'])), context);
   return context;
 }
 const round2 = x => Math.round(x * 100) / 100;
@@ -174,6 +174,7 @@ const round2 = x => Math.round(x * 100) / 100;
   assert.equal(d.step, 's26', 'без чека нельзя списать инвойс');
   assert.equal(scb, 2453000);
   d.docs.receipt = true;
+  d.files = {receipt: [{file: 'slip.pdf', mime: 'application/pdf', data: 'data:application/pdf;base64,JVBERi0='}]};
   // назначение для банка застройщика вносит менеджер в реквизитах; без него не платим,
   // а поле на оплате операционист не правит — только копирует (Карим, 27.09)
   inputs.pay_purp = 'операционист вписал сам';

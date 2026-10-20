@@ -5751,10 +5751,19 @@ def stand_nav_count():
 
 
 
+def _stand_receipt_items(deal):
+    """Файлы чека: слот `receipt` и «+ Загрузить ещё» с типом документа «чек»
+    (`files.additional`, `documentType == 'receipt'`) — оба пути загрузки равноценны."""
+    files = deal.get('files') or {}
+    return ([item for item in files.get('receipt') or [] if isinstance(item, dict)]
+            + [item for item in files.get('additional') or []
+               if isinstance(item, dict) and item.get('documentType') == 'receipt'])
+
+
 def _stand_receipt_content_ids(deal):
     """Compare actual attachment contents before/after externalization."""
     result = set()
-    for item in (deal.get('files') or {}).get('receipt') or []:
+    for item in _stand_receipt_items(deal):
         if item.get('storageId') and item.get('sha256'):
             result.add(item['sha256'])
         elif str(item.get('data') or '').startswith('data:'):
@@ -5934,7 +5943,8 @@ def stand_file_upload():
                 'at': int(time.time() * 1000), 'ts': stand_now().strftime('%d.%m, %H:%M')})
         # An extra attachment is a scoped server mutation of files and log.
         # Step ownership rules apply to workflow actions, not this attachment.
-        problem = None if extra else _stand_guard_transition(previous, state, actor, actor_id, db)
+        problem = None if extra else _stand_guard_transition(
+            previous, state, actor, actor_id, db, receipt_upload=(kind == 'receipt' and actor in ('manager', 'operator', 'admin')))
         if problem:
             return jsonify(success=False, error=problem), 403
         if duplicate:
@@ -7515,6 +7525,63 @@ def _stand_s26_implicit_acceptance(deal):
     return None
 
 
+def _stand_receipt_attachment_acceptance(db, deal):
+    """Чек выплаты, приложенный сотрудником любой роли: (имя, роль, epoch ms) или None.
+
+    Сам факт приложения и есть приёмка, отдельного подтверждения операциониста нет.
+    Подходят оба пути загрузки: слот «Чек» и «+ Загрузить ещё» с типом «чек».
+    Автор берётся с сервера: объект хранилища (`StandFile.uploaded_by` — id
+    аутентифицированного сотрудника, а не поле из JSON доски). Файл должен быть
+    настоящим PDF/PNG/JPEG/WebP и либо носить отметки штатной загрузки (автор и
+    id совпадают с хранилищем, `demo` ложно), либо иметь серверную запись журнала от
+    роли этого сотрудника. Файл из миграции с одним заявленным uploadedById не
+    подходит. Дата — запись журнала, иначе время загрузки в хранилище."""
+    if deal.get('type') != 'Оплата недвижимости':
+        return None
+    log = [e for e in deal.get('log') or [] if isinstance(e, dict)
+           and not e.get('kind') and not e.get('author')]
+    best = None
+    for item in _stand_receipt_items(deal):
+        slot = ('receipt' if any(item is x for x in (deal.get('files') or {}).get('receipt') or [])
+                else 'additional')
+        if (not item.get('storageId')
+                or not _stand_valid_receipt({'files': {'receipt': [item]}})):
+            continue
+        try:
+            stored = stand_file_storage.resolve(db, StandFile, item, deal.get('id'), slot)
+        except ValueError:
+            continue
+        try:
+            user = db.get(AdminUser, int(stored.uploaded_by))
+        except (TypeError, ValueError):
+            user = None
+        if user is None or user.role not in ('manager', 'operator', 'admin'):
+            continue
+        name = user.display_name or user.username
+        native = (item.get('demo') is False and str(item.get('uploadedBy') or '').strip()
+                  and str(item.get('uploadedById')) == str(user.id))
+        texts = ({'Приложен файл: receipt · ' + str(item.get('file') or '')} if slot == 'receipt'
+                 else {'Приложен документ ' + str(item.get('file') or '') + ' · ' + name})
+        stamps = [int(e['at']) for e in log
+                  if e.get('text') in texts and e.get('role') == user.role
+                  and isinstance(e.get('at'), (int, float)) and not isinstance(e.get('at'), bool)
+                  and e['at'] > 0]
+        if not native and not stamps:
+            continue
+        at = max(stamps) if stamps else int(
+            (stored.uploaded_at - datetime(1970, 1, 1)).total_seconds() * 1000)
+        if best is None or at > best[2]:
+            best = (name, user.role, at)
+    return best
+
+
+def _stand_receipt_acceptance(db, deal):
+    """Кто и когда принял чек: автор приложенного файла, а для старых сделок — завершённый s26.
+
+    Автор файла всегда главнее: чек менеджера не прячется за оператором, завершившим s26."""
+    return _stand_receipt_attachment_acceptance(db, deal) or _stand_s26_implicit_acceptance(deal)
+
+
 def _stand_close_readiness(db, row, state, deal):
     """Revalidate server-owned facts; historical signoffs cannot override failures.
 
@@ -7526,19 +7593,33 @@ def _stand_close_readiness(db, row, state, deal):
     facts = []
     for kind in _stand_close_required(deal):
         source, problem = _stand_close_fact_source(state, deal, kind)
+        # Приложенный сотрудником чек сам подтверждает оплату: отметка invoicePaid,
+        # которую ставил операционист, не обязательна. Сетевые факты это не меняет.
+        if (kind == 'receipt' and problem == 'invoice_payment_or_receipt_missing'
+                and _stand_receipt_attachment_acceptance(db, deal)):
+            source, problem = 'receipt_attachment', None
         if (kind == 'payin' and deal.get('type') == 'Оплата недвижимости'
                 and source not in ('verified_network', 'verified_partner_network', 'accepted_conversion')):
             problem = problem or 'verified_payin_missing'
         record = records.get(kind)
         signed = bool(record and record.fingerprint == _stand_close_fingerprint(deal, kind))
-        manual = source == 'operator_attestation' and kind != 'receipt'
+        # Выплату недвижимости подтверждает приложенный сотрудником чек: отдельной
+        # подписи операциониста нет. Приход наличными это правило не затрагивает.
+        payout_receipt = None
+        if (kind == 'payout' and not problem and deal.get('type') == 'Оплата недвижимости'
+                and source in ('operator_attestation', 'receipt_attachment')):
+            payout_receipt = _stand_receipt_acceptance(db, deal)
+            if source == 'receipt_attachment' and payout_receipt is None:
+                problem = 'payout_receipt_missing'
+        manual = (source == 'operator_attestation' and kind != 'receipt'
+                  and payout_receipt is None)
         if manual and not signed:
             problem = 'operator_confirmation_missing'
         checked_at = None
-        # Чек принят самим завершением s26 (оплата инвойса с чеком, операционист):
-        # дата и автор — оттуда. Без него отдельная запись приёмки факт не открывает.
-        implicit = (_stand_s26_implicit_acceptance(deal)
-                    if kind == 'receipt' and not problem else None)
+        # Чек принят самим завершением s26 (оплата инвойса с чеком, операционист)
+        # или фактом приложения сотрудником любой роли: дата и автор — оттуда.
+        # Без них отдельная запись приёмки факт не открывает.
+        implicit = _stand_receipt_acceptance(db, deal) if kind == 'receipt' and not problem else None
         if kind == 'receipt' and not problem and implicit is None:
             problem = 'operator_receipt_acceptance_missing'
         if not problem:
@@ -7561,6 +7642,8 @@ def _stand_close_readiness(db, row, state, deal):
             elif kind == 'receipt':
                 if implicit[2]:
                     checked_at = datetime.utcfromtimestamp(implicit[2] / 1000).isoformat() + 'Z'
+            if kind == 'payout' and payout_receipt and payout_receipt[2]:
+                checked_at = datetime.utcfromtimestamp(payout_receipt[2] / 1000).isoformat() + 'Z'
             if (manual or kind == 'sent') and signed and record.confirmed_at:
                 checked_at = record.confirmed_at.isoformat() + 'Z'
         facts.append({'kind': kind, 'ready': not problem, 'reason': problem,
@@ -7570,7 +7653,10 @@ def _stand_close_readiness(db, row, state, deal):
                       'checked_at': checked_at,
                       'required_role': 'operator' if manual or kind == 'receipt' else 'manager'}
                      | ({'implicit': True, 'confirmed_by': implicit[0], 'confirmed_role': implicit[1]}
-                        if implicit else {}))
+                        if implicit else {})
+                     | ({'implicit': True, 'confirmed_by': payout_receipt[0],
+                         'confirmed_role': payout_receipt[1]}
+                        if payout_receipt and not problem else {}))
     return facts
 
 
@@ -7586,14 +7672,14 @@ def _stand_close_summary(state, deal, crm, version):
               'incomeAmount', 'amountRub', 'amountUsdt', 'amountThb', 'invoiceUsd',
               'companyPct', 'ippsTariff', 'rates', 'payinParts', 'payinExtra',
               'payinHashes', 'cnvId', 'pay', 'payout', 'mfPayout', 'transfer',
-              'payTo', 'sentToClient', 'sentAt', 'commissionSends', 'agents')
+              'payTo', 'payoutFact', 'sentToClient', 'sentAt', 'commissionSends', 'agents')
     conv = next((c for c in state.get('convs') or [] if c.get('id') == deal.get('cnvId')), None)
     incomes = [i for i in state.get('incomes') or []
                if i.get('id') in {p.get('incId') for p in deal.get('payinParts') or []}]
     snapshot = {'version': version, 'deal': {k: deal.get(k) for k in fields},
                 'conversion': conv, 'incomes': incomes,
                 'receipts': [{k: v for k, v in item.items() if k != 'data'}
-                             for item in (deal.get('files') or {}).get('receipt') or []],
+                             for item in _stand_receipt_items(deal)],
                 'crm': dict(crm), 'facts': {kind: _stand_close_fingerprint(deal, kind)
                                           for kind in _stand_close_required(deal)}}
     snapshot = json.loads(json.dumps(snapshot, ensure_ascii=False, default=str))
@@ -7626,6 +7712,27 @@ def _stand_upsert_close_evidence(db, row, deal, kind, actor_id, provenance, *, c
     evidence.actor_id = actor_id
     evidence.provenance = provenance
     evidence.confirmed_at = confirmed_at or datetime.utcnow()
+
+
+def _stand_noncrypto_payout_basis(deal):
+    """Недвижимость, выплата получателю без блокчейна: сумма в батах и получатель есть.
+
+    Крипто-маршрут (Coins, IPPS SWIFT, кошелёк клиента, отправки USDT) сюда не
+    попадает — для него хеш по-прежнему обязателен. `mfPayout` (перевод в MF Corp)
+    может быть криптой и при банковском получателе — он остаётся своим фактом."""
+    if (deal.get('postConv') in ('coins', 'ipps_swift', 'client')
+            or deal.get('paySrc') in ('coins', 'client')
+            or (deal.get('transfer') or {}).get('sends')):
+        return False
+    # `payoutFact` пишет только ручной перенос для аудита; выплату он не подтверждает.
+    recipient = deal.get('payTo') or {}
+    invoice = _stand_number(deal.get('amountThb'))
+    # Если на доске есть фактически выплаченная сумма в батах, она не меньше инвойса.
+    actual = _stand_number((deal.get('transfer') or {}).get('thb')
+                           or (deal.get('payout') or {}).get('thb'))
+    return bool(not deal.get('mfPayout') and invoice > 0
+                and (not actual or actual >= invoice - 1)
+                and recipient.get('bank') and recipient.get('acc'))
 
 
 def _stand_close_fact_source(state, deal, kind):
@@ -7731,6 +7838,10 @@ def _stand_close_fact_source(state, deal, kind):
                     (_stand_number((deal.get('transfer') or {}).get('amount')) > 0 or
                      bool(deal.get('mfPayout')))):
                 return 'operator_attestation', None
+            # Выплата получателю не в блокчейне (банк, карта фаундера, наличные):
+            # хеша нет, основание — сумма, получатель и приложенный чек.
+            if (deal.get('type') == 'Оплата недвижимости' and _stand_noncrypto_payout_basis(deal)):
+                return 'receipt_attachment', None
         return None, 'payout_fact_missing'
     if kind == 'receipt':
         if ((deal.get('pay') or {}).get('invoicePaid') and _stand_valid_receipt(deal)):
@@ -7787,6 +7898,8 @@ def stand_close_evidence(stand_deal_id):
         provenance, problem = _stand_close_fact_source(state, deal, kind)
         if problem:
             return jsonify({'success': False, 'error': problem}), 409
+        if provenance == 'receipt_attachment':
+            return jsonify({'success': False, 'error': 'receipt_attachment_needs_no_signoff'}), 409
         required_role = 'operator' if provenance == 'operator_attestation' else 'manager'
         if required_role and actor not in (required_role, 'admin'):
             return jsonify({'success': False, 'error': 'forbidden'}), 403
@@ -7913,13 +8026,17 @@ def stand_crm_close(stand_deal_id):
             return jsonify(success=False, error=prepay_problem), 409
         manual = stand_deal.get('originMode') == 'manual'
         manual_override = False
+        # Хеши, что были на доске до ручного ввода: только у них может быть резерв.
+        pre_override_payin_keys = {_payin_hash_key(h.get('hash'))
+                                   for h in stand_deal.get('payinHashes') or []
+                                   if isinstance(h, dict)}
         if manual:
             if not stand_deal.get('manual') or stand_deal.get('step') != 'manual':
                 return jsonify({'success': False, 'error': 'manual_origin_mismatch'}), 409
         elif 'manualOverride' in payload:
             override_error = _stand_manual_close_apply_override(
                 state, stand_deal, payload.get('manualOverride'), actor,
-                verify=verify_transfer)
+                verify=verify_transfer, db=db)
             if override_error:
                 status = (409 if override_error in ('manual_override_not_applicable', 'already_closed')
                           else 422 if override_error in (
@@ -7938,7 +8055,8 @@ def stand_crm_close(stand_deal_id):
             if not _stand_valid_receipt(stand_deal):
                 return jsonify({'success': False, 'error': 'receipt_missing'}), 409
             if (stand_deal.get('type') == 'Оплата недвижимости'
-                    and not (stand_deal.get('pay') or {}).get('invoicePaid')):
+                    and not (stand_deal.get('pay') or {}).get('invoicePaid')
+                    and not _stand_receipt_attachment_acceptance(db, stand_deal)):
                 return jsonify({'success': False, 'error': 'invoice_not_paid'}), 409
             missing = _stand_close_evidence_status(db, row, stand_deal)
             if missing:
@@ -8017,7 +8135,10 @@ def stand_crm_close(stand_deal_id):
         elif stand_deal.get('cashPartnerUsdt'):
             db.info['stand_payin_origin'] = (row.generation, f"cash:{stand_deal['id']}")
             db.info['stand_payin_hashes'] = {
-                _payin_hash_key(t.get('hash')) for t in stand_deal.get('payinHashes') or []}
+                _payin_hash_key(t.get('hash')) for t in stand_deal.get('payinHashes') or []
+                # свежий хеш ручного переноса резерва не имеет: учёт идёт как для обычного
+                # перевода (с проверкой дублей), прежние резервы переносятся как раньше
+                if not manual_override or _payin_hash_key(t.get('hash')) in pre_override_payin_keys}
         try:
             # Комбинация уже прошла гейт на стенде (создание/смена способа) —
             # см. комментарий в _create_deal_impl.
@@ -8086,6 +8207,10 @@ def stand_crm_close(stand_deal_id):
                 'confirmed_at': confirmed_at.isoformat() + 'Z',
                 'fingerprint': close_digest, 'snapshot': close_snapshot}
         _stand_completion_notes(state, updated)
+        if manual_override:
+            _stand_manual_close_resolve_tasks(
+                updated, stand_deal_id,
+                flask_session.get('display_name') or flask_session.get('username') or actor)
         row.data = json.dumps(updated, ensure_ascii=False)
         row.version = (row.version or 0) + 1
         row.updated_by = flask_session.get('display_name') or flask_session.get('username')
@@ -9144,7 +9269,81 @@ def _stand_manual_close_verify_hashes(state, hashes, declared_amount, verify, us
     return entries, None
 
 
-def _stand_manual_close_apply_override(state, stand_deal, override, actor, *, verify=verify_transfer):
+# Выплата получателю не в блокчейне: банк (THB/RUB), личная карта/счёт фаундера, наличные.
+# Для неё хеш не нужен — достаточно суммы, получателя и чека; банковский transaction ID
+# слипа (KBank, BBL, MT103) — не blockchain hash и в проверках хеша не участвует.
+_STAND_NONCRYPTO_PAYOUT_ROUTES = ('bank', 'founder', 'cash')
+
+
+def _stand_noncrypto_payout_fact(db, stand_deal, payout, invoice_thb):
+    """Факт не-крипто выплаты для ручного переноса: (факт, None) или (None, код ошибки).
+
+    Нужны сумма в батах не меньше инвойса, получатель и чек выплаты, приложенный
+    сотрудником через сервер (кто и когда — из `_stand_receipt_attachment_acceptance`).
+    Получатель: банк — банк и счёт; фаундер — счёт/карта и банк либо имя; наличные —
+    имя либо счёт (по умолчанию берутся реквизиты сделки). Хеш блокчейна не нужен.
+    Крипто-маршрут доски (Coins, IPPS SWIFT, кошелёк клиента, отправки USDT) не
+    маскируется банковской выплатой."""
+    if (stand_deal.get('postConv') in ('coins', 'ipps_swift', 'client')
+            or stand_deal.get('paySrc') in ('coins', 'client')
+            or (stand_deal.get('transfer') or {}).get('sends')):
+        return None, 'payout_route_conflict'
+    amount = _stand_number(payout.get('amountThb'))
+    if amount <= 0:
+        return None, 'payout_amount_required'
+    if invoice_thb and amount < invoice_thb - 1:
+        return None, 'payout_amount_below_invoice'
+    recipient = payout.get('recipient')
+    recipient = recipient if isinstance(recipient, dict) else {}
+    pay_to = stand_deal.get('payTo') or {}
+    clean = {k: str(recipient.get(k) or pay_to.get(k) or '').strip() for k in ('name', 'bank', 'acc')}
+    route = payout['route']
+    if not (clean['bank'] and clean['acc'] if route == 'bank'
+            else clean['acc'] and (clean['bank'] or clean['name']) if route == 'founder'
+            else clean['name'] or clean['acc']):
+        return None, 'payout_recipient_required'
+    accepted = _stand_receipt_attachment_acceptance(db, stand_deal) if db is not None else None
+    if accepted is None:
+        return None, 'payout_receipt_required'
+    return {'route': route, 'amountThb': amount, 'recipient': clean,
+            'receiptBy': accepted[0], 'receiptRole': accepted[1], 'receiptAt': accepted[2]}, None
+
+
+def _stand_manual_close_resolve_tasks(state, stand_deal_id, author):
+    """Ручной перенос закрыл сделку вне задачника: снять открытые задачи других ролей.
+
+    Задачи шагов исчезают сами (закрытая сделка не даёт задач). Остаются непрочитанные
+    уведомления доски (сверка прихода у операциониста и т. п.): помечаем их прочитанными
+    с причиной и пишем в историю сделки, кто и без чьих подтверждений закрыл."""
+    deal = next((d for d in state.get('deals') or [] if d.get('id') == stand_deal_id), None)
+    if deal is None:
+        return
+    resolved_roles = []
+    for note in state.get('notes') or []:
+        if note.get('dealId') == stand_deal_id and not note.get('read'):
+            note['read'] = True
+            note['resolved'] = 'закрыто менеджером вне задачника'
+            if note.get('role') not in resolved_roles:
+                resolved_roles.append(note.get('role'))
+    stamp = int(time.time() * 1000)
+    deal.setdefault('log', []).append({
+        'at': stamp, 'ts': stand_now().strftime('%d.%m, %H:%M'), 'role': 'manager',
+        'text': f'Закрыто вручную менеджером {author} · без подтверждений операциониста'
+                ' · вне задачника'
+                + (' · снятые задачи: ' + ', '.join(str(r) for r in resolved_roles)
+                   if resolved_roles else '')})
+    receipt = deal.get('manualBankReceipt')
+    if isinstance(receipt, dict) and receipt.get('status') == 'pending':
+        # Висящая сверка прихода снимается: прежний статус и причина остаются в записи.
+        receipt['previousStatus'] = 'pending'
+        receipt['status'] = 'cancelled'
+        receipt['resolvedBy'] = author
+        receipt['resolvedAt'] = stamp
+        receipt['resolvedReason'] = 'закрыто менеджером вне задачника'
+
+
+def _stand_manual_close_apply_override(state, stand_deal, override, actor, *, verify=verify_transfer,
+                                        db=None):
     """Ручной перенос сделки в CRM минуя штатный шаг s27 (СД-1489): менеджер/
     админ вручную вводит факты, которые степпер не собрал (способ и сумма
     прихода/расхода, хеши, агенты, обязательная причина). Это единственный
@@ -9182,18 +9381,16 @@ def _stand_manual_close_apply_override(state, stand_deal, override, actor, *, ve
     deal_id = stand_deal.get('id')
     used_hashes = set()
     payin_entries = []
-    is_crypto_payin = payin.get('method') == 'Крипта' or bool(stand_deal.get('cashPartnerUsdt'))
-    if is_crypto_payin:
+    # Хеш обязателен только для крипто-прихода. Наличные (в том числе партнёрские) и банк
+    # закрываются вручную без хеша и без файла; если менеджер всё же ввёл хеш, сеть
+    # проверяет его автоматически. Подтверждений других людей ручной перенос не ждёт
+    # (в том числе зависшая сверка manualBankReceipt).
+    if payin.get('method') == 'Крипта' or payin.get('hashes'):
         payin_entries, problem = _stand_manual_close_verify_hashes(
             state, payin.get('hashes'), payin_amount, verify, used_hashes, 'payin',
             exclude_deal_id=deal_id)
         if problem:
             return problem
-    else:
-        has_receipt = _stand_valid_receipt(stand_deal)
-        if (not payin.get('hashes') and not has_receipt
-                and not payin.get('manualBankConfirmed')):
-            return 'payin_evidence_missing'
 
     kind = ('mf_freehold' if stand_deal.get('kind') == 'Фрихолд' else
             'mf_realty' if stand_deal.get('type') == 'Оплата недвижимости' else
@@ -9215,6 +9412,7 @@ def _stand_manual_close_apply_override(state, stand_deal, override, actor, *, ve
     payout = {}
     payout_amount = None
     payout_entries = []
+    noncrypto_fact = None
     if kind == 'exchange':
         payout = override.get('payout')
         payout = payout if isinstance(payout, dict) else {}
@@ -9255,16 +9453,27 @@ def _stand_manual_close_apply_override(state, stand_deal, override, actor, *, ve
         if not stand_deal.get('mfPayout'):
             payout = override.get('payout')
             payout = payout if isinstance(payout, dict) else {}
-            payout_amount = _stand_number(payout.get('amountUsdt'))
-            if payout_amount <= 0:
-                return 'realty_transfer_missing'
-            payout_entries, problem = _stand_manual_close_verify_hashes(
-                state, payout.get('hashes'), payout_amount, verify, used_hashes,
-                'payout', exclude_deal_id=deal_id)
-            if problem:
-                return problem
+            payout_route = payout.get('route') or 'crypto'
+            if payout_route in _STAND_NONCRYPTO_PAYOUT_ROUTES:
+                noncrypto_fact, problem = _stand_noncrypto_payout_fact(
+                    db, stand_deal, payout,
+                    _stand_number(invoice if realty is not None else stand_deal.get('amountThb')))
+                if problem:
+                    return problem
+            elif payout_route != 'crypto':
+                return 'payout_route_invalid'
+            else:
+                payout_amount = _stand_number(payout.get('amountUsdt'))
+                if payout_amount <= 0:
+                    return 'realty_transfer_missing'
+                payout_entries, problem = _stand_manual_close_verify_hashes(
+                    state, payout.get('hashes'), payout_amount, verify, used_hashes,
+                    'payout', exclude_deal_id=deal_id)
+                if problem:
+                    return problem
         docs = stand_deal.get('docs') or {}
-        if not (docs.get('inv') and docs.get('receipt')):
+        # Чек — настоящий файл (слот «Чек» или «+ Загрузить ещё»), а не отметка docs.receipt.
+        if not (docs.get('inv') and _stand_valid_receipt(stand_deal)):
             return 'realty_docs_missing'
 
     agents = override.get('agents')
@@ -9304,6 +9513,8 @@ def _stand_manual_close_apply_override(state, stand_deal, override, actor, *, ve
                                   if (e.get('network'), e.get('hash')) not in existing_payout_keys]
             deal_payout['hashes'] = list(deal_payout.get('hashes') or []) + new_payout_entries
         stand_deal['payout'] = deal_payout
+    elif kind == 'mf_realty' and noncrypto_fact:
+        stand_deal['payoutFact'] = noncrypto_fact
     elif kind == 'mf_realty' and payout_entries:
         stand_deal['mfPayout'] = [
             {'hash': entry['hash'], 'net': entry['network'], 'amount': entry['amount'],
@@ -9401,7 +9612,7 @@ def _stand_apply_prepay_fees_to_crm(session, crm_deal, board, agents):
 
 def _stand_valid_receipt(deal):
     """Чек — реальный PDF/PNG/JPEG/WebP, а не отметка docs.receipt."""
-    for item in (deal.get('files') or {}).get('receipt') or []:
+    for item in _stand_receipt_items(deal):
         try:
             if item.get('storageId'):
                 # Заимствуем сессию обработчика; здесь её нельзя закрывать.
@@ -9503,6 +9714,36 @@ def _stand_client_payin_only(before, deal, changed):
     return (isinstance(old, dict) and isinstance(new, dict)
             and all(old.get(k) == new.get(k) for k in set(old) | set(new)
                     if k != STAND_CLIENT_PAYIN_KIND))
+
+
+def _stand_receipt_upload_only(before, deal, changed):
+    """Приложен только новый чек выплаты (слот «Чек» или «+ Загрузить ещё» с типом «чек»).
+
+    Старые файлы сохранены, остальные вложения и поля сделки не тронуты; допускаются
+    производные docs/docMeta и запись журнала. Шаг и роль шага не важны: чек можно
+    приложить любому сотруднику на любом шаге, в том числе перед ручным переносом."""
+    if not changed <= {'files', 'docs', 'docMeta', 'log'} or 'files' not in changed:
+        return False
+    old, new = before.get('files') or {}, deal.get('files') or {}
+    if not isinstance(old, dict) or not isinstance(new, dict):
+        return False
+    if any(old.get(k) != new.get(k) for k in set(old) | set(new) if k not in ('receipt', 'additional')):
+        return False
+    for field in ('docs', 'docMeta'):  # производные только чека
+        prior_map, new_map = before.get(field) or {}, deal.get(field) or {}
+        if (not isinstance(prior_map, dict) or not isinstance(new_map, dict)
+                or any(prior_map.get(k) != new_map.get(k)
+                       for k in set(prior_map) | set(new_map) if k != 'receipt')):
+            return False
+    for slot in ('receipt', 'additional'):
+        prior, current = old.get(slot) or [], new.get(slot) or []
+        if (not isinstance(prior, list) or not isinstance(current, list)
+                or current[:len(prior)] != prior):
+            return False
+        for item in current[len(prior):]:
+            if not isinstance(item, dict) or (slot == 'additional' and item.get('documentType') != 'receipt'):
+                return False
+    return True
 
 
 def _stand_client_payin_problem(before, deal, actor, actor_id, db=None):
@@ -10460,7 +10701,8 @@ def _stand_state_events(previous, state, actor, version):
 
 
 def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=None,
-                            allow_crm_close=False, manual_close_deal_id=None):
+                            allow_crm_close=False, manual_close_deal_id=None,
+                            receipt_upload=False):
     from stand_workflow import rerate_attempt, rerate_problem
     if db is not None:
         protected_wallets = {w.id: w for w in db.query(Wallet).filter(
@@ -10840,7 +11082,9 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
                 return 'Подтверждённую сумму и привязку ручного прихода нельзя менять'
         if before and before.get('step') in ('s14', 's14m') and deal.get('step') != before.get('step'):
             receipt = before.get('manualBankReceipt') or {}
-            if receipt.get('status') == 'pending':
+            # Ручной перенос менеджера не ждёт оператора: сверку снимает сам перенос.
+            if receipt.get('status') == 'pending' and not (
+                    allow_crm_close and deal.get('id') == manual_close_deal_id):
                 return 'Ждём подтверждения ручного прихода оператором'
             if receipt.get('status') == 'confirmed' and not _stand_close_fact_source(
                     previous, before, 'payin')[0]:
@@ -11077,7 +11321,8 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
             owner = _stand_current_step_role(previous, before)
             if changed and owner and actor != owner and not step_changed:
                 payin_receipts = (_stand_client_payin_only(before, deal, changed)
-                                  or _stand_bank_credit_only(before, deal, changed))
+                                  or _stand_bank_credit_only(before, deal, changed)
+                                  or (receipt_upload and _stand_receipt_upload_only(before, deal, changed)))
                 manager_parallel = (actor == 'manager' and (
                     changed <= {'_managerDraft'} or
                     changed <= {'payToConfirm', 'log'} or
@@ -11230,7 +11475,7 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
                     before.get('crmDealId') and before.get('crmDealId') != deal.get('crmDealId')):
                 return 'Закрытую CRM-сделку нельзя открыть или отвязать'
             if before.get('closed') and (any(before.get(key) != deal.get(key) for key in (
-                    'closeReason', 'closedAt', 'pay', 'mfPayout', 'sentToClient'))
+                    'closeReason', 'closedAt', 'pay', 'mfPayout', 'payoutFact', 'sentToClient'))
                     or _stand_canonical_payout(before.get('payout'))
                     != _stand_canonical_payout(deal.get('payout'))):
                 return 'Денежные итоги закрытой сделки нельзя изменить'
@@ -11300,7 +11545,8 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
                              and changed <= STAND_MANAGER_REQ_FIELDS)
                             or (actor == 'manager' and _stand_manager_docs_only(before, deal, changed))
                             or _stand_client_payin_only(before, deal, changed)
-                            or _stand_bank_credit_only(before, deal, changed)))
+                            or _stand_bank_credit_only(before, deal, changed)
+                            or (receipt_upload and _stand_receipt_upload_only(before, deal, changed))))
             if required and actor != required and not manager_reqs and deal['id'] not in broker_actions:
                 return f'Действие шага {before.get("step")} доступно роли {required}'
         if before.get('postConv') == 'refund' and not before.get('serverSettled') and not before.get('closed'):
@@ -11321,7 +11567,8 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
         if (not before.get('closed') and deal.get('closed')
                 and deal.get('closeReason') == 'Успешно завершена'):
             if not (before.get('serverTransferComplete')
-                    and (deal.get('pay') or {}).get('invoicePaid')
+                    and ((deal.get('pay') or {}).get('invoicePaid')
+                         or (db is not None and _stand_receipt_attachment_acceptance(db, deal)))
                     and (deal.get('pay') or {}).get('coinsNotified')
                     and ((deal.get('pay') or {}).get('coinsCredit') or {}).get('thb')
                     and _stand_valid_receipt(deal)

@@ -20,7 +20,7 @@ const SCRIPT = [
   source('isCrypto'), source('payCur'), source('exchangeSpec'), source('payinParts'),
   source('refAgents'), source('econ'),
   source('refSignal'), source('agentsBlock'),
-  source('managerDraftDocTarget'), source('fileValid'), source('filesOf'), source('fileBlock'),
+  source('managerDraftDocTarget'), source('fileValid'), source('filesOf'), source('receiptDocs'), source('hasReceipt'), source('fileBlock'),
   source('hashShareOf'), source('hashCell'),
   source('payoutHuman'), source('clientRubPaid'), source('mfList'),
   source('txPoolInit'), source('txPool'), source('txUsed'),

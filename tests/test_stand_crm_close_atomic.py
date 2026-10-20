@@ -149,7 +149,9 @@ def test_manager_manual_close_rental_cash_bypasses_new_flow_gate(monkeypatch):
         'payType': 'Наличные', 'amountRub': 1217600, 'amountThb': 455000,
         'rates': {'client': '2,676', 'usdtThb': '33.42'},
         'object': 'Synthetic villa', 'docs': {'inv': True, 'receipt': True},
-        'mfPayout': [], 'payinHashes': [], 'agents': [], 'files': {},
+        'mfPayout': [], 'payinHashes': [], 'agents': [],
+        'files': {'receipt': [{'file': 'receipt.pdf', 'mime': 'application/pdf',
+                               'data': 'data:application/pdf;base64,JVBERi0='}]},
         'closed': False, 'crmDealId': None, 'log': [],
     }], 'notes': []}
     db = m.get_session()

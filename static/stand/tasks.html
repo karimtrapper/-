@@ -4510,7 +4510,7 @@ function dealSummaryBlock(d){
     (ev?`<div style="margin-top:6px">${ev.payinBtn}</div>`:''),'приход USDT · хеш',edit));
   /* 2. Оплата */
   const po=d.payout||{}, payHashes=(fh||realty)?mfList(d).map(t=>({hash:t.hash,network:t.net,amount:t.amount})):(po.hashes||[]);
-  const receipt=filesOf(d,'receipt')[0];
+  const receipt=(receiptDocs(d)[0]||{}).f;
   const outRows=[row('Способ',htmlText(payoutHuman(d)),'выдача',edit)];
   if(d.prepay){
     /* Жёлтый баннер «Оплата наперёд...» живёт, пока конвертация не завершена (goalCard).
@@ -7183,6 +7183,16 @@ const FILLS={
    из которых CRM считает прибыль для этого типа сделки (app.py: _recalculate_deal_financials,
    _apply_mf_realty, _apply_mf_freehold), плюс кто клиент и откуда деньги.
    Имя поля CRM — в скобках, шаг — где оно должно было заполниться. */
+/* Выплата получателю без блокчейна (банк, карта фаундера, наличные): хеш не нужен, нужны
+   сумма, получатель и чек. Зеркало _stand_noncrypto_payout_basis (app.py): крипто-маршрут
+   доски (Coins, IPPS SWIFT, кошелёк клиента, отправки USDT) под него не попадает. */
+function noncryptoPayout(d){
+  if(d.type!=='Оплата недвижимости'||d.kind==='Фрихолд')return false;
+  if(['coins','ipps_swift','client'].includes(d.postConv)||['coins','client'].includes(d.paySrc)||(d.transfer?.sends||[]).length)return false;
+  const pt=d.payTo||{};
+  const actual=num((d.transfer||{}).thb)||num((d.payout||{}).thb);
+  return !mfList(d).length&&!!num(d.amountThb)&&(!actual||actual>=num(d.amountThb)-1)&&!!pt.bank&&!!pt.acc;
+}
 function crmGaps(d){
   const g=[], E=econ(d), po=d.payout||{}, rub=payCur(d)==='rub';
   const need=(ok,label,step)=>{if(!ok)g.push({label:label,step:step});};
@@ -7210,9 +7220,9 @@ function crmGaps(d){
       need(num(d.rates.client),'Курс клиенту','Отдать расчёт клиенту');
     }
     need((d.payTo&&d.payTo.purpose)||d.object,'Назначение платежа','Реквизиты для оплаты');
-    need(mfList(d).length||hashSum(po.hashes)!=null,'Переводы в MF Corp, факт','Одобрить перевод');
+    need(mfList(d).length||hashSum(po.hashes)!=null||noncryptoPayout(d),'Переводы в MF Corp, факт','Одобрить перевод');
     need(d.docs&&d.docs.inv,'Инвойс застройщика','Сбор документов');
-    need(d.docs&&d.docs.receipt,'Подтверждение оплаты','Оплатить инвойс');
+    need(hasReceipt(d),'Подтверждение оплаты','Оплатить инвойс');
   }else{
     need(d.paySrc,'Источник выдачи','Что делаем с USDT');
     if(d.paySrc!=='client'){const spec=exchangeSpec(d);need(d[amountField(spec.output)]||(spec.output==='thb'&&po.thb),'Выдано, '+SIGN[spec.output],'Что делаем с USDT');}
@@ -7475,7 +7485,8 @@ function crmCloseReason(fact){
     payout_fact_missing:'Не заполнены сумма и получатель выплаты',
     invoice_payment_or_receipt_missing:'Не хватает чека или завершённой оплаты инвойса',
     sent_receipt_missing:'Отметьте отправку чека клиенту',
-    operator_receipt_acceptance_missing:'Операционист должен завершить шаг «Оплатить инвойс» с чеком',
+    operator_receipt_acceptance_missing:'Приложите чек выплаты получателю — менеджер или операционист',
+    payout_receipt_missing:'Приложите чек выплаты получателю — без него выплата не подтверждена',
     operator_confirmation_missing:'Нужно подтверждение операциониста: '+
       (fact.kind==='payin'?'получение денег':'выдача денег'),
     demo_history_requires_review:'Нужна проверка истории демонстрационных переводов',
@@ -7499,9 +7510,9 @@ function crmEvidenceParts(d,compact){
       const stamp=fact.checked_at?new Date(fact.checked_at).toLocaleString('ru-RU'):
         kind==='sent'?'дата отметки не сохранена':fact.system?'дата проверки не сохранена':'дата подтверждения не сохранена';
       if(fact.implicit){
-        /* оплата инвойса с чеком на s26 уже и есть приёмка чека операционистом */
-        const who=fact.confirmed_by?'операционист '+fact.confirmed_by:'операционист';
-        return '<span class="fh">'+htmlText('проверено · '+who+' · '+(fact.checked_at?new Date(fact.checked_at).toLocaleString('ru-RU'):'дата не сохранена'))+'</span>';
+        /* приложенный сотрудником чек выплаты уже и есть приёмка: имя и дата — с сервера */
+        const who=fact.confirmed_by||'сотрудник';
+        return '<span class="fh">'+htmlText('чек приложен · '+who+' · '+(fact.checked_at?new Date(fact.checked_at).toLocaleString('ru-RU'):'дата не сохранена'))+'</span>';
       }
       const label=kind==='sent'?'Чек отправлен клиенту':fact.system?'проверено системой':'подтверждено сотрудником';
       return '<span class="fh">'+htmlText(label+' · '+stamp)+'</span>';
@@ -7671,7 +7682,7 @@ async function crmPushClose(id,reviewedVersion){
     }else{
       if(!d.sentToClient){toast('Отметьте, что чек отправлен клиенту');return;}
       const gaps=crmGaps(d);if(gaps.length){toast('До закрытия заполните: '+gaps[0].label);return;}
-      if(!d.pay.invoicePaid&&d.type==='Оплата недвижимости'){toast('Нужна оплата инвойса и чек');return;}
+      if(d.type==='Оплата недвижимости'&&!d.pay.invoicePaid&&!hasReceipt(d)){toast('Нужен чек выплаты — он же подтверждает оплату');return;}
     }
     const crm=manual?crmPayloadFinal(d):reviewedCrm;
     const body={version:manual?standVer:reviewedVersion,crm};
@@ -7774,7 +7785,7 @@ function manualClosePayload(d){
   }else{
     payin.amountRub=knownAmount?(paid.rub??d.amountRub??d.incomeAmount):num(val('mc_payin_amount_rub'));
     payin.rate=num(d.rates?.broker)??num(val('mc_payin_rate'));
-    payin.manualBankConfirmed=knownBankConfirm?true:!!document.getElementById('mc_payin_manual_bank_confirmed')?.checked;
+    payin.manualBankConfirmed=true; /* факты прихода вносит менеджер, подтверждать их другому человеку не нужно */
     payin.amountUsdt=d.amountUsdt!=null?d.amountUsdt:((realty&&!fh)
       ?num(val('mc_payin_amount_usdt')):(num(val('mc_payin_amount_usdt'))??payinParts({...d,
       incomeAmount:payin.amountRub,amountRub:payin.amountRub,
@@ -7790,6 +7801,14 @@ function manualClosePayload(d){
     amountUsdt:knownPayoutAmount?po.usdt:num(val('mc_payout_amount_usdt')),
     hashes:(knownPayoutHashes?payHashes:f.payout.hashes).filter(h=>h&&h.hash).map(cleanHash),
   };
+  /* Не-крипто выплата недвижимости: без хеша, но с суммой ฿, получателем и чеком. */
+  const route=(realty&&!fh&&!knownPayoutHashes)?(f.payout.route||'crypto'):'crypto';
+  if(route!=='crypto'){
+    const rc=f.payout.recipient||{};
+    payout.route=route;payout.amountThb=num(f.payout.amountThb);
+    payout.recipient={name:rc.name||'',bank:rc.bank||'',acc:rc.acc||''};
+    payout.hashes=[];
+  }
 
   const realtyFields=(realty&&!fh)?f.realty:null;
   const realtyOverride=realtyFields?{
@@ -7826,6 +7845,11 @@ const MANUAL_CLOSE_ERRORS={
   payout_hash_already_used:'Этот хеш выдачи уже использован в другой сделке',
   payout_amount_mismatch:'Сумма выдачи не совпадает с подтверждённой в сети',
   payout_evidence_missing:'Нужен чек, подтверждающий выдачу',
+  payout_receipt_required:'Приложите чек выплаты получателю (слип банка, MT103) — без него выплата не подтверждена',
+  payout_recipient_required:'Укажите получателя выплаты: для банка — банк и счёт, для фаундера — карта/счёт, для наличных — имя',
+  payout_amount_below_invoice:'Сумма выплаты меньше инвойса — полная выплата не подтверждена',
+  payout_route_conflict:'Маршрут сделки — крипто (Coins, IPPS, кошелёк клиента): банковской выплатой его не заменить',
+  payout_route_invalid:'Неизвестный способ выплаты',
   agents_invalid:'Список агентов повреждён — обновите страницу',
   realty_override_invalid:'Проверьте инвойс, курс покупки и процент комиссии',
   realty_invoice_missing:'Укажите сумму инвойса в форме ручного переноса',
@@ -9357,7 +9381,7 @@ function manualCloseScreen(d){
       ?(knownHashes?row('Хеш прихода',d.payinHashes.map(h=>hashCell(d,h)).join(''))
         :hashEditor('payin',f.payin.hashes,true))
       :(knownBankConfirm?row('Приход по счёту',htmlText('подтверждён вручную'+(paid.date?' · '+paid.date:'')))
-        :`<div class="fg"><label class="fl"><input type="checkbox" id="mc_payin_manual_bank_confirmed"> Деньги на счету подтверждены вручную</label>
+        :`<div class="fg"><p class="fh">Факты прихода вносит менеджер — подтверждение оператора не требуется.</p>
             <input class="fc" id="mc_payin_date" placeholder="дата зачисления, если знаете" style="margin-top:6px"></div>`)
   ].join('');
 
@@ -9372,7 +9396,7 @@ function manualCloseScreen(d){
   const realtySection=(realty&&!fh)?(()=>{
     const rf=f.realty;
     const purpose=(d.payTo&&d.payTo.purpose)||d.object;
-    const docsOk=d.docs&&d.docs.inv, receiptOk=d.docs&&d.docs.receipt;
+    const docsOk=d.docs&&d.docs.inv, receiptOk=hasReceipt(d);
     const field=(key,label,hint='')=>`<div class="fg"><label class="fl">${label}</label>
       <input class="fc num" id="mc_${key}" value="${htmlText(rf[key])}"
         oninput="mcRealtySet(${d.id},'${key}',this.value)">
@@ -9397,7 +9421,30 @@ function manualCloseScreen(d){
   const knownPayoutHashes=payHashes.length>0;
   if(!knownPayoutHashes&&!f.payout.hashes.length)
     f.payout.hashes.push({amount:null,network:'TRC20',hash:'',receiver:'',sender:''});
-  const payoutSection=[
+  const payRoute=(realty&&!fh&&!knownPayoutHashes)?(f.payout.route||'crypto'):'crypto';
+  const noncryptoFields=()=>{
+    const rc=f.payout.recipient=f.payout.recipient||{};
+    const setR=k=>`oninput="manualCloseFormState(${d.id}).payout.recipient.${k}=this.value"`;
+    return `<div class="fg"><label class="fl">Сумма выплаты, ฿<span class="rq">*</span></label>
+        <input class="fc num" id="mc_payout_amount_thb" value="${htmlText(f.payout.amountThb||'')}"
+          oninput="manualCloseFormState(${d.id}).payout.amountThb=this.value" placeholder="не меньше инвойса"></div>
+      <div class="fg"><label class="fl">Получатель<span class="rq">*</span></label>
+        <input class="fc" value="${htmlText(rc.name||'')}" ${setR('name')} placeholder="имя / организация">
+        <input class="fc" style="margin-top:6px" value="${htmlText(rc.bank||(d.payTo||{}).bank||'')}" ${setR('bank')} placeholder="банк">
+        <input class="fc" style="margin-top:6px" value="${htmlText(rc.acc||(d.payTo||{}).acc||'')}" ${setR('acc')} placeholder="счёт / карта">
+        <p class="fh">Хеш блокчейна не нужен. Нужен чек выплаты — приложите его ниже (ID банковского слипа — не хеш).</p></div>`;
+  };
+  const payoutSection=(payRoute!=='crypto')?[
+    `<div class="fg"><label class="fl">Как выплатили получателю</label>
+      <select class="fc" id="mc_payout_route" onchange="manualCloseFormState(${d.id}).payout.route=this.value;render()">
+        ${[['crypto','Криптой (USDT, нужен хеш)'],['bank','Банковский перевод ฿'],
+           ['founder','Личная карта/счёт фаундера'],['cash','Наличные']].map(([k,t])=>
+          `<option value="${k}"${payRoute===k?' selected':''}>${t}</option>`).join('')}</select></div>`,
+    noncryptoFields()].join(''):[
+    realty&&!fh&&!knownPayoutHashes?`<div class="fg"><label class="fl">Как выплатили получателю</label>
+      <select class="fc" id="mc_payout_route" onchange="manualCloseFormState(${d.id}).payout.route=this.value;render()">
+        <option value="crypto" selected>Криптой (USDT, нужен хеш)</option><option value="bank">Банковский перевод ฿</option>
+        <option value="founder">Личная карта/счёт фаундера</option><option value="cash">Наличные</option></select></div>`:'',
     realty&&!fh?'':knownSource?row('Способ выдачи',htmlText(payoutHuman(d)))
       :`<div class="fg"><label class="fl">Источник выдачи<span class="rq">*</span></label>
           <select class="fc" id="mc_payout_source"><option value="">— выбрать —</option>
@@ -9662,8 +9709,23 @@ function filesOf(d,k){
   /* Старые записи с одним именем файла не содержат байтов: их нельзя выдавать за чек. */
   if(!Array.isArray(target.files[k]))target.files[k]=[];
   target.files[k]=target.files[k].filter(fileValid);
-  if(k==='receipt'||k==='signed')d.docs[k]=target.files[k].length>0;
+  if(k==='receipt'||k==='signed')d.docs[k]=target.files[k].length>0||
+    (k==='receipt'&&((d.files||{}).additional||[]).some(f=>f&&f.documentType==='receipt'&&fileValid(f)));
   return target.files[k];
+}
+/* Чек выплаты лежит в слоте «Чек» или в «+ Загрузить ещё» с типом документа «чек»:
+   оба пути одинаково подтверждают факт. kind/i нужны docOpen/docDownload. */
+function receiptDocs(d){
+  const out=[];
+  filesOf(d,'receipt').forEach((f,i)=>out.push({f,kind:'receipt',i}));
+  filesOf(d,'additional').forEach((f,i)=>{if(f.documentType==='receipt')out.push({f,kind:'additional',i});});
+  return out;
+}
+/* Без побочных эффектов: настоящий файл чека в слоте «Чек» или в «+ Загрузить ещё»
+   с типом «чек», флаг docs.receipt не считается. Автора и дату проверяет сервер. */
+function hasReceipt(d){
+  const f=d.files||{};
+  return (f.receipt||[]).some(fileValid)||(f.additional||[]).some(x=>x&&x.documentType==='receipt'&&fileValid(x));
 }
 function fileSync(d,k){
   const l=filesOf(d,k);
@@ -11785,7 +11847,7 @@ function stepCard(d){
 
   s27:()=>{
     const pt=d.payTo||{};
-    const receiptFiles=filesOf(d,'receipt');
+    const receiptFiles=receiptDocs(d).map(x=>x.f), receiptRefs=receiptDocs(d);
     const safe=s=>String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     /* У крипты нет обмена у брокера: курс RUB→USDT и «хеш обмена» ей не нужны. Раньше
        список был общий, и у крипто-сделки кнопка закрытия не разблокировалась никогда
@@ -11815,19 +11877,19 @@ function stepCard(d){
     return `<div class="card"><div class="card-title">Чек клиенту и закрытие
       <span class="sub">${ok.length-okMiss} из ${ok.length} полей собрано по дороге</span></div>
     ${receiptFiles.length?`<div class="checktop">
-      <div class="checklab">Чек от операциониста</div>
+      <div class="checklab">Чек выплаты</div>
       <div class="checksum">${money(pt.amount||ap.thb,ap.thbSign||'฿')}${pt.dev?`<span class="to">→ ${safe(pt.dev)}</span>`:''}</div>
       ${receiptFiles.map((f,i)=>`<div class="checkfile">
         <div><div class="fname">${safe(f.file)}${f.demo?' · DEMO':''}</div><div class="fmeta">${safe(f.size)}</div></div>
         <div class="fops">
-          <button class="btn btn-primary" onclick="docOpen(${d.id},'receipt',${i})">Открыть</button>
-          <button class="btn btn-secondary" onclick="docDownload(${d.id},'receipt',${i})">Скачать</button>
+          <button class="btn btn-primary" onclick="docOpen(${d.id},'${receiptRefs[i].kind}',${receiptRefs[i].i})">Открыть</button>
+          <button class="btn btn-secondary" onclick="docDownload(${d.id},'${receiptRefs[i].kind}',${receiptRefs[i].i})">Скачать</button>
         </div></div>`).join('')}
       ${d.sentToClient?'<p class="fh s27-sent-note">✓ Чек отправлен клиенту'+(d.sentAt?' · '+safe(d.sentAt):'')+'</p>':
         `<button class="btn btn-primary btn-lg s27-sent-action" onclick="sentToggle(${d.id})">Отметить — чек отправлен клиенту</button>
         <p class="fh s27-sent-hint">Отправьте чек в чат клиента, затем отметьте здесь</p>`}
     </div>`
-    :`<div class="alert a-warn"><div>Чека нет — операционист ещё не приложил его на шаге оплаты.</div></div>`}
+    :`<div class="alert a-warn"><div>Чека нет — приложите чек выплаты получателю (менеджер или операционист).</div></div>`}
 
     <div class="card-title" style="font-size:14px;margin:18px 0 6px">Итог сделки
       <span class="sub">проверьте каждую строку · «Поправить» открывает поле</span></div>
@@ -12255,7 +12317,7 @@ async function act(id,step){
     if(d.pay.invoicePaid){toast('Оплата инвойса уже учтена');return;}
     /* Назначение для банка застройщика вносит менеджер в реквизитах (Карим, 27.09):
        операционист его не пишет, а без него не платит — возвращает с вопросом */
-    if(!d.docs.receipt){toast('Приложите чек банка — его отправят клиенту');return;}
+    if(!hasReceipt(d)){toast('Приложите чек банка — его отправят клиенту');return;}
     if(d.kind==='Фрихолд'){
       /* IPPS платит из отправленных USDT — на батном счёте SCB для фрихолда денег
          никаких нет, списывать нечего (спека 28.09). */
@@ -12284,7 +12346,7 @@ async function act(id,step){
     if(d.prepay&&(d.prepay.brokerStep!=='done'||!d.payout?.reimbursement)){toast('Ждём приход USDT брокера и возмещение на кошелёк оплаты');return;}
     if(!d.sentToClient){toast('Отметьте, что чек отправлен клиенту');return;}
     const gaps=crmGaps(d);if(gaps.length){toast('До закрытия заполните: '+gaps[0].label);return;}
-    if(!d.pay.invoicePaid||!d.docs.receipt){toast('Нужны оплата инвойса и чек');return;}
+    if(!hasReceipt(d)){toast('Нужен чек выплаты — он же подтверждает оплату');return;}
     if(STAND){toast('Проверьте итог и нажмите «Сохранить в CRM и закрыть»');return;}closeDeal(d,'Успешно завершена');return;}
 }
 

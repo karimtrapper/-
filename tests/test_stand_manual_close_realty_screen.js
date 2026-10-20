@@ -19,7 +19,7 @@ const SCRIPT = [
   source('isCrypto'), source('payCur'), source('exchangeSpec'), source('payinParts'),
   source('refAgents'), source('econ'),
   source('refSignal'), source('agentsBlock'),
-  source('managerDraftDocTarget'), source('fileValid'), source('filesOf'), source('fileBlock'),
+  source('managerDraftDocTarget'), source('fileValid'), source('filesOf'), source('receiptDocs'), source('hasReceipt'), source('fileBlock'),
   source('hashShareOf'), source('hashCell'),
   source('payoutHuman'), source('clientRubPaid'), source('mfList'),
   source('txPoolInit'), source('txPool'), source('txUsed'),
@@ -35,7 +35,7 @@ const SOURCES_PAY = {
 function makeCtx(deal, preview) {
   const S = {deals: [deal], incomes: [], role: 'admin', manualCloseForm: {}};
   const ctx = {
-    S, SOURCES_PAY,
+    S, SOURCES_PAY, atob, FILE_TAIL: {},
     render: () => {}, toast: () => {}, fetch: () => Promise.reject(new Error('not used in render')),
     // crmPreviewFor's own correctness (the real /api/stand/crm-preview fetch +
     // cache wrapper) is already exercised elsewhere (dealSummaryBlock's s27
@@ -58,7 +58,8 @@ function realtyKnownDeal() {
     amountThb: 50000, companyPct: 1, rates: {usdtThb: 36.0, client: 35.0},
     payTo: {purpose: 'Оплата аренды виллы, авг 2026'},
     mfPayout: [{hash: 'b'.repeat(64), net: 'TRC20', amount: 1388.89}],
-    docs: {inv: true, receipt: true}};
+    docs: {inv: true, receipt: true},
+    files: {receipt: [{file: 'slip.pdf', mime: 'application/pdf', data: 'data:application/pdf;base64,JVBERi0='}]}};
 }
 
 // Тот же тип сделки, но инвойс/курсы/назначение ещё не внесены - ранний случай без

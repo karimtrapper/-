@@ -25,6 +25,9 @@ REALTY_FACTS = {
     'payTo': {'purpose': 'Оплата аренды виллы'},
     'mfPayout': [{'hash': 'f' * 64, 'net': 'TRC20', 'amount': 1388.89}],
     'docs': {'inv': True, 'receipt': True},
+    # чек — настоящий файл, а не отметка docs.receipt
+    'files': {'receipt': [{'file': 'receipt.pdf', 'mime': 'application/pdf',
+                           'data': 'data:application/pdf;base64,JVBERi0='}]},
 }
 
 
@@ -162,12 +165,30 @@ def test_payin_amount_mismatch_tolerance_matches_frontend_payin_tol():
         state, deal, override, 'manager', verify=confirmed_echo) == 'payin_amount_mismatch'
 
 
-def test_rejects_missing_evidence_for_non_crypto_payin():
+def test_non_crypto_payin_needs_no_evidence_hash_or_file():
+    # Ручной перенос: способ и сумма достаточны, прихода-подтверждений от других людей нет;
+    # ошибка приходит уже со стороны выдачи, значит приход принят.
     state, deal = board()
     override = {'reason': REASON,
                 'payin': {'method': 'СБП', 'amountUsdt': 100}}
     assert A._stand_manual_close_apply_override(
-        state, deal, override, 'manager') == 'payin_evidence_missing'
+        state, deal, override, 'manager') == 'payout_source_required'
+
+
+def test_cash_partner_payin_is_not_forced_to_crypto_hash():
+    state, deal = board(cashPartnerUsdt=True, payType='Наличные')
+    override = {'reason': REASON, 'payin': {'method': 'Наличные', 'amountUsdt': 100}}
+    assert A._stand_manual_close_apply_override(
+        state, deal, override, 'manager') == 'payout_source_required'
+
+
+def test_supplied_payin_hash_of_non_crypto_method_is_still_checked_in_network():
+    state, deal = board()
+    override = {'reason': REASON, 'payin': {'method': 'Наличные', 'amountUsdt': 100, 'hashes': [
+        {'hash': '5' * 64, 'network': 'trc20', 'receiver': 'TReceiverWallet111111111111', 'amount': 100}]}}
+    unverified = lambda *args: {'status': 'pending'}
+    assert A._stand_manual_close_apply_override(
+        state, deal, override, 'manager', verify=unverified) == 'payin_hash_unverified'
 
 
 def test_rejects_missing_payout_evidence_for_exchange():

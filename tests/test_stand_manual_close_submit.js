@@ -193,6 +193,50 @@ async function main() {
     assert.equal(merged.mfPayout[0].hash, '9'.repeat(64));
     console.log('T7 rental cash manual close uses corrected money and transfer PASS');
   }
+
+  // T8: СД-1489 — выплата банком ฿: в пэйлоаде маршрут, сумма и получатель, хеша нет,
+  // перевод в MF Corp не придумывается.
+  {
+    const d = {id: 1490, code: 'СД-1489', client: 'Synthetic rental',
+      type: 'Оплата недвижимости', kind: 'Аренда', step: 's14',
+      payType: 'Наличные', amountUsdt: null, amountRub: 1217600,
+      amountThb: 455000, companyPct: null, rates: {client: '2,676', usdtThb: 33.42},
+      payTo: {bank: 'BBL', acc: '123-4-56789-0'},
+      payinHashes: [], payout: {}, mfPayout: [], agents: [], docs: {inv: true}};
+    const {ctx, S} = makeCtx(d, 'Банковская выплата, чек KBank→BBL приложен менеджером',
+      {mc_payin_amount_usdt: '14500'});
+    S.manualCloseForm[d.id] = {payin: {hashes: []}, payout: {hashes: [], route: 'bank', amountThb: '455000',
+      recipient: {name: 'Villa Owner Co', bank: 'BBL', acc: '123-4-56789-0'}},
+      realty: {invoiceThb: '455000', buyRate: '33,42', sellRate: '', companyPercent: '2'}};
+    let merged;
+    ctx.crmPayloadFinal = value => {merged = value; return {deal_kind: 'mf_realty'};};
+    const out = ctx.manualClosePayload(d).manualOverride.payout;
+    assert.equal(out.route, 'bank');
+    assert.equal(out.amountThb, 455000);
+    assert.equal(out.recipient.acc, '123-4-56789-0');
+    assert.deepEqual(Array.from(out.hashes), []);
+    assert.equal((merged.mfPayout || []).length, 0, 'без хеша перевод в MF Corp не создаётся');
+    console.log('T8 bank THB payout manual close sends route, amount, recipient without hash PASS');
+  }
+
+  // T9: крипто-маршрут (по умолчанию) route не посылает — хеш остаётся обязательным на сервере.
+  {
+    const d = {id: 1491, code: 'СД-1491', client: 'Synthetic rental',
+      type: 'Оплата недвижимости', kind: 'Аренда', step: 's14',
+      payType: 'Наличные', amountUsdt: null, amountRub: 1217600,
+      amountThb: 455000, companyPct: null, rates: {client: '2,676', usdtThb: 33.42},
+      payinHashes: [], payout: {}, mfPayout: [], agents: [], docs: {inv: true}};
+    const {ctx, S} = makeCtx(d, 'Криптовая выплата, хеш перевода введён вручную',
+      {mc_payin_amount_usdt: '14500', mc_payout_amount_usdt: '13800'});
+    S.manualCloseForm[d.id] = {payin: {hashes: []}, payout: {hashes: [
+      {hash: '8'.repeat(64), network: 'TRC20', amount: 13800}]},
+      realty: {invoiceThb: '455000', buyRate: '33,42', sellRate: '', companyPercent: '2'}};
+    ctx.crmPayloadFinal = () => ({deal_kind: 'mf_realty'});
+    const out = ctx.manualClosePayload(d).manualOverride.payout;
+    assert.equal(out.route, undefined);
+    assert.equal(out.hashes.length, 1);
+    console.log('T9 crypto payout keeps hash and sends no route PASS');
+  }
 }
 
 main().catch(error => { console.error(error); process.exitCode = 1; });

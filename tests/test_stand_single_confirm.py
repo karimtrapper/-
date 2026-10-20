@@ -288,7 +288,8 @@ def test_native_file_acceptance_timestamp_survives_invoice_paid(monkeypatch):
     change_board(complete_s26)
     fact = next(f for f in client.get('/api/stand/deals/1474/close-evidence').json['facts'] if f['kind'] == 'receipt')
     assert fact['ready'] and fact['system']
-    assert fact['checked_at'] == '2025-10-19T05:49:42Z'  # время завершения s26, а не поздней записи
+    # автор загруженного файла главнее: время — запись «Приложен файл», а не завершение s26 и не поздняя запись
+    assert fact['checked_at'] == '2025-10-19T05:33:20Z'
 
 
 def test_realty_closes_with_one_manager_confirmation_after_operator_upload(monkeypatch):
