@@ -818,6 +818,13 @@ a.hash:hover{background:#BAE6FD}
 .deal-screen .tx-fee-row{display:flex;align-items:center;gap:var(--ds-sm);min-height:44px;font-size:var(--ds-body)}
 .deal-screen .tx-hidden summary,.deal-screen details summary{cursor:pointer;min-height:44px;display:flex;align-items:center}
 .deal-screen .doc-side{margin-top:var(--ds-md)}
+.deal-screen .doc-extra-control{margin-top:var(--ds-md)}
+.deal-screen .doc-extra-control>div:not([hidden]){display:grid;gap:var(--ds-sm);margin-top:var(--ds-sm)}
+.deal-screen .doc-extra-control label{font-size:var(--ds-body);font-weight:var(--ds-semibold);color:var(--ds-muted)}
+.deal-screen .doc-extra-control .fc{font-size:var(--ds-emphasis);min-height:44px}
+.deal-screen .doc-extra-control .btn,.deal-screen .doc-list .btn-sm{min-height:44px}
+.deal-screen .doc-list .li{grid-template-columns:min-content minmax(0,1fr)}
+.deal-screen .doc-list .li .t3{grid-column:2;display:flex;flex-wrap:wrap;gap:var(--ds-sm);white-space:normal}
 /* Хронология (pathCard): лента карточек на ВСЕХ ширинах — таблица на широких экранах
    вылезала за карточку колонкой «Сколько держалось» (Карим, живой стенд, 17.10) */
 .deal-screen .hist-feed{display:flex;flex-direction:column}
@@ -4734,7 +4741,8 @@ function knownBy(source,ref){
 const DOCT={pass:'Загранпаспорт',inv:'Инвойс застройщика',spa:'SPA с застройщиком',ipds:'Анкета ИПДС',
   dog:'Агентский договор',app:'Приложение с платежом',bill:'Счёт на оплату',
   signed:'Подписанный пакет от клиента', receipt:'Чек банка об оплате',
-  clientPayinReceipt:'Чеки клиента об оплате',bankCreditEvidence:'Выписка / подтверждение зачисления'};
+  clientPayinReceipt:'Чеки клиента об оплате',bankCreditEvidence:'Выписка / подтверждение зачисления',
+  other:'Другое'};
 /* У лизхолда договор с застройщиком — Lease Agreement, SPA бывает только у фрихолда
    (аудит 27.09, №27) */
 function doctOf(d,k){return (k==='spa'&&d&&d.kind==='Лизхолд')?'Lease Agreement':DOCT[k];}
@@ -4929,10 +4937,10 @@ function docDownload(id,k,ext){
   docFetch('/api/docs/file/'+f.docId,f.file||docFileName(d,k,'pdf'),d,'Скачан документ: '+(DOCT[k]||k)+' · '+f.file);
 }
 /* Текущая версия пакета: что выпустил генератор, со своими файлами поверх */
-function docPackFiles(d){const p=d.docPack;if(!p)return [];return (d.docsIssued||[]).filter(x=>x.version===p.version);}
+function docPackFiles(d){const p=d.docPack;if(!p)return [];return (d.docsIssued||[]).filter(x=>x.version===p.version&&!x.deletedAt);}
 function docFileOf(d,k){
   const own=(d.issued||{})[k];
-  if(own&&own.docId)return Object.assign({own:true,kind:k},own);
+  if(own&&own.docId&&!own.deletedAt)return Object.assign({own:true,kind:k},own);
   return docPackFiles(d).find(x=>x.kind===k)||null;
 }
 function docExt(f){const m=String((f&&(f.mime||f.file))||'').toLowerCase();
@@ -6768,6 +6776,8 @@ function overview(d,st,mine,p,wh){
   const activeMine=branchMine&&(branch==='conversion'||!d.assigneeAdminId||String(d.assigneeAdminId)===String(standMeId));
   const got=['pass','inv','spa','ipds'].filter(k=>d.docs[k]);
   const docRows=docListRows(d), docN=docRows.issued.length+docRows.client.length;
+  const deletedRows=typeof docDeletedRows==='function'?docDeletedRows(d):'';
+  const extraControl=typeof docExtraControl==='function'?docExtraControl(d):'';
   const row=(k,v,s)=>v==null||v===''||v==='—'?'':`<tr><th>${k}</th><td>${v}${s?` <span style="color:var(--text-muted);font-size:12px">${s}</span>`:''}</td></tr>`;
   // Внутренний комментарий — ввод человека, который может оказаться простыней
   // текста (реквизиты, вставленные одним абзацем — находка №4 аудита
@@ -6941,8 +6951,9 @@ function overview(d,st,mine,p,wh){
       ?'Плановый доход известен из суммы клиента и отправки в IPPS. Фактическую прибыль покажем после подтверждения прихода USDT по хешам и расходов на оплату застройщика.'
       :'Прибыль посчитается, когда будут известны '+(d.type==='Оплата недвижимости'?'курс партнёра USDT→THB и приход':'себестоимость выдачи и приход')+'. '+(isCrypto(d)?'':'Для рублёвой сделки нужен ещё курс обмена у брокера.')}</div></div></div>`}
 
-  ${(docN||(S.role==='manager'&&signedBlock(d)))?`<div class="card" style="margin-bottom:16px"><div class="card-title">Документы<span class="sub">${docN} шт.</span></div>
-    <div class="list">${docRows.issued.join('')}${docRows.client.join('')}</div>
+  ${(docN||deletedRows||extraControl||(S.role==='manager'&&signedBlock(d)))?`<div class="card" style="margin-bottom:16px"><div class="card-title">Документы<span class="sub">${docN} шт.</span></div>
+    <div class="list doc-list">${docRows.issued.join('')}${docRows.client.join('')}${deletedRows}</div>
+    ${extraControl}
     ${S.role==='manager'?signedBlock(d):''}</div>`:''}
   ${fixCard(d)}
 
@@ -7854,14 +7865,94 @@ function docIssuedTitle(d,k){
   const P=d.docPack||{};
   return {dog:'Агентский договор',app:P.mode==='addendum'?'Допсоглашение к договору '+(P.agreementNumber||''):'Приложение 1 к договору',bill:'Счёт на оплату'}[k];
 }
+function docExtraControl(d){
+  if(STAND&&!['manager','operator','admin'].includes(standMe))return '';
+  const key='doc-extra-'+d.id;
+  return `<div class="doc-extra-control">
+    <button type="button" class="btn btn-outline btn-sm" onclick="docExtraToggle(${d.id})">+ Загрузить ещё</button>
+    <div id="${key}" hidden>
+      <label for="${key}-type">Тип документа</label>
+      <select id="${key}-type" class="fc">${['receipt','inv','spa','pass','other'].map(k=>
+        `<option value="${k}">${htmlText(DOCT[k])}</option>`).join('')}</select>
+      <label for="${key}-file">Файл</label>
+      <input id="${key}-file" type="file" class="fc" accept=".pdf,.png,.jpg,.jpeg,.webp,application/pdf,image/png,image/jpeg,image/webp"
+        onchange="docExtraUpload(${d.id},this)">
+    </div></div>`;
+}
+function docExtraToggle(id){
+  const box=document.getElementById('doc-extra-'+id);
+  if(!box)return;
+  box.hidden=!box.hidden;
+  if(!box.hidden)box.querySelector('select')?.focus();
+}
+function docExtraUpload(id,input){
+  const f=input.files?.[0];
+  const type=document.getElementById('doc-extra-'+id+'-type')?.value;
+  if(!f||!type)return;
+  fileAddReal(id,'additional',f,type);
+  input.value='';
+}
+async function docIssuedAction(id,docId,action){
+  const d=deal(id);
+  const refs=[...(d?.docsIssued||[]),...Object.values(d?.issued||{})];
+  const f=refs.find(x=>x?.docId===docId);
+  if(!f)return toast('Файл не найден — обновите страницу');
+  if(action==='delete'&&!confirm('Удалить файл '+f.file+'?'))return;
+  try{
+    const r=await fetch('/api/docs/file/'+docId,{method:'PATCH',credentials:'same-origin',
+      headers:{'Content-Type':'application/json'},body:JSON.stringify({action})});
+    const j=await r.json();
+    if(!r.ok||!j.success)throw new Error(j.error||'Не удалось изменить документ');
+    await standPull(true);
+    toast(action==='delete'?'Документ удалён':'Документ восстановлен');
+  }catch(e){toast(e.message||'Не удалось изменить документ');}
+}
+function docFileButton(d,k,f,action){
+  const fileId=f.id||f.storageId;
+  if(!fileId || (STAND&&!['manager','operator','admin'].includes(standMe)))return '';
+  if(action==='restore'&&STAND&&standMe!=='admin')return '';
+  const call=`docFileAction(${d.id},${JSON.stringify(k)},${JSON.stringify(fileId)},${JSON.stringify(action)})`;
+  return `<button class="btn btn-outline btn-sm" onclick="${htmlText(call)}">${action==='delete'?'Удалить':'Восстановить'}</button>`;
+}
+async function docFileAction(id,k,fileId,action){
+  const d=deal(id);
+  const field=action==='restore'?'deletedFiles':'files';
+  const draft=!!((d?._managerDraft?.[field]?.[k]||[]).some(x=>(x.id||x.storageId)===fileId));
+  const target=draft?d._managerDraft:d;
+  const lists=target?.[field];
+  const f=((lists||{})[k]||[]).find(x=>(x.id||x.storageId)===fileId);
+  if(!f)return toast('Файл не найден — обновите страницу');
+  if(action==='delete'&&!confirm('Удалить файл '+f.file+'?'))return;
+  if(!STAND||SCREEN||SNAP){
+    if(action==='delete')fileDel(id,k,((d.files||{})[k]||[]).indexOf(f));
+    return;
+  }
+  const saved=await standWaitSaved();
+  if(!saved?.ok)return toast(standSaveError(saved,'Сначала сохраните изменения доски'));
+  const base=standClone(standBase||{});
+  try{
+    const r=await fetch('/api/stand/files/'+id+'/'+encodeURIComponent(k)+'/'+encodeURIComponent(fileId)+(draft?'?draft=1':''),{
+      method:'PATCH',credentials:'same-origin',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({action})});
+    const j=await r.json();
+    if(!r.ok||!j.success)throw new Error(j.error||'Не удалось изменить документ');
+    const merged=standMerge(base,standSnapshot(),j.data);
+    standVer=j.version;standBase=standClone(j.data);standApply(merged.data);
+    if(!jeq(merged.data,j.data))standPush=true;
+    render();toast(action==='delete'?'Документ удалён':'Документ восстановлен');
+    if(standPush)standSave();
+  }catch(e){toast(e.message||'Не удалось изменить документ');}
+}
 /* Строки документов сделки: сначала выпущенный пакет, потом файлы клиента */
 function docListRows(d,small){
   const fs=small?' style="font-size:12.5px"':'';
+  const deleteButton=(k,f)=>typeof docFileButton==='function'?docFileButton(d,k,f,'delete'):'';
   const issued=['dog','app','bill'].map(k=>[k,docFileOf(d,k)]).filter(x=>x[1]).map(([k,f])=>
     `<div class="li" style="cursor:default"><span class="av">${{dog:'Д',app:'П',bill:'С'}[k]}</span>
       <div><div class="t1"${fs}>${docIssuedTitle(d,k)}${f.own?' <span class="badge b-done">свой файл</span>':''}</div>
         <div class="t2" style="word-break:break-all">${htmlText(f.file)}</div></div>
-      <span class="t3"><button class="btn btn-outline btn-sm" onclick="docDownload(${d.id},'${k}','file')">${docExt(f)}</button></span></div>`);
+      <span class="t3"><button class="btn btn-outline btn-sm" onclick="docDownload(${d.id},'${k}','file')">${docExt(f)}</button>
+      ${!STAND||['manager','operator','admin'].includes(standMe)?`<button class="btn btn-outline btn-sm" onclick="docIssuedAction(${d.id},${f.docId},'delete')">Удалить</button>`:''}</span></div>`);
   const client=[];
   ['pass','inv','spa','ipds'].filter(k=>d.docs[k]||filesOf(d,k).length).forEach(k=>{
     const files=filesOf(d,k);
@@ -7870,33 +7961,54 @@ function docListRows(d,small){
     files.forEach((f,i)=>client.push(`<div class="li" style="cursor:default"><span class="av">${doctOf(d,k)[0]}</span>
       <div><div class="t1"${fs}>${doctOf(d,k)}${files.length>1?' · '+(i+1):''}</div><div class="t2" style="word-break:break-all">${htmlText(f.file||'')}</div></div>
       <span class="t3" style="white-space:nowrap"><button class="btn btn-outline btn-sm" onclick="docOpen(${d.id},'${k}',${i})">Открыть</button>
-        <button class="btn btn-outline btn-sm" onclick="docDownload(${d.id},'${k}',${i})">Скачать</button></span></div>`));
+        <button class="btn btn-outline btn-sm" onclick="docDownload(${d.id},'${k}',${i})">Скачать</button>${deleteButton(k,f)}</span></div>`));
   });
   filesOf(d,'clientPayinReceipt').forEach((f,i)=>client.push(`<div class="li" style="cursor:default"><span class="av">Ч</span>
     <div><div class="t1"${fs}>Чек клиента об оплате${i?' · '+(i+1):''}</div>
       <div class="t2" style="word-break:break-all">${htmlText(f.file)} · ${htmlText(f.uploadedBy||'сотрудник')}${f.note?' · '+htmlText(f.note):''}</div></div>
     <span class="t3" style="white-space:nowrap"><button class="btn btn-outline btn-sm" onclick="docOpen(${d.id},'clientPayinReceipt',${i})">Открыть</button>
-      <button class="btn btn-outline btn-sm" onclick="docDownload(${d.id},'clientPayinReceipt',${i})">Скачать</button></span></div>`));
+      <button class="btn btn-outline btn-sm" onclick="docDownload(${d.id},'clientPayinReceipt',${i})">Скачать</button>${deleteButton('clientPayinReceipt',f)}</span></div>`));
   filesOf(d,'bankCreditEvidence').forEach((f,i)=>client.push(`<div class="li" style="cursor:default"><span class="av">В</span>
     <div><div class="t1"${fs}>Выписка / подтверждение зачисления${i?' · '+(i+1):''}</div>
       <div class="t2" style="word-break:break-all">${htmlText(f.file)} · ${htmlText(f.uploadedBy||'операционист')}</div></div>
     <span class="t3" style="white-space:nowrap"><button class="btn btn-outline btn-sm" onclick="docOpen(${d.id},'bankCreditEvidence',${i})">Открыть</button>
-      <button class="btn btn-outline btn-sm" onclick="docDownload(${d.id},'bankCreditEvidence',${i})">Скачать</button></span></div>`));
+      <button class="btn btn-outline btn-sm" onclick="docDownload(${d.id},'bankCreditEvidence',${i})">Скачать</button>${deleteButton('bankCreditEvidence',f)}</span></div>`));
+  filesOf(d,'additional').forEach((f,i)=>client.push(`<div class="li" style="cursor:default"><span class="av">${htmlText((DOCT[f.documentType]||'Д')[0])}</span>
+    <div><div class="t1"${fs}>${htmlText(DOCT[f.documentType]||'Документ')}</div>
+      <div class="t2" style="word-break:break-all">${htmlText(f.file||'')}</div></div>
+    <span class="t3"><button class="btn btn-outline btn-sm" onclick="docOpen(${d.id},'additional',${i})">Открыть</button>
+      <button class="btn btn-outline btn-sm" onclick="docDownload(${d.id},'additional',${i})">Скачать</button>${deleteButton('additional',f)}</span></div>`));
   return {issued,client};
 }
 /* Единый счётчик файлов сделки — тот же, что в сайдбаре «Документы N файлов» (docSide).
    Раньше плитка «Документов» считала Object.keys(d.docs) — это чек-лист НУЖНЫХ типов
    документов, а не факт прикреплённых файлов: давало другое число (приёмка Карима 18.10). */
 function docFilesCount(d){const {issued,client}=docListRows(d);return issued.length+client.length;}
+function docDeletedRows(d){
+  if(STAND&&standMe!=='admin')return '';
+  const removed=[d.deletedFiles||{},d._managerDraft?.deletedFiles||{}];
+  const attached=removed.flatMap(group=>Object.entries(group).flatMap(([k,files])=>(files||[]).map(f=>
+    `<div class="li" style="cursor:default"><span class="av">Д</span>
+      <div><div class="t1">${htmlText(DOCT[k==='additional'?f.documentType:k]||'Документ')} · удалён</div>
+      <div class="t2" style="word-break:break-all">${htmlText(f.file||'')}</div></div>
+      <span class="t3">${docFileButton(d,k,f,'restore')}</span></div>`)));
+  const issued=[...(d.docsIssued||[]),...Object.values(d.issued||{})]
+    .filter(f=>f&&f.deletedAt&&f.docId).filter((f,i,a)=>a.findIndex(x=>x.docId===f.docId)===i)
+    .map(f=>`<div class="li" style="cursor:default"><span class="av">Д</span>
+      <div><div class="t1">${htmlText(DOCT[f.kind]||'Документ')} · удалён</div>
+      <div class="t2" style="word-break:break-all">${htmlText(f.file||'')}</div></div>
+      <span class="t3"><button class="btn btn-outline btn-sm" onclick="docIssuedAction(${d.id},${f.docId},'restore')">Восстановить</button></span></div>`);
+  return [...attached,...issued].join('');
+}
 /* Подписанный договор менеджер загружает в любой момент после выпуска пакета — на
    любом шаге, путь он не блокирует, загрузка пишется в журнал (Карим, 27.09) */
 function signedBlock(d,small){
   if(!d.docPack||d.closed) return '';
   const l=filesOf(d,'signed'), fs=small?' style="font-size:12.5px"':'';
-  return `<div class="list" style="margin-top:10px" ondragover="dzOver(event)" ondragleave="dzLeave(event)" ondrop="fileDrop(event,${d.id},'signed')">
+  return `<div class="list doc-list" style="margin-top:10px" ondragover="dzOver(event)" ondragleave="dzLeave(event)" ondrop="fileDrop(event,${d.id},'signed')">
     ${l.map((f,i)=>`<div class="li on" style="cursor:default"><span class="av">✓</span>
       <div><div class="t1"${fs}>Подписанный договор${l.length>1?' · '+(i+1):''}</div><div class="t2" style="word-break:break-all">${htmlText(f.file)} · ${htmlText(f.at||'')}</div></div>
-      <span class="t3"><button class="btn btn-outline btn-sm" onclick="docOpen(${d.id},'signed',${i})">Открыть</button></span></div>`).join('')}
+      <span class="t3"><button class="btn btn-outline btn-sm" onclick="docOpen(${d.id},'signed',${i})">Открыть</button>${docFileButton(d,'signed',f,'delete')}</span></div>`).join('')}
     <div class="li" style="cursor:default"><span class="av">+</span>
       <div><div class="t1"${fs}>${l.length?'Ещё подписанный файл':'Подписанный договор от клиента'}</div><div class="t2">можно на любом шаге — путь не ждёт</div></div>
       <span class="t3"><button class="btn btn-secondary btn-sm" onclick="fileAdd(${d.id},'signed')">Загрузить подписанный договор</button></span></div></div>`;
@@ -7904,12 +8016,15 @@ function signedBlock(d,small){
 function docSide(d){
   const {issued,client}=docListRows(d,true);
   const wait=!d.docPack&&!d.closed;
-  if(!issued.length&&!client.length&&!wait)return '';
+  const deleted=docDeletedRows(d);
+  if(!issued.length&&!client.length&&!wait&&!deleted&&!docExtraControl(d))return '';
   return `<details class="card side doc-side fold-card"><summary>Документы<span class="fold-total">${issued.length+client.length} ${plural(issued.length+client.length,'файл','файла','файлов')}</span></summary>
-    ${issued.length?`<div class="list">${issued.join('')}</div>`
+    ${issued.length?`<div class="list doc-list">${issued.join('')}</div>`
       :wait?`<p style="font-size:12.5px;color:var(--text-muted);margin:0 0 10px">Договор, приложение и счёт появятся после «Создать договор» у операциониста.</p>`:''}
     ${issued.length&&d.docPack?`<p style="font-size:12px;color:var(--text-muted);margin:8px 0 10px">Пакет версии ${d.docPack.version} · <a href="javascript:void(0)" onclick="docDownloadAll(${d.id})">скачать всё</a></p>`:''}
-    ${client.length?`<div class="list">${client.join('')}</div>`:''}
+    ${client.length?`<div class="list doc-list">${client.join('')}</div>`:''}
+    ${deleted?`<div class="list doc-list">${deleted}</div>`:''}
+    ${docExtraControl(d)}
     ${S.role==='manager'?signedBlock(d,true):''}</details>`;
 }
 
@@ -9222,7 +9337,7 @@ function docRow(d,k,t,req){
     ${on
       ?`<span class="t3" style="white-space:nowrap">
           <button class="btn btn-outline btn-sm" onclick="docOpen(${d.id},'${k}',0)">Открыть</button>
-          <button class="btn btn-outline btn-sm" onclick="fileDel(${d.id},'${k}',0)">Убрать</button></span>`
+          <button class="btn btn-outline btn-sm" onclick="fileDel(${d.id},'${k}',0)">Удалить</button></span>`
       :`<span class="t3" style="white-space:nowrap">
           <button class="btn btn-secondary btn-sm" onclick="toggleDoc(${d.id},'${k}')">Загрузить</button></span>`}
   </div>`;
@@ -9434,7 +9549,7 @@ function filesOf(d,k){
 }
 function fileSync(d,k){
   const l=filesOf(d,k);
-  if(k==='clientPayinReceipt'||k==='bankCreditEvidence')return;
+  if(k==='clientPayinReceipt'||k==='bankCreditEvidence'||k==='additional')return;
   const target=managerDraftDocTarget(d,k)||d;
   target.docs=target.docs||{};target.docs[k]=l.length>0;
   target.docMeta=target.docMeta||{};
@@ -9465,13 +9580,14 @@ async function fileOptimizeImage(file){
   }finally{bitmap.close();}
 }
 let fileUploadQueue=Promise.resolve();
-async function fileUploadServer(id,k,file){
+async function fileUploadServer(id,k,file,extraType){
   const saved=await standWaitSaved();
   if(!saved?.ok)throw new Error(standSaveError(saved,'Сначала сохраните изменения доски'));
   const base=standClone(standBase||{});
   standBusy=true;
   try{
     const form=new FormData();form.append('dealId',id);form.append('kind',k);form.append('file',file);
+    if(extraType){form.append('extra','1');form.append('documentType',extraType);}
     const response=await fetch('/api/stand/files',{method:'POST',credentials:'same-origin',body:form});
     const j=await response.json();
     if(!response.ok||!j.success)throw new Error(j.error||'Файл не сохранён');
@@ -9485,7 +9601,7 @@ async function fileUploadServer(id,k,file){
     if(standPush)standSave();
   }
 }
-function fileAddReal(id,k,f){
+function fileAddReal(id,k,f,extraType){
   if(!f)return;
   const ext=String(f.name||'').split('.').pop().toLowerCase();
   const allowed={'application/pdf':['pdf'],'image/png':['png'],
@@ -9496,7 +9612,7 @@ function fileAddReal(id,k,f){
   if(STAND&&!SCREEN&&!SNAP){
     fileUploadQueue=fileUploadQueue.catch(()=>{}).then(async()=>{
       const optimized=await fileOptimizeImage(f);
-      await fileUploadServer(id,k,optimized);
+      await fileUploadServer(id,k,optimized,extraType);
     }).catch(e=>toast(e.message||'Файл не сохранён — проверьте связь'));
     return fileUploadQueue;
   }
@@ -9504,7 +9620,8 @@ function fileAddReal(id,k,f){
   reader.onerror=()=>toast('Не удалось прочитать файл');
   reader.onload=()=>fileAppend(id,k,{file:f.name.replace(/[<>"'`&\x00-\x1f]/g,'_'),
     size:Math.max(1,Math.ceil(f.size/1024))+' КБ',at:now(),
-    mime:f.type,bytes:f.size,data:String(reader.result||''),demo:false});
+    mime:f.type,bytes:f.size,data:String(reader.result||''),demo:false,
+    ...(extraType?{documentType:extraType}:{})});
   reader.readAsDataURL(f);
 }
 async function fileAppend(id,k,f){
@@ -9531,7 +9648,8 @@ async function fileAppend(id,k,f){
   }
   l.push(f);fileSync(d,k);
   if(!managerDraftDocTarget(d,k))
-    log(d,k==='bankCreditEvidence'?'Выписка о зачислении прикреплена · '+f.file+' · '+f.uploadedBy:
+    log(d,k==='additional'?'Приложен документ '+f.file:
+      k==='bankCreditEvidence'?'Выписка о зачислении прикреплена · '+f.file+' · '+f.uploadedBy:
       k==='clientPayinReceipt'?'Чек клиента прикреплён · '+f.file+' · '+f.uploadedBy:
       (f.demo?'Добавлен тестовый файл: ':'Приложен файл: ')+(DOCT[k]||k)+' · '+f.file);
   save();render();
@@ -9575,6 +9693,7 @@ function fileDrop(e,id,k){
 function fileDel(id,k,i){
   const d=deal(id), l=filesOf(d,k);
   if(i<0||i>=l.length)return;
+  if(STAND&&!SCREEN&&!SNAP)return docFileAction(id,k,l[i].id||l[i].storageId,'delete');
   if(k==='clientPayinReceipt'&&!clientPayinCanDelete(l[i])){toast('Удалить чек может загрузивший его сотрудник или админ');return;}
   if(k==='bankCreditEvidence'&&!bankEvidenceCanEdit(d)){toast('Выписку можно менять только до подтверждения прихода');return;}
   const [x]=l.splice(i,1);
@@ -9601,7 +9720,7 @@ function bankEvidenceBlock(d){
       ${l.map((f,i)=>`<div class="li on" style="cursor:default"><span class="av">✓</span><div style="flex:1;min-width:0">
         <div class="t1">${htmlText(f.file)}</div><div class="t2">${htmlText(f.size)} · ${htmlText(f.at)} · ${htmlText(f.uploadedBy||'операционист')}</div></div>
         <span class="t3"><button class="btn btn-outline btn-sm" onclick="docOpen(${d.id},'${k}',${i})">Открыть</button>
-          ${can?`<button class="btn btn-outline btn-sm" onclick="fileDel(${d.id},'${k}',${i})">Убрать</button>`:''}</span></div>`).join('')}
+          ${can?`<button class="btn btn-outline btn-sm" onclick="fileDel(${d.id},'${k}',${i})">Удалить</button>`:''}</span></div>`).join('')}
       ${can?`<div class="li" style="cursor:default"><span class="av">+</span><div><div class="t1">${l.length?'Ещё файл выписки':'Прикрепить выписку'}</div><div class="t2">Можно перетащить несколько файлов сюда</div></div>
         <span class="t3"><button class="btn btn-secondary btn-sm" onclick="fileAdd(${d.id},'${k}')">Загрузить</button></span></div>`:''}
     </div></div>`;
@@ -9624,7 +9743,7 @@ function clientPayinBlock(d){
           f.note?`<div class="t2">${htmlText(f.note)}</div>`:''}</div>
         <span class="t3" style="white-space:nowrap"><button class="btn btn-outline btn-sm" onclick="docOpen(${d.id},'${k}',${i})">Открыть</button>
           <button class="btn btn-outline btn-sm" onclick="docDownload(${d.id},'${k}',${i})">Скачать</button>
-          ${clientPayinCanDelete(f)?`<button class="btn btn-outline btn-sm" onclick="fileDel(${d.id},'${k}',${i})">Убрать</button>`:''}</span></div>`).join('')}
+          ${clientPayinCanDelete(f)?`<button class="btn btn-outline btn-sm" onclick="fileDel(${d.id},'${k}',${i})">Удалить</button>`:''}</span></div>`).join('')}
       ${can?`<div class="li" style="cursor:default"><span class="av">+</span><div><div class="t1">${l.length?'Ещё чек клиента':'Прикрепить чек клиента'}</div><div class="t2">PDF, PNG, JPG, WEBP · можно перетащить несколько файлов сюда</div></div>
         <span class="t3"><button class="btn btn-secondary btn-sm" onclick="fileAdd(${d.id},'${k}')">Загрузить</button></span></div>`:''}
     </div></div>`;
@@ -9644,7 +9763,7 @@ function fileBlock(d,k,label,hint){
       <span class="t3" style="white-space:nowrap">
         <button class="btn btn-outline btn-sm" onclick="docOpen(${d.id},'${k}',${i})">Открыть</button>
         <button class="btn btn-outline btn-sm" onclick="docDownload(${d.id},'${k}',${i})">Скачать</button>
-        <button class="btn btn-outline btn-sm" onclick="fileDel(${d.id},'${k}',${i})">Убрать</button></span></div>`).join('')
+        <button class="btn btn-outline btn-sm" onclick="fileDel(${d.id},'${k}',${i})">Удалить</button></span></div>`).join('')
     :`<div class="li" style="cursor:default"><span class="av">+</span>
       <div><div class="t1">${label}</div><div class="t2">${hint}${hint?' · ':''}можно перетащить файл сюда</div></div>
       <span class="t3"><button class="btn btn-secondary btn-sm" onclick="fileAdd(${d.id},'${k}')">Загрузить</button></span></div>`}
