@@ -7705,11 +7705,16 @@ function crmFactsMismatchMessage(error){
 }
 async function crmPushClose(id,reviewedVersion){
   if(standClosing)return;
+  const shown=deal(id);
+  if(STAND&&shown&&!shown.manual&&!standManagerIdForTransfer(shown)){
+    editOpen(id);
+    toast('Выберите учётную запись менеджера задачника перед переносом в CRM');
+    return;
+  }
   standClosing=true;
   try{
     // Freeze the form before awaiting autosave. Never substitute a silently
     // refreshed/merged board version for the version rendered on this button.
-    const shown=deal(id);
     const reviewedCrm=shown?standClone(crmPayloadFinal(shown)):null;
     if(STAND&&!await standRequireSaved())return;
     const d=deal(id);
