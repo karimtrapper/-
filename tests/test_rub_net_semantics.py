@@ -146,7 +146,7 @@ def test_unknown_fee_suppresses_gross_result_but_allows_net(monkeypatch):
 @pytest.mark.parametrize('fees,taken,net,expected', [
     ([1000, 2000], 10000, False, 'needs_input'),
     ([1000, 2000], 23000, False, None),
-    ([1000, 2000], 10000, True, None),
+    ([1000, 2000], 10000, True, 'needs_input'),
     ([1000, None], 10000, False, 'needs_input'),
     ([1000], 5000, False, None),
 ])
@@ -172,6 +172,63 @@ def test_extra_allocation_only_marks_undetermined_gross_shares(fees, taken, net,
             m._clear_profit_if_payin_unknown(deal)
             assert deal.profit_usdt is None
             assert deal.to_dict()['payin_allocation_warning'] == 'не заданы доли по поступлениям'
+    finally:
+        db.rollback(); db.close()
+
+
+def test_distribution_assigns_only_known_partial_shares(monkeypatch):
+    db = m.get_session()
+    deals = [m.Deal(client_name=_id(), deal_type=m.DealType.PAY_IN,
+        status=m.DealStatus.PENDING, payin_rub_is_net=flag)
+        for flag in (False, True)]
+    rows = [m.SberIncome(uuid=_id(), operation_date='2026-10-20',
+        amount_rub=60000, purpose='Эквайринг. Комиссия 400.00.')
+        for _ in deals]
+    db.add_all([*deals, *rows]); db.flush()
+    for deal, row, amount, flag in zip(deals, rows, (30200, 30000), (False, True)):
+        row.claimed_deal_id = deal.id
+        deal.payin_parts = json.dumps([{'uuid': row.uuid, 'amount_rub': amount,
+            'payin_rub_is_net': flag}])
+    class Batch:
+        display_name = 'test'
+        def received_usdt(self): return 1224.48
+    monkeypatch.setattr(m, 'conversion_shares_for',
+        lambda conv, expected_if_pending: {row.id: 612.24 for row in rows})
+    try:
+        result = m.conversion_distribution(db, Batch())
+        assert sorted(r['share_usdt'] for r in result['no_return_deals']) == [306.12, 306.12]
+        assert result['unassigned_usdt'] == 612.24
+        assert result['needs_input'] is False
+        assert result['balanced'] is True
+    finally:
+        db.rollback(); db.close()
+
+
+def test_distribution_keeps_unknown_multi_extra_unassigned(monkeypatch):
+    db = m.get_session()
+    deal = m.Deal(client_name=_id(), deal_type=m.DealType.PAY_IN,
+        status=m.DealStatus.PENDING, payin_rub_is_net=False)
+    rows = [m.SberIncome(uuid=_id(), operation_date='2026-10-20',
+        amount_rub=9000 if i == 0 else 11000,
+        purpose='Эквайринг. Комиссия %.2f.' % fee)
+        for i, fee in enumerate((1000, 2000))]
+    db.add_all([deal, *rows]); db.flush()
+    deal.payin_extra = json.dumps([{'method': 'sber_wl', 'amount_rub': 10000,
+        'amount_usdt': 100, 'sber_uuids': [r.uuid for r in rows]}])
+    for row in rows:
+        row.claimed_deal_id = deal.id
+    deal.payin_parts = json.dumps([{'uuid': row.uuid, 'amount_rub': None} for row in rows])
+    class Batch:
+        display_name = 'test'
+        def received_usdt(self): return 200
+    monkeypatch.setattr(m, 'conversion_shares_for',
+        lambda conv, expected_if_pending: {row.id: 100 for row in rows})
+    try:
+        result = m.conversion_distribution(db, Batch())
+        assert result['no_return_deals'] == []
+        assert result['unassigned_usdt'] == 200
+        assert result['needs_input'] is True
+        assert result['allocation_warning'] == 'не заданы доли по поступлениям'
     finally:
         db.rollback(); db.close()
 

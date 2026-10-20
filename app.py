@@ -17117,6 +17117,61 @@ def detach_conversion_tx(conv_id, tx_id):
         db.close()
 
 
+def _deal_income_allocation_ratio(db, deal, income):
+    """Known share of an income belonging to a deal, in its immutable RUB basis."""
+    if not deal:
+        return None
+    try:
+        parts = json.loads(deal.payin_parts) if deal.payin_parts else []
+    except (ValueError, TypeError):
+        parts = []
+    matching = [p for p in parts if isinstance(p, dict)
+                and str(p.get('uuid')) == str(income.uuid)]
+    if not matching:
+        return 1.0  # historical whole-income claim without a parts JSON
+    parsed = parse_sber_acquiring(income.purpose)
+    net = float(income.amount_rub or 0)
+    gross = net + parsed['fee_rub'] if parsed['fee_known'] else None
+    total = 0.0
+    for part in matching:
+        is_net = part.get('payin_rub_is_net', deal.payin_rub_is_net) is True
+        basis = net if is_net else gross
+        if basis is None or basis <= 0:
+            return None
+        amount = part.get('amount_rub')
+        if amount is None:
+            extra = next((x for x in _payin_extra_list(deal)
+                          if income.uuid in (x.get('sber_uuids') or [])), None)
+            if not extra:
+                return None
+            uuids = extra.get('sber_uuids') or []
+            if len(uuids) != 1:
+                rows = db.query(SberIncome).filter(SberIncome.uuid.in_(uuids)).all()
+                if len(rows) != len(set(uuids)):
+                    return None
+                total_basis = 0.0
+                for row in rows:
+                    row_net = float(row.amount_rub or 0)
+                    row_fee = parse_sber_acquiring(row.purpose)
+                    if not is_net and not row_fee['fee_known']:
+                        return None
+                    total_basis += row_net if is_net else row_net + row_fee['fee_rub']
+                if abs(float(extra.get('amount_rub') or 0) - total_basis) <= .01:
+                    amount = basis
+                else:
+                    return None
+            else:
+                amount = extra.get('amount_rub')
+        try:
+            amount = float(amount)
+        except (TypeError, ValueError):
+            return None
+        if amount < 0 or amount > basis + .01:
+            return None
+        total += amount / basis
+    return min(total, 1.0) if total <= 1.0 + 1e-6 else None
+
+
 def conversion_distribution(db, conv):
     """Раскладка прихода пачки до нуля: кому вернуть, что остаётся, сходится ли.
 
@@ -17143,13 +17198,20 @@ def conversion_distribution(db, conv):
             wl_deals_snapshot = []
 
     per_deal, wl_rows = {}, []
+    allocation_needs_input = False
     wl_to_pay = wl_margin = 0.0
     for sid, usdt in shares.items():
         inc = db.query(SberIncome).get(sid)
         if not inc:
             continue
         if inc.claimed_deal_id:
-            per_deal[inc.claimed_deal_id] = round(per_deal.get(inc.claimed_deal_id, 0) + usdt, 2)
+            deal = db.query(Deal).get(inc.claimed_deal_id)
+            ratio = _deal_income_allocation_ratio(db, deal, inc)
+            if ratio is None:
+                allocation_needs_input = True
+                continue
+            per_deal[inc.claimed_deal_id] = round(
+                per_deal.get(inc.claimed_deal_id, 0) + usdt * ratio, 2)
             continue
         wl = _match_wl_deal(inc.to_dict(), wl_deals_snapshot)
         if not wl:
@@ -17168,7 +17230,7 @@ def conversion_distribution(db, conv):
 
     to_return, settled, no_return_deals = {}, {}, []
     obligations = margin = no_return = 0.0
-    needs_input = False
+    needs_input = allocation_needs_input
     if any(r['to_pay_usdt'] is None for r in wl_rows):
         needs_input = True          # в реестре бота нет суммы к выплате
 
@@ -17247,6 +17309,7 @@ def conversion_distribution(db, conv):
         'stays_usdt': stays,
         'balanced': balanced,
         'needs_input': needs_input,
+        'allocation_warning': 'не заданы доли по поступлениям' if allocation_needs_input else None,
     }
 
 
@@ -18008,8 +18071,6 @@ def _apply_payin_extra(session, deal, raw_extra, main_usdt, main_rub):
 def _refresh_payin_allocation_status(session, deal):
     """A gross partial extra cannot be assigned across unequal bank fees without shares."""
     deal.payin_allocation_status = None
-    if deal.payin_rub_is_net is True:
-        return
     for part in _payin_extra_list(deal):
         uuids = list(dict.fromkeys(str(u) for u in part.get('sber_uuids') or [] if u))
         if not uuids:
@@ -18019,22 +18080,19 @@ def _refresh_payin_allocation_status(session, deal):
             deal.payin_allocation_status = 'needs_input'
             return
         gross_total = 0.0
-        ratios = []
         for row in rows:
             parsed = parse_sber_acquiring(row.purpose)
-            if not parsed['fee_known']:
+            if deal.payin_rub_is_net is not True and not parsed['fee_known']:
                 deal.payin_allocation_status = 'needs_input'
                 return
             net = float(row.amount_rub or 0)
-            gross = net + parsed['fee_rub']
-            if gross <= 0:
+            basis = net if deal.payin_rub_is_net is True else net + parsed['fee_rub']
+            if basis <= 0:
                 deal.payin_allocation_status = 'needs_input'
                 return
-            gross_total += gross
-            ratios.append(net / gross)
+            gross_total += basis
         taken = float(part.get('amount_rub') or 0)
-        if (len(rows) > 1 and 0 < taken < gross_total - .01
-                and max(ratios) - min(ratios) > 1e-9):
+        if len(rows) > 1 and 0 < taken < gross_total - .01:
             deal.payin_allocation_status = 'needs_input'
             return
 
