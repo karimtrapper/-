@@ -34,9 +34,11 @@ const cardStart=html.indexOf('      const X=d.invoiceUsd||0;\n      const k=num(
 const cardEnd=html.indexOf('\n    }\n    return `<div class="card">',cardStart);
 assert.ok(cardStart>0&&cardEnd>cardStart);
 Object.assign(ctx,{ago:()=>'',freeholdInvoiceInputs6:()=>'',freeholdSummary6:()=>'',calcBtn:()=>'',quotesSummary:()=>''});
+vm.runInContext(html.match(/^function fmtAmount\([^]*?^}/m)[0],ctx);
 vm.runInContext('function card(d){'+html.slice(cardStart,cardEnd)+'}',ctx);
 const stored=JSON.stringify(d),card=ctx.card(d);
 assert.match(card,/id="r3" value="83,3175"/);
-assert.match(card,/id="r4" value="8123456,78"/);
+// Разделители разрядов в поле суммы клиенту — неразрывный пробел, как у money() (Карим, 20.10)
+assert.match(card,/id="r4" value="8 123 456,78"/);
 assert.doesNotMatch(card,/<input[^>]*readonly[^>]*id="r4"/);
 assert.equal(JSON.stringify(d),stored);

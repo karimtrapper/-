@@ -24,7 +24,7 @@ const ctx = {S: {role: 'manager', deals: [deal]}, standMe: 'manager', standMeId:
   toast: () => {}, DOCT: {clientPayinReceipt: 'Чеки клиента об оплате'},
   docFileOf: () => null, doctOf: () => 'Документ', docIssuedTitle: () => '',
   docExt: () => '', fileUrl: () => '', atob, crypto: {randomUUID: () => '12345678-1234-1234-1234-123456789abc'},
-  STAND: false, SCREEN: false, SNAP: false};
+  docFileNameHtml: safe, STAND: false, SCREEN: false, SNAP: false};
 vm.createContext(ctx);
 vm.runInContext(source, ctx);
 

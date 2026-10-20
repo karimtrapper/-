@@ -18,7 +18,7 @@ const ctx = {S: {role: 'manager'}, standMe: 'manager',
   filesOf: (d, k) => d.files[k] || [], htmlText: String, sberText: String,
   money: String, manualBankOperatorForm: () => '<input id="mbr_amount_1485">',
   docFileOf: () => null, doctOf: () => 'Документ', docIssuedTitle: () => '',
-  docExt: () => ''};
+  docExt: () => '', docFileNameHtml: String};
 vm.createContext(ctx); vm.runInContext(source, ctx);
 
 assert.equal(ctx.rubApiAccount({rubReceivingAccount: {mode: 'sber'}}), true);

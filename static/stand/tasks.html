@@ -324,8 +324,9 @@ a.hash:hover{background:#BAE6FD}
    раскрытия — без замены блок выглядит мёртвым текстом, хотя внутри реальные поля
    (3-я жалоба подряд на «пустой» блок — на самом деле просто не видно, что он кликабельный,
    приёмка Карима 18.10). Тот же ▸/▾-паттерн, что уже есть у .ctx. */
-.crmfin>summary::before{content:'▸';color:var(--text-muted);font-size:12px;margin-right:2px}
-.crmfin[open]>summary::before{content:'▾'}
+.crmfin>summary::before{content:'';display:inline-block;width:7px;height:7px;margin-right:6px;vertical-align:1px;
+  border-right:2px solid var(--text-muted);border-bottom:2px solid var(--text-muted);transform:rotate(45deg);transition:transform .15s ease}
+.crmfin[open]>summary::before{transform:rotate(225deg)}
 .crmfin .psec{font-size:15px;margin:16px 0 10px} .psec.pout{color:#EF4444} .psec.pref{color:#F59E0B} .psec.pcalc{color:#6366F1}
 .pdiv{height:1px;background:var(--border-light);margin:26px 0 20px}
 .agbox{background:#F0FDF4;border:1px solid #BBF7D0;border-radius:var(--r);padding:4px 16px 16px}
@@ -342,14 +343,16 @@ a.hash:hover{background:#BAE6FD}
 .snote{margin-top:14px}
 .snote>summary{cursor:pointer;font-size:13px;font-weight:600;color:var(--navy-600);list-style:none}
 .snote>summary::-webkit-details-marker{display:none}
-.snote>summary::before{content:'+ '}
-.snote[open]>summary::before{content:'− '}
+.snote>summary::before{content:'';display:inline-block;width:7px;height:7px;margin-right:6px;vertical-align:1px;
+  border-right:2px solid var(--text-muted);border-bottom:2px solid var(--text-muted);transform:rotate(45deg);transition:transform .15s ease}
+.snote[open]>summary::before{transform:rotate(225deg)}
 .snote>textarea{margin-top:8px}
 .goalfill{font-size:13px;color:var(--text-sec);margin:-6px 0 14px;line-height:1.5}
 .ctx summary{cursor:pointer;list-style:none;display:flex;flex-wrap:wrap;gap:4px 12px;align-items:baseline}
 .ctx summary::-webkit-details-marker{display:none}
-.ctx summary::before{content:'▸';color:var(--text-muted);font-size:12px}
-.ctx[open] summary::before{content:'▾'}
+.ctx summary::after{content:'';display:block;width:7px;height:7px;flex:none;margin-left:auto;
+  border-right:2px solid var(--text-muted);border-bottom:2px solid var(--text-muted);transform:rotate(45deg);transition:transform .15s ease}
+.ctx[open] summary::after{transform:rotate(225deg)}
 .ctxh{font-size:14px;font-weight:700;color:var(--navy-900)}
 .ctxl{font-size:13px;color:var(--text-sec);min-width:0;overflow-wrap:anywhere}
 .goalrows{margin-top:14px;border-top:1px solid var(--border-light);padding-top:6px}
@@ -396,6 +399,9 @@ a.hash:hover{background:#BAE6FD}
 .owner-line{border:1px solid var(--border);border-radius:var(--r-sm);padding:10px 14px;background:var(--bg)}
 .owner-line summary{display:flex;align-items:center;gap:12px;cursor:pointer;list-style:none}
 .owner-line summary::-webkit-details-marker{display:none}
+.owner-line summary::after{content:'';display:block;width:7px;height:7px;flex:none;margin-left:auto;
+  border-right:2px solid var(--text-muted);border-bottom:2px solid var(--text-muted);transform:rotate(45deg);transition:transform .15s ease}
+.owner-line[open] summary::after{transform:rotate(225deg)}
 .owner-line .owner-label{font-size:12px;color:var(--text-muted);min-width:115px}
 .owner-line .owner-value{font-size:17px;font-weight:700;line-height:1.35;word-break:break-word}
 .owner-line .owner-hint{font-size:12px;color:var(--text-sec);margin-left:auto;text-align:right}
@@ -2740,6 +2746,20 @@ function selectOutgoingTx(id,control){
 function txShort(value){
   /* >=20, не >20: российский р/с — ровно 20 цифр, иначе no-op на самом частом случае */
   const s=String(value||'');return s.length>=20?s.slice(0,8)+'…'+s.slice(-8):s;
+}
+/* Имя файла документа режем посередине, расширение не трогаем — полное имя по
+   наведению и по тапу (375px карточка задачи не должна растягиваться, Карим 20.10) */
+function fileNameShort(name,max=26){
+  const s=String(name||''); if(s.length<=max)return s;
+  const dot=s.lastIndexOf('.'); const ext=(dot>0&&dot>=s.length-5)?s.slice(dot):'';
+  const base=ext?s.slice(0,dot):s, keep=Math.max(max-ext.length-1,4);
+  const head=Math.ceil(keep*0.6), tail=keep-head;
+  return base.slice(0,head)+'…'+base.slice(Math.max(base.length-tail,head))+ext;
+}
+function docFileNameHtml(file){
+  const name=String(file||''), short=fileNameShort(name);
+  if(short===name)return htmlText(name);
+  return `<span title="${htmlText(name)}" onclick="toast(${JSON.stringify(name).replace(/"/g,'&quot;')});event.stopPropagation()" style="cursor:help">${htmlText(short)}</span>`;
 }
 /* «Банк · полный счёт» в журнале — сокращаем только цифры счёта, банк не трогаем */
 function accShort(acc){
@@ -8152,7 +8172,7 @@ function docListRows(d,small){
   const issued=['dog','app','bill'].map(k=>[k,docFileOf(d,k)]).filter(x=>x[1]).map(([k,f])=>
     `<div class="li" style="cursor:default"><span class="av">${{dog:'Д',app:'П',bill:'С'}[k]}</span>
       <div><div class="t1"${fs}>${docIssuedTitle(d,k)}${f.own?' <span class="badge b-done">свой файл</span>':''}</div>
-        <div class="t2" style="word-break:break-all">${htmlText(f.file)}</div></div>
+        <div class="t2" style="word-break:break-all">${docFileNameHtml(f.file)}</div></div>
       <span class="t3"><button class="btn btn-outline btn-sm" onclick="docDownload(${d.id},'${k}','file')">${docExt(f)}</button>
       ${!STAND||['manager','operator','admin'].includes(standMe)?`<button class="btn btn-outline btn-sm" onclick="docIssuedAction(${d.id},${f.docId},'delete')">Удалить</button>`:''}</span></div>`);
   const client=[];
@@ -8161,23 +8181,23 @@ function docListRows(d,small){
     if(!files.length){client.push(`<div class="li" style="cursor:default"><span class="av">${doctOf(d,k)[0]}</span>
       <div><div class="t1"${fs}>${doctOf(d,k)}</div><div class="t2">отмечен, но файл не приложен</div></div></div>`);return;}
     files.forEach((f,i)=>client.push(`<div class="li" style="cursor:default"><span class="av">${doctOf(d,k)[0]}</span>
-      <div><div class="t1"${fs}>${doctOf(d,k)}${files.length>1?' · '+(i+1):''}</div><div class="t2" style="word-break:break-all">${htmlText(f.file||'')}</div></div>
+      <div><div class="t1"${fs}>${doctOf(d,k)}${files.length>1?' · '+(i+1):''}</div><div class="t2" style="word-break:break-all">${docFileNameHtml(f.file)}</div></div>
       <span class="t3" style="white-space:nowrap"><button class="btn btn-outline btn-sm" onclick="docOpen(${d.id},'${k}',${i})">Открыть</button>
         <button class="btn btn-outline btn-sm" onclick="docDownload(${d.id},'${k}',${i})">Скачать</button>${deleteButton(k,f)}</span></div>`));
   });
   filesOf(d,'clientPayinReceipt').forEach((f,i)=>client.push(`<div class="li" style="cursor:default"><span class="av">Ч</span>
     <div><div class="t1"${fs}>Чек клиента об оплате${i?' · '+(i+1):''}</div>
-      <div class="t2" style="word-break:break-all">${htmlText(f.file)} · ${htmlText(f.uploadedBy||'сотрудник')}${f.note?' · '+htmlText(f.note):''}</div></div>
+      <div class="t2" style="word-break:break-all">${docFileNameHtml(f.file)} · ${htmlText(f.uploadedBy||'сотрудник')}${f.note?' · '+htmlText(f.note):''}</div></div>
     <span class="t3" style="white-space:nowrap"><button class="btn btn-outline btn-sm" onclick="docOpen(${d.id},'clientPayinReceipt',${i})">Открыть</button>
       <button class="btn btn-outline btn-sm" onclick="docDownload(${d.id},'clientPayinReceipt',${i})">Скачать</button>${deleteButton('clientPayinReceipt',f)}</span></div>`));
   filesOf(d,'bankCreditEvidence').forEach((f,i)=>client.push(`<div class="li" style="cursor:default"><span class="av">В</span>
     <div><div class="t1"${fs}>Выписка / подтверждение зачисления${i?' · '+(i+1):''}</div>
-      <div class="t2" style="word-break:break-all">${htmlText(f.file)} · ${htmlText(f.uploadedBy||'операционист')}</div></div>
+      <div class="t2" style="word-break:break-all">${docFileNameHtml(f.file)} · ${htmlText(f.uploadedBy||'операционист')}</div></div>
     <span class="t3" style="white-space:nowrap"><button class="btn btn-outline btn-sm" onclick="docOpen(${d.id},'bankCreditEvidence',${i})">Открыть</button>
       <button class="btn btn-outline btn-sm" onclick="docDownload(${d.id},'bankCreditEvidence',${i})">Скачать</button>${deleteButton('bankCreditEvidence',f)}</span></div>`));
   filesOf(d,'additional').forEach((f,i)=>client.push(`<div class="li" style="cursor:default"><span class="av">${htmlText((DOCT[f.documentType]||'Д')[0])}</span>
     <div><div class="t1"${fs}>${htmlText(DOCT[f.documentType]||'Документ')}</div>
-      <div class="t2" style="word-break:break-all">${htmlText(f.file||'')}</div></div>
+      <div class="t2" style="word-break:break-all">${docFileNameHtml(f.file)}</div></div>
     <span class="t3"><button class="btn btn-outline btn-sm" onclick="docOpen(${d.id},'additional',${i})">Открыть</button>
       <button class="btn btn-outline btn-sm" onclick="docDownload(${d.id},'additional',${i})">Скачать</button>${deleteButton('additional',f)}</span></div>`));
   return {issued,client};
@@ -8192,13 +8212,13 @@ function docDeletedRows(d){
   const attached=removed.flatMap(group=>Object.entries(group).flatMap(([k,files])=>(files||[]).map(f=>
     `<div class="li" style="cursor:default"><span class="av">Д</span>
       <div><div class="t1">${htmlText(DOCT[k==='additional'?f.documentType:k]||'Документ')} · удалён</div>
-      <div class="t2" style="word-break:break-all">${htmlText(f.file||'')}</div></div>
+      <div class="t2" style="word-break:break-all">${docFileNameHtml(f.file)}</div></div>
       <span class="t3">${docFileButton(d,k,f,'restore')}</span></div>`)));
   const issued=[...(d.docsIssued||[]),...Object.values(d.issued||{})]
     .filter(f=>f&&f.deletedAt&&f.docId).filter((f,i,a)=>a.findIndex(x=>x.docId===f.docId)===i)
     .map(f=>`<div class="li" style="cursor:default"><span class="av">Д</span>
       <div><div class="t1">${htmlText(DOCT[f.kind]||'Документ')} · удалён</div>
-      <div class="t2" style="word-break:break-all">${htmlText(f.file||'')}</div></div>
+      <div class="t2" style="word-break:break-all">${docFileNameHtml(f.file)}</div></div>
       <span class="t3"><button class="btn btn-outline btn-sm" onclick="docIssuedAction(${d.id},${f.docId},'restore')">Восстановить</button></span></div>`);
   return [...attached,...issued].join('');
 }
@@ -8209,7 +8229,7 @@ function signedBlock(d,small){
   const l=filesOf(d,'signed'), fs=small?' style="font-size:12.5px"':'';
   return `<div class="list doc-list" style="margin-top:10px" ondragover="dzOver(event)" ondragleave="dzLeave(event)" ondrop="fileDrop(event,${d.id},'signed')">
     ${l.map((f,i)=>`<div class="li on" style="cursor:default"><span class="av">✓</span>
-      <div><div class="t1"${fs}>Подписанный договор${l.length>1?' · '+(i+1):''}</div><div class="t2" style="word-break:break-all">${htmlText(f.file)} · ${htmlText(f.at||'')}</div></div>
+      <div><div class="t1"${fs}>Подписанный договор${l.length>1?' · '+(i+1):''}</div><div class="t2" style="word-break:break-all">${docFileNameHtml(f.file)} · ${htmlText(f.at||'')}</div></div>
       <span class="t3"><button class="btn btn-outline btn-sm" onclick="docOpen(${d.id},'signed',${i})">Открыть</button>${docFileButton(d,'signed',f,'delete')}</span></div>`).join('')}
     <div class="li" style="cursor:default"><span class="av">+</span>
       <div><div class="t1"${fs}>${l.length?'Ещё подписанный файл':'Подписанный договор от клиента'}</div><div class="t2">можно на любом шаге — путь не ждёт</div></div>
@@ -10174,6 +10194,23 @@ function costRateAll(d){
   return {rate:ru?usdt*ru/thb:null,fee:fee};
 }
 function cleanNum(v){return String(v==null?'':v).replace(/[^\d.,]/g,'');}
+/* Разделители разрядов в поле суммы клиенту на s6 (Карим, 20.10): пробел между тройками,
+   запятая перед копейками. cleanNum() выше и так съедает пробелы при разборе, поэтому
+   визуальная группировка не трогает существующий парсинг значения. */
+function fmtAmount(raw){
+  const s=cleanNum(raw); const sep=Math.max(s.indexOf(','),s.indexOf('.'));
+  let intPart=sep>=0?s.slice(0,sep):s, frac=sep>=0?s.slice(sep+1).replace(/[.,]/g,'').slice(0,2):null;
+  intPart=intPart.replace(/\D/g,'').replace(/^0+(?=\d)/,'');
+  const grouped=intPart.replace(/\B(?=(\d{3})+(?!\d))/g,' ');
+  return frac!=null?grouped+','+frac:grouped;
+}
+function fmtAmountEl(el){
+  const digitsBefore=el.value.slice(0,el.selectionStart).replace(/[^\d.,]/g,'').length;
+  el.value=fmtAmount(el.value);
+  let pos=0,count=0;
+  while(pos<el.value.length&&count<digitsBefore){if(/[\d.,]/.test(el.value[pos]))count++;pos++;}
+  if(document.activeElement===el)el.setSelectionRange(pos,pos);
+}
 /* Последнее изменённое поле — источник суммы; ввод суммы хранит курс до 6 знаков.
    Только несогласованный s6: открытие старых сделок ничего не пересчитывает. */
 function syncFreeholdRate(id,from='rate'){
@@ -11114,7 +11151,7 @@ function stepCard(d){
           <input class="fc num" id="r3" value="${k?k.toFixed(4).replace('.',','):''}" placeholder="курс клиенту, ₽ за 1 $"
             onchange="syncFreeholdRate(${d.id},'rate')"></div>
         <div class="fg"><label class="fl">Сумма клиенту<span class="sub2"> ₽ — измените сумму или курс, второе пересчитается</span></label>
-          <input class="fc num" id="r4" value="${rub!=null?String(rub).replace('.',','):''}" onchange="syncFreeholdRate(${d.id},'sum')"></div>
+          <input class="fc num" id="r4" value="${rub!=null?fmtAmount(String(rub).replace('.',',')):''}" oninput="fmtAmountEl(this)" onchange="syncFreeholdRate(${d.id},'sum')"></div>
       </div>
       <div class="fr">
         <div class="fg"><label class="fl">Себестоимость<span class="sub2"> ₽ за 1 $ — S × курс брокера / X, для сверки с курсом клиенту</span></label>
@@ -11148,8 +11185,8 @@ function stepCard(d){
     </div>
     <div class="fr">
       <div class="fg"><label class="fl">Сумма клиенту<span class="rq">*</span><span class="sub2"> столько он отдаёт, ${ap.sign}</span></label>
-        <input class="fc num" id="r4" value="${ap.pay||''}" placeholder="сумма клиенту, ${ap.sign}"
-          oninput="rememberFocus();syncClient(${d.id},'sum')">
+        <input class="fc num" id="r4" value="${ap.pay?fmtAmount(String(ap.pay).replace('.',',')):''}" placeholder="сумма клиенту, ${ap.sign}"
+          oninput="fmtAmountEl(this);rememberFocus();syncClient(${d.id},'sum')">
         <p class="fh">поменяли курс или сумму — второе пересчитается</p></div>
       <div class="fg"><label class="fl">Получателю<span class="sub2"> ${ap.thbSign||'฿'}, тоже правится</span></label>
         <input class="fc num" id="r5" value="${ap.thb?Number(ap.thb).toLocaleString('ru-RU'):''}" placeholder="сумма получателю, ${ap.thbSign||'฿'}"
