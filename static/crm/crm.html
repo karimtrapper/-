@@ -341,6 +341,11 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 }
 .custom-select-opt:hover { background: var(--navy-100); }
 .custom-select-opt.selected { background: var(--coral-light); font-weight: 600; }
+#flowSoleReqsStandard, #flowSoleReqsCustom {
+    font-size: 12px; line-height: 1.4; color: var(--navy-600);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    max-width: 100%; margin-top: 4px;
+}
 
 /* Клиент-комбобокс */
 .client-dropdown {
@@ -5308,6 +5313,8 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         document.getElementById('customPayinAmount').value = deal.custom_payin_amount || '';
                         document.getElementById('customPayinCurrency').value = deal.custom_payin_currency || 'USDT';
                         document.getElementById('customPayinRate').value = deal.custom_payin_rate || '';
+                        document.getElementById('customPayinTxHash').value = deal.payin_tx_hash
+                            || (deal.payin_tx_hashes?.[0]?.hash || '');
                         document.getElementById('customPayoutAmount').value = deal.custom_payout_amount || '';
                         document.getElementById('customPayoutCurrency').value = deal.custom_payout_currency || 'USDT';
                         document.getElementById('customPayoutRate').value = deal.custom_payout_rate || '';
@@ -5316,7 +5323,8 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         if (deal.payin_method) setPayinMethodValue('customPayinMethod', payinUiMethod(deal));
                         sberParts = (methodUsesSberPool(deal.payin_method) && deal.payin_parts) ? deal.payin_parts.slice() : [];
                         onCustomPayinMethodChange();
-                        customUsdtMode = { payin: 'rate', payout: 'rate' };  // грузим курс → USDT производный
+                        customUsdtMode = { payin: payinUiMethod(deal) === 'flow_sole_reqs' ? 'usdt' : 'rate',
+                                           payout: 'rate' };
                         // Мультиагенты: грузим из deal.agents (+ легаси-реферер)
                         customAgentsLoad(dealAgentsOrLegacy(deal));
                         document.getElementById('customNotes').value = deal.notes || '';
@@ -5528,6 +5536,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             const payinAmount = parseFloat(document.getElementById('customPayinAmount').value) || 0;
             const payinCurrency = document.getElementById('customPayinCurrency').value;
             const payinRate = parseFloat(document.getElementById('customPayinRate').value) || 0;
+            const payinTxHash = document.getElementById('customPayinTxHash').value.trim();
 
             const payoutAmount = parseFloat(document.getElementById('customPayoutAmount').value) || 0;
             const payoutCurrency = document.getElementById('customPayoutCurrency').value;
@@ -5575,6 +5584,9 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 payin_method: customMethod === 'flow_sole_reqs' ? 'sber_reqs' : customMethod,
                 payin_account_key: customMethod === 'flow_sole_reqs' ? 'flow_sole' : null,
                 payin_parts: methodUsesSberPool(customMethod) ? sberParts : [],
+                payin_tx_hash: payinTxHash || null,
+                payin_amount_rub: payinCurrency === 'RUB' ? payinAmount : null,
+                payin_rate_rub_usdt: payinCurrency === 'RUB' ? payinRate : null,
                 payout_source: 'binance',
                 payin_amount_usdt: payinUsdt,
                 payout_amount_usdt: payoutUsdt,
@@ -6930,7 +6942,10 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 
         function applyPayinMethodFields() {
             const method = document.getElementById('payinMethod');
-            document.getElementById('flowSoleReqsStandard').style.display = method.value === 'flow_sole_reqs' ? 'block' : 'none';
+            const isFlowSole = method.value === 'flow_sole_reqs';
+            document.getElementById('flowSoleReqsStandard').style.display = isFlowSole ? 'block' : 'none';
+            document.querySelector('[name="payin_rate_rub_usdt"]').readOnly = isFlowSole;
+            if (isFlowSole) { payinMode = 'usdt'; autoCalcUsdt(); }
             const partnerGroup = document.getElementById('payinPartnerGroup');
             const rubGroup = document.getElementById('payinRubGroup');
             const doverkaGroup = document.getElementById('doverkaGroup');
@@ -8210,6 +8225,13 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         async function onCustomPayinMethodChange() {
             const method = document.getElementById('customPayinMethod').value;
             document.getElementById('flowSoleReqsCustom').style.display = method === 'flow_sole_reqs' ? 'block' : 'none';
+            const isFlowSole = method === 'flow_sole_reqs';
+            const currency = document.getElementById('customPayinCurrency');
+            currency.disabled = isFlowSole;
+            if (isFlowSole) currency.value = 'RUB';
+            document.getElementById('customPayinRate').readOnly = isFlowSole;
+            if (isFlowSole) customUsdtMode.payin = 'usdt';
+            calcCustomProfit();
             const picker = document.getElementById('customPayinPicker');
             const label = document.getElementById('customPickerLabel');
             const select = document.getElementById('customPayinTxSelect');
@@ -8222,7 +8244,13 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 sberSetKindFilter(method === 'sber_wl' ? 'acquiring' : 'transfer');
                 sberLoadIncomes();
             }
-            if (method === 'sber_reqs' || method === 'flow_sole_reqs') {
+            if (isFlowSole) {
+                picker.style.display = 'flex';
+                label.textContent = 'Транзакции Pay-In — выбрать из входящих';
+                await loadCustomCryptoTransactions();
+                return;
+            }
+            if (method === 'sber_reqs') {
                 picker.style.display = 'none';
                 select.innerHTML = '';
                 return;
@@ -8305,8 +8333,11 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 customUsdtMode.payin = 'usdt';  // используем точный клиентский USDT
                 info.textContent = `${tx.display_name} · ${Number(tx.amount_rub).toLocaleString('ru')} ₽ → $${parseFloat(tx.amount_usdt).toFixed(2)} · курс ${parseFloat(tx.final_rate).toFixed(2)}`;
             } else if (tx.kind === 'crypto') {
-                document.getElementById('customPayinCurrency').value = 'USDT';
-                document.getElementById('customPayinAmount').value = parseFloat(tx.amount_usdt).toFixed(2);
+                const flowSole = document.getElementById('customPayinMethod').value === 'flow_sole_reqs';
+                if (!flowSole) {
+                    document.getElementById('customPayinCurrency').value = 'USDT';
+                    document.getElementById('customPayinAmount').value = parseFloat(tx.amount_usdt).toFixed(2);
+                }
                 document.getElementById('customPayinUsdt').value = parseFloat(tx.amount_usdt).toFixed(2);
                 document.getElementById('customPayinTxHash').value = tx.tx_hash;
                 customUsdtMode.payin = 'usdt';
@@ -8384,6 +8415,8 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 payin_account_key: payinMethod === 'flow_sole_reqs' ? 'flow_sole' : null,
                 payin_tx_hash: payinTxHash || null,
                 payin_amount_usdt: payinUsdt,
+                payin_amount_rub: payinCurrency === 'RUB' ? payinAmount : null,
+                payin_rate_rub_usdt: payinCurrency === 'RUB' ? payinRate : null,
                 payin_parts: methodUsesSberPool(payinMethod) ? sberParts : [],
                 payin_extra: payinExtraSerialize(),
 
@@ -8476,7 +8509,8 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             const rub = parseFloat(form.payin_amount_rub.value) || 0;
             const rate = parseFloat(form.payin_rate_rub_usdt.value) || 0;
             const usdt = parseFloat(form.payin_amount_usdt.value) || 0;
-            if (payinMode === 'usdt') {
+            if (document.getElementById('payinMethod').value === 'flow_sole_reqs'
+                    || payinMode === 'usdt') {
                 // Приход в USDT задан руками — он источник истины (это то, что реально
                 // купили), поэтому из рублей выводим КУРС, а не наоборот
                 if (rub > 0 && usdt > 0) form.payin_rate_rub_usdt.value = (rub / usdt).toFixed(4);
