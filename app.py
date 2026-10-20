@@ -5269,7 +5269,6 @@ def stand_employee_directory():
         employees = db.query(AdminUser).order_by(AdminUser.id).all()
         return jsonify({'success': True, 'employees': [
             {'id': user.id, 'display_name': user.display_name or user.username,
-             'account': user.username,
              'role': user.role or 'admin', 'login_disabled': bool(user.login_disabled)}
             for user in employees]})
     finally:

@@ -66,9 +66,11 @@ function crmDraftSafeFetch(url,options) {
     '/api/cash/batches','/api/cards/balance','/api/wallets',
     '/api/rates',
     '/api/deals/mf-realty/preview','/api/deals/mf-freehold/preview',
-    '/api/managers?include_staff=1','/api/clients','/api/referrers','/api/payin-txs'];
+    '/api/managers','/api/clients','/api/referrers','/api/payin-txs'];
   if(u.origin!==location.origin || !(allowed.includes(u.pathname)||u.pathname.startsWith('/api/payin-txs/')))
     return Promise.reject(new Error('CRM draft request blocked'));
+  if(u.pathname==='/api/managers' && u.search!=='?include_staff=1')
+    return Promise.reject(new Error('CRM draft manager request blocked'));
   const method=(options?.method||'GET').toUpperCase();
   if(method!=='GET' && !(method==='POST' && u.pathname.endsWith('/preview')))
     return Promise.reject(new Error('CRM draft mutation blocked'));

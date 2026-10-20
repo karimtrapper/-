@@ -25,23 +25,31 @@ let legacy = {id: 1483, manager: 'Имя до переименования', _ma
 }}};
 const active = {id: 1483, root: {getElementById: () => manager}, core: {}};
 let saved = false;
+const fetched = [];
 const ctx = {Option, active, crmDraftActive: active,
+  URL, location: {origin: 'http://localhost:9001'},
+  window: {fetch: async (url, options) => {
+    fetched.push({url, options});
+    return {ok: true, json: async () => ({
+      managers: url.endsWith('/api/managers?include_staff=1') ? [
+        {name: 'Общее имя', account: 'first', user_id: 11, active: true},
+        {name: 'Общее имя', account: 'second', user_id: 22, active: true},
+        {name: 'Другой', account: 'disabled', user_id: 33, active: false},
+      ] : [], clients: [], referrers: [],
+    })};
+  }},
   STAND_EMPLOYEES: [
     {id: 11, role: 'manager', display_name: 'Общее имя', account: 'first'},
     {id: 22, role: 'manager', display_name: 'Общее имя', account: 'second'},
     {id: 33, role: 'manager', display_name: 'Другой', account: 'disabled', login_disabled: true},
   ],
-  deal: () => legacy, toast: () => {},
-  crmDraftSafeFetch: async path => ({ok: true, json: async () => ({
-    managers: path === '/api/managers?include_staff=1' ? [
-      {name: 'Общее имя', account: 'first', user_id: 11, active: true},
-      {name: 'Общее имя', account: 'second', user_id: 22, active: true},
-      {name: 'Другой', account: 'disabled', user_id: 33, active: false},
-    ] : [], clients: [], referrers: [],
-  })})};
+  deal: () => legacy, toast: () => {}};
 vm.createContext(ctx);
-vm.runInContext([inferred[0], pick('crmDraftLoadLists'), pick('crmDraftManagerCommit')].join('\n'), ctx);
+vm.runInContext([inferred[0], pick('crmDraftSafeFetch'), pick('crmDraftLoadLists'), pick('crmDraftManagerCommit')].join('\n'), ctx);
 vm.runInContext('crmDraftLoadLists(active)', ctx).then(() => {
+  assert.ok(fetched.some(x => x.url === 'http://localhost:9001/api/managers?include_staff=1'),
+    'manager query reached real safe-fetch path');
+  assert.ok(fetched.every(x => x.options.credentials === 'same-origin'));
   assert.equal(manager.value, 'user:22', 'unique upload account resolves renamed legacy deal');
   assert.equal(options.length, 3, 'only two active account choices and placeholder');
   assert.equal(options[1].text, 'Общее имя · @first');
