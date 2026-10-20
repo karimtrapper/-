@@ -312,3 +312,49 @@ def test_applies_payout_override_for_exchange_deal():
     assert deal['paySrc'] == 'coins'
     assert any(h['hash'] == '1' * 64 for h in deal['payout']['hashes'])
     assert deal['payout']['usdt'] == 90
+
+
+def test_manager_manual_close_rental_cash_accepts_verified_facts_and_corrections():
+    """Менеджер переносит существующую аренду за наличные, минуя гейт новой заявки.
+
+    Прибыль берёт скорректированный инвойс и реальный USDT, а расходный хеш
+    становится фактом MF Corp только после сетевой проверки.
+    """
+    state, deal = board(type='Оплата недвижимости', kind='Аренда', payType='Наличные',
+                        amountRub=1217600, **{**REALTY_FACTS, 'mfPayout': []})
+    override = {'reason': REASON,
+                'payin': {'method': 'Наличные', 'amountRub': 1217600,
+                          'amountUsdt': 14500, 'manualBankConfirmed': True},
+                'payout': {'amountUsdt': 13800, 'hashes': [
+                    {'hash': '9' * 64, 'network': 'trc20',
+                     'receiver': 'TCompanyWallet111111111111', 'amount': 13800}]},
+                'realty': {'invoiceThb': 455000, 'buyRate': 33.42,
+                           'sellRate': None, 'companyPercent': 1},
+                'agents': []}
+    assert A._stand_manual_close_apply_override(
+        state, deal, override, 'manager', verify=confirmed_echo) is None
+    assert deal['payType'] == 'Наличные' and deal['amountUsdt'] == 14500
+    assert deal['amountThb'] == 455000 and deal['rates']['usdtThb'] == 33.42
+    assert deal['manualRealtySellRate'] is None
+    assert deal['mfPayout'][0]['hash'] == '9' * 64
+    assert deal['mfPayout'][0]['verified'] is True
+    actual = A.compute_mf_realty(455000, 33.42, 14500,
+                                  company_percent=1, actual_cost_usdt=13800)
+    assert actual['net_profit_usdt'] < 14500
+
+
+def test_manual_close_rental_rejects_unverified_mf_transfer():
+    state, deal = board(type='Оплата недвижимости', kind='Аренда', payType='Наличные',
+                        **{**REALTY_FACTS, 'mfPayout': []})
+    override = {'reason': REASON,
+                'payin': {'method': 'Наличные', 'amountUsdt': 14500,
+                          'manualBankConfirmed': True},
+                'payout': {'amountUsdt': 13800, 'hashes': [
+                    {'hash': '9' * 64, 'network': 'trc20', 'amount': 13800}]},
+                'realty': {'invoiceThb': 455000, 'buyRate': 33.42,
+                           'sellRate': None, 'companyPercent': 1}}
+    def pending(*_args):
+        return {'status': 'pending'}
+    assert A._stand_manual_close_apply_override(
+        state, deal, override, 'manager', verify=pending) == 'payout_hash_unverified'
+    assert deal['mfPayout'] == []

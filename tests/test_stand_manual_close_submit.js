@@ -166,6 +166,33 @@ async function main() {
       'не должен показывать сырой код ошибки для этого класса');
     console.log('T6 facts-mismatch code reuses crmPushClose\'s friendly message PASS');
   }
+
+  // T7: аренда/наличные на s14 берёт реальный USDT из формы, а инвойс,
+  // комиссию и расходный хеш передаёт прямо в ручной перенос.
+  {
+    const d = {id: 1489, code: 'СД-1489', client: 'Synthetic rental',
+      type: 'Оплата недвижимости', kind: 'Аренда', step: 's14',
+      payType: 'Наличные', amountUsdt: null, amountRub: 1217600,
+      amountThb: 455000, companyPct: null, rates: {client: '2,676', usdtThb: 33.42},
+      payinHashes: [], payout: {}, mfPayout: [], agents: [], docs: {inv: true}};
+    const {ctx, S} = makeCtx(d, 'Подтверждённый ручной перенос аренды',
+      {mc_payin_amount_usdt: '14500', mc_payout_amount_usdt: '13800'});
+    S.manualCloseForm[d.id] = {payin: {hashes: []}, payout: {hashes: [
+      {hash: '9'.repeat(64), network: 'TRC20', amount: 13800}]},
+      realty: {invoiceThb: '500000', buyRate: '33,42', sellRate: '', companyPercent: '2'}};
+    let merged;
+    ctx.crmPayloadFinal = value => {merged = value; return {deal_kind: 'mf_realty'};};
+    const body = ctx.manualClosePayload(d);
+    assert.equal(body.manualOverride.payin.amountUsdt, 14500);
+    assert.equal(body.crm.payin_amount_usdt, 14500);
+    assert.equal(body.manualOverride.realty.invoiceThb, 500000);
+    assert.equal(body.manualOverride.realty.companyPercent, 2);
+    assert.equal(merged.amountThb, 500000);
+    assert.equal(merged.manualRealtySellRate, null,
+      'рублёвый курс заявки нельзя использовать как ฿/USDT');
+    assert.equal(merged.mfPayout[0].hash, '9'.repeat(64));
+    console.log('T7 rental cash manual close uses corrected money and transfer PASS');
+  }
 }
 
 main().catch(error => { console.error(error); process.exitCode = 1; });

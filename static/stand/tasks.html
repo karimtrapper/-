@@ -412,6 +412,16 @@ a.hash:hover{background:#BAE6FD}
 .sumval{min-width:0;font-weight:600}
 .sumsrc{font-size:12px;color:var(--text-sec)}
 .sumred{color:#991B1B;background:#FEF2F2;border:1px solid #FECACA;border-radius:999px;padding:2px 8px;font-weight:700;white-space:nowrap}
+.manual-close-screen .sumred{white-space:normal;overflow-wrap:anywhere;max-width:100%;display:inline-block}
+@media(max-width:700px){
+  .manual-close-screen{padding-bottom:80px}
+  .manual-close-screen>.row:last-child{position:fixed;left:0;right:0;bottom:0;z-index:80;
+    display:block;padding:8px 12px calc(8px + env(safe-area-inset-bottom));
+    background:var(--bg);box-shadow:0 -2px 8px rgba(15,23,42,.12)}
+  .manual-close-screen>.row:last-child>.btn-outline{display:none}
+  .manual-close-screen>.row:last-child>.btn-primary{width:100%;min-height:44px}
+  #app .manual-close-screen .hashbox .hrow .btn{min-height:44px}
+}
 /* адрес/хеш — всегда одна строка; подпись доли переносится на следующую строку блока, а не ломает адрес.
    Цвет — токен текста, не цвет ссылки браузера по умолчанию (design-gate: #0000EE вне палитры). */
 .sumhash{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0;margin-top:4px}
@@ -5301,6 +5311,7 @@ function render(){
   if(S.edit) crmDraftCapture();
   else crmDraftActive=null;
   app.innerHTML=main+(S.modal?viewModal():'')+(S.doc?viewDoc():'')+(S.cnv?viewCnv():'')+(S.refEdit?viewRefEdit():'');
+  if(S.open&&S.manualCloseDraft[S.open])mcPreviewUpdate(S.open);
   if(taskUsesThbRates()) ensureThbRates();
   document.body.classList?.toggle?.('deal-task-mode',!!S.open&&S.view==='task');
   if(S.open&&S.view==='task')polishDealActions();
@@ -7196,7 +7207,7 @@ function crmPayload(d){
     const coinsRate=d.postConv==='coins'?num((d.transfer||{}).rate):null;
     Object.assign(p,{deal_kind:'mf_realty',realty_purpose:(d.payTo&&d.payTo.purpose)||d.object||'',
       invoice_amount_thb:d.amountThb||null,buy_rate_thb_usdt:coinsRate||buy||null,
-      sell_rate_thb_usdt:num(d.rates.client)??null,
+      sell_rate_thb_usdt:('manualRealtySellRate' in d?num(d.manualRealtySellRate):num(d.rates.client))??null,
       payout_tx_hashes:mf});
     if(coinsRate&&E.sentThb) p.company_sent_thb=E.sentThb;
     else p.company_percent=d.companyPct==null?1:d.companyPct;
@@ -7582,16 +7593,24 @@ async function crmPushClose(id,reviewedVersion){
    полям — сервер сравнил бы их с только что записанными фактами override и вернул
    мнимое расхождение ровно для тех сделок, где ручной перенос и нужен. Хеши мержим,
    а не заменяем — та же защита от задвоения уже записанного факта, что на сервере. */
-function manualCloseMerge(d,payin,payout){
+function manualCloseMerge(d,payin,payout,realty){
   const key=h=>(h.network||'')+'|'+(h.hash||'');
   const m={...d,rates:{...d.rates}};
   if(payin.method)m.payType=payin.method;
   if(payin.amountUsdt!=null)m.amountUsdt=payin.amountUsdt;
   if(payin.amountRub!=null)m.amountRub=payin.amountRub;
   if(payin.rate!=null)m.rates.broker=payin.rate;
+  if(realty){
+    m.amountThb=realty.invoiceThb;
+    m.rates.usdtThb=realty.buyRate;
+    m.companyPct=realty.companyPercent;
+    m.manualRealtySellRate=realty.sellRate;
+    if(!m.mfPayout?.length&&payout.hashes?.length)
+      m.mfPayout=payout.hashes.map(h=>({hash:h.hash,net:h.network,amount:h.amount}));
+  }
   const existingPayin=new Set((d.payinHashes||[]).map(key));
   m.payinHashes=(d.payinHashes||[]).concat((payin.hashes||[]).filter(h=>!existingPayin.has(key(h))));
-  if(payout.source){
+  if(!realty&&payout.source){
     m.paySrc=payout.source;
     const existingPayout=new Set(((d.payout||{}).hashes||[]).map(key));
     m.payout={...(d.payout||{}),usdt:payout.amountUsdt,
@@ -7612,12 +7631,11 @@ function manualClosePayload(d){
   const cleanHash=h=>({hash:h.hash,network:h.network,receiver:h.receiver||null,
     sender:h.sender||null,amount:h.amount});
 
-  const knownMethod=!!d.payType;
   const knownAmount=crypto?d.amountUsdt!=null:(paid.rub!=null||d.amountRub!=null||d.incomeAmount!=null);
   const knownHashes=(d.payinHashes||[]).length>0;
   const knownBankConfirm=paid.rub!=null||d.manualBankReceipt?.status==='confirmed';
 
-  const payin={method:knownMethod?d.payType:(val('mc_payin_method')||null)};
+  const payin={method:val('mc_payin_method')||d.payType||null};
   payin.hashes=(knownHashes?d.payinHashes:f.payin.hashes).filter(h=>h&&h.hash).map(cleanHash);
   if(crypto){
     payin.amountUsdt=knownAmount?d.amountUsdt:num(val('mc_payin_amount_usdt'));
@@ -7625,9 +7643,10 @@ function manualClosePayload(d){
     payin.amountRub=knownAmount?(paid.rub??d.amountRub??d.incomeAmount):num(val('mc_payin_amount_rub'));
     payin.rate=num(d.rates?.broker)??num(val('mc_payin_rate'));
     payin.manualBankConfirmed=knownBankConfirm?true:!!document.getElementById('mc_payin_manual_bank_confirmed')?.checked;
-    payin.amountUsdt=d.amountUsdt!=null?d.amountUsdt:(payinParts({...d,
+    payin.amountUsdt=d.amountUsdt!=null?d.amountUsdt:((realty&&!fh)
+      ?num(val('mc_payin_amount_usdt')):(num(val('mc_payin_amount_usdt'))??payinParts({...d,
       incomeAmount:payin.amountRub,amountRub:payin.amountRub,
-      rates:{...d.rates,broker:payin.rate}})[0]?.usdt??null);
+      rates:{...d.rates,broker:payin.rate}})[0]?.usdt??null));
   }
 
   const knownSource=payoutHuman(d)!=='не выбран';
@@ -7640,9 +7659,16 @@ function manualClosePayload(d){
     hashes:(knownPayoutHashes?payHashes:f.payout.hashes).filter(h=>h&&h.hash).map(cleanHash),
   };
 
-  const merged=manualCloseMerge(d,payin,payout);
-  return {crm:crmPayloadFinal(merged),
-    manualOverride:{reason:val('mc_reason'),payin,payout,agents:d.agents||[]}};
+  const realtyFields=(realty&&!fh)?f.realty:null;
+  const realtyOverride=realtyFields?{
+    invoiceThb:num(realtyFields.invoiceThb),buyRate:num(realtyFields.buyRate),
+    sellRate:num(realtyFields.sellRate),companyPercent:num(realtyFields.companyPercent)}:null;
+  const merged=manualCloseMerge(d,payin,payout,realtyOverride);
+  const crm=crmPayloadFinal(merged);
+  if(realtyOverride)crm.payin_amount_usdt=payin.amountUsdt;
+  return {crm,
+    manualOverride:{reason:val('mc_reason'),payin,payout,agents:d.agents||[],
+      ...(realtyOverride?{realty:realtyOverride}:{})}};
 }
 /* Коды ошибок ручного переноса (app.py:_stand_manual_close_apply_override) — предметный
    тост вместо общего «не закрыли», чтобы менеджер понимал, какое поле на этом экране
@@ -7669,10 +7695,11 @@ const MANUAL_CLOSE_ERRORS={
   payout_amount_mismatch:'Сумма выдачи не совпадает с подтверждённой в сети',
   payout_evidence_missing:'Нужен чек, подтверждающий выдачу',
   agents_invalid:'Список агентов повреждён — обновите страницу',
-  realty_invoice_missing:'Нет суммы инвойса, ฿ — заполните через «Редактировать» сделку',
-  realty_rate_missing:'Нет курса покупки или курса клиенту — заполните через «Редактировать» сделку',
+  realty_override_invalid:'Проверьте инвойс, курс покупки и процент комиссии',
+  realty_invoice_missing:'Укажите сумму инвойса в форме ручного переноса',
+  realty_rate_missing:'Укажите курс покупки в форме ручного переноса',
   realty_purpose_missing:'Нет назначения платежа — заполните через «Редактировать» сделку',
-  realty_transfer_missing:'Нет перевода в MF Corp — заполните через «Редактировать» сделку',
+  realty_transfer_missing:'Укажите сумму и хеш перевода в MF Corp',
   realty_docs_missing:'Не хватает документов (инвойс застройщика и подтверждение оплаты)',
 };
 async function manualCloseSubmit(id){
@@ -8959,6 +8986,41 @@ function manualCloseFormState(id){
   f.payout=f.payout||{};f.payout.hashes=f.payout.hashes||[];
   return f;
 }
+const MC_PREVIEW={};
+function mcRealtySet(id,key,value){
+  manualCloseFormState(id).realty[key]=value;
+  mcPreviewUpdate(id);
+}
+function mcPreviewUpdate(id){
+  const d=deal(id), target=document.getElementById('mc_profit');
+  if(!d||!target||d.type!=='Оплата недвижимости'||d.kind==='Фрихолд')return;
+  const body=manualClosePayload(d), incoming=body.manualOverride.payin.amountUsdt;
+  if(!(incoming>0)){
+    target.textContent='Укажите фактически полученную сумму USDT';
+    return;
+  }
+  const key=JSON.stringify(body.crm), cached=MC_PREVIEW[id];
+  if(cached?.key===key){target.innerHTML=cached.html;return;}
+  target.textContent='Пересчитываем по данным CRM…';
+  MC_PREVIEW[id]={key,html:'Пересчитываем по данным CRM…'};
+  fetch('/api/stand/crm-preview',{method:'POST',credentials:'same-origin',
+    headers:{'Content-Type':'application/json'},body:JSON.stringify({crm:body.crm})})
+    .then(r=>r.json()).then(j=>{
+      const negative=j.success&&Number(j.net_profit_usdt)<0;
+      const html=j.success
+        ?`<b style="${negative?'color:#dc2626':''}">${moneyKop(j.net_profit_usdt,'USDT')}</b> наша прибыль · крипта ${moneyKop(j.profit_usdt,'USDT')}`
+        :`<span class="sumred">Не посчитать: ${htmlText(j.error||'ошибка расчёта')}</span>`;
+      MC_PREVIEW[id]={key,html};
+      const current=document.getElementById('mc_profit');
+      if(current&&S.manualCloseDraft[id]&&JSON.stringify(manualClosePayload(deal(id)).crm)===key)
+        current.innerHTML=html;
+    }).catch(()=>{
+      if(MC_PREVIEW[id]?.key===key){
+        MC_PREVIEW[id]={key,html:'<span class="sumred">Сервер расчёта недоступен</span>'};
+        const current=document.getElementById('mc_profit');if(current)current.innerHTML=MC_PREVIEW[id].html;
+      }
+    });
+}
 function mcHashAdd(id,which){
   manualCloseFormState(id)[which].hashes.push({amount:null,network:'TRC20',hash:'',receiver:'',sender:''});
   render();
@@ -9015,10 +9077,10 @@ function manualCloseScreen(d){
         onchange="mcHashSet(${d.id},'${which}',${i},'hash',this.value)">
       <input class="fc" style="flex:1;min-width:140px" value="${htmlText(h.receiver||'')}" placeholder="получатель"
         onchange="mcHashSet(${d.id},'${which}',${i},'receiver',this.value)">
-      <input class="fc" style="flex:1;min-width:140px" value="${htmlText(h.sender||'')}" placeholder="отправитель (опц.)"
+      <input class="fc" style="flex:1;min-width:140px" value="${htmlText(h.sender||'')}" placeholder="отправитель"
         onchange="mcHashSet(${d.id},'${which}',${i},'sender',this.value)">
       <button class="btn btn-outline btn-sm" onclick="mcHashCheck(${d.id},'${which}',${i})">Проверить</button>
-      <button class="btn btn-outline btn-sm" onclick="mcHashDel(${d.id},'${which}',${i})">×</button>
+      <button class="btn btn-outline btn-sm" onclick="mcHashDel(${d.id},'${which}',${i})">Убрать</button>
       ${h._check?(h._check.pending?'<span class="fh">проверяем…</span>'
         :h._check.ok?'<span class="fh">подтверждён в сети</span>'
         :`<span class="sumred">${htmlText(h._check.error||'не подтверждён')}</span>`):''}
@@ -9031,6 +9093,9 @@ function manualCloseScreen(d){
   const knownAmount=crypto?d.amountUsdt!=null:(paid.rub!=null||d.amountRub!=null||d.incomeAmount!=null);
   const knownHashes=(d.payinHashes||[]).length>0;
   const knownBankConfirm=paid.rub!=null||d.manualBankReceipt?.status==='confirmed';
+  if(realty&&!fh&&!f.realty)f.realty={
+    invoiceThb:d.amountThb??'',buyRate:d.rates?.usdtThb??'',
+    sellRate:crypto?(d.rates?.client??''):'',companyPercent:d.companyPct??1};
   if(crypto&&!knownHashes&&!f.payin.hashes.length)
     f.payin.hashes.push({amount:null,network:'TRC20',hash:'',receiver:'',sender:''});
   const payinSection=[
@@ -9044,6 +9109,11 @@ function manualCloseScreen(d){
           <input class="fc num" id="mc_payin_amount_${crypto?'usdt':'rub'}" placeholder="${crypto?'сумма в USDT':'сумма в рублях'}"></div>`,
     crypto?'':(num((d.rates||{}).broker)!=null?row('Курс брокера',htmlText(String(d.rates.broker).replace('.',','))+' ₽/USDT')
       :`<div class="fg"><label class="fl">Курс ₽/USDT</label><input class="fc num" id="mc_payin_rate" placeholder="курс брокера"></div>`),
+    realty&&!fh&&!crypto?(d.amountUsdt!=null?row('Фактически получено USDT',moneyKop(d.amountUsdt,'USDT'))
+      :`<div class="fg"><label class="fl">Фактически получено USDT<span class="rq">*</span></label>
+          <input class="fc num" id="mc_payin_amount_usdt" value="${htmlText(f.payin.amountUsdt||'')}"
+            oninput="manualCloseFormState(${d.id}).payin.amountUsdt=this.value;mcPreviewUpdate(${d.id})"
+            placeholder="сумма после конвертации"></div>`):'',
     crypto
       ?(knownHashes?row('Хеш прихода',d.payinHashes.map(h=>hashCell(d,h)).join(''))
         :hashEditor('payin',f.payin.hashes,true))
@@ -9057,33 +9127,28 @@ function manualCloseScreen(d){
      6977) — этот блок показывает ровно те же поля, что уже должны быть на
      доске с ранних шагов, перед выдачей. Фрихолд — отдельная формула
      (compute_mf_freehold, тариф IPPS), в ручной перенос пока не входит. */
-  const realtyRow=(label,known,value)=>known
+  const realtyRow=(label,known,value,missingHint='Заполните через «Редактировать» сделку, здесь это поле не собирается.')=>known
     ?row(label,value)
-    :`<div class="fg"><div class="sumred">${htmlText(label)} — не хватает. Заполните через «Редактировать» сделку, здесь это поле не собирается.</div></div>`;
+    :`<div class="fg"><div class="sumred">${htmlText(label)} — не хватает. ${htmlText(missingHint)}</div></div>`;
   const realtySection=(realty&&!fh)?(()=>{
-    const rates=d.rates||{};
+    const rf=f.realty;
     const purpose=(d.payTo&&d.payTo.purpose)||d.object;
     const docsOk=d.docs&&d.docs.inv, receiptOk=d.docs&&d.docs.receipt;
-    /* Предпросмотр прибыли — та же инфраструктура, что dealSummaryBlock уже
-       использует для s27 (crmPreviewFor → /api/stand/crm-preview, та же
-       compute_mf_realty). Отрицательная прибыль красным — тот же #dc2626,
-       что уже принят для этой формулы в CRM (static/crm/crm.html, калькулятор
-       недвижимости), не новый стиль. */
-    const pv=crmPreviewFor(d);
-    let profit='<span class="fh">считаем по формуле CRM…</span>';
-    if(pv&&pv.error)profit=`<span class="sumred">не посчитать: ${htmlText(pv.error)}</span>`;
-    else if(pv&&pv.data){const p=pv.data, neg=p.profit_usdt<0;
-      profit=`<b style="${neg?'color:#dc2626':''}">${moneyKop(p.profit_usdt,'USDT')}</b>`+
-        (neg?' · проверьте курс и сумму прихода':'');}
+    const field=(key,label,hint='')=>`<div class="fg"><label class="fl">${label}</label>
+      <input class="fc num" id="mc_${key}" value="${htmlText(rf[key])}"
+        oninput="mcRealtySet(${d.id},'${key}',this.value)">
+      ${hint?`<p class="fh">${hint}</p>`:''}</div>`;
     return `<div class="card"><div class="card-title">Инвойс и курс</div>
-      ${realtyRow('Инвойс, ฿',d.amountThb,money(d.amountThb,'฿'))}
-      ${realtyRow('Курс покупки ฿/USDT',num(rates.usdtThb)!=null,htmlText(String(rates.usdtThb)))}
-      ${realtyRow('Курс клиенту',num(rates.client)!=null,htmlText(String(rates.client)))}
-      ${row('Комиссия компании',(d.companyPct==null?1:d.companyPct)+' %')}
+      <div class="fr">${field('invoiceThb','Инвойс, ฿')}
+        ${field('buyRate','Курс покупки ฿/USDT')}
+        ${field('sellRate','Курс клиенту ฿/USDT',crypto?'':'Курс ₽/฿ из заявки не используется для прибыли в USDT.')}
+        ${field('companyPercent','Комиссия компании, %')}</div>
       ${realtyRow('Назначение платежа',!!purpose,htmlText(purpose||''))}
       ${realtyRow('Документы (инвойс застройщика)',docsOk,'загружен')}
-      ${realtyRow('Документы (подтверждение оплаты)',receiptOk,'загружен')}
-      ${row('Прибыль (предпросмотр)',profit,'формула CRM, считает сервер')}
+      ${realtyRow('Документы (подтверждение оплаты)',receiptOk,'загружен','Загрузите чек ниже.')}
+      <div class="sumrow"><div class="sumlab">Прибыль (предпросмотр)</div>
+        <div class="sumval" id="mc_profit">Укажите фактически полученную сумму USDT</div>
+        <div class="sumsrc">формула CRM, считает сервер</div><span></span></div>
     </div>`;
   })():'';
 
@@ -9094,14 +9159,14 @@ function manualCloseScreen(d){
   if(!knownPayoutHashes&&!f.payout.hashes.length)
     f.payout.hashes.push({amount:null,network:'TRC20',hash:'',receiver:'',sender:''});
   const payoutSection=[
-    knownSource?row('Способ выдачи',htmlText(payoutHuman(d)))
+    realty&&!fh?'':knownSource?row('Способ выдачи',htmlText(payoutHuman(d)))
       :`<div class="fg"><label class="fl">Источник выдачи<span class="rq">*</span></label>
           <select class="fc" id="mc_payout_source"><option value="">— выбрать —</option>
           ${Object.keys(SOURCES_PAY).map(k=>`<option value="${k}">${htmlText(SOURCES_PAY[k].t)}</option>`).join('')}</select></div>`,
     knownPayoutAmount?row('Списано USDT',moneyKop(po.usdt,'USDT'))
-      :`<div class="fg"><label class="fl">Сумма USDT<span class="rq">*</span></label>
-          <input class="fc num" id="mc_payout_amount_usdt" placeholder="сумма выдачи в USDT"></div>`,
-    knownPayoutHashes?row('Хеш выдачи',payHashes.map(h=>hashCell(d,h)).join(''))
+      :`<div class="fg"><label class="fl">${realty&&!fh?'Переведено в MF Corp, USDT':'Сумма USDT'}<span class="rq">*</span></label>
+          <input class="fc num" id="mc_payout_amount_usdt" placeholder="${realty&&!fh?'сумма перевода':'сумма выдачи'} в USDT"></div>`,
+    knownPayoutHashes?row(realty&&!fh?'Хеш перевода':'Хеш выдачи',payHashes.map(h=>hashCell(d,h)).join(''))
       :hashEditor('payout',f.payout.hashes,false)
   ].join('');
 
@@ -9115,11 +9180,11 @@ function manualCloseScreen(d){
     <button class="btn btn-outline btn-sm" onclick="manualCloseCancel(${d.id})">Отмена</button></header>
     <div class="card"><div class="card-title">Получение (Pay-In)</div>${payinSection}</div>
     ${realtySection}
-    <div class="card"><div class="card-title">Выдача (Pay-Out)</div>${payoutSection}</div>
+    <div class="card"><div class="card-title">${realty&&!fh?'Перевод в MF Corp':'Выдача (Pay-Out)'}</div>${payoutSection}</div>
     <div class="agbox">${agentsBlock(d,'manualClose',null)}</div>
     <div class="card"><div class="card-title">Чек / инвойс оплаты</div>${fileBlock(d,'receipt','Чек об оплате','PDF, PNG, JPG, WEBP')}</div>
     <div class="card"><div class="fg"><label class="fl">Причина закрытия вручную<span class="rq">*</span></label>
-      <textarea class="fc" id="mc_reason" rows="3" placeholder="Почему переносим в CRM минуя задачник"></textarea></div></div>
+      <textarea class="fc" id="mc_reason" rows="3" placeholder="Укажите причину переноса"></textarea></div></div>
     <div class="row" style="margin-top:14px">
       <button class="btn btn-outline" onclick="manualCloseCancel(${d.id})">Отмена</button>
       <button class="btn btn-primary" id="mc_submit" onclick="manualCloseSubmit(${d.id})">Подтвердить перенос и закрыть</button>

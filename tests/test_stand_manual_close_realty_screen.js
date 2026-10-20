@@ -71,8 +71,8 @@ function realtyMissingDeal() {
 }
 
 function main() {
-  // T1: все realty-факты уже на доске - показаны как известные read-only строки,
-  // не открытые поля ввода.
+  // T1: денежные поля доступны прямо в ручном переносе, без сохранения
+  // непроверенной комбинации через обычный редактор сделки.
   {
     const ctx = makeCtx(realtyKnownDeal());
     const out = ctx.manualCloseScreen(ctx.S.deals[0]);
@@ -80,22 +80,29 @@ function main() {
     assert.ok(/50.*000.*฿|฿.*50.*000/.test(out) || out.includes('50000'),
       'ожидали сумму инвойса на экране');
     assert.ok(out.includes('36'), 'ожидали курс покупки на экране');
-    assert.ok(out.includes('35'), 'ожидали курс клиенту на экране');
+    assert.ok(out.includes('id="mc_invoiceThb"') && out.includes('id="mc_buyRate"') &&
+      out.includes('id="mc_sellRate"') && out.includes('id="mc_companyPercent"'),
+      'инвойс, курсы и комиссия должны редактироваться в ручном переносе');
+    assert.ok(out.includes('id="mc_payin_amount_usdt"'),
+      'фактический приход USDT нужен до расчёта прибыли');
+    assert.ok(out.includes('Курс ₽/฿ из заявки не используется'),
+      'рублёвый курс не должен считаться курсом ฿/USDT');
     assert.ok(out.includes('Оплата аренды виллы'), 'ожидали назначение платежа на экране');
     assert.ok(!out.includes('— не хватает'),
       'не должно быть сообщений о нехватке realty-фактов, когда все они уже на доске');
     console.log('T1 realty facts shown as known when already on board PASS');
   }
 
-  // T2: realty-факты отсутствуют - явное сообщение «не хватает», а не тихий пропуск
-  // или открытые поля ввода внутри этой формы (собираются через «Редактировать»).
+  // T2: отсутствующие денежные поля можно заполнить здесь; документы и назначение
+  // по-прежнему показывают явный блокер.
   {
     const ctx = makeCtx(realtyMissingDeal());
     const out = ctx.manualCloseScreen(ctx.S.deals[0]);
     assert.ok(out.includes('— не хватает'),
       'ожидали явное сообщение о нехватке realty-фактов, когда их нет на доске');
-    assert.ok(out.includes('Редактировать'),
-      'сообщение должно направлять на «Редактировать» сделку, а не собирать поля заново здесь');
+    assert.ok(out.includes('id="mc_invoiceThb"') && out.includes('id="mc_buyRate"'),
+      'денежные поля доступны в форме ручного переноса');
+    assert.ok(out.includes('Редактировать'), 'нехватка документов должна объяснять следующий шаг');
     console.log('T2 missing realty facts show explicit blocking message PASS');
   }
 
@@ -111,22 +118,13 @@ function main() {
     console.log('T3 realty section absent for exchange deals PASS');
   }
 
-  // T4: отрицательная прибыль в предпросмотре подсвечена тем же #dc2626, что
-  // уже принят для compute_mf_realty в CRM (static/crm/crm.html) - не новый
-  // стиль. Положительная прибыль - без цвета.
+  // T4: до ввода фактического USDT не показываем ложную прибыль по курсу ₽/฿.
   {
-    const ctxNeg = makeCtx(realtyKnownDeal(), {data: {profit_usdt: -2248.84, profit_percent: -98.7}});
-    const outNeg = ctxNeg.manualCloseScreen(ctxNeg.S.deals[0]);
-    assert.ok(outNeg.includes('color:#dc2626'),
-      'ожидали красный #dc2626 на отрицательной прибыли в предпросмотре');
-    assert.ok(outNeg.includes('проверьте курс и сумму прихода'),
-      'ожидали предупреждающую подпись при отрицательной прибыли');
-
-    const ctxPos = makeCtx(realtyKnownDeal(), {data: {profit_usdt: 6.16, profit_percent: 0.27}});
-    const outPos = ctxPos.manualCloseScreen(ctxPos.S.deals[0]);
-    assert.ok(!outPos.includes('color:#dc2626'),
-      'не должно быть красного цвета на положительной прибыли');
-    console.log('T4 negative profit preview highlighted #dc2626, positive is not PASS');
+    const ctx = makeCtx(realtyKnownDeal());
+    const out = ctx.manualCloseScreen(ctx.S.deals[0]);
+    assert.ok(out.includes('id="mc_profit">Укажите фактически полученную сумму USDT'),
+      'до факта прихода вместо суммы прибыли должен быть запрос факта');
+    console.log('T4 pending profit awaits actual USDT PASS');
   }
 
   console.log('ALL PASS');

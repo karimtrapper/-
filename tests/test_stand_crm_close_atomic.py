@@ -127,6 +127,58 @@ def _counts():
         db.close()
 
 
+def test_manager_manual_close_rental_cash_bypasses_new_flow_gate(monkeypatch):
+    """An existing s14 rental/cash card can close through the manual path."""
+    uid = _setup(monkeypatch)
+    transfer_hash = '9' * 64
+    board = {'deals': [{
+        'id': 1474, 'code': 'СД-1474', 'client': 'Synthetic rental',
+        'type': 'Оплата недвижимости', 'kind': 'Аренда', 'step': 's14',
+        'payType': 'Наличные', 'amountRub': 1217600, 'amountThb': 455000,
+        'rates': {'client': '2,676', 'usdtThb': '33.42'},
+        'object': 'Synthetic villa', 'docs': {'inv': True, 'receipt': True},
+        'mfPayout': [], 'payinHashes': [], 'agents': [], 'files': {},
+        'closed': False, 'crmDealId': None, 'log': [],
+    }], 'notes': []}
+    db = m.get_session()
+    try:
+        row = db.query(m.StandState).filter_by(id=1).one()
+        row.data = json.dumps(board)
+        db.commit()
+    finally:
+        db.close()
+    monkeypatch.setattr(m, 'verify_transfer', lambda _hash, _network, _sender, _receiver, amount: {
+        'status': 'confirmed', 'verifiedAmount': amount,
+        'verifiedAt': '2026-10-20T00:00:00Z', 'from': 'Synthetic sender'})
+    monkeypatch.setattr(m, '_stand_deliver_notes', lambda: [])
+    monkeypatch.setattr(m, '_stand_notify_deal_closed', lambda *_args: None)
+    monkeypatch.setattr(m, '_tx_info_by_network', lambda *_args: {
+        'amount_usdt': 13800, 'total_out_usdt': 13800})
+    crm = {'deal_kind': 'mf_realty', 'client_name': 'Synthetic rental',
+           'manager_name': 'Елизавета', 'payin_method': 'partners_cash',
+           'payin_amount_rub': 1217600, 'payin_amount_usdt': 14500,
+           'payin_tx_hashes': [], 'payin_parts': [], 'payin_extra': [],
+           'realty_purpose': 'Synthetic villa', 'invoice_amount_thb': 500000,
+           'buy_rate_thb_usdt': 33.42, 'sell_rate_thb_usdt': None,
+           'company_percent': 2, 'agents': [],
+           'payout_tx_hashes': [{'hash': transfer_hash, 'network': 'trc20',
+                                 'amount_usdt': 13800}]}
+    manual_override = {'reason': 'Verified cash rental transferred manually',
+                       'payin': {'method': 'Наличные', 'amountRub': 1217600,
+                                 'amountUsdt': 14500, 'manualBankConfirmed': True},
+                       'payout': {'amountUsdt': 13800, 'hashes': [
+                           {'hash': transfer_hash, 'network': 'TRC20', 'amount': 13800}]},
+                       'realty': {'invoiceThb': 500000, 'buyRate': 33.42,
+                                  'sellRate': None, 'companyPercent': 2},
+                       'agents': []}
+    response = _client(uid).post('/api/stand/deals/1474/crm-close', json={
+        'version': 1, 'crm': crm, 'manualOverride': manual_override})
+    assert response.status_code == 201, response.json
+    assert response.json['data']['deals'][0]['closed'] is True
+    assert response.json['deal']['deal_kind'] == 'mf_realty'
+    assert response.json['deal']['invoice_amount_thb'] == 500000
+
+
 def test_atomic_close_and_lost_response_retry(monkeypatch):
     uid = _setup(monkeypatch)
     base_deals, base_links = _counts()

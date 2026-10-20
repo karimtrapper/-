@@ -8733,7 +8733,9 @@ def _stand_crm_fact_problem(board, crm, kind):
         if not matches('invoice_amount_thb', invoice):
             return 'locked_invoice_mismatch'
         rates = board.get('rates') or {}
-        if _amount(crm.get('sell_rate_thb_usdt')) != _amount(rates.get('client')):
+        expected_sell = (board['manualRealtySellRate'] if 'manualRealtySellRate' in board
+                         else rates.get('client'))
+        if _amount(crm.get('sell_rate_thb_usdt')) != _amount(expected_sell):
             return 'sell_rate_mismatch'
         payout = hashes(board.get('mfPayout'), True)
         if (payout is None or hashes(crm.get('payout_tx_hashes'), False) != payout
@@ -8919,6 +8921,19 @@ def _stand_manual_close_apply_override(state, stand_deal, override, actor, *, ve
             'mf_realty' if stand_deal.get('type') == 'Оплата недвижимости' else
             'exchange')
 
+    realty = override.get('realty')
+    if realty is not None:
+        if kind != 'mf_realty' or not isinstance(realty, dict):
+            return 'realty_override_invalid'
+        invoice = _amount(realty.get('invoiceThb'))
+        buy_rate = _amount(realty.get('buyRate'))
+        sell_rate = _amount(realty.get('sellRate'))
+        company_percent = _amount(realty.get('companyPercent'))
+        if (invoice is None or invoice <= 0 or buy_rate is None or buy_rate <= 0
+                or company_percent is None or not 0 <= company_percent <= 100
+                or sell_rate is not None and sell_rate <= 0):
+            return 'realty_override_invalid'
+
     payout = {}
     payout_amount = None
     payout_entries = []
@@ -8951,17 +8966,25 @@ def _stand_manual_close_apply_override(state, stand_deal, override, actor, *, ve
         # не собирает заново, только требует присутствия и пропускает дальше
         # в _create_deal_impl/_apply_mf_realty, который считает прибыль той
         # же compute_mf_realty, что и обычная CRM-форма.
-        if _stand_number(stand_deal.get('amountThb')) <= 0:
+        if _stand_number(invoice if realty is not None else stand_deal.get('amountThb')) <= 0:
             return 'realty_invoice_missing'
         rates = stand_deal.get('rates') or {}
-        if (_stand_number(rates.get('usdtThb')) <= 0
-                or _stand_number(rates.get('client')) <= 0):
+        if (_stand_number(buy_rate if realty is not None else rates.get('usdtThb')) <= 0
+                or (realty is None and _stand_number(rates.get('client')) <= 0)):
             return 'realty_rate_missing'
         if not ((stand_deal.get('payTo') or {}).get('purpose') or stand_deal.get('object')):
             return 'realty_purpose_missing'
-        if not (stand_deal.get('mfPayout')
-                or (stand_deal.get('payout') or {}).get('hashes')):
-            return 'realty_transfer_missing'
+        if not stand_deal.get('mfPayout'):
+            payout = override.get('payout')
+            payout = payout if isinstance(payout, dict) else {}
+            payout_amount = _stand_number(payout.get('amountUsdt'))
+            if payout_amount <= 0:
+                return 'realty_transfer_missing'
+            payout_entries, problem = _stand_manual_close_verify_hashes(
+                state, payout.get('hashes'), payout_amount, verify, used_hashes,
+                'payout', exclude_deal_id=deal_id)
+            if problem:
+                return problem
         docs = stand_deal.get('docs') or {}
         if not (docs.get('inv') and docs.get('receipt')):
             return 'realty_docs_missing'
@@ -8978,6 +9001,11 @@ def _stand_manual_close_apply_override(state, stand_deal, override, actor, *, ve
         stand_deal['amountRub'] = _stand_number(payin.get('amountRub'))
     if payin.get('rate') is not None:
         stand_deal.setdefault('rates', {})['broker'] = payin['rate']
+    if realty is not None:
+        stand_deal['amountThb'] = float(invoice)
+        stand_deal.setdefault('rates', {})['usdtThb'] = float(buy_rate)
+        stand_deal['companyPct'] = float(company_percent)
+        stand_deal['manualRealtySellRate'] = float(sell_rate) if sell_rate is not None else None
     # Переподтверждение уже записанного на эту сделку хеша (exclude_deal_id
     # выше) не должно задвоить запись — тот же (network, hash) пропускаем,
     # факт остаётся как был, а не дублируется.
@@ -8998,6 +9026,12 @@ def _stand_manual_close_apply_override(state, stand_deal, override, actor, *, ve
                                   if (e.get('network'), e.get('hash')) not in existing_payout_keys]
             deal_payout['hashes'] = list(deal_payout.get('hashes') or []) + new_payout_entries
         stand_deal['payout'] = deal_payout
+    elif kind == 'mf_realty' and payout_entries:
+        stand_deal['mfPayout'] = [
+            {'hash': entry['hash'], 'net': entry['network'], 'amount': entry['amount'],
+             'to_address': entry.get('to'), 'verified': True,
+             'verifiedAt': entry.get('verifiedAt')}
+            for entry in payout_entries]
 
     if agents is not None:
         stand_deal['agents'] = agents
