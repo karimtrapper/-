@@ -1368,6 +1368,8 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                                 <label class="form-label">Сумма RUB</label>
                                 <input type="number" step="any" class="form-control" name="payin_amount_rub" placeholder="100000"
                                     oninput="autoCalcUsdt()">
+                                <small id="payinRubHint" style="color:var(--navy-600);">после комиссии банка</small>
+                                <small id="payinGrossReference" style="display:none;color:var(--navy-600);"></small>
                             </div>
                             <div class="form-group">
                                 <label class="form-label">Сумма USDT</label>
@@ -4842,7 +4844,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         ${(deal.payin_parts && deal.payin_parts.length) ? `
                             <div style="background: #f0f9ff; padding: 0.5rem; border-radius: 6px; border: 1px solid #bae6fd; margin: 0.5rem 0;">
                                 <p style="margin: 0 0 4px;"><strong>Приход частями (${deal.payin_parts.length}):</strong></p>
-                                ${deal.payin_parts.map(p => `<p style="margin: 0 0 2px; font-size: 0.9rem;">${p.uuid ? (p.kind === 'acquiring' ? '📲' : '🏦') : '✍️'} ${formatNumber(p.amount_rub)} ₽${p.kind === 'acquiring' ? ` <span style="color:#64748b;">(эквайринг: на счёт ${formatNumber(p.net_rub)} + комиссия ${formatNumber(p.fee_rub)})</span>` : (p.payer ? ' · ' + escapeHtml(p.payer) : '')}${p.date ? ' · ' + p.date : ''}${p.note ? ' · ' + escapeHtml(p.note) : ''}</p>`).join('')}
+                                ${deal.payin_parts.map(p => `<p style="margin: 0 0 2px; font-size: 0.9rem;">${p.uuid ? (p.kind === 'acquiring' ? '📲' : '🏦') : '✍️'} ${formatNumber(p.amount_rub)} ₽${p.kind === 'acquiring' ? ` <span style="color:#64748b;">(эквайринг: на счёт ${formatNumber(p.net_rub)} · комиссия ${p.fee_rub == null ? 'неизвестна' : formatNumber(p.fee_rub)})</span>` : (p.payer ? ' · ' + escapeHtml(p.payer) : '')}${p.date ? ' · ' + p.date : ''}${p.note ? ' · ' + escapeHtml(p.note) : ''}</p>`).join('')}
                             </div>
                         ` : ''}
                         ${(deal.payin_extra && deal.payin_extra.length)
@@ -5284,6 +5286,8 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 
                     // Общие поля для обоих типов сделок
                     const form = document.getElementById('createDealForm');
+                    payinRubIsNet = deal.payin_rub_is_net === true;
+                    updatePayinRubBasisHint();
                     // Пустое значение — тоже значение: при `if (deal.X)` поле оставалось
                     // от прошлой сделки и уезжало в неё при сохранении
                     setManagerSelectValue(deal.manager_name);
@@ -5475,6 +5479,12 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 
         function cancelEditMode() {
             editingDealId = null;
+            payinRubIsNet = true;
+            updatePayinRubBasisHint();
+            const rubInput = document.querySelector('#createDealForm [name="payin_amount_rub"]');
+            if (rubInput) { rubInput.required = false; delete rubInput.dataset.grossReference; }
+            const grossHint = document.getElementById('payinGrossReference');
+            if (grossHint) { grossHint.style.display = 'none'; grossHint.textContent = ''; }
             document.querySelector('#create .card-title').textContent = 'Создать новую сделку';
             document.getElementById('createDealForm').reset();
             // Сбрасываем агентов обеих форм
@@ -6669,7 +6679,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             payinExtra.push({ method: 'crypto_direct', amount_rub: null,
                               rate_rub_usdt: null, amount_usdt: null,
                               partner_name: '', tx_hashes: [], note: '', _mode: 'rate',
-                              sber_parts: [] });
+                              sber_parts: [], rub_is_net: payinRubIsNet });
             payinExtraRender();
         }
 
@@ -6739,14 +6749,16 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             const inc = sberIncomesCache.find(x => x.uuid === uuid);
             const part = payinExtra[i];
             if (!inc || (part.sber_parts || []).some(x => x.uuid === uuid)) return;
-            // Как в основном блоке: в сделку идёт то, что заплатил КЛИЕНТ.
-            // У эквайринга на счёт падает меньше — банк снимает комиссию сразу
+            if (!payinRubIsNet && inc.gross_rub == null) {
+                showToast('Комиссия банка неизвестна: сумму оплаты клиента нельзя подставить', 'warning');
+                return;
+            }
             part.sber_parts = part.sber_parts || [];
             part.sber_parts.push({
-                uuid: inc.uuid, amount_rub: inc.gross_rub ?? inc.amount_rub,
+                uuid: inc.uuid, amount_rub: payinRubIsNet ? inc.amount_rub : inc.gross_rub,
                 payer: inc.payer || '', date: (inc.operation_date || '').substring(0, 10),
-                kind: inc.kind || 'transfer', fee_rub: inc.fee_rub || 0,
-                net_rub: inc.amount_rub,
+                kind: inc.kind || 'transfer', fee_rub: inc.fee_rub,
+                net_rub: inc.amount_rub, rub_is_net: payinRubIsNet,
             });
             payinExtraSberSync(i);
             // Доля USDT из пачки — как в основном блоке: если рубли уже
@@ -6820,7 +6832,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         ${(p.sber_parts || []).map((x, k) => `
                             <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 8px;background:white;border:1px solid #bae6fd;border-radius:6px;margin-bottom:4px;font-size:13px;gap:8px;">
                                 <span>${x.kind === 'acquiring' ? '📲' : '🏦'} <b>${rub2(x.amount_rub)} ₽</b>${x.kind === 'acquiring'
-                                    ? ` <span style="color:#64748b;">(на счёт ${rub2(x.net_rub)} + комиссия ${rub2(x.fee_rub)})</span>`
+                                    ? ` <span style="color:#64748b;">(на счёт ${rub2(x.net_rub)} · комиссия ${x.fee_rub == null ? 'неизвестна' : rub2(x.fee_rub)})</span>`
                                     : (x.payer ? ' · ' + escapeHtml(x.payer) : '')}${x.date ? ' · ' + x.date : ''}</span>
                                 <span onclick="payinExtraSberRemove(${i}, ${k})" style="cursor:pointer;color:#ef4444;font-weight:700;padding:0 4px;">✕</span>
                             </div>`).join('')}
@@ -6894,6 +6906,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 .map(p => ({
                     method: p.method,
                     amount_rub: p.amount_rub,
+                    ...(payinRubIsNet ? {rub_is_net: true} : {}),
                     rate_rub_usdt: p.rate_rub_usdt,
                     amount_usdt: p.amount_usdt,
                     partner_name: p.partner_name || null,
@@ -6951,6 +6964,9 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 rubGroup.style.display = 'none';
                 rateGroup.style.display = 'none';
             }
+            const rubInput = rubGroup.querySelector('[name="payin_amount_rub"]');
+            if (rubInput) rubInput.required = rubInput.dataset.grossReference === '1'
+                && rubGroup.style.display !== 'none';
 
             // Курс для клиента
             exchangeRateGroup.style.display = isCryptoDirect ? 'none' : 'block';
@@ -6972,6 +6988,15 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         // sberParts — части прихода текущей сделки: [{uuid|null, amount_rub, payer, date, note}]
         // uuid → приход из пула (займётся при сохранении), null → ручная часть.
         let sberParts = [];
+        // New CRM input uses credited RUB; an old deal keeps its original gross
+        // basis through open, edit, and save.
+        let payinRubIsNet = true;
+        function updatePayinRubBasisHint() {
+            const hint = document.getElementById('payinRubHint');
+            if (hint) hint.textContent = payinRubIsNet
+                ? 'после комиссии банка'
+                : 'до комиссии банка (сделка заведена до 20.10)';
+        }
         let sberIncomesCache = [];
         let sberKindFilter = '';   // '' | 'acquiring' (СБП) | 'transfer' (реквизиты)
 
@@ -7005,13 +7030,15 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         function sberAddIncome(uuid) {
             const inc = sberIncomesCache.find(i => i.uuid === uuid);
             if (!inc || sberParts.some(p => p.uuid === uuid)) return;
-            // В сделку идёт то, что заплатил КЛИЕНТ. У эквайринга на счёт падает
-            // меньше — банк удерживает комиссию сразу, поэтому берём gross,
-            // иначе курс клиента и объём сделки занижены на размер комиссии.
-            sberParts.push({ uuid: inc.uuid, amount_rub: inc.gross_rub ?? inc.amount_rub,
+            if (!payinRubIsNet && inc.gross_rub == null) {
+                showToast('Комиссия банка неизвестна: сумму оплаты клиента нельзя подставить', 'warning');
+                return;
+            }
+            sberParts.push({ uuid: inc.uuid, amount_rub: payinRubIsNet ? inc.amount_rub : inc.gross_rub,
                              payer: inc.payer || '', date: (inc.operation_date || '').substring(0, 10),
                              note: '', kind: inc.kind || 'transfer',
-                             fee_rub: inc.fee_rub || 0, net_rub: inc.amount_rub });
+                             fee_rub: inc.fee_rub, net_rub: inc.amount_rub,
+                             rub_is_net: payinRubIsNet });
             sberRender();
             applyConversionUsdt(inc);
         }
@@ -7055,7 +7082,8 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             const noteEl = document.getElementById('sberManualNote' + sfx);
             const amt = parseFloat(amtEl?.value) || 0;
             if (amt <= 0) { showToast('Укажите сумму прихода', 'error'); return; }
-            sberParts.push({ uuid: null, amount_rub: amt, payer: '', date: '', note: (noteEl?.value || '').trim() });
+            sberParts.push({ uuid: null, amount_rub: amt, payer: '', date: '',
+                             note: (noteEl?.value || '').trim(), rub_is_net: payinRubIsNet });
             if (amtEl) amtEl.value = '';
             if (noteEl) noteEl.value = '';
             sberRender();
@@ -7073,9 +7101,13 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             const date = (i.operation_date || '').substring(0, 10);
             if (i.kind === 'acquiring') {
                 const mer = i.merchant ? ` · мерчант …${String(i.merchant).slice(-4)}` : '';
+                const fee = i.fee_rub == null ? 'Комиссия неизвестна'
+                    : `Комиссия банка ${rub2(i.fee_rub)} ₽`;
+                const gross = i.gross_rub == null ? 'Клиент заплатил: неизвестно'
+                    : `Клиент заплатил ${rub2(i.gross_rub)} ₽`;
                 return `<span style="background:#dbeafe;color:#1d4ed8;border-radius:4px;padding:1px 5px;font-size:11px;">СБП</span> `
-                    + `<b>${rub2(i.gross_rub)} ₽</b> `
-                    + `<span style="color:#64748b;">(зачислено ${rub2(i.amount_rub)} + комиссия ${rub2(i.fee_rub)})</span>`
+                    + `<b>Зачислено ${rub2(i.amount_rub)} ₽</b> `
+                    + `<span style="color:#64748b;">(${gross} · ${fee})</span>`
                     + `${mer} · ${date}`;
             }
             return `<span style="background:#dcfce7;color:#15803d;border-radius:4px;padding:1px 5px;font-size:11px;">реквизиты</span> `
@@ -7103,7 +7135,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 listEl.innerHTML = sberParts.map((p, i) => {
                     const isAcq = p.kind === 'acquiring';
                     const tail = isAcq
-                        ? `<span style="color:#64748b;">эквайринг: на счёт ${rub2(p.net_rub)} + комиссия ${rub2(p.fee_rub)}</span>`
+                        ? `<span style="color:#64748b;">эквайринг: на счёт ${rub2(p.net_rub)} · комиссия ${p.fee_rub == null ? 'неизвестна' : rub2(p.fee_rub)}</span>`
                         : (p.payer ? escapeHtml(p.payer) : '');
                     return `
                     <div style="display:flex;justify-content:space-between;align-items:center;padding:5px 8px;background:white;border:1px solid #bae6fd;border-radius:6px;margin-bottom:4px;font-size:13px;gap:8px;">
@@ -7114,10 +7146,12 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             }
             const totalEl = document.getElementById('sberPartsTotal' + sfx);
             const total = sberPartsSum();
+            const feeUnknown = sberParts.some(p => p.kind === 'acquiring' && p.fee_rub == null);
             const feeTotal = sberParts.reduce((s, p) => s + (+p.fee_rub || 0), 0);
             if (totalEl) totalEl.textContent = sberParts.length
-                ? `Итого от клиента: ${rub2(total)} ₽ (частей: ${sberParts.length})`
-                  + (feeTotal ? ` · комиссия эквайринга ${rub2(feeTotal)} ₽ → на счёт ${rub2(total - feeTotal)} ₽` : '')
+                ? `Итого ${payinRubIsNet ? 'зачислено' : 'от клиента'}: ${rub2(total)} ₽ (частей: ${sberParts.length})`
+                  + (feeUnknown ? ' · комиссия эквайринга неизвестна'
+                     : feeTotal ? ` · комиссия эквайринга ${rub2(feeTotal)} ₽` : '')
                 : '';
             // Сумма частей → в поле суммы формы
             if (sberParts.length) {
@@ -8346,6 +8380,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 
                 // Pay-In
                 payin_method: payinMethod === 'flow_sole_reqs' ? 'sber_reqs' : payinMethod,
+                payin_rub_is_net: true,
                 payin_account_key: payinMethod === 'flow_sole_reqs' ? 'flow_sole' : null,
                 payin_tx_hash: payinTxHash || null,
                 payin_amount_usdt: payinUsdt,
@@ -8643,7 +8678,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             // При создании новой сделки — pending по умолчанию.
             const data = (editingDealId !== null)
                 ? { deal_type: 'pay_in' }
-                : { deal_type: 'pay_in', status: 'pending' };
+                : { deal_type: 'pay_in', status: 'pending', payin_rub_is_net: payinRubIsNet };
 
             formData.forEach((value, key) => {
                 if (value !== "") {
@@ -11028,9 +11063,10 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 }
                 // Конвертируется зачисленное, а не то, что заплатил клиент:
                 // у СБП банк снимает эквайринг до зачисления
-                const acq = (i.gross_rub || 0) - (i.amount_rub || 0);
+                const acq = i.gross_rub == null ? null : i.gross_rub - (i.amount_rub || 0);
                 const sum = `${cnvNum(i.amount_rub)} ₽` + (acq > 0.01
-                    ? `<div style="font-size:0.8rem;color:#94a3b8">клиент платил ${cnvNum(i.gross_rub)}</div>` : '');
+                    ? `<div style="font-size:0.8rem;color:#94a3b8">клиент платил ${cnvNum(i.gross_rub)}</div>`
+                    : acq == null ? '<div style="font-size:0.8rem;color:#b45309">комиссия неизвестна</div>' : '');
                 const selectable = !i.excluded && (i.free_rub || 0) > 0.01;
                 return `<tr${i.excluded ? ' style="opacity:0.55"' : ''}>
                     <td>${selectable ? `<input type="checkbox" class="incSel" value="${i.id}"
@@ -13161,17 +13197,35 @@ ${Math.abs(c.debits_delta_rub) < 0.01
         function prefillDealForm(data) {
             const form = document.getElementById('createDealForm');
             if (!form) return;
+            payinRubIsNet = true;
+            updatePayinRubBasisHint();
 
             // Метод Pay-In
             if (data.payin_method) {
                 const payinMethod = form.querySelector('[name="payin_method"]');
-                if (payinMethod) payinMethod.value = data.payin_method;
+                if (payinMethod) {
+                    payinMethod.value = data.payin_method;
+                    payinMethod.dispatchEvent(new Event('change'));
+                }
             }
 
-            // Сумма RUB
-            if (data.payin_amount_rub) {
-                const rubInput = form.querySelector('[name="payin_amount_rub"]');
-                if (rubInput) rubInput.value = Math.round(data.payin_amount_rub);
+            // Старые ссылки содержат gross в payin_amount_rub; новые передают
+            // его отдельным справочным полем. Без известной банковской комиссии
+            // фактическое зачисление не вычисляем.
+            const grossReference = Number(data.payin_gross_reference_rub || data.payin_amount_rub) || 0;
+            const rubInput = form.querySelector('[name="payin_amount_rub"]');
+            const grossHint = document.getElementById('payinGrossReference');
+            if (rubInput) {
+                rubInput.value = '';
+                rubInput.dataset.grossReference = grossReference > 0 ? '1' : '0';
+                rubInput.required = grossReference > 0
+                    && document.getElementById('payinRubGroup').style.display !== 'none';
+            }
+            if (grossHint) {
+                grossHint.style.display = grossReference > 0 ? 'block' : 'none';
+                grossHint.textContent = grossReference > 0
+                    ? `Калькулятор: клиент платит ${grossReference.toLocaleString('ru-RU')} ₽ до комиссии банка. Введите фактически зачисленную сумму.`
+                    : '';
             }
 
             // Сумма USDT
@@ -13180,11 +13234,9 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                 if (usdtInput) usdtInput.value = data.payin_amount_usdt.toFixed(2);
             }
 
-            // Курс RUB/USDT
-            if (data.payin_rate_rub_usdt) {
-                const rateInput = form.querySelector('[name="payin_rate_rub_usdt"]');
-                if (rateInput) rateInput.value = data.payin_rate_rub_usdt.toFixed(2);
-            }
+            // Курс калькулятора относится к gross и не равен курсу CRM по net.
+            const rateInput = form.querySelector('[name="payin_rate_rub_usdt"]');
+            if (rateInput) rateInput.value = '';
 
             // Сумма THB (выдача)
             if (data.payout_amount_thb) {

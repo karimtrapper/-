@@ -2142,7 +2142,9 @@ function createDealFromCalc() {
 
     // Маппинг данных калькулятора → поля CRM
     const dealData = {
-        payin_amount_rub: r.rub_paid || r.rub_to_pay || null,
+        // Калькулятор знает оплату клиента до банковской комиссии, а CRM для
+        // новой сделки просит фактически зачисленную сумму. Передаём справку.
+        payin_gross_reference_rub: r.rub_paid || r.rub_to_pay || null,
         payin_amount_usdt: r.incoming_usdt || r.usdt_amount || null,
         payin_rate_rub_usdt: r.rub_usdt_rate || null,
         payout_amount_thb: r.thb_received || r.thb_target || null,
