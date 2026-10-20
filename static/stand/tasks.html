@@ -5357,6 +5357,7 @@ let taskListScrollY=null;
 let taskListEntries=[];
 let taskListCursor=-1;
 let taskCardHistoryPushed=false;
+let taskCardScrollRestoration=null;
 function mobileTaskCard(){return window.matchMedia('(max-width:700px)').matches;}
 function rememberTaskList(id,branch){
   if(!mobileTaskCard()||!document.querySelector('#app .task-list'))return;
@@ -5369,7 +5370,13 @@ function rememberTaskList(id,branch){
 }
 function closeTaskView(){
   S.open=null;S.draft=null;S.tab='tasks';saveUi();render();
-  if(taskListScrollY!==null)requestAnimationFrame(()=>window.scrollTo(0,taskListScrollY));
+  requestAnimationFrame(()=>requestAnimationFrame(()=>{
+    if(taskListScrollY!==null)window.scrollTo(0,taskListScrollY);
+    if(taskCardScrollRestoration!==null){
+      history.scrollRestoration=taskCardScrollRestoration;
+      taskCardScrollRestoration=null;
+    }
+  }));
 }
 function closeTaskToList(){
   if(mobileTaskCard()&&taskCardHistoryPushed){history.back();return;}
@@ -5377,6 +5384,8 @@ function closeTaskToList(){
 }
 function pushTaskCardHistory(wasOpen){
   if(!mobileTaskCard()||wasOpen||taskCardHistoryPushed)return;
+  taskCardScrollRestoration=history.scrollRestoration;
+  history.scrollRestoration='manual';
   history.pushState({...history.state,__calccrmTaskCard:true},'',location.href);
   taskCardHistoryPushed=true;
 }
