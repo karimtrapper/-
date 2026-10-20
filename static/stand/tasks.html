@@ -818,6 +818,7 @@ a.hash:hover{background:#BAE6FD}
 .deal-screen .tx-fee-row{display:flex;align-items:center;gap:var(--ds-sm);min-height:44px;font-size:var(--ds-body)}
 .deal-screen .tx-hidden summary,.deal-screen details summary{cursor:pointer;min-height:44px;display:flex;align-items:center}
 .deal-screen .doc-side{margin-top:var(--ds-md)}
+.deal-screen .doc-empty{font-size:var(--ds-body);color:var(--ds-muted);margin:var(--ds-sm) 0}
 .deal-screen .doc-extra-control{margin-top:var(--ds-md)}
 .deal-screen .doc-extra-control>div:not([hidden]){display:grid;gap:var(--ds-sm);margin-top:var(--ds-sm)}
 .deal-screen .doc-extra-control label{font-size:var(--ds-body);font-weight:var(--ds-semibold);color:var(--ds-muted)}
@@ -6953,6 +6954,7 @@ function overview(d,st,mine,p,wh){
 
   ${(docN||deletedRows||extraControl||(S.role==='manager'&&signedBlock(d)))?`<div class="card" style="margin-bottom:16px"><div class="card-title">Документы<span class="sub">${docN} шт.</span></div>
     <div class="list doc-list">${docRows.issued.join('')}${docRows.client.join('')}${deletedRows}</div>
+    ${!docN&&!deletedRows?'<p class="doc-empty">Файлов пока нет.</p>':''}
     ${extraControl}
     ${S.role==='manager'?signedBlock(d):''}</div>`:''}
   ${fixCard(d)}
@@ -8026,6 +8028,7 @@ function docSide(d){
     ${issued.length&&d.docPack?`<p style="font-size:12px;color:var(--text-muted);margin:8px 0 10px">Пакет версии ${d.docPack.version} · <a href="javascript:void(0)" onclick="docDownloadAll(${d.id})">скачать всё</a></p>`:''}
     ${client.length?`<div class="list doc-list">${client.join('')}</div>`:''}
     ${deleted?`<div class="list doc-list">${deleted}</div>`:''}
+    ${!issued.length&&!client.length&&!deleted&&!wait?'<p class="doc-empty">Файлов пока нет.</p>':''}
     ${docExtraControl(d)}
     ${S.role==='manager'?signedBlock(d,true):''}</details>`;
 }
