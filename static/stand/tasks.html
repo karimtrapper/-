@@ -5301,6 +5301,7 @@ function seedEx(){
 
 /* ============ рендер ============ */
 function syncTaskHeaderLink(){
+  if(typeof document.querySelector!=='function')return;
   const title=document.querySelector('.site-shell-mobile-head')?.firstElementChild;
   if(!title||!['SPAN','A'].includes(title.tagName))return;
   const tag=S.open?'a':'span';
