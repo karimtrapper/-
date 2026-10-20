@@ -5798,7 +5798,8 @@ def _deal_bank_net_rub(deal, incomes, *, strict_fee=False, issues=None):
             total += allocated * net / gross if gross else 0
             remainder = amount - allocated
             if remainder > 0.01:
-                if part['method'] != 'sber_reqs' and strict_fee:
+                issues.append('shares_missing')
+                if strict_fee:
                     return None
                 total += remainder
         elif part['method'] == 'sber_reqs' or not strict_fee:
@@ -5841,9 +5842,11 @@ def _bank_conversion_coverage(session, deal, sources, *, strict_fee=False):
     except (ValueError, TypeError):
         parts = []
     known_uuids = {inc.uuid for inc in incomes}
-    missing_uuids = [str(part.get('uuid')) for part in parts
-                     if isinstance(part, dict) and part.get('uuid')
-                     and str(part['uuid']) not in known_uuids]
+    referenced_uuids = [str(part['uuid']) for part in parts
+                        if isinstance(part, dict) and part.get('uuid')]
+    referenced_uuids.extend(str(uid) for part in _payin_all_parts(deal)[1:]
+                            for uid in (part.get('sber_uuids') or []) if uid)
+    missing_uuids = [uid for uid in referenced_uuids if uid not in known_uuids]
     incomplete = (any(sources.get(inc.id, 0) + 0.01 < (inc.amount_rub or 0)
                       for inc in incomes)
                   or bool(missing_uuids)

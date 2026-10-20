@@ -195,7 +195,23 @@ def test_mixed_conversion_create_keeps_unknown_fee_as_warning(client):
         assert 'Комиссия эквайринга неизвестна' in reasons[deal_ids[0]]
         assert deal_ids[1] not in reasons
 
-        conv_id = response.get_json()['conversion']['id']
+        # Unknown fee relaxes only the amount comparison. It cannot hide an
+        # extra bank UUID that is absent from the claimed incomes.
+        assert client.delete(f'/api/conversions/{conv_id}').status_code == 200
+        conv_id = None
+        gross_deal = session.query(Deal).get(deal_ids[0])
+        gross_deal.payin_extra = json.dumps([{
+            'method': 'sber_wl', 'amount_rub': 1,
+            'sber_uuids': [uuid.uuid4().hex]}])
+        gross_deal.payin_amount_rub = 100001
+        session.commit()
+        response = client.post('/api/conversions', json={
+            'broker': 'TRADEX', 'rate_rub_usdt': 99.3,
+            'sources': [{'sber_income_id': sid} for sid in income_ids],
+        })
+        assert response.status_code == 409
+        assert response.get_json()['error_code'] == 'bank_deal_conversion_lock'
+
     finally:
         session.rollback()
         if conv_id is not None:
