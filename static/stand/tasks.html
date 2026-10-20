@@ -712,8 +712,9 @@ a.hash:hover{background:#BAE6FD}
 .deal-screen .deal-breadcrumb{margin-bottom:var(--ds-md)}
 .deal-screen .task-card-nav{display:none}
 @media(max-width:700px){
-  .deal-screen .task-card-nav{display:flex;align-items:center;margin-bottom:var(--ds-md)}
+  .deal-screen .task-card-nav{display:flex;align-items:center;justify-content:space-between;gap:var(--ds-sm);margin-bottom:var(--ds-md)}
   .deal-screen .task-card-nav button{min-height:44px;padding:0;border:0;background:none;color:var(--navy-700);font:600 16px Inter,system-ui,sans-serif;cursor:pointer}
+  .deal-screen .task-card-nav button:disabled{opacity:.45;cursor:default}
 }
 .deal-screen .deal-head{background:var(--ds-surface);border-radius:var(--ds-card);padding:var(--ds-xl);display:flex;align-items:center;justify-content:space-between;gap:var(--ds-xl);margin-bottom:var(--ds-md)}
 .deal-screen .deal-head h1{font-size:var(--ds-emphasis);font-weight:var(--ds-semibold);margin:var(--ds-xs) 0}
@@ -5353,11 +5354,18 @@ function saveUi(){if(!STAND)save();}
 function setRole(r){S.role=r;S.draft=null;S.modal=null;S.taskBranch=null;S.tab='tasks';saveUi();render();}
 function setTab(t){S.tab=t;S.open=null;S.draft=null;S.modal=null;saveUi();render();}
 let taskListScrollY=null;
+let taskListEntries=[];
+let taskListCursor=-1;
 let taskCardHistoryPushed=false;
 function mobileTaskCard(){return window.matchMedia('(max-width:700px)').matches;}
-function rememberTaskList(){
-  if(mobileTaskCard()&&document.querySelector('#app .task-list'))
-    taskListScrollY=window.scrollY;
+function rememberTaskList(id,branch){
+  if(!mobileTaskCard()||!document.querySelector('#app .task-list'))return;
+  taskListScrollY=window.scrollY;
+  taskListEntries=[...document.querySelectorAll('.task-list-panel.on [data-task-id]')].map(row=>({
+    id:Number(row.dataset.taskId),branch:row.dataset.taskBranch||null,
+    view:row.dataset.taskView||'task'
+  }));
+  taskListCursor=taskListEntries.findIndex(item=>item.id===Number(id)&&item.branch===(branch||null));
 }
 function closeTaskView(){
   S.open=null;S.draft=null;S.tab='tasks';saveUi();render();
@@ -5383,8 +5391,16 @@ document.addEventListener('click',event=>{
   event.preventDefault();event.stopPropagation();
   closeTaskToList();
 },true);
-function openDeal(id){const wasOpen=!!S.open;rememberTaskList();S.open=id;S.view='deal';S.taskBranch=null;pushTaskCardHistory(wasOpen);saveUi();render();}
-function openTask(id,branch){const wasOpen=!!S.open;rememberTaskList();S.open=id;S.view='task';S.taskBranch=branch||null;pushTaskCardHistory(wasOpen);saveUi();render();if(taskUsesThbRates())ensureThbRates();}
+function openDeal(id){const wasOpen=!!S.open;rememberTaskList(id,null);S.open=id;S.view='deal';S.taskBranch=null;pushTaskCardHistory(wasOpen);saveUi();render();}
+function openTask(id,branch){const wasOpen=!!S.open;rememberTaskList(id,branch);S.open=id;S.view='task';S.taskBranch=branch||null;pushTaskCardHistory(wasOpen);saveUi();render();if(taskUsesThbRates())ensureThbRates();}
+function nextTask(){
+  const next=taskListEntries[taskListCursor+1];
+  if(!next)return;
+  taskListCursor++;
+  if(next.view==='deal')openDeal(next.id);
+  else openTask(next.id,next.branch);
+  window.scrollTo(0,0);
+}
 function setInspectRole(role){S.inspectRole=role;saveUi();render();}
 function setView(v){S.view=v;saveUi();render();}
 function back(){
@@ -5693,7 +5709,7 @@ function taskDealsHtml(role){
   return `<div class="task-deals-table"><div class="task-deals-heading"><span>Сделка</span><span>Флоу</span><span>Этап</span><span>На ком</span><span>Сумма</span><span>С какого времени</span></div>${deals.map(d=>{
     const a=approx(d),amount=apMoney(a,'pay');
     const path=dealTaskPath(d,null),lastEvent=(d.log||[]).at(-1),sinceAt=lastEvent?.at;
-    return `<button type="button" class="task-deal-row" onclick="openDeal(${d.id})"><span class="task-deal-name"><strong>${htmlText(d.code)} · ${htmlText(d.client)}</strong></span><span class="task-deal-flow">${htmlText(d.kind||d.type||'Сделка')}</span><span class="task-deal-stage">${htmlText(d.closed?d.closeReason||'Завершена':d.prepay?prepayBranchStatus(d,'payment'):stepTitle(d))}<span class="task-deal-progress" aria-label="Шаг ${path.index+1} из ${path.steps.length}">${path.steps.map((_,i)=>`<i class="${i<path.index?'done':i===path.index?'current':''}"></i>`).join('')}</span></span><span class="task-deal-who">${htmlText(d.closed?'—':d.prepay?prepayBranchAssignee(d,'payment'):(ROLES[stepWho(d)]||{}).n||'—')}</span><b class="task-deal-amount num">${amount==='посчитаем после курса'?apMoney(a,'thb'):amount}</b><span class="task-deal-since">${typeof sinceAt==='number'&&Number.isFinite(sinceAt)?since(sinceAt):'—'}</span></button>`;
+    return `<button type="button" class="task-deal-row" data-task-id="${d.id}" data-task-view="deal" onclick="openDeal(${d.id})"><span class="task-deal-name"><strong>${htmlText(d.code)} · ${htmlText(d.client)}</strong></span><span class="task-deal-flow">${htmlText(d.kind||d.type||'Сделка')}</span><span class="task-deal-stage">${htmlText(d.closed?d.closeReason||'Завершена':d.prepay?prepayBranchStatus(d,'payment'):stepTitle(d))}<span class="task-deal-progress" aria-label="Шаг ${path.index+1} из ${path.steps.length}">${path.steps.map((_,i)=>`<i class="${i<path.index?'done':i===path.index?'current':''}"></i>`).join('')}</span></span><span class="task-deal-who">${htmlText(d.closed?'—':d.prepay?prepayBranchAssignee(d,'payment'):(ROLES[stepWho(d)]||{}).n||'—')}</span><b class="task-deal-amount num">${amount==='посчитаем после курса'?apMoney(a,'thb'):amount}</b><span class="task-deal-since">${typeof sinceAt==='number'&&Number.isFinite(sinceAt)?since(sinceAt):'—'}</span></button>`;
   }).join('')}</div>`;
 }
 function showTaskListSection(section){
@@ -5763,7 +5779,7 @@ function viewTasks(){
         const amount=branch==='conversion'&&prepayRefundRole(d)===role?moneyKop(d.payout?.usdt||0,'USDT'):
           branch==='conversion'?moneyKop(d.amountRub||d.incomeAmount||0,'₽'):
           d.prepay?usd(d.prepay.amount):apMoney(a,'pay');
-        return `<button type="button" class="task-list-row" title="шаг ${path.index+1} из ${path.steps.length}"
+        return `<button type="button" class="task-list-row" data-task-id="${d.id}" data-task-branch="${branch||''}" title="шаг ${path.index+1} из ${path.steps.length}"
           onclick="openTask(${d.id},${branch?`'${branch}'`:'null'})">
           <span class="task-list-row-main"><strong>${role==='admin'?htmlText((ROLES[stepWho(d)]||{}).n||'Сотрудник')+' · ':''}${htmlText(title)}</strong>
             <span class="task-list-meta">${htmlText(d.code)} · ${htmlText(d.client)} · ${d.prepay?'Оплата наперёд · ':''}${htmlText(d.kind||d.type)}</span>
@@ -5783,7 +5799,7 @@ function viewTasks(){
     h+=group.map(d=>{
       const a=approx(d),pay=apMoney(a,'pay');
       const canRemind=role==='manager'&&d.step==='s14';
-      return `<div class="task-list-row task-list-wait-row${canRemind?' task-list-wait-row-remind':''}" role="button" tabindex="0"
+      return `<div class="task-list-row task-list-wait-row${canRemind?' task-list-wait-row-remind':''}" data-task-id="${d.id}" data-task-view="deal" role="button" tabindex="0"
           onclick="openDeal(${d.id})" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openDeal(${d.id})}">
         <span class="task-list-row-main"><strong>${htmlText(d.prepay?prepayBranchStatus(d,'payment'):stepTitle(d))}</strong>
           <span class="task-list-meta">${d.code} · ${d.client} · ${d.type}${d.kind?' · '+d.kind:''}</span></span>
@@ -6762,7 +6778,7 @@ function viewDeal(d){
   }
   if(d.demoTransfers&&!demoAllowed())body='<div class="alert a-warn">В истории есть DEMO-приходы или переводы. Автоматически снять флаг и продолжить нельзя: требуется сверка реальных платежей операционистом.</div>'+body;
   const tab=(v,label)=>`<span class="vtab ${view===v?'on':''}" onclick="setView('${v}')">${label}</span>`;
-  return `<div class="deal-screen"><div class="task-card-nav"><button type="button" onclick="closeTaskToList()">‹ Все задачи</button></div><div class="deal-breadcrumb">Задачник / ${htmlText(d.code)}</div>
+  return `<div class="deal-screen"><div class="task-card-nav"><button type="button" onclick="closeTaskToList()">‹ Все задачи</button><button type="button" onclick="nextTask()" ${taskListCursor<0||taskListCursor+1>=taskListEntries.length?'disabled':''}>Следующая задача ›</button></div><div class="deal-breadcrumb">Задачник / ${htmlText(d.code)}</div>
   <header class="deal-head"><div><p class="deal-code">${htmlText(d.code)} · ${htmlText(d.kind||d.type)}${d.prepay?' · оплата наперёд':''}</p>
     <h1>${htmlText(d.client)}</h1><p>${htmlText([d.object,d.dev,d.manager?'менеджер '+d.manager:''].filter(Boolean).join(' · '))}</p></div>
     ${['manager','admin'].includes(S.role)&&!d.closed&&!d.manual?`<button class="btn btn-outline btn-sm" onclick="manualCloseAsk(${d.id})">Перенести в CRM и закрыть</button>`:''}
