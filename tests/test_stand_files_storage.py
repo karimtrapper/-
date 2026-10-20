@@ -101,6 +101,40 @@ def test_upload_preserves_roles_and_steps(api, role, kind, step, pending, allowe
         assert api[0].get('/api/stand/file/1473/pass/0?draft=1').status_code == 403
 
 
+@pytest.mark.parametrize('role,step', [
+    ('manager', 's5'), ('operator', 's23'), ('admin', 'done'),
+])
+def test_extra_document_upload_on_any_step(api, role, step):
+    api[1][0] = role
+    state = board(step)
+    if step == 'done':
+        state['deals'][0].update(closed=True, closeReason='Успешно завершена')
+    seed(state)
+    raw = b'%PDF-1.4\nextra'
+    response = api[0].post('/api/stand/files', data={
+        'dealId': '1473', 'kind': 'additional', 'documentType': 'inv', 'extra': '1',
+        'file': (io.BytesIO(raw), 'extra.pdf', 'application/pdf')})
+    assert response.status_code == 200, response.json
+    deal = response.json['data']['deals'][0]
+    assert deal['files']['additional'][0]['file'] == 'extra.pdf'
+    assert deal['files']['additional'][0]['documentType'] == 'inv'
+    assert not deal['docs'].get('inv')
+    assert '_managerDraft' not in deal or not (deal['_managerDraft'].get('files') or {}).get('inv')
+    assert api[0].get('/api/stand/file/1473/additional/0').data == raw
+
+
+def test_other_manager_cannot_change_deal_documents(api):
+    api[1][0] = 'manager'
+    state = board('s14')
+    state['deals'][0]['manager'] = 'Другой менеджер'
+    seed(state)
+    denied = api[0].post('/api/stand/files', data={
+        'dealId': '1473', 'kind': 'additional', 'documentType': 'inv', 'extra': '1',
+        'file': (io.BytesIO(b'%PDF-1.4\nother'), 'other.pdf', 'application/pdf')})
+    assert denied.status_code == 403
+    assert 'её менеджер' in denied.json['error']
+
+
 def test_migrate_16_files_and_verify_byte_for_byte_and_idempotence(api):
     state = board()
     state['deals'].append(dict(id=1484, step='s23', files={}, _managerDraft={'files': {}}, docs={}))
@@ -167,12 +201,238 @@ def test_delete_soft_and_wrong_reference_forbidden(api):
     assert api[0].put('/api/stand/state',json={'version':2,'fileStorageVersion':1,'data':forged}).status_code == 409
     state['deals'][0]['files']['inv'] = []
     response = api[0].put('/api/stand/state',json={'version':2,'fileStorageVersion':1,'data':state})
+    assert response.status_code == 409
+    assert response.json['error'] == 'Удаляйте документы кнопкой «Удалить»'
+    response = api[0].patch(f"/api/stand/files/1473/inv/{item['id']}", json={'action': 'delete'})
     assert response.status_code == 200, response.json
     with m.SessionLocal() as db:
         row = db.get(m.StandFile, item['storageId'])
         assert row.deleted_at is not None
         assert objects.read_verified(row.object_key, row.size, row.sha256) == b'%PDF-1.4\ndelete'
     assert api[0].get('/api/stand/file/1473/inv/0').status_code == 404
+
+
+def test_document_delete_and_admin_restore_keep_object_and_history(api):
+    api[1][0] = 'manager'
+    seed(board('s23'))
+    raw = b'%PDF-1.4\nrecoverable'
+    uploaded = upload(api, raw)
+    assert uploaded.status_code == 200, uploaded.json
+    item = uploaded.json['data']['deals'][0]['files']['inv'][0]
+    url = f"/api/stand/files/1473/inv/{item['id']}"
+    deleted = api[0].patch(url, json={'action': 'delete'})
+    assert deleted.status_code == 200, deleted.json
+    deal = deleted.json['data']['deals'][0]
+    assert not deal['files']['inv']
+    assert deal['deletedFiles']['inv'][0]['id'] == item['id']
+    assert 'Удалён документ invoice.pdf' in deal['log'][-1]['text']
+    with m.SessionLocal() as db:
+        stored = db.get(m.StandFile, item['storageId'])
+        assert stored.deleted_at is not None
+        assert objects.read_verified(stored.object_key, stored.size, stored.sha256) == raw
+    assert api[0].get('/api/stand/file/1473/inv/0').status_code == 404
+    stale = api[0].get('/api/stand/state').json
+    stale['data']['deals'][0].pop('deletedFiles')
+    saved = api[0].put('/api/stand/state', json={
+        'version': stale['version'], 'fileStorageVersion': 1, 'data': stale['data']})
+    assert saved.status_code == 200, saved.json
+    assert saved.json['data']['deals'][0]['deletedFiles']['inv'][0]['id'] == item['id']
+    assert api[0].patch(url, json={'action': 'restore'}).status_code == 403
+    api[1][0] = 'admin'
+    restored = api[0].patch(url, json={'action': 'restore'})
+    assert restored.status_code == 200, restored.json
+    assert restored.json['data']['deals'][0]['files']['inv'][0]['id'] == item['id']
+    assert api[0].get('/api/stand/file/1473/inv/0').data == raw
+
+
+def test_manager_draft_file_can_be_soft_deleted_and_restored(api):
+    api[1][0] = 'manager'
+    seed(board('s5'))
+    uploaded = upload(api, b'%PDF-1.4\ndraft', kind='pass', name='passport.pdf')
+    assert uploaded.status_code == 200, uploaded.json
+    item = uploaded.json['data']['deals'][0]['_managerDraft']['files']['pass'][0]
+    url = f"/api/stand/files/1473/pass/{item['id']}?draft=1"
+    deleted = api[0].patch(url, json={'action': 'delete'})
+    assert deleted.status_code == 200, deleted.json
+    draft = deleted.json['data']['deals'][0]['_managerDraft']
+    assert not draft['files']['pass']
+    assert draft['deletedFiles']['pass'][0]['id'] == item['id']
+    assert 'Удалён документ passport.pdf' in deleted.json['data']['deals'][0]['log'][-1]['text']
+    api[1][0] = 'admin'
+    restored = api[0].patch(url, json={'action': 'restore'})
+    assert restored.status_code == 200, restored.json
+    assert restored.json['data']['deals'][0]['_managerDraft']['files']['pass'][0]['id'] == item['id']
+
+
+def test_closed_deal_rejects_non_admin_document_delete(api):
+    api[1][0] = 'manager'
+    state = board('done')
+    state['deals'][0].update(closed=True, closeReason='Успешно завершена')
+    seed(state)
+    uploaded = upload(api, b'%PDF-1.4\nclosed')
+    assert uploaded.status_code == 409  # legacy upload guard, tested separately
+    state['deals'][0]['closed'] = False
+    seed(state)
+    uploaded = upload(api, b'%PDF-1.4\nclosed')
+    assert uploaded.status_code == 200, uploaded.json
+    with m.SessionLocal() as db:
+        row = db.get(m.StandState, 1)
+        board_state = json.loads(row.data)
+        board_state['deals'][0].update(closed=True, closeReason='Успешно завершена')
+        row.data = json.dumps(board_state, ensure_ascii=False)
+        db.commit()
+    item = uploaded.json['data']['deals'][0]['files']['inv'][0]
+    url = f"/api/stand/files/1473/inv/{item['id']}"
+    denied = api[0].patch(url, json={'action': 'delete'})
+    assert denied.status_code == 403
+    assert denied.json['error'] == 'Сделка закрыта, удаление документов — только администратором'
+    api[1][0] = 'admin'
+    assert api[0].patch(url, json={'action': 'delete'}).status_code == 200
+    assert api[0].patch(url, json={'action': 'restore'}).status_code == 200
+
+
+def test_completed_crm_deal_blocks_delete_even_if_board_is_open(api):
+    api[1][0] = 'manager'
+    seed(board('s14'))
+    uploaded = upload(api, b'%PDF-1.4\ncrm-completed')
+    assert uploaded.status_code == 200, uploaded.json
+    with m.SessionLocal() as db:
+        crm = m.Deal(deal_type=m.DealType.PAY_IN, status=m.DealStatus.COMPLETED)
+        db.add(crm)
+        db.flush()
+        row = db.get(m.StandState, 1)
+        state = json.loads(row.data)
+        state['deals'][0]['crmDealId'] = crm.id
+        row.data = json.dumps(state, ensure_ascii=False)
+        db.commit()
+    item = uploaded.json['data']['deals'][0]['files']['inv'][0]
+    url = f"/api/stand/files/1473/inv/{item['id']}"
+    denied = api[0].patch(url, json={'action': 'delete'})
+    assert denied.status_code == 403
+    assert 'только администратором' in denied.json['error']
+    assert read_db()[1]['deals'][0]['files']['inv'][0]['id'] == item['id']
+    forged = api[0].get('/api/stand/state').json
+    forged['data']['deals'][0]['files']['inv'] = []
+    bypass = api[0].put('/api/stand/state', json={
+        'version': forged['version'], 'fileStorageVersion': 1, 'data': forged['data']})
+    assert bypass.status_code == 403
+    assert 'только администратором' in bypass.json['error']
+
+
+def test_agreement_document_soft_delete_history_and_admin_restore(api):
+    api[1][0] = 'manager'
+    raw = b'%PDF-1.4\nissued'
+    with m.SessionLocal() as db:
+        agreement = m.Agreement(client_name='Документы QA', client_key='qa-docs',
+                                route_key='legacy', deal_type='freehold', number='QA-DOC-1')
+        db.add(agreement)
+        db.flush()
+        doc = m.AgreementDoc(agreement_id=agreement.id, kind='invoice', filename='issued.pdf',
+                             mime='application/pdf', size=len(raw), data=raw, seq=1)
+        db.add(doc)
+        db.flush()
+        agreement_id, doc_id = agreement.id, doc.id
+        db.commit()
+    state = board('s14')
+    state['deals'][0].update(docPack={'agreementId': agreement_id, 'version': 1},
+                             docsIssued=[{'kind':'bill', 'docId':doc_id, 'file':'issued.pdf',
+                                          'version':1}])
+    seed(state)
+    url = f'/api/docs/file/{doc_id}'
+    whole = api[0].delete(f'/api/docs/agreements/{agreement_id}')
+    assert whole.status_code == 409
+    assert 'связан со сделкой' in whole.json['error']
+    deleted = api[0].patch(url, json={'action': 'delete'})
+    assert deleted.status_code == 200, deleted.json
+    with m.SessionLocal() as db:
+        saved = db.get(m.AgreementDoc, doc_id)
+        assert saved.deleted_at is not None and saved.data == raw
+    deal = read_db()[1]['deals'][0]
+    assert 'Удалён документ issued.pdf' in deal['log'][-1]['text']
+    assert deal['docsIssued'][0]['deletedAt']
+    assert api[0].get(url).status_code == 404
+    assert not api[0].get(f'/api/docs/agreements/{agreement_id}').json['agreement']['docs']
+    assert api[0].patch(url, json={'action': 'restore'}).status_code == 403
+    api[1][0] = 'admin'
+    assert api[0].get(f'/api/docs/agreements/{agreement_id}').json['agreement']['docs'][0]['deleted_at']
+    restored = api[0].patch(url, json={'action': 'restore'})
+    assert restored.status_code == 200, restored.json
+    assert api[0].get(url).data == raw
+    assert not read_db()[1]['deals'][0]['docsIssued'][0].get('deletedAt')
+    with m.SessionLocal() as db:
+        crm = m.Deal(deal_type=m.DealType.PAY_IN, status=m.DealStatus.COMPLETED)
+        db.add(crm)
+        db.flush()
+        row = db.get(m.StandState, 1)
+        state = json.loads(row.data)
+        state['deals'][0]['crmDealId'] = crm.id
+        row.data = json.dumps(state, ensure_ascii=False)
+        db.commit()
+    api[1][0] = 'manager'
+    denied = api[0].patch(url, json={'action': 'delete'})
+    assert denied.status_code == 403
+    assert denied.json['error'] == 'Сделка закрыта, удаление документов — только администратором'
+    api[1][0] = 'admin'
+    assert api[0].patch(url, json={'action': 'delete'}).status_code == 200
+    assert api[0].patch(url, json={'action': 'restore'}).status_code == 200
+
+
+def test_crm_additional_document_upload_uses_existing_kind(api):
+    api[1][0] = 'operator'
+    with m.SessionLocal() as db:
+        agreement = m.Agreement(client_name='Загрузка QA', client_key='qa-upload',
+                                route_key='legacy', deal_type='leasehold', number='QA-UP-1')
+        db.add(agreement)
+        db.commit()
+        agreement_id = agreement.id
+    raw = b'%PDF-1.4\nadditional-crm'
+    url = f'/api/docs/agreements/{agreement_id}/upload'
+    uploaded = api[0].post(url, data={'kind':'source_other',
+        'files':(io.BytesIO(raw),'other.pdf','application/pdf')})
+    assert uploaded.status_code == 200, uploaded.json
+    doc = uploaded.json['agreement']['docs'][0]
+    assert doc['kind'] == 'source_other'
+    assert api[0].get(f"/api/docs/file/{doc['id']}").data == raw
+    forbidden = api[0].post(url, data={'kind':'agreement',
+        'files':(io.BytesIO(raw),'forged.pdf','application/pdf')})
+    assert forbidden.status_code == 400
+
+
+def test_crm_linked_document_rejects_another_manager(api):
+    api[1][0] = 'manager'
+    with m.SessionLocal() as db:
+        agreement = m.Agreement(client_name='Чужая сделка', client_key='qa-owner',
+                                route_key='legacy', deal_type='freehold', number='QA-OWNER-1')
+        db.add(agreement)
+        db.flush()
+        doc = m.AgreementDoc(agreement_id=agreement.id, kind='invoice', filename='owner.pdf',
+                             mime='application/pdf', size=8, data=b'%PDF-1.4', seq=1)
+        db.add(doc)
+        db.flush()
+        agreement_id, doc_id = agreement.id, doc.id
+        db.commit()
+    state = board('s14')
+    state['deals'][0].update(manager='Другой менеджер', docPack={'agreementId': agreement_id})
+    seed(state)
+    blocked = api[0].post(f'/api/docs/agreements/{agreement_id}/upload', data={
+        'kind': 'source_other', 'files': (io.BytesIO(b'%PDF-1.4'), 'extra.pdf', 'application/pdf')})
+    assert blocked.status_code == 403
+    assert api[0].patch(f'/api/docs/file/{doc_id}', json={'action': 'delete'}).status_code == 403
+
+
+def test_put_cannot_move_existing_file_to_another_document_type(api):
+    api[1][0] = 'manager'
+    seed(board())
+    uploaded = upload(api, b'%PDF-1.4\nmove-me')
+    assert uploaded.status_code == 200, uploaded.json
+    state = uploaded.json['data']
+    item = state['deals'][0]['files']['inv'].pop()
+    state['deals'][0]['files']['spa'] = [item]
+    moved = api[0].put('/api/stand/state', json={
+        'fileStorageVersion': 1, 'version': uploaded.json['version'], 'data': state})
+    assert moved.status_code == 409
+    assert moved.json['error'] in ('invalid_file_marker', 'Удаляйте документы кнопкой «Удалить»')
+    assert read_db()[1]['deals'][0]['files']['inv'][0]['id'] == item['id']
 
 
 def test_size_limits_and_no_total_board_limit(api, monkeypatch):
