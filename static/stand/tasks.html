@@ -5353,26 +5353,42 @@ function saveUi(){if(!STAND)save();}
 function setRole(r){S.role=r;S.draft=null;S.modal=null;S.taskBranch=null;S.tab='tasks';saveUi();render();}
 function setTab(t){S.tab=t;S.open=null;S.draft=null;S.modal=null;saveUi();render();}
 let taskListScrollY=null;
+let taskCardHistoryPushed=false;
+function mobileTaskCard(){return window.matchMedia('(max-width:700px)').matches;}
 function rememberTaskList(){
-  if(window.matchMedia('(max-width:700px)').matches&&document.querySelector('#app .task-list'))
+  if(mobileTaskCard()&&document.querySelector('#app .task-list'))
     taskListScrollY=window.scrollY;
 }
-function closeTaskToList(){
+function closeTaskView(){
   S.open=null;S.draft=null;S.tab='tasks';saveUi();render();
   if(taskListScrollY!==null)requestAnimationFrame(()=>window.scrollTo(0,taskListScrollY));
 }
+function closeTaskToList(){
+  if(mobileTaskCard()&&taskCardHistoryPushed){history.back();return;}
+  closeTaskView();
+}
+function pushTaskCardHistory(wasOpen){
+  if(!mobileTaskCard()||wasOpen||taskCardHistoryPushed)return;
+  history.pushState({...history.state,__calccrmTaskCard:true},'',location.href);
+  taskCardHistoryPushed=true;
+}
+window.addEventListener('popstate',()=>{
+  if(!taskCardHistoryPushed)return;
+  taskCardHistoryPushed=false;
+  if(S.open&&mobileTaskCard())closeTaskView();
+});
 document.addEventListener('click',event=>{
-  if(!S.open||!window.matchMedia('(max-width:700px)').matches)return;
+  if(!S.open||!mobileTaskCard())return;
   if(!event.target.closest?.('a[href="/tasks"]'))return;
   event.preventDefault();event.stopPropagation();
   closeTaskToList();
 },true);
-function openDeal(id){rememberTaskList();S.open=id;S.view='deal';S.taskBranch=null;saveUi();render();}
-function openTask(id,branch){rememberTaskList();S.open=id;S.view='task';S.taskBranch=branch||null;saveUi();render();if(taskUsesThbRates())ensureThbRates();}
+function openDeal(id){const wasOpen=!!S.open;rememberTaskList();S.open=id;S.view='deal';S.taskBranch=null;pushTaskCardHistory(wasOpen);saveUi();render();}
+function openTask(id,branch){const wasOpen=!!S.open;rememberTaskList();S.open=id;S.view='task';S.taskBranch=branch||null;pushTaskCardHistory(wasOpen);saveUi();render();if(taskUsesThbRates())ensureThbRates();}
 function setInspectRole(role){S.inspectRole=role;saveUi();render();}
 function setView(v){S.view=v;saveUi();render();}
 function back(){
-  if(window.matchMedia('(max-width:700px)').matches&&S.open){closeTaskToList();return;}
+  if(mobileTaskCard()&&S.open){closeTaskToList();return;}
   S.open=null;S.draft=null;saveUi();render();
 }
 /* Черновики полей, которые читаются только по кнопке: комментарии, ответ курса, хеш.
