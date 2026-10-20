@@ -5720,8 +5720,10 @@ def _conversion_has_mixed_basis(db, conversion_ids):
     return {value is True for (value,) in rows} == {False, True}
 
 
-def _deal_bank_net_rub(deal, incomes, *, strict_fee=False):
-    """Normalize bank parts to credited RUB; None means fee/share is unknown."""
+def _deal_bank_net_rub(deal, incomes, *, strict_fee=False, issues=None):
+    """Normalize bank parts to credited RUB; record unproven fee/share inputs."""
+    if issues is None:
+        issues = []
     by_uuid = {inc.uuid: inc for inc in incomes}
     all_parts = _payin_all_parts(deal)
     extra_uuids = {str(uid) for part in all_parts[1:]
@@ -5757,6 +5759,8 @@ def _deal_bank_net_rub(deal, incomes, *, strict_fee=False):
                 if inc is None:
                     return None
                 taken = float(p.get('amount_rub') or 0)
+                if not parse_sber_acquiring(inc.purpose)['fee_known']:
+                    issues.append('fee_unknown')
                 fraction = _income_share_fraction(inc, taken, False, strict_fee=strict_fee)
                 if fraction is None:
                     return None
@@ -5764,7 +5768,8 @@ def _deal_bank_net_rub(deal, incomes, *, strict_fee=False):
                 used += taken
             remainder = amount - used
             if remainder > 0.01:
-                if part['method'] != 'sber_reqs' and strict_fee:
+                issues.append('shares_missing')
+                if strict_fee:
                     return None
                 total += remainder
             elif remainder < -1:
@@ -5773,12 +5778,22 @@ def _deal_bank_net_rub(deal, incomes, *, strict_fee=False):
         if refs:
             gross = 0.0
             net = 0.0
+            fee_unknown = False
             for inc in refs:
                 acq = parse_sber_acquiring(inc.purpose)
-                if strict_fee and not acq['fee_known']:
-                    return None
+                if not acq['fee_known']:
+                    issues.append('fee_unknown')
+                    fee_unknown = True
                 gross += (inc.amount_rub or 0) + acq['fee_rub']
                 net += inc.amount_rub or 0
+            if len(refs) > 1 and amount < gross - 0.01:
+                # A partial group stores only an aggregate amount and UUIDs.
+                # Per-income shares are absent, and bank fees may differ.
+                issues.append('shares_missing')
+                if strict_fee:
+                    return None
+            if strict_fee and fee_unknown:
+                return None
             allocated = min(amount, gross)
             total += allocated * net / gross if gross else 0
             remainder = amount - allocated
@@ -5818,7 +5833,9 @@ def _bank_conversion_coverage(session, deal, sources, *, strict_fee=False):
     by_id = {inc.id: inc for inc in incomes}
     taken = round(sum(sources.get(inc.id, 0) for inc in incomes), 2)
     required = round(sum(inc.amount_rub or 0 for inc in incomes), 2)
-    bank_net = _deal_bank_net_rub(deal, incomes, strict_fee=strict_fee)
+    issues = []
+    bank_net = _deal_bank_net_rub(deal, incomes, strict_fee=strict_fee,
+                                  issues=issues)
     try:
         parts = json.loads(deal.payin_parts) if deal.payin_parts else []
     except (ValueError, TypeError):
@@ -5830,11 +5847,14 @@ def _bank_conversion_coverage(session, deal, sources, *, strict_fee=False):
     incomplete = (any(sources.get(inc.id, 0) + 0.01 < (inc.amount_rub or 0)
                       for inc in incomes)
                   or bool(missing_uuids)
-                  or bank_net is None
-                  or bank_net > required + 1.0)
+                  or (bank_net is None and
+                      (strict_fee or 'fee_unknown' not in issues))
+                  or (bank_net is not None and bank_net > required + 1.0
+                      and 'fee_unknown' not in issues))
     return {'incomplete': incomplete, 'taken_rub': taken,
             'required_rub': required, 'incomes': by_id,
-            'fee_unknown': bank_net is None}
+            'fee_unknown': 'fee_unknown' in issues,
+            'shares_missing': 'shares_missing' in issues}
 
 
 def _validate_deal_bank_conversion_lock(session, deal, protected_income_ids=None):
@@ -6640,6 +6660,33 @@ def conversion_distribution(db, conv):
             wl_to_pay += to_pay
             wl_margin += share - to_pay
 
+    # A claimed income may belong to a deal only in part. The bank net amount
+    # fixes the deal's total USDT because every source in this conversion has
+    # the same effective rate. Keep the remainder unattributed; its owner is
+    # not determined by claimed_deal_id. No per-income split is guessed here.
+    for deal_id, full_share in list(per_deal.items()):
+        deal = db.query(Deal).get(deal_id)
+        if not deal:
+            continue
+        linked_incomes = db.query(SberIncome).filter(
+            SberIncome.claimed_deal_id == deal_id).all()
+        linked_rub = round(sum(inc.amount_rub or 0 for inc in linked_incomes), 2)
+        source_rub = source_rub_by_deal.get(deal_id, 0)
+        issues = []
+        bank_net = _deal_bank_net_rub(deal, linked_incomes,
+                                      strict_fee=strict_fee, issues=issues)
+        if (not linked_rub or abs(source_rub - linked_rub) > 0.01
+                or bank_net is None or issues or bank_net > linked_rub + 0.01):
+            continue
+        assigned = round(full_share * min(bank_net / linked_rub, 1), 2)
+        remainder = round(full_share - assigned, 2)
+        if remainder > 0.01:
+            per_deal[deal_id] = assigned
+            unassigned_incomes.append({
+                'sber_income_id': None, 'partial_deal_id': deal_id,
+                'amount_rub': round(linked_rub - bank_net, 2),
+                'operation_date': None, 'share_usdt': remainder})
+
     to_return, settled, no_return_deals = {}, {}, []
     obligations = margin = no_return = 0.0
     needs_input = False
@@ -6665,10 +6712,14 @@ def conversion_distribution(db, conv):
             SberIncome.claimed_deal_id == deal.id).all()
         linked_rub = round(sum(i.amount_rub or 0 for i in linked_incomes), 2)
         source_rub = source_rub_by_deal.get(deal.id, 0)
-        bank_net = _deal_bank_net_rub(deal, linked_incomes, strict_fee=strict_fee)
+        bank_issues = []
+        bank_net = _deal_bank_net_rub(deal, linked_incomes, strict_fee=strict_fee,
+                                      issues=bank_issues)
         required_rub = max(linked_rub, bank_net or 0)
         if bank_net is None:
-            reason = ('Комиссия эквайринга неизвестна: нельзя распределить '
+            reason = ('не заданы доли по поступлениям'
+                      if 'shares_missing' in bank_issues else
+                      'Комиссия эквайринга неизвестна: нельзя распределить '
                       'gross и net в одной пачке. Уточните комиссию банка.')
             row['blocked_reason'] = reason
             blocked_deals.append({'deal_id': deal.id,
