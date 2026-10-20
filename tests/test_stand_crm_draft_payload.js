@@ -49,6 +49,16 @@ assert.equal(split.payin_extra[0].amount_usdt,20);
 assert.equal(split.payin_tx_hashes.length,1);
 assert.equal(split.payin_tx_hashes[0].hash,'m'.repeat(64));
 assert.equal(split.payin_extra[0].tx_hashes[0].hash,'e'.repeat(64));
+const flowDraft=ctx.crmPayload({...base,type:'Обмен валюты',kind:'',
+  payType:'По реквизитам',rubReceivingAccount:{mode:'flowsole'},
+  amountRub:40000,amountUsdt:400,payinParts:[],payinExtra:[],
+  payinHashes:[{hash:'f'.repeat(64),network:'trc20',amount:500}],
+  rates:{broker:100}});
+assert.equal(flowDraft.payin_method,'flow_sole_reqs');
+assert.equal(flowDraft.payin_amount_usdt,400,
+  'task CRM transfer must keep the declared draft, not the full hash amount');
+assert.equal(flowDraft.payin_tx_hashes[0].amount_usdt,500,
+  'the selected hash amount remains distinct proof data for server comparison');
 const rateOnly=ctx.crmPayload({...base,type:'Обмен валюты',kind:'',payType:'Крипта',
   amountUsdt:100,payinParts:[],payinExtra:[{method:'sber_reqs',
     amount_rub:2000,rate_rub_usdt:100,amount_usdt:null}]});

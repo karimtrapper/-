@@ -19279,8 +19279,6 @@ def _create_deal_impl(session=None, *, data=None, defer_commit=False, skip_flow_
 
         # Выдача с карты: снимаем баты с остатка и берём себестоимость по курсу
         # карты. Обязательно до пересчёта финансов — прибыль считается из неё
-        card_warning = _sync_card_allocation(session, deal)
-
         # Забор приходов Сбера из пула под части сделки (sber_reqs)
         if data.get('payin_parts'):
             _sync_sber_claims(session, deal, data['payin_parts'])
@@ -19309,6 +19307,16 @@ def _create_deal_impl(session=None, *, data=None, defer_commit=False, skip_flow_
             _sync_payin_tx_uses(session, deal, payin_parts,
                 allow_flow_draft_mismatch=(deal.payin_method == PayInMethod.FLOW_SOLE_REQS
                                            and not session.info.get('stand_payin_origin')))
+
+        flow_proof_required = deal.payin_method == PayInMethod.FLOW_SOLE_REQS
+        if flow_proof_required:
+            confirmation = _flow_sole_payin_confirmation(session, deal, refresh_network=True)
+            deal.payin_tx_verified = confirmation['status'] == 'confirmed'
+        # Cost must be known before profit and agent payouts are calculated.
+        # An unconfirmed Flow Sole draft keeps its planned payout without a
+        # real card allocation.
+        card_warning = (_sync_card_allocation(session, deal)
+                        if not flow_proof_required or deal.payin_tx_verified else None)
 
         # Пересчёт выплаты рефереру и чистой прибыли (фронт мог не знать
         # об авто-привязке реферера к клиенту и прислать referrer_payout_usdt=null)
@@ -19347,11 +19355,7 @@ def _create_deal_impl(session=None, *, data=None, defer_commit=False, skip_flow_
 
         _clear_profit_if_payin_unknown(deal)
 
-        flow_proof_required = (not skip_flow_gate
-                               and deal.payin_method == PayInMethod.FLOW_SOLE_REQS)
         if flow_proof_required:
-            confirmation = _flow_sole_payin_confirmation(session, deal, refresh_network=True)
-            deal.payin_tx_verified = confirmation['status'] == 'confirmed'
             payout_fact = bool(deal.payout_tx_hash or _payout_hash_list(deal))
             if (deal.status in (DealStatus.COMPLETED, DealStatus.VERIFIED) or payout_fact) and not deal.payin_tx_verified:
                 session.rollback()
@@ -19379,11 +19383,9 @@ def _create_deal_impl(session=None, *, data=None, defer_commit=False, skip_flow_
                 and (not flow_proof_required or deal.payin_tx_verified)):
             deal.status = DealStatus.COMPLETED
 
-        # skip_flow_gate=True только для внутренних вызовов (stand_crm_close,
-        # stand_crm_close_lose): они зеркалят в CRM сделку, уже прошедшую этот
-        # же гейт на стенде при создании/смене способа (_stand_guard_transition,
-        # /api/stand/payin/cash-method) — повторная проверка здесь избыточна и
-        # ошибочно блокирует обычное закрытие уже одобренной сделки.
+        # skip_flow_gate=True у внутренних переносов пропускает только старую
+        # проверку разрешённой комбинации. Сетевое доказательство Pay-In выше
+        # обязательно и для stand_crm_close, и для обычного CRM-запроса.
         if not skip_flow_gate:
             flow_problem = _legacy_unverified_flow_problem(
                 True, None, None, deal.deal_kind, deal.payin_method, data)
@@ -19409,8 +19411,11 @@ def _create_deal_impl(session=None, *, data=None, defer_commit=False, skip_flow_
             session.rollback()
             return jsonify(success=False, error=approval_problem[0]), approval_problem[1]
 
-        # Автоматическое списание с кошелька при создании
-        if deal.payout_source == PayOutSource.BINANCE and deal.payout_wallet_id and deal.payout_amount_usdt:
+        # A Flow Sole draft may contain a planned payout amount. Record an
+        # actual wallet expense only after strict network Pay-In proof.
+        if (deal.payout_source == PayOutSource.BINANCE and deal.payout_wallet_id
+                and deal.payout_amount_usdt
+                and (not flow_proof_required or deal.payin_tx_verified)):
             op = WalletOperation(
                 wallet_id=deal.payout_wallet_id,
                 type='expense',
@@ -19662,31 +19667,6 @@ def update_deal(deal_id):
             if not keep_existing:
                 deal.bank_card_id = new_card_id
 
-        # Управление списанием с Binance кошелька при сохранении/завершении
-        if deal.payout_source == PayOutSource.BINANCE and deal.payout_wallet_id and deal.payout_amount_usdt:
-            # Ищем существующую операцию для этой сделки
-            existing_op = session.query(WalletOperation).filter(
-                WalletOperation.deal_id == deal.id,
-                WalletOperation.type == 'expense'
-            ).first()
-            
-            if not existing_op:
-                op = WalletOperation(
-                    wallet_id=deal.payout_wallet_id,
-                    type='expense',
-                    amount=deal.payout_amount_usdt,
-                    description=f"Сделка #{deal.id} ({deal.client_name or 'без имени'})",
-                    tx_hash=deal.payout_tx_hash,
-                    deal_id=deal.id
-                )
-                session.add(op)
-            else:
-                # Обновляем существующую
-                existing_op.wallet_id = deal.payout_wallet_id
-                existing_op.amount = deal.payout_amount_usdt
-                existing_op.tx_hash = deal.payout_tx_hash
-                existing_op.description = f"Сделка #{deal.id} ({deal.client_name or 'без имени'})"
-
         # Если имя клиента изменилось — НЕ переименовываем глобально Client
         # (это бы изменило имя во всех его сделках), а перепривязываем эту
         # конкретную сделку к другому клиенту (find-or-create).
@@ -19726,6 +19706,35 @@ def update_deal(deal_id):
         if 'payin_amount_usdt' not in data:
             _fill_payin_usdt_from_conversion(session, deal)
 
+        flow_proof_required = deal.payin_method == PayInMethod.FLOW_SOLE_REQS
+        requested_payout_parts = (_normalize_payout_transfers(data['payout_tx_hashes'])
+                                  if 'payout_tx_hashes' in data else None)
+        payout_parts_changed = (requested_payout_parts is not None and
+            tuple((p['hash'], p['amount_usdt']) for p in requested_payout_parts)
+            != old_proof_state[9])
+        proof_touched = (_flow_sole_proof_fingerprint(deal) != old_proof_state
+                         or payout_parts_changed)
+        if flow_proof_required and proof_touched:
+            confirmation = _flow_sole_payin_confirmation(session, deal, refresh_network=True)
+            deal.payin_tx_verified = confirmation['status'] == 'confirmed'
+            payout_fact = bool(deal.payout_tx_hash or _payout_hash_list(deal)
+                               or requested_payout_parts)
+            if ((deal.status in (DealStatus.COMPLETED, DealStatus.VERIFIED) or payout_fact)
+                    and not deal.payin_tx_verified):
+                session.rollback()
+                return jsonify(success=False, error='Подтвердите сумму Pay-In хэшем сети',
+                               payin_confirmation=confirmation), 409
+            if not deal.payin_tx_verified:
+                # Existing allocations/expenses are real payouts, not merely a
+                # planned amount. Do not invalidate their Pay-In proof in place.
+                allocated = session.query(CardAllocation.id).filter_by(deal_id=deal.id).first()
+                spent = session.query(WalletOperation.id).filter_by(
+                    deal_id=deal.id, type='expense').first()
+                if allocated or spent or deal.reimbursement_id is not None:
+                    session.rollback()
+                    return jsonify(success=False, error='Подтвердите сумму Pay-In хэшем сети',
+                                   payin_confirmation=confirmation), 409
+
         # Выдача с карты: пересобираем расход под текущее состояние сделки.
         # Обязательно ДО пересчёта финансов — себестоимость батов берётся из
         # курса карты, форма её не шлёт (поле readonly). Стояло ниже пересчёта,
@@ -19733,7 +19742,8 @@ def update_deal(deal_id):
         # «Прибыль $0.00» при 268.65 − 251.42 = 17.23, а у сделки с агентом на
         # revshare от нулевой прибыли обнулилась бы и выплата партнёру
         tx_warnings = []
-        card_warning = _sync_card_allocation(session, deal)
+        card_warning = (_sync_card_allocation(session, deal)
+                        if not flow_proof_required or deal.payin_tx_verified else None)
 
         if deal.deal_kind in REALTY_KINDS:
             if deal.deal_kind == MF_REALTY_KIND:
@@ -19824,21 +19834,26 @@ def update_deal(deal_id):
 
         _clear_profit_if_payin_unknown(deal)
 
-        flow_proof_required = deal.payin_method == PayInMethod.FLOW_SOLE_REQS
-        proof_touched = _flow_sole_proof_fingerprint(deal) != old_proof_state
-        if flow_proof_required and proof_touched:
-            confirmation = _flow_sole_payin_confirmation(session, deal, refresh_network=True)
-            deal.payin_tx_verified = confirmation['status'] == 'confirmed'
-            if (deal.status in (DealStatus.COMPLETED, DealStatus.VERIFIED)
-                    and not deal.payin_tx_verified):
-                session.rollback()
-                return jsonify(success=False, error='Подтвердите сумму Pay-In хэшем сети',
-                               payin_confirmation=confirmation), 409
-        if (flow_proof_required and proof_touched
-                and (deal.payout_tx_hash or _payout_hash_list(deal))
-                and not deal.payin_tx_verified):
-            session.rollback()
-            return jsonify(success=False, error='Подтвердите сумму Pay-In хэшем сети'), 409
+        # A planned Flow Sole payout stays in the draft without an actual
+        # wallet expense. Non-Flow saves retain their existing upsert behavior.
+        if (deal.payout_source == PayOutSource.BINANCE and deal.payout_wallet_id
+                and deal.payout_amount_usdt
+                and (not flow_proof_required or deal.payin_tx_verified)):
+            existing_op = session.query(WalletOperation).filter(
+                WalletOperation.deal_id == deal.id,
+                WalletOperation.type == 'expense'
+            ).first()
+            if not existing_op:
+                session.add(WalletOperation(
+                    wallet_id=deal.payout_wallet_id, type='expense',
+                    amount=deal.payout_amount_usdt,
+                    description=f"Сделка #{deal.id} ({deal.client_name or 'без имени'})",
+                    tx_hash=deal.payout_tx_hash, deal_id=deal.id))
+            else:
+                existing_op.wallet_id = deal.payout_wallet_id
+                existing_op.amount = deal.payout_amount_usdt
+                existing_op.tx_hash = deal.payout_tx_hash
+                existing_op.description = f"Сделка #{deal.id} ({deal.client_name or 'без имени'})"
 
         if tx_warnings and data.get('confirm_payout_tx_overage') is not True:
             session.rollback()
@@ -24645,6 +24660,15 @@ def create_reimbursement():
         if already_settled:
             return jsonify({'success': False, 'error': 'Сделки уже возмещены — обнови страницу',
                             'deal_ids': already_settled}), 409
+
+        for deal in deals:
+            if deal.payin_method != PayInMethod.FLOW_SOLE_REQS:
+                continue
+            confirmation = _flow_sole_payin_confirmation(session, deal, refresh_network=True)
+            if confirmation['status'] != 'confirmed' or not deal.payin_tx_verified:
+                session.rollback()
+                return jsonify(success=False, error='Подтвердите сумму Pay-In хэшем сети',
+                               deal_id=deal.id, payin_confirmation=confirmation), 409
 
         # ── Переводы: сколько берём из каждого ────────────────────────────
         # Раньше ничто не мешало ввести тот же хэш второй раз и «возместить» одни

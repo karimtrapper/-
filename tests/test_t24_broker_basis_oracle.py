@@ -18,7 +18,8 @@ const broker=src.slice(src.indexOf('const BROKER_FEE='),
 const parts=src.slice(src.indexOf('function hashSum('),src.indexOf('function econ('));
 const payloadStart=src.indexOf('const E=econ(d)',src.indexOf('function crmPayload('));
 const serializer=src.slice(payloadStart,src.indexOf('payin_rate_rub_usdt:',payloadStart));
-const field=serializer.match(/^\s*(payin_amount_usdt:r2\([^\n]+\)),\s*$/m);
+// The Flow Sole branch makes this serializer expression multiline.
+const field=serializer.match(/(payin_amount_usdt:r2\([\s\S]*?\)),\s*$/);
 if(!field)throw Error('CRM serializer payin_amount_usdt expression missing');
 const box={cases:JSON.parse(process.argv[1]), field:field[1], result:null, crypto:null};
 vm.runInNewContext(`function num(x){return Number(x)||0}
