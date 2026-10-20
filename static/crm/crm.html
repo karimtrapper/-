@@ -48,6 +48,8 @@
     --r: 12px;
     --r-sm: 8px;
     --r-lg: 16px;
+    --field-focus: #C2410C;
+    --select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3 5.5 8 10.5l5-5' fill='none' stroke='%2394A3B8' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
 }
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body {
@@ -289,44 +291,51 @@ tr:hover { background: var(--navy-50); }
     font-weight: 500; font-size: 13px; color: var(--navy-600);
 }
 .form-control {
-    width: 100%; padding: 12px 14px;
-    border: 1.5px solid var(--border);
-    border-radius: var(--r-sm); font-size: 15px;
+    width: 100%; padding: 0 12px;
+    border: 1px solid var(--navy-300);
+    border-radius: var(--r-sm); font-size: 16px;
     font-family: inherit; background: var(--bg);
     color: var(--text); transition: all 0.15s;
-    min-height: 48px;
+    min-height: 44px;
 }
-.form-control:focus {
-    outline: none; border-color: var(--coral);
-    box-shadow: 0 0 0 3px rgba(249,115,22,0.12);
+.form-control:hover:not(:disabled):not([readonly]), .custom-select-btn:hover:not(:disabled) {
+    border-color: var(--navy-400);
+    background-color: var(--navy-50);
+}
+.form-control:focus-visible, .custom-select-btn:focus-visible,
+.custom-select-wrap.open .custom-select-btn {
+    outline: 2px solid var(--field-focus); outline-offset: 2px;
+    border-color: var(--field-focus);
 }
 .form-control[readonly] {
     background: var(--navy-50); color: var(--navy-600);
 }
+.form-control:disabled, .custom-select-btn:disabled {
+    background-color: var(--navy-100); color: var(--navy-500);
+    cursor: not-allowed; opacity: .7;
+}
+.custom-select-btn:disabled { pointer-events: none; }
 select.form-control {
     cursor: pointer;
     -webkit-appearance: none; -moz-appearance: none; appearance: none;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='%2364748B' viewBox='0 0 16 16'%3E%3Cpath d='M4.646 5.646a.5.5 0 0 1 .708 0L8 8.293l2.646-2.647a.5.5 0 0 1 .708.708l-3 3a.5.5 0 0 1-.708 0l-3-3a.5.5 0 0 1 0-.708z'/%3E%3C/svg%3E");
+    background-image: var(--select-arrow);
     background-repeat: no-repeat;
-    background-position: right 12px center;
-    padding-right: 36px;
+    background-position: right 14px center;
+    background-size: 16px;
+    padding-right: 40px;
 }
-select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='%23F97316' viewBox='0 0 16 16'%3E%3Cpath d='M4.646 5.646a.5.5 0 0 1 .708 0L8 8.293l2.646-2.647a.5.5 0 0 1 .708.708l-3 3a.5.5 0 0 1-.708 0l-3-3a.5.5 0 0 1 0-.708z'/%3E%3C/svg%3E"); }
 /* Кастомный select (замена нативного) */
 .custom-select-wrap { position: relative; }
 .custom-select-btn {
-    width: 100%; padding: 12px 36px 12px 14px;
-    border: 1.5px solid var(--border); border-radius: var(--r-sm);
-    font-size: 15px; font-family: inherit; background: var(--bg);
+    width: 100%; padding: 0 40px 0 12px;
+    border: 1px solid var(--navy-300); border-radius: var(--r-sm);
+    font-size: 16px; font-family: inherit; background: var(--bg);
     color: var(--text); cursor: pointer; text-align: left;
-    min-height: 48px; transition: all 0.15s;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='%2364748B' viewBox='0 0 16 16'%3E%3Cpath d='M4.646 5.646a.5.5 0 0 1 .708 0L8 8.293l2.646-2.647a.5.5 0 0 1 .708.708l-3 3a.5.5 0 0 1-.708 0l-3-3a.5.5 0 0 1 0-.708z'/%3E%3C/svg%3E");
-    background-repeat: no-repeat; background-position: right 12px center;
+    min-height: 44px; transition: all 0.15s;
+    background-image: var(--select-arrow);
+    background-repeat: no-repeat; background-position: right 14px center;
+    background-size: 16px;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-.custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn {
-    outline: none; border-color: var(--coral);
-    box-shadow: 0 0 0 3px rgba(249,115,22,0.12);
 }
 .custom-select-list {
     display: none; position: absolute; top: 100%; left: 0; right: 0; z-index: 50;
@@ -341,11 +350,23 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 }
 .custom-select-opt:hover { background: var(--navy-100); }
 .custom-select-opt.selected { background: var(--coral-light); font-weight: 600; }
+.custom-select-opt.disabled { color: var(--navy-400); cursor: not-allowed; }
+.custom-select-opt.disabled:hover { background: var(--bg); }
 #flowSoleReqsStandard, #flowSoleReqsCustom {
     font-size: 12px; line-height: 1.4; color: var(--navy-600);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     max-width: 100%; margin-top: 4px;
 }
+select:not(.form-control) {
+    appearance: none; min-height: 44px; padding: 0 40px 0 12px;
+    border: 1px solid var(--navy-300); border-radius: var(--r-sm);
+    background-color: var(--bg); background-image: var(--select-arrow);
+    background-repeat: no-repeat; background-position: right 14px center;
+    background-size: 16px; color: var(--text); font: inherit;
+}
+select:not(.form-control):hover:not(:disabled) { border-color: var(--navy-400); background-color: var(--navy-50); }
+select:not(.form-control):focus-visible { outline: 2px solid var(--field-focus); outline-offset: 2px; }
+select.period-btn:hover:not(.active) { color: var(--text); }
 
 /* Клиент-комбобокс */
 .client-dropdown {
@@ -755,6 +776,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 .docs-grid input { width:100%; box-sizing:border-box; }
 /* Значения важнее подписей: кегль поля крупнее лейбла, воздуха больше */
 .docs-grid .form-input { font-size:.95rem; padding:10px 12px; }
+.docs-grid select.form-input { padding-right:40px; }
 /* Длинные значения — наименование получателя, адрес банка, адрес объекта —
    в одну колонку не влезают и обрезаются на середине слова. Отдаём им две. */
 .docs-field.is-wide { grid-column:span 2; }
@@ -860,7 +882,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 <button class="period-btn" data-period="week" onclick="switchDashPeriod('week')">Неделя</button>
                 <button class="period-btn active" data-period="30d" onclick="switchDashPeriod('30d')">30 дней</button>
                 <button class="period-btn" data-period="all" onclick="switchDashPeriod('all')">Всё время</button>
-                <select id="dashMonth" class="period-btn" style="appearance:auto" onchange="switchDashMonth(this.value)">
+                <select id="dashMonth" class="period-btn" onchange="switchDashMonth(this.value)">
                     <option value="">Месяц…</option>
                 </select>
                 <span style="display:inline-flex;gap:4px;align-items:center">
@@ -869,14 +891,14 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     <input type="date" id="dashTo" class="period-btn" style="padding:6px 8px">
                     <button class="period-btn" id="dashRangeBtn" data-period="custom" onclick="applyDashRange()">Показать</button>
                 </span>
-                <select id="dashKind" class="period-btn" style="appearance:auto;margin-left:auto" onchange="loadDashboard()">
+                <select id="dashKind" class="period-btn" style="margin-left:auto" onchange="loadDashboard()">
                     <option value="">Все направления</option>
                     <option value="exchange">Обычные обмены</option>
                     <option value="realty">Недвижимость — вся</option>
                     <option value="mf_realty">Недвижимость — лизхолд</option>
                     <option value="mf_freehold">Недвижимость — фрихолд</option>
                 </select>
-                <select id="dashReferrer" class="period-btn" style="appearance:auto" onchange="loadDashboard()">
+                <select id="dashReferrer" class="period-btn" onchange="loadDashboard()">
                     <option value="">Все клиенты</option>
                     <option value="any">Только рефералы</option>
                     <option value="none">Без реферала</option>
@@ -2541,7 +2563,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     <input id="refMinPending" type="number" placeholder="Долг от $" oninput="renderReferrers()"
                         style="width:120px;padding:7px 12px;border:1px solid #e2e8f0;border-radius:8px;font-size:13px;">
                     <select id="refSort" onchange="renderReferrers()"
-                        style="padding:7px 12px;border:1px solid #e2e8f0;border-radius:8px;font-size:13px;">
+                        style="padding:0 40px 0 12px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;">
                         <option value="pending">Сначала кому должны</option>
                         <option value="earned">По заработку ↓</option>
                         <option value="deals">По числу сделок ↓</option>
@@ -2584,6 +2606,9 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             #exchangers .rx-dist .row{display:flex;justify-content:space-between;gap:8px;padding:2px 0;}
             #exchangers .rx-box{background:var(--navy-50);border:1px dashed var(--border);border-radius:var(--r-sm);padding:12px;}
             #exchangers .rx-inp{background:#fff;border:1px solid var(--border);border-radius:var(--r-sm);padding:8px 10px;color:var(--text);font-size:13px;}
+            #exchangers select.rx-inp{appearance:none;min-height:44px;padding:0 40px 0 12px;border-color:var(--navy-300);background-color:var(--bg);background-image:var(--select-arrow);background-repeat:no-repeat;background-position:right 14px center;background-size:16px;font-size:16px;}
+            #exchangers select.rx-inp:hover:not(:disabled){border-color:var(--navy-400);background-color:var(--navy-50);}
+            #exchangers select.rx-inp:focus-visible{outline:2px solid var(--field-focus);outline-offset:2px;}
             #exchangers .rx-muted{color:var(--text-sec);}
             #exchangers .rx-row:hover{background:var(--navy-50);cursor:pointer;}
             @media(max-width:640px){#exchangers .rx-cards{grid-template-columns:repeat(2,1fr);} #exchangers .rx-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;} #exchangers .rx-scroll table{min-width:680px;}}
@@ -3755,9 +3780,21 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 
             function renderOptions() {
                 const opts = Array.from(select.options);
-                const selectedVal = select.value;
                 btn.textContent = select.selectedOptions[0]?.text || 'Выберите...';
-                list.innerHTML = opts.map((o, i) => `<div class="custom-select-opt ${o.value === selectedVal ? 'selected' : ''}" data-index="${i}" data-value="${o.value}">${o.text}</div>`).join('');
+                btn.disabled = select.disabled;
+                if (select.disabled) wrap.classList.remove('open');
+                list.replaceChildren();
+                opts.forEach((option, index) => {
+                    if (option.hidden) return; // selected archive stays on the button, not in the menu
+                    const row = document.createElement('div');
+                    row.className = 'custom-select-opt';
+                    if (option.selected) row.classList.add('selected');
+                    if (option.disabled || option.parentElement?.disabled) row.classList.add('disabled');
+                    row.dataset.index = String(index);
+                    row.textContent = option.text;
+                    if (option.title) row.title = option.title;
+                    list.appendChild(row);
+                });
             }
             renderOptions();
 
@@ -3766,6 +3803,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 
             btn.addEventListener('click', (e) => {
                 e.stopPropagation();
+                if (select.disabled) return;
                 // Закрыть другие
                 document.querySelectorAll('.custom-select-wrap.open').forEach(w => { if (w !== wrap) w.classList.remove('open'); });
                 wrap.classList.toggle('open');
@@ -3775,7 +3813,10 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             list.addEventListener('click', (e) => {
                 const opt = e.target.closest('.custom-select-opt');
                 if (!opt) return;
-                select.selectedIndex = parseInt(opt.dataset.index);
+                const nativeOption = select.options[parseInt(opt.dataset.index)];
+                if (!nativeOption || nativeOption.hidden || nativeOption.disabled ||
+                    nativeOption.parentElement?.disabled || select.disabled) return;
+                select.selectedIndex = nativeOption.index;
                 select.dispatchEvent(new Event('change', { bubbles: true }));
                 btn.textContent = opt.textContent;
                 wrap.classList.remove('open');
@@ -3787,7 +3828,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             // от прошлой сделки или от дефолта (кейс #463: в базе RUB, на экране THB).
             // Перехватываем сеттеры value/selectedIndex на самом элементе.
             const observer = new MutationObserver(renderOptions);
-            observer.observe(select, { childList: true, attributes: true });
+            observer.observe(select, { childList: true, attributes: true, subtree: true });
             ['value', 'selectedIndex'].forEach(prop => {
                 const native = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, prop);
                 Object.defineProperty(select, prop, {
@@ -6023,13 +6064,13 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     <input id="refCardMin" type="number" placeholder="Комиссия от $" oninput="renderRefCardRows()"
                         style="width:130px;padding:6px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:13px;">
                     <select id="refCardPaid" onchange="renderRefCardRows()"
-                        style="padding:6px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:13px;">
+                        style="padding:0 40px 0 12px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;">
                         <option value="">Все выплаты</option>
                         <option value="unpaid">Только должны</option>
                         <option value="paid">Только выплаченные</option>
                     </select>
                     <select id="refCardSort" onchange="renderRefCardRows()"
-                        style="padding:6px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:13px;">
+                        style="padding:0 40px 0 12px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;">
                         <option value="date">Сначала новые</option>
                         <option value="payout">По комиссии ↓</option>
                         <option value="volume">По объёму ↓</option>

@@ -161,6 +161,88 @@ def choose(page, selector, label):
         select.select_option(label=label)
 
 
+def test_calculator_prefill_requires_credited_rub(ui):
+    page, errors, _, _ = ui
+    page.locator('.nav-create-btn').click()
+    expect(page.locator('#create')).to_be_visible()
+    page.wait_for_load_state('networkidle')
+    page.evaluate('''() => prefillDealForm({
+        payin_method: 'sber_wl', payin_gross_reference_rub: 100000,
+        payin_amount_usdt: 1000, payin_rate_rub_usdt: 100
+    })''')
+    expect(page.locator('#payinRubHint')).to_have_text('после комиссии банка')
+    expect(page.locator('#payinGrossReference')).to_contain_text(
+        'Введите фактически зачисленную сумму')
+    expect(page.locator('[name="payin_amount_rub"]')).to_have_value('')
+    assert page.locator('[name="payin_amount_rub"]').evaluate('(el) => el.required')
+    expect(page.locator('[name="payin_rate_rub_usdt"]')).to_have_value('')
+    # Старая ссылка с gross в payin_amount_rub тоже не создаёт gross-сделку.
+    page.evaluate('''() => prefillDealForm({
+        payin_method: 'sber_wl', payin_amount_rub: 100000,
+        payin_rub_is_net: false
+    })''')
+    expect(page.locator('[name="payin_amount_rub"]')).to_have_value('')
+    expect(page.locator('#payinRubHint')).to_have_text('после комиссии банка')
+    assert not errors, errors
+
+
+def test_custom_select_respects_disabled_and_hidden_option(ui):
+    page, errors, _, _ = ui
+    page.locator('.nav-create-btn').click()
+    expect(page.locator('#create')).to_be_visible()
+    page.wait_for_timeout(100)
+    select = page.locator('#payinMethod')
+    button = select.locator('..').locator('.custom-select-btn')
+    expect(button).to_be_visible()
+    page.evaluate('''() => { document.querySelector('#payinMethod').disabled = true; }''')
+    expect(button).to_be_disabled()
+    button.evaluate('(el) => el.click()')
+    expect(select.locator('..').locator('.custom-select-list')).not_to_be_visible()
+    page.evaluate('''() => { document.querySelector('#payinMethod').disabled = false; }''')
+    expect(button).to_be_enabled()
+    button.click()
+    expect(select.locator('..').locator('.custom-select-list')).to_be_visible()
+    expect(select.locator('..').locator('.custom-select-opt').filter(
+        has_text='Доверка, архив')).to_have_count(0)
+    page.evaluate('''() => {
+        const s = document.querySelector('#payinMethod');
+        s.value = 'spp_doverka'; s.dispatchEvent(new Event('change'));
+    }''')
+    expect(button).to_contain_text('Доверка, архив')
+    assert select.input_value() == 'spp_doverka'
+    assert not errors, errors
+
+
+def test_flow_sole_custom_keeps_incoming_picker_and_manual_hash(ui):
+    page, errors, _, _ = ui
+    page.route('**/api/transactions/incoming?*', lambda route: route.fulfill(json={
+        'success': True, 'available': [{
+            'amount_usdt': 1000, 'tx_hash': 'synthetic-flow-sole-hash',
+            'from_address': 'synthetic', 'timestamp': '2026-10-20T12:00:00Z'}]}))
+    page.locator('.nav-create-btn').click()
+    expect(page.locator('#create')).to_be_visible()
+    page.wait_for_load_state('networkidle')
+    choose(page, '#dealKindSelect', 'Кастомная — нестандартные валюты')
+    choose(page, '#customPayinMethod', 'Flow Sole')
+    expect(page.locator('#customPayinPicker')).to_be_visible()
+    expect(page.locator('#customPayinTxHashGroup')).to_be_visible()
+    expect(page.locator('#flowSoleReqsCustom')).to_be_visible()
+    expect(page.locator('#customPayinCurrency')).to_be_disabled()
+    assert page.locator('#customPayinCurrency').input_value() == 'RUB'
+    assert page.locator('#customPayinRate').evaluate('(el) => el.readOnly')
+    page.locator('#customPayinAmount').fill('99300')
+    page.locator('#customPayinUsdt').fill('1000')
+    expect(page.locator('#customPayinRate')).to_have_value('99.3000')
+    tx_select = page.locator('#customPayinTxSelect')
+    tx_select.locator('..').locator('.custom-select-btn').click()
+    tx_select.locator('..').locator('.custom-select-opt').filter(has_text='synthetic').click()
+    expect(page.locator('#customPayinAmount')).to_have_value('99300')
+    expect(page.locator('#customPayinTxHash')).to_have_value('synthetic-flow-sole-hash')
+    page.locator('#customPayinTxHash').fill('manual-flow-sole-hash')
+    expect(page.locator('#customPayinTxHash')).to_have_value('manual-flow-sole-hash')
+    assert not errors, errors
+
+
 def test_custom_deal_create_edit_reload_preserves_money(ui):
     page, errors, _, base = ui
     page.locator('.nav-create-btn').click()
