@@ -20,6 +20,11 @@ MSG = 'Для отправки свыше 10 000 USDT требуется под�
 def world(monkeypatch):
     from tests.qa_wallet_roles_helpers import db_snapshot, db_restore
     monkeypatch.setattr(m, 'STAND_MODE', False)
+    # These tests isolate wallet policy for exchange routes. Stage now admits
+    # only verified flows; make these two synthetic routes verified locally,
+    # without bypassing the gate or changing production VERIFIED_FLOWS.
+    monkeypatch.setattr(m, 'VERIFIED_FLOWS',
+                        m.VERIFIED_FLOWS | {('exchange', 'requisites'), ('exchange', 'crypto')})
     snap = db_snapshot()
     db = m.get_session()
     try:
@@ -42,6 +47,7 @@ def wid(address):
 
 def body(name=None, amount=5000, wallet=EXCHANGE, **extra):
     data = {'client_name': name or f'QA-{secrets.token_hex(4)}', 'status': 'pending',
+            'deal_kind': 'exchange',
             'payin_method': 'sber_reqs', 'payin_amount_rub': 500000.0, 'payin_amount_usdt': 5200.0,
             'payout_method': 'transfer', 'payout_source': 'binance', 'payout_amount_thb': 170000.0,
             'payout_amount_usdt': amount, 'skip_sync': True}

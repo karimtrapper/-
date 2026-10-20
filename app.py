@@ -7634,6 +7634,7 @@ def stand_crm_close(stand_deal_id):
         if prepay_problem:
             return jsonify(success=False, error=prepay_problem), 409
         manual = stand_deal.get('originMode') == 'manual'
+        manual_override = False
         if manual:
             if not stand_deal.get('manual') or stand_deal.get('step') != 'manual':
                 return jsonify({'success': False, 'error': 'manual_origin_mismatch'}), 409
@@ -7648,6 +7649,9 @@ def stand_crm_close(stand_deal_id):
                               'payout_hash_unverified', 'payout_hash_already_used', 'payout_amount_mismatch')
                           else 400)
                 return jsonify({'success': False, 'error': override_error}), status
+            # Only the validated server route grants this exception. A JSON
+            # flag in /api/deals or /api/stand/state cannot grant it.
+            manual_override = True
         else:
             if stand_deal.get('manual'):
                 return jsonify({'success': False, 'error': 'legacy_manual_origin'}), 409
@@ -7710,14 +7714,16 @@ def stand_crm_close(stand_deal_id):
                         or (currency not in ('USDT', 'USD')
                             and _stand_number(crm_data.get(f'custom_{side}_rate')) <= 0)):
                     return jsonify({'success': False, 'error': 'custom_required_fields'}), 400
-        try:
-            trusted_approval, policy_problem = _stand_close_policy_approval(
-                db, state, stand_deal, crm_data)
-        except ValueError as exc:
-            return jsonify(success=False, error=str(exc)), 409
-        if policy_problem:
-            return jsonify(success=False, error=policy_problem), (
-                400 if policy_problem == _EXCHANGE_APPROVAL_ERROR else 409)
+        trusted_approval = None
+        if not manual_override:
+            try:
+                trusted_approval, policy_problem = _stand_close_policy_approval(
+                    db, state, stand_deal, crm_data)
+            except ValueError as exc:
+                return jsonify(success=False, error=str(exc)), 409
+            if policy_problem:
+                return jsonify(success=False, error=policy_problem), (
+                    400 if policy_problem == _EXCHANGE_APPROVAL_ERROR else 409)
         close_snapshot, close_digest = _stand_close_summary(state, stand_deal, crm_data, row.version or 0)
         crm_data['status'] = 'completed'
         crm_data['skip_sync'] = True
@@ -7738,7 +7744,8 @@ def stand_crm_close(stand_deal_id):
             # Комбинация уже прошла гейт на стенде (создание/смена способа) —
             # см. комментарий в _create_deal_impl.
             result = _create_deal_impl(db, data=crm_data, defer_commit=True,
-                                       skip_flow_gate=True, trusted_approval=trusted_approval)
+                                       skip_flow_gate=True, trusted_approval=trusted_approval,
+                                       manual_override=manual_override)
         finally:
             db.info.pop('stand_payin_origin', None)
             db.info.pop('stand_payin_hashes', None)
@@ -7777,9 +7784,16 @@ def stand_crm_close(stand_deal_id):
             {'at': _at, 'ts': _ts, 'role': actor, 'text': 'Внесена в CRM: сделка #' + str(crm_id)})
         closed['log'].append(
             {'at': _at, 'ts': _ts, 'role': actor, 'text': 'Закрыта: Успешно завершена'})
+        if manual_override and crm_row.payout_wallet_id:
+            payout_wallet = db.get(Wallet, crm_row.payout_wallet_id)
+            if payout_wallet and payout_wallet.address in POLICY_WALLET_ADDRESSES:
+                closed['log'].append({
+                    'at': _at, 'ts': _ts, 'role': actor,
+                    'text': 'Закрыто вручную без отметок подписи в системе'})
         problem = _stand_guard_transition(state, updated, actor,
                                           flask_session.get('user_id'), db,
-                                          allow_crm_close=True)
+                                          allow_crm_close=True,
+                                          manual_close_deal_id=stand_deal_id if manual_override else None)
         if problem:
             db.rollback()
             return jsonify({'success': False, 'error': problem}), 409
@@ -10134,7 +10148,7 @@ def _stand_state_events(previous, state, actor, version):
 
 
 def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=None,
-                            allow_crm_close=False):
+                            allow_crm_close=False, manual_close_deal_id=None):
     from stand_workflow import rerate_attempt, rerate_problem
     if db is not None:
         protected_wallets = {w.id: w for w in db.query(Wallet).filter(
@@ -10242,7 +10256,9 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
             return 'Подписи и одобрение отправки фиксирует только сервер'
         old_main = _stand_batch_main(previous, before.get('id')) if before else None
         batch_claim = (old_main or {}).get('transferClaim')
-        if db is not None and old_main and old_main.get('step') == 's23' and not batch_claim:
+        manual_policy_close = allow_crm_close and deal.get('id') == manual_close_deal_id
+        if (not manual_policy_close and db is not None and old_main
+                and old_main.get('step') == 's23' and not batch_claim):
             try:
                 unclaimed_policy = _stand_transfer_policy(db, previous, old_main)
             except ValueError as exc:
@@ -10275,7 +10291,7 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
                 return str(exc)
             if new_policy and old_source != new_source:
                 return 'Кошелёк отправки закреплён до передачи на подпись'
-        if db is not None and batch_claim:
+        if not manual_policy_close and db is not None and batch_claim:
             if (before.get('step') == 's23' and before != deal and
                     actor_id == batch_claim.get('byId') and actor != batch_claim.get('role')):
                 return 'Роль сотрудника изменилась — нужна повторная сверка отправки'
@@ -10953,7 +10969,8 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
             return 'Сумму отправки нельзя менять после подтверждённого перевода'
         if before.get('postConv') in ('coins', 'ipps_swift') and assignment_locked and deal.get('step') == 's22':
             return 'Принятую пачку нельзя вернуть на назначение отправок'
-        if actor not in (None, 'admin') and before != deal:
+        manual_policy_close = allow_crm_close and deal.get('id') == manual_close_deal_id
+        if not manual_policy_close and actor not in (None, 'admin') and before != deal:
             required = {'s22': 'operator', 's24': 'teodor', 's25': 'operator',
                         's26': 'operator', 's27': 'manager'}.get(before.get('step'))
             if before.get('step') == 's22' and before.get('kind') == 'Фрихолд':
@@ -10977,7 +10994,13 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
         if before.get('postConv') == 'refund' and not before.get('serverSettled') and not before.get('closed'):
             if deal.get('closed') or deal.get('step') == 'done':
                 return 'Возврат фаундеру ещё не подтверждён сетью'
-        if before.get('postConv') != 'coins':
+        # The manual exchange validator just verified these outgoing hashes.
+        # A cash receipt (or realty facts without network verification) cannot
+        # replace the existing Coins network-completion checks.
+        manual_network_payout = (manual_policy_close
+                                and deal.get('type') == 'Обмен валюты'
+                                and deal.get('paySrc') in ('coins', 'client'))
+        if manual_network_payout or before.get('postConv') != 'coins':
             continue
         if (before.get('step') in ('s23', 's24')
                 and deal.get('step') in ('s25', 's26', 's27', 'done')
@@ -17918,7 +17941,8 @@ def _crm_payout_approval_valid(deal):
         return False
 
 
-def _crm_exchange_approval_problem(session, deal, data, *, trusted_approval=None):
+def _crm_exchange_approval_problem(session, deal, data, *, trusted_approval=None,
+                                   manual_override=False):
     if 'payout_owner_approval' in data:
         return ('Метаданные одобрения задаёт только сервер', 400)
     if 'payout_owner_approved' in data and type(data['payout_owner_approved']) is not bool:
@@ -17935,6 +17959,11 @@ def _crm_exchange_approval_problem(session, deal, data, *, trusted_approval=None
         amount = None
     if amount is None or not amount.is_finite() or amount <= 0:
         return ('Укажите положительную сумму USDT для отправки с обменного кошелька', 400)
+    if manual_override:
+        # Manual import records verified facts, not an in-app signing ceremony.
+        # Do not manufacture an owner approval for the imported CRM row.
+        deal.payout_owner_approval = None
+        return None
     if amount <= Decimal(str(wallet.limit_usd or 10000)):
         deal.payout_owner_approval = None
         if data.get('payout_owner_approved') is True and current_role() not in ('findir', 'teodor'):
@@ -17974,7 +18003,8 @@ def _crm_exchange_approval_problem(session, deal, data, *, trusted_approval=None
     return None
 
 
-def _create_deal_impl(session=None, *, data=None, defer_commit=False, skip_flow_gate=False, trusted_approval=None):
+def _create_deal_impl(session=None, *, data=None, defer_commit=False, skip_flow_gate=False,
+                      trusted_approval=None, manual_override=False):
     """Existing CRM create validation; stand close may share its DB transaction."""
     own_session = session is None
     if own_session:
@@ -18329,7 +18359,8 @@ def _create_deal_impl(session=None, *, data=None, defer_commit=False, skip_flow_
             return jsonify(success=False, error='Этот кошелёк доступен только для существующих сделок'), 400
 
         approval_problem = _crm_exchange_approval_problem(session, deal, data,
-                                                          trusted_approval=trusted_approval)
+                                                          trusted_approval=trusted_approval,
+                                                          manual_override=manual_override)
         if approval_problem:
             session.rollback()
             return jsonify(success=False, error=approval_problem[0]), approval_problem[1]

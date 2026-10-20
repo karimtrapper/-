@@ -23,6 +23,17 @@ def board_for(amount, wallet_id):
                        'type': 'Обмен валюты', 'step': 's27', 'closed': False,
                        'crmDealId': None, 'sentToClient': True, 'pay': {},
                        'amountUsdt': amount + 100, 'payout': {'usdt': amount, 'walletId': wallet_id},
+                       # S27 on current stage revalidates source facts, not just
+                       # evidence rows. Provide a real-shaped persisted payout
+                       # proof so these tests reach the wallet approval gate.
+                       'paySrc': 'client', 'postConv': 'client',
+                       'serverTransferComplete': True,
+                       'transfer': {'amount': amount, 'addr': 'TWBgeUo74DehAPgw5cKTdYUTXtJELqwwqn',
+                                    'net': 'TRC20', 'sends': [
+                           {'hash': 'ef' * 32, 'net': 'TRC20', 'amount': amount,
+                            'verifiedAmount': amount, 'status': 'confirmed',
+                            'from': 'synthetic-sender', 'to': 'TWBgeUo74DehAPgw5cKTdYUTXtJELqwwqn',
+                            'verifiedAt': '2026-10-20T00:00:00Z'}]},
                        'files': {'receipt': [{'file': 'receipt.pdf', 'mime': 'application/pdf',
                                               'data': 'data:application/pdf;base64,JVBERi0='}]},
                        'log': []}], 'notes': []}
