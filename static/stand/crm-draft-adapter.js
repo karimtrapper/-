@@ -884,7 +884,12 @@ function crmDraftCommit(id) {
       ?null:crmDraftNum(x.amount_usdt)}));
   d.payinExtra=a.core.payinExtraSerialize();
   if(manualHash&&!fromPool&&a.manualTx?.hash===manualHash&&a.manualTx.network===manualNetwork&&
-     !d.payinHashes.some(x=>x.hash===manualHash))d.payinHashes.push(a.manualTx);
+     !d.payinHashes.some(x=>x.hash===manualHash))d.payinHashes.push({
+       ...a.manualTx,
+       // A network lookup supplies the full amount; it is not an explicit
+       // Flow Sole share selected by the manager.
+       amount:crmDraftRead(r,'payinMethod')==='flow_sole_reqs'?null:a.manualTx.amount,
+     });
   const old=new Set((d.payinParts||[]).map(p=>p.incId).filter(Boolean));
   d.payinParts=a.core.sberParts.map(p=>({uuid:p.uuid||null,
     incId:p.uuid?'sber:'+p.uuid:null,amountRub:crmDraftNum(p.amount_rub),

@@ -9383,7 +9383,8 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
                 : (data.payin_tx_hash ? [{
                     hash: data.payin_tx_hash,
                     network: document.getElementById('payinManualNetwork')?.value || 'trc20',
-                    amount_usdt: null,
+                    amount_usdt: data.payin_method === 'flow_sole_reqs'
+                        ? null : data.payin_amount_usdt ?? null,
                 }] : []);
 
             // Дополнительные приходы (пустой список = вернуться к одному каналу).
