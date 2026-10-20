@@ -7911,6 +7911,8 @@ function docFileButton(d,k,f,action){
   const fileId=f.id||f.storageId;
   if(!fileId || (STAND&&!['manager','operator','admin'].includes(standMe)))return '';
   if(action==='restore'&&STAND&&standMe!=='admin')return '';
+  if(action==='delete'&&k==='clientPayinReceipt'&&!clientPayinCanDelete(f))return '';
+  if(action==='delete'&&k==='bankCreditEvidence'&&standMe!=='admin'&&!bankEvidenceCanEdit(d))return '';
   const call=`docFileAction(${d.id},${JSON.stringify(k)},${JSON.stringify(fileId)},${JSON.stringify(action)})`;
   return `<button class="btn btn-outline btn-sm" onclick="${htmlText(call)}">${action==='delete'?'Удалить':'Восстановить'}</button>`;
 }
@@ -9693,9 +9695,9 @@ function fileDrop(e,id,k){
 function fileDel(id,k,i){
   const d=deal(id), l=filesOf(d,k);
   if(i<0||i>=l.length)return;
-  if(STAND&&!SCREEN&&!SNAP)return docFileAction(id,k,l[i].id||l[i].storageId,'delete');
   if(k==='clientPayinReceipt'&&!clientPayinCanDelete(l[i])){toast('Удалить чек может загрузивший его сотрудник или админ');return;}
-  if(k==='bankCreditEvidence'&&!bankEvidenceCanEdit(d)){toast('Выписку можно менять только до подтверждения прихода');return;}
+  if(k==='bankCreditEvidence'&&standMe!=='admin'&&!bankEvidenceCanEdit(d)){toast('Выписку можно менять только до подтверждения прихода');return;}
+  if(STAND&&!SCREEN&&!SNAP)return docFileAction(id,k,l[i].id||l[i].storageId,'delete');
   const [x]=l.splice(i,1);
   fileSync(d,k);
   if(!managerDraftDocTarget(d,k))log(d,k==='bankCreditEvidence'?'Выписка о зачислении удалена · '+x.file+' · '+(x.uploadedBy||'операционист'):

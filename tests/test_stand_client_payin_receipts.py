@@ -118,6 +118,11 @@ def test_state_upload_show_download_delete(monkeypatch):
     shown['files']['clientPayinReceipt'] = []
     denied = operator.put('/api/stand/state', json={'fileStorageVersion': 1, 'version': 2, 'data': {'deals': [shown]}})
     assert denied.status_code == 409
+    own_file = manager.get('/api/stand/state').json['data']['deals'][0]['files']['clientPayinReceipt'][0]
+    wrong_author = operator.patch(f"/api/stand/files/1485/clientPayinReceipt/{own_file['id']}",
+                                  json={'action': 'delete'})
+    assert wrong_author.status_code == 403
+    assert 'загрузивший' in wrong_author.json['error']
     admin_state = admin.get('/api/stand/state').json['data']
     item = admin_state['deals'][0]['files']['clientPayinReceipt'][0]
     removed = admin.patch(f"/api/stand/files/1485/clientPayinReceipt/{item['id']}",

@@ -396,6 +396,10 @@ def test_crm_additional_document_upload_uses_existing_kind(api):
     forbidden = api[0].post(url, data={'kind':'agreement',
         'files':(io.BytesIO(raw),'forged.pdf','application/pdf')})
     assert forbidden.status_code == 400
+    signed = api[0].post(url, data={'kind':'signed', 'files':(
+        io.BytesIO(b'PK\x03\x04legacy-signed-document'), 'signed.docx',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document')})
+    assert signed.status_code == 200, signed.json
 
 
 def test_crm_linked_document_rejects_another_manager(api):
@@ -433,6 +437,31 @@ def test_put_cannot_move_existing_file_to_another_document_type(api):
     assert moved.status_code == 409
     assert moved.json['error'] in ('invalid_file_marker', 'Удаляйте документы кнопкой «Удалить»')
     assert read_db()[1]['deals'][0]['files']['inv'][0]['id'] == item['id']
+
+
+def test_bank_evidence_delete_keeps_step_and_role_rules(api):
+    api[1][0] = 'operator'
+    state = board('s14')
+    state['deals'][0]['manualBankReceipt'] = {'status': 'pending'}
+    seed(state)
+    uploaded = upload(api, b'%PDF-1.4\ncredit', kind='bankCreditEvidence', name='credit.pdf')
+    assert uploaded.status_code == 200, uploaded.json
+    item = uploaded.json['data']['deals'][0]['files']['bankCreditEvidence'][0]
+    url = f"/api/stand/files/1473/bankCreditEvidence/{item['id']}"
+    api[1][0] = 'manager'
+    assert api[0].patch(url, json={'action': 'delete'}).status_code == 403
+    with m.SessionLocal() as db:
+        row = db.get(m.StandState, 1)
+        later = json.loads(row.data)
+        later['deals'][0]['step'] = 's18'
+        row.data = json.dumps(later, ensure_ascii=False)
+        db.commit()
+    api[1][0] = 'operator'
+    denied = api[0].patch(url, json={'action': 'delete'})
+    assert denied.status_code == 403
+    assert 'до подтверждения' in denied.json['error']
+    api[1][0] = 'admin'
+    assert api[0].patch(url, json={'action': 'delete'}).status_code == 200
 
 
 def test_size_limits_and_no_total_board_limit(api, monkeypatch):

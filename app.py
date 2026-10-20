@@ -2661,7 +2661,8 @@ def _migrate_agreement_doc_soft_delete():
         existing = {column['name'] for column in inspect(conn).get_columns('agreement_docs')}
         for name, ddl in (('deleted_at', 'TIMESTAMP'), ('deleted_by', 'VARCHAR(100)')):
             if name not in existing:
-                conn.execute(text(f'ALTER TABLE agreement_docs ADD COLUMN {name} {ddl}'))
+                clause = ' IF NOT EXISTS' if engine.dialect.name == 'postgresql' else ''
+                conn.execute(text(f'ALTER TABLE agreement_docs ADD COLUMN{clause} {name} {ddl}'))
 
 
 _migrate_agreement_doc_soft_delete()
@@ -6001,6 +6002,13 @@ def stand_file_change(deal_id, kind, file_id):
                      and (f.get('id') == file_id or f.get('storageId') == file_id)), None)
         if not item:
             return jsonify(success=False, error='Файл не найден'), 404
+        if action == 'delete' and kind == STAND_CLIENT_PAYIN_KIND and actor != 'admin':
+            if item.get('uploadedById') != actor_id:
+                return jsonify(success=False, error='Удалить чек может загрузивший его сотрудник или админ'), 403
+        if action == 'delete' and kind == STAND_BANK_CREDIT_KIND and actor != 'admin':
+            if (actor != 'operator' or deal.get('step') != 's14'
+                    or (deal.get('manualBankReceipt') or {}).get('status') != 'pending'):
+                return jsonify(success=False, error='Выписку можно менять только до подтверждения прихода'), 403
         previous = json.loads(row.data or '{}')
         target.setdefault(source_key, {})[kind] = [f for f in source if f is not item]
         target.setdefault(dest_key, {}).setdefault(kind, []).append(item)
@@ -27929,12 +27937,22 @@ def docs_upload_signed(agreement_id):
         for f in request.files.getlist('files'):
             raw = f.read(stand_file_storage.FILE_LIMIT + 1)
             name = stand_file_storage.safe_name(f.filename)
+            mime = f.mimetype
             try:
-                stand_file_storage.validate(raw, f.mimetype, name)
+                office = (kind == 'signed' and
+                          ((name.lower().endswith('.docx') and raw.startswith(b'PK\x03\x04')) or
+                           (name.lower().endswith('.doc') and raw.startswith(b'\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1'))))
+                if office:
+                    if len(raw) > stand_file_storage.FILE_LIMIT:
+                        raise ValueError('Файл — до 20 МБ')
+                    mime = ('application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+                            if name.lower().endswith('.docx') else 'application/msword')
+                else:
+                    stand_file_storage.validate(raw, mime, name)
             except ValueError as exc:
                 db.rollback()
                 return jsonify(success=False, error=str(exc)), 400
-            _docs_save(db, a.id, kind, None, a.payments_count or 1, name, raw, f.mimetype)
+            _docs_save(db, a.id, kind, None, a.payments_count or 1, name, raw, mime)
             saved += 1
         if kind == 'signed' and saved:
             a.status = 'signed'
