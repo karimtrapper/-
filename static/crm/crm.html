@@ -15672,8 +15672,6 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                     <input type="file" multiple style="position:absolute;width:1px;height:1px;opacity:0" onchange="docsUploadSigned(${a.id}, this.files)">
                 </label>
                 <span id="docsDetailStatus" class="docs-status"></span>
-                <button class="btn docs-danger" style="font-size:.85rem;margin-left:auto"
-                        onclick="docsDelete(${a.id})">Удалить договор</button>
             </div>
             <div id="docsExtra" hidden>
                 <label for="docsExtraType">Тип документа</label>
@@ -15765,23 +15763,6 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                 return;
             }
             st.textContent=''; await loadDocuments(); docsOpen(id);
-        }
-
-        // Удаление договора вместе со всеми его документами. Подтверждение
-        // обязательно: восстановить нельзя, а внутри могут быть подписанные сканы.
-        async function docsDelete(id){
-            const a = docsState.current;
-            const docs = (a && a.docs || []).length;
-            const name = a ? `${a.client_name} · ${DOCS_TYPE_LABEL[a.deal_type]||a.deal_type} · ${a.number}` : 'договор';
-            if(!confirm(`Удалить ${name}?\n\nВместе с ним удалится ${docs} ${docs===1?'документ':'документов'}, включая загруженные исходники и подписанные сканы. Отменить будет нельзя.`)) return;
-            const st = document.getElementById('docsDetailStatus');
-            if(st) st.textContent='Удаляю…';
-            const r = await fetch('/api/docs/agreements/'+id, {method:'DELETE'});
-            const d = await r.json();
-            if(!d.success){ if(st){ st.classList.add('is-error'); st.textContent=d.error||'Не удалось удалить'; } return; }
-            document.getElementById('docsDetail').style.display='none';
-            docsState.current = null;
-            await loadDocuments();
         }
 
         function docsToggleExtra(){

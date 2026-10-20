@@ -28097,6 +28097,8 @@ def docs_delete_agreement(agreement_id):
         _, _, linked = _docs_linked_deals(db, agreement_id)
         if linked or _docs_delete_blocked(db, a, linked):
             return jsonify(success=False, error='Договор связан со сделкой. Удаляйте файлы по одному.'), 409
+        if a.docs:
+            return jsonify(success=False, error='Договор содержит документы. Удаляйте файлы по одному.'), 409
         db.delete(a)
         db.commit()
         return jsonify({'success': True})
