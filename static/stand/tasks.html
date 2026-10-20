@@ -4704,6 +4704,10 @@ function closeDeal(d,reason){
 function newDeal(o){
   S.seq++;
   if(!o.client) o.client=o.sourceRef||'Без имени';
+  const managerActorId=(typeof standMe!=='undefined'&&standMe==='manager'&&
+    typeof standMeId!=='undefined')?standMeId:null;
+  const managerId=o.managerUserId??managerActorId;
+  const staff=typeof STAND_EMPLOYEES==='undefined'?[]:STAND_EMPLOYEES;
   const d={id:S.seq,code:'СД-'+S.seq,createdAt:now(),step:o.step,closed:false,
     manual:!!o.manual,manualNew:!!o.manualNew,rubIsNet:true,log:[],
     source:o.source,sourceRef:o.sourceRef,bitrixCloseProof:o.bitrixCloseProof||null,client:o.client,type:o.type,
@@ -4727,7 +4731,9 @@ function newDeal(o){
     cnvId:null,stepNotes:{},clientId:(o.clientId!==undefined?o.clientId:null),bank:o.bank||null,
     refId:(o.refId!==undefined?o.refId:null),refPaid:false,
     refKnown:(o.refKnown!==undefined?o.refKnown:(o.refId!=null)),refSrc:o.refSrc||null,
-    selfCame:!!o.selfCame,agentsMode:o.agentsMode||null,manager:o.manager||'Елизавета',
+    selfCame:!!o.selfCame,agentsMode:o.agentsMode||null,
+    managerUserId:managerId,
+    manager:o.manager||staff.find(e=>e.id===managerId)?.display_name||'Елизавета',
     payinExtra:o.payinExtra||[],payinParts:o.payinParts||[],payinHashes:o.payinHashes||[],
     payout:o.payout||null,notes:o.notes||'',
     spread:(o.spread!==undefined?o.spread:(o.type==='Обмен валюты'?0.3:null)),
@@ -4738,6 +4744,16 @@ function newDeal(o){
   S.deals.unshift(d);if(!o.noSave)save();return d;
 }
 function deal(id){return S.deals.find(x=>x.id===id);}
+function standManagerIdForTransfer(d){
+  const staff=typeof STAND_EMPLOYEES==='undefined'?[]:STAND_EMPLOYEES;
+  const valid=id=>staff.find(e=>String(e.id)===String(id)&&e.role==='manager'&&!e.login_disabled);
+  if(d.managerUserId!=null)return valid(d.managerUserId)?.id||null;
+  const files=d._managerDraft?.files||{};
+  const ids=['inv','ipds','pass'].flatMap(k=>(Array.isArray(files[k])?files[k]:[]).map(f=>f?.uploadedById))
+    .filter(id=>Number.isInteger(Number(id))&&Number(id)>0).map(Number);
+  if(!ids.length||new Set(ids).size!==1)return null;
+  return valid(ids[0])?.id||null;
+}
 /* клиент узнаётся по источнику: та же карточка Битрикса или тот же чат */
 function knownBy(source,ref){
   if(!ref)return [];
@@ -7255,6 +7271,8 @@ const PAYIN_CRM={'По реквизитам':'sber_reqs','СБП':'sber_wl','К�
 const PAYOUT_CRM={cash:'cash_batch',ipps:'cash_batch',scb:'bank_card',coins:'binance',client:'binance',founder:'founder_personal'};
 function crmNet(n){return String(n||'TRC20').toLowerCase().replace('-','');}
 function crmPayload(d){
+  const managerAccountId=typeof standManagerIdForTransfer==='function'
+    ?standManagerIdForTransfer(d):d.managerUserId;
   if(d.custom){
     const c=d.customData||{},agentPayload=(d.agents||[]).map(a=>{
       const src=a.refId!=null?refById(a.refId):null;
@@ -7277,7 +7295,9 @@ function crmPayload(d){
       });base-=sum;
     });
     return {deal_type:'pay_in',status:'completed',skip_sync:true,
-      manager_name:d.manager||'Елизавета',client_id:typeof d.clientId==='string'&&d.clientId.startsWith('crm:')?parseInt(d.clientId.slice(4)):(d.crmClientId??null),
+      manager_name:d.manager||'Елизавета',
+      ...(managerAccountId?{manager_user_id:managerAccountId}:{}),
+      client_id:typeof d.clientId==='string'&&d.clientId.startsWith('crm:')?parseInt(d.clientId.slice(4)):(d.crmClientId??null),
       client_name:d.client||null,is_custom:true,
       created_at:c.date?new Date(c.date+'T12:00:00').toISOString():null,
       payin_method:c.payinMethod||'crypto_direct',payin_tx_hash:c.payinTxHash||null,
@@ -7308,7 +7328,9 @@ function crmPayload(d){
   const r2=v=>(v==null||v===''||!isFinite(v))?null:Math.round(v*100)/100;
   const hx=l=>(l||[]).filter(h=>h&&h.hash).map(h=>({hash:h.hash,network:crmNet(h.network||h.net),amount_usdt:h.amount??h.amount_usdt??null}));
   const p={client_name:d.client, client_id:typeof d.clientId==='string'&&d.clientId.startsWith('crm:')?parseInt(d.clientId.slice(4)):(d.crmClientId??null),
-    manager_name:d.manager||'Елизавета', status:'completed', skip_sync:true,
+    manager_name:d.manager||'Елизавета',
+    ...(managerAccountId?{manager_user_id:managerAccountId}:{}),
+    status:'completed', skip_sync:true,
     ...(d.rubIsNet===true?{payin_rub_is_net:true}:{}),
     payin_method:d.payType==='По реквизитам'&&d.rubReceivingAccount?.mode==='flowsole'
       ?'flow_sole_reqs':PAYIN_CRM[d.payType]||'sber_reqs',
@@ -8880,7 +8902,10 @@ function viewEditLegacy(){
 
     <div class="fr">
       <div class="fg"><label class="fl">Менеджер</label>
-        <select class="fc" id="e_manager">${opt((d.manager && !MANAGERS.includes(d.manager)) ? [d.manager].concat(MANAGERS) : MANAGERS, d.manager||MANAGERS[0])}</select></div>
+        <select class="fc" id="e_manager">${STAND&&STAND_EMPLOYEES.some(e=>e.role==='manager'&&!e.login_disabled)
+          ?`<option value="">— выберите учётную запись —</option>${STAND_EMPLOYEES.filter(e=>e.role==='manager'&&!e.login_disabled).map(e=>
+            `<option value="user:${e.id}"${String(d.managerUserId)===String(e.id)?' selected':''}>${htmlText(e.display_name||e.account||'')} · @${htmlText(e.account||e.username||'ID '+e.id)}</option>`).join('')}`
+          :opt((d.manager && !MANAGERS.includes(d.manager)) ? [d.manager].concat(MANAGERS) : MANAGERS, d.manager||MANAGERS[0])}</select></div>
       <div class="fg"><label class="fl">Откуда обращение</label>
         <select class="fc" onchange="editSrcSet(${d.id},this.value)">${Object.keys(SOURCES).map(k=>`<option value="${k}"${d.source===k?' selected':''}>${SOURCES[k]}</option>`).join('')}</select></div>
       <div class="fg"><label class="fl">${d.source==='bitrix'?'Карточка в Битриксе':'Чат'}</label>
@@ -9168,7 +9193,15 @@ function editApply(id){
   put('дата',d.createdAt,V('e_date'),()=>d.createdAt=V('e_date')||d.createdAt);
   putF('e_src','источник',SOURCES[d.source],SOURCES[V('e_src')],()=>d.source=V('e_src'));
   putF('e_sref','чат/карточка',d.sourceRef,V('e_sref'),()=>d.sourceRef=V('e_sref'));
-  put('менеджер',d.manager,V('e_manager'),()=>d.manager=V('e_manager'));
+  const managerValue=V('e_manager');
+  const managerAccount=String(managerValue).startsWith('user:')
+    ?STAND_EMPLOYEES.find(e=>String(e.id)===String(managerValue.slice(5))&&e.role==='manager'&&!e.login_disabled):null;
+  if(managerAccount){
+    put('менеджер',d.managerUserId,managerAccount.id,()=>{
+      d.managerUserId=managerAccount.id;
+      d.manager=managerAccount.display_name||managerAccount.account||managerAccount.username;
+    });
+  }else if(!STAND)put('менеджер',d.manager,managerValue,()=>d.manager=managerValue);
   putF('e_client','клиент',d.client,V('e_client'),()=>d.client=V('e_client')||d.client);
   putF('e_type','тип запроса',d.type,V('e_type'),()=>d.type=V('e_type'));
   putF('e_kind','тип сделки',d.kind,V('e_kind'),()=>d.kind=V('e_kind'));

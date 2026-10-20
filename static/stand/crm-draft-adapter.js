@@ -66,7 +66,7 @@ function crmDraftSafeFetch(url,options) {
     '/api/cash/batches','/api/cards/balance','/api/wallets',
     '/api/rates',
     '/api/deals/mf-realty/preview','/api/deals/mf-freehold/preview',
-    '/api/managers','/api/clients','/api/referrers','/api/payin-txs'];
+    '/api/managers?include_staff=1','/api/clients','/api/referrers','/api/payin-txs'];
   if(u.origin!==location.origin || !(allowed.includes(u.pathname)||u.pathname.startsWith('/api/payin-txs/')))
     return Promise.reject(new Error('CRM draft request blocked'));
   const method=(options?.method||'GET').toUpperCase();
@@ -149,7 +149,7 @@ function crmDraftFill(active,d) {
   const method=d.payType==='По реквизитам'&&d.rubReceivingAccount?.mode==='flowsole'
     ?'flow_sole_reqs':PAYIN_CRM[d.payType]||'sber_reqs';
   const kind=dealKind(d);
-  crmDraftValue(root,'managerSelect',d.manager||'');
+  crmDraftValue(root,'managerSelect',d.managerUserId?`user:${d.managerUserId}`:'');
   crmDraftValue(root,'clientSearchInput',d.client||'');
   crmDraftValue(root,'clientIdHidden',d.crmClientId||'');
   crmDraftValue(root,'dealKindSelect',kind);
@@ -435,18 +435,28 @@ async function crmDraftLoadPayinTx(active) {
 async function crmDraftLoadLists(active) {
   const {root}=active,d=deal(active.id);
   const get=async path=>{try{const r=await crmDraftSafeFetch(path);return r.ok?await r.json():{};}catch{return {};}};
-  const [managers,clients,refs]=await Promise.all([get('/api/managers'),get('/api/clients'),get('/api/referrers')]);
+  const [managers,clients,refs]=await Promise.all([get('/api/managers?include_staff=1'),get('/api/clients'),get('/api/referrers')]);
   if(crmDraftActive!==active)return;
   const manager=root.getElementById('managerSelect');
-  const names=(managers.managers||[]).filter(x=>x.active).map(x=>x.name);
-  manager.replaceChildren(...names.map(name=>new Option(name,name)));
-  // CRM's setManagerSelectValue() keeps a historical inactive/renamed manager
-  // visible during edit, with the same label rather than silently replacing it.
-  if(d.manager&&!names.includes(d.manager))
-    manager.add(new Option(d.manager+' (не в списке)',d.manager));
-  manager.value=d.manager||names[0]||'';
+  const staff=(managers.managers||[]).filter(x=>x.active&&x.user_id);
+  manager.replaceChildren(new Option('— выберите учётную запись менеджера —',''),
+    ...staff.map(x=>{
+      const option=new Option(`${x.name} · @${x.account}`,`user:${x.user_id}`);
+      option.dataset.userId=x.user_id;option.dataset.name=x.name;
+      return option;
+    }));
+  const inferredId=standManagerIdForTransfer(d);
+  manager.value=inferredId?`user:${inferredId}`:'';
   active.clients=clients.clients||[];
   active.core.referrers=refs.referrers||[];
+}
+function crmDraftManagerCommit(active,d){
+  const selected=active.root.getElementById('managerSelect')?.selectedOptions[0];
+  const userId=Number(selected?.dataset.userId||0);
+  if(!userId){toast('Выберите учётную запись менеджера задачника');return false;}
+  d.managerUserId=userId;
+  d.manager=selected.dataset.name;
+  return true;
 }
 function crmDraftSourceChoices() {
   const source=document.getElementById('crmDraftSource')?.value;
@@ -723,7 +733,7 @@ function crmDraftCommitCustom(a,d,before) {
   d.source=document.getElementById('crmDraftSource')?.value||d.source;
   d.sourceRef=document.getElementById('crmDraftSourceRef')?.value||'';
   d.custom=true;d.type='Обмен валюты';d.kind='';
-  d.manager=crmDraftRead(r,'managerSelect')||d.manager;
+  if(!crmDraftManagerCommit(a,d))return false;
   if(name){
     d.client=name;d.crmClientId=crmDraftNum(crmDraftRead(r,'clientIdHidden'));
     d.clientPinned=!!a.clientPicked;
@@ -815,7 +825,7 @@ function crmDraftCommit(id) {
   d.type=(kind==='mf_realty'||kind==='mf_freehold')?'Оплата недвижимости':'Обмен валюты';
   d.kind=kind==='mf_freehold'?'Фрихолд':kind==='mf_realty'
     ?(document.getElementById('crmDraftRealtySubtype')?.value|| (d.kind==='Аренда'?'Аренда':'Лизхолд')):'';
-  d.manager=crmDraftRead(r,'managerSelect')||d.manager;
+  if(!crmDraftManagerCommit(a,d))return false;
   const name=crmDraftRead(r,'clientSearchInput').trim();
   if(name){
     d.client=name;d.crmClientId=crmDraftNum(crmDraftRead(r,'clientIdHidden'));

@@ -5477,7 +5477,7 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
                     const form = document.getElementById('createDealForm');
                     // Пустое значение — тоже значение: при `if (deal.X)` поле оставалось
                     // от прошлой сделки и уезжало в неё при сохранении
-                    setManagerSelectValue(deal.manager_name);
+                    setManagerSelectValue(deal.manager_name, deal.manager_user_id);
                     document.getElementById('clientSelect').value = deal.client_id || '';
                     form.client_name.value = deal.client_name || '';
 
@@ -5738,7 +5738,7 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
 
             const agents = customAgentsSerialize();
 
-            const managerName = document.getElementById('managerSelect').value;
+            const managerName = selectedManagerIdentity().name;
             const clientId = document.getElementById('clientSelect').value;
             const clientName = document.querySelector('[name="client_name"]').value;
             const createdAt = document.getElementById('dealDate').value;
@@ -5756,6 +5756,8 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
             const data = {
                 is_custom: true,
                 manager_name: managerName,
+                ...(editingDealId !== null || selectedManagerIdentity().userId
+                    ? {manager_user_id: selectedManagerIdentity().userId} : {}),
                 client_id: parseInt(clientId) || null,
                 client_name: clientName,
                 created_at: createdAt || null,
@@ -6173,23 +6175,46 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
 
         async function loadManagersForSelect() {
             try {
-                const response = await fetch(`${API_URL}/api/managers`);
+                const response = await fetch(`${API_URL}/api/managers?include_staff=1`);
                 const data = await response.json();
 
                 if (data.success) {
                     const select = document.getElementById('managerSelect');
-                    select.innerHTML = data.managers.filter(m => m.active).map(m =>
-                        `<option value="${m.name}">${m.name}</option>`
-                    ).join('');
+                    select.replaceChildren(...data.managers.filter(m => m.active).map(m => {
+                        const option = new Option(m.user_id
+                            ? `${m.name} · @${m.account}` : m.name,
+                            m.user_id ? `user:${m.user_id}` : m.name);
+                        option.dataset.name = m.name;
+                        if (m.user_id) option.dataset.userId = m.user_id;
+                        return option;
+                    }));
                 }
             } catch (error) {
                 console.error('Error loading managers:', error);
             }
         }
 
-        function setManagerSelectValue(name) {
+        function selectedManagerIdentity() {
+            const option = document.getElementById('managerSelect')?.selectedOptions[0];
+            return {name: option?.dataset.name || option?.value || '',
+                userId: option?.dataset.userId ? Number(option.dataset.userId) : null};
+        }
+
+        function setManagerSelectValue(name, userId) {
             const select = document.getElementById('managerSelect');
             if (!select) return;
+            if (userId && [...select.options].some(o => o.value === `user:${userId}`)) {
+                select.value = `user:${userId}`;
+                return;
+            }
+            if (userId) {
+                const archived = new Option(`${name || 'Менеджер'} · аккаунт #${userId} недоступен`, `user:${userId}`);
+                archived.dataset.userId = userId;
+                archived.dataset.name = name || '';
+                select.appendChild(archived);
+                select.value = archived.value;
+                return;
+            }
             const value = name || '';
             // Менеджер мог стать неактивным или быть переименован — в списке его нет,
             // select остаётся пустым и роняет валидацию невидимого поля. Добавляем.
@@ -8912,7 +8937,7 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
             const netProfit = customAgentsRecalc();   // чистая после всех агентов
 
             // Получаем данные менеджера и клиента из формы
-            const managerName = document.getElementById('managerSelect').value;
+            const managerName = selectedManagerIdentity().name;
             const clientId = document.getElementById('clientSelect').value;
             const clientName = document.querySelector('[name="client_name"]').value;
 
@@ -8920,6 +8945,8 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
                 deal_type: 'pay_in',
                 status: payinMethod === 'flow_sole_reqs' ? 'pending' : 'completed',
                 manager_name: managerName,
+                ...(editingDealId !== null || selectedManagerIdentity().userId
+                    ? {manager_user_id: selectedManagerIdentity().userId} : {}),
                 client_id: clientId ? parseInt(clientId) : null,
                 client_name: clientName || null,
 
@@ -9230,6 +9257,9 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
                     }
                 }
             });
+            const manager = selectedManagerIdentity();
+            data.manager_name = manager.name;
+            if (editingDealId !== null || manager.userId) data.manager_user_id = manager.userId;
             if (['findir', 'teodor'].includes(AUTH_ROLE) &&
                     document.getElementById('payoutOwnerApprovalGroup')?.style.display !== 'none') {
                 data.payout_owner_approved = !!document.getElementById('payoutOwnerApproved')?.checked;

@@ -1695,6 +1695,7 @@ class Deal(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     manager_name = Column(String(100))
+    manager_user_id = Column(Integer, ForeignKey('admin_users.id'), nullable=True)
     deal_type = Column(SQLEnum(DealType), nullable=False)
     status = Column(SQLEnum(DealStatus), default=DealStatus.PENDING)
     # Демо-сделка тестового реферера: живёт только в реферальном кабинете.
@@ -1835,6 +1836,7 @@ class Deal(Base):
             'id': self.id,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'manager_name': self.manager_name,
+            'manager_user_id': self.manager_user_id,
             'deal_type': self.deal_type.value if self.deal_type else None,
             'status': self.status.value if self.status else None,
             'is_test': bool(self.is_test),
@@ -3276,6 +3278,17 @@ try:
         conn.commit()
 except Exception as e:
     print(f"ℹ️ payin_rub_is_net migration: {e}")
+
+try:
+    with engine.connect() as conn:
+        if 'postgresql' in DATABASE_URL:
+            conn.execute(text("ALTER TABLE deals ADD COLUMN IF NOT EXISTS manager_user_id INTEGER"))
+        else:
+            try: conn.execute(text("ALTER TABLE deals ADD COLUMN manager_user_id INTEGER"))
+            except Exception: pass
+        conn.commit()
+except Exception as e:
+    print(f"ℹ️ manager_user_id migration: {e}")
 
 # Приход крипты частями: JSON-список хэшей с суммами
 try:
@@ -5256,6 +5269,7 @@ def stand_employee_directory():
         employees = db.query(AdminUser).order_by(AdminUser.id).all()
         return jsonify({'success': True, 'employees': [
             {'id': user.id, 'display_name': user.display_name or user.username,
+             'account': user.username,
              'role': user.role or 'admin', 'login_disabled': bool(user.login_disabled)}
             for user in employees]})
     finally:
@@ -10963,6 +10977,16 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
     old = {d.get('id'): d for d in previous.get('deals', [])}
     for deal in new_state.get('deals') or []:
         before = old.get(deal.get('id'))
+        manager_id = deal.get('managerUserId')
+        if manager_id is not None:
+            if type(manager_id) is not int or manager_id <= 0:
+                return 'Некорректный ID менеджера задачника'
+            if not before or before.get('managerUserId') != manager_id:
+                manager = db.query(AdminUser).filter_by(id=manager_id).first() if db else None
+                if not manager or manager.role != 'manager' or manager.login_disabled:
+                    return 'Менеджер задачника не найден или неактивен'
+        if before and before.get('managerUserId') != manager_id and actor not in ('manager', 'admin'):
+            return 'Менеджера сделки выбирает менеджер или администратор'
         if deal.get('type') in ('Обмен валюты', 'Оплата недвижимости'):
             new_kind_canon = canonical_deal_kind_from_stand(deal.get('type'), deal.get('kind'))
             new_payin_canon = canonical_payin_from_stand(deal.get('payType'))
@@ -18886,6 +18910,19 @@ def _crm_payin_basis_error(data, is_net):
     return None
 
 
+def _crm_manager_user(session, data, existing_id=None):
+    """Resolve an explicit task account; display names are never identity keys."""
+    if 'manager_user_id' not in data or data['manager_user_id'] is None:
+        return None, None
+    user_id = data['manager_user_id']
+    if type(user_id) is not int or user_id <= 0:
+        return None, ('manager_user_id должен быть ID пользователя', 400)
+    user = session.query(AdminUser).filter_by(id=user_id).first()
+    if not user or user.role != 'manager' or (user.login_disabled and user.id != existing_id):
+        return None, ('Менеджер задачника не найден или неактивен', 400)
+    return user, None
+
+
 def _create_deal_impl(session=None, *, data=None, defer_commit=False, skip_flow_gate=False,
                       trusted_approval=None, manual_override=False):
     """Existing CRM create validation; stand close may share its DB transaction."""
@@ -18900,6 +18937,11 @@ def _create_deal_impl(session=None, *, data=None, defer_commit=False, skip_flow_
         basis_problem = _crm_payin_basis_error(data, data.get('payin_rub_is_net') is True)
         if basis_problem:
             return jsonify(success=False, error=basis_problem[0]), basis_problem[1]
+        manager_user, manager_problem = _crm_manager_user(session, data)
+        if manager_problem:
+            return jsonify(success=False, error=manager_problem[0]), manager_problem[1]
+        if manager_user:
+            data['manager_name'] = manager_user.display_name or manager_user.username
         if (data.get('payout_wallet_id') in (None, '') and not defer_commit
                 and data.get('payout_source') == PayOutSource.BINANCE.value
                 and data.get('deal_kind') in (None, '', 'exchange')):
@@ -19070,6 +19112,7 @@ def _create_deal_impl(session=None, *, data=None, defer_commit=False, skip_flow_
         deal = Deal(
             created_at=created_at,
             manager_name=data.get('manager_name'),
+            manager_user_id=manager_user.id if manager_user else None,
             deal_type=DealType(data.get('deal_type', 'pay_in')),
             status=DealStatus(data.get('status', 'pending')),
             is_test=bool(data.get('is_test', False)),
@@ -19349,6 +19392,20 @@ def update_deal(deal_id):
         basis_problem = _crm_payin_basis_error(data, deal.payin_rub_is_net is True)
         if basis_problem:
             return jsonify(success=False, error=basis_problem[0]), basis_problem[1]
+        manager_user, manager_problem = _crm_manager_user(session, data, deal.manager_user_id)
+        if manager_problem:
+            return jsonify(success=False, error=manager_problem[0]), manager_problem[1]
+        if manager_user:
+            deal.manager_user_id = manager_user.id
+            data['manager_name'] = manager_user.display_name or manager_user.username
+        elif 'manager_user_id' in data:
+            deal.manager_user_id = None
+        elif deal.manager_user_id:
+            old_user = session.query(AdminUser).filter_by(id=deal.manager_user_id).first()
+            if old_user:
+                data['manager_name'] = old_user.display_name or old_user.username
+            else:
+                data.pop('manager_name', None)
         old_wallet = session.query(Wallet).filter_by(id=deal.payout_wallet_id).first() if deal.payout_wallet_id else None
         old_policy_wallet = bool(old_wallet and old_wallet.purpose == 'exchange'
                                  and old_wallet.address == 'TA6S3RBEY57jq8fXEVVsU6H9JZ18inenG4')
@@ -21034,7 +21091,15 @@ def get_managers():
     session = get_session()
     try:
         managers = session.query(Manager).order_by(Manager.name).all()
-        return jsonify({'success': True, 'managers': [m.to_dict() for m in managers]})
+        result = [m.to_dict() for m in managers]
+        if STAND_MODE and request.args.get('include_staff') == '1':
+            staff = session.query(AdminUser).filter(
+                AdminUser.role == 'manager', AdminUser.login_disabled.isnot(True)
+            ).order_by(AdminUser.id).all()
+            result.extend({'id': None, 'name': user.display_name or user.username,
+                           'active': True, 'user_id': user.id,
+                           'account': user.username} for user in staff)
+        return jsonify({'success': True, 'managers': result})
     finally:
         session.close()
 
