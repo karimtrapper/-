@@ -8,6 +8,7 @@ import pytest
 pytestmark = pytest.mark.usefixtures('stand_demo_environment')
 
 import app as m
+from tests.test_stand_crm_close_atomic import s26_legacy_trail
 import stand_prepay
 import stand_funding
 from stand_transfers import expected_addresses
@@ -893,6 +894,7 @@ def test_actual_crm_close_requires_all_results_and_preserves_profit(api, source,
     d['pay']['invoicePaid'] = True
     d['files'] = {'receipt': [{'file': 'receipt.pdf', 'mime': 'application/pdf',
                              'data': 'data:application/pdf;base64,JVBERi0='}]}
+    d['log'] = (d.get('log') or []) + s26_legacy_trail(d)  # чек принят завершением s26
     seed(state)
     # Здесь проверяем атомарное закрытие; проверка самого MT103 имеет отдельные тесты.
     db = m.get_session()

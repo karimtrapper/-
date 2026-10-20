@@ -7,7 +7,7 @@ import secrets
 
 import pytest
 import app as m
-from tests.test_stand_crm_close_atomic import _setup, _client, _crm, _counts
+from tests.test_stand_crm_close_atomic import _setup, _client, _crm, _counts, s26_legacy_trail
 
 pytestmark = pytest.mark.usefixtures('stand_demo_environment')
 STAMP = '2026-10-18T10:11:12+00:00'
@@ -52,6 +52,10 @@ def setup_verified(monkeypatch, *, property_deal=False, uploader_role='operator'
         return _client(uid), uid, crm
     finally:
         db.close()
+
+
+def complete_s26(deal):
+    deal['log'] = (deal.get('log') or []) + s26_legacy_trail(deal)
 
 
 def change_board(edit):
@@ -158,6 +162,8 @@ def test_sent_true_needs_no_new_signoff_and_readiness_is_read_only(monkeypatch):
 @pytest.mark.parametrize('role,ready', [('operator', True), ('manager', False)])
 def test_only_operator_receipt_upload_is_automatic(monkeypatch, role, ready):
     client, _, _ = setup_verified(monkeypatch, property_deal=True, uploader_role=role)
+    if ready:
+        change_board(complete_s26)  # приёмку даёт завершённый s26, а не сама загрузка
     status = client.get('/api/stand/deals/1474/close-evidence').json
     fact = next(f for f in status['facts'] if f['kind'] == 'receipt')
     assert fact['ready'] is ready
@@ -279,13 +285,15 @@ def test_native_file_acceptance_timestamp_survives_invoice_paid(monkeypatch):
         assert evidence.actor_id == operator  # Actor and time remain one upload event.
     finally:
         db.close()
+    change_board(complete_s26)
     fact = next(f for f in client.get('/api/stand/deals/1474/close-evidence').json['facts'] if f['kind'] == 'receipt')
     assert fact['ready'] and fact['system']
-    assert fact['checked_at'] == stamp.isoformat() + 'Z'
+    assert fact['checked_at'] == '2025-10-19T05:49:42Z'  # время завершения s26, а не поздней записи
 
 
 def test_realty_closes_with_one_manager_confirmation_after_operator_upload(monkeypatch):
     client, uid, crm = setup_verified(monkeypatch, property_deal=True)
+    change_board(complete_s26)
     status = client.get('/api/stand/deals/1474/close-evidence').json
     assert status['missing'] == []
     assert all(f['system'] for f in status['facts'] if f['kind'] != 'sent')

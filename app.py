@@ -7003,6 +7003,18 @@ def stand_state_put():
             if before.get('step') == 's22' and deal.get('step') == 's23':
                 deal['outgoingOrderAt'] = datetime.utcnow().isoformat()+'Z'
             deal.pop('_ippsPayoutInstruction', None)
+            # Завершение s26 пишет в журнал только сервер, после accept_journal:
+            # браузерная запись такого вида превращается там в комментарий.
+            deal.pop('s26Done', None)
+            if (before.get('step') == 's26' and deal.get('step') == 's27'
+                    and deal.get('type') == 'Оплата недвижимости'):
+                account = db.get(AdminUser, actor_id) if actor_id is not None else None
+                done = _stand_s26_completion_entry(
+                    deal, actor, actor_id,
+                    (account.display_name or account.username) if account else author,
+                    int(time.time() * 1000))
+                if done:
+                    deal.setdefault('log', []).append(done)
         if actor in ('manager', 'admin') and actor_id is not None:
             old_by_id = {d.get('id'): d for d in previous.get('deals') or []}
             for deal in clean.get('deals') or []:
@@ -7242,6 +7254,83 @@ def _stand_close_required(deal):
         'payin', 'payout', 'sent')
 
 
+# Тексты перехода s26 → s27 в журнале (static/stand/tasks.html, act(..., 's26'),
+# go()): SCB-ветка и MT103 от IPPS. Только они означают завершённую оплату.
+_STAND_S26_GO_TEXTS = (
+    'Оплачено, чек у менеджера — отправить клиенту и закрыть',
+    'MT103 подтверждён, чек у менеджера — отправить клиенту и закрыть')
+
+
+def _stand_s26_completion_entry(deal, actor, actor_id, author, now_ms):
+    """Запись журнала о завершении s26 операционистом с чеком (приёмка чека на s27).
+
+    Пишется сервером только при переходе s26 → s27 от аутентифицированного
+    operator/admin, привязана к содержимому чека (sha256)."""
+    ids = sorted(_stand_receipt_content_ids(deal))
+    if (actor not in ('operator', 'admin') or actor_id is None
+            or not (deal.get('pay') or {}).get('invoicePaid')
+            or not ids or not _stand_valid_receipt(deal)):
+        return None
+    return {'at': now_ms, 'ts': stand_now().strftime('%d.%m, %H:%M'), 'role': actor,
+            'kind': 's26_completed', 'byId': actor_id, 'by': author, 'receipts': ids,
+            'text': 'Оплата инвойса завершена с чеком · ' + author}
+
+
+def _stand_s26_implicit_acceptance(deal):
+    """Кто и когда завершил s26 с чеком: (имя, роль, epoch ms) или None.
+
+    Чек, приложенный операционистом при оплате инвойса, одновременно и есть его
+    приёмка факта на s27. Источник — журнал сделки: серверная запись
+    `s26_completed` (привязана к sha256 чека), а для сделок до неё — запись операциониста: роль и
+    автор в комментарии выставляет сервер (accept_journal), прошлые записи
+    неизменяемы; нужны приложенный чек, текст перехода и «Шаг передан дальше».
+    Комментарий менеджера и сделка без завершённой оплаты не подходят."""
+    if (deal.get('step') not in ('s27', 'done') or deal.get('type') != 'Оплата недвижимости'
+            or not (deal.get('pay') or {}).get('invoicePaid') or not _stand_valid_receipt(deal)):
+        return None
+    def at_ms(value):
+        return int(value) if isinstance(value, (int, float)) and not isinstance(value, bool) and value > 0 else None
+    for entry in reversed(deal.get('log') or []):
+        if isinstance(entry, dict) and entry.get('kind') == 's26_completed':
+            ids = _stand_receipt_content_ids(deal)
+            if (entry.get('role') in ('operator', 'admin') and entry.get('byId') is not None
+                    and ids and ids <= set(entry.get('receipts') or ())):
+                return entry.get('by') or None, entry['role'], at_ms(entry.get('at'))
+            return None
+    def server_entry(entry, text, prefix=False):
+        # Запись сервера: чек-вложение и «Шаг передан дальше» пишутся без kind/author.
+        body = str(entry.get('text') or '') if isinstance(entry, dict) else ''
+        return (isinstance(entry, dict) and entry.get('role') in ('operator', 'admin')
+                and not entry.get('kind') and not entry.get('author')
+                and (body.startswith(text) if prefix else body == text))
+    log = deal.get('log') or []
+    for i in range(len(log) - 1, -1, -1):
+        entry = log[i]
+        if not isinstance(entry, dict) or entry.get('role') not in ('operator', 'admin'):
+            continue
+        text, name = str(entry.get('text') or ''), entry.get('by')
+        if entry.get('kind') == 'comment':
+            name = entry.get('author')
+            prefix = f'Комментарий · {name}: '
+            if not name or not text.startswith(prefix):
+                continue
+            text = text[len(prefix):]
+        elif entry.get('kind') or entry.get('author'):
+            continue
+        # Завершение = текст перехода + позже серверное «Шаг передан дальше»
+        # + раньше серверная запись о приложенном чеке.
+        # Каждый текущий чек приложен до завершения; после него чеков не добавляли.
+        names = [f.get('file') for f in (deal.get('files') or {}).get('receipt') or []
+                 if isinstance(f, dict)]
+        if (text.strip() in _STAND_S26_GO_TEXTS and names
+                and any(server_entry(e, 'Шаг передан дальше') for e in log[i + 1:])
+                and not any(server_entry(e, 'Приложен файл: receipt · ', prefix=True) for e in log[i + 1:])
+                and all(any(server_entry(e, f'Приложен файл: receipt · {n}') for e in log[:i])
+                        for n in names)):
+            return (name if isinstance(name, str) and name.strip() else None), entry['role'], at_ms(entry.get('at'))
+    return None
+
+
 def _stand_close_readiness(db, row, state, deal):
     """Revalidate server-owned facts; historical signoffs cannot override failures.
 
@@ -7262,9 +7351,11 @@ def _stand_close_readiness(db, row, state, deal):
         if manual and not signed:
             problem = 'operator_confirmation_missing'
         checked_at = None
-        receipt_system = bool(kind == 'receipt' and signed
-                              and record.provenance in ('operator_upload', 'operator_attestation'))
-        if kind == 'receipt' and not problem and not signed:
+        # Чек принят самим завершением s26 (оплата инвойса с чеком, операционист):
+        # дата и автор — оттуда. Без него отдельная запись приёмки факт не открывает.
+        implicit = (_stand_s26_implicit_acceptance(deal)
+                    if kind == 'receipt' and not problem else None)
+        if kind == 'receipt' and not problem and implicit is None:
             problem = 'operator_receipt_acceptance_missing'
         if not problem:
             if kind == 'payin':
@@ -7284,15 +7375,18 @@ def _stand_close_readiness(db, row, state, deal):
                 if stamps and all(stamps):
                     checked_at = max(stamps)
             elif kind == 'receipt':
-                checked_at = record.confirmed_at.isoformat() + 'Z' if signed and record.confirmed_at else None
+                if implicit[2]:
+                    checked_at = datetime.utcfromtimestamp(implicit[2] / 1000).isoformat() + 'Z'
             if (manual or kind == 'sent') and signed and record.confirmed_at:
                 checked_at = record.confirmed_at.isoformat() + 'Z'
         facts.append({'kind': kind, 'ready': not problem, 'reason': problem,
                       'source': source, 'system': kind != 'sent' and not manual
                           and source != 'manual_bank_confirmed'
-                          and (kind != 'receipt' or receipt_system),
+                          and (kind != 'receipt' or implicit is not None),
                       'checked_at': checked_at,
-                      'required_role': 'operator' if manual or kind == 'receipt' else 'manager'})
+                      'required_role': 'operator' if manual or kind == 'receipt' else 'manager'}
+                     | ({'implicit': True, 'confirmed_by': implicit[0], 'confirmed_role': implicit[1]}
+                        if implicit else {}))
     return facts
 
 

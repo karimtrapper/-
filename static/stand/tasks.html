@@ -7347,9 +7347,9 @@ function crmCloseReason(fact){
     verified_partner_payin_missing:'Нет подтверждённого в сети прихода партнёра',
     network_payout_proof_missing:'Нет подтверждённого в сети хеша выплаты',
     payout_fact_missing:'Не заполнены сумма и получатель выплаты',
-    invoice_payment_or_receipt_missing:'Нет оплаты инвойса или файла чека',
+    invoice_payment_or_receipt_missing:'Не хватает чека или завершённой оплаты инвойса',
     sent_receipt_missing:'Отметьте отправку чека клиенту',
-    operator_receipt_acceptance_missing:'Чек должен приложить или подтвердить операционист',
+    operator_receipt_acceptance_missing:'Операционист должен завершить шаг «Оплатить инвойс» с чеком',
     operator_confirmation_missing:'Нужно подтверждение операциониста: '+
       (fact.kind==='payin'?'получение денег':'выдача денег'),
     demo_history_requires_review:'Нужна проверка истории демонстрационных переводов',
@@ -7372,11 +7372,17 @@ function crmEvidenceParts(d,compact){
     if(fact.ready){
       const stamp=fact.checked_at?new Date(fact.checked_at).toLocaleString('ru-RU'):
         kind==='sent'?'дата отметки не сохранена':fact.system?'дата проверки не сохранена':'дата подтверждения не сохранена';
+      if(fact.implicit){
+        /* оплата инвойса с чеком на s26 уже и есть приёмка чека операционистом */
+        const who=fact.confirmed_by?'операционист '+fact.confirmed_by:'операционист';
+        return '<span class="fh">'+htmlText('проверено · '+who+' · '+(fact.checked_at?new Date(fact.checked_at).toLocaleString('ru-RU'):'дата не сохранена'))+'</span>';
+      }
       const label=kind==='sent'?'Чек отправлен клиенту':fact.system?'проверено системой':'подтверждено сотрудником';
       return '<span class="fh">'+htmlText(label+' · '+stamp)+'</span>';
     }
     const warning='<span class="s27-fact-pending">'+htmlText(compact?'Не подтверждено':crmCloseReason(fact))+'</span>';
-    if(['operator_confirmation_missing','operator_receipt_acceptance_missing'].includes(fact.reason))return warning+
+    /* чек принимает завершение s26, отдельной кнопки у него нет */
+    if(fact.reason==='operator_confirmation_missing')return warning+
       `<button class="btn btn-outline btn-sm" ${['operator','admin'].includes(S.role)?'':'disabled'} onclick="crmEvidence(${d.id},'${kind}')">Подтвердить · оператор</button>`;
     return warning;
   };

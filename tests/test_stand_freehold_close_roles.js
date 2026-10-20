@@ -21,7 +21,7 @@ for(const role of ['operator','admin','manager']){
 ctx.S.role='teodor';assert.doesNotMatch(ctx.viewDeal(d),/crmEvidence/);
 console.log('freehold close role visibility OK');
 
-// Проверенные факты не показывают manager buttons; legacy receipt остаётся у оператора.
+// Проверенные факты не показывают кнопок; чек принимает завершение s26, кнопки у него нет ни у кого.
 ctx.htmlText=String;ctx.econ=()=>({payin:11000,cost:10130});
 ctx.payinSourceLabel=()=>'Flow Sole (СГБ) …0261';ctx.payoutHuman=()=>'IPPS → SWIFT';ctx.txShort=s=>s;
 ctx.moneyKop=(v)=>String(v);
@@ -30,7 +30,7 @@ ctx.crmCloseReason=()=> 'Нужно подтверждение оператор�
 vm.runInContext(source('crmEvidenceParts'),ctx);
 vm.runInContext(source('crmEvidencePanel'),ctx);
 d.postConv='ipps_swift';d.serverTransferComplete=true;
-for(const [role,expected] of [['operator',['receipt']],['manager',[]],['admin',['receipt']],['teodor',[]]]){
+for(const [role,expected] of [['operator',[]],['manager',[]],['admin',[]],['teodor',[]]]){
  ctx.S.role=role;
  const buttons=[...ctx.crmEvidencePanel(d).matchAll(/<button([^>]+)>/g)];
  const enabled=buttons.filter(b=>!b[1].includes('disabled')).map(b=>b[1].match(/crmEvidence\(1484,'([^']+)'/)[1]);

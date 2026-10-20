@@ -58,6 +58,16 @@ def _setup(monkeypatch):
         db.close()
 
 
+def s26_legacy_trail(deal):
+    """Чек принимает завершённый s26: историческая цепочка журнала реальных сделок."""
+    names = [f['file'] for f in (deal.get('files') or {}).get('receipt') or []]
+    return [{'at': 1760852000000, 'role': 'operator', 'text': 'Приложен файл: receipt · ' + n}
+            for n in names] + [
+        {'at': 1760852982000, 'role': 'operator', 'author': 'Синтетик', 'kind': 'comment',
+         'text': 'Комментарий · Синтетик: Оплачено, чек у менеджера — отправить клиенту и закрыть'},
+        {'at': 1760852982001, 'role': 'operator', 'text': 'Шаг передан дальше'}]
+
+
 def _seed_evidence(db, row, board, actor_id):
     """Seed actual trusted facts as well as legacy signoffs for transaction tests.
 
@@ -93,6 +103,8 @@ def _seed_evidence(db, row, board, actor_id):
             'verifiedAmount': amount, 'status': 'confirmed', 'verifiedAt': '2026-10-18T12:00:00Z',
             'from': 'synthetic-sender', 'to': 'synthetic-recipient'}])
         deal['serverTransferComplete'] = True
+    if deal.get('type') == 'Оплата недвижимости':
+        deal['log'] = (deal.get('log') or []) + s26_legacy_trail(deal)
     row.data = json.dumps(board)
     for kind in m._stand_close_required(deal):
         entry = db.query(m.StandCloseEvidence).filter_by(
@@ -2133,6 +2145,7 @@ def test_freehold_ipps_server_settlement_receipt_sent_then_close(monkeypatch, co
         row = db.query(m.StandState).filter_by(id=1).one()
         advanced = json.loads(row.data)
         advanced['deals'][0].update(step='s27', sentToClient=True)
+        advanced['deals'][0]['log'] = (advanced['deals'][0].get('log') or []) + s26_legacy_trail(advanced['deals'][0])
         row.data = json.dumps(advanced)
         db.commit()
         version = row.version
