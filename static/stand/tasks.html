@@ -5361,6 +5361,12 @@ function closeTaskToList(){
   S.open=null;S.draft=null;S.tab='tasks';saveUi();render();
   if(taskListScrollY!==null)requestAnimationFrame(()=>window.scrollTo(0,taskListScrollY));
 }
+document.addEventListener('click',event=>{
+  if(!S.open||!window.matchMedia('(max-width:700px)').matches)return;
+  if(!event.target.closest?.('a[href="/tasks"]'))return;
+  event.preventDefault();event.stopPropagation();
+  closeTaskToList();
+},true);
 function openDeal(id){rememberTaskList();S.open=id;S.view='deal';S.taskBranch=null;saveUi();render();}
 function openTask(id,branch){rememberTaskList();S.open=id;S.view='task';S.taskBranch=branch||null;saveUi();render();if(taskUsesThbRates())ensureThbRates();}
 function setInspectRole(role){S.inspectRole=role;saveUi();render();}
