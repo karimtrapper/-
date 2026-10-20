@@ -710,6 +710,11 @@ a.hash:hover{background:#BAE6FD}
 .deal-screen .card{border:1px solid var(--ds-border);border-radius:var(--ds-card);box-shadow:var(--ds-shadow)}
 .deal-screen .deal-breadcrumb,.deal-screen .deal-code{font-size:var(--ds-caption);color:var(--ds-muted)}
 .deal-screen .deal-breadcrumb{margin-bottom:var(--ds-md)}
+.deal-screen .task-card-nav{display:none}
+@media(max-width:700px){
+  .deal-screen .task-card-nav{display:flex;align-items:center;margin-bottom:var(--ds-md)}
+  .deal-screen .task-card-nav button{min-height:44px;padding:0;border:0;background:none;color:var(--navy-700);font:600 16px Inter,system-ui,sans-serif;cursor:pointer}
+}
 .deal-screen .deal-head{background:var(--ds-surface);border-radius:var(--ds-card);padding:var(--ds-xl);display:flex;align-items:center;justify-content:space-between;gap:var(--ds-xl);margin-bottom:var(--ds-md)}
 .deal-screen .deal-head h1{font-size:var(--ds-emphasis);font-weight:var(--ds-semibold);margin:var(--ds-xs) 0}
 .deal-screen .deal-head p{color:var(--ds-muted)}
@@ -5347,11 +5352,23 @@ function polishDealActions(){
 function saveUi(){if(!STAND)save();}
 function setRole(r){S.role=r;S.draft=null;S.modal=null;S.taskBranch=null;S.tab='tasks';saveUi();render();}
 function setTab(t){S.tab=t;S.open=null;S.draft=null;S.modal=null;saveUi();render();}
-function openDeal(id){S.open=id;S.view='deal';S.taskBranch=null;saveUi();render();}
-function openTask(id,branch){S.open=id;S.view='task';S.taskBranch=branch||null;saveUi();render();if(taskUsesThbRates())ensureThbRates();}
+let taskListScrollY=null;
+function rememberTaskList(){
+  if(window.matchMedia('(max-width:700px)').matches&&document.querySelector('#app .task-list'))
+    taskListScrollY=window.scrollY;
+}
+function closeTaskToList(){
+  S.open=null;S.draft=null;S.tab='tasks';saveUi();render();
+  if(taskListScrollY!==null)requestAnimationFrame(()=>window.scrollTo(0,taskListScrollY));
+}
+function openDeal(id){rememberTaskList();S.open=id;S.view='deal';S.taskBranch=null;saveUi();render();}
+function openTask(id,branch){rememberTaskList();S.open=id;S.view='task';S.taskBranch=branch||null;saveUi();render();if(taskUsesThbRates())ensureThbRates();}
 function setInspectRole(role){S.inspectRole=role;saveUi();render();}
 function setView(v){S.view=v;saveUi();render();}
-function back(){S.open=null;S.draft=null;saveUi();render();}
+function back(){
+  if(window.matchMedia('(max-width:700px)').matches&&S.open){closeTaskToList();return;}
+  S.open=null;S.draft=null;saveUi();render();
+}
 /* Черновики полей, которые читаются только по кнопке: комментарии, ответ курса, хеш.
    Опрос сервера раз в 2,5 с перерисовывает экран — набранное в них пропадало
    (Карим, 25.09: комментарии на создании договора не оставались). Поля с
@@ -6723,7 +6740,7 @@ function viewDeal(d){
   }
   if(d.demoTransfers&&!demoAllowed())body='<div class="alert a-warn">В истории есть DEMO-приходы или переводы. Автоматически снять флаг и продолжить нельзя: требуется сверка реальных платежей операционистом.</div>'+body;
   const tab=(v,label)=>`<span class="vtab ${view===v?'on':''}" onclick="setView('${v}')">${label}</span>`;
-  return `<div class="deal-screen"><div class="deal-breadcrumb">Задачник / ${htmlText(d.code)}</div>
+  return `<div class="deal-screen"><div class="task-card-nav"><button type="button" onclick="closeTaskToList()">‹ Все задачи</button></div><div class="deal-breadcrumb">Задачник / ${htmlText(d.code)}</div>
   <header class="deal-head"><div><p class="deal-code">${htmlText(d.code)} · ${htmlText(d.kind||d.type)}${d.prepay?' · оплата наперёд':''}</p>
     <h1>${htmlText(d.client)}</h1><p>${htmlText([d.object,d.dev,d.manager?'менеджер '+d.manager:''].filter(Boolean).join(' · '))}</p></div>
     ${['manager','admin'].includes(S.role)&&!d.closed&&!d.manual?`<button class="btn btn-outline btn-sm" onclick="manualCloseAsk(${d.id})">Перенести в CRM и закрыть</button>`:''}
