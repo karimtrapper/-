@@ -183,18 +183,20 @@ def test_document_form_depends_on_deal_type():
 
 @pytest.mark.usefixtures('stand_demo_environment')
 def test_all_pair_payloads_are_accepted_and_persisted_by_crm(monkeypatch):
+    import copy
     import json
+    import secrets
     import app as m
-    from tests.test_stand_crm_close_atomic import _setup, _seed_evidence, _client, _post, _board
+    from tests.test_stand_crm_close_atomic import _setup, _seed_evidence, _client, _counts, _post, _board
     cases = json.loads(subprocess.check_output(['node', 'tests/test_wave_a_exchange.js', '--json']))
-    for case in cases:
+    def build(case):
         uid = _setup(monkeypatch)
-        deal, crm = case['deal'], case['crm']
+        deal, crm = copy.deepcopy(case['deal']), copy.deepcopy(case['crm'])
         deal.update(id=1474, step='s27', client='Wave A pair', sentToClient=True, pay={}, log=[])
         crm.update(client_name='Wave A pair', payout_source='binance')
         # These arithmetic fixtures also need trusted workflow facts now that
         # closing revalidates evidence rather than accepting a seeded signoff.
-        deal.update(paySrc='client', serverTransferComplete=True,
+        deal.update(paySrc='client', postConv='client', serverTransferComplete=True,
             payout={'usdt': crm['payout_amount_usdt']},
             transfer={'amount': crm['payout_amount_usdt'], 'sends': [{
                 'hash': 'synthetic-wave-out', 'status': 'confirmed',
@@ -206,12 +208,52 @@ def test_all_pair_payloads_are_accepted_and_persisted_by_crm(monkeypatch):
             crm['payin_tx_hashes'] = [{'hash': 'synthetic-wave-in', 'network': 'trc20',
                 'amount_usdt': crm['payin_amount_usdt']}]
         deal['files'] = _board()['deals'][0]['files']
+        convs, incomes = [], []
+        if deal.get('payType') != 'Крипта' and crm['payin_amount_usdt'] > 0:
+            # Рублёвая пара остаётся рублёвой: приход принимает хеш USDT брокера (accepted_conversion).
+            tx = {'hash': secrets.token_hex(32), 'net': 'TRC20', 'status': 'confirmed',
+                  'amount': crm['payin_amount_usdt'], 'verifiedAt': '2026-10-18T12:00:00Z'}
+            # приход рублей привязан к этой сделке (stand_funding требует income.dealId == deal.id)
+            deal.update(cnvId=1474, payinHashes=[dict(tx)], payinParts=[{'incId': -1474, 'amountRub': 1}])
+            incomes = [{'id': -1474, 'source': 'sber', 'rub': 1, 'dealId': 1474}]
+            crm['payin_tx_hashes'] = [{'hash': tx['hash'], 'network': 'trc20',
+                                       'amount_usdt': crm['payin_amount_usdt']}]
+            convs = [{'id': 1474, 'status': 'received', 'txs': [tx], 'sources': [{
+                'dealId': 1474, 'rub': 1, 'usdtFact': crm['payin_amount_usdt']}]}]
         with m.SessionLocal() as db:
             row = db.get(m.StandState, 1)
-            state = {'deals': [deal], 'notes': []}
+            state = {'deals': [deal], 'notes': [], 'convs': convs}
+            if incomes:
+                state['incomes'] = incomes
             row.data = json.dumps(state)
             db.commit()
             _seed_evidence(db, row, state, uid)
+        return uid, deal, crm
+
+    def covered_thb_rub(case):
+        """Та же пара с честной экономикой: курс клиенту 2,5 ₽/฿ вместо 2,7 (выход 125 000 ₽)."""
+        covered = copy.deepcopy(case)
+        covered['deal'].update(amountRub=125000)
+        covered['deal']['rates']['client'] = '2.5'
+        usdt = round(125000 / 81.7, 2)  # 1529.99 при входе 1602.56
+        covered['crm'].update(payout_amount_usdt=usdt, custom_payout_amount=125000)
+        assert usdt < covered['crm']['payin_amount_usdt']
+        return covered
+
+    for case in cases:
+        if case['deal']['pair'] == 'THB → RUB':
+            # Исходная схема убыточна: 50 000 ฿ / 31,2 = 1602,56 USDT входа, 135 000 ₽ / 81,7 =
+            # 1652,39 USDT выхода. Сетевая выплата больше прихода — guard конверсии не пропускает.
+            assert case['crm']['payout_amount_usdt'] > case['crm']['payin_amount_usdt']
+            uid, deal, crm = build(case)
+            before = _counts()
+            short = _post(_client(uid), crm=crm)
+            assert short.status_code == 409 and 'не хватает 49.83 USDT' in short.json['error'], short.json
+            assert _counts() == before
+            case = covered_thb_rub(case)
+        else:
+            assert case['crm']['payout_amount_usdt'] <= case['crm']['payin_amount_usdt'], case['deal']['pair']
+        uid, deal, crm = build(case)
         assert m._stand_crm_fact_problem(deal, crm, 'exchange') is None, (deal['pair'], crm)
         for field in ('payin_amount_usdt', 'payout_amount_usdt'):
             forged = {**crm, field: crm[field] + 10}

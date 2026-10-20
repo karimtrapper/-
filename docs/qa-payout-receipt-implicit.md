@@ -1,69 +1,69 @@
-# QA: чек выплаты подтверждает выплату сам (payout receipt implicit confirm)
+# QA: чек выплаты подтверждает выплату сам + приход USDT всегда с hash
 
-**Статус: ФИНАЛЬНЫЙ PASS для scoped API/JS и полного набора (см. «Прогоны» и оговорку).** Ветка `fix/payout-receipt-implicit-confirm`, база `e165aee`.
-Роль: независимый Claude qa-tester. Исполнитель кода и запуск раннеров — родитель/исполнитель; я писал тесты и разбирал логи.
+Ветка `fix/payout-receipt-implicit-confirm`, исходная база `e165aee`; актуальный baseline для сравнения (поправки) — `10a4d7e`. Независимый Claude qa-tester. Python-прогоны через fenced-раннер выполнял родитель (мой `sandbox-exec` вложенно недоступен); я писал `tests/test_payout_receipt_independent_qa.py` / `.js` и интерпретировал логи.
 
-## Как проверялось и чего нет
-- Python: `tests/test_payout_receipt_independent_qa.py` через `scripts/run_fenced_pytest.py` (запускал родитель, мой `sandbox-exec` вложенно не работает). Вызовы API идут через Flask test client на реальных маршрутах (`/api/stand/files`, `/api/stand/deals/<id>/close-evidence`, `/crm-close`), загрузка файлов — настоящая, не правка доски.
-- JS: `tests/test_payout_receipt_independent_qa.js` — реальные функции из `static/stand/tasks.html`, вырезанные в `vm`. Сначала dry-run обычным `node`, затем fenced-прогон (full JS, см. ниже) — PASS.
-- **Браузерного E2E (Chromium) НЕ проводилось.** UI проверен только на уровне функций (`hasReceipt`, `receiptDocs`, `noncryptoPayout`, `crmEvidenceParts`, `crmCloseReason`, `manualClosePayload`).
-- Живые интеграции не использовались; `NETWORK_FENCE attempts=0 unexpected=0` в прогоне 3.
+**Статус: ФИНАЛЬНЫЙ НЕЗАВИСИМЫЙ PASS для core-коммита (scope: чек выплаты + приход USDT всегда с hash). Legacy `originMode=manual` — отдельным следующим коммитом.**
+
+## Актуальный scope
+1. Чек выплаты, приложенный manager/operator/admin (слот «Чек» или «+ Загрузить ещё» с типом «чек»), сам подтверждает выплату; автор и дата берутся из серверной записи; тесты подделки автора и байтов блокируют ложное подтверждение. Bank/founder/cash выплата — без blockchain hash, по чеку + сумме + получателю. Crypto-выплата без hash — блок. Закрытие operator запрещено.
+2. `manualOverride` (СД-1489): никаких подтверждений других людей; висящая ручная сверка прихода снимается.
+3. **Правка Карима: приход USDT ВСЕГДА требует hash** (наличные / банк / крипта; `manualOverride` и обычный s27); сверка сетью без подписи человека.
 
 ## Прогоны (финальные)
-- **Мой файл изолированно (qa-isolated-final3.log/xml): 41 passed, 0 failed, `NETWORK_FENCE attempts=0 unexpected=0`.** Включает три исправленных теста подделки (сценарий 6).
-- **Целевой набор раньше (qa-targeted4.log): 219 passed, 0 failed, `NETWORK_FENCE attempts=0 unexpected=0`.**
-- **Полный Python (candidate-py-final.log/xml): 3348 passed, 77 skipped, 0 failed, `NETWORK_FENCE attempts=8 unexpected=0`** (8 ожидаемых заблокированных попыток, неожиданных нет). Baseline: 3269 passed, 77 skipped, 0 failed. По именам общих тестов статусы идентичны; +80 новых тестов; один тест заменён: `test_rejects_missing_evidence_for_non_crypto_payin` → `test_non_crypto_payin_needs_no_evidence_hash_or_file` (новый scope `manualOverride`).
-- **Полный JS: 73 passed / 2 failed** (`mobile_tasks_nav`, `owner_summary` — те же baseline-падения) против baseline 71 passed / 2 failed; новых падений нет.
-- Четыре падения `test_stand_prepay` в промежуточном прогоне — baseline-падения при изолированном запуске (baseline-prepay.log: 4 failed / 104 passed) и загрязнение общей БД моим файлом; к hotfix не относятся. В финальном полном прогоне 0 failed.
-- **Оговорка:** полный Python-прогон собран ДО последних правок моего QA-файла (fixture-изоляция и тесты подделки). Эти правки затрагивают только `tests/test_payout_receipt_independent_qa.py`, production не менялся; их подтверждает отдельный прогон 41 passed (final3), выполненный после full.
+| Прогон | Результат |
+|---|---|
+| Мой файл (qa-targeted2 и targeted6) | 55 passed, 0 failed, `NETWORK_FENCE attempts=0 unexpected=0` |
+| `wave-final3` / `t24-final` | 47 passed / 10 passed, 0 failed |
+| **Full Python (candidate-py.log/xml)** | **3379 passed, 77 skipped, 0 failed**, 281.62 s, `NETWORK_FENCE attempts=8 unexpected=0` (8 ожидаемых заблокированных попыток) |
+| **Сравнение с baseline `10a4d7e`** (comparison-py.json) | baseline 3350 passed / 77 skipped; `changed = {}`, `failed = []`; added 41, removed 12; арифметика сходится: 3350 + 41 − 12 = 3379 |
+| **Full JS** | 73 passed / 2 failed (`mobile_tasks_nav`, `owner_summary`) = baseline 73/2, `changed = {}` |
 
-## Сценарии
-| # | Сценарий | Результат |
-|---|---|---|
-| 1 | Обычный путь: чек в слоте «Чек» → payout ready, автор/роль/дата с сервера | PASS |
-| 2 | То же, чек через «+ Загрузить ещё» (`extra=1`, `documentType=receipt`) — признан без перезагрузки | PASS |
-| 3 | Обычный путь, реальный `201` на `crm-close` (инвойс 455000 в доске и CRM), оба слота; CRM-сделка создаётся ровно одна | PASS |
-| 4 | Нет чека → блок (`409`), CRM-сделка не создаётся | PASS |
-| 5 | Crypto-маршрут (`postConv=coins`, `paySrc=client`) без hash при наличии чека → блок, сделка не создаётся | PASS |
-| 6 | Подделка через `PUT /api/stand/state`, три теста: (а) вложение без байтов + чужой `uploadedById` + поддельный `payoutFact` → блок; (б) валидные байты, но чужой `uploadedById` → поддельный автор не появляется (блок допустим, если принято — автор из сессии); (в) настоящий uid + поддельные имя/роль в metadata и журнале → автор и роль берутся с сервера (`T24 Manager`/`manager`) | PASS (final3) |
-| 7 | Невалидные файлы (текст под видом PDF, EXE, HTML под видом PNG) → `400`; `additional` с типом `other` выплату не подтверждает | PASS |
-| 8 | Приоритет автора новой загрузки над старой записью `s26_completed` | PASS |
-| 9 | s27, `invoicePaid=false` + чек менеджера → `201` | PASS |
-| 10 | `manualOverride` СД-1489-like: bank / founder / cash, чек в `additional` → `201`, `payoutFact.receiptBy` = загрузивший | PASS |
-| 11 | `manualOverride`, слот «Чек» на s27 | PASS |
-| 12 | BLOCKER: слот «Чек» из формы ручного переноса на раннем шаге s14/s11/s4 (200 на загрузку, `201` на закрытие) | PASS (в прогоне 3; в прогоне 2 s14/s11 были `403`) |
-| 13 | `manualOverride`: нет чека; булев `docs.receipt=true` без файла (в т.ч. с `mfPayout`) → блок | PASS |
-| 14 | `manualOverride` с `mfPayout` и настоящим чеком → `201` | PASS |
-| 15 | Недоплата vs инвойс: 454000 блок, 454999.5 проходит (допуск 1 ฿) | PASS |
-| 16 | Маршрут bank поверх crypto `postConv`/`paySrc`/`transfer.sends` → `payout_route_conflict`; crypto без hash и неизвестный маршрут → блок | PASS |
-| 17 | Получатель обязателен (`payout_recipient_required`) | PASS |
-| 18 | Operator не может закрывать (`403`), CRM-сделка не создаётся | PASS |
-| 19 | Регресс СД-1489, scope «без подтверждений людей», вариант `rub-cash`: один submit → 201, сверка `cancelled`, ноты оператора закрыты, журнал «закрыто вручную менеджером … · без подтверждений операциониста · вне задачника» | PASS (qa-targeted4) |
-| 20 | То же, `cash-partner` (наличные, `cashPartnerUsdt`, без hash) | PASS (qa-targeted4) |
-| 21 | То же, `cash-partner-hash` (свежий hash, сверяется сервером) | PASS (qa-targeted4) |
-| 22 | JS: `hasReceipt`/`receiptDocs` (оба слота, индексы для `docOpen`, булев `docs.receipt` не чек), `noncryptoPayout` (12 вариантов), «чек приложен · автор · дата» у выплаты и чека, `manualClosePayload` (route/amountThb/recipient, без hash) | PASS (fenced) |
+**Заменённые тесты (removed 12 — старые ожидания по новому scope, не потерянное покрытие):**
+- Мои 3 старых варианта регресса СД-1489 без hash (`rub-cash`, `cash-partner`, `cash-partner-hash` в прежней логике) → заменены тестами «приход с hash закрывается одним submit» и «без hash — негатив».
+- 5 старых параметров `test_cash_payin_requires_persisted_basis` (рублёвый cash без hash закрывался `201`) → заменены 10 новыми t24-тестами (5 HTTP-негативов + 5 unit-проверок формулы RUB/курс).
+- 4 старых теста исполнителя, ожидавших закрытие без hash или подпись прихода оператором (`test_operator_confirmation_creates_immutable_manual_provenance` — переименован в `test_manual_bank_confirmation_cannot_be_signed_as_payin_close_evidence`, `test_cash_partner_payin_is_not_forced_to_crypto_hash`, `test_non_crypto_payin_needs_no_evidence_hash_or_file`, `test_payin_cash_still_needs_operator_signoff`) → заменены тестами нового scope.
+- Четыре теста `test_stand_prepay` (partial_loss/full_profit) прошли. Артефакты прогонов: `/Users/karimamirov/.bb/thread-storage/thr_7tepwzzr5m/payin-hash-validation`.
+- Added 41: 17 в моём файле, 10 `test_t24_missing_facts_admission`, 9 `test_stand_manual_close_override`, 3 `test_stand_payout_receipt_implicit`, по 1 в `test_stand_crm_close_atomic` и `test_stand_manual_bank_receipt`.
 
-## Закрытые по ходу дефекты
-1. Загрузка слота «Чек» менеджером на s14/s11 из формы ручного переноса давала 403 — исправлено (сценарий 12).
-2. Висящая `manualBankReceipt` pending блокировала ручное закрытие (409) — исправлено, статус → `cancelled` с `resolvedBy/At/Reason` (сценарии 19–20).
-3. `Недостаточно резерва пачки` для свежего cash-partner hash — исправлено (сценарий 21). Пояснение: при закрытии cash-partner сделки старые hash доски уже имеют зарезервированный остаток пачки наличных, и перенос доли в CRM их «расходует». Свежий hash, введённый менеджером при ручном переносе, резерва не имеет, поэтому расход падал с ValueError. Теперь `pre_override_payin_keys` фиксирует hash, бывшие на доске до ручного ввода: только они переносятся как резервы, а свежие учитываются как обычный перевод с проверкой дублей (`payin_hash_already_used` для чужих сделок).
-4. Обычный путь не сравнивал фактическую выплату с инвойсом — `_stand_noncrypto_payout_basis` теперь отклоняет `transfer.thb`/`payout.thb` меньше инвойса (>1 ฿); ручной путь проверяет `amountThb` из формы.
+## Сценарии (мой файл + JS)
+Все PASS по прогонам выше.
+1. Чек в слоте «Чек» и через `additional` признаётся без перезагрузки; автор/роль/дата с сервера.
+2. Реальный `201` на `crm-close` обычного пути (инвойс 455000), оба слота; одна сделка. Нет чека → `409`, сделки нет. Crypto-маршрут без hash → блок.
+3. Подделка `PUT /api/stand/state`: (а) без байтов + чужой `uploadedById` + поддельный `payoutFact` → блок; (б) валидные байты + чужой id → подложный автор не появляется; (в) настоящий uid + поддельные имя/роль → берутся с сервера.
+4. Невалидные файлы → `400`; `additional` не-«чек» выплату не подтверждает; приоритет новой загрузки над старым `s26_completed`; s27 с `invoicePaid=false` + чек менеджера → `201`.
+5. `manualOverride` bank/founder/cash с чеком → `201`; слот «Чек» из формы ручного переноса на s14/s11/s4 грузится (был BLOCKER); `docs.receipt=true` без файла — не чек; `mfPayout` + реальный чек → `201`; недоплата vs инвойс (454000 блок, 454999.5 проходит); bank поверх crypto → `payout_route_conflict`; crypto без hash / неизвестный маршрут / нет получателя → блок; operator → `403`.
+6. **Приход с hash:** регресс СД-1489 (hash партнёра + висящая RUB-сверка → один submit `201`, сверка `cancelled`, нот оператора нет, нет `operator_attestation`, журнал «вне задачника … без подтверждений операциониста»; spy `verify_transfer` доказывает автоматическую сетевую сверку hash/сети/суммы; повтор не дублирует сделку).
+7. **Приход без hash — негатив:** без hash / пустая строка / невалидный (в CRM тот же hash) / pending / сумма по сети не сошлась / чужой hash → отказ (`payin_hash_required|invalid`, `422 payin_hash_unverified|payin_amount_mismatch|payin_hash_already_used`), сделка не создаётся, сверка остаётся pending.
+8. Обычный s27: приход `verified_network`, `system`, без подписи → `201`; без hash (Наличные/СБП/Банк) — причина НЕ `operator_confirmation_missing`, `required_role` не `operator`, POST `close-evidence` по приходу отказывает и подпись не создаёт, `crm-close` `409`; `verified:true` с пустой строкой hash → реальный отказ.
+9. JS: `hasReceipt`/`receiptDocs`, `noncryptoPayout` (12 вариантов), «чек приложен · автор · дата», `manualClosePayload` (route/amountThb/recipient/hashes), ввод «Хеш прихода» для cash/bank/СБП/cash-partner.
 
-## Независимый обзор итогового диффа (замечания, не блокирующие)
-- **Область изменения `manualOverride`:** проверка прихода снята для любого не-крипто способа по всем видам сделок (аренда, обмен валюты, фрихолд): достаточно метода и суммы, `payin_evidence_missing` больше не возвращается. Это прямое требование владельца («ручной перенос — никаких подтверждений других людей»), подтверждено в thr_gsii7c9mig; границы: только `manualOverride`, обычный payin-flow не менялся. Остаются роль manager/admin и причина ≥10 символов.
-- Крипто-приход (`method == 'Крипта'`) и любой переданный hash по-прежнему проверяются сетью; повторное использование hash чужой сделки отклоняется (`payin_hash_already_used`). Ослабления крипто-проверки не найдено.
-- Обычный payin-flow не менялся; единственное изменение обычного закрытия — `invoice_not_paid` не блокирует, если чек приложен сотрудником (требование «receipt любой роли»).
-- `_stand_manual_close_resolve_tasks` помечает прочитанными все непрочитанные ноты этой сделки (любых ролей) и всегда пишет в журнал `role: 'manager'`, даже если закрыл admin. Косметика.
-- Запрет закрытия operator сохранён (сценарий 18).
+### Отменено (старые формулировки)
+- Приход без hash в `manualOverride` / `cash-partner` без hash — **отменено** правкой Карима, теперь негатив (п. 7).
+- «Область `manualOverride`: проверка прихода снята» — **отменено**.
+- Подпись прихода оператором (`sber_mirror`, `manual_bank_confirmed`, `operator_attestation`) — **отменено**: `close-evidence` по приходу отказывает для всех не-сетевых источников.
+- Прежние итоги «3348 passed / 0 failed» и «qa-targeted4: 219» относились к старому scope и не используются.
 
-## Ограничения
-- Python-тесты запускал родитель; мой вывод основан на их логах.
-- Расхождения между тестами исполнителя (`tests/test_stand_payout_receipt_implicit.py`) и поведением кода я не разбирал.
-- Не проверялось: реальный UI в браузере, живые интеграции, прод-данные.
+## Закрытые дефекты по ходу QA
+1. Слот «Чек» из формы ручного переноса на раннем шаге давал `403` — исправлено.
+2. Висящая `manualBankReceipt` блокировала ручное закрытие (`409`) — исправлено (`cancelled` + `resolvedBy/At/Reason`).
+3. Свежий cash-partner hash падал с «Недостаточно резерва пачки» — исправлено (`pre_override_payin_keys`: резервы только у hash, бывших на доске; свежий учитывается как обычный перевод с проверкой дублей).
+4. Обычный путь не сравнивал факт выплаты с инвойсом — `_stand_noncrypto_payout_basis` отклоняет `transfer.thb`/`payout.thb` меньше инвойса.
+5. `close-evidence` по приходу с `sber_mirror` давал `200`; пустой/невалидный hash давал `payin_facts_mismatch` — исправлено (`payin_hash_required` / `payin_hash_invalid`).
+6. Загрязнение общей БД моими `crm-close` (116 падений) — исправлено autouse-fixture в моём файле (чистит только созданные строки, восстанавливает `stand_state`, уникальные hash).
+
+## Независимое ревью диффа и тестовых хелперов
+- `_crm()`/`_seeded_payin()` в `test_stand_crm_close_atomic.py` копируют hash из доски; подмену прикрывает отдельный независимый негатив `test_forged_payin_hash_in_crm_payload_is_rejected_and_valid_one_closes` (случайный hash в CRM → `409 payin_facts_mismatch`). Подмена только суммы прихода в обычном s27 отдельным негативом не покрыта (для `manualOverride` покрыта).
+- `wave_a`: убыточный THB→RUB оставлен сетевым негативом (`409 не хватает 49.83 USDT`, счётчики неизменны) + отдельный позитив с покрытой экономикой (курс 2,5, 1529,99 USDT при входе 1602,56); замена на `cash` отклонена.
+- `test_t24_missing_facts_admission`: исходные входные данные сохранены (рублёвый cash без hash на доске); HTTP: `close-evidence` по приходу → `409 payin_hash_required`, `crm-close` → `409 close_evidence_missing` с `verified_payin_missing`, счётчики неизменны; формула RUB/курс вынесена в unit-тест на `_stand_crm_fact_problem` (5 параметров, те же причины). Подмены проверяемого факта нет. Замечание: unit-тест формулы допускает «позитив» без hash — это формула суммы, не допуск закрытия; закрытие без hash блокирует HTTP-тест.
+- Заметки без блокеров: `chain()` в `test_wallet_roles_manual_close` подтверждает приход эхом (сумма прихода там не проверяется); `_stand_manual_close_resolve_tasks` помечает прочитанными все ноты сделки и пишет `role: 'manager'` даже при admin.
+
+## Ограничения (не проверено)
+- Браузерный E2E (Chromium) не проводился; UI проверен только функциями `tasks.html` через `vm`.
+- Cash-partner в обычном s27 — только readiness (полный `crm-close` требует резерва партии наличных в ledger); `accepted_conversion` покрыт позитивом исполнителя (`test_stand_payout_receipt_implicit.py`), не моим файлом.
+- **Legacy `originMode=manual` («Внести целиком») по решению координатора ОТЛОЖЕН следующим коммитом.** Шесть тестов + helper + `H_L` сохранены в `/tmp/calccrm-payin-hash-validation/legacy-qa.patch`; план усиления: независимый CRM-hash ≠ hash доски и неверная сумма по сети (повтор, rollback, receiver — существующими тестами исполнителя). В этом коммите legacy не проверен.
+- Живые интеграции и прод-данные не использовались.
 
 ## Вердикт
-**ФИНАЛЬНЫЙ PASS** для scoped API/JS и для полного набора: мой файл 41/41, целевой набор 219/219, полный Python 3348 passed / 0 failed (baseline 3269 / 0), JS 73/2 при baseline 71/2, неожиданных сетевых попыток 0. Блокеры закрыты (загрузка слота «Чек» на раннем шаге, снятие зависшей сверки `manualBankReceipt`, резерв свежего cash-partner hash). Независимый обзор итогового диффа блокеров не выявил.
+**ФИНАЛЬНЫЙ НЕЗАВИСИМЫЙ PASS для core-коммита.** Основания: мой файл 55/55; полный Python 3379 passed / 77 skipped / 0 failed против baseline `10a4d7e` (changed = {}, failed = []); полный JS 73/2 = baseline; сеть: 0 неожиданных попыток; независимое ревью диффа и тестовых хелперов — блокеров нет. Старые ожидания (приход без hash, подпись прихода оператором) заменены по новому scope правки Карима и перечислены выше.
 
-**Область изменения для сведения:** `manualOverride` больше не требует доказательства прихода для любого не-крипто способа (по всем видам сделок) — прямое требование владельца; обычный payin-flow не менялся.
-
-**Что НЕ проверялось и не заявляется:** браузерный E2E (Chromium); живые интеграции и прод-данные. Python-тесты запускал родитель (мой `sandbox-exec` вложенно недоступен), я писал тесты и интерпретировал логи.
+**Вне этого коммита:** legacy `originMode=manual` («Внести целиком») — отдельным следующим коммитом (патч `/tmp/calccrm-payin-hash-validation/legacy-qa.patch`); браузерный E2E не проводился; cash-partner в обычном s27 проверен только по readiness.

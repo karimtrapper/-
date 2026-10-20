@@ -7479,7 +7479,7 @@ function crmCloseStatus(d){
   return pending;
 }
 function crmCloseReason(fact){
-  return ({verified_payin_missing:'Нет подтверждённого в сети хеша прихода',
+  return ({verified_payin_missing:'Нужен хеш получения USDT — проверка сетью, подтверждение человеком не требуется',
     verified_partner_payin_missing:'Нет подтверждённого в сети прихода партнёра',
     network_payout_proof_missing:'Нет подтверждённого в сети хеша выплаты',
     payout_fact_missing:'Не заполнены сумма и получатель выплаты',
@@ -7835,6 +7835,7 @@ const MANUAL_CLOSE_ERRORS={
   payin_amount_required:'Укажите сумму прихода',
   payin_evidence_missing:'Нужен чек, хеш или отметка «деньги на счету подтверждены»',
   payin_hash_required:'Добавьте хотя бы один хеш прихода',
+  payin_hash_invalid:'Хеш прихода написан неверно — проверьте сеть и сам хеш',
   payin_hash_unverified:'Хеш прихода не подтверждён в сети',
   payin_hash_already_used:'Этот хеш прихода уже использован в другой сделке',
   payin_amount_mismatch:'Сумма прихода не совпадает с подтверждённой в сети',
@@ -9359,7 +9360,7 @@ function manualCloseScreen(d){
   if(realty&&!fh&&!f.realty)f.realty={
     invoiceThb:d.amountThb??'',buyRate:d.rates?.usdtThb??'',
     sellRate:crypto?(d.rates?.client??''):'',companyPercent:d.companyPct??1};
-  if(crypto&&!knownHashes&&!f.payin.hashes.length)
+  if(!knownHashes&&!f.payin.hashes.length)  /* хеш прихода USDT нужен при любом способе */
     f.payin.hashes.push({amount:null,network:'TRC20',hash:'',receiver:'',sender:''});
   const payinSection=[
     knownMethod?row('Способ оплаты',htmlText(d.payType))
@@ -9377,12 +9378,9 @@ function manualCloseScreen(d){
           <input class="fc num" id="mc_payin_amount_usdt" value="${htmlText(f.payin.amountUsdt||'')}"
             oninput="manualCloseFormState(${d.id}).payin.amountUsdt=this.value;mcPreviewUpdate(${d.id})"
             placeholder="сумма после конвертации"></div>`):'',
-    crypto
-      ?(knownHashes?row('Хеш прихода',d.payinHashes.map(h=>hashCell(d,h)).join(''))
-        :hashEditor('payin',f.payin.hashes,true))
-      :(knownBankConfirm?row('Приход по счёту',htmlText('подтверждён вручную'+(paid.date?' · '+paid.date:'')))
-        :`<div class="fg"><p class="fh">Факты прихода вносит менеджер — подтверждение оператора не требуется.</p>
-            <input class="fc" id="mc_payin_date" placeholder="дата зачисления, если знаете" style="margin-top:6px"></div>`)
+    (knownHashes?row('Хеш прихода',d.payinHashes.map(h=>hashCell(d,h)).join(''))
+      :hashEditor('payin',f.payin.hashes,true)),
+    crypto?'':`<p class="fh">Хеш получения USDT обязателен при любом способе: сеть проверит его сама, подтверждение другого человека не нужно.</p>`
   ].join('');
 
   /* Недвижимость (Лизхолд/Аренда): прибыль считает та же серверная формула

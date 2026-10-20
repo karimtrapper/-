@@ -10,7 +10,7 @@ import secrets
 import pytest
 
 import app as m
-from tests.test_stand_crm_close_atomic import _client, _seed_evidence
+from tests.test_stand_crm_close_atomic import _client, _payin_crm, _seed_evidence
 from tests.test_wallet_roles_qa import REALTY, EXCHANGE, LEGACY, seeded, stand  # noqa: F401
 from tests.qa_wallet_roles_helpers import registry_id
 
@@ -41,7 +41,7 @@ def board_for(amount, wallet_id):
 
 def crm_for(amount, wallet_id, **extra):
     data = {'deal_kind': 'exchange', 'client_name': 'Synthetic QA', 'manager_name': 'Елизавета',
-            'payin_method': 'sber_reqs', 'payin_amount_usdt': amount + 100,
+            **_payin_crm(amount + 100),
             'payout_method': 'transfer', 'payout_source': 'binance',
             'payout_amount_usdt': amount, 'payout_wallet_id': wallet_id}
     data.update(extra)

@@ -16,6 +16,8 @@ import pytest
 
 pytestmark = pytest.mark.usefixtures('stand_demo_environment')
 
+# Хеш прихода обязателен всегда; уникален на тест, чтобы доли PayinTx не копились в общей БД.
+PAYIN = {'hash': 'c' * 64}
 REASON = 'Клиент заплатил наличными партнёру, флоу аренда+наличные задачник не поддерживает.'
 
 
@@ -48,7 +50,9 @@ def _realty_board(**overrides):
 def _override(**overrides):
     override = {
         'reason': REASON,
-        'payin': {'method': 'Наличные', 'amountUsdt': 1400, 'manualBankConfirmed': True},
+        'payin': {'method': 'Наличные', 'amountUsdt': 1400, 'manualBankConfirmed': True,
+                  'hashes': [{'hash': PAYIN['hash'], 'network': 'trc20',
+                              'receiver': 'TReceiverWallet111111111111', 'amount': 1400}]},
     }
     override.update(overrides)
     return override
@@ -61,6 +65,7 @@ def _crm(**overrides):
         'realty_purpose': 'Оплата аренды виллы, авг 2026',
         'invoice_amount_thb': 50000, 'buy_rate_thb_usdt': 36.0, 'sell_rate_thb_usdt': 35.0,
         'company_percent': 1,
+        'payin_tx_hashes': [{'hash': PAYIN['hash'], 'network': 'trc20', 'amount_usdt': 1400}],
         'payout_tx_hashes': [{'hash': 'b' * 64, 'network': 'TRC20', 'amount_usdt': 1388.89}],
     }
     crm.update(overrides)
@@ -85,6 +90,7 @@ def _setup(monkeypatch, board=None, role='manager'):
     # the network call so a synthetic test hash doesn't trip the fence.
     monkeypatch.setattr(m, '_tx_info_by_network', lambda tx_hash, network: None)
     m._stand_migrate()
+    PAYIN['hash'] = secrets.token_hex(32)
     db = m.get_session()
     try:
         user = m.AdminUser(username='realty-' + secrets.token_hex(6),

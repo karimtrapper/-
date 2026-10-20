@@ -50,13 +50,30 @@ def _counts():
         db.close()
 
 
-@pytest.mark.parametrize('claimed_usdt,rub_amount,broker_rate,expected_status', [
-    (1, 9200, None, 409), (999999, 9200, None, 409),
-    (996.60, 100000, 100, 201), (999, 100000, 100, 409),
-    (996.75, 100015, 100, 201),
-])
-def test_cash_payin_requires_persisted_basis(
-        monkeypatch, claimed_usdt, rub_amount, broker_rate, expected_status):
+CASH_CASES = [(1, 9200, None, 'payin_basis_missing'), (999999, 9200, None, 'payin_basis_missing'),
+              (996.60, 100000, 100, None), (999, 100000, 100, 'payin_amount_mismatch'),
+              (996.75, 100015, 100, None)]
+
+
+def _cash_board(rub_amount, broker_rate):
+    return {'id': 8100, 'type': 'Обмен валюты', 'step': 's27', 'payType': 'Наличные',
+            'incomeAmount': rub_amount, 'rates': {'broker': broker_rate} if broker_rate else {},
+            'paySrc': 'cash', 'payout': {'thb': 3000, 'usdt': 90}}
+
+
+@pytest.mark.parametrize('claimed_usdt,rub_amount,broker_rate,problem', CASH_CASES)
+def test_cash_payin_money_formula_binds_to_persisted_rub_and_rate(claimed_usdt, rub_amount, broker_rate, problem):
+    """Формула суммы прихода по сохранённым рублям и курсу — отдельно от обязательного хеша."""
+    crm = {'deal_kind': 'exchange', 'client_name': 'T24 MF probe', 'manager_name': 'QA',
+           'payin_method': 'partners_cash', 'payin_amount_usdt': claimed_usdt,
+           'payin_amount_rub': rub_amount, 'payout_method': 'transfer',
+           'payout_source': 'cash_batch', 'payout_amount_usdt': 90, 'payout_amount_thb': 3000}
+    assert m._stand_crm_fact_problem(_cash_board(rub_amount, broker_rate), crm, 'exchange') == problem
+
+
+@pytest.mark.parametrize('claimed_usdt,rub_amount,broker_rate,problem', CASH_CASES)
+def test_cash_payin_without_network_hash_never_closes_by_operator_signature(
+        monkeypatch, claimed_usdt, rub_amount, broker_rate, problem):
     """Manager/operator use only real endpoints; no evidence rows are seeded."""
     mgr_id, op_id, admin_id = _setup(monkeypatch)
     # Earlier full-suite port-zero fixtures can leave a listener in the
@@ -120,7 +137,9 @@ def test_cash_payin_requires_persisted_basis(
                        json={'version': r2.json()['version'], 'kind': 'payin'},
                        headers=op_headers, timeout=10)
             log.append(('payin_evidence', r3.status_code, r3.json()))
-            payin_evidence_admitted = r3.status_code == 200
+            # Приход подтверждает только сетевой хеш USDT: подписи оператора нет.
+            assert r3.status_code == 409 and r3.json()['error'] == 'payin_hash_required', r3.json()
+            payin_evidence_admitted = False
 
             version = r3.json().get('version', r2.json()['version'])
             payout_deal = t.get(base + '/state', headers=mgr_headers, timeout=10).json()['data']
@@ -159,16 +178,12 @@ def test_cash_payin_requires_persisted_basis(
               'committed_usdt=', (r6.json().get('deal') or {}).get('payin_amount_usdt'))
         for step in log:
             print('STEP', step)
-        assert r6.status_code == expected_status, r6.json()
-        if expected_status == 409:
-            assert r6.json().get('error') == ('payin_basis_missing' if broker_rate is None else
-                                             'payin_amount_mismatch')
-        else:
-            assert r6.json()['deal']['payin_amount_usdt'] == claimed_usdt
-        assert _counts() == ((baseline[0] + 1, baseline[1] + 1) if expected_status == 201
-                             else baseline)
-        print('VERDICT', 'BOUND_TO_PERSISTED_RUB_AND_RATE' if expected_status == 201
-              else 'REJECTED_UNBOUND_MONEY', r6.json().get('error'))
+        assert r6.status_code == 409, r6.json()
+        assert r6.json()['error'] == 'close_evidence_missing' and 'payin' in r6.json()['missing']
+        payin_detail = next(d for d in r6.json()['details'] if d['kind'] == 'payin')
+        assert payin_detail['reason'] == 'verified_payin_missing'
+        assert _counts() == baseline  # ни CRM-сделки, ни связи
+        print('VERDICT', 'REJECTED_NO_NETWORK_PAYIN_HASH', r6.json().get('error'))
     finally:
         server.shutdown()
         thread.join(timeout=5)

@@ -223,7 +223,7 @@ def test_matching_issued_document_account_does_not_need_acknowledgment(monkeypat
     assert response.json['data']['deals'][0]['manualBankReceipt']['documentPayToAtRequest'] == issued_payto
 
 
-def test_operator_confirmation_creates_immutable_manual_provenance(monkeypatch):
+def test_manual_bank_confirmation_cannot_be_signed_as_payin_close_evidence(monkeypatch):
     client = seed(monkeypatch, board())
     monkeypatch.setattr(m, 'current_role', lambda: 'operator')
     pending = client.post('/api/stand/manual-bank-receipt', json=payload()).json
@@ -274,8 +274,10 @@ def test_operator_confirmation_creates_immutable_manual_provenance(monkeypatch):
     assert dispatched.json['data']['deals'][0]['step'] == 's18'
     evidence = client.post('/api/stand/deals/9301/close-evidence',
         json={'version': dispatched.json['version'], 'kind': 'payin'})
-    assert evidence.status_code == 200, evidence.json
-    assert evidence.json['provenance'] == 'manual_bank_confirmed'
+    # Приход подтверждает только сетевой хеш: подписи человека (в том числе по ручной
+    # сверке банка) endpoint больше не принимает.
+    assert evidence.status_code == 409, evidence.json
+    assert evidence.json['error'] == 'payin_hash_required'
 
 
 def test_operator_can_initiate_request_and_confirmation_rejects_unexpected_parts(monkeypatch):

@@ -25,6 +25,7 @@ const SCRIPT = [
   source('payoutHuman'), source('clientRubPaid'), source('mfList'),
   source('txPoolInit'), source('txPool'), source('txUsed'),
   source('manualCloseFormState'), source('manualCloseScreen'),
+  source('brokerSend'), html.match(/^const BROKER_FEE=.*?;/m)[0],
 ].join('\n');
 
 const SOURCES_PAY = {
@@ -77,6 +78,17 @@ function main() {
     assert.ok(!/class="sumhash"/.test(out),
       'не должно быть готовой read-only строки хеша, когда прихода ещё нет');
     console.log('T1 editable payin hash input when payinHashes empty PASS');
+  }
+
+  // T1b: хеш прихода USDT нужен при любом способе — у рублёвой/наличной сделки поле тоже открыто.
+  {
+    const cash = {...earlyDeal(), pair: 'RUB → USDT', payType: 'Наличные', amountRub: 1217600};
+    const ctx = makeCtx(cash);
+    const out = ctx.manualCloseScreen(ctx.S.deals[0]);
+    assert.ok(/onchange="mcHashSet\(1,'payin',0,'hash'/.test(out),
+      'у наличной сделки тоже должен быть ввод хеша прихода');
+    assert.ok(!out.includes('mc_payin_manual_bank_confirmed'), 'отметка «подтверждено вручную» убрана');
+    console.log('T1b payin hash editor shown for non-crypto methods PASS');
   }
 
   // T2: сделка на s27 с d.payinHashes — хеш показан read-only строкой (hashCell), без

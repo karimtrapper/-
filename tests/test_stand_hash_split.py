@@ -187,6 +187,7 @@ def test_actual_crm_close_moves_reserve_and_retry_keeps_same_use(monkeypatch):
         row = m._stand_row(db)
         state = json.loads(row.data)
         d = state['deals'][0]
+        d.pop('payType', None)  # фикстура _setup сидирует крипто-приход; здесь приход — конверсия брокера
         d.update(cnvId=1, payinHashes=[{'hash': h, 'net': 'TRC20', 'amount': 100, 'verified': True}])
         d['pay']['usdt'] = 100
         d['payinParts'] = [{'incId': 'test-close', 'amountRub': 10000}]

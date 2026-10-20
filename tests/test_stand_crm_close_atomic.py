@@ -27,11 +27,51 @@ def _board():
                        'log': []}], 'notes': []}
 
 
+# Хеш прихода USDT обязателен всегда: фикстура приходит подтверждённым сетевым хешем,
+# уникальным на каждую расстановку (доли PayinTx не копятся между тестами).
+PAYIN = {'hash': 'e' * 64}
+
+
+def _seeded_payin():
+    """Фикстурный сетевой приход текущей доски: (хеш-запись, payType) или None."""
+    from sqlalchemy import inspect as sa_inspect
+    # _crm() вызывают и при сборе тестов (parametrize), когда таблиц ещё нет.
+    if not sa_inspect(m.engine).has_table('stand_state'):
+        return None
+    db = m.SessionLocal()  # отдельная сессия: чужую (scoped) закрывать и откатывать нельзя
+    try:
+        row = db.query(m.StandState).filter_by(id=1).first()
+        for deal in json.loads(row.data or '{}').get('deals', []) if row else []:
+            for item in deal.get('payinHashes') or []:
+                if isinstance(item, dict) and item.get('fixtureSeed'):
+                    return item, deal.get('payType')
+    finally:
+        db.close()
+    return None
+
+
+def _payin_crm(amount=100):
+    found = _seeded_payin()
+    item, pay_type = found if found else ({'hash': PAYIN['hash']}, 'Крипта')
+    return {'payin_method': 'crypto_direct' if pay_type == 'Крипта' else 'sber_reqs',
+            'payin_amount_usdt': amount,
+            'payin_tx_hashes': [{'hash': item['hash'], 'network': 'trc20', 'amount_usdt': amount}]}
+
+
 def _crm():
-    return {'deal_kind': 'exchange', 'client_name': 'Synthetic T24',
-            'manager_name': 'Елизавета', 'payin_method': 'sber_reqs',
-            'payin_amount_usdt': 100, 'payout_method': 'transfer',
-            'payout_source': 'cash_batch', 'payout_amount_usdt': 90, 'payout_amount_thb': 1}
+    crm = {'deal_kind': 'exchange', 'client_name': 'Synthetic T24',
+           'manager_name': 'Елизавета', 'payin_method': 'sber_reqs',
+           'payin_amount_usdt': 100, 'payout_method': 'transfer',
+           'payout_source': 'cash_batch', 'payout_amount_usdt': 90, 'payout_amount_thb': 1}
+    found = _seeded_payin()
+    if found:  # доска получила сетевой приход фикстурой: CRM повторяет те же хеши
+        seeded, pay_type = found
+        amount = seeded['amount']
+        crm.update(payin_amount_usdt=amount, payin_tx_hashes=[{
+            'hash': seeded['hash'], 'network': 'trc20', 'amount_usdt': amount}])
+        if pay_type == 'Крипта':  # рублёвая сделка остаётся sber_reqs с хешем брокера
+            crm['payin_method'] = 'crypto_direct'
+    return crm
 
 
 def _setup(monkeypatch):
@@ -75,13 +115,35 @@ def _seed_evidence(db, row, board, actor_id):
     These are synthetic persisted outcomes, not a production provenance bypass.
     """
     deal = board['deals'][0]
+    reused = next((h['hash'] for h in deal.get('payinHashes') or []
+                   if isinstance(h, dict) and h.get('fixtureSeed')), None)
+    PAYIN['hash'] = reused or secrets.token_hex(32)  # повторный сидинг хеш не меняет
+    # Доска, унаследованная от прошлой расстановки, получает свежую сумму; если сделку
+    # переделали под другой способ, старый фикстурный хеш снимается.
+    inherited = [h for h in deal.get('payinHashes') or [] if isinstance(h, dict) and h.get('fixtureSeed')]
+    if inherited:
+        if deal.get('payType') in (None, 'Крипта') and deal.get('amountUsdt'):
+            for item in inherited:
+                item.update(hash=PAYIN['hash'], amount=deal['amountUsdt'])
+        else:
+            deal['payinHashes'] = [h for h in deal['payinHashes'] if h not in inherited]
+    if (deal.get('type') != 'Оплата недвижимости' and deal.get('payType') in (None, 'Крипта')
+            and deal.get('cnvId') is None and not deal.get('payinHashes')):
+        # Обычный приход обязан иметь сетевой хеш: сидируем подтверждённый USDT-приход.
+        # Рублёвые и парные сделки в крипту не превращаем.
+        deal.update(payType='Крипта', payinHashes=[{
+            'hash': PAYIN['hash'], 'network': 'TRC20', 'net': 'TRC20',
+            'amount': deal.get('amountUsdt') or 100, 'verified': True, 'fixtureSeed': True,
+            'verifiedAt': '2026-10-18T12:00:00Z'}])
     if deal.get('payType') != 'Крипта' and not deal.get('payinParts'):
         deal['payinParts'] = [{'incId': -1474, 'amountRub': 1}]
         board.setdefault('incomes', []).append({'id': -1474, 'source': 'sber', 'rub': 1})
-    if deal.get('type') == 'Оплата недвижимости' and not deal.get('payinHashes'):
-        tx = {'hash': secrets.token_hex(32), 'net': 'TRC20', 'amount': deal['amountUsdt'],
+    if ((deal.get('type') == 'Оплата недвижимости'
+         or deal.get('payType') not in (None, 'Крипта', 'Наличные'))
+            and not deal.get('payinHashes') and deal.get('amountUsdt')):
+        tx = {'hash': PAYIN['hash'], 'net': 'TRC20', 'amount': deal['amountUsdt'],
               'status': 'confirmed', 'verifiedAt': '2026-10-18T12:00:00Z'}
-        deal['payinHashes'] = [dict(tx)]
+        deal['payinHashes'] = [dict(tx, fixtureSeed=True)] if deal.get('type') != 'Оплата недвижимости' else [dict(tx)]
         if deal.get('payType') != 'Крипта':
             deal['cnvId'] = 1474
             for income in board.get('incomes') or []:
@@ -143,6 +205,7 @@ def test_manager_manual_close_rental_cash_bypasses_new_flow_gate(monkeypatch):
     """An existing s14 rental/cash card can close through the manual path."""
     uid = _setup(monkeypatch)
     transfer_hash = '9' * 64
+    payin_hash = secrets.token_hex(32)  # хеш прихода обязателен всегда
     board = {'deals': [{
         'id': 1474, 'code': 'СД-1474', 'client': 'Synthetic rental',
         'type': 'Оплата недвижимости', 'kind': 'Аренда', 'step': 's14',
@@ -171,7 +234,8 @@ def test_manager_manual_close_rental_cash_bypasses_new_flow_gate(monkeypatch):
     crm = {'deal_kind': 'mf_realty', 'client_name': 'Synthetic rental',
            'manager_name': 'Елизавета', 'payin_method': 'partners_cash',
            'payin_amount_rub': 1217600, 'payin_amount_usdt': 14500,
-           'payin_tx_hashes': [], 'payin_parts': [], 'payin_extra': [],
+           'payin_tx_hashes': [{'hash': payin_hash, 'network': 'trc20', 'amount_usdt': 14500}],
+           'payin_parts': [], 'payin_extra': [],
            'realty_purpose': 'Synthetic villa', 'invoice_amount_thb': 500000,
            'buy_rate_thb_usdt': 33.42, 'sell_rate_thb_usdt': None,
            'company_percent': 2, 'agents': [],
@@ -179,7 +243,9 @@ def test_manager_manual_close_rental_cash_bypasses_new_flow_gate(monkeypatch):
                                  'amount_usdt': 13800}]}
     manual_override = {'reason': 'Verified cash rental transferred manually',
                        'payin': {'method': 'Наличные', 'amountRub': 1217600,
-                                 'amountUsdt': 14500, 'manualBankConfirmed': True},
+                                 'amountUsdt': 14500, 'manualBankConfirmed': True,
+                                 'hashes': [{'hash': payin_hash, 'network': 'TRC20',
+                                             'amount': 14500}]},
                        'payout': {'amountUsdt': 13800, 'hashes': [
                            {'hash': transfer_hash, 'network': 'TRC20', 'amount': 13800}]},
                        'realty': {'invoiceThb': 500000, 'buyRate': 33.42,
@@ -568,7 +634,7 @@ def test_linked_bitrix_close_writes_crm_link_and_won_after_commit(monkeypatch):
     assert calls[0][1] == calls[1][1] == bitrix_id
     assert calls[1][2] == {
         'payin_amount_usdt': 100.0, 'payin_amount_rub': 0,
-        'payin_method': 'sber_reqs', 'payout_amount_thb': 1,
+        'payin_method': 'crypto_direct', 'payout_amount_thb': 1,
         'payout_method': 'transfer'}
     saved = response.json['data']['deals'][0]['bitrixSync']
     assert saved['status'] == 'success'
@@ -766,9 +832,14 @@ def test_custom_exchange_uses_existing_crm_contract(monkeypatch):
     try:
         row = db.query(m.StandState).filter_by(id=1).one()
         board = json.loads(row.data)
+        custom_hash = secrets.token_hex(32)
         board['deals'][0].update(custom=True, paySrc='coins', payout={'thb': 343000, 'usdt': 9800},
+            amountUsdt=10000, payType='Крипта',
+            payinHashes=[{'hash': custom_hash, 'network': 'TRC20', 'net': 'TRC20', 'amount': 10000,
+                          'verified': True, 'fixtureSeed': True,
+                          'verifiedAt': '2026-10-18T12:00:00Z'}],
             customData={'payinCurrency': 'RUB', 'payinAmount': 920000,
-                        'payinRate': 92, 'payinUsdt': 10000,
+                        'payinRate': 92, 'payinUsdt': 10000, 'payinTxHash': custom_hash,
                         'payoutCurrency': 'THB', 'payoutAmount': 343000,
                         'payoutRate': 35, 'payoutUsdt': 9800})
         row.data = json.dumps(board)
@@ -1280,11 +1351,28 @@ def test_operator_evidence_has_role_origin_and_money_binding(monkeypatch):
     saved = _client(admin_id).put('/api/stand/state', json={'version': 1, 'data': cash})
     assert saved.status_code == 200, saved.json
     version = saved.json['version']
-    assert manager.post(path, json={'version': version,
-        'kind': 'payin'}).status_code == 403
-    first = worker.post(path, json={'version': version, 'kind': 'payin'})
-    assert first.status_code == 200, first.json
-    version = first.json['version']
+    # Приход подтверждает только сетевой хеш: ни менеджер, ни оператор подписать его не могут.
+    for who in (manager, worker):
+        refused = who.post(path, json={'version': version, 'kind': 'payin'})
+        # без сетевого хеша источника прихода нет вовсе: подписать его нельзя
+        assert refused.status_code == 409
+        assert refused.json['error'] in ('verified_payin_missing', 'payin_hash_required')
+    assert manager.get(path).json['missing'] == ['payin', 'payout']
+    # Появился подтверждённый сетью приход: дальше роль и привязка денег выплаты, как раньше.
+    db = m.get_session()
+    try:
+        row = db.query(m.StandState).filter_by(id=1).one()
+        board = json.loads(row.data)
+        board['deals'][0].update(payType='Крипта', payinHashes=[{
+            'hash': PAYIN['hash'], 'network': 'TRC20', 'net': 'TRC20', 'amount': 100,
+            'verified': True, 'fixtureSeed': True, 'verifiedAt': '2026-10-18T12:00:00Z'}])
+        row.data = json.dumps(board)
+        row.version += 1
+        db.commit()
+        version = row.version
+    finally:
+        db.close()
+    assert manager.get(path).json['missing'] == ['payout']
     assert manager.post(path, json={'version': version,
         'kind': 'payout'}).status_code == 403
     second = worker.post(path, json={'version': version, 'kind': 'payout'})
@@ -1306,8 +1394,7 @@ def test_operator_evidence_has_role_origin_and_money_binding(monkeypatch):
     assert edited.status_code == 200, edited.json
     assert manager.get(path).json['missing'] == ['payout']
     before = _counts()
-    crm = {**_crm(), 'payin_method': 'partners_cash', 'payin_amount_rub': 10000,
-           'payout_amount_usdt': 91, 'payout_amount_thb': 3000}
+    crm = {**_crm(), 'payout_amount_usdt': 91, 'payout_amount_thb': 3000}
     denied = _post(manager, version=edited.json['version'], crm=crm)
     assert denied.status_code == 409 and denied.json['error'] == 'close_evidence_missing'
     assert _counts() == before
@@ -1948,6 +2035,7 @@ def test_two_real_http_connections_and_lost_response_retry(monkeypatch):
             _seed_evidence(db, row, _board(), uid)
         finally:
             db.close()
+        body['crm'] = _crm()  # новая доска получила свой сетевой приход: хеш в CRM обновляем
         with socket.create_connection(('127.0.0.1', port), timeout=5) as raw:
             encoded = json.dumps(body).encode()
             raw.sendall((f'POST /api/stand/deals/1474/crm-close HTTP/1.1\r\n'
@@ -2199,3 +2287,20 @@ def test_freehold_ipps_server_settlement_receipt_sent_then_close(monkeypatch, co
     assert created.status_code == 201, created.json
     assert created.json['data']['deals'][0]['closed'] is True
     assert _counts() == (before[0] + 1, before[1] + 1)
+
+
+def test_forged_payin_hash_in_crm_payload_is_rejected_and_valid_one_closes(monkeypatch):
+    """Payload собран из честной доски, затем хеш подменён независимым значением."""
+    uid = _setup(monkeypatch)
+    honest = _crm()
+    assert honest['payin_tx_hashes'][0]['hash'] == _seeded_payin()[0]['hash']
+    forged = copy.deepcopy(honest)
+    forged['payin_tx_hashes'][0]['hash'] = secrets.token_hex(32)
+    before = _counts()
+    refused = _post(_client(uid), crm=forged)
+    assert refused.status_code == 409 and refused.json['error'] == 'payin_facts_mismatch'
+    assert _counts() == before
+    dropped = {k: v for k, v in honest.items() if k != 'payin_tx_hashes'}
+    assert _post(_client(uid), crm=dropped).status_code == 409
+    assert _counts() == before
+    assert _post(_client(uid), crm=honest).status_code == 201

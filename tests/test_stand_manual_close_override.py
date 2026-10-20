@@ -3,6 +3,7 @@
 
 Вызывается напрямую как чистая функция (без HTTP, без БД) — паттерн как в
 tests/test_t31_legacy_manual.py для _stand_guard_transition."""
+import pytest
 import app as A
 
 REASON = 'Клиент на связи, перевёл через кассу — проверено вручную'
@@ -165,21 +166,25 @@ def test_payin_amount_mismatch_tolerance_matches_frontend_payin_tol():
         state, deal, override, 'manager', verify=confirmed_echo) == 'payin_amount_mismatch'
 
 
-def test_non_crypto_payin_needs_no_evidence_hash_or_file():
-    # Ручной перенос: способ и сумма достаточны, прихода-подтверждений от других людей нет;
-    # ошибка приходит уже со стороны выдачи, значит приход принят.
+@pytest.mark.parametrize('method', ['СБП', 'Наличные', 'По реквизитам'])
+def test_payin_hash_is_required_for_every_method(method):
+    # Хеш прихода USDT обязателен всегда, способ прихода значения не имеет.
     state, deal = board()
-    override = {'reason': REASON,
-                'payin': {'method': 'СБП', 'amountUsdt': 100}}
+    override = {'reason': REASON, 'payin': {'method': method, 'amountUsdt': 100,
+                                            'manualBankConfirmed': True}}
     assert A._stand_manual_close_apply_override(
-        state, deal, override, 'manager') == 'payout_source_required'
+        state, deal, override, 'manager') == 'payin_hash_required'
 
 
-def test_cash_partner_payin_is_not_forced_to_crypto_hash():
+def test_cash_partner_payin_still_needs_a_hash_but_no_operator_confirmation():
     state, deal = board(cashPartnerUsdt=True, payType='Наличные')
     override = {'reason': REASON, 'payin': {'method': 'Наличные', 'amountUsdt': 100}}
     assert A._stand_manual_close_apply_override(
-        state, deal, override, 'manager') == 'payout_source_required'
+        state, deal, override, 'manager') == 'payin_hash_required'
+    override['payin']['hashes'] = [{'hash': '6' * 64, 'network': 'trc20',
+                                    'receiver': 'TReceiverWallet111111111111', 'amount': 100}]
+    assert A._stand_manual_close_apply_override(
+        state, deal, override, 'manager', verify=confirmed_echo) == 'payout_source_required'
 
 
 def test_supplied_payin_hash_of_non_crypto_method_is_still_checked_in_network():
@@ -345,7 +350,9 @@ def test_manager_manual_close_rental_cash_accepts_verified_facts_and_corrections
                         amountRub=1217600, **{**REALTY_FACTS, 'mfPayout': []})
     override = {'reason': REASON,
                 'payin': {'method': 'Наличные', 'amountRub': 1217600,
-                          'amountUsdt': 14500, 'manualBankConfirmed': True},
+                          'amountUsdt': 14500, 'manualBankConfirmed': True,
+                          'hashes': [{'hash': '7' * 64, 'network': 'trc20',
+                     'receiver': 'TReceiverWallet111111111111', 'amount': 14500}]},
                 'payout': {'amountUsdt': 13800, 'hashes': [
                     {'hash': '9' * 64, 'network': 'trc20',
                      'receiver': 'TCompanyWallet111111111111', 'amount': 13800}]},
@@ -355,6 +362,7 @@ def test_manager_manual_close_rental_cash_accepts_verified_facts_and_corrections
     assert A._stand_manual_close_apply_override(
         state, deal, override, 'manager', verify=confirmed_echo) is None
     assert deal['payType'] == 'Наличные' and deal['amountUsdt'] == 14500
+    assert deal['payinHashes'][0]['hash'] == '7' * 64  # хеш прихода записан после проверки сетью
     assert deal['amountThb'] == 455000 and deal['rates']['usdtThb'] == 33.42
     assert deal['manualRealtySellRate'] is None
     assert deal['mfPayout'][0]['hash'] == '9' * 64
@@ -369,13 +377,27 @@ def test_manual_close_rental_rejects_unverified_mf_transfer():
                         **{**REALTY_FACTS, 'mfPayout': []})
     override = {'reason': REASON,
                 'payin': {'method': 'Наличные', 'amountUsdt': 14500,
-                          'manualBankConfirmed': True},
+                          'manualBankConfirmed': True, 'hashes': [{'hash': '7' * 64, 'network': 'trc20',
+                     'receiver': 'TReceiverWallet111111111111', 'amount': 14500}]},
                 'payout': {'amountUsdt': 13800, 'hashes': [
                     {'hash': '9' * 64, 'network': 'trc20', 'amount': 13800}]},
                 'realty': {'invoiceThb': 455000, 'buyRate': 33.42,
                            'sellRate': None, 'companyPercent': 1}}
-    def pending(*_args):
+    def pending(ref, network, sender, receiver, amount):
+        if ref == '7' * 64:  # приход подтверждён, перевод в MF Corp — нет
+            return confirmed_echo(ref, network, sender, receiver, amount)
         return {'status': 'pending'}
     assert A._stand_manual_close_apply_override(
         state, deal, override, 'manager', verify=pending) == 'payout_hash_unverified'
     assert deal['mfPayout'] == []
+
+
+@pytest.mark.parametrize('bad,error', [('', 'payin_hash_required'), ('   ', 'payin_hash_required'),
+                                       ('not-a-hash', 'payin_hash_invalid'), ('abc123', 'payin_hash_invalid'),
+                                       ('z' * 64, 'payin_hash_invalid')])
+def test_payin_hash_must_be_present_and_well_formed_even_if_network_mock_accepts_all(bad, error):
+    state, deal = board()
+    override = {'reason': REASON, 'payin': {'method': 'Наличные', 'amountUsdt': 100, 'hashes': [
+        {'hash': bad, 'network': 'trc20', 'receiver': 'TReceiverWallet111111111111', 'amount': 100}]}}
+    assert A._stand_manual_close_apply_override(
+        state, deal, override, 'manager', verify=confirmed_echo) == error

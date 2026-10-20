@@ -7598,7 +7598,10 @@ def _stand_close_readiness(db, row, state, deal):
         if (kind == 'receipt' and problem == 'invoice_payment_or_receipt_missing'
                 and _stand_receipt_attachment_acceptance(db, deal)):
             source, problem = 'receipt_attachment', None
-        if (kind == 'payin' and deal.get('type') == 'Оплата недвижимости'
+        # Хеш прихода USDT обязателен всегда, любого способа и типа сделки: закрытие
+        # принимает только сетевой источник. Ручные источники (банк, зеркало Сбера,
+        # отметка оператора) нужны промежуточным шагам, но не закрытию.
+        if (kind == 'payin'
                 and source not in ('verified_network', 'verified_partner_network', 'accepted_conversion')):
             problem = problem or 'verified_payin_missing'
         record = records.get(kind)
@@ -7611,7 +7614,8 @@ def _stand_close_readiness(db, row, state, deal):
             payout_receipt = _stand_receipt_acceptance(db, deal)
             if source == 'receipt_attachment' and payout_receipt is None:
                 problem = 'payout_receipt_missing'
-        manual = (source == 'operator_attestation' and kind != 'receipt'
+        # Приход при закрытии никогда не подписывает человек: нужен сетевой хеш.
+        manual = (source == 'operator_attestation' and kind not in ('receipt', 'payin')
                   and payout_receipt is None)
         if manual and not signed:
             problem = 'operator_confirmation_missing'
@@ -7898,6 +7902,11 @@ def stand_close_evidence(stand_deal_id):
         provenance, problem = _stand_close_fact_source(state, deal, kind)
         if problem:
             return jsonify({'success': False, 'error': problem}), 409
+        if kind == 'payin' and provenance not in (
+                'verified_network', 'verified_partner_network', 'accepted_conversion'):
+            # Приход подтверждает только сеть по хешу USDT; подписи человека нет ни для
+            # наличных, ни для банка, ни для зеркала Сбера.
+            return jsonify({'success': False, 'error': 'payin_hash_required'}), 409
         if provenance == 'receipt_attachment':
             return jsonify({'success': False, 'error': 'receipt_attachment_needs_no_signoff'}), 409
         required_role = 'operator' if provenance == 'operator_attestation' else 'manager'
@@ -9246,6 +9255,10 @@ def _stand_manual_close_verify_hashes(state, hashes, declared_amount, verify, us
             return None, f'{side}_hash_required'
         network = normalize_network(item.get('network'))
         tx_hash = normalize_ref(item.get('hash'), network)
+        if side == 'payin' and not str(item.get('hash') or '').strip():
+            return None, 'payin_hash_required'
+        if side == 'payin' and not tx_hash:
+            return None, 'payin_hash_invalid'  # формат проверяет тот же normalize_ref, что и сеть
         sender = item.get('sender') or None
         receiver = item.get('receiver')
         amount = item.get('amount')
@@ -9381,16 +9394,14 @@ def _stand_manual_close_apply_override(state, stand_deal, override, actor, *, ve
     deal_id = stand_deal.get('id')
     used_hashes = set()
     payin_entries = []
-    # Хеш обязателен только для крипто-прихода. Наличные (в том числе партнёрские) и банк
-    # закрываются вручную без хеша и без файла; если менеджер всё же ввёл хеш, сеть
-    # проверяет его автоматически. Подтверждений других людей ручной перенос не ждёт
-    # (в том числе зависшая сверка manualBankReceipt).
-    if payin.get('method') == 'Крипта' or payin.get('hashes'):
-        payin_entries, problem = _stand_manual_close_verify_hashes(
-            state, payin.get('hashes'), payin_amount, verify, used_hashes, 'payin',
-            exclude_deal_id=deal_id)
-        if problem:
-            return problem
+    # Хеш прихода USDT обязателен всегда (наличные через партнёра, рубли через брокера,
+    # крипта клиента) и проверяется сетью автоматически. Файл и подтверждения других
+    # людей не нужны (в том числе зависшая сверка manualBankReceipt).
+    payin_entries, problem = _stand_manual_close_verify_hashes(
+        state, payin.get('hashes'), payin_amount, verify, used_hashes, 'payin',
+        exclude_deal_id=deal_id)
+    if problem:
+        return problem
 
     kind = ('mf_freehold' if stand_deal.get('kind') == 'Фрихолд' else
             'mf_realty' if stand_deal.get('type') == 'Оплата недвижимости' else

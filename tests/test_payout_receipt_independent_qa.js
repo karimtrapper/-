@@ -65,4 +65,40 @@ try{
   const known={...deal,mfPayout:[{hash:'a'.repeat(64),net:'TRC20',amount:1}]};
   assert.equal(ctx.manualClosePayload(known).manualOverride.payout.route,undefined,'известный hash -> crypto');
 }catch(e){console.log('manualClosePayload section needs crmPayloadFinal stub:',e.message); throw e;}
+
+
+// 5. Приход USDT всегда с hash: экран ручного переноса даёт ввод hash для cash/bank/СБП, payload его несёт
+const SCRIPT2=['htmlText','jsLiteralAttr','num','hashSum','txShort','explorer','moneyKop','usd','money','isCrypto','payCur',
+  'exchangeSpec','payinParts','refAgents','econ','refSignal','agentsBlock','managerDraftDocTarget','fileValid','filesOf',
+  'receiptDocs','hasReceipt','fileBlock','hashShareOf','hashCell','payoutHuman','clientRubPaid','mfList','txPoolInit','txPool',
+  'txUsed','manualCloseFormState','manualCloseScreen','manualCloseMerge','manualClosePayload','val'].map(n=>{try{return source(n);}catch(e){return '';}}).join('\n');
+function screenCtx(deal){
+  const c={S:{deals:[deal],incomes:[],role:'manager',manualCloseForm:{}},SOURCES_PAY:{},render(){},toast(){},
+    fetch:()=>Promise.reject(new Error('x')),crmPreviewFor:()=>({pending:true}),crmPayloadFinal:()=>({deal_kind:'mf_realty'}),
+    brokerSend:()=>0,BROKER_FEE:{},MANAGER_DRAFT_DOCS:['pass','inv','spa','ipds'],managerDraft:()=>({}),
+    document:{getElementById:()=>null},atob,Number,Math};
+  c.deal=()=>deal;vm.createContext(c);vm.runInContext(SCRIPT2,c);return c;
+}
+function rental(payType,extra={}){return {id:1489,code:'СД-1489',client:'C',type:'Оплата недвижимости',kind:'Аренда',step:'s14',
+  payType,amountUsdt:null,amountRub:1217600,incomeAmount:null,payinHashes:[],payout:{},agents:[],amountThb:455000,companyPct:2,
+  rates:{usdtThb:33.42,client:35},payTo:{purpose:'Villa',bank:'BBL',acc:'1'},mfPayout:[],docs:{inv:true},files:{},...extra};}
+for(const pt of ['Наличные','СБП','По реквизитам','Банк']){
+  const c=screenCtx(rental(pt)), out=c.manualCloseScreen(c.S.deals[0]);
+  assert.ok(out.includes('Хеш прихода')&&out.includes('placeholder="хеш транзакции"'),'ввод hash прихода для '+pt);
+  assert.ok(!/подтверждение оператора не требуется/.test(out)||out.includes('placeholder="хеш транзакции"'),pt);
+}
+{ // cash-partner (cashPartnerUsdt) тоже
+  const c=screenCtx(rental('Наличные',{cashPartnerUsdt:true})), out=c.manualCloseScreen(c.S.deals[0]);
+  assert.ok(out.includes('placeholder="хеш транзакции"'),'cash-partner: ввод hash прихода');
+}
+{ // payload несёт введённый hash для не-крипто способа
+  const deal=rental('Наличные'), c=screenCtx(deal), f=c.manualCloseFormState(deal.id);
+  c.manualCloseScreen(deal);
+  f.payin.hashes=[{hash:'a'.repeat(64),network:'TRC20',amount:14500,receiver:'TRecv',sender:''}];
+  const pay=c.manualClosePayload(deal).manualOverride.payin;
+  assert.equal(pay.hashes.length,1); assert.equal(pay.hashes[0].hash,'a'.repeat(64)); assert.equal(pay.hashes[0].amount,14500);
+  // пустая строка hash отбрасывается (не уходит пустой элемент)
+  f.payin.hashes=[{hash:'',network:'TRC20',amount:null,receiver:'',sender:''}];
+  assert.equal(c.manualClosePayload(deal).manualOverride.payin.hashes.length,0);
+}
 console.log('payout receipt independent QA JS PASS');

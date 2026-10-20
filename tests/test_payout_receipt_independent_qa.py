@@ -4,6 +4,7 @@
 Загрузка идёт через настоящий /api/stand/files (не правкой доски)."""
 import io
 import json
+import sys
 import secrets
 
 import pytest
@@ -61,7 +62,7 @@ def _qa_cleanup_created_rows():
         db.close()
         m.Session.remove()
 
-H_C, H_D, H_F = (secrets.token_hex(32) for _ in range(3))  # уникальные хеши, не a/b/d/f*64
+H_C, H_D, H_F, H_P, H_X = (secrets.token_hex(32) for _ in range(5))  # уникальные хеши, не a/b/d/f*64
 PDF = b'%PDF-1.4\n' + secrets.token_bytes(24)
 REASON = 'Выплата подтверждена чеком, перенос вручную'
 
@@ -248,6 +249,9 @@ def test_ordinary_blocked_close_creates_no_crm_deal(monkeypatch):
 
 
 # ---------- manualOverride: СД-1489-like аренда, приход наличными, расход THB банком ----------
+VERIFY_CALLS = []  # вызовы verify_transfer (доказательство автоматической сетевой сверки)
+
+
 def rental_board(monkeypatch, **patch):
     uid = _setup(monkeypatch)
     deal = {'id': 1474, 'code': 'СД-1489', 'client': 'Synthetic rental', 'type': 'Оплата недвижимости',
@@ -265,8 +269,13 @@ def rental_board(monkeypatch, **patch):
         db.commit()
     finally:
         db.close()
-    monkeypatch.setattr(m, 'verify_transfer', lambda _h, _n, _s, _r, amount: {
-        'status': 'confirmed', 'verifiedAmount': amount, 'verifiedAt': '2026-10-20T00:00:00Z', 'from': 'S'})
+    VERIFY_CALLS.clear()
+
+    def spy_verify(ref, network, sender, receiver, amount):
+        VERIFY_CALLS.append({'ref': ref, 'network': network, 'receiver': receiver, 'amount': amount})
+        return {'status': 'confirmed', 'verifiedAmount': amount, 'verifiedAt': '2026-10-20T00:00:00Z', 'from': 'S'}
+
+    monkeypatch.setattr(m, 'verify_transfer', spy_verify)
     monkeypatch.setattr(m, '_stand_deliver_notes', lambda: [])
     monkeypatch.setattr(m, '_stand_notify_deal_closed', lambda *_a: None)
     # нижний транспорт: никаких DNS/сети (stand_egress), как в test_stand_manual_close_realty.py
@@ -277,18 +286,23 @@ def rental_board(monkeypatch, **patch):
 
 CRM = {'deal_kind': 'mf_realty', 'client_name': 'Synthetic rental', 'manager_name': 'Елизавета',
        'payin_method': 'partners_cash', 'payin_amount_rub': 1217600, 'payin_amount_usdt': 14500,
-       'payin_tx_hashes': [], 'payin_parts': [], 'payin_extra': [], 'realty_purpose': 'Synthetic villa',
+       'payin_tx_hashes': [{'hash': H_P, 'network': 'trc20', 'amount_usdt': 14500}],
+       'payin_parts': [], 'payin_extra': [], 'realty_purpose': 'Synthetic villa',
        'invoice_amount_thb': 455000, 'buy_rate_thb_usdt': 33.42, 'sell_rate_thb_usdt': None,
        'company_percent': 2, 'agents': [], 'payout_tx_hashes': []}
 
 
-def override(**payout):
+def payin_hash(h=None, amount=14500):
+    return {'hash': h or H_P, 'network': 'trc20', 'receiver': 'TReceiverWallet111111111111', 'amount': amount}
+
+
+def override(*, hashes=True, **payout):
     p = {'route': 'bank', 'amountThb': 455000,
          'recipient': {'name': 'Villa Co', 'bank': 'BBL', 'acc': '123-4-56789-0'}}
     p.update(payout)
     return {'reason': REASON,
             'payin': {'method': 'Наличные', 'amountRub': 1217600, 'amountUsdt': 14500,
-                      'manualBankConfirmed': True},
+                      'hashes': [payin_hash()] if hashes else []},
             'realty': {'invoiceThb': 455000, 'buyRate': 33.42, 'sellRate': None, 'companyPercent': 2},
             'payout': p, 'agents': []}
 
@@ -449,17 +463,13 @@ def test_BLOCKER_manual_form_receipt_slot_upload_allowed_on_early_step(monkeypat
     assert closed.status_code == 201, closed.json
 
 
-# ---------- Расширенный scope: manualOverride без человеческих подтверждений (СД-1489-like) ----------
-@pytest.mark.parametrize('variant', ['rub-cash', 'cash-partner', 'cash-partner-hash'])
-def test_regression_1489_manual_override_zero_human_signoffs_one_submit(monkeypatch, variant):
-    """Приход наличными RUB 1217600 (без файла и хешей), расход THB 455000 KBank→BBL с чеком Лизы (manager).
-    У оператора висит ручная сверка manualBankReceipt (старая маршрутизация RUB). Один submit → 201,
-    ни одного запроса подтверждения человеком, задачи закрыты, история — «вручную менеджером»."""
-    extra_board = {'cashPartnerUsdt': True} if variant.startswith('cash-partner') else {}
+# ---------- Приход USDT ВСЕГДА требует hash (наличные/банк/крипта); сверка сетью без подтверждения человека ----------
+def pending_board(monkeypatch, **extra):
+    """СД-1489: висит ручная сверка RUB у оператора + нота оператора."""
     client = rental_board(monkeypatch, manualBankReceipt={
         'id': 'old-rub-1217600', 'status': 'pending', 'handoff': True, 'requestedRole': 'operator',
-        'requestedAt': '2026-10-18T10:00:00Z'}, **extra_board,
-        payTo={'bank': 'BBL', 'acc': '123-4-56789-0', 'dev': 'Villa Co', 'purpose': 'Synthetic villa'})
+        'requestedAt': '2026-10-18T10:00:00Z'},
+        payTo={'bank': 'BBL', 'acc': '123-4-56789-0', 'dev': 'Villa Co', 'purpose': 'Synthetic villa'}, **extra)
     db = m.get_session()
     try:
         row = db.query(m.StandState).filter_by(id=1).one()
@@ -470,25 +480,27 @@ def test_regression_1489_manual_override_zero_human_signoffs_one_submit(monkeypa
     finally:
         db.close()
     assert upload(client, extra=True, name='kbank-bbl-455000.pdf').status_code == 200
-    ov = override(route='bank')                       # ни hashes, ни файла прихода, ни manualBankConfirmed
-    ov['payin'] = {'method': 'Наличные', 'amountRub': 1217600, 'amountUsdt': 14500}
-    global CRM
-    saved = CRM
-    # cash-partner БЕЗ хеша: старый guard is_crypto_payin (cashPartnerUsdt) в manualOverride снят намеренно.
-    if variant == 'cash-partner-hash':   # дополнительно: переданный хеш сервер сверяет сам
-        ov['payin']['hashes'] = [{'hash': H_D, 'network': 'trc20',
-                                  'receiver': 'TReceiverWallet111111111111', 'amount': 14500}]
-        CRM = {**CRM, 'payin_tx_hashes': [{'hash': H_D, 'network': 'trc20', 'amount_usdt': 14500}]}
+    return client
+
+
+@pytest.mark.parametrize('variant', ['rub-cash-hash', 'cash-partner-hash'])
+def test_regression_1489_partner_hash_plus_pending_rub_closes_in_one_submit(monkeypatch, variant):
+    """Приходный hash партнёра сверяется сетью; висящая RUB-сверка отменяется; ни одного подтверждения
+    человеком; один submit → 201; повторный submit не создаёт вторую сделку."""
+    client = pending_board(monkeypatch, **({'cashPartnerUsdt': True} if variant.startswith('cash-partner') else {}))
+    ov = override()
     before = _counts()
-    try:
-        r = close(client, ov)
-    finally:
-        CRM = saved
+    r = close(client, ov)
     assert r.status_code == 201, r.json
     assert _counts() == (before[0] + 1, before[1] + 1)
     closed = r.json['data']['deals'][0]
     assert closed['closed'] is True and closed['step'] == 'done'
-    # нет человеческих подтверждений: ни одной записи приёмки/сверки оператора
+    # сервер САМ сверил приходный hash по сети: вызов verify_transfer с этим hash/сетью/суммой
+    calls = [c for c in VERIFY_CALLS if c['ref'] == H_P]
+    assert calls, VERIFY_CALLS
+    assert 'trc20' in str(calls[0]['network']).lower() and float(calls[0]['amount']) == 14500.0, calls[0]
+    assert [h['hash'] for h in closed['payinHashes']] == [H_P]       # hash принят и записан
+    assert closed['payinHashes'][0].get('verified') is not False
     db = m.get_session()
     try:
         row = db.query(m.StandState).filter_by(id=1).one()
@@ -496,15 +508,173 @@ def test_regression_1489_manual_override_zero_human_signoffs_one_submit(monkeypa
     finally:
         db.close()
     assert not {k for k, v in kinds.items() if v == 'operator_attestation'}, kinds
-    # зависшая сверка у оператора снята, задач нет
     assert (closed.get('manualBankReceipt') or {}).get('status') in ('cancelled', 'resolved'), closed.get('manualBankReceipt')
     assert not any(n.get('dealId') == 1474 and n.get('role') == 'operator' and not n.get('read')
                    for n in r.json['data'].get('notes') or []), r.json['data'].get('notes')
     texts = ' | '.join(str(e.get('text')) for e in closed.get('log') or [])
-    assert 'вне задачника' in texts, texts
-    assert 'закрыто вручную менеджером' in texts.lower() and 'без подтверждений операциониста' in texts.lower(), texts
-    assert 'T24 Manager' in texts, texts
-    # повтор того же submit не создаёт вторую сделку
-    CRM = saved
-    r2 = close(client, ov, version=1)
-    assert _counts() == (before[0] + 1, before[1] + 1), r2.status_code
+    assert 'вне задачника' in texts and 'без подтверждений операциониста' in texts, texts
+    assert 'закрыто вручную менеджером' in texts.lower() and 'T24 Manager' in texts, texts
+    close(client, ov, version=1)
+    assert _counts() == (before[0] + 1, before[1] + 1)
+
+
+@pytest.mark.parametrize('variant', ['rub-cash', 'cash-partner', 'bank'])
+def test_no_payin_hash_is_now_negative_everywhere(monkeypatch, variant):
+    """Все варианты без приходного hash — отказ; CRM-сделка не создаётся; сверка остаётся pending."""
+    client = pending_board(monkeypatch, **({'cashPartnerUsdt': True} if variant == 'cash-partner' else {}))
+    ov = override(hashes=False)
+    if variant == 'bank':
+        ov['payin']['method'] = 'Банк'
+    before = _counts()
+    r = close(client, ov)
+    assert r.status_code >= 400, r.json
+    assert r.json['error'] == 'payin_hash_required', r.json
+    assert _counts() == before
+    board = client.get('/api/stand/state').json['data']['deals'][0]
+    assert not board.get('closed') and (board.get('manualBankReceipt') or {}).get('status') == 'pending'
+
+
+def test_payin_hash_unverified_pending_blocks(monkeypatch):
+    client = pending_board(monkeypatch)
+    monkeypatch.setattr(m, 'verify_transfer', lambda *_a, **_k: {'status': 'pending'})
+    before = _counts()
+    r = close(client, override())
+    assert r.status_code == 422 and r.json['error'] == 'payin_hash_unverified', r.json
+    assert _counts() == before
+    assert (client.get('/api/stand/state').json['data']['deals'][0].get('manualBankReceipt') or {}).get('status') == 'pending'
+
+
+def test_payin_hash_invalid_format_blocks(monkeypatch):
+    client = pending_board(monkeypatch)
+    ov = override()
+    ov['payin']['hashes'] = [payin_hash('not-a-hash')]
+    # CRM несёт ТОТ ЖЕ невалидный hash: единственное отличие — невалидность, а не несовпадение CRM с доской
+    monkeypatch.setattr(sys.modules[__name__], 'CRM', {
+        **CRM, 'payin_tx_hashes': [{'hash': 'not-a-hash', 'network': 'trc20', 'amount_usdt': 14500}]})
+    before = _counts()
+    r = close(client, ov)
+    assert r.status_code >= 400 and r.json['error'].startswith('payin_hash'), r.json
+    assert _counts() == before
+
+
+def test_payin_amount_mismatch_blocks(monkeypatch):
+    client = pending_board(monkeypatch)
+    monkeypatch.setattr(m, 'verify_transfer', lambda _h, _n, _s, _r, amount: {
+        'status': 'confirmed', 'verifiedAmount': 100.0, 'verifiedAt': '2026-10-20T00:00:00Z', 'from': 'S'})
+    before = _counts()
+    r = close(client, override())
+    assert r.status_code == 422 and r.json['error'] == 'payin_amount_mismatch', r.json
+    assert _counts() == before
+
+
+def test_payin_hash_of_another_deal_blocks(monkeypatch):
+    client = pending_board(monkeypatch)
+    db = m.get_session()
+    try:
+        row = db.query(m.StandState).filter_by(id=1).one()
+        state = json.loads(row.data)
+        state['deals'].insert(0, {'id': 1, 'payinHashes': [{'hash': H_P, 'network': 'TRC20', 'amount': 14500}]})
+        row.data = json.dumps(state); db.commit()
+    finally:
+        db.close()
+    before = _counts()
+    r = close(client, override())
+    assert r.status_code == 422 and r.json['error'] == 'payin_hash_already_used', r.json
+    assert _counts() == before
+
+
+# ---------- обычный s27: приход проверен сетью, подписи человека нет ----------
+def test_ordinary_s27_payin_is_network_verified_without_signoff(monkeypatch):
+    client, uid, crm = bank_board(monkeypatch)
+    assert upload(client, extra=True).status_code == 200
+    f, status = facts(client)
+    assert f['payin']['ready'] and f['payin']['system'] is True and f['payin']['source'] == 'verified_network', f['payin']
+    r = ordinary_close(client, crm)
+    assert r.status_code == 201, r.json
+    db = m.get_session()
+    try:
+        row = db.query(m.StandState).filter_by(id=1).one()
+        kinds = {e.kind: e.provenance for e in db.query(m.StandCloseEvidence).filter_by(generation=row.generation)}
+    finally:
+        db.close()
+    assert 'payin' not in kinds and not any(v == 'operator_attestation' for v in kinds.values()), kinds
+
+
+def _operator_client():
+    db = m.get_session()
+    try:
+        op = m.AdminUser(username='op-' + secrets.token_hex(4), role='operator', password_hash='unused')
+        db.add(op); db.flush(); op_id = op.id; db.commit()
+    finally:
+        db.close()
+    return _client(op_id)
+
+
+@pytest.mark.parametrize('pay_type', ['Наличные', 'СБП', 'Банк'])
+def test_ordinary_s27_non_crypto_payin_without_hash_asks_for_hash_not_human_signoff(monkeypatch, pay_type):
+    """Без сетевого hash приход блокируется ПО ПРИЧИНЕ «нужен hash», а не «ждём подтверждения оператора»:
+    ни кнопки подтверждения человеку (required_role/manual), ни POST close-evidence, создающего подпись."""
+    client, uid, crm = bank_board(monkeypatch, payType=pay_type, payinHashes=[])
+    assert upload(client, extra=True).status_code == 200
+    f, status = facts(client)
+    payin = f['payin']
+    assert not payin['ready'], payin
+    assert payin['reason'] != 'operator_confirmation_missing', payin
+    assert payin['required_role'] != 'operator', payin           # UI не рисует кнопку «Подтвердить» оператору
+    assert payin.get('system') is not True or not payin['ready'], payin
+    assert 'payin' in status['missing']
+    # попытка поставить подпись прихода (менеджер/оператор/админ) не создаёт запись и не обещает прохода
+    for actor in (client, _operator_client()):
+        r = actor.post('/api/stand/deals/1474/close-evidence', json={'version': status['version'], 'kind': 'payin'})
+        assert r.status_code >= 400, r.json
+    db = m.get_session()
+    try:
+        row = db.query(m.StandState).filter_by(id=1).one()
+        assert db.query(m.StandCloseEvidence).filter_by(generation=row.generation, kind='payin').count() == 0
+    finally:
+        db.close()
+    before = _counts()
+    r = ordinary_close(client, {**crm, 'payin_tx_hashes': []})
+    assert r.status_code == 409, r.json
+    assert _counts() == before
+
+
+def test_ordinary_s27_cash_partner_payin_ready_without_signoff_readiness_only(monkeypatch):
+    """Cash-partner в обычном s27: приход с проверенным hash (ledgerUseId, TRC20) → verified_partner_network,
+    system, без подписи человека. ТОЛЬКО readiness: полноценный crm-close требует резерва партии
+    наличных в ledger, готовой чистой фикстуры для этого в моём файле нет (честное ограничение)."""
+    client, uid, crm = bank_board(monkeypatch, payType='Наличные', cashPartnerUsdt=True, payinHashes=[{
+        'hash': H_P, 'network': 'TRC20', 'amount': 13800, 'verified': True, 'ledgerUseId': 'use-1',
+        'verifiedAt': '2026-10-20T00:00:00Z', 'from': 'S', 'to': 'W'}])
+    assert upload(client, extra=True).status_code == 200
+    f, _ = facts(client)
+    assert f['payin']['ready'] and f['payin']['system'] is True, f['payin']
+    assert f['payin']['source'] == 'verified_partner_network', f['payin']
+
+
+def test_manual_override_empty_hash_string_blocks(monkeypatch):
+    """hashes=[{hash:""}] — не приход: отказ payin_hash_*, без сделки, сверка остаётся pending."""
+    client = pending_board(monkeypatch)
+    ov = override()
+    ov['payin']['hashes'] = [{'hash': '', 'network': 'trc20', 'receiver': 'TReceiverWallet111111111111', 'amount': 14500}]
+    monkeypatch.setattr(sys.modules[__name__], 'CRM', {
+        **CRM, 'payin_tx_hashes': [{'hash': '', 'network': 'trc20', 'amount_usdt': 14500}]})
+    before = _counts()
+    r = close(client, ov)
+    assert r.status_code >= 400 and str(r.json['error']).startswith('payin_hash'), r.json
+    assert _counts() == before
+    assert (client.get('/api/stand/state').json['data']['deals'][0].get('manualBankReceipt') or {}).get('status') == 'pending'
+
+
+@pytest.mark.parametrize('pay_type', ['Крипта', 'Наличные'])
+def test_ordinary_s27_verified_payin_with_empty_hash_string_blocks_real_close(monkeypatch, pay_type):
+    """Источник verified_network смотрит verified+amount, а не сам hash: пустая строка hash при
+    verified:true не должна закрывать сделку. Проверяется реальный crm-close, а не только источник."""
+    client, uid, crm = bank_board(monkeypatch, payType=pay_type, payinHashes=[{
+        'hash': '', 'network': 'TRC20', 'amount': 13800, 'verified': True,
+        'verifiedAt': '2026-10-20T00:00:00Z', 'from': 'S', 'to': 'W'}])
+    assert upload(client, extra=True).status_code == 200
+    before = _counts()
+    r = ordinary_close(client, {**crm, 'payin_tx_hashes': [{'hash': '', 'network': 'trc20', 'amount_usdt': 13800}]})
+    assert r.status_code >= 400, r.json
+    assert _counts() == before

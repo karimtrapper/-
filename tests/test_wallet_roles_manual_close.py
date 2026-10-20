@@ -1,5 +1,6 @@
 """Manual import is network-verified, but does not require in-app signatures."""
 import copy
+import secrets
 
 import pytest
 
@@ -15,6 +16,7 @@ from tests.test_stand_crm_close_atomic import _client
 DEST = 'TWBgeUo74DehAPgw5cKTdYUTXtJELqwwqn'
 REF = 'cd' * 32
 NOTICE = 'Закрыто вручную без отметок подписи в системе'
+PAYIN = {'ref': 'ef' * 32}  # хеш прихода обязателен всегда; свой на каждый кейс
 
 
 def setup_case(wallet, step='s23', role='manager', route='client'):
@@ -41,6 +43,10 @@ def setup_case(wallet, step='s23', role='manager', route='client'):
         state, _ = board()
         state['deals'][0].pop('serverTransferComplete', None)
         state['deals'][0]['transfer']['sends'] = []
+        # seed_close выдал сетевой приход для обычного s27; ручной перенос вводит свой хеш
+        state['deals'][0].update(payType='По реквизитам', payinHashes=[])
+        state['deals'][0].pop('cnvId', None)
+        state['convs'] = []
         put_board(state)
     crm = crm_for(15000, wid)
     crm['payout_tx_hashes'] = [{'hash': REF, 'network': 'TRC20', 'amount_usdt': 15000}]
@@ -50,6 +56,11 @@ def setup_case(wallet, step='s23', role='manager', route='client'):
         'payout': {'source': route, 'amountUsdt': 15000, 'hashes': [
             {'hash': REF, 'network': 'TRC20', 'sender': wallet,
              'receiver': DEST, 'amount': 15000}]}}
+    PAYIN['ref'] = secrets.token_hex(32)
+    override['payin']['hashes'] = [{'hash': PAYIN['ref'], 'network': 'TRC20',
+                                    'receiver': 'TReceiverWallet111111111111', 'amount': 15100}]
+    crm['payin_method'] = 'sber_reqs'
+    crm['payin_tx_hashes'] = [{'hash': PAYIN['ref'], 'network': 'trc20', 'amount_usdt': 15100}]
     return uid, wid, crm, override
 
 
@@ -68,6 +79,9 @@ def chain(monkeypatch, wallet, *, status='SUCCESS', amount=15000, receiver=DEST)
             return data
 
     def checked(ref, network, sender, target, value, **kw):
+        if ref == PAYIN['ref']:  # приход подтверждён сетью отдельно от проверяемой выплаты
+            return {'status': 'confirmed', 'verifiedAmount': float(value or 0),
+                    'verifiedAt': '2026-10-20T00:00:00Z', 'from': sender or 'TSenderWallet11111111111111'}
         calls.append((ref, sender, target, value))
         return verify_transfer(ref, network, sender, target, value,
                                get=lambda *a, **k: Response(), **kw)
@@ -128,8 +142,9 @@ def test_normal_close_still_requires_policy_approval(seeded):
     assert not board()[0]['deals'][0]['closed']
 
 
-def test_manual_override_cannot_replace_coins_network_proof_with_cash_receipt(seeded):
+def test_manual_override_cannot_replace_coins_network_proof_with_cash_receipt(seeded, monkeypatch):
     uid, _, crm, override = setup_case(EXCHANGE, route='coins')
+    chain(monkeypatch, EXCHANGE)  # приход подтверждён сетью; спор только о network-выплате
     override['payout'] = {'source': 'cash', 'amountUsdt': 15000}
     crm.update(payout_source='cash_batch')
     crm.pop('payout_tx_hashes')

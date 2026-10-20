@@ -222,13 +222,24 @@ def test_crypto_payout_keeps_hash_requirement(monkeypatch):
     assert not payout['ready'] and payout['reason'] == 'network_payout_proof_missing'
 
 
-def test_payin_cash_still_needs_operator_signoff(monkeypatch):
+def test_payin_without_network_hash_never_closes_and_asks_for_hash_not_operator(monkeypatch):
     client, _, _ = setup_verified(monkeypatch, property_deal=True, uploader_role='manager')
     name = receipt_name()
-    change_board(lambda d: d.update(log=[attach_log(name, 'manager')], payType='Наличные',
-                                    payinHashes=[], incomeAmount=1400))
+    version = change_board(lambda d: d.update(log=[attach_log(name, 'manager')], payType='Наличные',
+                                              payinHashes=[], incomeAmount=1400))
+    payin, status = fact(client, 'payin')
+    assert not payin['ready'] and payin['reason'] == 'verified_payin_missing'
+    assert payin['required_role'] != 'operator' and 'payin' in status['missing']
+    # подписать приход человеком нельзя
+    signed = client.post('/api/stand/deals/1474/close-evidence', json={'version': version, 'kind': 'payin'})
+    assert signed.status_code == 409 and signed.json['error'] == 'payin_hash_required'
+
+
+def test_exchange_deal_manual_sources_do_not_replace_payin_hash(monkeypatch):
+    client, _, _ = setup_verified(monkeypatch, uploader_role='manager')
+    change_board(lambda d: d.update(payType='По реквизитам', payinHashes=[], payinParts=[{'incId': -1, 'amountRub': 1}]))
     payin, _ = fact(client, 'payin')
-    assert not payin['ready']
+    assert not payin['ready'] and payin['reason'] == 'verified_payin_missing'
 
 
 # ---- manualOverride «Перенести в CRM», СД-1489 -------------------------------
@@ -525,3 +536,26 @@ def test_manual_close_resolves_pending_bank_receipt_and_logs_without_notes():
     state = {'deals': [{'id': 5, 'log': []}], 'notes': []}
     m._stand_manual_close_resolve_tasks(state, 5, 'Лиза')
     assert 'вне задачника' in state['deals'][0]['log'][-1]['text']
+
+
+def test_rub_deal_with_accepted_broker_conversion_hash_is_ready_without_signoff(monkeypatch):
+    """Рублёвая сделка остаётся RUB: приход принимает хеш USDT брокера (accepted_conversion)."""
+    client, _, _ = setup_verified(monkeypatch, uploader_role='manager')
+    tx = {'hash': secrets.token_hex(32), 'net': 'TRC20', 'amount': 100, 'status': 'confirmed',
+          'verifiedAt': '2026-10-18T12:00:00Z'}
+    db = m.get_session()
+    try:
+        row = m._stand_row(db)
+        state = json.loads(row.data)
+        deal = state['deals'][0]
+        deal.update(payType='По реквизитам', cnvId=777, payinHashes=[dict(tx, network='TRC20')])
+        state['convs'] = [{'id': 777, 'status': 'received', 'txs': [tx],
+                           'sources': [{'dealId': deal['id'], 'rub': 9000, 'usdtFact': 100}]}]
+        row.data = json.dumps(state)
+        row.version += 1
+        db.commit()
+    finally:
+        db.close()
+    payin, _ = fact(client, 'payin')
+    assert payin['ready'] and payin['source'] == 'accepted_conversion'
+    assert payin['required_role'] != 'operator'
