@@ -119,8 +119,9 @@ def test_state_upload_show_download_delete(monkeypatch):
     denied = operator.put('/api/stand/state', json={'fileStorageVersion': 1, 'version': 2, 'data': {'deals': [shown]}})
     assert denied.status_code == 409
     admin_state = admin.get('/api/stand/state').json['data']
-    admin_state['deals'][0]['files']['clientPayinReceipt'] = []
-    admin_state['deals'][0]['log'].append({'text': 'Чек клиента удалён · client.pdf · Елизавета'})
-    removed = admin.put('/api/stand/state', json={'fileStorageVersion': 1, 'version': 2, 'data': admin_state})
+    item = admin_state['deals'][0]['files']['clientPayinReceipt'][0]
+    removed = admin.patch(f"/api/stand/files/1485/clientPayinReceipt/{item['id']}",
+                          json={'action': 'delete'})
     assert removed.status_code == 200, removed.json
     assert manager.get('/api/stand/state').json['data']['deals'][0]['files']['clientPayinReceipt'] == []
+    assert 'Удалён документ client.pdf' in removed.json['data']['deals'][0]['log'][-1]['text']

@@ -107,10 +107,11 @@ def test_stand_files_payload(monkeypatch, users):
     
     state = manager.get('/api/stand/state').json['data']
     del state['deals'][0]['_managerDraft']
-    manager.put('/api/stand/state', json={'version': 3, 'data': state})
+    removed_draft = manager.put('/api/stand/state', json={'version': 3, 'data': state})
+    assert removed_draft.status_code == 409
     
     file_resp3 = manager.get('/api/stand/file/1472/receipt/0?draft=1')
-    assert file_resp3.status_code == 404
+    assert file_resp3.status_code == 200
     
     no_auth = app.test_client()
     resp401 = no_auth.get('/api/stand/file/1472/receipt/0')
@@ -282,11 +283,11 @@ def test_put_erases_files_protection(monkeypatch, users):
     # Send files explicitly empty (intentional deletion)
     state['deals'][0]['files'] = {'inv': []}
     put_resp = manager.put('/api/stand/state', json={'fileStorageVersion': 1, 'version': 2, 'data': state})
-    assert put_resp.status_code == 200
+    assert put_resp.status_code == 409
     with get_session() as db:
         row = db.query(StandState).get(1)
         db_state = json.loads(row.data)
-        assert len(db_state['deals'][0]['files']['inv']) == 0
+        assert len(db_state['deals'][0]['files']['inv']) == 1
 
 def test_truly_empty_manual_draft_guard(monkeypatch, users):
     monkeypatch.setitem(app.config, 'TESTING', True)
@@ -334,5 +335,4 @@ def test_truly_empty_manual_draft_guard(monkeypatch, users):
     state_drop2['deals'] = [d for d in state_drop2['deals'] if d['id'] != 2]
     put2 = manager.put('/api/stand/state', json={'version': 1, 'data': state_drop2})
     assert put2.status_code == 409
-
 
