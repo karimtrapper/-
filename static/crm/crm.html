@@ -1395,8 +1395,13 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
                             </div>
                             <div class="form-group" id="customPayinTxHashGroup">
                                 <label class="form-label">Хэш транзакции <span style="font-weight:400;color:#64748b;">(если есть)</span></label>
+                                <select class="form-control" id="customPayinNetwork" aria-label="Сеть Pay-In">
+                                    <option value="trc20">TRC-20</option>
+                                    <option value="erc20">ERC-20</option>
+                                </select>
                                 <input type="text" class="form-control" id="customPayinTxHash"
                                     placeholder="TxHash...">
+                                <small id="customFlowPayinProof" class="form-hint" style="display:none"></small>
                             </div>
                             <div class="form-group">
                                 <label class="form-label">Метод выдачи</label>
@@ -1506,6 +1511,7 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
                                     </div>
                                 </div>
                                 <small style="display:block;color:#64748b;margin-top:6px;">При ручном вводе сеть выбирается явно: TRC-20 проверяется через TronScan, ERC-20 — через Etherscan.</small>
+                                <small id="flowPayinProof" class="form-hint" style="display:none"></small>
                             </div>
                             <div class="form-group" id="payinRateGroup">
                                 <label class="form-label">Курс RUB/USDT</label>
@@ -4862,11 +4868,23 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
             return deal.payin_amount_rub > 0 ? deal.payin_amount_rub : null;
         }
         function payinUsdtCell(deal) {
-            if (deal.payin_amount_usdt) return '$' + deal.payin_amount_usdt.toFixed(2);
+            if (deal.payin_amount_usdt) return '$' + deal.payin_amount_usdt.toFixed(2)
+                + flowPayinProofMarkup(deal);
             if (deal.payin_usdt_converted) {
                 return `<span style="color:#059669;" title="Доля сделки в пачке конвертации">$${deal.payin_usdt_converted.toFixed(2)}</span>`;
             }
             return '—';
+        }
+        function flowPayinProofMarkup(deal) {
+            if (deal.payin_method !== 'flow_sole_reqs' || !deal.payin_confirmation
+                    || ['completed', 'verified'].includes(deal.status) && deal.payin_rub_is_net !== true) return '';
+            const proof = deal.payin_confirmation;
+            if (proof.status === 'confirmed') return '';
+            const mismatch = proof.status === 'mismatch';
+            const fact = Number(proof.network_usdt);
+            const detail = mismatch && Number.isFinite(fact)
+                ? `: введено $${Number(proof.declared_usdt || 0).toFixed(2)}, в сети $${fact.toFixed(2)}` : '';
+            return `<small style="display:block;color:${mismatch ? '#b91c1c' : '#b45309'}">${mismatch ? 'Расхождение' : 'Не подтверждено в сети'}${detail}</small>`;
         }
 
         // Приход из пачки → в саму сделку. Нужна для сделок, чью пачку разнесли
@@ -5505,7 +5523,15 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
                         flowExistingReceipt = flowExistingParts.length > 0;
                         sberParts = (methodUsesSberPool(deal.payin_method) && deal.payin_parts) ? deal.payin_parts.slice() : [];
                         onCustomPayinMethodChange();
-                        customUsdtMode = { payin: 'rate', payout: 'rate' };  // грузим курс → USDT производный
+                        document.getElementById('customPayinNetwork').value =
+                            deal.payin_tx_hashes?.[0]?.network || 'trc20';
+                        setFlowProofFromDeal('C', deal);
+                        if (deal.payin_method === 'flow_sole_reqs' && deal.payin_amount_usdt != null) {
+                            document.getElementById('customPayinUsdt').value = deal.payin_amount_usdt;
+                            document.getElementById('customPayinUsdt').dataset.flowDraftTyped = '1';
+                        }
+                        customUsdtMode = { payin: deal.payin_method === 'flow_sole_reqs'
+                            && deal.payin_amount_usdt != null ? 'usdt' : 'rate', payout: 'rate' };
                         // Мультиагенты: грузим из deal.agents (+ легаси-реферер)
                         customAgentsLoad(dealAgentsOrLegacy(deal));
                         document.getElementById('customNotes').value = deal.notes || '';
@@ -5539,10 +5565,15 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
                         flowExistingParts = (deal.payin_parts || []).filter(p => String(p.uuid || '').startsWith('crm-manual:'));
                         flowExistingReceipt = flowExistingParts.length > 0;
                         flowShow('', deal.payin_method === 'flow_sole_reqs');
+                        setFlowProofFromDeal('', deal);
                         // Части прихода Сбера (СБП и реквизиты — общий пул выписки)
                         sberParts = (methodUsesSberPool(deal.payin_method) && deal.payin_parts) ? deal.payin_parts.slice() : [];
                         if (sberParts.length) sberRender();
-                        if (deal.payin_amount_usdt) form.payin_amount_usdt.value = deal.payin_amount_usdt;
+                        if (deal.payin_amount_usdt) {
+                            form.payin_amount_usdt.value = deal.payin_amount_usdt;
+                            if (deal.payin_method === 'flow_sole_reqs')
+                                form.payin_amount_usdt.dataset.flowDraftTyped = '1';
+                        }
                         if (deal.payin_amount_rub) form.payin_amount_rub.value = deal.payin_amount_rub;
                         if (deal.payin_tx_hash) form.payin_tx_hash.value = deal.payin_tx_hash;
                         // Приход крипты частями: восстанавливаем пул хэшей ОСНОВНОЙ части.
@@ -5763,11 +5794,15 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
                 created_at: createdAt || null,
                 payin_method: customMethod,
                 payin_tx_hash: customHash,
+                ...(customMethod === 'flow_sole_reqs' ? {payin_tx_hashes: customHash ? [{
+                    hash: customHash, network: document.getElementById('customPayinNetwork').value,
+                    amount_usdt: null,
+                }] : []} : {}),
                 payin_parts: methodUsesSberPool(customMethod) ? sberParts : customMethod === 'flow_sole_reqs' ? flowExistingParts : [],
                 ...(editingDealId === null ? {payin_rub_is_net: true} : {}),
                 payin_amount_rub: payinCurrency === 'RUB' ? payinAmount : null,
                 payout_source: 'binance',
-                payin_amount_usdt: customMethod === 'flow_sole_reqs' && !customHash ? null : payinUsdt,
+                payin_amount_usdt: payinUsdt,
                 payout_amount_usdt: payoutUsdt,
                 payout_method: payoutMethod || null,
                 custom_payin_currency: payinCurrency,
@@ -5777,10 +5812,9 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
                 custom_payout_amount: payoutAmount,
                 custom_payout_rate: payoutCurrency !== 'USDT' ? payoutRate : null,
                 agents: agents,
-                profit_usdt: customMethod === 'flow_sole_reqs' && !customHash ? null : profit,
-                profit_percent: customMethod === 'flow_sole_reqs' && !customHash ? null
-                    : payinUsdt > 0 ? (profit / payinUsdt * 100) : 0,
-                net_profit_usdt: customMethod === 'flow_sole_reqs' && !customHash ? null : netProfit,
+                profit_usdt: profit,
+                profit_percent: payinUsdt > 0 ? (profit / payinUsdt * 100) : 0,
+                net_profit_usdt: netProfit,
                 notes: notes || null
             };
 
@@ -6755,7 +6789,9 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
             payinTxPool[i].amount_usdt = isNaN(n) || n <= 0 ? null : n;
             payinTxPool[i]._auto = false;   // менеджер задал долю сам — не переписываем
             const amountInput = document.querySelector('[name="payin_amount_usdt"]');
-            if (amountInput) amountInput.value = payinTxPoolTotal().toFixed(2);
+            if (amountInput && !(document.getElementById('payinMethod')?.value === 'flow_sole_reqs'
+                    && amountInput.dataset.flowDraftTyped === '1'))
+                amountInput.value = payinTxPoolTotal().toFixed(2);
             payinMode = 'usdt';
             autoCalcUsdt();
             const box = document.getElementById('payinTxPoolBox');
@@ -6793,7 +6829,9 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
             const amountInput = document.querySelector('[name="payin_amount_usdt"]');
             const hashInput = document.querySelector('[name="payin_tx_hash"]');
             if (payinTxPool.length) {
-                if (amountInput) amountInput.value = payinTxPoolTotal().toFixed(2);
+                if (amountInput && !(document.getElementById('payinMethod')?.value === 'flow_sole_reqs'
+                        && amountInput.dataset.flowDraftTyped === '1'))
+                    amountInput.value = payinTxPoolTotal().toFixed(2);
                 // Первый хэш дублируем в поле — его читают карточка сделки и выгрузка
                 if (hashInput) hashInput.value = payinTxPool[0].hash;
                 // Сумма пула — это факт прихода, значит курс выводим из рублей,
@@ -7050,6 +7088,11 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
         function flowShow(suffix, show) {
             const group = document.getElementById('flowManualGroup' + suffix);
             const account = document.getElementById('flowAccountHint' + suffix);
+            const proof = document.getElementById(suffix ? 'customFlowPayinProof' : 'flowPayinProof');
+            if (proof) {
+                proof.style.display = show ? 'block' : 'none';
+                if (show) { proof.textContent = 'Не подтверждено в сети'; proof.style.color = '#b45309'; }
+            }
             if (account) account.style.display = show ? 'block' : 'none';
             if (!group) return;
             group.style.display = show && flowExistingReceipt ? 'block' : 'none';
@@ -7060,6 +7103,17 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
                     return `<div>Ранее сохранённый приход ${index + 1}: ${amount} ₽${part.date ? ' · ' + escapeHtml(part.date) : ''}</div>`;
                 }).join('') + (editingDealId
                     ? `<a href="/api/deals/${editingDealId}/manual-rub-income/statement" target="_blank" rel="noopener">Выписка</a>` : '');
+            }
+        }
+        function setFlowProofFromDeal(suffix, deal) {
+            const proof = document.getElementById(suffix ? 'customFlowPayinProof' : 'flowPayinProof');
+            if (!proof || deal.payin_method !== 'flow_sole_reqs') return;
+            const state = deal.payin_confirmation;
+            if (state?.status === 'confirmed') {
+                proof.style.display = 'none';
+            } else if (state?.status === 'mismatch') {
+                proof.textContent = `Расхождение: введено $${Number(state.declared_usdt || 0).toFixed(2)}, в сети $${Number(state.network_usdt || 0).toFixed(2)}`;
+                proof.style.color = '#b91c1c';
             }
         }
 
@@ -8690,7 +8744,11 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
         // Что считаем производным: 'rate' (ввели курс → считаем USDT) или 'usdt' (ввели USDT → считаем курс)
         let customUsdtMode = { payin: 'rate', payout: 'rate' };
         function onCustomRateInput(side) { customUsdtMode[side] = 'rate'; calcCustomProfit(); }
-        function onCustomUsdtInput(side) { customUsdtMode[side] = 'usdt'; calcCustomProfit(); }
+        function onCustomUsdtInput(side) {
+            customUsdtMode[side] = 'usdt';
+            if (side === 'payin') document.getElementById('customPayinUsdt').dataset.flowDraftTyped = '1';
+            calcCustomProfit();
+        }
 
         // Конвертация суммы в USDT — зеркалит backend to_usdt (app.py _deal_usdt_volume_cost).
         // RUB/THB: курс хранится как «валюта за 1 USD» → делим.
@@ -8883,8 +8941,11 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
                     document.getElementById('customPayinCurrency').value = 'USDT';
                     document.getElementById('customPayinAmount').value = parseFloat(tx.amount_usdt).toFixed(2);
                 }
-                document.getElementById('customPayinUsdt').value = parseFloat(tx.amount_usdt).toFixed(2);
+                const usdtInput = document.getElementById('customPayinUsdt');
+                if (!flowSole || usdtInput.dataset.flowDraftTyped !== '1')
+                    usdtInput.value = parseFloat(tx.amount_usdt).toFixed(2);
                 document.getElementById('customPayinTxHash').value = tx.tx_hash;
+                document.getElementById('customPayinNetwork').value = tx.network || 'trc20';
                 customUsdtMode.payin = 'usdt';
                 info.textContent = `+$${parseFloat(tx.amount_usdt).toFixed(2)} · ${tx.tx_hash.substring(0, 14)}…`;
             }
@@ -8959,9 +9020,13 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
                 // Pay-In
                 payin_method: payinMethod,
                 payin_tx_hash: payinTxHash || null,
+                ...(payinMethod === 'flow_sole_reqs' ? {payin_tx_hashes: payinTxHash ? [{
+                    hash: payinTxHash, network: document.getElementById('customPayinNetwork').value,
+                    amount_usdt: null,
+                }] : []} : {}),
                 payin_rub_is_net: true,
                 payin_amount_rub: payinCurrency === 'RUB' ? payinAmount : null,
-                payin_amount_usdt: payinMethod === 'flow_sole_reqs' && !payinTxHash ? null : payinUsdt,
+                payin_amount_usdt: payinUsdt,
                 payin_parts: methodUsesSberPool(payinMethod) ? sberParts : [],
                 payin_extra: payinExtraSerialize(),
 
@@ -8986,9 +9051,9 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
 
                 // Прибыль (процент от выдачи — как считает бэкенд _recalculate_deal_financials,
                 // иначе тост показывал один %, а в БД/таблицу писался другой)
-                profit_usdt: payinMethod === 'flow_sole_reqs' && !payinTxHash ? null : profit,
-                profit_percent: payinMethod === 'flow_sole_reqs' && !payinTxHash ? null : payoutUsdt > 0 ? (profit / payoutUsdt * 100) : 0,
-                net_profit_usdt: payinMethod === 'flow_sole_reqs' && !payinTxHash ? null : netProfit,
+                profit_usdt: profit,
+                profit_percent: payoutUsdt > 0 ? (profit / payoutUsdt * 100) : 0,
+                net_profit_usdt: netProfit,
 
                 // Заметки
                 notes: notes || null
@@ -9004,17 +9069,18 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
                 const result = await response.json();
 
                 if (result.success) {
-                    let msg = payinMethod === 'flow_sole_reqs' && !payinTxHash
-                        ? `Кастомная сделка #${result.deal.id} создана. Прибыль появится после подтверждения Pay-In.`
-                        : `Кастомная сделка создана!\n\nPayIn: $${payinUsdt.toFixed(2)}\nPayOut: $${payoutUsdt.toFixed(2)}\nВаловая прибыль: $${profit.toFixed(2)}`;
+                    let msg = `Кастомная сделка создана!\n\nPayIn: $${payinUsdt.toFixed(2)}\nPayOut: $${payoutUsdt.toFixed(2)}\nВаловая прибыль: $${profit.toFixed(2)}`;
                     if (agents.length) {
                         msg += '\n\n' + agents.map(a => `Ур.${a.tier} ${a.name || '-'} → $${(a._payout || 0).toFixed(2)}`).join('\n');
                     }
-                    if (payinMethod !== 'flow_sole_reqs' || payinTxHash) msg += `\n\nЧистая прибыль: $${netProfit.toFixed(2)}`;
+                    msg += `\n\nЧистая прибыль: $${netProfit.toFixed(2)}`;
+                    if (payinMethod === 'flow_sole_reqs' && !result.deal.payin_tx_verified)
+                        msg += '\n\nPay-In не подтверждён в сети; суммы и прибыль черновые.';
                     showToast(msg);
 
                     // Очистка формы
                     document.getElementById('customPayinAmount').value = '';
+                    delete document.getElementById('customPayinUsdt').dataset.flowDraftTyped;
                     document.getElementById('customPayoutAmount').value = '';
                     document.getElementById('customPayinRate').value = '';
                     document.getElementById('customPayoutRate').value = '';
@@ -9043,7 +9109,11 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
 
         function payinRateChanged() { payinMode = 'rate'; autoCalcUsdt(); }
 
-        function payinUsdtChanged() { payinMode = 'usdt'; autoCalcUsdt(); }
+        function payinUsdtChanged() {
+            payinMode = 'usdt';
+            document.querySelector('[name="payin_amount_usdt"]').dataset.flowDraftTyped = '1';
+            autoCalcUsdt();
+        }
 
         // Пересчёт сводки недвижимости: у обоих типов приход — входной параметр
         function realtyPayinRecalc() {
@@ -9285,20 +9355,14 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
                 ? payinTxPool.map(t => ({
                     hash: t.hash,
                     network: t.network || 'trc20',
-                    amount_usdt: t.amount_usdt,
+                    amount_usdt: data.payin_method === 'flow_sole_reqs' && t._auto
+                        ? null : t.amount_usdt,
                 }))
                 : (data.payin_tx_hash ? [{
                     hash: data.payin_tx_hash,
                     network: document.getElementById('payinManualNetwork')?.value || 'trc20',
-                    amount_usdt: data.payin_amount_usdt ?? null,
+                    amount_usdt: null,
                 }] : []);
-            if (data.payin_method === 'flow_sole_reqs' && editingDealId === null && !data.payin_tx_hashes.length) {
-                data.payin_amount_usdt = null;
-                data.payin_rate_rub_usdt = null;
-                data.profit_usdt = null;
-                data.profit_percent = null;
-                data.net_profit_usdt = null;
-            }
 
             // Дополнительные приходы (пустой список = вернуться к одному каналу).
             // Обязательно ДО отправки и на обоих режимах: без этой строки вторая
@@ -9453,10 +9517,13 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
                 if (result.success) {
                     const dealId = result.deal?.id || '';
                     showToast(isEditMode ? `Сделка #${dealId} обновлена` : `Сделка #${dealId} создана`, 'success');
+                    if (data.payin_method === 'flow_sole_reqs' && result.deal?.payin_confirmation?.status === 'mismatch')
+                        showToast(`Pay-In: введено $${Number(result.deal.payin_confirmation.declared_usdt).toFixed(2)}, в сети $${Number(result.deal.payin_confirmation.network_usdt).toFixed(2)}`, 'error', 10000);
                     // Остаток карты в минусе или доля больше ушедшего в сети:
                     // сделку сохранили, но цифру надо перепроверить
                     if (result.warning) showToast(result.warning, 'error', 10000);
                     this.reset();
+                    delete this.querySelector('[name="payin_amount_usdt"]').dataset.flowDraftTyped;
                     flowExistingReceipt = false;
                     flowExistingParts = [];
                     stdAgents = []; renderStdAgents();

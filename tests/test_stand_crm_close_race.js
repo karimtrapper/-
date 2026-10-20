@@ -34,6 +34,7 @@ async function main() {
     load: () => ({deals: [], open: null}), migrate: x => x,
     standClone: structuredClone, standTyping: () => false,
     crmGaps: () => [], crmPayloadFinal: () => ({deal_kind: 'exchange'}),
+    standManagerIdForTransfer: () => 1,
     crmEditDiff: () => [], usd: n => '$' + n,
     fetch: (url, options) => {
       requests.push({url, options});

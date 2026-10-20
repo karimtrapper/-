@@ -7282,8 +7282,7 @@ function crmPayload(d){
         percent:a.comp==='fixed'?0:(+a.percent||0),
         fixed_usdt:a.comp==='fixed'?(+a.fixed||0):0};
     });
-    const hasPayinFact=c.payinMethod!=='flow_sole_reqs'||!!c.payinTxHash;
-    const profit=hasPayinFact?(+c.payinUsdt||0)-(+c.payoutUsdt||0):null;
+    const profit=(+c.payinUsdt||0)-(+c.payoutUsdt||0);
     const payouts=agentPayload.map(a=>({...a}));
     let base=profit;
     [...new Set(payouts.map(a=>a.tier))].sort((a,b)=>a-b).forEach(t=>{
@@ -7301,7 +7300,9 @@ function crmPayload(d){
       client_name:d.client||null,is_custom:true,
       created_at:c.date?new Date(c.date+'T12:00:00').toISOString():null,
       payin_method:c.payinMethod||'crypto_direct',payin_tx_hash:c.payinTxHash||null,
-      payin_amount_usdt:hasPayinFact?c.payinUsdt??null:null,
+      ...(c.payinMethod==='flow_sole_reqs'?{payin_tx_hashes:c.payinTxHash?[{
+        hash:c.payinTxHash,network:c.payinNetwork||'trc20',amount_usdt:null}]:[]}:{}),
+      payin_amount_usdt:c.payinUsdt??null,
       ...(d.rubIsNet===true?{payin_rub_is_net:true}:{}),
       payin_parts:(d.payinParts||[]).map(x=>({uuid:x.uuid||String(x.incId||'').replace(/^sber:/,'')||null,
         amount_rub:x.amountRub??null,payer:x.payer||'',date:x.date||'',note:x.note||'',
@@ -7321,8 +7322,8 @@ function crmPayload(d){
       custom_payout_currency:c.payoutCurrency||'THB',custom_payout_amount:c.payoutAmount??null,
       custom_payout_rate:c.payoutCurrency==='USDT'?null:c.payoutRate??null,
       agents:agentPayload,profit_usdt:profit,
-      profit_percent:profit!=null&&(+c.payoutUsdt)>0?profit/(+c.payoutUsdt)*100:null,
-      net_profit_usdt:profit==null?null:(c.netProfit??Math.round(base*100)/100),notes:c.notes||null};
+      profit_percent:(+c.payoutUsdt)>0?profit/(+c.payoutUsdt)*100:null,
+      net_profit_usdt:c.netProfit??Math.round(base*100)/100,notes:c.notes||null};
   }
   const E=econ(d), po=d.payout||{}, rub=payCur(d)==='rub', prop=d.type==='Оплата недвижимости';
   const r2=v=>(v==null||v===''||!isFinite(v))?null:Math.round(v*100)/100;

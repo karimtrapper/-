@@ -276,7 +276,11 @@ window.createCrmDraftCore = function createCrmDraftCore(root, adapters) {
         // Что считаем производным: 'rate' (ввели курс → считаем USDT) или 'usdt' (ввели USDT → считаем курс)
         let customUsdtMode = { payin: 'rate', payout: 'rate' };
         function onCustomRateInput(side) { customUsdtMode[side] = 'rate'; calcCustomProfit(); }
-        function onCustomUsdtInput(side) { customUsdtMode[side] = 'usdt'; calcCustomProfit(); }
+        function onCustomUsdtInput(side) {
+            customUsdtMode[side] = 'usdt';
+            if (side === 'payin') document.getElementById('customPayinUsdt').dataset.flowDraftTyped = '1';
+            calcCustomProfit();
+        }
 
         // Конвертация суммы в USDT — зеркалит backend to_usdt (app.py _deal_usdt_volume_cost).
         // RUB/THB: курс хранится как «валюта за 1 USD» → делим.
@@ -468,8 +472,11 @@ window.createCrmDraftCore = function createCrmDraftCore(root, adapters) {
                     document.getElementById('customPayinCurrency').value = 'USDT';
                     document.getElementById('customPayinAmount').value = parseFloat(tx.amount_usdt).toFixed(2);
                 }
-                document.getElementById('customPayinUsdt').value = parseFloat(tx.amount_usdt).toFixed(2);
+                const usdtInput = document.getElementById('customPayinUsdt');
+                if (!flowSole || usdtInput.dataset.flowDraftTyped !== '1')
+                    usdtInput.value = parseFloat(tx.amount_usdt).toFixed(2);
                 document.getElementById('customPayinTxHash').value = tx.tx_hash;
+                document.getElementById('customPayinNetwork').value = tx.network || 'trc20';
                 customUsdtMode.payin = 'usdt';
                 info.textContent = `+$${parseFloat(tx.amount_usdt).toFixed(2)} · ${tx.tx_hash.substring(0, 14)}…`;
             }
@@ -1522,7 +1529,9 @@ window.createCrmDraftCore = function createCrmDraftCore(root, adapters) {
             payinTxPool[i].amount_usdt = isNaN(n) || n <= 0 ? null : n;
             payinTxPool[i]._auto = false;   // менеджер задал долю сам — не переписываем
             const amountInput = document.querySelector('[name="payin_amount_usdt"]');
-            if (amountInput) amountInput.value = payinTxPoolTotal().toFixed(2);
+            if (amountInput && !(document.getElementById('payinMethod')?.value === 'flow_sole_reqs'
+                    && amountInput.dataset.flowDraftTyped === '1'))
+                amountInput.value = payinTxPoolTotal().toFixed(2);
             payinMode = 'usdt';
             autoCalcUsdt();
             const box = document.getElementById('payinTxPoolBox');
@@ -1558,7 +1567,9 @@ window.createCrmDraftCore = function createCrmDraftCore(root, adapters) {
             const amountInput = document.querySelector('[name="payin_amount_usdt"]');
             const hashInput = document.querySelector('[name="payin_tx_hash"]');
             if (payinTxPool.length) {
-                if (amountInput) amountInput.value = payinTxPoolTotal().toFixed(2);
+                if (amountInput && !(document.getElementById('payinMethod')?.value === 'flow_sole_reqs'
+                        && amountInput.dataset.flowDraftTyped === '1'))
+                    amountInput.value = payinTxPoolTotal().toFixed(2);
                 // Первый хэш дублируем в поле — его читают карточка сделки и выгрузка
                 if (hashInput) hashInput.value = payinTxPool[0].hash;
                 // Сумма пула — это факт прихода, значит курс выводим из рублей,

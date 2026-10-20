@@ -1244,6 +1244,8 @@ class PayinTx(Base):
     network = Column(String(20), nullable=False, default='trc20')
     amount_usdt = Column(Float, nullable=False, default=0)
     source = Column(String(20), default='manual')     # tronscan | etherscan | manual
+    # Set only after strict network success, never from amount-only lookups.
+    verified_at = Column(DateTime, nullable=True)
     tx_time = Column(DateTime, nullable=True)
     # Кошелёк-получатель: в сводке по конвертации нужно «сколько пришло,
     # хеш, какого кошелька». Берём из сети, а не с рук
@@ -1832,6 +1834,13 @@ class Deal(Base):
                           order_by="DealAgent.tier")
 
     def to_dict(self):
+        # Declared USDT remains a draft value; receipt proof comes from the ledger.
+        from sqlalchemy.orm import object_session
+        payin_confirmation = (_flow_sole_payin_confirmation(object_session(self), self)
+                              if self.payin_method == PayInMethod.FLOW_SOLE_REQS else None)
+        if (payin_confirmation and payin_confirmation['status'] == 'confirmed'
+                and self.payin_tx_verified is not True):
+            payin_confirmation = {**payin_confirmation, 'status': 'unconfirmed'}
         return {
             'id': self.id,
             'created_at': self.created_at.isoformat() if self.created_at else None,
@@ -1855,6 +1864,7 @@ class Deal(Base):
             'payin_tx_hashes': json.loads(self.payin_tx_hashes) if self.payin_tx_hashes else None,
             'payout_tx_hashes': json.loads(self.payout_tx_hashes) if self.payout_tx_hashes else None,
             'payin_tx_verified': self.payin_tx_verified,
+            'payin_confirmation': payin_confirmation,
             'payin_wallet_id': self.payin_wallet_id,
             'payin_wallet_label': self.payin_wallet.label if self.payin_wallet else None,
             'deal_kind': self.deal_kind or 'exchange',
@@ -3311,6 +3321,7 @@ try:
             conn.execute(text(
                 "ALTER TABLE payin_txs ADD COLUMN IF NOT EXISTS network "
                 "VARCHAR(20) NOT NULL DEFAULT 'trc20'"))
+            conn.execute(text("ALTER TABLE payin_txs ADD COLUMN IF NOT EXISTS verified_at TIMESTAMP"))
         else:
             try:
                 conn.execute(text(
@@ -3318,6 +3329,8 @@ try:
                     "VARCHAR(20) NOT NULL DEFAULT 'trc20'"))
             except Exception:
                 pass
+            try: conn.execute(text("ALTER TABLE payin_txs ADD COLUMN verified_at TIMESTAMP"))
+            except Exception: pass
         conn.commit()
 except Exception as e:
     print(f"ℹ️ payin_txs migration: {e}")
@@ -18507,8 +18520,76 @@ def _payin_tx_parts(deal):
             pass
     if deal.payin_tx_hash:
         return [{'hash': deal.payin_tx_hash, 'network': 'trc20',
-                 'amount_usdt': deal.payin_amount_usdt}]
+                 'amount_usdt': (None if deal.payin_method == PayInMethod.FLOW_SOLE_REQS
+                                 else deal.payin_amount_usdt)}]
     return []
+
+
+def _flow_sole_payin_confirmation(session, deal, *, refresh_network=False):
+    """Keep the declared USDT separate from proof of the actual network receipt.
+
+    A hash without an explicit share denotes its full network amount. An
+    explicit share is valid only when the other deals leave enough available.
+    Neither a typed hash nor a manually entered ledger amount proves receipt.
+    """
+    declared = deal.payin_amount_usdt
+    parts = _payin_tx_parts(deal)
+    base = {'status': 'unconfirmed', 'declared_usdt': declared,
+            'network_usdt': None, 'allocated_usdt': None}
+    if not session or not deal.id or not parts or not declared or declared <= 0:
+        return base
+    network_total = 0.0
+    shares = 0.0
+    over_network = False
+    for part in parts:
+        network = _normalize_tx_network(part.get('network'))
+        if network == 'unknown' or (STAND_MODE and network == 'erc20'):
+            return base
+        tx = _payin_find(session, part['hash'], lock=False)
+        expected_source = 'etherscan' if network == 'erc20' else 'tronscan'
+        if not tx or tx.network != network:
+            return base
+        if refresh_network:
+            checked = verify_transfer(part['hash'], network, None, None, None,
+                                      observe_recipient=True)
+            fact = checked.get('verifiedAmount')
+            if checked.get('status') != 'confirmed' or not fact or fact <= 0:
+                return base
+            tx.amount_usdt = float(fact)
+            tx.source = expected_source
+            tx.to_address = checked.get('to') or tx.to_address
+            tx.verified_at = datetime.utcnow()
+            session.flush()
+        if tx.source != expected_source or not tx.verified_at or not tx.amount_usdt:
+            return base
+        network_total += float(tx.amount_usdt)
+        share = part.get('amount_usdt')
+        if share is None:
+            share = tx.amount_usdt
+        shares += float(share)
+        other_used = sum(float(u.amount_usdt or 0) for u in
+            session.query(PayinTxUse).filter(PayinTxUse.tx_id == tx.id,
+                                              PayinTxUse.deal_id != deal.id).all())
+        if float(share) > float(tx.amount_usdt) - other_used + 0.005:
+            over_network = True
+    status = ('confirmed' if abs(shares - float(declared)) <= 0.01
+              and not over_network
+              else 'mismatch')
+    return {'status': status, 'declared_usdt': declared,
+            'network_usdt': round(network_total, 2),
+            'allocated_usdt': round(shares, 2)}
+
+
+def _flow_sole_proof_fingerprint(deal):
+    """Fields whose actual change calls for fresh proof, ignoring full-form echoes."""
+    parts = tuple((p.get('hash'), p.get('network'), p.get('amount_usdt'))
+                  for p in _payin_tx_parts(deal))
+    payout_parts = tuple((p.get('hash'), p.get('amount_usdt'))
+                         for p in _payout_transfer_parts(deal))
+    return (deal.payin_amount_usdt, deal.payin_tx_hash, parts,
+            deal.payin_method, deal.payin_wallet_id,
+            deal.payout_amount_usdt, deal.payout_amount_thb,
+            deal.payout_source, deal.payout_tx_hash, payout_parts, deal.status)
 
 
 def _crm_check_payin_recipient(session, deal, parts):
@@ -18569,24 +18650,32 @@ def _payin_tx_get_or_create(session, tx_hash, claim_usdt, part=None):
             raise ValueError(
                 f'Хэш {tx_hash[:12]}… уже записан как {existing_network.upper()}, '
                 f'нельзя сохранить его как {network.upper()}')
-        # ERC-хэш мог быть сохранён вручную до появления интеграции Etherscan.
-        # При следующем редактировании сделки повышаем его до сетевого источника.
-        if network == 'erc20' and tx.source != 'etherscan':
-            chain = _etherscan_tx_info(tx_hash) or {}
-            if chain.get('amount_usdt'):
-                tx.amount_usdt = chain['amount_usdt']
-                tx.source = 'etherscan'
+        # A hash saved while the provider was unavailable remains a draft.
+        # Retry both networks on the next explicit save; never keep a manual
+        # amount marked as chain-confirmed merely because the hash exists.
+        if (tx.source not in ('tronscan', 'etherscan')
+                and not (STAND_MODE and network == 'erc20'
+                         and not session.info.get('stand_payin_origin'))):
+            try:
+                chain = (_etherscan_tx_info(tx_hash) or {}) if network == 'erc20' else {}
+                amount = chain.get('amount_usdt') if network == 'erc20' else _tron_tx_usdt_amount(tx_hash)
+            except Exception:
+                amount = None
+                chain = {}
+            if amount and amount > 0:
+                tx.amount_usdt = amount
+                tx.source = 'etherscan' if network == 'erc20' else 'tronscan'
                 tx.to_address = tx.to_address or chain.get('to_address')
                 tx.notes = None
                 session.flush()
         return tx
-    amount, source = None, 'manual'
+    amount, source, chain = None, 'manual', {}
     try:
         if network == 'trc20':
             chain = _tron_tx_usdt_amount(tx_hash)
             if chain and chain > 0:
                 amount, source = chain, 'tronscan'
-        else:
+        elif not (STAND_MODE and not session.info.get('stand_payin_origin')):
             chain = _etherscan_tx_info(tx_hash) or {}
             if chain.get('amount_usdt'):
                 amount, source = chain['amount_usdt'], 'etherscan'
@@ -18604,7 +18693,7 @@ def _payin_tx_get_or_create(session, tx_hash, claim_usdt, part=None):
     return tx
 
 
-def _sync_payin_tx_uses(session, deal, parts):
+def _sync_payin_tx_uses(session, deal, parts, *, allow_flow_draft_mismatch=False):
     """Синхронизирует доли сделки во входящих переводах.
 
     По образцу _sync_sber_claims: сперва снимаем доли, убранные из сделки,
@@ -18659,6 +18748,12 @@ def _sync_payin_tx_uses(session, deal, parts):
                     tx.notes = 'сумма из CRM, с сетью не сверена'
                 session.flush()
             else:
+                if allow_flow_draft_mismatch:
+                    # Keep the declared amount/hash on the draft, but never
+                    # reserve more than the network actually received.
+                    session.delete(use)
+                    session.flush()
+                    continue
                 free = round((tx.amount_usdt or 0) - tx.used_usdt() + share, 2)
                 raise ValueError(
                     f'В переводе {tx_hash[:12]}… пришло ${tx.amount_usdt:,.2f}, '
@@ -18672,6 +18767,8 @@ def _apply_payin_tx_hashes(deal, raw):
     deal.payin_tx_hashes = json.dumps(parts, ensure_ascii=False) if parts else None
     if parts:
         deal.payin_tx_hash = parts[0]['hash']
+    else:
+        deal.payin_tx_hash = None
 
 
 def _find_referrer_by_code(db, code):
@@ -19209,7 +19306,9 @@ def _create_deal_impl(session=None, *, data=None, defer_commit=False, skip_flow_
             if recipient_problem:
                 session.rollback()
                 return jsonify(recipient_problem[0]), recipient_problem[1]
-            _sync_payin_tx_uses(session, deal, payin_parts)
+            _sync_payin_tx_uses(session, deal, payin_parts,
+                allow_flow_draft_mismatch=(deal.payin_method == PayInMethod.FLOW_SOLE_REQS
+                                           and not session.info.get('stand_payin_origin')))
 
         # Пересчёт выплаты рефереру и чистой прибыли (фронт мог не знать
         # об авто-привязке реферера к клиенту и прислать referrer_payout_usdt=null)
@@ -19248,6 +19347,17 @@ def _create_deal_impl(session=None, *, data=None, defer_commit=False, skip_flow_
 
         _clear_profit_if_payin_unknown(deal)
 
+        flow_proof_required = (not skip_flow_gate
+                               and deal.payin_method == PayInMethod.FLOW_SOLE_REQS)
+        if flow_proof_required:
+            confirmation = _flow_sole_payin_confirmation(session, deal, refresh_network=True)
+            deal.payin_tx_verified = confirmation['status'] == 'confirmed'
+            payout_fact = bool(deal.payout_tx_hash or _payout_hash_list(deal))
+            if (deal.status in (DealStatus.COMPLETED, DealStatus.VERIFIED) or payout_fact) and not deal.payin_tx_verified:
+                session.rollback()
+                return jsonify(success=False, error='Подтвердите сумму Pay-In хэшем сети',
+                               payin_confirmation=confirmation), 409
+
         if tx_warnings and data.get('confirm_payout_tx_overage') is not True:
             session.rollback()
             return jsonify({'success': False, 'requires_confirmation': True,
@@ -19265,7 +19375,8 @@ def _create_deal_impl(session=None, *, data=None, defer_commit=False, skip_flow_
                 and deal.needs_reimbursement is False
                 and deal.deal_kind not in REALTY_KINDS   # у недвижимости свой «Завершить»
                 and deal.payout_amount_usdt
-                and deal.payin_amount_usdt):
+                and deal.payin_amount_usdt
+                and (not flow_proof_required or deal.payin_tx_verified)):
             deal.status = DealStatus.COMPLETED
 
         # skip_flow_gate=True только для внутренних вызовов (stand_crm_close,
@@ -19433,6 +19544,7 @@ def update_deal(deal_id):
         old_status = deal.status
         old_kind = deal.deal_kind
         old_payin_method = deal.payin_method
+        old_proof_state = _flow_sole_proof_fingerprint(deal)
 
         # Обновляем дату если передана
         if data.get('created_at'):
@@ -19469,15 +19581,24 @@ def update_deal(deal_id):
         # Приход крипты частями: пустой список = вернуться к одиночному хэшу из формы
         if 'payin_tx_hashes' in data:
             _apply_payin_tx_hashes(deal, data.get('payin_tx_hashes'))
+            if not data.get('payin_tx_hashes') and data.get('payin_tx_hash'):
+                deal.payin_tx_hash = data['payin_tx_hash']
         if ('payin_tx_hashes' in data or 'payin_tx_hash' in data or
-                'payin_wallet_id' in data) and (deal.payin_tx_hashes or deal.payin_tx_hash):
+                'payin_wallet_id' in data):
             payin_parts = _payin_tx_parts(deal)
             recipient_problem = _crm_check_payin_recipient(session, deal, payin_parts)
             if recipient_problem:
                 session.rollback()
                 return jsonify(recipient_problem[0]), recipient_problem[1]
-            if 'payin_tx_hashes' in data or (deal.payin_wallet_id and 'payin_tx_hash' in data):
-                _sync_payin_tx_uses(session, deal, payin_parts)
+            payin_changed = (_payin_tx_parts(deal) != [dict(hash=h, network=n, amount_usdt=a)
+                for h, n, a in old_proof_state[2]]
+                or deal.payin_amount_usdt != old_proof_state[0]
+                or deal.payin_wallet_id != old_proof_state[4]
+                or ('status' in data and data['status'] != old_status.value))
+            if (('payin_tx_hashes' in data or (deal.payin_wallet_id and 'payin_tx_hash' in data))
+                    and (deal.payin_method != PayInMethod.FLOW_SOLE_REQS or payin_changed)):
+                _sync_payin_tx_uses(session, deal, payin_parts,
+                    allow_flow_draft_mismatch=(deal.payin_method == PayInMethod.FLOW_SOLE_REQS))
 
         # Дополнительные приходы. Суммы основной части вычисляем ДО записи
         # агрегатов: если поле не пришло в payload, восстанавливаем её вычитанием
@@ -19703,6 +19824,22 @@ def update_deal(deal_id):
 
         _clear_profit_if_payin_unknown(deal)
 
+        flow_proof_required = deal.payin_method == PayInMethod.FLOW_SOLE_REQS
+        proof_touched = _flow_sole_proof_fingerprint(deal) != old_proof_state
+        if flow_proof_required and proof_touched:
+            confirmation = _flow_sole_payin_confirmation(session, deal, refresh_network=True)
+            deal.payin_tx_verified = confirmation['status'] == 'confirmed'
+            if (deal.status in (DealStatus.COMPLETED, DealStatus.VERIFIED)
+                    and not deal.payin_tx_verified):
+                session.rollback()
+                return jsonify(success=False, error='Подтвердите сумму Pay-In хэшем сети',
+                               payin_confirmation=confirmation), 409
+        if (flow_proof_required and proof_touched
+                and (deal.payout_tx_hash or _payout_hash_list(deal))
+                and not deal.payin_tx_verified):
+            session.rollback()
+            return jsonify(success=False, error='Подтвердите сумму Pay-In хэшем сети'), 409
+
         if tx_warnings and data.get('confirm_payout_tx_overage') is not True:
             session.rollback()
             return jsonify({'success': False, 'requires_confirmation': True,
@@ -19718,7 +19855,8 @@ def update_deal(deal_id):
                 and deal.deal_kind not in REALTY_KINDS
                 and deal.status == DealStatus.PENDING
                 and deal.payin_amount_usdt
-                and deal.payout_amount_usdt):
+                and deal.payout_amount_usdt
+                and (not flow_proof_required or (proof_touched and deal.payin_tx_verified))):
             deal.status = DealStatus.COMPLETED
 
         session.commit()

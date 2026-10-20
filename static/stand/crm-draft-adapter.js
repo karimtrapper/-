@@ -166,6 +166,9 @@ function crmDraftFill(active,d) {
     ?((d.payinHashes||[]).filter(h=>h.verified&&!h.unknownSender&&
       (h.senderOk||!d.payerWallet||!h.from||h.from===d.payerWallet))
       .reduce((sum,h)=>sum+(Number(h.amount)||0),0)||null):d.amountUsdt);
+  const amountField=crmDraftField(root,'payin_amount_usdt');
+  if(amountField&&method==='flow_sole_reqs'&&d.amountUsdt!=null)
+    amountField.dataset.flowDraftTyped='1';
   crmDraftValue(root,'payin_rate_rub_usdt',d.rates?.broker);
   crmDraftValue(root,'payin_partner_name',d.payinPartner);
   crmDraftValue(root,'mfPurpose',d.realtyPurpose||d.object);
@@ -207,7 +210,7 @@ function crmDraftFill(active,d) {
   for(const [field,key] of [['customPayinAmount','payinAmount'],['customPayinRate','payinRate'],
     ['customPayinUsdt','payinUsdt'],['customPayoutAmount','payoutAmount'],
     ['customPayoutRate','payoutRate'],['customPayoutUsdt','payoutUsdt'],
-    ['customPayinTxHash','payinTxHash'],['customDealDate','date']])
+    ['customPayinTxHash','payinTxHash'],['customPayinNetwork','payinNetwork'],['customDealDate','date']])
     crmDraftValue(root,field,c[key]);
   crmDraftValue(root,'customPayinCurrency',c.payinCurrency||'USDT');
   crmDraftValue(root,'customPayoutCurrency',c.payoutCurrency||'THB');
@@ -251,7 +254,13 @@ function crmDraftRestore(active,snapshot) {
   active.manualTx=snapshot.manualTx||null;
   if(active.manualTx){
     const hint=active.root.getElementById('payinTxWarn');
-    if(hint){hint.textContent='Сумма '+active.manualTx.amount.toFixed(2)+' USDT подтверждена сетью';hint.style.display='block';}
+    if(hint){
+      const declared=crmDraftNum(crmDraftRead(active.root,'payin_amount_usdt'));
+      hint.textContent=declared!=null&&Math.abs(declared-active.manualTx.amount)>0.01
+        ?'Расхождение: введено '+declared.toFixed(2)+' USDT, в сети '+active.manualTx.amount.toFixed(2)+' USDT'
+        :'Сумма '+active.manualTx.amount.toFixed(2)+' USDT подтверждена сетью';
+      hint.style.display='block';
+    }
   }
   active.core.sberParts=snapshot.sberParts;
   active.core.resetPayinTxPool(snapshot.payinTxPool||[]);
@@ -650,9 +659,15 @@ async function crmDraftLookupPayin(active) {
     const data=await response.json();
     if(!response.ok||!data.success||!(Number(data.amount_usdt)>0))throw new Error(data.error||'Сумма не подтверждена сетью');
     active.manualTx={hash,network,amount:Number(data.amount_usdt)};
-    crmDraftValue(root,'payin_amount_usdt',active.manualTx.amount.toFixed(2));
+    const declared=crmDraftNum(crmDraftRead(root,'payin_amount_usdt'));
+    if(declared==null)crmDraftValue(root,'payin_amount_usdt',active.manualTx.amount.toFixed(2));
     const hint=root.getElementById('payinTxWarn');
-    if(hint){hint.textContent='Сумма '+active.manualTx.amount.toFixed(2)+' USDT подтверждена сетью';hint.style.display='block';}
+    if(hint){
+      hint.textContent=declared!=null&&Math.abs(declared-active.manualTx.amount)>0.01
+        ?'Расхождение: введено '+declared.toFixed(2)+' USDT, в сети '+active.manualTx.amount.toFixed(2)+' USDT'
+        :'Сумма '+active.manualTx.amount.toFixed(2)+' USDT подтверждена сетью';
+      hint.style.display='block';
+    }
   }catch(error){toast('Хэш не принят: '+error.message);}
 }
 function crmDraftManualHashFromPool(active,hash,network) {
@@ -730,7 +745,6 @@ function crmDraftCommitCustom(a,d,before) {
   const payoutCurrency=crmDraftRead(r,'customPayoutCurrency');
   const payinRate=num('customPayinRate'),payoutRate=num('customPayoutRate');
   const flowSole=crmDraftRead(r,'customPayinMethod')==='flow_sole_reqs';
-  const hasPayinHash=!!crmDraftRead(r,'customPayinTxHash').trim();
   if(!(payinAmount>0&&payoutAmount>0)){
     toast('Укажите суммы Pay-In и Pay-Out');return false;
   }
@@ -760,24 +774,25 @@ function crmDraftCommitCustom(a,d,before) {
   const c={payinCurrency,payinAmount,payinRate:payinCurrency==='USDT'?null:payinRate,
     payinUsdt,payoutCurrency,payoutAmount,
     payoutRate:payoutCurrency==='USDT'?null:payoutRate,payoutUsdt,
-    profit:flowSole&&!hasPayinHash?null:payinUsdt-payoutUsdt,
-    netProfit:flowSole&&!hasPayinHash?null:a.core.customAgentsRecalc(),
+    profit:payinUsdt-payoutUsdt,
+    netProfit:a.core.customAgentsRecalc(),
     usdtMode:a.core.customUsdtMode,
     payinMethod:crmDraftRead(r,'customPayinMethod'),
     payoutMethod:crmDraftRead(r,'customPayoutMethod'),
     payinTxHash:crmDraftRead(r,'customPayinTxHash').trim(),
+    payinNetwork:crmDraftRead(r,'customPayinNetwork')||'trc20',
     date:crmDraftRead(r,'customDealDate'),notes:crmDraftRead(r,'customNotes')};
   d.customData=c;
   const methods={sber_reqs:'По реквизитам',flow_sole_reqs:'По реквизитам',sber_wl:'СБП',crypto_direct:'Крипта',partners_cash:'Наличные'};
   d.payType=methods[c.payinMethod]||d.payType;
   d.amountRub=payinCurrency==='RUB'?payinAmount:null;
-  d.amountUsdt=flowSole&&!hasPayinHash?null:payinUsdt;
+  d.amountUsdt=payinUsdt;
   d.amountThb=payoutCurrency==='THB'?payoutAmount:null;
   d.payout={...(d.payout||{}),method:c.payoutMethod,source:'Binance',
     thb:d.amountThb,usdt:payoutUsdt};
   d.paySrc='coins';
   d.rates=d.rates||{};
-  d.rates.broker=payinCurrency==='RUB'&&hasPayinHash?payinRate:null;
+  d.rates.broker=payinCurrency==='RUB'?payinRate:null;
   const prior=new Set((d.payinParts||[]).map(p=>p.incId).filter(Boolean));
   d.payinParts=a.core.sberParts.map(p=>({uuid:p.uuid||null,
     incId:p.uuid?'sber:'+p.uuid:null,amountRub:crmDraftNum(p.amount_rub),
@@ -790,7 +805,8 @@ function crmDraftCommitCustom(a,d,before) {
   d.incomeAmount=d.payinParts.length?
     Math.round(d.payinParts.reduce((sum,p)=>sum+(p.amountRub||0),0)*100)/100:null;
   d.payinExtra=a.core.payinExtraSerialize();
-  d.payinHashes=c.payinTxHash?[{hash:c.payinTxHash,network:'trc20',amount:payinUsdt}]:[];
+  d.payinHashes=c.payinTxHash?[{hash:c.payinTxHash,network:c.payinNetwork||'trc20',
+    amount:flowSole?null:payinUsdt}]:[];
   d.notes=c.notes;
   d.agents=a.core.customAgentsSerialize().map(x=>({refId:x.referrer_id,
     name:x.name,tier:x.tier,comp:x.comp_model,percent:x.percent,fixed:x.fixed_usdt}));
@@ -862,7 +878,9 @@ function crmDraftCommit(id) {
   d.rates=d.rates||{};
   d.rates.broker=crmDraftNum(crmDraftRead(r,'payin_rate_rub_usdt'));
   d.payinPartner=crmDraftRead(r,'payin_partner_name');
-  d.payinHashes=a.core.payinTxPool.map(x=>({hash:x.hash,network:x.network||'trc20',amount:crmDraftNum(x.amount_usdt)}));
+  d.payinHashes=a.core.payinTxPool.map(x=>({hash:x.hash,network:x.network||'trc20',
+    amount:d.payType==='По реквизитам'&&d.rubReceivingAccount?.mode==='flowsole'&&x._auto
+      ?null:crmDraftNum(x.amount_usdt)}));
   d.payinExtra=a.core.payinExtraSerialize();
   if(manualHash&&!fromPool&&a.manualTx?.hash===manualHash&&a.manualTx.network===manualNetwork&&
      !d.payinHashes.some(x=>x.hash===manualHash))d.payinHashes.push(a.manualTx);

@@ -12,7 +12,7 @@ const fn = name => {
 };
 const elements = new Map();
 const el = id => {
-  if (!elements.has(id)) elements.set(id, {style: {}, value: '', files: [], innerHTML: '', textContent: '',
+  if (!elements.has(id)) elements.set(id, {style: {}, dataset: {}, value: '', files: [], innerHTML: '', textContent: '',
     replaceChildren() {}, append() {}});
   return elements.get(id);
 };
@@ -40,6 +40,7 @@ el('payinMethod').value = 'flow_sole_reqs';
 vm.runInContext('applyPayinMethodFields()', ctx);
 assert.equal(el('flowManualGroup').style.display, 'none');
 assert.equal(el('flowAccountHint').style.display, 'block');
+assert.equal(el('flowPayinProof').textContent, 'Не подтверждено в сети');
 assert.equal(el('sberReqsGroup').style.display, 'none');
 assert.equal(el('createDealForm').payin_rate_rub_usdt.readOnly, true);
 assert.equal(ctx.payinMode, 'usdt');
@@ -61,6 +62,10 @@ vm.runInContext('onCustomPayinMethodChange()', ctx).then(() => {
   assert.equal(el('customPayinAmount').value, '10000');
   assert.equal(el('customPayinUsdt').value, '100.00');
   assert.equal(el('customPayinTxHash').value, 'verified-hash');
+  el('customPayinUsdt').value = '700';
+  el('customPayinUsdt').dataset.flowDraftTyped = '1';
+  vm.runInContext("selectCustomPayinTx({value: JSON.stringify({kind:'crypto',amount_usdt:250,tx_hash:'second-hash'})})", ctx);
+  assert.equal(el('customPayinUsdt').value, '700', 'picked hash must keep manually entered draft USDT');
   assert.doesNotMatch(html, /id="flow(?:Amount|Date|File)"/);
   assert.match(html, /id="payinRubHint"[^>]*>после комиссии банка/);
   vm.runInContext("flowExistingReceipt = true; flowExistingParts = [{amount_rub: 10000, date: '2026-10-19'}, {amount_rub: 20000, date: '2026-10-20'}]; editingDealId = 42; flowShow('', true)", ctx);

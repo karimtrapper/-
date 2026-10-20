@@ -67,6 +67,12 @@ function fakeRoot() {
   assert.equal(core.sberPartsSum(),100000);
   assert.match(ids.get('sberIncomesAvail').innerHTML,/266/);
 
+  root.getElementById('payinMethod').value='flow_sole_reqs';
+  form.payin_amount_usdt.value='700';
+  form.payin_amount_usdt.dataset={flowDraftTyped:'1'};
+  core.selectPayinTx({value:'flow-hash',selectedOptions:[{dataset:{amount:'250'}}],selectedIndex:1});
+  assert.equal(form.payin_amount_usdt.value,'700', 'picked tx keeps declared draft USDT');
+
   core.mfPayoutTxOptions=[
     {tx_hash:'h1',amount_usdt:50,to_address:'TAAAA',timestamp:1},
     {tx_hash:'h2',amount_usdt:70,to_address:'TBBBB',timestamp:2},
