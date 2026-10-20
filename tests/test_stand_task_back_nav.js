@@ -117,6 +117,7 @@ async function main() {
     await page.goBack();
     await page.waitForFunction(() => S.open === null);
     assert.equal(await page.evaluate(() => history.state?.__calccrmTaskCard), undefined);
+    await page.waitForFunction(() => history.scrollRestoration === 'auto');
     await page.goBack();
     await page.waitForURL(`${base}/crm`);
     await context.close();

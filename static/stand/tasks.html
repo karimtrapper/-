@@ -5385,7 +5385,8 @@ let taskListScrollY=globalThis.history?.state?.__calccrmTaskScrollY??null;
 let taskListEntries=[];
 let taskListCursor=-1;
 let taskCardHistoryPushed=globalThis.history?.state?.__calccrmTaskCard===true;
-let taskCardScrollRestoration=null;
+let taskCardScrollRestoration=taskCardHistoryPushed
+  ? (globalThis.history?.state?.__calccrmTaskScrollRestoration||'auto') : null;
 function mobileTaskCard(){return window.matchMedia('(max-width:700px)').matches;}
 function rememberTaskList(id,branch){
   if(!mobileTaskCard()||!document.querySelector('#app .task-list'))return false;
@@ -5418,7 +5419,8 @@ function pushTaskCardHistory(wasOpen){
   if(!mobileTaskCard()||wasOpen||taskCardHistoryPushed)return;
   taskCardScrollRestoration=history.scrollRestoration;
   history.scrollRestoration='manual';
-  history.pushState({...history.state,__calccrmTaskCard:true,__calccrmTaskScrollY:taskListScrollY},'',location.href);
+  history.pushState({...history.state,__calccrmTaskCard:true,__calccrmTaskScrollY:taskListScrollY,
+    __calccrmTaskScrollRestoration:taskCardScrollRestoration},'',location.href);
   taskCardHistoryPushed=true;
 }
 window.addEventListener('popstate',()=>{
