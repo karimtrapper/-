@@ -6787,7 +6787,7 @@ function viewDeal(d){
   }
   if(d.demoTransfers&&!demoAllowed())body='<div class="alert a-warn">В истории есть DEMO-приходы или переводы. Автоматически снять флаг и продолжить нельзя: требуется сверка реальных платежей операционистом.</div>'+body;
   const tab=(v,label)=>`<span class="vtab ${view===v?'on':''}" onclick="setView('${v}')">${label}</span>`;
-  return `<div class="deal-screen"><div class="task-card-nav"><button type="button" onclick="closeTaskToList()">‹ Все задачи</button><button type="button" onclick="nextTask()" ${taskListCursor<0||taskListCursor+1>=taskListEntries.length?'disabled':''}>Следующая задача ›</button></div><div class="deal-breadcrumb">Задачник / ${htmlText(d.code)}</div>
+  return `<div class="deal-screen"><div class="task-card-nav"><button type="button" onclick="closeTaskToList()">‹ Все задачи</button><button type="button" onclick="nextTask()" ${typeof taskListCursor==='undefined'||typeof taskListEntries==='undefined'||taskListCursor<0||taskListCursor+1>=taskListEntries.length?'disabled':''}>Следующая задача ›</button></div><div class="deal-breadcrumb">Задачник / ${htmlText(d.code)}</div>
   <header class="deal-head"><div><p class="deal-code">${htmlText(d.code)} · ${htmlText(d.kind||d.type)}${d.prepay?' · оплата наперёд':''}</p>
     <h1>${htmlText(d.client)}</h1><p>${htmlText([d.object,d.dev,d.manager?'менеджер '+d.manager:''].filter(Boolean).join(' · '))}</p></div>
     ${['manager','admin'].includes(S.role)&&!d.closed&&!d.manual?`<button class="btn btn-outline btn-sm" onclick="manualCloseAsk(${d.id})">Перенести в CRM и закрыть</button>`:''}
