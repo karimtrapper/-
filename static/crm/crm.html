@@ -15657,7 +15657,7 @@ ${Math.abs(c.debits_delta_rub) < 0.01
             Object.keys(bySeq).sort((x,y)=>x-y).forEach(seq=>{
                 html += `<h4 style="font-size:.85rem;margin:16px 0 6px;color:var(--text-sec);font-weight:600">${seq==1?'Договор и первый платёж':'Платёж № '+seq}</h4>`;
                 html += bySeq[seq].map(x=>`<div class="docs-file-row${x.deleted_at?' is-deleted':''}">
-                    <span class="docs-file-kind">${DOCS_KIND_LABEL[x.kind]||x.kind}</span>
+                    <span class="docs-file-kind">${DOCS_KIND_LABEL[x.kind]||'Документ'}</span>
                     ${x.deleted_at?`<span>${docsEsc(x.filename)} · удалён ${new Date(x.deleted_at).toLocaleString('ru-RU')} · ${docsEsc(x.deleted_by||'')}</span>`:
                         `<a href="/api/docs/file/${x.id}">${docsEsc(x.filename)}</a>`}
                     <span class="docs-num">${Math.round((x.size||0)/1024)} КБ</span>
