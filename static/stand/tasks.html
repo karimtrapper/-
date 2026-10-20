@@ -7341,7 +7341,7 @@ function crmPayload(d){
        приход берём из первого payinParts: extra может быть задан только RUB
        и курсом, без amount_usdt, поэтому вычитание сырых extra его теряло. */
     // Flow Sole keeps the amount entered in the CRM draft. A selected hash may
-    // represent the whole network transfer, not this deal's declared share.
+    // represent the whole network transfer, not the CRM declared share.
     payin_amount_usdt:r2(d.payType==='По реквизитам'&&d.rubReceivingAccount?.mode==='flowsole'
       &&d.amountUsdt!=null?d.amountUsdt:
       (d.kind==='Фрихолд'&&isCrypto(d))?payinParts(d)[0]?.fact:payinParts(d)[0]?.usdt),
