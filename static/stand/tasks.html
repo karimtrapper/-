@@ -5305,9 +5305,14 @@ function syncTaskHeaderLink(){
   const title=document.querySelector('.site-shell-mobile-head')?.firstElementChild;
   if(!title||!['SPAN','A'].includes(title.tagName))return;
   const tag=S.open?'a':'span';
+  const label=S.tab==='analytics'?'Аналитика':'Задачник';
+  if(title.tagName===tag.toUpperCase()){
+    if(title.textContent!==label)title.textContent=label;
+    return;
+  }
   const next=document.createElement(tag);
   next.className='task-mobile-title';
-  next.textContent=S.tab==='analytics'?'Аналитика':'Задачник';
+  next.textContent=label;
   if(S.open)next.href='/tasks';
   title.replaceWith(next);
 }
