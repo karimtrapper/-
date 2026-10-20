@@ -1402,6 +1402,9 @@ class Deal(Base):
     payin_method = Column(SQLEnum(PayInMethod), nullable=True)
     payin_account_key = Column(String, nullable=True)
     payin_amount_rub = Column(Float)
+    # NULL is the immutable historical gross basis. Only an explicit true on
+    # creation marks the RUB amount as credited to the bank account (net).
+    payin_rub_is_net = Column(Boolean, nullable=True)
     payin_amount_thb = Column(Float)
     payin_amount_usdt = Column(Float)
     payin_rate_rub_usdt = Column(Float)
@@ -1531,6 +1534,7 @@ class Deal(Base):
             'payin_method': self.payin_method.value if self.payin_method else None,
             'payin_account_key': self.payin_account_key,
             'payin_amount_rub': self.payin_amount_rub,
+            'payin_rub_is_net': self.payin_rub_is_net is True,
             'payin_amount_usdt': self.payin_amount_usdt,
             'payin_rate_rub_usdt': self.payin_rate_rub_usdt,
             'payin_tx_hash': self.payin_tx_hash,
@@ -1939,17 +1943,21 @@ def parse_sber_acquiring(purpose):
     text_ = purpose or ''
     low = text_.lower()
     if 'эквайринг' not in low and 'мерчант' not in low:
-        return {'kind': 'transfer', 'merchant': None, 'fee_rub': 0.0}
+        return {'kind': 'transfer', 'merchant': None, 'fee_rub': 0.0,
+                'fee_known': True}
     fee = 0.0
     m = _ACQ_FEE_RE.search(text_)
+    fee_known = bool(m)
     if m:
         raw = m.group(1).replace(' ', '').replace(' ', '').replace(',', '.')
         try:
             fee = float(raw)
         except ValueError:
             fee = 0.0
+            fee_known = False
     mer = _ACQ_MERCHANT_RE.search(text_)
-    return {'kind': 'acquiring', 'merchant': mer.group(1) if mer else None, 'fee_rub': fee}
+    return {'kind': 'acquiring', 'merchant': mer.group(1) if mer else None,
+            'fee_rub': fee, 'fee_known': fee_known}
 
 
 # Учёт конвертаций запущен 19.08.2026. Сделки, закрытые раньше, менялись вне
@@ -2040,9 +2048,10 @@ class SberIncome(Base):
             'keep_active': bool(self.keep_active),
             'note': self.note,
             'source_tag': self.source_tag,
-            'fee_rub': round(acq['fee_rub'], 2),
+            'fee_rub': round(acq['fee_rub'], 2) if acq['fee_known'] else None,
+            'fee_known': acq['fee_known'],
             # Сколько заплатил клиент: у реквизитов = зачислено, у СБП = +комиссия
-            'gross_rub': round(net + acq['fee_rub'], 2),
+            'gross_rub': round(net + acq['fee_rub'], 2) if acq['fee_known'] else None,
         }
 
 
@@ -2292,6 +2301,7 @@ try:
             conn.execute(text("ALTER TABLE deals ADD COLUMN IF NOT EXISTS needs_reimbursement BOOLEAN DEFAULT TRUE"))
             conn.execute(text("ALTER TABLE deals ADD COLUMN IF NOT EXISTS payout_no_conversion BOOLEAN DEFAULT FALSE"))
             conn.execute(text("ALTER TABLE deals ADD COLUMN IF NOT EXISTS payin_account_key VARCHAR"))
+            conn.execute(text("ALTER TABLE deals ADD COLUMN IF NOT EXISTS payin_rub_is_net BOOLEAN"))
             conn.execute(text("ALTER TABLE payin_txs ADD COLUMN IF NOT EXISTS to_address VARCHAR(100)"))
             conn.execute(text("CREATE INDEX IF NOT EXISTS ix_sber_incomes_operation_date ON sber_incomes (operation_date)"))
             conn.execute(text("CREATE INDEX IF NOT EXISTS ix_sber_debits_operation_date ON sber_debits (operation_date)"))
@@ -2323,6 +2333,8 @@ try:
             try: conn.execute(text("ALTER TABLE deals ADD COLUMN payout_no_conversion BOOLEAN DEFAULT 0"))
             except: pass
             try: conn.execute(text("ALTER TABLE deals ADD COLUMN payin_account_key VARCHAR"))
+            except: pass
+            try: conn.execute(text("ALTER TABLE deals ADD COLUMN payin_rub_is_net BOOLEAN"))
             except: pass
             for _sql in ("CREATE INDEX IF NOT EXISTS ix_sber_incomes_operation_date ON sber_incomes (operation_date)",
                          "CREATE INDEX IF NOT EXISTS ix_sber_debits_operation_date ON sber_debits (operation_date)",
@@ -5681,10 +5693,104 @@ class BankConversionConflict(ValueError):
 
 
 def _deal_bank_gross_rub(deal):
-    """Банковские RUB части сделки, исключая наличные и крипту."""
+    """Stored bank RUB amounts (gross for legacy, net for marked deals)."""
     return round(sum(float(part.get('amount_rub') or 0)
                      for part in _payin_all_parts(deal)
                      if part.get('method') in ('sber_reqs', 'sber_wl', 'spp_doverka')), 2)
+
+
+def _income_share_fraction(inc, taken, rub_is_net, *, strict_fee=False):
+    """Convert a deal's selected RUB share to a share of credited bank RUB."""
+    acq = parse_sber_acquiring(inc.purpose)
+    if not rub_is_net and strict_fee and not acq['fee_known']:
+        return None
+    basis = (inc.amount_rub or 0) + (0 if rub_is_net else acq['fee_rub'])
+    if basis <= 0 or taken <= 0 or taken > basis + 1:
+        return None
+    return taken / basis
+
+
+def _conversion_has_mixed_basis(db, conversion_ids):
+    if not conversion_ids:
+        return False
+    rows = db.query(Deal.payin_rub_is_net).join(
+        SberIncome, SberIncome.claimed_deal_id == Deal.id).join(
+        ConversionSource, ConversionSource.sber_income_id == SberIncome.id).filter(
+        ConversionSource.conversion_id.in_(conversion_ids)).all()
+    return {value is True for (value,) in rows} == {False, True}
+
+
+def _deal_bank_net_rub(deal, incomes, *, strict_fee=False):
+    """Normalize bank parts to credited RUB; None means fee/share is unknown."""
+    by_uuid = {inc.uuid: inc for inc in incomes}
+    all_parts = _payin_all_parts(deal)
+    extra_uuids = {str(uid) for part in all_parts[1:]
+                   for uid in (part.get('sber_uuids') or [])}
+    try:
+        selected = json.loads(deal.payin_parts) if deal.payin_parts else []
+    except (ValueError, TypeError):
+        selected = []
+    selected = [p for p in selected if isinstance(p, dict) and p.get('uuid')
+                and str(p['uuid']) not in extra_uuids]
+    total = 0.0
+    for index, part in enumerate(all_parts):
+        if part.get('method') not in ('sber_reqs', 'sber_wl', 'spp_doverka'):
+            continue
+        amount = float(part.get('amount_rub') or 0)
+        if amount <= 0:
+            continue
+        is_net = part.get('rub_is_net') is True
+        if is_net:
+            total += amount
+            continue
+        ids = ([str(p['uuid']) for p in selected] if index == 0
+               else [str(uid) for uid in (part.get('sber_uuids') or [])])
+        if index == 0 and not ids:
+            ids = [uid for uid in by_uuid if uid not in extra_uuids]
+        refs = [by_uuid[uid] for uid in ids if uid in by_uuid]
+        if ids and len(refs) != len(ids):
+            return None
+        if refs and index == 0 and selected and all(p.get('amount_rub') is not None for p in selected):
+            used = 0.0
+            for p in selected:
+                inc = by_uuid.get(str(p['uuid']))
+                if inc is None:
+                    return None
+                taken = float(p.get('amount_rub') or 0)
+                fraction = _income_share_fraction(inc, taken, False, strict_fee=strict_fee)
+                if fraction is None:
+                    return None
+                total += fraction * (inc.amount_rub or 0)
+                used += taken
+            remainder = amount - used
+            if remainder > 0.01:
+                if part['method'] != 'sber_reqs' and strict_fee:
+                    return None
+                total += remainder
+            elif remainder < -1:
+                return None
+            continue
+        if refs:
+            gross = 0.0
+            net = 0.0
+            for inc in refs:
+                acq = parse_sber_acquiring(inc.purpose)
+                if strict_fee and not acq['fee_known']:
+                    return None
+                gross += (inc.amount_rub or 0) + acq['fee_rub']
+                net += inc.amount_rub or 0
+            allocated = min(amount, gross)
+            total += allocated * net / gross if gross else 0
+            remainder = amount - allocated
+            if remainder > 0.01:
+                if part['method'] != 'sber_reqs' and strict_fee:
+                    return None
+                total += remainder
+        elif part['method'] == 'sber_reqs' or not strict_fee:
+            total += amount
+        else:
+            return None
+    return round(total, 2)
 
 
 def _deal_bank_edit_signature(deal):
@@ -5700,10 +5806,11 @@ def _deal_bank_edit_signature(deal):
                         for part in _payin_all_parts(deal)
                         if part.get('method') in ('sber_reqs', 'sber_wl', 'spp_doverka'))
     return (_deal_bank_gross_rub(deal), tuple(normalized), tuple(bank_parts),
+            deal.payin_rub_is_net is True,
             deal.payin_method.value if deal.payin_method else None)
 
 
-def _bank_conversion_coverage(session, deal, sources):
+def _bank_conversion_coverage(session, deal, sources, *, strict_fee=False):
     """Проверить, что банковские части сделки входят в одну заявку целиком."""
     incomes = session.query(SberIncome).filter(SberIncome.claimed_deal_id == deal.id).all()
     if not incomes:
@@ -5711,8 +5818,7 @@ def _bank_conversion_coverage(session, deal, sources):
     by_id = {inc.id: inc for inc in incomes}
     taken = round(sum(sources.get(inc.id, 0) for inc in incomes), 2)
     required = round(sum(inc.amount_rub or 0 for inc in incomes), 2)
-    gross = round(sum((inc.amount_rub or 0) + parse_sber_acquiring(inc.purpose)['fee_rub']
-                      for inc in incomes), 2)
+    bank_net = _deal_bank_net_rub(deal, incomes, strict_fee=strict_fee)
     try:
         parts = json.loads(deal.payin_parts) if deal.payin_parts else []
     except (ValueError, TypeError):
@@ -5724,9 +5830,11 @@ def _bank_conversion_coverage(session, deal, sources):
     incomplete = (any(sources.get(inc.id, 0) + 0.01 < (inc.amount_rub or 0)
                       for inc in incomes)
                   or bool(missing_uuids)
-                  or _deal_bank_gross_rub(deal) > gross + 1.0)
+                  or bank_net is None
+                  or bank_net > required + 1.0)
     return {'incomplete': incomplete, 'taken_rub': taken,
-            'required_rub': required, 'incomes': by_id}
+            'required_rub': required, 'incomes': by_id,
+            'fee_unknown': bank_net is None}
 
 
 def _validate_deal_bank_conversion_lock(session, deal, protected_income_ids=None):
@@ -6034,32 +6142,39 @@ def _fill_payin_usdt_from_conversion(db, deal):
     taken_by_uuid = {}
     for part in parts:
         if isinstance(part, dict) and part.get('uuid'):
-            taken_by_uuid[str(part['uuid'])] = (taken_by_uuid.get(str(part['uuid']), 0)
-                                                + float(part.get('amount_rub') or 0))
+            uid = str(part['uuid'])
+            taken_by_uuid[uid] = (taken_by_uuid.get(uid, 0)
+                                  + float(part.get('amount_rub') or 0))
+
+    conv_ids = {row[0] for row in db.query(ConversionSource.conversion_id).filter(
+        ConversionSource.sber_income_id.in_([inc.id for inc in incomes])).all()}
+    strict_fee = _conversion_has_mixed_basis(db, conv_ids)
 
     usdt = 0.0
     for inc in incomes:
         share = shares.get(inc.id)
         if not share:
             return False              # хоть один приход не в полученной пачке
-        # Доля сделки и весь приход должны меряться одной линейкой. В payin_parts
-        # и в payin_amount_rub лежит БРУТТО (что заплатил клиент), а amount_rub
-        # прихода — уже за вычетом эквайринга. Деление брутто на нетто добавляло
-        # к приходу ставку комиссии: 120 738.33 / 119 893.16 = 1.00705, и сделка
-        # получала 1 405.49 USDT вместо реальных 1 395.65 — комиссия банка
-        # книжилась как наш доход. У переводов по реквизитам комиссии нет,
-        # брутто равно нетто, и поведение не меняется.
-        gross = (inc.amount_rub or 0) + parse_sber_acquiring(inc.purpose)['fee_rub']
+        # Доля сделки и весь приход должны меряться одной линейкой: новая
+        # сделка хранит зачисленный net, историческая — оплаченный gross.
+        # Эквайринг уже удержан из SberIncome.amount_rub.
         taken = taken_by_uuid.get(inc.uuid)
         if taken is None:
             # Части не записаны: доверяем целому поступлению, только если оно
             # и есть приход сделки. Иначе не гадаем — пусть проставят руками
-            if abs(gross - (deal.payin_amount_rub or 0)) > 1:
+            acq = parse_sber_acquiring(inc.purpose)
+            basis = (inc.amount_rub or 0) + (0 if deal.payin_rub_is_net is True
+                                            else acq['fee_rub'])
+            if abs(basis - (deal.payin_amount_rub or 0)) > 1:
                 return False
-            taken = gross
-        if not gross:
+            taken = basis
+        fraction = _income_share_fraction(
+            inc, taken, deal.payin_rub_is_net is True, strict_fee=strict_fee)
+        if fraction is None:
+            print(f'[Payin] Deal #{deal.id}: доля прихода {inc.uuid} не определена '
+                  '(комиссия банка неизвестна или сумма превышает приход)')
             return False
-        usdt += share * (taken / gross)
+        usdt += share * fraction
 
     usdt = round(usdt, 2)
     if usdt <= 0:
@@ -6242,7 +6357,9 @@ def _auto_settle_conversion(db, conv):
         for src, _received_conv in received_sources:
             received_by_income[src.sber_income_id] = round(
                 received_by_income.get(src.sber_income_id, 0) + (src.amount_rub or 0), 2)
-        coverage = _bank_conversion_coverage(db, deal, received_by_income)
+        strict_fee = _conversion_has_mixed_basis(db, {conv.id})
+        coverage = _bank_conversion_coverage(
+            db, deal, received_by_income, strict_fee=strict_fee)
         if not coverage or coverage['incomplete'] or not deal.payin_amount_usdt:
             continue
         # SberIncome может быть общим для нескольких сделок (#501): его полная
@@ -6262,17 +6379,21 @@ def _auto_settle_conversion(db, conv):
             inc = coverage['incomes'].get(src.sber_income_id)
             if not inc:
                 continue
-            gross = (inc.amount_rub or 0) + parse_sber_acquiring(inc.purpose)['fee_rub']
+            acq = parse_sber_acquiring(inc.purpose)
+            basis = (inc.amount_rub or 0) + (0 if deal.payin_rub_is_net is True
+                                            else acq['fee_rub'])
             taken = taken_by_uuid.get(inc.uuid)
             if taken is None:
-                if abs(gross - (deal.payin_amount_rub or 0)) > 1:
+                if abs(basis - (deal.payin_amount_rub or 0)) > 1:
                     share_ambiguous = True
                     break
-                taken = gross
-            if gross <= 0 or taken <= 0 or taken > gross + 1:
+                taken = basis
+            fraction = _income_share_fraction(
+                inc, taken, deal.payin_rub_is_net is True, strict_fee=strict_fee)
+            if fraction is None:
                 share_ambiguous = True
                 break
-            deal_share_here += current_shares.get(src.sber_income_id, 0) * taken / gross
+            deal_share_here += current_shares.get(src.sber_income_id, 0) * fraction
         deal_share_here = round(deal_share_here, 2)
         incoming_addresses = [(tx.to_address or '').strip() for link in conv.txs
                               for tx in [db.query(PayinTx).get(link.payin_tx_id)] if tx]
@@ -6467,6 +6588,7 @@ def conversion_distribution(db, conv):
     """
     received = conv.received_usdt()
     shares = conversion_shares_for(conv, expected_if_pending=True)
+    strict_fee = _conversion_has_mixed_basis(db, {conv.id})
 
     # Сделки обменников (WL): клиент мерчанта платит по ссылке бота, эквайринг
     # кладёт деньги нам, а выдаёт клиенту мерчант. Возврата оунеру тут нет, но
@@ -6542,13 +6664,18 @@ def conversion_distribution(db, conv):
         linked_incomes = db.query(SberIncome).filter(
             SberIncome.claimed_deal_id == deal.id).all()
         linked_rub = round(sum(i.amount_rub or 0 for i in linked_incomes), 2)
-        acquiring_fee = round(sum(parse_sber_acquiring(i.purpose)['fee_rub']
-                                  for i in linked_incomes), 2)
         source_rub = source_rub_by_deal.get(deal.id, 0)
-        # В карточке брутто, в SberIncome и ConversionSource — нетто.
-        required_rub = max(linked_rub,
-                           round((deal.payin_amount_rub or 0) - acquiring_fee, 2))
-        if required_rub - source_rub > 0.01:
+        bank_net = _deal_bank_net_rub(deal, linked_incomes, strict_fee=strict_fee)
+        required_rub = max(linked_rub, bank_net or 0)
+        if bank_net is None:
+            reason = ('Комиссия эквайринга неизвестна: нельзя распределить '
+                      'gross и net в одной пачке. Уточните комиссию банка.')
+            row['blocked_reason'] = reason
+            blocked_deals.append({'deal_id': deal.id,
+                                  'client_name': row['client_name'],
+                                  'missing_rub': None, 'reason': reason})
+            needs_input = True
+        elif required_rub - source_rub > 0.01:
             missing_rub = round(required_rub - source_rub, 2)
             reason = (f'В эту конвертацию вошло {source_rub:.2f} ₽ из '
                       f'{required_rub:.2f} ₽ прихода сделки; '
@@ -6563,7 +6690,8 @@ def conversion_distribution(db, conv):
         has_debt = (deal.payout_source == PayOutSource.FOUNDER_PERSONAL
                     and deal.needs_reimbursement is not False)
         if not has_debt:
-            no_return += share
+            if not row.get('blocked_reason'):
+                no_return += share
             no_return_deals.append(row)
             continue
 
@@ -7235,7 +7363,7 @@ def _normalize_tx_hashes(raw):
     return out
 
 
-def _normalize_payin_extra(raw):
+def _normalize_payin_extra(raw, *, rub_is_net=False):
     """Дополнительные приходы → список частей одного формата.
 
     Часть без суммы USDT выбрасывается: строка без денег ничего не описывает,
@@ -7249,6 +7377,9 @@ def _normalize_payin_extra(raw):
     for item in (raw or []):
         if not isinstance(item, dict):
             continue
+        if ('rub_is_net' in item and
+                (type(item['rub_is_net']) is not bool or item['rub_is_net'] != rub_is_net)):
+            raise ValueError('Нельзя изменить семантику RUB у дополнительного прихода')
         method = str(item.get('method') or '').strip()
         if method not in PAYIN_METHOD_LABELS:
             continue
@@ -7270,7 +7401,7 @@ def _normalize_payin_extra(raw):
         rate = _pos('rate_rub_usdt')
         if rub and not rate:
             rate = round(rub / usdt, 6)
-        out.append({
+        normalized = {
             'method': method,
             'amount_rub': rub,
             'rate_rub_usdt': rate,
@@ -7279,8 +7410,25 @@ def _normalize_payin_extra(raw):
             'tx_hashes': _normalize_tx_hashes(item.get('tx_hashes')),
             'sber_uuids': [str(u) for u in (item.get('sber_uuids') or []) if u],
             'note': str(item.get('note') or '').strip(),
-        })
+        }
+        if rub_is_net:
+            normalized['rub_is_net'] = True
+        out.append(normalized)
     return out
+
+
+def _payin_parts_with_basis(parts, rub_is_net):
+    """Keep each selected bank share in the deal's immutable RUB basis."""
+    result = []
+    for part in parts or []:
+        if not isinstance(part, dict):
+            result.append(part)
+            continue
+        if ('rub_is_net' in part and
+                (type(part['rub_is_net']) is not bool or part['rub_is_net'] != rub_is_net)):
+            raise ValueError('Нельзя изменить семантику RUB у части прихода')
+        result.append({**part, 'rub_is_net': True} if rub_is_net else part)
+    return result
 
 
 def _payin_extra_list(deal):
@@ -7317,6 +7465,7 @@ def _payin_all_parts(deal):
     main = {
         'method': _payin_display_code(deal) or '',
         'amount_rub': main_rub if main_rub > 0 else None,
+        'rub_is_net': deal.payin_rub_is_net is True,
         'rate_rub_usdt': (round(main_rub / main_usdt, 6)
                           if main_rub > 0 and main_usdt > 0 else None),
         'amount_usdt': main_usdt,
@@ -7360,7 +7509,7 @@ def _apply_payin_extra(session, deal, raw_extra, main_usdt, main_rub):
     на этом стоит защита от двойного учёта (get_used_transaction_hashes и
     _sync_sber_claims), и она продолжает работать без правок.
     """
-    extra = _normalize_payin_extra(raw_extra)
+    extra = _normalize_payin_extra(raw_extra, rub_is_net=deal.payin_rub_is_net is True)
     deal.payin_extra = json.dumps(extra, ensure_ascii=False) if extra else None
 
     main_usdt = float(main_usdt or 0)
@@ -8006,6 +8155,12 @@ def create_deal():
     try:
         _lock_bank_conversion_mutations(session)
         data = request.get_json()
+        if ('payin_rub_is_net' in data and
+                type(data['payin_rub_is_net']) is not bool):
+            return jsonify({'success': False, 'error': 'payin_rub_is_net должен быть boolean'}), 400
+        rub_is_net = data.get('payin_rub_is_net') is True
+        if data.get('payin_parts'):
+            data['payin_parts'] = _payin_parts_with_basis(data['payin_parts'], rub_is_net)
         try:
             payin_account_key = _payin_account_key(data.get('payin_method'), data.get('payin_account_key'))
         except ValueError as e:
@@ -8154,6 +8309,7 @@ def create_deal():
             payin_method=PayInMethod(data['payin_method']) if data.get('payin_method') else None,
             payin_account_key=payin_account_key,
             payin_amount_rub=data.get('payin_amount_rub'),
+            payin_rub_is_net=data.get('payin_rub_is_net'),
             payin_amount_usdt=data.get('payin_amount_usdt'),
             payin_rate_rub_usdt=data.get('payin_rate_rub_usdt'),
             payin_tx_hash=data.get('payin_tx_hash'),
@@ -8385,6 +8541,14 @@ def update_deal(deal_id):
             return jsonify({'success': False, 'error': 'Сделка не найдена'}), 404
         
         data = request.get_json()
+        if 'payin_rub_is_net' in data:
+            if type(data['payin_rub_is_net']) is not bool:
+                return jsonify({'success': False, 'error': 'payin_rub_is_net должен быть boolean'}), 400
+            if data['payin_rub_is_net'] != (deal.payin_rub_is_net is True):
+                return jsonify({'success': False, 'error': 'Семантика суммы RUB сделки неизменяема'}), 409
+        if data.get('payin_parts'):
+            data['payin_parts'] = _payin_parts_with_basis(
+                data['payin_parts'], deal.payin_rub_is_net is True)
         try:
             payin_account_key = _payin_account_key(
                 data.get('payin_method', deal.payin_method.value if deal.payin_method else None),

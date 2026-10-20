@@ -1545,6 +1545,60 @@ def test_комиссия_эквайринга_не_добавляется_к_п
         db.close()
 
 
+def test_new_net_deal_uses_credited_rub_for_conversion(cli, monkeypatch):
+    """New CRM basis: 99,300 credited RUB receives exactly its USDT share."""
+    monkeypatch.setattr(appmod, '_tron_tx_amount', lambda h: None)
+    db = get_session()
+    try:
+        inc = SberIncome(uuid=_uid(), operation_date='2026-09-11',
+                         amount_rub=99300, payer='Эквайринг',
+                         purpose='Зачисление средств по операциям эквайринга. Комиссия 700.00.')
+        db.add(inc); db.commit()
+        inc_id, inc_uuid = inc.id, inc.uuid
+    finally:
+        db.close()
+    conv_id = deal_id = None
+    tx_hash = _uid() + _uid()
+    try:
+        response = cli.post('/api/conversions', json={
+            'broker': 'TRADEX', 'rate_rub_usdt': 99.3,
+            'sources': [{'sber_income_id': inc_id, 'amount_rub': 99300}]})
+        assert response.status_code == 200, response.get_json()
+        conv_id = response.get_json()['conversion']['id']
+        response = cli.post(f'/api/conversions/{conv_id}/txs', json={
+            'tx_hash': tx_hash, 'amount_usdt': 1000})
+        assert response.status_code == 200, response.get_json()
+        response = cli.post('/api/deals', json={
+            'client_name': 'Net CRM deal', 'status': 'pending',
+            'payin_method': 'sber_wl', 'payin_amount_rub': 99300,
+            'payin_rub_is_net': True,
+            'payin_parts': [{'uuid': inc_uuid, 'amount_rub': 99300,
+                             'rub_is_net': True}], 'skip_sync': True})
+        assert response.status_code == 201, response.get_json()
+        deal = response.get_json()['deal']
+        deal_id = deal['id']
+        assert deal['payin_rub_is_net'] is True
+        assert deal['payin_amount_usdt'] == pytest.approx(1000)
+        assert deal['payin_rate_rub_usdt'] == pytest.approx(99.3)
+        db = get_session()
+        try:
+            assert json.loads(db.query(Deal).get(deal_id).payin_parts)[0]['rub_is_net'] is True
+        finally:
+            db.close()
+    finally:
+        if conv_id is not None:
+            cli.delete(f'/api/conversions/{conv_id}')
+        db = get_session()
+        try:
+            if deal_id is not None:
+                db.query(Deal).filter(Deal.id == deal_id).delete()
+            db.query(PayinTx).filter(PayinTx.tx_hash == tx_hash).delete()
+            db.query(SberIncome).filter(SberIncome.id == inc_id).delete()
+            db.commit()
+        finally:
+            db.close()
+
+
 def test_бредовый_курс_не_подставляется(cli, incomes, monkeypatch):
     """Страховка: если доля даёт курс вне коридора — сделку не трогаем."""
     monkeypatch.setattr(appmod, '_tron_tx_amount', lambda h: None)
