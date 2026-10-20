@@ -1302,9 +1302,11 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                                     <option value="crypto_direct">Крипта напрямую</option>
                                     <option value="sber_wl">СБП</option>
                                     <option value="sber_reqs">Сбер (реквизиты)</option>
+                                    <option value="flow_sole_reqs">Flow Sole (СГБ, реквизиты) · …0261</option>
                                     <option value="partners_cash">Партнёры (наличные)</option>
                                     <option value="spp_doverka" data-legacy="1" hidden>СБП (Доверка, архив)</option>
                                 </select>
+                                <small id="flowSoleReqsCustom" style="display:none">ФЛОУ СОЛЕ КО., ЛТД · ИНН 9909773251 · КПП 770387001 · Московский филиал "БАНК СГБ" г. Москва · р/с 40807810819000000261 · к/с 30101810245250000094 · БИК 044525094</small>
                             </div>
                             <div class="form-group" id="customPayinTxHashGroup">
                                 <label class="form-label">Хэш транзакции <span style="font-weight:400;color:#64748b;">(если есть)</span></label>
@@ -1353,12 +1355,14 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                                 <select class="form-control" name="payin_method" id="payinMethod" required>
                                     <option value="sber_wl">СБП</option>
                                     <option value="sber_reqs">Сбер (реквизиты)</option>
+                                    <option value="flow_sole_reqs">Flow Sole (СГБ, реквизиты) · …0261</option>
                                     <option value="crypto_direct">Крипта напрямую</option>
                                     <option value="partners_cash">Партнеры (наличные)</option>
                                     <!-- Архив: тот же СБП, но через умершую Доверку. Скрыт из выбора,
                                          показывается только когда открыта старая сделка с этим методом -->
                                     <option value="spp_doverka" data-legacy="1" hidden>СБП (Доверка, архив)</option>
                                 </select>
+                                <small id="flowSoleReqsStandard" style="display:none">ФЛОУ СОЛЕ КО., ЛТД · ИНН 9909773251 · КПП 770387001 · Московский филиал "БАНК СГБ" г. Москва · р/с 40807810819000000261 · к/с 30101810245250000094 · БИК 044525094</small>
                             </div>
                             <div class="form-group" id="payinRubGroup">
                                 <label class="form-label">Сумма RUB</label>
@@ -4464,7 +4468,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 
         // ==================== Charts ====================
         let chartInstances = {};
-        const METHOD_NAMES = {'spp_doverka': 'СБП (Доверка)', 'partner_cash': 'Партнёры', 'crypto_direct': 'Крипта', 'sber_wl': 'СБП', 'sber_reqs': 'Сбер реквизиты', 'custom': 'Кастомная', 'unknown': 'Другое'};
+        const METHOD_NAMES = {'spp_doverka': 'СБП (Доверка)', 'partner_cash': 'Партнёры', 'crypto_direct': 'Крипта', 'sber_wl': 'СБП', 'sber_reqs': 'Сбер реквизиты', 'flow_sole_reqs': 'Flow Sole (СГБ, реквизиты)', 'custom': 'Кастомная', 'unknown': 'Другое'};
         let currentPeriod = '30d';
         let dashRange = null; // {from:'YYYY-MM-DD', to:'YYYY-MM-DD', label} — кастомный диапазон или месяц
 
@@ -4651,7 +4655,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                             <td>${escapeHtml(deal.manager_name) || '-'}</td>
                             <td>${escapeHtml(deal.client_name) || '-'}</td>
                             <td>${escapeHtml(deal.referrer_name) || '—'}</td>
-                            <td>${deal.is_custom ? 'Кастомная' : getPayinMethodLabel(deal.payin_method)}</td>
+                            <td>${deal.is_custom && deal.payin_account_key !== 'flow_sole' ? 'Кастомная' : getPayinMethodLabel(payinUiMethod(deal))}</td>
                             <td>${payinUsdtCell(deal)}</td>
                             <td>${deal.custom_payout_currency
                                 ? (deal.custom_payout_amount ? formatNumber(deal.custom_payout_amount) + ' ' + deal.custom_payout_currency : '-')
@@ -4802,13 +4806,13 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         
                         <h4 style="color: #10b981; margin-bottom: 0.5rem;">Pay-In</h4>
                         ${deal.is_custom ? `
-                            ${deal.payin_method ? `<p><strong>Метод:</strong> ${getPayinMethodLabel(deal.payin_method)}</p>` : ''}
+                            ${deal.payin_method ? `<p><strong>Метод:</strong> ${getPayinMethodLabel(payinUiMethod(deal))}</p>` : ''}
                             <p><strong>Валюта:</strong> ${deal.custom_payin_currency}</p>
                             <p><strong>Сумма:</strong> ${formatNumber(deal.custom_payin_amount)} ${deal.custom_payin_currency}</p>
                             ${deal.custom_payin_rate ? `<p><strong>Курс к USDT:</strong> ${deal.custom_payin_rate}</p>` : ''}
                             <p><strong>= USDT:</strong> ${payinUsdtCell(deal)}</p>
                         ` : `
-                            <p><strong>Метод:</strong> ${getPayinMethodLabel(deal.payin_method)}</p>
+                            <p><strong>Метод:</strong> ${getPayinMethodLabel(payinUiMethod(deal))}</p>
                             ${deal.payin_amount_rub ? `<p><strong>Сумма RUB:</strong> ${formatNumber(deal.payin_amount_rub)} ₽</p>` : ''}
                             <p><strong>Сумма USDT:</strong> ${payinUsdtCell(deal)}${(!deal.payin_amount_usdt && deal.payin_usdt_converted) ? ` <span style="font-size:0.8rem;color:#64748b;">(из пачки)</span>
                                 <button class="btn btn-sm btn-success" style="margin-left:8px;font-size:11px;padding:3px 8px;"
@@ -5305,7 +5309,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         document.getElementById('customPayoutRate').value = deal.custom_payout_rate || '';
                         document.getElementById('customPayoutMethod').value = deal.payout_method || 'office';
                         // Метод Pay-In + части прихода Сбера
-                        if (deal.payin_method) setPayinMethodValue('customPayinMethod', deal.payin_method);
+                        if (deal.payin_method) setPayinMethodValue('customPayinMethod', payinUiMethod(deal));
                         sberParts = (methodUsesSberPool(deal.payin_method) && deal.payin_parts) ? deal.payin_parts.slice() : [];
                         onCustomPayinMethodChange();
                         customUsdtMode = { payin: 'rate', payout: 'rate' };  // грузим курс → USDT производный
@@ -5333,7 +5337,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 
                         // Заполняем обычную форму
                         if (deal.payin_method) {
-                            setPayinMethodValue('payinMethod', deal.payin_method);
+                            setPayinMethodValue('payinMethod', payinUiMethod(deal));
                             document.getElementById('payinMethod').dispatchEvent(new Event('change'));
                         }
                         // Части прихода Сбера (СБП и реквизиты — общий пул выписки)
@@ -5558,7 +5562,8 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 client_id: parseInt(clientId) || null,
                 client_name: clientName,
                 created_at: createdAt || null,
-                payin_method: customMethod,
+                payin_method: customMethod === 'flow_sole_reqs' ? 'sber_reqs' : customMethod,
+                payin_account_key: customMethod === 'flow_sole_reqs' ? 'flow_sole' : null,
                 payin_parts: methodUsesSberPool(customMethod) ? sberParts : [],
                 payout_source: 'binance',
                 payin_amount_usdt: payinUsdt,
@@ -6540,6 +6545,11 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         // реквизиты — переводом от ФИО. Пул один, различаются меткой kind.
         function methodUsesSberPool(method) { return method === 'sber_reqs' || method === 'sber_wl'; }
 
+        function payinUiMethod(deal) {
+            return deal.payin_method === 'sber_reqs' && deal.payin_account_key === 'flow_sole'
+                ? 'flow_sole_reqs' : deal.payin_method;
+        }
+
         // Архивные методы (spp_doverka) убраны из выпадашки, но у старых сделок они
         // в базе: если просто присвоить value, селект останется пустым и сохранение
         // молча сменит метод. Поэтому опцию для такого значения раскрываем обратно.
@@ -6907,6 +6917,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 
         function applyPayinMethodFields() {
             const method = document.getElementById('payinMethod');
+            document.getElementById('flowSoleReqsStandard').style.display = method.value === 'flow_sole_reqs' ? 'block' : 'none';
             const partnerGroup = document.getElementById('payinPartnerGroup');
             const rubGroup = document.getElementById('payinRubGroup');
             const doverkaGroup = document.getElementById('doverkaGroup');
@@ -6916,7 +6927,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 
             const isCryptoDirect = method.value === 'crypto_direct';
             const isSberWL = method.value === 'sber_wl';
-            const isSberReqs = method.value === 'sber_reqs';
+            const isSberReqs = method.value === 'sber_reqs' || method.value === 'flow_sole_reqs';
 
             // Пул выписки Сбера — для обоих сберовских методов. СБП раньше не имел
             // доступа к пулу: платёж клиента лежал в выписке эквайрингом и не
@@ -8164,6 +8175,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         // Подбор входящей транзакции в кастомной сделке: WL Сбер или крипта → заполняет всю сумму
         async function onCustomPayinMethodChange() {
             const method = document.getElementById('customPayinMethod').value;
+            document.getElementById('flowSoleReqsCustom').style.display = method === 'flow_sole_reqs' ? 'block' : 'none';
             const picker = document.getElementById('customPayinPicker');
             const label = document.getElementById('customPickerLabel');
             const select = document.getElementById('customPayinTxSelect');
@@ -8176,7 +8188,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 sberSetKindFilter(method === 'sber_wl' ? 'acquiring' : 'transfer');
                 sberLoadIncomes();
             }
-            if (method === 'sber_reqs') {
+            if (method === 'sber_reqs' || method === 'flow_sole_reqs') {
                 picker.style.display = 'none';
                 select.innerHTML = '';
                 return;
@@ -8333,7 +8345,8 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 is_custom: true,
 
                 // Pay-In
-                payin_method: payinMethod,
+                payin_method: payinMethod === 'flow_sole_reqs' ? 'sber_reqs' : payinMethod,
+                payin_account_key: payinMethod === 'flow_sole_reqs' ? 'flow_sole' : null,
                 payin_tx_hash: payinTxHash || null,
                 payin_amount_usdt: payinUsdt,
                 payin_parts: methodUsesSberPool(payinMethod) ? sberParts : [],
@@ -8667,6 +8680,8 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 
             // Части прихода Сбера (пустой список = убрать части и освободить пул)
             data.payin_parts = methodUsesSberPool(data.payin_method) ? sberParts : [];
+            data.payin_account_key = data.payin_method === 'flow_sole_reqs' ? 'flow_sole' : null;
+            if (data.payin_account_key) data.payin_method = 'sber_reqs';
 
             // Для ручного хэша сеть обязательна: по самому хэшу отличить
             // Ethereum от TRON нельзя. Выбранные из входящих всегда TRC-20.
@@ -12862,7 +12877,8 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                 'partners_cash': 'Партнеры (наличные)',
                 'crypto_direct': 'Крипта',
                 'sber_wl': 'СБП',
-                'sber_reqs': 'Сбер (реквизиты)'
+                'sber_reqs': 'Сбер (реквизиты)',
+                'flow_sole_reqs': 'Flow Sole (СГБ, реквизиты)'
             };
             return labels[method] || method || '-';
         }
@@ -12903,7 +12919,7 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                 mainHashes.push({ hash: deal.payin_tx_hash, amount_usdt: null });
             }
             return [{
-                label: label(deal.payin_method, deal.payin_partner_name),
+                label: label(payinUiMethod(deal), deal.payin_partner_name),
                 amount_rub: mainRub > 0 ? mainRub : null,
                 rate_rub_usdt: (mainRub > 0 && mainUsdt > 0) ? mainRub / mainUsdt : null,
                 amount_usdt: mainUsdt,

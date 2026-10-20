@@ -329,6 +329,27 @@ PAYIN_METHOD_LABELS = {
     'sber_reqs': 'сбер реквизиты',
 }
 
+FLOW_SOLE_PAYIN_KEY = 'flow_sole'
+FLOW_SOLE_METHOD_CODE = 'flow_sole_reqs'  # display only; PayInMethod stays SBER_REQS
+FLOW_SOLE_METHOD_LABEL = 'Flow Sole (СГБ, реквизиты)'
+
+
+def _payin_account_key(method, key):
+    """Only Sber requisites may carry the Flow Sole account identity."""
+    if key not in (None, '', FLOW_SOLE_PAYIN_KEY):
+        raise ValueError('Неизвестный счёт прихода')
+    return FLOW_SOLE_PAYIN_KEY if method == PayInMethod.SBER_REQS.value and key == FLOW_SOLE_PAYIN_KEY else None
+
+
+def _payin_display_code(deal):
+    if deal.payin_method == PayInMethod.SBER_REQS and deal.payin_account_key == FLOW_SOLE_PAYIN_KEY:
+        return FLOW_SOLE_METHOD_CODE
+    return deal.payin_method.value if deal.payin_method else None
+
+
+def _payin_display_label(code):
+    return FLOW_SOLE_METHOD_LABEL if code == FLOW_SOLE_METHOD_CODE else PAYIN_METHOD_LABELS.get(code, code)
+
 PAYOUT_METHOD_LABELS = {
     'office': 'офис',
     'courier': 'курьер',
@@ -1379,6 +1400,7 @@ class Deal(Base):
     client = relationship("Client", back_populates="deals")
     client_name = Column(String(100))
     payin_method = Column(SQLEnum(PayInMethod), nullable=True)
+    payin_account_key = Column(String, nullable=True)
     payin_amount_rub = Column(Float)
     payin_amount_thb = Column(Float)
     payin_amount_usdt = Column(Float)
@@ -1507,6 +1529,7 @@ class Deal(Base):
             'client_name': self.client.name if self.client else self.client_name,
             'client': self.client.to_dict() if self.client else None,
             'payin_method': self.payin_method.value if self.payin_method else None,
+            'payin_account_key': self.payin_account_key,
             'payin_amount_rub': self.payin_amount_rub,
             'payin_amount_usdt': self.payin_amount_usdt,
             'payin_rate_rub_usdt': self.payin_rate_rub_usdt,
@@ -2268,6 +2291,7 @@ try:
             conn.execute(text("ALTER TABLE wallets ADD COLUMN IF NOT EXISTS is_balance BOOLEAN DEFAULT FALSE"))
             conn.execute(text("ALTER TABLE deals ADD COLUMN IF NOT EXISTS needs_reimbursement BOOLEAN DEFAULT TRUE"))
             conn.execute(text("ALTER TABLE deals ADD COLUMN IF NOT EXISTS payout_no_conversion BOOLEAN DEFAULT FALSE"))
+            conn.execute(text("ALTER TABLE deals ADD COLUMN IF NOT EXISTS payin_account_key VARCHAR"))
             conn.execute(text("ALTER TABLE payin_txs ADD COLUMN IF NOT EXISTS to_address VARCHAR(100)"))
             conn.execute(text("CREATE INDEX IF NOT EXISTS ix_sber_incomes_operation_date ON sber_incomes (operation_date)"))
             conn.execute(text("CREATE INDEX IF NOT EXISTS ix_sber_debits_operation_date ON sber_debits (operation_date)"))
@@ -2297,6 +2321,8 @@ try:
             try: conn.execute(text("ALTER TABLE deals ADD COLUMN needs_reimbursement BOOLEAN DEFAULT 1"))
             except: pass
             try: conn.execute(text("ALTER TABLE deals ADD COLUMN payout_no_conversion BOOLEAN DEFAULT 0"))
+            except: pass
+            try: conn.execute(text("ALTER TABLE deals ADD COLUMN payin_account_key VARCHAR"))
             except: pass
             for _sql in ("CREATE INDEX IF NOT EXISTS ix_sber_incomes_operation_date ON sber_incomes (operation_date)",
                          "CREATE INDEX IF NOT EXISTS ix_sber_debits_operation_date ON sber_debits (operation_date)",
@@ -3667,8 +3693,8 @@ def build_deal_rows(deal, start_num):
             currency_in, amount_in = 'usdt', p['amount_usdt']
             amount_in_usdt = p['amount_usdt']
 
-        method_str = ('кастом' if deal.is_custom
-                      else PAYIN_METHOD_LABELS.get(p['method'], ''))
+        method_str = ('кастом' if deal.is_custom and p['method'] != FLOW_SOLE_METHOD_CODE
+                      else _payin_display_label(p['method']) or '')
 
         rows.append([
             start_num if i == 0 else f'{start_num}.{i + 1}',       # A: номер
@@ -4115,7 +4141,7 @@ def _payin_parts_block(deal):
         return ''
     out = f"\n— Приход ({len(parts)}) —"
     for p in parts:
-        name = PAYIN_METHOD_LABELS.get(p['method'], p['method'] or '—')
+        name = _payin_display_label(p['method']) or '—'
         if p['partner_name']:
             name += f" {p['partner_name']}"
         if p['amount_rub'] and p['rate_rub_usdt']:
@@ -7289,7 +7315,7 @@ def _payin_all_parts(deal):
         json.loads(deal.payin_tx_hashes) if deal.payin_tx_hashes else [])
         if h['hash'] not in taken]
     main = {
-        'method': deal.payin_method.value if deal.payin_method else '',
+        'method': _payin_display_code(deal) or '',
         'amount_rub': main_rub if main_rub > 0 else None,
         'rate_rub_usdt': (round(main_rub / main_usdt, 6)
                           if main_rub > 0 and main_usdt > 0 else None),
@@ -7980,6 +8006,12 @@ def create_deal():
     try:
         _lock_bank_conversion_mutations(session)
         data = request.get_json()
+        try:
+            payin_account_key = _payin_account_key(data.get('payin_method'), data.get('payin_account_key'))
+        except ValueError as e:
+            return jsonify({'success': False, 'error': str(e)}), 400
+        if payin_account_key and data.get('payin_parts'):
+            return jsonify({'success': False, 'error': 'Flow Sole не использует пул приходов Сбера'}), 400
         
         # Парсим дату если передана
         created_at = None
@@ -8120,6 +8152,7 @@ def create_deal():
             client_id=client_id,
             client_name=client_name,
             payin_method=PayInMethod(data['payin_method']) if data.get('payin_method') else None,
+            payin_account_key=payin_account_key,
             payin_amount_rub=data.get('payin_amount_rub'),
             payin_amount_usdt=data.get('payin_amount_usdt'),
             payin_rate_rub_usdt=data.get('payin_rate_rub_usdt'),
@@ -8352,6 +8385,17 @@ def update_deal(deal_id):
             return jsonify({'success': False, 'error': 'Сделка не найдена'}), 404
         
         data = request.get_json()
+        try:
+            payin_account_key = _payin_account_key(
+                data.get('payin_method', deal.payin_method.value if deal.payin_method else None),
+                data.get('payin_account_key', deal.payin_account_key))
+        except ValueError as e:
+            return jsonify({'success': False, 'error': str(e)}), 400
+        if payin_account_key:
+            if data.get('payin_parts'):
+                return jsonify({'success': False, 'error': 'Flow Sole не использует пул приходов Сбера'}), 400
+            data['payin_parts'] = []  # release old Sber claims on a method switch
+        deal.payin_account_key = payin_account_key
         bank_fields_changed = any(key in data for key in (
             'payin_parts', 'payin_extra', 'payin_amount_rub', 'payin_method'))
         original_bank_signature = _deal_bank_edit_signature(deal) if bank_fields_changed else None
@@ -8913,7 +8957,7 @@ def _ledger_payin(deal, converted_usdt=None):
         code = p.get('method') or None
         parts.append({
             'method': code,
-            'method_label': PAYIN_METHOD_LABELS.get(code, code),
+            'method_label': _payin_display_label(code),
             'amount_rub': p.get('amount_rub'),
             'amount_usdt': p.get('amount_usdt'),
             'rate_rub_usdt': p.get('rate_rub_usdt'),
@@ -8925,15 +8969,15 @@ def _ledger_payin(deal, converted_usdt=None):
     for p in parts:
         if p['method'] and p['method'] not in methods:
             methods.append(p['method'])
-    code = deal.payin_method.value if deal.payin_method else None
+    code = _payin_display_code(deal)
     # У СБП/эквайринга свой USDT появляется только после конвертации пачки —
     # без подстановки доли из пачки приход выглядел бы нулевым
     amount_usdt = deal.payin_amount_usdt or (converted_usdt or None)
     return {
         'method': code,
-        'method_label': PAYIN_METHOD_LABELS.get(code, code),
+        'method_label': _payin_display_label(code),
         'methods': methods,
-        'methods_label': ' + '.join(PAYIN_METHOD_LABELS.get(m, m) for m in methods) or None,
+        'methods_label': ' + '.join(_payin_display_label(m) for m in methods) or None,
         'amount_rub': deal.payin_amount_rub,
         'amount_thb': deal.payin_amount_thb,
         'amount_usdt': amount_usdt,
@@ -9164,7 +9208,7 @@ def _ledger_totals(rows):
         'all': finish(total),
         'referral_unpaid_usdt': round(unpaid_referral, 2),
         'by_kind': {k: finish(v, DEAL_KIND_LABELS.get(k, k)) for k, v in by_kind.items()},
-        'by_payin_method': {k: finish(v, PAYIN_METHOD_LABELS.get(k, k))
+        'by_payin_method': {k: finish(v, _payin_display_label(k))
                             for k, v in by_payin.items()},
         'by_payout_method': {k: finish(v, PAYOUT_METHOD_LABELS.get(k, k))
                              for k, v in by_payout.items()},
@@ -9284,7 +9328,7 @@ def deals_ledger():
             'totals': totals,
             'labels': {
                 'deal_kind': DEAL_KIND_LABELS,
-                'payin_method': PAYIN_METHOD_LABELS,
+                'payin_method': {**PAYIN_METHOD_LABELS, FLOW_SOLE_METHOD_CODE: FLOW_SOLE_METHOD_LABEL},
                 'payout_method': PAYOUT_METHOD_LABELS,
                 'payout_source': PAYOUT_SOURCE_LABELS,
             },
@@ -12323,7 +12367,7 @@ def get_dashboard():
         # Распределение по методам Pay-In
         method_stats = {}
         for d in month_deals:
-            method = d.payin_method.value if d.payin_method else 'unknown'
+            method = _payin_display_code(d) or 'unknown'
             if method not in method_stats:
                 method_stats[method] = {'count': 0, 'volume': 0}
             method_stats[method]['count'] += 1
