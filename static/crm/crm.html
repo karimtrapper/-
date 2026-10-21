@@ -1329,10 +1329,10 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                                 <select class="form-control" id="customPayinMethod" onchange="onCustomPayinMethodChange()">
                                     <option value="crypto_direct">Крипта напрямую</option>
                                     <option value="sber_wl">СБП</option>
+                                    <option value="spp_doverka">СБП (Доверка)</option>
                                     <option value="sber_reqs">Сбер (реквизиты)</option>
                                     <option value="flow_sole_reqs">Flow Sole (СГБ, реквизиты) · …0261</option>
                                     <option value="partners_cash">Партнёры (наличные)</option>
-                                    <option value="spp_doverka" data-legacy="1" hidden>СБП (Доверка, архив)</option>
                                 </select>
                                 <small id="flowSoleReqsCustom" style="display:none" title="ФЛОУ СОЛЕ КО., ЛТД · ИНН 9909773251 · КПП 770387001 · Московский филиал БАНК СГБ г. Москва · р/с 40807810819000000261 · к/с 30101810245250000094 · БИК 044525094">СГБ · р/с …0261</small>
                             </div>
@@ -1389,13 +1389,11 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                                 <label class="form-label">Метод Pay-In</label>
                                 <select class="form-control" name="payin_method" id="payinMethod" required>
                                     <option value="sber_wl">СБП</option>
+                                    <option value="spp_doverka">СБП (Доверка)</option>
                                     <option value="sber_reqs">Сбер (реквизиты)</option>
                                     <option value="flow_sole_reqs">Flow Sole (СГБ, реквизиты) · …0261</option>
                                     <option value="crypto_direct">Крипта напрямую</option>
                                     <option value="partners_cash">Партнеры (наличные)</option>
-                                    <!-- Архив: тот же СБП, но через умершую Доверку. Скрыт из выбора,
-                                         показывается только когда открыта старая сделка с этим методом -->
-                                    <option value="spp_doverka" data-legacy="1" hidden>СБП (Доверка, архив)</option>
                                 </select>
                                 <small id="flowSoleReqsStandard" style="display:none" title="ФЛОУ СОЛЕ КО., ЛТД · ИНН 9909773251 · КПП 770387001 · Московский филиал БАНК СГБ г. Москва · р/с 40807810819000000261 · к/с 30101810245250000094 · БИК 044525094">СГБ · р/с …0261</small>
                             </div>

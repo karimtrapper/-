@@ -178,12 +178,12 @@ def _option_line(select_id, value):
 
 
 @pytest.mark.parametrize('select_id', ['payinMethod', 'customPayinMethod'])
-def test_doverka_hidden_from_selects(select_id):
-    """Архивный метод не выбирается руками, но остаётся в DOM — иначе старая
-    сделка откроется с пустым селектом и сохранение сменит ей метод."""
+def test_doverka_selectable_again(select_id):
+    """СБП (Доверка) возвращена в выбор Pay-In для новых сделок — не archive-only."""
     line = _option_line(select_id, 'spp_doverka')
     assert line is not None, f'{select_id}: опция spp_doverka удалена из DOM'
-    assert 'hidden' in line
+    assert 'hidden' not in line
+    assert '>СБП (Доверка)<' in line
 
 
 @pytest.mark.parametrize('select_id', ['payinMethod', 'customPayinMethod'])

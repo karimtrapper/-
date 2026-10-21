@@ -186,7 +186,7 @@ def test_calculator_prefill_requires_credited_rub(ui):
     assert not errors, errors
 
 
-def test_custom_select_respects_disabled_and_hidden_option(ui):
+def test_custom_select_respects_disabled_and_doverka_option(ui):
     page, errors, _, _ = ui
     page.locator('.nav-create-btn').click()
     expect(page.locator('#create')).to_be_visible()
@@ -203,12 +203,12 @@ def test_custom_select_respects_disabled_and_hidden_option(ui):
     button.click()
     expect(select.locator('..').locator('.custom-select-list')).to_be_visible()
     expect(select.locator('..').locator('.custom-select-opt').filter(
-        has_text='Доверка, архив')).to_have_count(0)
+        has_text='СБП (Доверка)')).to_have_count(1)
     page.evaluate('''() => {
         const s = document.querySelector('#payinMethod');
         s.value = 'spp_doverka'; s.dispatchEvent(new Event('change'));
     }''')
-    expect(button).to_contain_text('Доверка, архив')
+    expect(button).to_contain_text('СБП (Доверка)')
     assert select.input_value() == 'spp_doverka'
     assert not errors, errors
 
