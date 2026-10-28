@@ -130,3 +130,14 @@ NODE_PATH='/Users/karimamirov/Desktop/untitled folder/node_modules' PLAYWRIGHT_B
 2. **`custom`-кошелёк обходил политику кошельков админа.** Проверки сравнивали адрес только с 6 адресами сида. Добавлен `_stand_policy_addresses(db)`: 6 адресов и адрес любого активного кошелька реестра с готовой политикой. По нему работают `_stand_transfer_policy` (custom-источник и несовпадение с записью реестра дают отказ), запрет `payinCustom` в `_stand_guard_transition`, закрепление кошелька перед s23 и пометка ручного закрытия. Проверки прихода по 6 адресам (mismatch и т. п.) оставлены как есть. Тесты: `test_custom_source_cannot_bypass_admin_created_wallet_policy`, `test_state_put_refuses_custom_payin_wallet_with_admin_policy_address`, `test_policy_lookup_by_address_covers_registry_wallets_with_ready_policy`.
 3. **`markedBy` и `signers` подделывались через общий PUT.** Добавлены в `SERVER_FIELDS` (`stand_transfers.py`): при записи отправки браузером они отбрасываются, берутся только из доверенной копии. Тесты: `test_forged_marked_by_and_signers_through_state_put_are_dropped` (в журнал и уведомление подделка не попадает, `transferFound` ставится как обычно), `test_forged_signers_on_an_attached_send_cannot_be_replaced_later`.
 4. **Удаление и отключение кошелька с готовой политикой.** `DELETE /api/wallets/<id>` и `PATCH {active:false}` для такого кошелька: только admin (иначе 403), и никому, пока на s23/s24 есть сделка с этим кошельком (409 с номером сделки). Изменение `active` пишется в `policy_log` (было/стало). Для остальных кошельков поведение не менялось. Вне стенда ролей нет, проверка роли пропускается; проверка занятости сделками относится только к стенду. Тесты: `test_only_admin_deletes_or_deactivates_wallet_with_ready_policy` (4 роли), `test_active_change_of_policy_wallet_is_logged`, `test_busy_wallet_cannot_be_deleted_or_deactivated_by_anyone`, `test_other_wallets_keep_their_delete_and_patch_behavior`. Удаление в журнал кошелька записать нельзя (строка удаляется), оно попадает только в лог приложения.
+
+### Прогоны после исправлений
+
+Новый бейзлайн — `origin/stage` @ `07168a8` (отдельный worktree), финал — `wallet-handoff` @ `da9c15b`. Артефакты: `docs/wallet-roles/handoff/artifacts/review-fixes/`.
+
+| Раннер | Бейзлайн (07168a8) | Финал |
+|---|---|---|
+| Python | 3518 passed, 77 skipped, 0 failed | **3685 passed, 77 skipped, 0 failed** |
+| JS | 83 passed, 2 failed, 85 файлов | **84 passed, 2 failed**, 86 файлов |
+
+Python: `NETWORK_FENCE attempts=8 unexpected=0` в обоих прогонах, 176 новых кейсов; из бейзлайна не проходят по именам только те же 9 кейсов, заменённых решением Карима 28.10 и новой политикой (список выше), новых падений нет. JS падают те же два файла, что и на бейзлайне: `test_stand_mobile_tasks_nav.js`, `test_stand_owner_summary.js`.

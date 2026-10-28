@@ -1,0 +1,97 @@
+JS_TEST test_calc_crm_prefill_net.js
+JS_TEST test_calc_deal_kind_handoff.js
+JS_TEST test_crm_custom_select_disabled.js
+JS_TEST test_crm_draft_hash_guard.js
+JS_TEST test_crm_flow_proof_display.js
+JS_TEST test_crm_flow_ui_gate.js
+JS_TEST test_crm_manual_payin_share.js
+JS_TEST test_crm_rental_select_persists.js
+JS_TEST test_crm_sber_basis_summary.js
+JS_TEST test_flowsole_crm_ui.js
+JS_TEST test_login_setup_mode.js
+JS_TEST test_payout_receipt_independent_qa.js
+JS_TEST test_s6_freehold_amount.js
+JS_TEST test_stage_manager_identity.js
+JS_TEST test_stand_assignee_take.js
+JS_TEST test_stand_board_concurrency.js
+JS_TEST test_stand_botpin.js
+JS_TEST test_stand_client_payin_receipts.js
+JS_TEST test_stand_crm_close_race.js
+JS_TEST test_stand_crm_draft_core.js
+JS_TEST test_stand_crm_draft_mount.js
+JS_TEST test_stand_crm_draft_payload.js
+JS_TEST test_stand_crm_labels.js
+JS_TEST test_stand_crm_locked.js
+JS_TEST test_stand_crm_push_close.js
+JS_TEST test_stand_demo_and_broker_wallet.js
+JS_TEST test_stand_docparse_dataurl.js
+JS_TEST test_stand_docparse_ui.js
+JS_TEST test_stand_files.js
+JS_TEST test_stand_files_storage.js
+JS_TEST test_stand_flow_crm_transfer_browser.js
+JS_TEST test_stand_flow_ui_gate.js
+JS_TEST test_stand_flows_findings.js
+JS_TEST test_stand_freehold.js
+JS_TEST test_stand_freehold_close_roles.js
+JS_TEST test_stand_hash_split.js
+JS_TEST test_stand_income_conv_form.js
+JS_TEST test_stand_incoming.js
+JS_TEST test_stand_leasehold.js
+JS_TEST test_stand_log_legacy.js
+JS_TEST test_stand_log_xss.js
+JS_TEST test_stand_manual_agent_ids.js
+JS_TEST test_stand_manual_bank_receipt.js
+JS_TEST test_stand_manual_close_hash_preview.js
+JS_TEST test_stand_manual_close_realty_screen.js
+JS_TEST test_stand_manual_close_screen.js
+JS_TEST test_stand_manual_close_submit.js
+JS_TEST test_stand_manual_close_trigger.js
+JS_TEST test_stand_manual_origin_queue.js
+JS_TEST test_stand_manual_receipt_confirm_ui.js
+JS_TEST test_stand_mobile_tasks_nav.js
+ page.evaluate: TypeError: Cannot read properties of undefined (reading '1472')
+    at render (http://127.0.0.1:43330/tasks?snap=walkthrough/leasehold-rub/01.json:5651:32)
+    at eval (eval at evaluate (:302:30), <anonymous>:19:11)
+    at async <anonymous>:328:30
+    at main (/Users/karimamirov/worktrees/calccrm-wallet-handoff/tests/test_stand_mobile_tasks_nav.js:105:32)
+
+JS_TEST test_stand_no_prod_links.js
+JS_TEST test_stand_no_prod_links_ui.js
+JS_TEST test_stand_ops.js
+JS_TEST test_stand_outgoing_pick_list.js
+JS_TEST test_stand_owner_summary.js
+ ReferenceError: fetchDealFlowConfig is not defined
+    at Object.standBoot (evalmachine.<anonymous>:21:3)
+    at async checkOwnerRole (/Users/karimamirov/worktrees/calccrm-wallet-handoff/tests/test_stand_owner_summary.js:237:3)
+
+JS_TEST test_stand_payin_api_manual.js
+JS_TEST test_stand_payout_receipt_implicit.js
+JS_TEST test_stand_payto_card.js
+JS_TEST test_stand_prepay.js
+JS_TEST test_stand_referrer_id.js
+JS_TEST test_stand_release_minor.js
+JS_TEST test_stand_remaining_links.js
+JS_TEST test_stand_rerate.js
+JS_TEST test_stand_rub_account_switch.js
+JS_TEST test_stand_rub_s14.js
+JS_TEST test_stand_s14_operator.js
+JS_TEST test_stand_s14_ping.js
+JS_TEST test_stand_s18_crm_incomes.js
+JS_TEST test_stand_s26_implicit_receipt.js
+JS_TEST test_stand_s27_manager_guard.js
+JS_TEST test_stand_scb_disabled.js
+JS_TEST test_stand_single_confirm.js
+JS_TEST test_stand_task_back_nav.js
+JS_TEST test_t30_wallet_mapping.js
+JS_TEST test_t31_erc_payin.js
+JS_TEST test_t33_custom_wallet_flow.js
+JS_TEST test_t34_parallel.js
+JS_TEST test_t34_wallet_cards_dropdown.js
+JS_TEST test_t36_draft_resolve_2.js
+JS_TEST test_t37_crm_clients_ui.js
+JS_TEST test_wallet_handoff_ui.js
+JS_TEST test_wallet_registry_dropdown.js
+JS_TEST test_wave_a_documents.js
+JS_TEST test_wave_a_exchange.js
+JS_TEST test_wave_a_rounding.js
+JS_FENCED_RESULT passed=84 failed=2 report=/tmp/calccrm-t19-fence-reports/20261028T161706-js-37966.json
