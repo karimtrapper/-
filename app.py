@@ -13449,6 +13449,9 @@ def stand_egress_status():
 _THB_BANK_RATES_CACHE = {'data': None, 'ts': 0.0}
 _THB_BANK_RATES_TTL = 600  # 10 минут — сервис bank-rates собирает раз в сутки (09:00 Asia/Bangkok) + по запросу
 _THB_BANK_RATES_STALE_AFTER = timedelta(hours=26)  # дольше суточного цикла, чтобы утренний курс не считался устаревшим весь день
+# SCB режет запросы с серверных IP Railway (Imperva) — временно выключен из сбора и выбора.
+# Чтобы вернуть банк, достаточно убрать его из множества — код и вёрстка не меняются.
+BANK_RATES_DISABLED = {'SCB'}
 
 
 def _thb_source_datetime(value):
@@ -13508,6 +13511,10 @@ def _thb_bank_rates_cached(force=False):
     source_times = []
     latest_fetched_at = None
     for bank, rate, source_timestamp, fetched_at in rows:
+        if bank in BANK_RATES_DISABLED:
+            # Не отдаём протухшее значение выключенного банка как текущее и не
+            # даём его старой котировке/fetched_at помечать весь блок устаревшим.
+            continue
         rates[bank] = float(rate)
         if source_timestamp:
             source_updated_at[bank] = source_timestamp
@@ -13521,7 +13528,8 @@ def _thb_bank_rates_cached(force=False):
         and datetime.now(latest_fetched_at.tzinfo) - latest_fetched_at > _THB_BANK_RATES_STALE_AFTER
     ) or any(datetime.now(at.tzinfo) - at > _THB_BANK_RATES_STALE_AFTER for at in source_times)
     fresh = {'success': True, 'rates': rates, 'source_updated_at': source_updated_at,
-             'updated_at': latest_fetched_at.isoformat() if latest_fetched_at else '', 'stale': stale}
+             'updated_at': latest_fetched_at.isoformat() if latest_fetched_at else '', 'stale': stale,
+             'disabled': sorted(BANK_RATES_DISABLED)}
     _THB_BANK_RATES_CACHE.update(data=fresh, ts=now)
     return fresh
 

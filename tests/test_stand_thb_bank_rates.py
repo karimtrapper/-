@@ -73,19 +73,37 @@ def test_success_reads_bank_rates_without_external_channel(client_with_user, mon
     from datetime import datetime
     client, user_id = client_with_user
     _login(client, user_id)
-    calls = fake_bank_database(monkeypatch, [('SCB', 32.9, 'source time', datetime.now())])
+    calls = fake_bank_database(monkeypatch, [('Kasikornbank', 32.9, 'source time', datetime.now())])
     body = client.get('/api/stand/thb-bank-rates').json
-    assert body['success'] and body['rates']['SCB'] == 32.9 and not body['stale']
+    assert body['success'] and body['rates']['Kasikornbank'] == 32.9 and not body['stale']
     assert len(calls) == 1 and 'FROM bank_rates' in calls[0]
     assert 'ROW_NUMBER() OVER (PARTITION BY bank ORDER BY fetched_at DESC)' in calls[0]
     assert 'exgreen_thb_bank_rates' not in stand_egress._READ_CHANNELS
+
+
+def test_scb_disabled_rate_not_returned_and_not_marked_stale(client_with_user, monkeypatch):
+    # SCB режет запросы с серверных IP Railway (Imperva) — BANK_RATES_DISABLED = {'SCB'}.
+    from datetime import datetime, timedelta
+    client, user_id = client_with_user
+    _login(client, user_id)
+    old_scb = datetime.now() - timedelta(hours=40)  # старше _THB_BANK_RATES_STALE_AFTER (26ч)
+    fake_bank_database(monkeypatch, [
+        ('SCB', 33.0, None, old_scb),
+        ('Kasikornbank', 34.0, None, datetime.now()),
+    ])
+    body = client.get('/api/stand/thb-bank-rates').json
+    assert body['success']
+    assert 'SCB' not in body['rates']
+    assert body['rates']['Kasikornbank'] == 34.0
+    assert body['disabled'] == ['SCB']
+    assert not body['stale'], 'протухшая котировка выключенного SCB не должна портить весь блок'
 
 
 def test_cache_avoids_second_query_within_ttl(client_with_user, monkeypatch):
     from datetime import datetime
     client, user_id = client_with_user
     _login(client, user_id)
-    calls = fake_bank_database(monkeypatch, [('SCB', 33, None, datetime.now())])
+    calls = fake_bank_database(monkeypatch, [('Kasikornbank', 33, None, datetime.now())])
     first = client.get('/api/stand/thb-bank-rates').json
     assert client.get('/api/stand/thb-bank-rates').json == first
     assert first['success'] and len(calls) == 1
@@ -97,7 +115,7 @@ def test_fresh_bypasses_cache_and_is_limited_per_user(client_with_user, monkeypa
     monkeypatch.setattr(appmod.limiter, 'enabled', True)
     client, user_id = client_with_user
     _login(client, user_id)
-    calls = fake_bank_database(monkeypatch, [('SCB', 33, None, datetime.now())])
+    calls = fake_bank_database(monkeypatch, [('Kasikornbank', 33, None, datetime.now())])
     assert client.get('/api/stand/thb-bank-rates').status_code == 200
     assert client.get('/api/stand/thb-bank-rates?fresh=1').status_code == 200
     assert len(calls) == 2
@@ -125,12 +143,12 @@ def test_database_error_returns_stale_cached_value(client_with_user, monkeypatch
     from datetime import datetime
     client, user_id = client_with_user
     _login(client, user_id)
-    fake_bank_database(monkeypatch, [('SCB', 33.1, None, datetime.now())])
+    fake_bank_database(monkeypatch, [('Kasikornbank', 33.1, None, datetime.now())])
     assert client.get('/api/stand/thb-bank-rates').json['success']
     appmod._THB_BANK_RATES_CACHE['ts'] = 0
     fake_bank_database(monkeypatch, error=True)
     body = client.get('/api/stand/thb-bank-rates').json
-    assert body['success'] and body['stale'] and body['rates']['SCB'] == 33.1
+    assert body['success'] and body['stale'] and body['rates']['Kasikornbank'] == 33.1
 
 
 def test_no_cache_and_database_error_is_explicit_failure(client_with_user, monkeypatch):
@@ -146,7 +164,7 @@ def test_old_database_rows_are_stale(client_with_user, monkeypatch):
     from datetime import datetime, timedelta
     client, user_id = client_with_user
     _login(client, user_id)
-    fake_bank_database(monkeypatch, [('SCB', 33, None, datetime.now()-timedelta(hours=27))])
+    fake_bank_database(monkeypatch, [('Kasikornbank', 33, None, datetime.now()-timedelta(hours=27))])
     body = client.get('/api/stand/thb-bank-rates').json
     assert body['success'] and body['stale']
 
@@ -157,6 +175,6 @@ def test_old_bank_quote_is_stale_even_when_recently_fetched(client_with_user, mo
     client, user_id = client_with_user
     _login(client, user_id)
     old_source = (datetime.now(ZoneInfo('Asia/Bangkok')) - timedelta(hours=27)).strftime('%Y-%m-%d %H:%M:%S')
-    fake_bank_database(monkeypatch, [('SCB', 33, old_source, datetime.now())])
+    fake_bank_database(monkeypatch, [('Kasikornbank', 33, old_source, datetime.now())])
     body = client.get('/api/stand/thb-bank-rates').json
     assert body['success'] and body['stale']

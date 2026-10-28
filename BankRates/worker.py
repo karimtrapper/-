@@ -1,7 +1,9 @@
 """Сервис курсов банков Таиланда — отдельный от бота и VPS (Railway).
 
 Плановый сбор TT Buying USD трёх банков (Kasikornbank, SCB, Bangkok Bank) —
-раз в сутки в 09:00 Asia/Bangkok. При старте сразу делает один сбор (backfill),
+раз в сутки в 09:00 Asia/Bangkok. SCB временно выключен BANK_RATES_DISABLED
+(Imperva режет запросы с серверных IP Railway). При старте сразу делает один
+сбор (backfill),
 чтобы таблица не была пустой. Между плановыми сборами раз в минуту проверяет
 таблицу bank_rates_refresh_requests — запросы менеджера (кнопка «Обновить
 курс» в tasks.html) на внеплановый сбор; несколько подряд схлопываются в один.
@@ -26,6 +28,9 @@ import rate_fetchers as rf
 LOGGER = logging.getLogger("bank_rates")
 DAILY_COLLECTION_HOUR_BKK = 9  # плановый сбор раз в сутки в 09:00 по Бангкоку
 REFRESH_POLL_INTERVAL_SECONDS = 60  # как часто проверяем очередь запросов менеджера
+# SCB режет запросы с серверных IP Railway (Imperva) — временно не собираем, чтобы не сыпать 403 в лог.
+# Схема общая с app.py (BANK_RATES_DISABLED): переменная даёт переключить без деплоя кода.
+BANK_RATES_DISABLED = {b.strip() for b in os.environ.get("BANK_RATES_DISABLED", "SCB").split(",") if b.strip()}
 
 
 def _database_url() -> str:
@@ -101,6 +106,9 @@ def collect_once(conn, bangkok_bank_api_key: str) -> dict[str, str]:
     }
     results: dict[str, str] = {}
     for bank, fetcher in fetchers.items():
+        if bank in BANK_RATES_DISABLED:
+            results[bank] = "disabled"
+            continue
         try:
             result = fetcher()
             previous = _last_rate(conn, bank)

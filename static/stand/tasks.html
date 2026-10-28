@@ -1707,7 +1707,7 @@ function freeholdInvoiceInputs6(d){
   const R=S.thbRates, banksOk=!!(R&&R.success&&R.rates);
   const X=d.invoiceUsd||0, rateNow=freeholdFxRateFor(d);
   const calc=(thb&&num(d.invoiceThb)>0&&num(d.fxRate)>0)?Math.round(num(d.invoiceThb)/num(d.fxRate)*100)/100:null;
-  const banks=banksOk?THB_REFERENCE_BANKS.concat(['Другой банк','Не знаю']):[];
+  const banks=banksOk?activeBanks().concat(['Другой банк','Не знаю']):[];
   const fxHint=!R?'Загружаем курсы банков…'
     :!banksOk?'Курсы банков недоступны — впишите «Свой курс» вручную.'
     :thbRatesMeta();
@@ -1724,7 +1724,7 @@ function freeholdInvoiceInputs6(d){
         onchange="freeholdDealSet(${d.id},'invoiceThb',this.value)"></div>`:''}
   </div>
   ${thb?`<div class="fr"><div class="fg w2"><label class="fl">Курс ฿/$<span class="rq">*</span></label>
-      <div class="chips">${banks.map(b=>`<span class="chip ${d.fxBank===b?'on':''}" onclick="freeholdDealSet(${d.id},'fxBank','${b}')">${b}</span>`).join('')}
+      <div class="chips">${banks.map(b=>`<span class="chip ${d.fxBank===b?'on':''}" onclick="freeholdDealSet(${d.id},'fxBank','${b}')">${b}</span>`).join('')}${disabledBankRows()}
         <span class="chip ${d.fxBank==='custom'?'on':''}" onclick="freeholdDealSet(${d.id},'fxBank','custom')">Свой курс</span></div>
       <p class="fh">${fxHint}${d.fxBank&&d.fxBank!=='custom'&&rateNow?' '+d.fxBank+': '+rateNow.toFixed(4)+' ฿/$.':''}${d.fxBank&&d.fxBank!=='custom'&&rateNow&&Math.abs(num(d.fxRate)-rateNow)>0.000001?' Выберите банк снова, чтобы применить новый курс.':''}${thbRatesRefreshButton()}</p></div>
     ${d.fxBank==='custom'?`<div class="fg"><label class="fl">Свой курс, ฿ за 1 $<span class="rq">*</span></label>
@@ -1853,11 +1853,35 @@ function parseFlexibleAmount(raw){
    минимум трёх (в $ выходит больше — ориентир не занижен). Любой из трёх банков
    без курса → null, ничего не считаем на неполных данных. */
 const THB_REFERENCE_BANKS=['Kasikornbank','SCB','Bangkok Bank'];
+/* Банк можно временно выключить из сбора/выбора без правки вёрстки — признак
+   приходит с сервера (disabled в /api/stand/thb-bank-rates), здесь только
+   читаем его. Ссылка на сайт банка — для менеджера, когда курс не считаем сами. */
+const BANK_RATE_SOURCE_URL={SCB:'https://www.scb.co.th/en/personal-banking/foreign-exchange-rates'};
+function disabledBanks(){return (S.thbRates&&S.thbRates.disabled)||[];}
+function activeBanks(){const off=disabledBanks();return THB_REFERENCE_BANKS.filter(b=>!off.includes(b));}
+/* Строка выключенного банка в чипах выбора: приглушена, не кликабельна,
+   «?» — та же подсказка, что и у docFileNameHtml (title + toast по тапу на
+   мобильном), плюс всегда видимая ссылка на сайт банка. */
+function disabledBankRows(){
+  return disabledBanks().filter(b=>THB_REFERENCE_BANKS.includes(b)).map(b=>{
+    const hint=`Курс ${b} сейчас не обновляется автоматически. Посмотрите его на сайте банка.`;
+    const url=BANK_RATE_SOURCE_URL[b];
+    return `<span class="chip" style="opacity:.5;cursor:not-allowed" aria-disabled="true">${htmlText(b)} —</span>`
+      +`<span title="${htmlText(hint)}" onclick="toast(${JSON.stringify(hint).replace(/"/g,'&quot;')});event.stopPropagation()" style="cursor:help;padding:0 6px">?</span>`
+      +(url?`<a href="${url}" target="_blank" rel="noopener" style="font-size:12px;align-self:center" onclick="event.stopPropagation()">Курсы ${htmlText(b)}</a>`:'');
+  }).join('');
+}
+/* Курс TT Buying выбранного банка застройщика — та же логика, что в квизе
+   PropertyPaymentBot (app/rates.py): «Другой банк» — среднее трёх, «Не знаю» —
+   минимум трёх (в $ выходит больше — ориентир не занижен). Любой из активных
+   банков без курса → null, ничего не считаем на неполных данных. Выключенные
+   банки (SCB) не входят ни в выбор, ни в это усреднение. */
 function thbBankRate(rates,bank){
   if(!rates||!bank) return null;
   if(bank==='Другой банк'||bank==='Не знаю'){
-    const vals=THB_REFERENCE_BANKS.map(b=>rates[b]).filter(v=>typeof v==='number'&&v>0);
-    if(vals.length<THB_REFERENCE_BANKS.length) return null;
+    const active=activeBanks();
+    const vals=active.map(b=>rates[b]).filter(v=>typeof v==='number'&&v>0);
+    if(!active.length||vals.length<active.length) return null;
     return bank==='Не знаю'?Math.min(...vals):vals.reduce((a,b)=>a+b,0)/vals.length;
   }
   const v=rates[bank];
@@ -6288,8 +6312,8 @@ function viewCreateBody(D,srcCard){
         <span class="chip on" style="min-height:46px;cursor:default">฿</span>
       </div></div>
       <div class="fg"><label class="fl">Банк застройщика<span class="rq">*</span></label>
-      <div class="chips">${THB_REFERENCE_BANKS.concat(['Другой банк','Не знаю']).map(b=>
-        `<span class="chip ${D.fxBank===b?'on':''}" onclick="draftSet('fxBank','${b}')">${b}</span>`).join('')}</div>
+      <div class="chips">${activeBanks().concat(['Другой банк','Не знаю']).map(b=>
+        `<span class="chip ${D.fxBank===b?'on':''}" onclick="draftSet('fxBank','${b}')">${b}</span>`).join('')}${disabledBankRows()}</div>
       <p class="fh" id="d_fx_preview">${draftFhEstimateLine(D)}${thbRatesRefreshButton()}</p></div>`;})():''}
 
     ${D.cur==='fhusd'&&D.invoiceCurrency!=='thb'?`<div class="fg"><label class="fl">Инвойс застройщику<span class="rq">*</span></label>

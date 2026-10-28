@@ -112,14 +112,14 @@ def test_reload_rereads_without_inserting_request(client_with_user, monkeypatch)
     class Connection:
         def execute(self, statement):
             calls.append(str(statement))
-            return SimpleNamespace(fetchall=lambda: [('SCB', 33.5, None, dt.now())])
+            return SimpleNamespace(fetchall=lambda: [('Kasikornbank', 33.5, None, dt.now())])
     @contextmanager
     def connect():
         yield Connection()
     monkeypatch.setattr(appmod, 'engine', SimpleNamespace(connect=connect, begin=real_engine.begin,
                                                            dialect=real_engine.dialect))
     body = client.get('/api/stand/thb-bank-rates?reload=1').json
-    assert body['success'] and body['rates']['SCB'] == 33.5
+    assert body['success'] and body['rates']['Kasikornbank'] == 33.5
     assert 'refresh_pending' not in body
     appmod._ensure_bank_rates_refresh_table()
     with real_engine.begin() as conn:
