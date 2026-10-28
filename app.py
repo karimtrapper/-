@@ -4830,7 +4830,7 @@ def get_rates():
         if not usdt_thb:
             errors.append('USDT/THB недоступен (Binance)')
         if not rub_usdt:
-            errors.append(f"RUB/USDT недоступен ({'Rapira' if RUB_USDT_SOURCE == 'rapira' else 'Doverka'})")
+            errors.append(f"RUB/USDT недоступен ({'Rapira' if RUB_USDT_SOURCE == 'rapira' else 'Rapira → Doverka'})")
         # Bitazza — второй источник USDT/THB; его недоступность не роняет ответ
         bz = None
         try:

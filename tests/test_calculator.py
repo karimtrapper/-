@@ -372,19 +372,15 @@ class TestProfitHitsTargetWithBonus:
 # -- Источник курса RUB-USDT --
 
 class TestRubUsdtSource:
-    """get_all_rates берёт RUB-USDT у Доверки; недоступна — None, не Рапира."""
+    """Курс Доверки = ask Рапиры × 1.05; Рапира недоступна — None. Без сети."""
 
-    def _run(self, monkeypatch, doverka, rapira=88.0):
+    def _run(self, monkeypatch, rapira=84.75):
         import asyncio
         import calculator as calc_mod
-        calls = {'doverka': 0, 'rapira': 0}
+        calls = {'rapira': 0}
 
         async def fake_binance(symbol='USDTTHB'):
             return 33.7
-
-        async def fake_doverka():
-            calls['doverka'] += 1
-            return doverka
 
         async def fake_rapira():
             calls['rapira'] += 1
@@ -392,32 +388,40 @@ class TestRubUsdtSource:
 
         P = calc_mod.ExchangeRateProvider
         monkeypatch.setattr(P, 'get_binance_rate', staticmethod(fake_binance))
-        monkeypatch.setattr(P, 'get_doverka_rate', staticmethod(fake_doverka))
         monkeypatch.setattr(P, 'get_rapira_rate', staticmethod(fake_rapira))
         return asyncio.run(P.get_all_rates()), calls
 
-    def test_uses_doverka(self, monkeypatch):
-        rates, calls = self._run(monkeypatch, doverka=88.5)
-        assert rates == {'usdt_thb': 33.7, 'rub_usdt': 88.5}
-        assert calls == {'doverka': 1, 'rapira': 0}
+    def test_doverka_is_rapira_plus_5(self, monkeypatch):
+        rates, calls = self._run(monkeypatch, rapira=84.75)
+        assert rates['usdt_thb'] == 33.7
+        assert abs(rates['rub_usdt'] - 84.75 * 1.05) < 1e-9
+        assert calls == {'rapira': 1}
 
-    def test_doverka_down_no_rapira_fallback(self, monkeypatch):
-        rates, calls = self._run(monkeypatch, doverka=None)
+    def test_rapira_down_gives_none(self, monkeypatch):
+        rates, calls = self._run(monkeypatch, rapira=None)
         assert rates['rub_usdt'] is None
-        assert calls['rapira'] == 0
+        assert calls == {'rapira': 1}
 
     def test_rapira_switch(self, monkeypatch):
         import calculator as calc_mod
         monkeypatch.setattr(calc_mod, 'RUB_USDT_SOURCE', 'rapira')
-        rates, calls = self._run(monkeypatch, doverka=88.5, rapira=87.0)
+        rates, calls = self._run(monkeypatch, rapira=87.0)
         assert rates['rub_usdt'] == 87.0
-        assert calls == {'doverka': 0, 'rapira': 1}
+        assert calls == {'rapira': 1}
 
-    def test_doverka_no_key_returns_none(self, monkeypatch):
+    def test_doverka_rate_no_network(self, monkeypatch):
+        """get_doverka_rate не обращается к aiohttp: только Рапира × 1.05."""
         import asyncio
-        from calculator import ExchangeRateProvider
-        monkeypatch.delenv('DOVERKA_API_KEY', raising=False)
-        assert asyncio.run(ExchangeRateProvider.get_doverka_rate()) is None
+        import calculator as calc_mod
+        P = calc_mod.ExchangeRateProvider
+
+        async def fake_rapira():
+            return 80.0
+
+        monkeypatch.setattr(P, 'get_rapira_rate', staticmethod(fake_rapira))
+        monkeypatch.setattr(calc_mod.aiohttp, 'ClientSession',
+                            lambda *a, **k: (_ for _ in ()).throw(AssertionError('сеть')))
+        assert abs(asyncio.run(P.get_doverka_rate()) - 84.0) < 1e-9
 
 
 # -- Стандарт по USDT-направлениям (27.08.2026) --

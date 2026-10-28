@@ -1,6 +1,6 @@
 """
 Exchange Calculator Bot - Калькулятор обмена RUB-THB
-Получает реальные курсы от Binance (USDT/THB) и Doverka (RUB/USDT; Rapira — запасной источник)
+Получает реальные курсы от Binance (USDT/THB) и Rapira (RUB/USDT; курс Доверки = ask Рапиры × 1.05)
 """
 
 import aiohttp
@@ -146,14 +146,18 @@ except ImportError:
     from broker_detailed import BrokerCalculatorDetailed
 
 
-# Источник курса RUB-USDT: 'doverka' | 'rapira'. Временный переключатель:
-# сейчас курс берём у Доверки и считаем, что в нём сидит DOVERKA_BONUS нашей
-# прибыли. Код Рапиры оставлен — вернуть её = сменить значение здесь.
+# Источник курса RUB-USDT: 'doverka' | 'rapira'. Переключатель: при 'doverka'
+# курс = ask Рапиры × DOVERKA_OVER_RAPIRA, и считаем, что в нём сидит
+# DOVERKA_BONUS нашей прибыли; при 'rapira' — чистый ask Рапиры без бонуса.
 RUB_USDT_SOURCE = 'doverka'
 
 # Доля нашей прибыли внутри курса Доверки (бонус 2.4%). Относится ТОЛЬКО к курсу
 # Доверки: у Рапиры другая база, бонус к ней неприменим — там 0.
 DOVERKA_BONUS = 0.024
+
+# Курс Доверки = ask Рапиры × 1.05. Прямой API Доверки с Railway недоступен
+# (таймаут), поэтому курс Доверки считаем от Рапиры.
+DOVERKA_OVER_RAPIRA = 1.05
 
 # Бонус, действующий при выбранном источнике
 ACTIVE_BONUS = DOVERKA_BONUS if RUB_USDT_SOURCE == 'doverka' else 0.0
@@ -185,20 +189,18 @@ class ExchangeRateProvider:
     """Провайдер курсов валют"""
     
     BINANCE_API = "https://api.binance.th/api/v1"
-    DOVERKA_API = "https://api.doverkapay.com"
     RAPIRA_API = "https://api.rapira.net"
 
-    # API ключи из переменных окружения (ключ Доверки читается при вызове)
+    # API ключи из переменных окружения
     BINANCE_API_KEY = os.getenv('BINANCE_API_KEY', '')
     BINANCE_API_SECRET = os.getenv('BINANCE_API_SECRET', '')
 
-    # Наценка на стакан Рапиры (используется при RUB_USDT_SOURCE = 'rapira').
+    # Наценка на стакан Рапиры (общая для обоих источников: Доверка = Рапира × 1.05).
     # 1.0 — чистый ask без наценки (решение Карима 19.08.2026): раньше было +2%,
     # но они сидели внутри курса и не попадали в показанную прибыль.
     RAPIRA_MARKUP = 1.0
 
     # Фоллбэк для Рапиры, если недоступны стакан и тикер: уровень стакана без наценки.
-    # Для Доверки фоллбэка нет — её база другая, подменять курс Рапирой нельзя.
     FALLBACK_RUB_USDT = 88.0  # обновлён 19.08.2026
     
     @staticmethod
@@ -254,53 +256,23 @@ class ExchangeRateProvider:
     @staticmethod
     async def get_doverka_rate() -> float:
         """
-        Курс RUB-USDT от Doverka API (GET /v1/currencies, символ USD/USDT).
+        Курс RUB-USDT «Доверки» = курс Рапиры (ask × RAPIRA_MARKUP) × DOVERKA_OVER_RAPIRA.
 
-        Берём rate_from_rub, если он похож на рублёвую цену USDT (> 80),
-        иначе rate_to_rub. 2 попытки. Нет ключа или Доверка недоступна — None
-        (на Рапиру НЕ падаем: база другая, бонус 2.4% к ней неприменим).
+        В API Доверки не ходим (с Railway таймаут). Рапира недоступна — None.
         """
-        api_key = os.getenv('DOVERKA_API_KEY', '')
-        if not api_key:
-            print("⚠️ Doverka API key не найден")
+        rapira = await ExchangeRateProvider.get_rapira_rate()
+        if rapira is None:
             return None
-
-        for attempt in range(2):
-            try:
-                async with aiohttp.ClientSession() as session:
-                    url = f"{ExchangeRateProvider.DOVERKA_API}/v1/currencies"
-                    headers = {
-                        'Authorization': f'Bearer {api_key}',
-                        'accept': 'application/json'
-                    }
-                    async with session.get(url, headers=headers, timeout=10) as response:
-                        if response.status != 200:
-                            print(f"⚠️ Doverka API error status: {response.status}")
-                            continue
-                        data = await response.json()
-                        currencies = data if isinstance(data, list) else [data]
-                        for currency in currencies:
-                            symbol = currency.get('symbol', '').upper()
-                            rate_to_rub = currency.get('rate_to_rub')
-                            rate_from_rub = currency.get('rate_from_rub')
-                            if symbol in ['USD', 'USDT']:
-                                print(f"DEBUG: Doverka {symbol}: to_rub={rate_to_rub}, from_rub={rate_from_rub}", flush=True)
-                                if rate_from_rub and float(rate_from_rub) > 80:
-                                    return float(rate_from_rub)
-                                if rate_to_rub:
-                                    return float(rate_to_rub)
-            except Exception as e:
-                print(f"⚠️ Doverka attempt {attempt+1} error: {e}")
-
-        print("❌ Doverka недоступна — курс RUB/USDT не получен")
-        return None
+        rate = rapira * DOVERKA_OVER_RAPIRA
+        print(f"DEBUG: Doverka = Rapira {rapira} × {DOVERKA_OVER_RAPIRA} = {rate:.4f}", flush=True)
+        return rate
 
     @staticmethod
     async def get_rapira_rate() -> float:
         """
         Курс RUB-USDT от Рапиры: топ ask стакана × RAPIRA_MARKUP (сейчас 1.0, без наценки).
 
-        Запасной источник: включается через RUB_USDT_SOURCE = 'rapira'.
+        Источник при RUB_USDT_SOURCE = 'rapira' и база для курса Доверки (× DOVERKA_OVER_RAPIRA).
 
         Ask — потому что мы ПОКУПАЕМ USDT за рубли клиента; глубина топа
         обычно шестизначная в USDT, VWAP не нужен. Стакан отдаётся ТОЛЬКО
@@ -348,8 +320,8 @@ class ExchangeRateProvider:
         """
         Получить все необходимые курсы
 
-        RUB-USDT берётся из источника RUB_USDT_SOURCE; если он недоступен —
-        None (без подмены другим источником: у них разная база).
+        RUB-USDT берётся из источника RUB_USDT_SOURCE (Доверка = Рапира × 1.05);
+        если Рапира недоступна — None (без подмены другим источником).
 
         Returns:
             dict: {"usdt_thb": float, "rub_usdt": float}
