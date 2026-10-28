@@ -5965,7 +5965,6 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
             applyStandMobileNav();
             refreshStandDependentLinks();
             refreshPayoutWalletPolicy();
-            renderNewWalletRolesForm();
         }
         function renderNewWalletRolesForm() {
             const initiators = document.getElementById('newWalletInitiators');
@@ -6010,7 +6009,7 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
         // Ссылку на задачник показываем при загрузке: она нужна с первого экрана,
         // а не после захода в «Аккаунты».
         document.addEventListener('DOMContentLoaded', loadStandRoles);
-        document.addEventListener('DOMContentLoaded', loadAuthStand);
+        document.addEventListener('DOMContentLoaded', () => loadAuthStand().then(renderNewWalletRolesForm));
         document.addEventListener('DOMContentLoaded', fetchDealFlowConfig);
         async function loadStandRoles() {
             try {

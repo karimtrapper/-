@@ -2621,18 +2621,40 @@ async function transferAlarmClear(id){
 function handoffTargets(d){
   const w=dealWallet(d);
   if(!hasPolicy(w)||d.closed||d.outgoingReview?.requestedAt)return [];
-  if(!(S.role==='manager'||S.role==='admin'))return [];
-  if(policyLocked(d)&&d.transferAlarm)return [];
+  if(!(S.role==='operator'||S.role==='admin'))return [];
+  if(d.transferAlarm)return [];
+  const myClaim=d.transferClaim&&String(d.transferClaim.byId)===String(standMeId);
   if(d.step==='s23'){
-    if(d.transferFound||d.transferConfirmation)return [];
+    if(d.transferFound||d.transferConfirmation||myClaim)return [];
     return policyInitiateTargets(w,d.transferClaim?null:policyInitiateRole(d,w));
   }
   if(d.step==='s24'){
     if(!d.transferClaim||d.transferConfirmation)return [];
-    return policySignTargets(d,w);
+    /* заводивший раунд не назначает подпись на себя */
+    const wasMine=myClaim||policyReleasedByMe(d);
+    return policySignTargets(d,w).filter(r=>!(wasMine&&r===S.role));
   }
   return [];
 }
+/* «Деньги отправлены»: операционист/админ закрывает отправку за исполнителя,
+   только с хешем, который сервер проверит в сети. У держателя claim — «Я отправил». */
+async function transferMarkSent(id){
+  const raw=String(val('ms_hash_'+id)||'');
+  const hash=(raw.match(/[a-fA-F0-9]{64}/)||[''])[0];
+  const j=await standAction('/api/stand/transfer/mark-sent',{dealId:id,version:standVer,hash});
+  if(j?.success)toast('Отправка отмечена');
+}
+function markSentBlock(d){
+  const w=dealWallet(d);
+  if(!hasPolicy(w)||d.closed||!(S.role==='operator'||S.role==='admin'))return '';
+  if(!(d.step==='s23'||d.step==='s24')||d.transferAlarm||d.serverTransferComplete||d.outgoingReview?.requestedAt)return '';
+  if(d.transferClaim&&String(d.transferClaim.byId)===String(standMeId))return '';
+  const found=((d.transferFound||{}).hashes||[])[0]||'';
+  return `<div class="card" data-mark-sent style="margin-bottom:12px"><div class="fg"><label class="fl">Хеш перевода</label>
+    <input class="fc addr" id="ms_hash_${d.id}" value="${htmlText(found)}" placeholder="64 символа или ссылка на транзакцию"></div>
+    <div class="row"><button type="button" class="btn btn-outline" data-mark-sent-btn onclick="transferMarkSent(${d.id})">Деньги отправлены</button></div></div>`;
+}
+function policyActions(d){return handoffBlock(d)+markSentBlock(d);}
 function handoffBlock(d){
   const targets=handoffTargets(d);
   if(!targets.length)return '';
@@ -2895,7 +2917,7 @@ async function standAction(path,payload){
   }catch(e){toast('Проверка недоступна — перевод остаётся неподтверждённым',2600,'error');return null;}
   finally{standBusy=false;if(standPush){standPush=false;setTimeout(standSave,120);}}
 }
-function personalSend(d){const w=dealWallet(d);return !!w&&!w.multisig;}
+function personalSend(d){const w=dealWallet(d);return !!w&&!w.multisig&&!hasPolicy(w);}
 async function outgoingReviewAction(id,action,hash){
   const d=deal(id);
   const j=await standAction('/api/stand/transfers/review',{dealId:id,action,hash,version:standVer,
@@ -7045,7 +7067,7 @@ function viewDeal(d){
       <button class="btn btn-outline" onclick="setView('deal')">К карточке сделки</button></div>`;
     else if(!mine){
       const policyInfo=(d.step==='s23'||d.step==='s24')&&hasPolicy(dealWallet(d))?
-        `<div class="card" style="margin-bottom:12px">${policyStatusLine(d)}</div>${handoffBlock(d)}`:'';
+        `<div class="card" style="margin-bottom:12px">${policyStatusLine(d)}</div>${policyActions(d)}`:'';
       const status=(d.prepay?'':`<div class="card" style="margin-bottom:12px">Сейчас задача ${(who&&ROLES[who])?ROLES[who].t:'—'}${d.assigneeAdminId?' · исполнитель '+htmlText(employeeName(d.assigneeAdminId)||'ID '+d.assigneeAdminId):''}: ${stepTitle(d)}</div>`)+policyInfo+
         (S.role==='manager'&&d.step==='s23'&&d.reqTask==='done'&&!needsPayConfirm(d)?`<div class="alert a-info"><div><b>Сейчас отправка с кошелька — от вас ничего не нужно.</b> Правка реквизитов остановит отправку и потребует нового поручения IPPS.</div></div>`:'')+
         (d.step==='s22'&&d.kind==='Фрихолд'?`<div class="alert a-warn"><div>Менеджер подтверждает реквизиты застройщика, затем операционист согласует с IPPS сеть и адрес перевода. До сохранённого поручения подписант кошелька не получает задачу отправки.</div></div>`:'');
@@ -12000,7 +12022,7 @@ function stepCard(d){
           `Для отправки свыше ${usd(policyWallet.limit_usd)} нужно согласование владельца.`}</div></div>`:''}
         ${needsApproval&&!approval&&policyApprovalActor(S.role)&&!claim?
           `<div class="row"><button class="btn btn-outline" onclick="transferApprove(${d.id})">Отметить согласование владельца</button></div>`:''}
-        ${canClaim?`<div class="row"><button class="btn btn-primary" data-claim ${needsApproval&&!approval?'disabled':''} onclick="transferClaim(${d.id})">${alone?'Отправить':'Начать работу'}</button></div>`:''}</div>`;
+        ${canClaim?`<div class="row"><button class="btn btn-primary" data-claim ${needsApproval&&!approval?'disabled':''} onclick="transferClaim(${d.id})">${alone?'Отправить':'Начать работу'}</button></div>`:''}</div>${policyActions(d)}`;
       }
     }
     return `<div class="card s23-action-fields">
@@ -12031,12 +12053,12 @@ function stepCard(d){
     </details>
     ${cnvMembers(d).map(outgoingReviewBlock).join('')}
     ${(function(){const w=dealWallet(d);
-      return (w&&w.multisig)?`
+      return (w&&(w.multisig||hasPolicy(w)))?`
       <div class="fg"><label class="fl">Что проверили — это увидит подтверждающий сотрудник</label>
         <textarea class="fc" id="c" placeholder="Деньги на кошельке, адреса сверены с задачами операциониста">${d.pay.check||''}</textarea></div>
-      <div class="${hasPolicy(w)?'derived':'alert a-info'}"><div>${hasPolicy(w)?`Подписи с кошелька ${htmlText(w.name)}: ${htmlText(walletSends(w))}. ${d.transferConfirmation?.ownerAlone?'Владелец ведёт перевод один; завершение только после Success в сети.':'Следующий сотрудник подтвердит перевод; завершение только после Success в сети.'}`:
+      <div class="${hasPolicy(w)?'derived':'alert a-info'}"><div>${hasPolicy(w)?`Подписи с кошелька ${htmlText(w.name)}: ${htmlText(walletSends(w))}. ${d.transferConfirmation?.ownerAlone?'Владелец ведёт перевод один; завершение только после Success в сети.':'Перевод появится в сети после всех подписей — проверенный перевод закроет шаг сам.'}`:
         `Кошелёк с мультисигом: <b>${walletSigner(w)}</b> завешивает каждый перевод и подписывает первым — будет 1 из 2, дальше одобряет Теодор. Транзакция живёт сутки: не одобрят — завешивать заново.`}</div></div>
-      <div class="row"><button class="btn btn-primary" onclick="act(${d.id},'s23')">${hasPolicy(w)?(d.transferConfirmation?.ownerAlone?'Проверить перевод в сети':'Передать на подтверждение'):'Подписал — передать Теодору'}</button></div>`
+      <div class="row"><button class="btn btn-primary" onclick="act(${d.id},'s23')">${hasPolicy(w)?'Я отправил':'Подписал — передать Теодору'}</button></div>`
       :`
       ${d.outgoingReview?'<p class="fh">Проверьте найденные переводы и хеши.</p>':''}
       ${!d.outgoingReview?`<div class="row"><button class="btn btn-success" onclick="outgoingReviewAction(${d.id},'sent')">Отправил</button></div>`:''}`;})()}
@@ -12051,7 +12073,7 @@ function stepCard(d){
     const policyWallet=dealWallet(d), policy=!!hasPolicy(policyWallet);
     return `<div class="card"><div class="card-title">Суть сделки<span class="sub">по шаблону из Telegram — проверьте и подпишите</span></div>
     ${signSummary(d)}
-    ${policy?walletPolicyLine(policyWallet)+policyStatusLine(d)+policySignerCards(policyWallet):''}
+    ${policy?walletPolicyLine(policyWallet)+policyStatusLine(d)+policySignerCards(policyWallet)+policyActions(d):''}
     <div class="${policy?'derived':'alert a-info'}"><div><b>Подпишите перевод в кошельке — дальше всё пойдёт само.</b> Как только сеть подтвердит перевод, ${d.kind==='Фрихолд'?'операционист перейдёт к учёту MT103 по согласованной заявке':'операционист известит Coins'}.</div></div>
     ${sObj&&sObj.debt?`<div class="box box-amber"><b>Это возмещение вам.</b> Вы выдали баты со своего кошелька,
       сейчас подписываете возврат ${usd(d.pay.usdt)} себе же на ${addressDisclosure((d.transfer||{}).addr||'адрес не указан')}.</div>`:''}
@@ -12602,7 +12624,11 @@ async function act(id,step){
     if(miss){toast(miss.code+': добавьте переводы на всю сумму задачи');return;}
     d.pay.tx=(sendList(d)[0]||{}).ref||null;
     if(d.transferConfirmation?.ownerAlone){checkSends(d.id);}
-    else if(multi){d.pay.check=c?c.value:'';go(d,'s24','Переводы подготовлены — второму подписанту нужно подтвердить их в кошельке');toast('Передано на подтверждение');}
+    else if(multi){
+      /* Кошелёк с политикой: сначала сеть — проверенный перевод закрывает шаг сам */
+      if(hasPolicy(dealWallet(d))){await checkSends(d.id);const cur=deal(id);if(!cur||cur.step!==step||cur.serverTransferComplete)return;}
+      const fresh=deal(id);
+      fresh.pay.check=c?c.value:'';go(fresh,'s24','Переводы подготовлены — второму подписанту нужно подтвердить их в кошельке');toast(hasPolicy(dealWallet(d))?'Отправка отмечена':'Передано на подтверждение');}
     else {checkSends(d.id);}
     return;}
   if(step==='s24'){if(hasPolicy(dealWallet(d)))await transferConfirm(d.id);else checkSends(d.id);return;}

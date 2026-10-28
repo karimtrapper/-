@@ -34,6 +34,9 @@ const ctx = vm.createContext({S: {deals: [deal], role: 'manager'}, CRM_WALLETS: 
   // «Чей кошелёк»/мультисиг/«Запомнить» читаются через DOM (owner-select + чекбоксы)
   document: {getElementById: id => (id in checks ? {checked: checks[id]} : null)}});
 vm.runInContext(html.slice(start, end), ctx);
+// Политика кошелька: payinWalletSelect показывает строку «Заводит / Подписывает»
+const policySource = html.slice(html.indexOf('const POLICY_ROLE_ORDER'), html.indexOf('function policySignerCards'));
+vm.runInContext(policySource + '\n' + html.match(/^function walletPolicyLine\([^]*?^}/m)[0], ctx);
 const run = source => vm.runInContext(source, ctx);
 
 // Легаси 'vitaly' резолвится в тот же адрес, что и 'grusha', через реестр

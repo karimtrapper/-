@@ -668,8 +668,8 @@ console.log('test_stand_freehold.js: OK');
 {
   const addr='TKkeEVf2zySaWTLyX2qPwvi6kcdHRuPxkJ';
   const ctx=run(['walletBlock','uniqueWallets','payinWalletSelect','crmPayinChoices','payinWallet','payinWalletView',
-    'payinDefaultWallet','crmWalletNet','crmWalletById','payinNet','payinCanRemember','addrValid'],
-    ['ADDR_RE','LEGACY_PAYIN_ADDR','PAYIN_OWNERS'],
+    'payinDefaultWallet','crmWalletNet','crmWalletById','payinNet','payinCanRemember','addrValid','hasPolicy','policyInitiators','policyInitiateTargets','policyInitiateRole','policySignRole','policySignTargets','policyCanClaim','policyRoleNames','policyReleasedByMe','policyLocked','policyOwnsSend','policyOwnsSign','policyNeedsApproval','policyApprovalActor','walletPolicyLine'],
+    ['ADDR_RE','LEGACY_PAYIN_ADDR','PAYIN_OWNERS','POLICY_ROLE_ORDER','POLICY_ROLE_NAMES','POLICY_ROLE_DATIVE'],
     {S:{},CRM_WALLETS:[{id:1,address:addr,blockchain:'TRON',owner:'компания',
       is_multisig:true,accepts_payin:true,label:'Груша'}],htmlText:x=>String(x)});
   const choices=ctx.crmPayinChoices('TRC-20');
@@ -683,7 +683,7 @@ console.log('test_stand_freehold.js: OK');
 
 // Менеджер подтверждает текущий снимок, затем операционист получает форму IPPS.
 {
-  const ctx=run(['stepWho','myTasks','reqOpen','canRerate','rerateBalance','stepCard','payToConfirmed','payToConfirmBlock'],['STEPS','SOURCES_PAY'],{
+  const ctx=run(['stepWho','myTasks','reqOpen','canRerate','rerateBalance','stepCard','payToConfirmed','payToConfirmBlock','hasPolicy','walletPolicyLine','policyRoleNames','policyInitiators'],['STEPS','SOURCES_PAY'],{
     S:{role:'manager',deals:[],notes:[]},NETS:['TRC-20'],IPPS_WALLET:'T'+'A'.repeat(33),
     STAND:true,approx:()=>({}),fake:()=>({}),stepNote:()=>'',htmlText:String,
     freeholdSend:()=>10130,ippsTariff:()=>({}),usd:x=>'$'+x,convOf:()=>null,

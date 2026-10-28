@@ -30,8 +30,9 @@ function run(fnNames, constNames, context) {
 }
 
 const FNS = ['crmWalletToLegacy', 'syncWalletRegistry', 'wallets', 'walletById',
-             'dealWallet', 'needsSecondSign', 'stepWho', 'payinWallet'];
-const CONSTS = ['WALLETS', 'LEGACY_PAYIN_ADDR', 'STEPS'];
+             'dealWallet', 'needsSecondSign', 'stepWho', 'payinWallet',
+             'hasPolicy', 'policyInitiators', 'policyInitiateTargets', 'policyInitiateRole', 'policySignRole', 'policySignTargets', 'policyCanClaim', 'policyRoleNames', 'policyReleasedByMe', 'policyLocked', 'policyOwnsSend', 'policyOwnsSign', 'policyNeedsApproval', 'policyApprovalActor', 'walletPolicyLine'];
+const CONSTS = ['WALLETS', 'LEGACY_PAYIN_ADDR', 'STEPS', 'POLICY_ROLE_ORDER', 'POLICY_ROLE_NAMES', 'POLICY_ROLE_DATIVE'];
 
 function makeCtx() {
   return run(FNS, CONSTS, {

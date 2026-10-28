@@ -23,10 +23,10 @@ const ctx={demoAllowed:()=>false,walletBlock:()=>'',S:{role:'operator',deals:[]}
 ctx.walletList=[{id:'company',name:'Компания',addr:'company',owner:'компания',multisig:true,role:'findir'},
              {id:'founder',name:'Андрей',addr:'founder',owner:'Андрей',multisig:false,role:'teodor'}];
 vm.createContext(ctx);
-for(const name of ['STEPS','FLOW_RUB','FLOW_USDT','FLOW_ALIAS','SOURCES_PAY']){
+for(const name of ['STEPS','FLOW_RUB','FLOW_USDT','FLOW_ALIAS','SOURCES_PAY','POLICY_ROLE_ORDER','POLICY_ROLE_NAMES','POLICY_ROLE_DATIVE']){
   vm.runInContext(html.match(new RegExp(`^const ${name}\\s*=[^]*?;`,'m'))[0].replace(/^const /,'var '),ctx);
 }
-for(const name of ['uniqueWallets','walletOptionText','prepayCanStart','prepayStepDone','prepayRefundRole','prepayPanel','flowOf','progress',
+for(const name of ['hasPolicy','policyInitiators','policyInitiateTargets','policyInitiateRole','policySignRole','policySignTargets','policyCanClaim','policyRoleNames','policyReleasedByMe','policyLocked','policyOwnsSend','policyOwnsSign','policyNeedsApproval','policyApprovalActor','walletPolicyLine','uniqueWallets','walletOptionText','prepayCanStart','prepayStepDone','prepayRefundRole','prepayPanel','flowOf','progress',
   'stepTitle','taskBranchesForRole','myTasks','reqOpen','go','sendList','freeholdFee','freeholdSend','dealWallet','hashSum','econ','act','cnvTxTime','cnvTxHint','cnvTxShareBlock','txShort','jsLiteralAttr','addressDisclosure']){
   vm.runInContext(fn(name),ctx);
 }
