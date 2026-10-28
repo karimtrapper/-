@@ -60,6 +60,10 @@ def check(client):
 
 def claimed_s24(wallet, claimer_role='operator', amount=5000, ref=None):
     set_board(wallet, amount, ref=ref)
+    if claimer_role == 'findir':      # задача у первой роли «Заводит»; финансисту её передаёт менеджер
+        r = client_for(make_user('operator', 'Диспетчер')).post('/api/stand/transfer/handoff', json={
+            'dealId': DEAL, 'version': board()[1], 'toRole': 'findir'})
+        assert r.status_code == 200, r.get_json()
     uid = make_user(claimer_role, f'Клеймер {claimer_role}')
     c = client_for(uid)
     assert claim(c).status_code == 200
@@ -109,7 +113,10 @@ def test_second_account_with_same_person_role_is_a_different_actor_by_id(clean_b
     (REALTY, 'operator', 'teodor', True), (REALTY, 'findir', 'teodor', True),
     (REALTY, 'operator', 'findir', False), (REALTY, 'operator', 'operator', False),
     (REALTY, 'operator', 'manager', False), (REALTY, 'operator', 'admin', False),
-    (EXCHANGE, 'operator', 'findir', True), (EXCHANGE, 'operator', 'teodor', True),
+    # Изменено по новому ТЗ: подпись у ОДНОЙ назначенной роли — первой из «Подписывает»,
+    # которая не завела (обменник: финансист). Владелец подписывает после переназначения
+    # менеджером (см. test_wallet_handoff_flow.py).
+    (EXCHANGE, 'operator', 'findir', True), (EXCHANGE, 'operator', 'teodor', False),
     (EXCHANGE, 'operator', 'operator', False), (EXCHANGE, 'operator', 'manager', False)])
 def test_confirmer_roles_follow_registry(clean_board, wallet, claimer, confirmer, ok):
     claimed_s24(wallet, claimer)
@@ -142,8 +149,12 @@ def test_only_one_confirmer_and_repeat_is_idempotent(clean_board):
     assert confirm(client_for(a)).status_code == 200
     again = confirm(client_for(a))
     assert again.status_code == 200
+    # Изменено по новому ТЗ: подпись назначена одной роли, владелец (не назначен) получает 403,
+    # а не 409; второго подтверждения всё равно нет.
     second = confirm(client_for(b))
-    assert second.status_code == 409 and main_deal()['transferConfirmation']['byId'] == a
+    assert second.status_code == 403 and main_deal()['transferConfirmation']['byId'] == a
+    other_findir = confirm(client_for(make_user('findir', 'Второй финдир')))
+    assert other_findir.status_code == 409 and main_deal()['transferConfirmation']['byId'] == a
 
 
 def test_confirm_needs_claim_s24_fresh_version_and_matching_fingerprint(clean_board):
@@ -259,16 +270,24 @@ def test_owner_alone_skips_s24_only_on_verified_success(clean_board, chain):
     assert not any('s24' in str(e.get('text', '')) for e in deal.get('log', []))
 
 
-def test_owner_alone_never_available_for_exchange_or_other_roles(clean_board):
+def test_owner_alone_never_available_for_other_roles(clean_board):
+    # Изменено по новому ТЗ: с обменника владелец тоже может отправить сам (owner_can_alone);
+    # одиночная отправка по-прежнему только у владельца — оператор и финансист её не получают.
     set_board(EXCHANGE, 5000)
     teodor = client_for(make_user('teodor'))
-    assert claim(teodor).status_code == 403
-    assert main_deal().get('transferConfirmation') is None
+    assert claim(teodor).status_code == 200
+    assert main_deal()['transferConfirmation']['ownerAlone'] is True
     set_board(REALTY, 5000)
     for role in ('operator', 'findir'):
         c = client_for(make_user(role))
         state, v = board()
-        state['deals'][0].pop('transferClaim', None); put_board(state, v)
+        state['deals'][0].pop('transferClaim', None)
+        state['deals'][0].pop('transferHandoff', None)
+        put_board(state, v)
+        if role == 'findir':
+            r = client_for(make_user('operator', 'Диспетчер')).post('/api/stand/transfer/handoff', json={
+                'dealId': DEAL, 'version': board()[1], 'toRole': 'findir'})
+            assert r.status_code == 200, r.get_json()
         assert claim(c).status_code == 200
         assert main_deal()['transferConfirmation'] is None if 'transferConfirmation' in main_deal() else True
         assert not (main_deal().get('transferConfirmation') or {}).get('ownerAlone')
@@ -289,7 +308,10 @@ def test_owner_alone_flag_cannot_be_forged_through_state_put(clean_board, chain)
     checked_put(attacker, snap['version'], forged, witness='фиксирует только сервер')
     assert main_deal().get('transferConfirmation') is None
     check(operator)
-    assert main_deal()['step'] in ('s23', 's24') and not main_deal().get('serverTransferComplete')
+    # Изменено (решение Карима 28.10: перевод, проверенный в сети, = подписано): шаг закрывает
+    # сама проверка сети, а не подделанный маркер — самого маркера на доске по-прежнему нет.
+    assert main_deal().get('transferConfirmation') is None
+    assert main_deal()['step'] == 's25' and main_deal().get('serverTransferComplete')
 
 
 def test_state_put_cannot_skip_s24_or_advance_policy_deal(clean_board, chain):
@@ -315,16 +337,20 @@ def test_legacy_wallet_confirm_endpoint_does_not_apply(clean_board):
 
 # ----- серверный гейт расчёта (poller/settle), в обход HTTP-эндпоинтов -------
 
-def test_poller_settle_gate_requires_confirmation_even_without_endpoint(clean_board, chain):
+def test_poller_settles_verified_transfer_without_manual_confirmation(clean_board, chain):
+    # Было: «поллер не заменяет подтверждение s24». Изменено по решению Карима 28.10:
+    # мультисиг публикует перевод только после всех подписей, значит проверенный перевод = подписано.
     chain.append(tx(1, 5000, to=DEST, sender=REALTY, ts=int(time.time() * 1000) + 1000))
-    claimed_s24(REALTY, 'operator', ref=chain.ref(1))      # claim есть, подтверждения нет
+    claimed_s24(REALTY, 'operator', ref=chain.ref(1))      # claim есть, ручной отметки нет
     m._stand_check_transfers(DEAL)                         # то же, что делает фоновый опрос
     deal = main_deal()
-    assert deal['step'] == 's24' and not deal.get('serverTransferComplete')
+    assert deal['step'] == 's25' and deal.get('serverTransferComplete')
+    assert 'transferConfirmation' not in deal
 
 
-def test_poller_settle_gate_rejects_forged_owner_alone_marker(clean_board, chain):
-    """Подтверждение «владелец сам» от того, кто не владелец, не засчитывается даже в БД."""
+def test_poller_settle_ignores_forged_owner_alone_marker(clean_board, chain):
+    """Было: маркер «владелец сам» от не-владельца блокировал шаг. Изменено по решению Карима 28.10:
+    маркеры подтверждения на закрытие не влияют — решает проверенный перевод в сети."""
     chain.append(tx(1, 5000, to=DEST, sender=REALTY, ts=int(time.time() * 1000) + 1000))
     uid, c = claimed_s24(REALTY, 'operator', ref=chain.ref(1))
     state, version = board()
@@ -335,10 +361,10 @@ def test_poller_settle_gate_rejects_forged_owner_alone_marker(clean_board, chain
     put_board(state, version)
     m._stand_check_transfers(DEAL)
     deal = main_deal()
-    assert deal['step'] == 's24' and not deal.get('serverTransferComplete')
+    assert deal['step'] == 's25' and deal.get('serverTransferComplete')
 
 
-def test_poller_settle_gate_rejects_self_confirmation_marker(clean_board, chain):
+def test_poller_settle_ignores_self_confirmation_marker(clean_board, chain):
     chain.append(tx(1, 5000, to=DEST, sender=REALTY, ts=int(time.time() * 1000) + 1000))
     uid, c = claimed_s24(REALTY, 'operator', ref=chain.ref(1))
     state, version = board()
@@ -347,7 +373,7 @@ def test_poller_settle_gate_rejects_self_confirmation_marker(clean_board, chain)
         'claimFingerprint': state['deals'][0]['transferClaim']['fingerprint'], 'ownerAlone': False}
     put_board(state, version)
     m._stand_check_transfers(DEAL)
-    assert main_deal()['step'] == 's24' and not main_deal().get('serverTransferComplete')
+    assert main_deal()['step'] == 's25' and main_deal().get('serverTransferComplete')   # Изменено 28.10
 
 
 # ----- эквивалентные числовые представления суммы не ломают подпись -------
@@ -386,7 +412,7 @@ def test_actual_amount_change_after_claim_invalidates_signature(clean_board, cha
     assert main_deal().get('transferConfirmation') is None
 
 
-def test_poller_settle_gate_rejects_confirmation_without_actor_id(clean_board, chain):
+def test_poller_settle_ignores_confirmation_without_actor_id(clean_board, chain):
     """Запись подтверждения с верным отпечатком, но без id подтвердившего, не засчитывается."""
     chain.append(tx(1, 5000, to=DEST, sender=REALTY, ts=int(time.time() * 1000) + 1000))
     uid, c = claimed_s24(REALTY, 'operator', ref=chain.ref(1))
@@ -396,4 +422,4 @@ def test_poller_settle_gate_rejects_confirmation_without_actor_id(clean_board, c
         'claimFingerprint': state['deals'][0]['transferClaim']['fingerprint'], 'ownerAlone': False}
     put_board(state, version)
     m._stand_check_transfers(DEAL)
-    assert main_deal()['step'] == 's24' and not main_deal().get('serverTransferComplete')
+    assert main_deal()['step'] == 's25' and main_deal().get('serverTransferComplete')   # Изменено 28.10

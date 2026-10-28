@@ -22,7 +22,8 @@ OTHER_LEGACY = 'TWBgeUo74DehAPgw5cKTdYUTXtJELqwwqn'
 ADDED_LATER = 'TA4Y62o6YC2Zsck9rZVGTvqW1AQ7X9zTnj'
 OLD_COLUMNS = {'is_multisig', 'accepts_payin', 'owner'}
 NEW_COLUMNS = {'purpose', 'limit_usd', 'initiator_roles', 'confirmer_roles',
-               'owner_can_alone', 'signer_addresses', 'not_for_new_deals'}
+               'owner_can_alone', 'signer_addresses', 'not_for_new_deals',
+               'signer_weights', 'threshold', 'policy_log'}
 
 LEGACY_DDL = '''
 CREATE TABLE wallets (
@@ -105,9 +106,13 @@ def test_stand_upgrade_on_postgres_adds_columns_flags_legacy_once(pg):
     # старые кошельки сохранены, активны и помечены «не для новых сделок»
     assert rows[LEGACY][0] is True and rows[LEGACY][1] is True
     assert rows[OTHER_LEGACY][0] is True and rows[OTHER_LEGACY][1] is True
-    # два новых политических кошелька созданы и доступны для новых сделок
+    # шесть политических кошельков созданы и доступны для новых сделок (раньше было два)
     assert rows[REALTY] == (False, True, 'realty')
     assert rows[EXCHANGE] == (False, True, 'exchange')
+    assert rows['TAGufCVNFBLh6NiEGL8iaQ4F9PPnftcgBk'] == (False, True, 'realty_small')
+    assert rows['TR68DHoj71Nz4FoTvqnBFQK2Fc6NkEK6nQ'] == (False, True, 'provider')
+    assert rows['TQPv1GETKVjSWZymdMu5WbSSeS6JhL2KHt'] == (False, True, 'client_funds')
+    assert rows['TUXAF8TNuQ5FTduffBGjqz9RjfensGbYcJ'] == (False, True, 'martrust')
     # кошелёк, заведённый админом после миграции, повторный старт не трогает
     cur = conn.cursor()
     cur.execute("INSERT INTO wallets (address, label, accepts_payin, not_for_new_deals) "
@@ -118,7 +123,7 @@ def test_stand_upgrade_on_postgres_adds_columns_flags_legacy_once(pg):
     assert rows[ADDED_LATER][0] is False
     assert rows[LEGACY][0] is True and rows[REALTY][0] is False and rows[EXCHANGE][0] is False
     cur.execute('SELECT count(*) FROM wallets')
-    assert cur.fetchone()[0] == 7   # 4 старых (2 свои + 2 из сида) + 2 политики + добавленный позже
+    assert cur.fetchone()[0] == 11   # 4 старых (2 свои + 2 из сида) + 6 политик + добавленный позже
 
 
 def test_prod_mode_upgrade_on_postgres_keeps_legacy_working(pg):

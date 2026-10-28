@@ -1,0 +1,282 @@
+{
+ "TA6S3RBEY57jq8fXEVVsU6H9JZ18inenG4": {
+  "can_claim": {
+   "findir": false,
+   "operator": true,
+   "teodor": true
+  },
+  "confirmer_roles": [
+   "findir",
+   "teodor"
+  ],
+  "initial_role": "operator",
+  "initiate_targets": {
+   "findir": [
+    "operator",
+    "teodor"
+   ],
+   "operator": [
+    "teodor"
+   ],
+   "teodor": [
+    "operator"
+   ]
+  },
+  "initiate_targets_from_start": [
+   "teodor"
+  ],
+  "initiator_roles": [
+   "operator"
+  ],
+  "owner_can_alone": true,
+  "purpose": "exchange",
+  "sign": {
+   "findir": {
+    "default": "teodor",
+    "targets": []
+   },
+   "operator": {
+    "default": "findir",
+    "targets": [
+     "teodor"
+    ]
+   },
+   "teodor": {
+    "default": "findir",
+    "targets": []
+   }
+  }
+ },
+ "TAGufCVNFBLh6NiEGL8iaQ4F9PPnftcgBk": {
+  "can_claim": {
+   "findir": false,
+   "operator": true,
+   "teodor": true
+  },
+  "confirmer_roles": [
+   "findir",
+   "teodor"
+  ],
+  "initial_role": "operator",
+  "initiate_targets": {
+   "findir": [
+    "operator",
+    "teodor"
+   ],
+   "operator": [
+    "teodor"
+   ],
+   "teodor": [
+    "operator"
+   ]
+  },
+  "initiate_targets_from_start": [
+   "teodor"
+  ],
+  "initiator_roles": [
+   "operator"
+  ],
+  "owner_can_alone": true,
+  "purpose": "realty_small",
+  "sign": {
+   "findir": {
+    "default": "teodor",
+    "targets": []
+   },
+   "operator": {
+    "default": "findir",
+    "targets": [
+     "teodor"
+    ]
+   },
+   "teodor": {
+    "default": "findir",
+    "targets": []
+   }
+  }
+ },
+ "TDuDeRiwrLLN3hnnA57G5yM6ibg58A6wZk": {
+  "can_claim": {
+   "findir": false,
+   "operator": true,
+   "teodor": true
+  },
+  "confirmer_roles": [
+   "teodor"
+  ],
+  "initial_role": "operator",
+  "initiate_targets": {
+   "findir": [
+    "operator",
+    "teodor"
+   ],
+   "operator": [
+    "findir",
+    "teodor"
+   ],
+   "teodor": [
+    "operator",
+    "findir"
+   ]
+  },
+  "initiate_targets_from_start": [
+   "findir",
+   "teodor"
+  ],
+  "initiator_roles": [
+   "operator",
+   "findir"
+  ],
+  "owner_can_alone": true,
+  "purpose": "realty",
+  "sign": {
+   "findir": {
+    "default": "teodor",
+    "targets": []
+   },
+   "operator": {
+    "default": "teodor",
+    "targets": []
+   },
+   "teodor": {
+    "default": null,
+    "targets": []
+   }
+  }
+ },
+ "TQPv1GETKVjSWZymdMu5WbSSeS6JhL2KHt": {
+  "can_claim": {
+   "findir": false,
+   "operator": true,
+   "teodor": true
+  },
+  "confirmer_roles": [
+   "teodor"
+  ],
+  "initial_role": "operator",
+  "initiate_targets": {
+   "findir": [
+    "operator",
+    "teodor"
+   ],
+   "operator": [
+    "teodor"
+   ],
+   "teodor": [
+    "operator"
+   ]
+  },
+  "initiate_targets_from_start": [
+   "teodor"
+  ],
+  "initiator_roles": [
+   "operator"
+  ],
+  "owner_can_alone": true,
+  "purpose": "client_funds",
+  "sign": {
+   "findir": {
+    "default": "teodor",
+    "targets": []
+   },
+   "operator": {
+    "default": "teodor",
+    "targets": []
+   },
+   "teodor": {
+    "default": null,
+    "targets": []
+   }
+  }
+ },
+ "TR68DHoj71Nz4FoTvqnBFQK2Fc6NkEK6nQ": {
+  "can_claim": {
+   "findir": true,
+   "operator": false,
+   "teodor": true
+  },
+  "confirmer_roles": [
+   "teodor"
+  ],
+  "initial_role": "findir",
+  "initiate_targets": {
+   "findir": [
+    "teodor"
+   ],
+   "operator": [
+    "findir",
+    "teodor"
+   ],
+   "teodor": [
+    "findir"
+   ]
+  },
+  "initiate_targets_from_start": [
+   "teodor"
+  ],
+  "initiator_roles": [
+   "findir"
+  ],
+  "owner_can_alone": true,
+  "purpose": "provider",
+  "sign": {
+   "findir": {
+    "default": "teodor",
+    "targets": []
+   },
+   "operator": {
+    "default": "teodor",
+    "targets": []
+   },
+   "teodor": {
+    "default": null,
+    "targets": []
+   }
+  }
+ },
+ "TUXAF8TNuQ5FTduffBGjqz9RjfensGbYcJ": {
+  "can_claim": {
+   "findir": false,
+   "operator": true,
+   "teodor": true
+  },
+  "confirmer_roles": [
+   "teodor"
+  ],
+  "initial_role": "operator",
+  "initiate_targets": {
+   "findir": [
+    "operator",
+    "teodor"
+   ],
+   "operator": [
+    "teodor"
+   ],
+   "teodor": [
+    "operator"
+   ]
+  },
+  "initiate_targets_from_start": [
+   "teodor"
+  ],
+  "initiator_roles": [
+   "operator"
+  ],
+  "owner_can_alone": true,
+  "purpose": "martrust",
+  "sign": {
+   "findir": {
+    "default": "teodor",
+    "targets": []
+   },
+   "operator": {
+    "default": "teodor",
+    "targets": []
+   },
+   "teodor": {
+    "default": null,
+    "targets": []
+   }
+  }
+ }
+}

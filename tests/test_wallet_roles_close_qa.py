@@ -211,19 +211,18 @@ def test_board_approved_over_limit_close_completes_and_carries_original_approver
 
 
 @pytest.mark.parametrize('case', [
-    'no_approval', 'bad_fingerprint', 'same_actor', 'not_server_complete', 'approver_wrong_role',
-    'amount_changed_after_approval', 'no_confirmation', 'no_claim'])
+    'no_approval', 'bad_fingerprint', 'not_server_complete', 'approver_wrong_role',
+    'amount_changed_after_approval'])
 def test_close_over_limit_refused_when_board_evidence_is_missing_or_invalid(seeded, case):
+    # Изменено (решение Карима 28.10: перевод мультисига, проверенный в сети, = подписано):
+    # случаи same_actor / no_confirmation / no_claim вынесены в тест ниже — отметка второго
+    # подписанта и claim для закрытия в CRM больше не требуются.
     tamper = {
         'no_approval': {'a': lambda d: d.pop('transferOwnerApproval')},
         'bad_fingerprint': {'a': lambda d: d['transferOwnerApproval'].update(fingerprint='x')},
-        'same_actor': {'a': lambda d: d['transferConfirmation'].update(
-            byId=d['transferClaim']['byId'])},
         'not_server_complete': {'a': lambda d: d.update(serverTransferComplete=False)},
         'approver_wrong_role': {'a': lambda d: d['transferOwnerApproval'].update(role='operator')},
-        'amount_changed_after_approval': {'a': lambda d: d['transfer'].update(amount=16000)},
-        'no_confirmation': {'a': lambda d: d.pop('transferConfirmation')},
-        'no_claim': {'a': lambda d: d.pop('transferClaim')}}[case]
+        'amount_changed_after_approval': {'a': lambda d: d['transfer'].update(amount=16000)}}[case]
     state, _ = approved_board(15000, **tamper)
     uid = seed_close(state)
     wid = registry_id(EXCHANGE)
@@ -232,6 +231,21 @@ def test_close_over_limit_refused_when_board_evidence_is_missing_or_invalid(seed
                           json={'version': 1, 'crm': crm_for(15000, wid)})
     assert r.status_code in (400, 409), (case, r.json)
     assert deals_for() == before
+
+
+@pytest.mark.parametrize('case', ['same_actor', 'no_confirmation', 'no_claim'])
+def test_close_over_limit_needs_no_manual_signature_when_network_proof_is_complete(seeded, case):
+    """Решение Карима 28.10: проверенный перевод в сети = подписано; закрытие в CRM идёт без отметки s24."""
+    tamper = {
+        'same_actor': {'a': lambda d: d['transferConfirmation'].update(byId=d['transferClaim']['byId'])},
+        'no_confirmation': {'a': lambda d: d.pop('transferConfirmation')},
+        'no_claim': {'a': lambda d: d.pop('transferClaim')}}[case]
+    state, approver = approved_board(15000, **tamper)
+    uid = seed_close(state)
+    wid = registry_id(EXCHANGE)
+    r = _client(uid).post('/api/stand/deals/1474/crm-close', json={'version': 1, 'crm': crm_for(15000, wid)})
+    assert r.status_code in (200, 201), (case, r.json)
+    assert crm_deal()['payout_owner_approval']['byId'] == approver
 
 
 def test_close_crm_wallet_must_equal_board_send_wallet(seeded):

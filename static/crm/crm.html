@@ -2291,6 +2291,22 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
                             <label class="form-label" for="walletAcceptsPayin" style="margin:0;">Принимаем оплату от клиентов</label>
                         </div>
                     </div>
+                    <div class="form-row" id="walletRolesForm">
+                        <div class="form-group">
+                            <label class="form-label">Заводит (1–2 роли)</label>
+                            <div id="newWalletInitiators"></div>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Подписывает (1–2 роли)</label>
+                            <div id="newWalletSigners"></div>
+                        </div>
+                        <div class="form-group" style="display:flex;align-items:flex-end;gap:6px;">
+                            <input type="checkbox" id="newWalletOwnerAlone">
+                            <label class="form-label" for="newWalletOwnerAlone" style="margin:0;">Владелец может отправить сам</label>
+                        </div>
+                        <div class="form-group" id="newWalletRolesHint" style="display:none;font-size:0.85rem;color:#64748b;">
+                            «Заводит» и «Подписывает» задаёт админ. До этого кошелёк не выбрать в новых сделках.</div>
+                    </div>
                 </form>
 
                 <div id="walletsInfo" style="margin-bottom: 1rem;">
@@ -5949,6 +5965,17 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
             applyStandMobileNav();
             refreshStandDependentLinks();
             refreshPayoutWalletPolicy();
+            renderNewWalletRolesForm();
+        }
+        function renderNewWalletRolesForm() {
+            const initiators = document.getElementById('newWalletInitiators');
+            const signers = document.getElementById('newWalletSigners');
+            if (!initiators || !signers) return;
+            const editable = canEditWalletRoles();
+            initiators.innerHTML = walletRoleChecks('initiator', [], !editable);
+            signers.innerHTML = walletRoleChecks('confirmer', [], !editable);
+            document.getElementById('newWalletOwnerAlone').disabled = !editable;
+            document.getElementById('newWalletRolesHint').style.display = editable ? 'none' : 'block';
         }
         function applyStandMobileNav() {
             const {isStand} = standLinkState();
@@ -10324,13 +10351,64 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
             return '$' + Number(wallet.limit_usd).toLocaleString('ru-RU', {maximumFractionDigits: 2}).replace(/\s/g, '\u00a0');
         }
         function walletPolicyText(wallet) {
-            if (!wallet?.purpose) return '';
+            const starters = wallet?.initiator_roles || [], signers = wallet?.confirmer_roles || [];
+            if (!starters.length || !signers.length) return '';
             const names = {operator:'операционист', findir:'финансист', teodor:'владелец'};
-            const starters = [...new Set([...(wallet.initiator_roles||[]), ...(wallet.owner_can_alone?['teodor']:[])])];
             const limit = wallet.limit_usd != null
                 ? ` · до ${crmWalletLimitText(wallet)}, выше — с согласованием владельца`
                 : '';
-            return `${wallet.label || wallet.address} · начинает ${starters.map(r=>names[r]||r).join(' или ')} · подтверждает ${(wallet.confirmer_roles||[]).map(r=>names[r]||r).join(' или ')}${limit}`;
+            const alone = wallet.owner_can_alone ? ' · владелец может отправить сам' : '';
+            return `${wallet.label || wallet.address} · Заводит: ${starters.map(r=>names[r]||r).join(' / ')} · Подписывает: ${signers.map(r=>names[r]||r).join(' / ')}${alone}${limit}`;
+        }
+        // «Заводит» / «Подписывает» / «Владелец может отправить сам» задаёт только админ
+        // (на стенде). Служебные кошельки из сида (purpose задан) закреплены.
+        function canEditWalletRoles() {
+            return AUTH_STAND !== true || AUTH_ROLE === 'admin';
+        }
+        function walletRoleChecks(group, selected, disabled) {
+            const names = {operator:'операционист', findir:'финансист', teodor:'владелец'};
+            return ['operator','findir','teodor'].map(role =>
+                `<label style="display:inline-flex;align-items:center;gap:4px;margin-right:10px;">
+                    <input type="checkbox" data-wallet-roles="${group}" value="${role}" ${(selected||[]).includes(role) ? 'checked' : ''} ${disabled ? 'disabled' : ''}> ${names[role]}</label>`).join('');
+        }
+        function readWalletRoles(scope, group) {
+            return [...scope.querySelectorAll(`input[data-wallet-roles="${group}"]:checked`)].map(x => x.value);
+        }
+        function walletRolesError(initiators, signers) {
+            if (initiators.length < 1 || initiators.length > 2) return '«Заводит»: выберите одну или две роли';
+            if (signers.length < 1 || signers.length > 2) return '«Подписывает»: выберите одну или две роли';
+            return null;
+        }
+        function renderWalletRolesRow(w) {
+            const fixed = !!w.purpose;
+            if (fixed || !canEditWalletRoles()) {
+                const text = walletPolicyText(w);
+                return `<div class="wallet-roles" style="margin-top:0.35rem;font-size:0.78rem;color:#475569;">${text
+                    ? escapeHtml(text.replace(/^.*?· /, ''))
+                    : 'Заводит и подписывает: не заданы — в новых сделках кошелёк не выбрать'}</div>`;
+            }
+            return `<div class="wallet-roles" data-wallet-id="${w.id}" style="margin-top:0.35rem;font-size:0.78rem;color:#475569;">
+                <div>Заводит: ${walletRoleChecks('initiator', w.initiator_roles)}</div>
+                <div>Подписывает: ${walletRoleChecks('confirmer', w.confirmer_roles)}</div>
+                <label style="display:inline-flex;align-items:center;gap:4px;"><input type="checkbox" data-wallet-alone ${w.owner_can_alone ? 'checked' : ''}> Владелец может отправить сам</label>
+                <button type="button" class="btn btn-sm btn-secondary" style="margin-left:8px;" onclick="saveWalletRoles(${w.id}, this)">Сохранить роли</button>
+            </div>`;
+        }
+        async function saveWalletRoles(walletId, button) {
+            const scope = button.closest('.wallet-roles');
+            const initiators = readWalletRoles(scope, 'initiator'), signers = readWalletRoles(scope, 'confirmer');
+            const problem = walletRolesError(initiators, signers);
+            if (problem) { showToast(problem, 'error'); return; }
+            try {
+                const response = await fetch(`${API_URL}/api/wallets/${walletId}`, {
+                    method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ initiator_roles: initiators, confirmer_roles: signers,
+                        owner_can_alone: !!scope.querySelector('[data-wallet-alone]').checked })
+                });
+                const data = await response.json();
+                showToast(data.success ? 'Роли сохранены' : 'Не сохранилось: ' + (data.error || 'ошибка'),
+                    data.success ? undefined : 'error');
+            } catch (e) { showToast('Не сохранилось: нет связи с сервером', 'error'); }
         }
         function renderCrmWalletPolicy(box, wallet) {
             const policy = walletPolicyText(wallet);
@@ -10368,7 +10446,7 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
             const group = document.getElementById('payoutOwnerApprovalGroup');
             if (!box || !group) return;
             renderCrmWalletAddress('payoutWalletAddress', wallet);
-            if (!wallet?.purpose) { box.textContent = ''; group.style.display = 'none'; return; }
+            if (!walletPolicyText(wallet)) { box.textContent = ''; group.style.display = 'none'; return; }
             renderCrmWalletPolicy(box, wallet);
             const approvalLimit = document.getElementById('payoutOwnerApprovalLimit');
             if (approvalLimit) approvalLimit.textContent = wallet.limit_usd == null
@@ -13370,6 +13448,7 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                                             Принимаем оплату от клиентов
                                         </label>
                                     </div>
+                                    ${renderWalletRolesRow(w)}
                                     <button class="btn btn-sm btn-danger" onclick="deleteWallet(${w.id})" style="position: absolute; top: 5px; right: 5px; padding: 2px 5px; font-size: 0.7rem;">Удалить</button>
                                 </div>
                             `).join('')}
@@ -13478,6 +13557,15 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                 showToast('Введите корректный адрес TRON кошелька (начинается с T)', 'error');
                 return;
             }
+            const roles = {};
+            if (canEditWalletRoles()) {
+                const scope = document.getElementById('walletRolesForm');
+                const initiators = readWalletRoles(scope, 'initiator'), signers = readWalletRoles(scope, 'confirmer');
+                const problem = walletRolesError(initiators, signers);
+                if (problem) { showToast(problem, 'error'); return; }
+                Object.assign(roles, { initiator_roles: initiators, confirmer_roles: signers,
+                    owner_can_alone: document.getElementById('newWalletOwnerAlone').checked });
+            }
 
             try {
                 const response = await fetch(`${API_URL}/api/wallets`, {
@@ -13489,7 +13577,8 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                         is_balance: false,
                         owner: this.wallet_owner.value,
                         is_multisig: this.wallet_is_multisig.checked,
-                        accepts_payin: this.wallet_accepts_payin.checked
+                        accepts_payin: this.wallet_accepts_payin.checked,
+                        ...roles
                     })
                 });
                 const data = await response.json();

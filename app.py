@@ -28,6 +28,7 @@ from sber_acquiring import parse_sber_acquiring
 from stand_funding import account_identity, income_account_identity, incoming_shares
 from stand_funding import check_batch as _stand_check_batch_funding, check_state as _stand_check_funding_state
 import stand_prepay
+import wallet_policy
 import stand_demo
 from collections import Counter
 import bcrypt
@@ -1636,6 +1637,12 @@ class Wallet(Base):
     owner_can_alone = Column(Boolean, default=False)
     signer_addresses = Column(Text, nullable=True)      # JSON role -> public address
     not_for_new_deals = Column(Boolean, default=False)
+    # Проверка согласованности политики (не правило задачника): {роль: вес} и порог.
+    signer_weights = Column(Text, nullable=True)        # JSON role -> int
+    threshold = Column(Integer, nullable=True)
+    # Журнал смен «Заводит»/«Подписывает»: JSON-список {at, by_id, by_name, before, after}.
+    # Хранится колонкой, а не таблицей: набор таблиц прод-схемы совпадает с main.
+    policy_log = Column(Text, nullable=True)
     operations = relationship("WalletOperation", back_populates="wallet", cascade="all, delete-orphan")
 
     def to_dict(self, session=None):
@@ -1665,6 +1672,9 @@ class Wallet(Base):
             'owner_can_alone': bool(self.owner_can_alone),
             'signer_addresses': json.loads(self.signer_addresses or '{}'),
             'not_for_new_deals': bool(self.not_for_new_deals),
+            'signer_weights': wallet_policy.normalize_weights(self.signer_weights),
+            'threshold': self.threshold,
+            'policy_log': json.loads(self.policy_log or '[]'),
             'system_balance': round(system_balance, 2)
         }
 
@@ -2728,6 +2738,70 @@ def _stand_seed_users():
         db.close()
 
 
+# Кошельки с политикой подписей: явные поля «Заводит» / «Подписывает» / «Владелец
+# может отправить сам» — правило задачника; веса и порог — проверка согласованности.
+POLICY_SIGNER_ADDRESSES = {
+    'operator': 'TAXgSzqBJzcstEkTBu4FJvEBH8SdxfV3QC',
+    'findir': 'TDsLTB3uHKhTcB3hWRaKByg3pLtrMAHcgd',
+    'teodor': 'TUzvaUjzRN5XLqDqbWB2VRKWQRtukXFYrN',
+}
+POLICY_WALLET_SEED = {
+    'TDuDeRiwrLLN3hnnA57G5yM6ibg58A6wZk': {
+        'label': 'Груша Недвижимость', 'purpose': 'realty', 'limit_usd': None,
+        'initiator_roles': ['operator', 'findir'], 'confirmer_roles': ['teodor'],
+        'owner_can_alone': True,
+        'signer_weights': {'operator': 1, 'findir': 1, 'teodor': 3}, 'threshold': 3,
+    },
+    'TAGufCVNFBLh6NiEGL8iaQ4F9PPnftcgBk': {
+        'label': 'Grusha Property < 10 000', 'purpose': 'realty_small', 'limit_usd': None,
+        'initiator_roles': ['operator'], 'confirmer_roles': ['findir', 'teodor'],
+        'owner_can_alone': True,
+        'signer_weights': {'operator': 1, 'findir': 1, 'teodor': 2}, 'threshold': 2,
+        'note': 'Приём оплаты за недвижимость до $10 000',
+    },
+    'TA6S3RBEY57jq8fXEVVsU6H9JZ18inenG4': {
+        'label': 'Груша Обменник', 'purpose': 'exchange', 'limit_usd': 10000,
+        'initiator_roles': ['operator'], 'confirmer_roles': ['findir', 'teodor'],
+        'owner_can_alone': True,
+        'signer_weights': {'operator': 1, 'findir': 1, 'teodor': 2}, 'threshold': 2,
+    },
+    'TR68DHoj71Nz4FoTvqnBFQK2Fc6NkEK6nQ': {
+        'label': 'Mfstr', 'purpose': 'provider', 'limit_usd': None,
+        'initiator_roles': ['findir'], 'confirmer_roles': ['teodor'],
+        'owner_can_alone': True,
+        'signer_weights': {'findir': 1, 'teodor': 2}, 'threshold': 2,
+        'note': 'Приём от провайдеров, расчёт с клиентом',
+    },
+    'TQPv1GETKVjSWZymdMu5WbSSeS6JhL2KHt': {
+        'label': '99', 'purpose': 'client_funds', 'limit_usd': None,
+        'initiator_roles': ['operator'], 'confirmer_roles': ['teodor'],
+        'owner_can_alone': True,
+        'signer_weights': {'operator': 1, 'teodor': 2}, 'threshold': 2,
+        'note': 'Только средства клиента: приём, хранение, оплата',
+    },
+    'TUXAF8TNuQ5FTduffBGjqz9RjfensGbYcJ': {
+        'label': 'OTC Martrust', 'purpose': 'martrust', 'limit_usd': None,
+        'initiator_roles': ['operator'], 'confirmer_roles': ['teodor'],
+        'owner_can_alone': True,
+        'signer_weights': {'operator': 1, 'teodor': 2}, 'threshold': 2,
+        'note': 'Только клиент Martrust: приём и выплата',
+    },
+}
+POLICY_WALLET_ADDRESSES = frozenset(POLICY_WALLET_SEED)
+
+
+def _policy_seed_problems():
+    """Рассогласование сида с весами; пусто — всё сходится."""
+    out = {}
+    for address, policy in POLICY_WALLET_SEED.items():
+        problems = wallet_policy.consistency_problems(
+            policy['initiator_roles'], policy['confirmer_roles'], policy['owner_can_alone'],
+            policy.get('signer_weights'), policy.get('threshold'))
+        if problems:
+            out[address] = problems
+    return out
+
+
 def _stand_seed_wallets():
     """Известные кошельки реестра — только на стенде, идемпотентно.
 
@@ -2741,23 +2815,8 @@ def _stand_seed_wallets():
         ('TWBgeUo74DehAPgw5cKTdYUTXtJELqwwqn', 'TRON', False, True, 'Андрей', None),
         ('0x68aEA0F5386a57b48953F6fFF2f22D29D00D9ba9', 'ETH', False, True, 'Теодор', 'Теодор · ERC-20'),
     ]
-    policy_seed = {
-        'TDuDeRiwrLLN3hnnA57G5yM6ibg58A6wZk': {
-            'label': 'Груша Недвижимость', 'purpose': 'realty', 'limit_usd': None,
-            'initiator_roles': ['operator', 'findir'], 'confirmer_roles': ['teodor'],
-            'owner_can_alone': True,
-        },
-        'TA6S3RBEY57jq8fXEVVsU6H9JZ18inenG4': {
-            'label': 'Груша Обменник', 'purpose': 'exchange', 'limit_usd': 10000,
-            'initiator_roles': ['operator'], 'confirmer_roles': ['findir', 'teodor'],
-            'owner_can_alone': False,
-        },
-    }
-    signer_addresses = {
-        'operator': 'TAXgSzqBJzcstEkTBu4FJvEBH8SdxfV3QC',
-        'findir': 'TDsLTB3uHKhTcB3hWRaKByg3pLtrMAHcgd',
-        'teodor': 'TUzvaUjzRN5XLqDqbWB2VRKWQRtukXFYrN',
-    }
+    policy_seed = POLICY_WALLET_SEED
+    signer_addresses = POLICY_SIGNER_ADDRESSES
     db = SessionLocal()
     try:
         for address, blockchain, multisig, payin, owner, label in seed:
@@ -2776,7 +2835,14 @@ def _stand_seed_wallets():
                 w.is_multisig = multisig
                 w.accepts_payin = payin
                 w.owner = owner
+        bad = _policy_seed_problems()
         for address, policy in policy_seed.items():
+            if address in bad:
+                # Рассогласованную политику не применяем молча: громко в лог.
+                app.logger.error('[STAND] Политика кошелька %s не согласована с весами: %s',
+                                 address, '; '.join(bad[address]))
+                print(f'[STAND] ОШИБКА: политика {address} не согласована с весами: {bad[address]}')
+                continue
             wallet = db.query(Wallet).filter(Wallet.address == address).first()
             if not wallet:
                 wallet = Wallet(address=address, blockchain='TRON', active=True,
@@ -2791,7 +2857,12 @@ def _stand_seed_wallets():
             wallet.initiator_roles = json.dumps(policy['initiator_roles'])
             wallet.confirmer_roles = json.dumps(policy['confirmer_roles'])
             wallet.owner_can_alone = policy['owner_can_alone']
-            wallet.signer_addresses = json.dumps(signer_addresses)
+            wallet.signer_weights = json.dumps(policy['signer_weights'])
+            wallet.threshold = policy['threshold']
+            # Адреса подписи — только у ролей, участвующих в политике кошелька.
+            participants = set(policy['initiator_roles']) | set(policy['confirmer_roles'])
+            wallet.signer_addresses = json.dumps({role: addr for role, addr in signer_addresses.items()
+                                                  if role in participants})
             wallet.not_for_new_deals = False
         db.commit()
         print('[STAND] Реестр кошельков засеян')
@@ -3525,6 +3596,7 @@ _WALLET_REGISTRY_COLUMNS = [
     ('limit_usd', 'DOUBLE PRECISION'), ('initiator_roles', 'TEXT'),
     ('confirmer_roles', 'TEXT'), ('owner_can_alone', 'BOOLEAN DEFAULT FALSE'),
     ('signer_addresses', 'TEXT'), ('not_for_new_deals', 'BOOLEAN DEFAULT FALSE'),
+    ('signer_weights', 'TEXT'), ('threshold', 'INTEGER'), ('policy_log', 'TEXT'),
 ]
 try:
     with engine.connect() as conn:
@@ -3540,9 +3612,8 @@ try:
                 try: conn.execute(text(f"ALTER TABLE wallets ADD COLUMN {col} {sql_type}"))
                 except: pass
         if new_deal_flag:
-            conn.execute(text("UPDATE wallets SET not_for_new_deals = TRUE WHERE address NOT IN "
-                              "('TDuDeRiwrLLN3hnnA57G5yM6ibg58A6wZk', "
-                              "'TA6S3RBEY57jq8fXEVVsU6H9JZ18inenG4')"))
+            policy_list = ', '.join(f"'{address}'" for address in sorted(POLICY_WALLET_ADDRESSES))
+            conn.execute(text(f"UPDATE wallets SET not_for_new_deals = TRUE WHERE address NOT IN ({policy_list})"))
         conn.commit()
 except Exception as e:
     print(f"ℹ️ wallet_registry migration: {e}")
@@ -6892,18 +6963,35 @@ def stand_assignee_take():
         db.close()
 
 
+# Передача задачи, перехват claim и «Деньги отправлены»: операционист и админ.
+TRANSFER_HANDOFF_ROLES = ('operator', 'admin')
+
+
+def _stand_transfer_request():
+    """Общее начало transfer-эндпоинтов: (payload, actor, actor_id, deal_id, ошибка)."""
+    payload = request.get_json(silent=True) or {}
+    actor, actor_id = current_role(), flask_session.get('user_id')
+    if actor_id is None:
+        return payload, actor, actor_id, None, (jsonify(success=False, error='Требуется вход сотрудника'), 403)
+    try:
+        deal_id = int(payload.get('dealId'))
+    except (TypeError, ValueError):
+        return payload, actor, actor_id, None, (jsonify(success=False, error='dealId обязателен'), 400)
+    return payload, actor, actor_id, deal_id, None
+
+
+def _stand_stale_response(row, state, message='Доска изменилась — обновите её'):
+    return jsonify(success=False, error=message, version=row.version,
+                   data=_stand_strip_files(state)), 409
+
+
 @app.route('/api/stand/transfer/claim', methods=['POST'])
 def stand_transfer_claim():
     if not STAND_MODE:
         return jsonify(success=False, error='stand_only'), 404
-    payload = request.get_json(silent=True) or {}
-    actor, actor_id = current_role(), flask_session.get('user_id')
-    if actor_id is None:
-        return jsonify(success=False, error='Требуется вход сотрудника'), 403
-    try:
-        deal_id = int(payload.get('dealId'))
-    except (TypeError, ValueError):
-        return jsonify(success=False, error='dealId обязателен'), 400
+    payload, actor, actor_id, deal_id, failure = _stand_transfer_request()
+    if failure:
+        return failure
     db = get_session()
     try:
         if engine.dialect.name == 'sqlite':
@@ -6911,39 +6999,45 @@ def stand_transfer_claim():
         row = _stand_row(db, lock=True)
         state = json.loads(row.data or '{}')
         main = _stand_batch_main(state, deal_id)
-        if not main or main.get('step') != 's23':
-            return jsonify(success=False, error='Шаг отправки недоступен'), 409
-        try:
-            policy = _stand_transfer_policy(db, state, main)
-        except ValueError as exc:
-            return jsonify(success=False, error=str(exc)), 409
-        if not policy:
-            return jsonify(success=False, error='Для этого кошелька действует прежний порядок отправки'), 409
+        policy, error, status = _stand_policy_state_problem(db, state, main, 's23')
+        if error:
+            return jsonify(success=False, error=error), status
         claim = main.get('transferClaim')
         if claim:
             if claim.get('byId') == actor_id and claim.get('fingerprint') == policy['fingerprint']:
                 return jsonify(success=True, version=row.version, data=_stand_strip_files(state), claim=claim)
             name = claim.get('byName') or 'другой сотрудник'
             return jsonify(success=False, error=f'Шаг уже взял {name}', taken_by=name), 409
+        locked = _stand_transfer_locked(main)
+        if locked:
+            return jsonify(success=False, error=locked), 409
         if payload.get('version') != row.version:
-            return jsonify(success=False, error='Доска изменилась — обновите её', version=row.version,
-                           data=_stand_strip_files(state)), 409
-        roles = _stand_policy_roles(policy['wallet'], 'initiator_roles')
-        if policy['wallet'].owner_can_alone and actor == 'teodor':
-            roles.append('teodor')
+            return _stand_stale_response(row, state)
+        wallet = policy['wallet']
+        released = [c for c in _stand_policy_round_claims(main, policy['fingerprint'])
+                    if c.get('byId') == actor_id]
+        if released:
+            return jsonify(success=False, error='Перевод передан другому исполнителю'), 409
         user = db.query(AdminUser).filter_by(id=actor_id).first()
-        if not user or user.login_disabled or user.role != actor or actor not in roles:
+        if not user or user.login_disabled or user.role != actor:
             return jsonify(success=False, error='Эта роль не начинает перевод с кошелька'), 403
-        if (policy['wallet'].limit_usd is not None and
-                policy['amount'] > Decimal(str(policy['wallet'].limit_usd)) and
+        current = _stand_initiate_role(wallet, main)
+        if not wallet_policy.can_claim(wallet.owner_can_alone, current, actor):
+            return jsonify(success=False, error='Сейчас перевод у роли: ' +
+                           wallet_policy.ROLE_NAME.get(current, str(current))), 403
+        alone = actor == wallet_policy.OWNER and bool(wallet.owner_can_alone)
+        if not alone and not wallet_policy.default_sign_role(wallet.confirmer_roles, actor):
+            return jsonify(success=False, error='Для этой роли в кошельке не задан подписант'), 409
+        if (wallet.limit_usd is not None and
+                policy['amount'] > Decimal(str(wallet.limit_usd)) and
                 not _stand_policy_approval_valid(main, policy)):
             return jsonify(success=False, error='Для отправки свыше 10 000 USDT требуется подтверждение владельца'), 400
-        claim = {'byId': user.id, 'byName': user.display_name or user.username,
+        claim = {'byId': user.id, 'byName': _stand_user_name(user),
                  'role': actor, 'at': int(time.time() * 1000),
                  'walletId': policy['walletId'], 'amount': _stand_policy_amount_text(policy['amount']),
                  'fingerprint': policy['fingerprint']}
         main['transferClaim'] = claim
-        if actor == 'teodor' and policy['wallet'].owner_can_alone:
+        if alone:
             main['transferConfirmation'] = {'byId': user.id, 'byName': claim['byName'],
                 'role': actor, 'at': claim['at'], 'claimFingerprint': claim['fingerprint'],
                 'ownerAlone': True}
@@ -6951,13 +7045,7 @@ def stand_transfer_claim():
         main.setdefault('log', []).append({'at': claim['at'], 'role': actor,
             'by': user.id, 'text': f"{claim['byName']} взял отправку {claim['amount']} USDT"})
         old_version = row.version or 0
-        won = db.query(StandState).filter(StandState.id == row.id,
-                  StandState.version == old_version).update({
-            StandState.data: json.dumps(state, ensure_ascii=False),
-            StandState.version: old_version + 1,
-            StandState.updated_by: claim['byName'],
-            StandState.updated_at: datetime.utcnow()}, synchronize_session=False)
-        if won != 1:
+        if not _stand_commit_cas(db, row, state, old_version, claim['byName']):
             db.rollback()
             latest = db.query(StandState).filter_by(id=1).first()
             latest_state = json.loads(latest.data or '{}') if latest else {}
@@ -6971,18 +7059,21 @@ def stand_transfer_claim():
         db.close()
 
 
-@app.route('/api/stand/transfer/confirm', methods=['POST'])
-def stand_transfer_confirm():
+@app.route('/api/stand/transfer/handoff', methods=['POST'])
+def stand_transfer_handoff():
+    """Операционист/админ передаёт задачу: завести перевод (s23), подписать (s24)
+    или забирает уже начатый перевод (s23, claim есть, нужен takeover).
+    Клиентский менеджер этих действий не выполняет."""
     if not STAND_MODE:
         return jsonify(success=False, error='stand_only'), 404
-    payload = request.get_json(silent=True) or {}
-    actor, actor_id = current_role(), flask_session.get('user_id')
-    if actor_id is None:
-        return jsonify(success=False, error='Требуется вход сотрудника'), 403
-    try:
-        deal_id = int(payload.get('dealId'))
-    except (TypeError, ValueError):
-        return jsonify(success=False, error='dealId обязателен'), 400
+    payload, actor, actor_id, deal_id, failure = _stand_transfer_request()
+    if failure:
+        return failure
+    if actor not in TRANSFER_HANDOFF_ROLES:
+        return jsonify(success=False, error='Передать задачу может операционист или админ'), 403
+    to_role = payload.get('toRole')
+    if to_role not in wallet_policy.POLICY_ROLES:
+        return jsonify(success=False, error='Выберите роль для передачи'), 400
     db = get_session()
     try:
         if engine.dialect.name == 'sqlite':
@@ -6990,30 +7081,151 @@ def stand_transfer_confirm():
         row = _stand_row(db, lock=True)
         state = json.loads(row.data or '{}')
         main = _stand_batch_main(state, deal_id)
-        if not main or main.get('step') != 's24':
-            return jsonify(success=False, error='Шаг подтверждения недоступен'), 409
-        try:
-            policy = _stand_transfer_policy(db, state, main)
-        except ValueError as exc:
-            return jsonify(success=False, error=str(exc)), 409
-        if not policy:
-            return jsonify(success=False, error='Для этого кошелька действует прежний порядок подписи'), 409
+        step = (main or {}).get('step')
+        if step not in ('s23', 's24'):
+            return jsonify(success=False, error='Передать можно на шаге отправки или подписи'), 409
+        policy, error, status = _stand_policy_state_problem(db, state, main, step)
+        if error:
+            return jsonify(success=False, error=error), status
+        user = db.query(AdminUser).filter_by(id=actor_id).first()
+        if not user or user.login_disabled or user.role != actor:
+            return jsonify(success=False, error='Нет доступа к передаче'), 403
+        wallet = policy['wallet']
+        claim = main.get('transferClaim')
+        now_ms = int(time.time() * 1000)
+        actor_name = _stand_user_name(user)
+        initiators = wallet_policy.parse_roles(wallet.initiator_roles)
+        note_events = []   # (роль, текст)
+        if step == 's24':
+            locked = main.get('transferAlarm') and _stand_transfer_locked(main)
+            if locked:
+                return jsonify(success=False, error=locked), 409
+            if not claim or claim.get('fingerprint') != policy['fingerprint']:
+                return jsonify(success=False, error='Отправка не взята или поручение изменилось'), 409
+            if main.get('transferConfirmation'):
+                return jsonify(success=False, error='Перевод уже подтверждён — передать подпись нельзя'), 409
+            current = _stand_sign_role(wallet, main)
+            if to_role == current:
+                return jsonify(success=True, version=row.version, data=_stand_strip_files(state),
+                               handoff=main.get('signHandoff'))
+            if to_role not in wallet_policy.sign_targets(wallet.confirmer_roles, claim.get('role'), current):
+                return jsonify(success=False, error='Эта роль не подписывает перевод с кошелька'), 409
+            round_ids = {c.get('byId') for c in _stand_policy_round_claims(main, policy['fingerprint'])}
+            if actor_id in round_ids and to_role == actor:
+                return jsonify(success=False, error='Заводивший перевод не назначает подпись на себя'), 409
+            if payload.get('version') != row.version:
+                return _stand_stale_response(row, state)
+            handoff = {'role': to_role, 'byId': user.id, 'byName': actor_name, 'byRole': actor,
+                       'at': now_ms, 'claimFingerprint': claim['fingerprint']}
+            main['signHandoff'] = handoff
+            text_log = f"{actor_name} передал подпись {wallet_policy.ROLE_DATIVE[to_role]}"
+            note_events.append((to_role, f"{main.get('code') or main['id']}: подпишите перевод"))
+            event_key = 'sign'
+        else:
+            locked = _stand_transfer_locked(main)
+            if locked:
+                return jsonify(success=False, error=locked), 409
+            takeover = False
+            if claim:
+                if main.get('transferConfirmation'):
+                    return jsonify(success=False, error='Перевод уже начат — передать нельзя'), 409
+                if claim.get('byId') == actor_id:
+                    return jsonify(success=False, error='Свой перевод не передают перехватом'), 409
+                if payload.get('takeover') is not True:
+                    return jsonify(success=False, error='Перевод уже начат. Для перехвата нужно подтверждение',
+                                   claimAt=claim.get('at'), taken_by=claim.get('byName')), 409
+                if payload.get('claimAt') != claim.get('at'):
+                    return _stand_stale_response(row, state,
+                        'Перевод уже взял другой сотрудник — проверьте состояние и повторите')
+                takeover = True
+                targets = wallet_policy.initiate_targets(initiators, wallet.owner_can_alone, None)
+                if to_role not in targets:
+                    return jsonify(success=False, error='Эта роль не заводит перевод с кошелька'), 409
+            else:
+                current = _stand_initiate_role(wallet, main)
+                if to_role == current:
+                    return jsonify(success=True, version=row.version, data=_stand_strip_files(state),
+                                   handoff=main.get('transferHandoff'))
+                if to_role not in wallet_policy.initiate_targets(initiators, wallet.owner_can_alone, current):
+                    return jsonify(success=False, error='Эта роль не заводит перевод с кошелька'), 409
+            if payload.get('version') != row.version:
+                return _stand_stale_response(row, state)
+            code = main.get('code') or main['id']
+            if takeover:
+                previous = dict(claim, takenById=user.id, takenByName=actor_name, takenAt=now_ms,
+                                toRole=to_role)
+                main.setdefault('transferClaimHistory', []).append(previous)
+                main.pop('transferClaim', None)
+                text_log = (f"{actor_name} забрал перевод у {claim.get('byName')} "
+                            f"(взял в {_bkk_hhmm(claim.get('at'))}) и передал {wallet_policy.ROLE_DATIVE[to_role]}")
+                warning = (f"{claim.get('byName')} начал перевод в {_bkk_hhmm(claim.get('at'))}. "
+                           'Если транзакция уже заведена в кошельке, второй раз не заводите.')
+                note_events.append((to_role, f'{code}: {warning}'))
+                note_events.append((claim.get('role'), f'{code}: перевод передан {wallet_policy.ROLE_DATIVE[to_role]}'))
+                event_key = 'takeover'
+            else:
+                text_log = f"{actor_name} передал перевод {wallet_policy.ROLE_DATIVE[to_role]}"
+                note_events.append((to_role, f'{code}: заведите перевод'))
+                event_key = 'initiate'
+            main['transferHandoff'] = {'role': to_role, 'byId': user.id, 'byName': actor_name,
+                                       'byRole': actor, 'at': now_ms, 'takeover': takeover}
+        main['assigneeAdminId'] = None
+        main.setdefault('log', []).append({'at': now_ms, 'role': actor, 'by': user.id, 'text': text_log})
+        for index, (role, note) in enumerate(note_events):
+            _stand_note(state, f'stand:handoff:{event_key}:{main["id"]}:{row.version}:{index}',
+                        role, dict(main, assigneeAdminId=None), note)
+        old_version = row.version or 0
+        if not _stand_commit_cas(db, row, state, old_version, actor_name):
+            db.rollback()
+            return jsonify(success=False, error='Доска изменилась — обновите её'), 409
+        db.commit()
+        _stand_deliver_notes()
+        return jsonify(success=True, version=old_version + 1, data=_stand_strip_files(state),
+                       handoff=main.get('signHandoff') if step == 's24' else main.get('transferHandoff'))
+    finally:
+        db.close()
+
+
+@app.route('/api/stand/transfer/confirm', methods=['POST'])
+def stand_transfer_confirm():
+    if not STAND_MODE:
+        return jsonify(success=False, error='stand_only'), 404
+    payload, actor, actor_id, deal_id, failure = _stand_transfer_request()
+    if failure:
+        return failure
+    db = get_session()
+    try:
+        if engine.dialect.name == 'sqlite':
+            db.execute(text('BEGIN IMMEDIATE'))
+        row = _stand_row(db, lock=True)
+        state = json.loads(row.data or '{}')
+        main = _stand_batch_main(state, deal_id)
+        policy, error, status = _stand_policy_state_problem(db, state, main, 's24')
+        if error:
+            if status == 409 and 'прежний порядок' in error:
+                error = 'Для этого кошелька действует прежний порядок подписи'
+            return jsonify(success=False, error=error), status
         claim = main.get('transferClaim') or {}
         if not claim or claim.get('fingerprint') != policy['fingerprint']:
             return jsonify(success=False, error='Отправка не взята или поручение изменилось'), 409
-        if claim.get('byId') == actor_id:
+        if (claim.get('byId') == actor_id or (actor and claim.get('role') == actor)
+                or actor_id in {c.get('byId') for c in _stand_policy_round_claims(main, policy['fingerprint'])}):
             return jsonify(success=False, error='Нельзя подтвердить собственную отправку'), 403
         user = db.query(AdminUser).filter_by(id=actor_id).first()
-        if (not user or user.login_disabled or user.role != actor or
-                actor not in _stand_policy_roles(policy['wallet'], 'confirmer_roles')):
+        if not user or user.login_disabled or user.role != actor:
             return jsonify(success=False, error='Эта роль не подтверждает перевод'), 403
+        sign_role = _stand_sign_role(policy['wallet'], main)
+        if actor != sign_role:
+            return jsonify(success=False, error='Сейчас подпись у роли: ' +
+                           wallet_policy.ROLE_NAME.get(sign_role, str(sign_role))), 403
+        if main.get('transferAlarm'):
+            return jsonify(success=False, error=_stand_transfer_locked(main)), 409
         if payload.get('version') != row.version:
-            return jsonify(success=False, error='Доска изменилась — обновите её', version=row.version,
-                           data=_stand_strip_files(state)), 409
+            return _stand_stale_response(row, state)
         existing = main.get('transferConfirmation')
         if existing and existing.get('byId') != actor_id:
             return jsonify(success=False, error='Перевод уже подтвердил другой сотрудник'), 409
-        confirmation = existing or {'byId': user.id, 'byName': user.display_name or user.username,
+        confirmation = existing or {'byId': user.id, 'byName': _stand_user_name(user),
             'role': actor, 'at': int(time.time() * 1000),
             'claimFingerprint': claim['fingerprint'], 'ownerAlone': False}
         main['transferConfirmation'] = confirmation
@@ -7026,6 +7238,186 @@ def stand_transfer_confirm():
         db.commit()
         return jsonify(success=True, version=row.version, data=_stand_strip_files(state),
                        confirmation=confirmation)
+    finally:
+        db.close()
+
+
+@app.route('/api/stand/transfer/alarm/clear', methods=['POST'])
+def stand_transfer_alarm_clear():
+    """Админ или владелец снимает тревогу «найдено два перевода»; запись в журнал."""
+    if not STAND_MODE:
+        return jsonify(success=False, error='stand_only'), 404
+    payload, actor, actor_id, deal_id, failure = _stand_transfer_request()
+    if failure:
+        return failure
+    if actor not in ('admin', 'teodor'):
+        return jsonify(success=False, error='Тревогу снимает владелец или админ'), 403
+    db = get_session()
+    try:
+        if engine.dialect.name == 'sqlite':
+            db.execute(text('BEGIN IMMEDIATE'))
+        row = _stand_row(db, lock=True)
+        state = json.loads(row.data or '{}')
+        main = _stand_batch_main(state, deal_id)
+        alarm = (main or {}).get('transferAlarm')
+        if not alarm:
+            return jsonify(success=False, error='Тревоги нет'), 409
+        if payload.get('version') != row.version:
+            return _stand_stale_response(row, state)
+        user = db.query(AdminUser).filter_by(id=actor_id).first()
+        if not user or user.login_disabled or user.role != actor:
+            return jsonify(success=False, error='Нет доступа'), 403
+        now_ms = int(time.time() * 1000)
+        main['transferAlarmCleared'] = {'hashes': alarm.get('hashes') or [], 'byId': user.id,
+                                         'byName': _stand_user_name(user), 'at': now_ms}
+        main.pop('transferAlarm', None)
+        main.setdefault('log', []).append({'at': now_ms, 'role': actor, 'by': user.id,
+            'text': f"{_stand_user_name(user)} снял тревогу: переводы проверены, возврат учтён"})
+        old_version = row.version or 0
+        if not _stand_commit_cas(db, row, state, old_version, _stand_user_name(user)):
+            db.rollback()
+            return jsonify(success=False, error='Доска изменилась — обновите её'), 409
+        db.commit()
+        return jsonify(success=True, version=old_version + 1, data=_stand_strip_files(state))
+    finally:
+        db.close()
+
+
+@app.route('/api/stand/transfer/mark-sent', methods=['POST'])
+def stand_transfer_mark_sent():
+    """«Деньги отправлены»: операционист/админ закрывает отправку за исполнителя.
+
+    Единственное исключение из правила «хеш пишет только держатель claim». Закрывает шаг
+    только проверенный перевод: кошелёк политики -> получатель и сумма поручения, Success,
+    не раньше начала раунда, хеш не занят другой операцией. Ручного закрытия без перевода нет."""
+    if not STAND_MODE:
+        return jsonify(success=False, error='stand_only'), 404
+    payload, actor, actor_id, deal_id, failure = _stand_transfer_request()
+    if failure:
+        return failure
+    if actor not in TRANSFER_HANDOFF_ROLES:
+        return jsonify(success=False, error='Отметить отправку может операционист или админ'), 403
+    tx_hash = str(payload.get('hash') or '').strip().lower()
+    db = get_session()
+    try:
+        row = _stand_row(db)
+        state = json.loads(row.data or '{}')
+        main = _stand_batch_main(state, deal_id)
+        if (main and main.get('serverTransferComplete') and tx_hash and any(
+                str(s.get('hash') or s.get('ref') or '').lower() == tx_hash
+                for d in _stand_members(state, main['id']) for s in (d.get('transfer') or {}).get('sends') or [])):
+            return jsonify(success=True, version=row.version, data=_stand_strip_files(state))   # повтор: уже закрыто
+        if not main or main.get('step') not in ('s23', 's24'):
+            return jsonify(success=False, error='Отметить отправку можно на шаге отправки или подписи'), 409
+        policy, error, status = _stand_policy_state_problem(db, state, main, main['step'])
+        if error:
+            return jsonify(success=False, error=error), status
+        user = db.query(AdminUser).filter_by(id=actor_id).first()
+        if not user or user.login_disabled or user.role != actor:
+            return jsonify(success=False, error='Нет доступа'), 403
+        if main.get('transferAlarm'):
+            return jsonify(success=False, error=_stand_transfer_locked(main)), 409
+        if main.get('serverTransferComplete'):
+            return jsonify(success=True, version=row.version, data=_stand_strip_files(state))
+        if payload.get('version') != row.version:
+            return _stand_stale_response(row, state)
+        if not tx_hash:
+            tx_hash = next(iter((main.get('transferFound') or {}).get('hashes') or []), '')
+        if not re.fullmatch(r'[0-9a-f]{64}', tx_hash):
+            return jsonify(success=False, error='Нужен полный хеш перевода из 64 символов'), 400
+        fingerprint, wallet_address = policy['fingerprint'], policy['address']
+        orders = [o for o in policy['orders'] if normalize_network(o.get('net')) == 'trc20' and o.get('to')]
+        members = {d['id']: d for d in _stand_members(state, main['id'])}
+        used = {str(h).lower() for h in get_used_transaction_hashes(db) if h}
+        elsewhere = {str(s.get('hash') or s.get('ref') or '').lower()
+                     for d in state.get('deals') or [] if d.get('id') not in members
+                     for s in (d.get('transfer') or {}).get('sends') or []}
+        round_claims = _stand_policy_round_claims(main, fingerprint)
+        lower = min((c['at'] for c in round_claims), default=None)
+        if lower is None:
+            lower = main.get('stepEnteredAt') or 0     # ограничение: у старых досок отметки входа в s23 нет
+        claim = main.get('transferClaim') or {}
+        if claim.get('byId') == actor_id:
+            executor = None
+        elif claim:
+            executor = claim.get('byName') or 'исполнитель'
+        else:
+            assignee = db.query(AdminUser).filter_by(id=main.get('assigneeAdminId')).first() \
+                if main.get('assigneeAdminId') else None
+            executor = _stand_user_name(assignee) if assignee else \
+                wallet_policy.ROLE_GENITIVE.get(_stand_current_step_role(state, main), 'исполнителя')
+    finally:
+        db.close()
+    # Сеть опрашиваем вне блокировки; ниже всё перепроверяется под блокировкой.
+    if tx_hash in elsewhere or (tx_hash in used and not any(
+            str(s.get('hash') or s.get('ref') or '').lower() == tx_hash
+            for d in members.values() for s in (d.get('transfer') or {}).get('sends') or [])):
+        return jsonify(success=False, error='Этот хеш уже использован в другой операции'), 409
+    chosen, reasons = None, []
+    for order in orders:
+        send_list = (members[order['dealId']].get('transfer') or {}).get('sends') or []
+        if any(s.get('status') == 'confirmed' for s in send_list) and not any(
+                str(s.get('hash') or s.get('ref') or '').lower() == tx_hash for s in send_list):
+            continue            # поручение уже закрыто другим переводом
+        proof = verify_transfer(tx_hash, 'trc20', wallet_address, order['to'], float(Decimal(order['amount'])))
+        if proof.get('status') == 'confirmed':
+            chosen = (order, proof)
+            break
+        reasons.append(proof.get('checkError') or {'pending': 'перевод ещё не подтверждён сетью',
+                                                  'failed': 'перевод завершился с ошибкой'}.get(proof.get('status'), 'перевод не найден'))
+    if not chosen:
+        return jsonify(success=False, error='Перевод не подходит: ' + (reasons[0] if reasons else 'нет поручения для проверки')), 409
+    order, proof = chosen
+    if not proof.get('timestampMs'):
+        return jsonify(success=False, error='Сеть не вернула время перевода — отметить нельзя'), 409
+    if proof['timestampMs'] < lower:
+        return jsonify(success=False, error='Перевод сделан раньше начала отправки'), 409
+    db = get_session()
+    try:
+        if engine.dialect.name == 'sqlite':
+            db.execute(text('BEGIN IMMEDIATE'))
+        row = _stand_row(db, lock=True)
+        state = json.loads(row.data or '{}')
+        before_state = json.loads(row.data or '{}')
+        main = _stand_batch_main(state, deal_id)
+        if not main or main.get('step') not in ('s23', 's24') or main.get('transferAlarm'):
+            return jsonify(success=False, error='Состояние сделки изменилось — обновите доску'), 409
+        try:
+            policy = _stand_transfer_policy(db, state, main)
+        except ValueError as exc:
+            return jsonify(success=False, error=str(exc)), 409
+        if not policy or policy['fingerprint'] != fingerprint:
+            return jsonify(success=False, error='Поручение изменилось — обновите доску'), 409
+        user = db.query(AdminUser).filter_by(id=actor_id).first()
+        member = next((d for d in _stand_members(state, main['id']) if d['id'] == order['dealId']), None)
+        sends = member.setdefault('transfer', {}).setdefault('sends', [])
+        present = next((s for s in sends if str(s.get('hash') or s.get('ref') or '').lower() == tx_hash), None)
+        now_ms = int(time.time() * 1000)
+        name = _stand_user_name(user)
+        if present is None:
+            elsewhere = {str(s.get('hash') or s.get('ref') or '').lower()
+                         for d in state.get('deals') or [] if d.get('id') != member['id']
+                         for s in (d.get('transfer') or {}).get('sends') or []}
+            used = {str(h).lower() for h in get_used_transaction_hashes(db) if h}
+            if tx_hash in elsewhere or tx_hash in used:
+                return jsonify(success=False, error='Этот хеш уже использован в другой операции'), 409
+            send = dict(ref=tx_hash, hash=tx_hash, net='TRC-20', amount=float(Decimal(order['amount'])),
+                        markedBy={'kind': 'operator', 'byId': user.id, 'byName': name,
+                                  'forName': executor})
+            send.update(proof)
+            sends.append(send)
+            main.setdefault('log', []).append({'at': now_ms, 'role': actor, 'by': user.id,
+                'text': (f'Отправку отметил {name} за {executor}: {tx_hash}' if executor
+                         else f'{name} отметил отправку: {tx_hash}')})
+        _stand_settle_verified(state, _stand_members(state, main['id']))
+        _stand_state_events(before_state, state, 'отметка отправки', (row.version or 0) + 1)
+        old_version = row.version or 0
+        if not _stand_commit_cas(db, row, state, old_version, name):
+            db.rollback()
+            return jsonify(success=False, error='Доска изменилась — повторите'), 409
+        db.commit()
+        _stand_deliver_notes()
+        return jsonify(success=True, version=old_version + 1, data=_stand_strip_files(state))
     finally:
         db.close()
 
@@ -8058,13 +8450,10 @@ def _stand_close_policy_approval(db, state, stand_deal, crm_data):
     claim = main.get('transferClaim') or {}
     confirmation = main.get('transferConfirmation') or {}
     approval = main.get('transferOwnerApproval') or {}
+    # Решение Карима 28.10: проверенный в сети перевод мультисига = подписано;
+    # отдельная отметка подписанта для закрытия в CRM не нужна.
     if (not _stand_policy_approval_valid(main, policy) or
-            claim.get('fingerprint') != policy['fingerprint'] or
-            confirmation.get('claimFingerprint') != claim.get('fingerprint') or
-            not claim.get('byId') or not confirmation.get('byId') or
-            (claim.get('byId') == confirmation.get('byId') and
-             not (confirmation.get('ownerAlone') and policy['wallet'].owner_can_alone and
-                  claim.get('role') == 'teodor')) or
+            (claim and claim.get('fingerprint') != policy['fingerprint']) or
             not main.get('serverTransferComplete') or
             not stand_deal.get('serverTransferComplete') or
             not _stand_send_complete(stand_deal)):
@@ -8728,9 +9117,9 @@ def _stand_transfer_policy(db, state, main):
     wallet = db.query(Wallet).filter_by(id=registry_id).first()
     if source_addr in POLICY_WALLET_ADDRESSES and (not wallet or wallet.address != source_addr):
         raise ValueError('Адрес кошелька с политикой не совпадает с записью реестра')
-    if not wallet or wallet.address not in POLICY_WALLET_ADDRESSES:
+    if not _wallet_policy_ready(wallet):
         return None
-    if not wallet.active or wallet.purpose not in ('realty', 'exchange'):
+    if not wallet.active:
         raise ValueError('Кошелёк отправки недоступен')
     if mirror.get('addr') != wallet.address:
         raise ValueError('Адрес кошелька отправки не совпадает с реестром')
@@ -8760,7 +9149,14 @@ def _stand_transfer_policy(db, state, main):
     fingerprint = hashlib.sha256(json.dumps(snapshot, sort_keys=True, ensure_ascii=False,
                                             separators=(',', ':')).encode()).hexdigest()
     return {'wallet': wallet, 'walletId': wallet.id, 'address': wallet.address,
-            'amount': total, 'fingerprint': fingerprint, 'members': members}
+            'amount': total, 'fingerprint': fingerprint, 'members': members,
+            'orders': orders}
+
+
+def _wallet_policy_ready(wallet):
+    """Политика задачника действует для любого кошелька с заданными
+    «Заводит» и «Подписывает», а не только для адресов из сида."""
+    return bool(wallet and wallet_policy.policy_ready(wallet.initiator_roles, wallet.confirmer_roles))
 
 
 def _stand_policy_roles(wallet, field):
@@ -8776,6 +9172,98 @@ def _stand_policy_approval_valid(main, policy):
     return bool(approval.get('byId') and approval.get('fingerprint') == policy['fingerprint']
                 and approval.get('walletId') == policy['walletId']
                 and approval.get('amount') == _stand_policy_amount_text(policy['amount']))
+
+
+def _bkk_hhmm(ms):
+    """HH:MM по Бангкоку (как остальное время задачника) из миллисекунд."""
+    try:
+        return (datetime.utcfromtimestamp(int(ms) / 1000) + timedelta(hours=7)).strftime('%H:%M')
+    except (TypeError, ValueError, OverflowError, OSError):
+        return '—'
+
+
+def _stand_user_name(user):
+    return (user.display_name or user.username) if user else 'сотрудник'
+
+
+def _stand_policy_wallet_quiet(state, main):
+    """Реестровый кошелёк с политикой для пачки или None. Не бросает исключений:
+    нужен там, где роль шага вычисляют без БД-сессии вызывающего."""
+    if not main:
+        return None
+    try:
+        wallet_id = int(stand_prepay.wallet_id(state, main))
+    except (TypeError, ValueError):
+        return None
+    wallet = get_session().query(Wallet).filter_by(id=wallet_id).first()
+    return wallet if wallet and wallet.active and _wallet_policy_ready(wallet) else None
+
+
+def _stand_initiate_role(wallet, main):
+    """Кому сейчас принадлежит задача «завести перевод» (до claim)."""
+    initiators = wallet_policy.parse_roles(wallet.initiator_roles)
+    handoff = main.get('transferHandoff') or {}
+    allowed = wallet_policy.initiate_targets(initiators, wallet.owner_can_alone, None)
+    if handoff.get('role') in allowed:
+        return handoff['role']
+    return wallet_policy.initial_role(initiators)
+
+
+def _stand_sign_role(wallet, main):
+    """Роль, которая сейчас подписывает перевод (после claim). None — некому."""
+    claim = main.get('transferClaim') or {}
+    if not claim.get('role'):
+        return None
+    handoff = main.get('signHandoff') or {}
+    confirmers = wallet_policy.parse_roles(wallet.confirmer_roles)
+    if (handoff.get('claimFingerprint') == claim.get('fingerprint')
+            and handoff.get('role') in confirmers and handoff['role'] != claim['role']):
+        return handoff['role']
+    return wallet_policy.default_sign_role(confirmers, claim['role'])
+
+
+def _stand_policy_round_claims(main, fingerprint):
+    """Все claim текущего раунда: снятые (с тем же отпечатком) и действующий."""
+    items = [dict(c) for c in main.get('transferClaimHistory') or []
+             if c.get('fingerprint') == fingerprint]
+    claim = main.get('transferClaim')
+    if claim and claim.get('fingerprint') == fingerprint:
+        items.append(dict(claim))
+    return items
+
+
+def _stand_transfer_locked(main):
+    """Перевод уже найден в сети или стоит тревога — действия отправки закрыты."""
+    if main.get('transferAlarm'):
+        return 'Найдено два перевода — действия отправки заблокированы до решения владельца'
+    if main.get('transferFound'):
+        return 'Перевод уже найден в сети'
+    return None
+
+
+def _stand_policy_state_problem(db, state, main, step):
+    """Общая проверка для claim/handoff/confirm: (policy, ошибка, статус)."""
+    if not main or main.get('step') != step:
+        return None, 'Шаг отправки недоступен' if step == 's23' else 'Шаг подтверждения недоступен', 409
+    try:
+        policy = _stand_transfer_policy(db, state, main)
+    except ValueError as exc:
+        return None, str(exc), 409
+    if not policy:
+        return None, 'Для этого кошелька действует прежний порядок отправки', 409
+    return policy, None, None
+
+
+def _stand_commit_cas(db, row, state, old_version, updated_by):
+    """Условная запись состояния: True, если версия не успела измениться."""
+    won = db.query(StandState).filter(StandState.id == row.id,
+              StandState.version == old_version).update({
+        StandState.data: json.dumps(state, ensure_ascii=False),
+        StandState.version: old_version + 1,
+        StandState.updated_by: updated_by,
+        StandState.updated_at: datetime.utcnow()}, synchronize_session=False)
+    return won == 1
+
 
 
 def _stand_note(state, event_id, role, deal, text):
@@ -10169,6 +10657,20 @@ def _stand_current_step_role(state, deal):
         return 'operator' if not _stand_payto_problem(deal) and _stand_payto_confirmed(deal) else 'manager'
     if step == 's23' and (deal.get('outgoingReview') or {}).get('requestedAt'):
         return 'operator'
+    if step in ('s23', 's24'):
+        # Кошелёк с политикой: s23 — у инициатора (передача менеджером или первая роль
+        # «Заводит»), s24 — у назначенного подписанта.
+        try:
+            main = _stand_batch_main(state, deal.get('id')) or deal
+            wallet = _stand_policy_wallet_quiet(state, main)
+        except (TypeError, ValueError, KeyError, AttributeError):
+            # Испорченная пачка: шаг считается по прежним правилам, а не падает.
+            main, wallet = deal, None
+        if wallet:
+            if step == 's23':
+                claim_role = (main.get('transferClaim') or {}).get('role')
+                return claim_role or _stand_initiate_role(wallet, main)
+            return _stand_sign_role(wallet, main) or _STAND_STEP_ROLE.get(step)
     if step == 's23' and (deal.get('transferClaim') or {}).get('role'):
         return deal['transferClaim']['role']
     if step != 's23':
@@ -10967,6 +11469,7 @@ def _stand_state_events(previous, state, actor, version):
             # роль — та же actor, что в остальном журнале, не псевдо-«system».
             deal.setdefault('log', []).append({'at': int(time.time()*1000), 'role': actor,
                 'text': 'Шаг передан дальше'})
+            deal['stepEnteredAt'] = int(time.time() * 1000)
         if before.get('reqTask') != deal.get('reqTask'):
             if deal.get('reqTask') == 'open':
                 events.append(('manager', 'Задача: заполнить реквизиты для оплаты'))
@@ -10980,13 +11483,23 @@ def _stand_state_events(previous, state, actor, version):
             _stand_note(state, f'stand:state:{version}:{deal["id"]}:{index}', role, deal, text)
 
 
+# Поля передачи, подписи и поиска в сети пишет только сервер; общий PUT их не меняет.
+_STAND_TRANSFER_SERVER_FIELDS = (
+    'transferClaim', 'transferConfirmation', 'transferOwnerApproval',
+    'transferHandoff', 'signHandoff', 'transferClaimHistory',
+    'transferFound', 'transferAlarm', 'transferAlarmCleared', 'transferClosedKeys',
+    'stepEnteredAt',
+)
+
+
 def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=None,
                             allow_crm_close=False, manual_close_deal_id=None,
                             receipt_upload=False):
     from stand_workflow import rerate_attempt, rerate_problem
     if db is not None:
         protected_wallets = {w.id: w for w in db.query(Wallet).filter(
-            Wallet.address.in_(POLICY_WALLET_ADDRESSES)).all()}
+            (Wallet.address.in_(POLICY_WALLET_ADDRESSES)) | (Wallet.initiator_roles.isnot(None))).all()
+            if w.address in POLICY_WALLET_ADDRESSES or _wallet_policy_ready(w)}
         by_address = {w.address: w for w in protected_wallets.values()}
         protected_before = {str(mirror.get('id')): mirror.get('addr')
                             for mirror in previous.get('wallets') or []
@@ -11010,6 +11523,7 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
             # The board mirror is presentation data. Registry policy is authoritative;
             # stale browser metadata cannot edit or disable signing rules.
             mirror['purpose'] = registry.purpose
+            mirror['multisig'] = bool(registry.is_multisig)
             mirror['limit_usd'] = registry.limit_usd
             mirror['initiator_roles'] = _stand_policy_roles(registry, 'initiator_roles')
             mirror['confirmer_roles'] = _stand_policy_roles(registry, 'confirmer_roles')
@@ -11095,11 +11609,14 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
                             'Проведите сделку через Карима.')
     for deal in new_state.get('deals') or []:
         before = old.get(deal.get('id')) or {}
-        if any(before.get(field) != deal.get(field) for field in
-               ('transferClaim', 'transferConfirmation', 'transferOwnerApproval')):
+        if any(before.get(field) != deal.get(field) for field in _STAND_TRANSFER_SERVER_FIELDS):
             return 'Подписи и одобрение отправки фиксирует только сервер'
         old_main = _stand_batch_main(previous, before.get('id')) if before else None
         batch_claim = (old_main or {}).get('transferClaim')
+        if (old_main and old_main.get('transferAlarm') and old_main.get('step') == 's23'
+                and ((before.get('transfer') or {}).get('sends') != (deal.get('transfer') or {}).get('sends')
+                     or deal.get('step') != before.get('step'))):
+            return _stand_transfer_locked(old_main)
         manual_policy_close = allow_crm_close and deal.get('id') == manual_close_deal_id
         if (not manual_policy_close and db is not None and old_main
                 and old_main.get('step') == 's23' and not batch_claim):
@@ -11933,6 +12450,87 @@ def _stand_settle_prepay(state, deal):
     return False
 
 
+def _stand_signer_roles(wallet, signers):
+    """Адреса подписавших из ответа сети → (имена ролей, неизвестные адреса, множество ролей)."""
+    try:
+        known = json.loads(wallet.signer_addresses or '{}')
+    except (TypeError, ValueError):
+        known = {}
+    by_address = {address: role for role, address in known.items() if isinstance(address, str)}
+    roles, unknown = [], []
+    for address in signers:
+        role = by_address.get(address)
+        if role:
+            if role not in roles:
+                roles.append(role)
+        elif address not in unknown:
+            unknown.append(address)
+    roles.sort(key=lambda r: wallet_policy.POLICY_ROLES.index(r) if r in wallet_policy.POLICY_ROLES else 99)
+    return roles, unknown
+
+
+def _stand_policy_closed_event(state, main, policy, outgoing):
+    """Закрытие отправки с кошелька политики: проверенный перевод = подписан и отправлен.
+
+    Одна запись в журнал и одно уведомление на событие (ключ: сделка + первый хеш);
+    повторный вызов — гонка поллера и «Деньги отправлены» или повторный опрос — ничего не добавляет."""
+    sends = [s for d in outgoing for s in (d.get('transfer') or {}).get('sends') or []
+             if s.get('status') == 'confirmed']
+    if not sends:
+        return
+    hashes = [normalize_ref(s.get('hash') or s.get('ref'), normalize_network(s.get('net') or 'TRC-20'))
+              for s in sends]
+    key = f"stand:sent-closed:{main['id']}:{(hashes[0] or '')[:16]}"
+    keys = main.setdefault('transferClosedKeys', [])
+    if key in keys:
+        return
+    keys.append(key)
+    wallet = policy['wallet']
+    now_ms = int(time.time() * 1000)
+    addresses = []
+    for s in sends:
+        for address in s.get('signers') or []:
+            if address not in addresses:
+                addresses.append(address)
+    roles, unknown = _stand_signer_roles(wallet, addresses)
+    if addresses:
+        names = [wallet_policy.ROLE_NAME.get(r, r) for r in roles] + [f'неизвестный адрес {a}' for a in unknown]
+        signed = ', '.join(names)
+        log_text = f'Подписали в сети: {signed}'
+    else:
+        signed = 'подписано в сети'
+        log_text = 'Подписано в сети'
+    log = main.setdefault('log', [])
+    log.append({'at': now_ms, 'role': 'system', 'text': log_text})
+    weights = wallet_policy.normalize_weights(wallet.signer_weights)
+    if addresses and weights and not wallet_policy.can_complete(weights, wallet.threshold, roles):
+        log.append({'at': now_ms, 'role': 'system',
+                    'text': 'Предупреждение: известные подписанты не набирают порог кошелька '
+                            f'({wallet.threshold}); деньги не блокируются, перевод принят сетью'})
+    marker = next((s.get('markedBy') for s in sends if s.get('markedBy')), None) or {}
+    claim = main.get('transferClaim') or {}
+    if marker.get('kind') == 'poller':
+        marked = 'найден поиском в сети'
+    elif marker.get('byName'):
+        marked = marker['byName'] + (f" за {marker['forName']}" if marker.get('forName') else '')
+    else:
+        marked = claim.get('byName') or 'исполнитель'
+    amount = sum(float(s.get('verifiedAmount') or 0) for s in sends)
+    amount_text = f'{amount:,.2f}'.replace(',', ' ').replace('.', ',')
+    code = main.get('code') or main['id']
+    text = (f"{code} · {main.get('client') or '—'}: отправка закрыта — {amount_text} USDT с "
+            f"«{wallet.label or wallet.address}», хеш {', '.join(h for h in hashes if h)}. "
+            f"Подписали: {signed}. Отметил: {marked}.")
+    roles_to_notify = {'manager', 'teodor'} | {c.get('role') for c in _stand_policy_round_claims(main, policy['fingerprint'])
+                                               if c.get('role')}
+    sign_role = _stand_sign_role(wallet, main)
+    if sign_role:
+        roles_to_notify.add(sign_role)
+    for role in sorted(roles_to_notify):
+        _stand_note(state, f'{key}:{role}', role, main, text)
+    _stand_tg_send(text)
+
+
 def _stand_settle_verified(state, members):
     """Закрыть каждый возврат; задача Coins ждёт подтверждения всей пачки."""
     if not stand_demo.enabled() and any(d.get('demoTransfers') and stand_demo.evidence(state, d) for d in members):
@@ -11947,17 +12545,14 @@ def _stand_settle_verified(state, members):
     except ValueError:
         return False
     if policy:
+        # Решение Карима 28.10: мультисиг публикует перевод в сети только после всех
+        # нужных подписей, поэтому проверенный перевод (Success, кошелёк политики,
+        # получатель и сумма поручения) сам закрывает s23/s24. Ручная отметка второго
+        # подписанта завершения не даёт.
         claim = policy_main.get('transferClaim') or {}
-        confirmation = policy_main.get('transferConfirmation') or {}
-        if (claim.get('fingerprint') != policy['fingerprint'] or
-                confirmation.get('claimFingerprint') != claim.get('fingerprint') or
-                not claim.get('byId') or not confirmation.get('byId')):
+        if claim and claim.get('fingerprint') != policy['fingerprint']:
             return False
-        if confirmation.get('ownerAlone'):
-            if (claim.get('byId') != confirmation.get('byId') or
-                    claim.get('role') != 'teodor' or not policy['wallet'].owner_can_alone):
-                return False
-        elif claim.get('byId') == confirmation.get('byId'):
+        if policy_main.get('transferAlarm'):
             return False
     changed = False
     for deal in members:
@@ -12083,6 +12678,8 @@ def _stand_settle_verified(state, members):
                 main.update(step='done', closed=True, closeReason='Успешно завершена',
                             closedAt=stand_now().strftime('%d.%m, %H:%M'), serverSettled=True)
             main['serverTransferComplete'] = True
+            if policy:
+                _stand_policy_closed_event(state, main, policy, outgoing)
             if main.get('outgoingReview'):
                 main.setdefault('log', []).append({'at': int(time.time()*1000), 'role': 'system',
                     'text': 'Проверка отправки завершена: переводы подтверждены, сумма совпала с заявкой'
@@ -12142,6 +12739,8 @@ def _stand_personal_send(state, deal):
     main = _stand_batch_main(state, deal.get('id'))
     if not main or main.get('step') != 's23' or main.get('serverTransferComplete'):
         return False
+    if _stand_policy_wallet_quiet(state, main):
+        return False       # кошелёк с политикой всегда идёт через claim, а не личной отправкой
     wallet = stand_prepay.wallet(state, main)
     return bool(wallet and not wallet.get('multisig', True))
 
@@ -12552,10 +13151,217 @@ def stand_outgoing_review_action():
     return jsonify(result), (result or {}).get('httpStatus', 200)
 
 
+def _stand_policy_group_orders(policy):
+    """Поручения пачки, сгруппированные по (получатель, сумма): одинаковые поручения
+    ждут столько же одинаковых переводов."""
+    groups = {}
+    for order in policy['orders']:
+        if normalize_network(order.get('net')) != 'trc20' or not order.get('to'):
+            continue
+        groups.setdefault((order['to'], order['amount']), []).append(order)
+    return groups
+
+
+def _stand_track_policy_outgoing(deal_id=None, *, cache_ttl=0):
+    """Поиск исходящих переводов с кошелька с политикой, пока на s23 есть claim.
+
+    Ищем в сети теми же средствами, что и обычную проверку отправки
+    (`discover_transfers` + `verify_transfer`). Совпадение — перевод С адреса
+    кошелька НА адрес поручения РОВНО на сумму поручения, не раньше самого
+    раннего claim раунда. Один перевод на поручение привязываем как хеш инициатора;
+    два и больше — тревога без привязки. Повторный опрос ничего не дублирует.
+    """
+    from stand_transfer_discovery import discover_transfers
+    db = get_session()
+    try:
+        row = _stand_row(db)
+        snapshot = json.loads(row.data or '{}')
+        wanted = {d['id'] for d in _stand_members(snapshot, deal_id)} if deal_id is not None else None
+        jobs = []
+        for deal in snapshot.get('deals') or []:
+            if deal.get('step') != 's23' or deal.get('closed'):
+                continue
+            main = _stand_batch_main(snapshot, deal['id'])
+            if not main or main.get('id') != deal.get('id'):
+                continue
+            if wanted is not None and main['id'] not in wanted:
+                continue
+            if main.get('transferFound') or main.get('transferAlarm') or main.get('demoTransfers'):
+                continue
+            try:
+                policy = _stand_transfer_policy(db, snapshot, main)
+            except ValueError:
+                continue
+            if not policy:
+                continue
+            claims = _stand_policy_round_claims(main, policy['fingerprint'])
+            if not claims:
+                continue
+            jobs.append((main['id'], policy, min(c['at'] for c in claims)))
+        used = {str(h).lower() for h in get_used_transaction_hashes(db) if h} if jobs else set()
+    finally:
+        db.close()
+    if not jobs:
+        return
+    results = []
+    for main_id, policy, after_ts in jobs:
+        sender = policy['address']
+        own = {str(s.get('hash') or s.get('ref') or '').lower()
+               for member in policy['members'] for s in (member.get('transfer') or {}).get('sends') or []}
+        groups = {}
+        complete = True
+        for (to, amount), orders in _stand_policy_group_orders(policy).items():
+            try:
+                found = discover_transfers(direction='outgoing', wallet_addr=sender,
+                    counterparty_addr=to, expected_amount=Decimal(amount), tolerance=Decimal(0),
+                    after_ts=after_ts, collect_outgoing=True, cache_ttl=cache_ttl)
+            except (ValueError, TypeError, ArithmeticError):
+                complete = False
+                continue
+            if found['status'] != 'complete':
+                complete = False
+                continue
+            matches = sorted((tx for tx in found['candidates']
+                              if tx['to'] == to and tx['amount'] == Decimal(amount)
+                              and tx['timestamp_ms'] >= after_ts
+                              and (tx['hash'] in own or tx['hash'].lower() not in used)),
+                             key=lambda tx: (tx['timestamp_ms'], tx['hash']))
+            groups[(to, amount)] = (orders, matches)
+        proofs = {}
+        for orders, matches in groups.values():
+            if len(matches) > len(orders):
+                continue
+            for tx in matches:
+                proof = verify_transfer(tx['hash'], 'trc20', sender, tx['to'], float(tx['amount']))
+                proofs[tx['hash']] = proof
+        results.append((main_id, policy['fingerprint'], after_ts, groups, proofs, complete))
+    if not results:
+        return
+    notes_pending = False
+    db = get_session()
+    try:
+        if engine.dialect.name == 'sqlite':
+            db.execute(text('BEGIN IMMEDIATE'))
+        row = _stand_row(db, lock=True)
+        state = json.loads(row.data or '{}')
+        used = {str(h).lower() for h in get_used_transaction_hashes(db) if h}
+        changed = False
+        for main_id, fingerprint, after_ts, groups, proofs, complete in results:
+            main = next((d for d in state.get('deals') or [] if d.get('id') == main_id), None)
+            if (not main or main.get('step') != 's23' or main.get('transferFound')
+                    or main.get('transferAlarm')):
+                continue
+            try:
+                policy = _stand_transfer_policy(db, state, main)
+            except ValueError:
+                continue
+            if not policy or policy['fingerprint'] != fingerprint:
+                continue
+            claims = _stand_policy_round_claims(main, fingerprint)
+            if not claims or min(c['at'] for c in claims) != after_ts:
+                continue
+            members = {m['id']: m for m in _stand_members(state, main_id)}
+            elsewhere = {str(s.get('hash') or s.get('ref') or '').lower()
+                         for d in state.get('deals') or [] if d.get('id') not in members
+                         for s in (d.get('transfer') or {}).get('sends') or []}
+            now_ms = int(time.time() * 1000)
+            attach, alarm_hashes = [], []
+            for (to, amount), (orders, matches) in groups.items():
+                matches = [tx for tx in matches if tx['hash'].lower() not in elsewhere
+                           and (tx['hash'].lower() not in used or any(
+                               str(s.get('hash') or s.get('ref') or '').lower() == tx['hash'].lower()
+                               for o in orders for s in (members[o['dealId']].get('transfer') or {}).get('sends') or []))]
+                if len(matches) > len(orders):
+                    alarm_hashes.extend(tx['hash'] for tx in matches)
+                    continue
+                pool = list(matches)
+                for order in orders:
+                    sends = (members[order['dealId']].get('transfer') or {}).get('sends') or []
+                    present = {str(s.get('hash') or s.get('ref') or '').lower() for s in sends}
+                    mine = next((tx for tx in pool if tx['hash'].lower() in present), None)
+                    if mine:
+                        pool.remove(mine)
+                        attach.append((order['dealId'], mine, True))
+                for order in orders:
+                    sends = (members[order['dealId']].get('transfer') or {}).get('sends') or []
+                    if any(a[0] == order['dealId'] for a in attach) or not pool:
+                        continue
+                    attach.append((order['dealId'], pool.pop(0), False))
+            cleared = set((main.get('transferAlarmCleared') or {}).get('hashes') or [])
+            if alarm_hashes and not set(alarm_hashes) <= cleared:
+                hashes = sorted(set(alarm_hashes))
+                main['transferAlarm'] = {'hashes': hashes, 'at': now_ms}
+                main.setdefault('log', []).append({'at': now_ms, 'role': 'system',
+                    'text': 'Найдено два перевода: ' + ', '.join(hashes) + '. Проверьте возврат.'})
+                for role in ('operator', 'teodor'):
+                    _stand_note(state, f"stand:alarm:{main_id}:{hashes[0][:12]}:{role}", role, main,
+                                f"{main.get('code') or main_id}: найдено два перевода. Проверьте возврат.")
+                changed = notes_pending = True
+                continue
+            if alarm_hashes:
+                continue
+            if not attach:
+                continue
+            if all(already for _, _, already in attach) and any(
+                    s.get('markedBy') for m_ in members.values()
+                    for s in (m_.get('transfer') or {}).get('sends') or []):
+                continue      # отметку уже поставил сотрудник: второй записи и уведомления не будет
+            bound = []
+            for member_id, tx, already in attach:
+                member = members[member_id]
+                sends = member.setdefault('transfer', {}).setdefault('sends', [])
+                if not already:
+                    proof = proofs.get(tx['hash']) or {}
+                    send = dict(ref=tx['hash'], hash=tx['hash'], net='TRC-20',
+                                amount=float(tx['amount']), markedBy={'kind': 'poller'})
+                    if proof.get('status') == 'confirmed':
+                        send.update(proof)
+                    else:
+                        send['status'] = 'pending'
+                    sends.append(send)
+                bound.append(tx['hash'])
+            if all(already for _, _, already in attach):
+                # Перевод уже указан инициатором — просто фиксируем, что он найден.
+                pass
+            if not main.get('transferClaim'):
+                previous = (main.get('transferClaimHistory') or [])
+                last = next((c for c in reversed(previous) if c.get('fingerprint') == fingerprint), None)
+                if last:
+                    # Перевод ушёл от прежнего исполнителя: возвращаем ему claim, иначе
+                    # шаг некому завершить (новый исполнитель заблокирован).
+                    main['transferClaim'] = {k: v for k, v in last.items()
+                        if k not in ('takenById', 'takenByName', 'takenAt', 'toRole')}
+                    main['transferClaimHistory'] = [c for c in previous if c is not last and c != last]
+            main['transferFound'] = {'hashes': bound, 'at': now_ms}
+            main['assigneeAdminId'] = (main.get('transferClaim') or {}).get('byId')
+            for hash_value in bound:
+                main.setdefault('log', []).append({'at': now_ms, 'role': 'system',
+                    'text': f'Перевод найден в сети: {hash_value}'})
+            # Уведомление о закрытии отправки — одно на событие: его отправляет
+            # _stand_settle_verified, когда перевод проверен и шаг закрыт.
+            changed = notes_pending = True
+        if changed:
+            row.data = json.dumps(state, ensure_ascii=False)
+            row.version = (row.version or 0) + 1
+            row.updated_by = 'поиск исходящих переводов'
+            row.updated_at = datetime.utcnow()
+            db.commit()
+        else:
+            db.rollback()
+    finally:
+        db.close()
+    if notes_pending:
+        _stand_deliver_notes()
+
+
 def _stand_check_transfers(deal_id=None, *, poll=False):
     """Проверить сеть вне блокировки БД и применить результат к неизменённым отправкам."""
     import stand_outgoing_review as outgoing_review
     _stand_discover_outgoing(deal_id)
+    try:
+        _stand_track_policy_outgoing(deal_id)
+    except Exception:
+        app.logger.exception('stand policy outgoing tracking failed')
     db = get_session()
     try:
         row = _stand_row(db)
@@ -21617,14 +22423,78 @@ def _wallet_registry_fields(data):
 
 
 WALLET_EDIT_ROLES = ('admin', 'operator', 'findir')
-POLICY_WALLET_ADDRESSES = frozenset((
-    'TDuDeRiwrLLN3hnnA57G5yM6ibg58A6wZk',
-    'TA6S3RBEY57jq8fXEVVsU6H9JZ18inenG4',
-))
+# Поля, которые публичный API не меняет вовсе (только сид/миграция).
 POLICY_WALLET_FIELDS = frozenset((
-    'purpose', 'limit_usd', 'initiator_roles', 'confirmer_roles',
-    'owner_can_alone', 'signer_addresses', 'not_for_new_deals',
+    'purpose', 'limit_usd', 'signer_addresses', 'not_for_new_deals',
+    'signer_weights', 'threshold',
 ))
+# «Заводит» / «Подписывает» / «Владелец может отправить сам»: меняет только admin,
+# каждая смена пишется в журнал wallets.policy_log.
+WALLET_ROLE_FIELDS = ('initiator_roles', 'confirmer_roles', 'owner_can_alone')
+_WALLET_ROLE_LABELS = {'initiator_roles': 'Заводит', 'confirmer_roles': 'Подписывает'}
+
+
+def _wallet_policy_snapshot(wallet):
+    return {'initiator_roles': wallet_policy.parse_roles(wallet.initiator_roles),
+            'confirmer_roles': wallet_policy.parse_roles(wallet.confirmer_roles),
+            'owner_can_alone': bool(wallet.owner_can_alone)}
+
+
+def _wallet_role_fields(data, *, creating):
+    """Проверка трёх полей политики из тела запроса.
+
+    Возвращает (значения, ошибка, статус). Менять их может только admin (на стенде);
+    при создании кошелька без полей возвращается пустой dict — кошелёк уйдёт в
+    «только для существующих сделок»."""
+    present = [f for f in WALLET_ROLE_FIELDS if f in data]
+    if not present:
+        return {}, None, None
+    if STAND_MODE and current_role() != 'admin':
+        return None, 'Роли «Заводит» и «Подписывает» меняет только админ', 403
+    out = {}
+    for field in ('initiator_roles', 'confirmer_roles'):
+        if field in data:
+            value, error = wallet_policy.validate_roles(data[field], _WALLET_ROLE_LABELS[field])
+            if error:
+                return None, error, 400
+            out[field] = value
+    if 'owner_can_alone' in data:
+        if type(data['owner_can_alone']) is not bool:
+            return None, 'Поле owner_can_alone должно быть true/false', 400
+        out['owner_can_alone'] = data['owner_can_alone']
+    if creating and set(out) != set(WALLET_ROLE_FIELDS):
+        return None, 'Укажите «Заводит», «Подписывает» и «Владелец может отправить сам»', 400
+    return out, None, None
+
+
+def _wallet_apply_roles(session, wallet, fields):
+    """Записать роли и строку журнала в той же транзакции. True — что-то изменилось."""
+    before = _wallet_policy_snapshot(wallet)
+    if 'initiator_roles' in fields:
+        wallet.initiator_roles = json.dumps(fields['initiator_roles'])
+    if 'confirmer_roles' in fields:
+        wallet.confirmer_roles = json.dumps(fields['confirmer_roles'])
+    if 'owner_can_alone' in fields:
+        wallet.owner_can_alone = fields['owner_can_alone']
+    after = _wallet_policy_snapshot(wallet)
+    if after == before:
+        return False
+    if wallet_policy.policy_ready(after['initiator_roles'], after['confirmer_roles']):
+        # Правила заданы явно: кошелёк можно выбирать в новых сделках.
+        wallet.not_for_new_deals = False
+    uid = flask_session.get('user_id')
+    user = session.query(AdminUser).filter_by(id=uid).first() if uid else None
+    try:
+        journal = json.loads(wallet.policy_log or '[]')
+    except ValueError:
+        journal = []
+    journal.append({'at': datetime.utcnow().isoformat() + 'Z', 'by_id': uid,
+                    'by_name': (user.display_name or user.username) if user else None,
+                    'before': before, 'after': after})
+    wallet.policy_log = json.dumps(journal[-200:], ensure_ascii=False)
+    app.logger.info('wallet_policy_change address=%s by=%s before=%s after=%s',
+                    wallet.address, uid, before, after)
+    return True
 
 
 def _wallet_edit_denied():
@@ -21667,6 +22537,9 @@ def add_wallet():
             return jsonify({'success': False, 'error': 'Адрес обязателен'}), 400
         if set(data) & POLICY_WALLET_FIELDS:
             return jsonify({'success': False, 'error': 'Правила подписи меняются только миграцией'}), 403
+        role_fields, role_error, role_status = _wallet_role_fields(data, creating=True)
+        if role_error:
+            return jsonify({'success': False, 'error': role_error}), role_status
 
         # Адрес-двойник (× вместо x и прочие гомоглифы) чиним здесь, а не только
         # в форме: кошелёк заводят и через API, и кривой адрес потом навсегда
@@ -21697,7 +22570,7 @@ def add_wallet():
             else Wallet.address == address).first()
         if existing:
             if existing.address in POLICY_WALLET_ADDRESSES and (
-                    set(data) & {'is_multisig', 'accepts_payin', 'owner', 'active'}):
+                    (set(data) & {'is_multisig', 'accepts_payin', 'owner', 'active'}) or role_fields):
                 return jsonify({'success': False, 'error': 'Правила служебного кошелька закреплены'}), 403
             # Если уже есть, просто включаем нужный флаг
             if data.get('is_monitored'): existing.is_monitored = True
@@ -21705,6 +22578,8 @@ def add_wallet():
             if data.get('label'): existing.label = data['label']
             for field, value in registry_fields.items():
                 setattr(existing, field, value)
+            if role_fields:
+                _wallet_apply_roles(session, existing, role_fields)
             session.commit()
             invalidate_tronscan_cache()
             return jsonify({'success': True, 'wallet': existing.to_dict()})
@@ -21717,9 +22592,13 @@ def add_wallet():
             is_balance=data.get('is_balance', False),
             is_multisig=registry_fields.get('is_multisig', False),
             accepts_payin=registry_fields.get('accepts_payin', False),
-            owner=registry_fields.get('owner')
+            owner=registry_fields.get('owner'),
+            # Без «Заводит»/«Подписывает» кошелёк нельзя выбрать в новых сделках.
+            not_for_new_deals=not role_fields,
         )
         session.add(wallet)
+        if role_fields:
+            _wallet_apply_roles(session, wallet, role_fields)
         session.commit()
         invalidate_tronscan_cache()
         
@@ -22144,8 +23023,11 @@ def update_wallet(wallet_id):
             return jsonify({'success': False, 'error': 'Кошелёк не найден'}), 404
         if set(data) & POLICY_WALLET_FIELDS:
             return jsonify({'success': False, 'error': 'Правила подписи меняются только миграцией'}), 403
+        role_fields, role_error, role_status = _wallet_role_fields(data, creating=False)
+        if role_error:
+            return jsonify({'success': False, 'error': role_error}), role_status
         if wallet.address in POLICY_WALLET_ADDRESSES and (
-                set(data) & {'is_multisig', 'accepts_payin', 'owner', 'active'}):
+                (set(data) & {'is_multisig', 'accepts_payin', 'owner', 'active'}) or role_fields):
             return jsonify({'success': False, 'error': 'Правила служебного кошелька закреплены'}), 403
 
         if 'label' in data:
@@ -22160,6 +23042,8 @@ def update_wallet(wallet_id):
             return jsonify({'success': False, 'error': registry_error}), 400
         for field, value in registry_fields.items():
             setattr(wallet, field, value)
+        if role_fields:
+            _wallet_apply_roles(session, wallet, role_fields)
         session.commit()
         invalidate_tronscan_cache()
         return jsonify({'success': True, 'wallet': wallet.to_dict()})

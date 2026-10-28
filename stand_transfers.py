@@ -478,5 +478,14 @@ def verify_transfer(ref, network, sender, receiver, amount, *, demo=False,
     if not matches or actual <= 0 or (required is not None and abs(actual - required) > Decimal('0.01')):
         return _result('mismatch', verifiedAmount=float(actual), **{'from': actual_from, 'to': actual_to},
                        checkError='Токен, адреса или сумма не совпали')
+    extra = {}
+    if network == 'trc20':
+        # Мультисиг публикует перевод только после всех подписей: адреса подписавших
+        # приходят в ответе TronScan (signature_addresses). Нет поля — подписантов не называем.
+        listed = data.get('signature_addresses') or data.get('signatureAddresses')
+        if isinstance(listed, list):
+            signers = [a for a in listed if isinstance(a, str) and valid_address(a, network)]
+            if signers:
+                extra['signers'] = signers
     return _result('confirmed', verifiedAmount=float(actual), timestampMs=timestamp_ms,
-                   **{'from': actual_from, 'to': actual_to})
+                   **{'from': actual_from, 'to': actual_to}, **extra)

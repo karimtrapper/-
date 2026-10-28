@@ -47,7 +47,13 @@ def stored_claim(deal_id=9001):
 
 @pytest.mark.parametrize('role', ['operator', 'findir', 'teodor'])
 def test_realty_wallet_every_initiator_role_can_claim(clean_board, role):
+    # Изменено по новому ТЗ (wallet-handoff): задача сначала у первой роли «Заводит»
+    # (оператор); финансист берёт её после передачи менеджером, владелец — всегда.
     board_with(REALTY)
+    if role == 'findir':
+        r = client_for(make_user('operator', 'Диспетчер')).post('/api/stand/transfer/handoff', json={
+            'dealId': 9001, 'version': board()[1], 'toRole': 'findir'})
+        assert r.status_code == 200, r.get_json()
     uid = make_user(role)
     r = claim(client_for(uid))
     assert r.status_code == 200, r.get_json()
@@ -67,15 +73,21 @@ def test_realty_wallet_other_roles_cannot_claim(clean_board, role):
 
 
 def test_exchange_wallet_only_operator_initiates(clean_board):
+    # Изменено по новому ТЗ: владелец может отправить с обменника сам (owner_can_alone),
+    # остальные роли, кроме оператора, по-прежнему не начинают.
     board_with(EXCHANGE, amount=5000)
     before = board()
-    for role in ('findir', 'teodor', 'manager', 'admin'):
+    for role in ('findir', 'manager', 'admin'):
         r = claim(client_for(make_user(role)))
         assert r.status_code == 403, (role, r.get_json())
     assert board() == before
     uid = make_user('operator')
     assert claim(client_for(uid)).status_code == 200
     assert stored_claim()['byId'] == uid
+    board_with(EXCHANGE, amount=5000)
+    owner = make_user('teodor')
+    assert claim(client_for(owner)).status_code == 200
+    assert stored_claim()['byId'] == owner
 
 
 def test_unauthenticated_and_disabled_users_cannot_claim(clean_board):
@@ -156,7 +168,7 @@ def test_second_claimer_gets_named_conflict_not_overwrite(clean_board):
 @pytest.mark.parametrize('contenders', [2, 6])
 def test_parallel_claims_exactly_one_winner(clean_board, contenders):
     board_with(REALTY)
-    roles = (['operator', 'findir', 'teodor'] * 2)[:contenders]
+    roles = (['operator', 'teodor', 'operator'] * 2)[:contenders]   # финансист claim без передачи не берёт
     users = [(make_user(role, f'Игрок {i}'), role) for i, role in enumerate(roles)]
     version = board()[1]
     server, thread, base = serve()

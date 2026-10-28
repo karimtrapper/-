@@ -96,12 +96,17 @@ def test_approval_identity_comes_from_session_not_body(clean_board):
 
 
 def test_exchange_roles_after_approval_are_unchanged(clean_board):
-    """Одобрение не расширяет инициаторов: финдир/владелец по-прежнему не начинают отправку."""
+    """Одобрение не расширяет инициаторов: финдир по-прежнему не начинает отправку.
+
+    Изменено по новому ТЗ (wallet-handoff): владелец может отправить с обменника сам
+    (owner_can_alone), поэтому его claim после одобрения разрешён и идёт без s24."""
     set_board(EXCHANGE, 15000)
     assert approve(client_for(make_user('findir'))).status_code == 200
-    for role in ('findir', 'teodor', 'manager', 'admin'):
+    for role in ('findir', 'manager', 'admin'):
         assert claim(client_for(make_user(role))).status_code == 403
     assert main_deal().get('transferClaim') is None
+    assert claim(client_for(make_user('teodor'))).status_code == 200
+    assert main_deal()['transferConfirmation']['ownerAlone'] is True
 
 
 # ---------------------------------------------------- когда одобрение применимо

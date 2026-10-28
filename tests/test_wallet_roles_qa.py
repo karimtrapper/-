@@ -93,8 +93,9 @@ def test_seed_policy_wallets_exact_contract(seeded):
     assert realty['owner_can_alone'] is True
     assert exchange['initiator_roles'] == ['operator']
     assert sorted(exchange['confirmer_roles']) == ['findir', 'teodor']
-    # владелец не может единолично подписать обменник: только финдир или владелец вторым
-    assert exchange['owner_can_alone'] is False
+    # Изменено по новому ТЗ (wallet-handoff): владелец может отправить с обменника сам,
+    # лимит $10 000 и согласование владельца выше лимита сохранены.
+    assert exchange['owner_can_alone'] is True
     for w in (realty, exchange):
         assert w['signer_addresses'] == SIGNERS
         assert w['not_for_new_deals'] is False
@@ -108,8 +109,11 @@ def test_signer_cards_never_use_provider_tr68_addresses(seeded):
             for role, addr in signers.items():
                 assert not addr.startswith('TR68'), (w.address, role, addr)
                 assert len(addr) == 34 and addr.startswith('T')
-        assert not any(w.address.startswith('TR68') for w in s.query(m.Wallet).all()
-                       if w.signer_addresses)
+        # Изменено по новому ТЗ (wallet-handoff): Mfstr (TR68…) теперь сам кошелёк с политикой и
+        # имеет карточки подписантов; его адрес по-прежнему не используется как адрес подписанта
+        # (проверено в цикле выше), а оператор в его политике не участвует.
+        mfstr = s.query(m.Wallet).filter(m.Wallet.address.startswith('TR68')).one()
+        assert set(json.loads(mfstr.signer_addresses)) == {'findir', 'teodor'}
     finally:
         s.close()
 
@@ -126,7 +130,7 @@ def test_legacy_wallets_marked_not_for_new_deals_but_retained_and_unblocked(seed
         assert legacy['purpose'] is None and legacy['limit_usd'] is None
         assert legacy['initiator_roles'] == [] and legacy['confirmer_roles'] == []
         assert legacy['owner_can_alone'] is False and legacy['signer_addresses'] == {}
-        others = [w for w in s.query(m.Wallet).all() if w.address not in (REALTY, EXCHANGE)]
+        others = [w for w in s.query(m.Wallet).all() if w.address not in m.POLICY_WALLET_ADDRESSES]
         assert others and all(w.not_for_new_deals and w.active for w in others)
     finally:
         s.close()
