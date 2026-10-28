@@ -101,7 +101,28 @@ def parse_kasikorn_rows(rows: list[list[str]], page_text: str = "") -> SourceVal
 
 
 def fetch_scb() -> SourceValue:
-    return parse_scb_json(_request_bytes(SCB_URL))
+    # Простой запрос с серверных IP Railway SCB режет 403 — идём через Scrapling с impersonate chrome.
+    try:
+        from scrapling.fetchers import Fetcher
+    except ImportError as exc:
+        raise RateSourceError("не установлен HTTP-загрузчик Scrapling") from exc
+    try:
+        response = Fetcher.get(
+            SCB_URL,
+            impersonate="chrome",
+            headers={
+                "Accept": "application/json",
+                "Referer": "https://www.scb.co.th/en/personal-banking/foreign-exchange-rates.html",
+            },
+            timeout=HTTP_TIMEOUT_SECONDS,
+        )
+        if response.status != 200:
+            raise RateSourceError(f"сеть: HTTP {response.status}")
+        return parse_scb_json(response.body)
+    except RateSourceError:
+        raise
+    except Exception as exc:
+        raise RateSourceError(f"сеть: {exc}") from exc
 
 
 def fetch_bangkok_bank(api_key: str) -> SourceValue:
