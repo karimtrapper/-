@@ -1867,12 +1867,15 @@ let _thbRatesPromise=null;
 const THB_RATES_UI_TTL=5*60*1000;
 /* Курсы живут в S.thbRates, но не часть сделки/черновика — не через save().
    На каждом render() запрос не нужен; на открытии шага и после возврата
-   проверяем возраст данных. Кнопка обходит серверный кэш через fresh=1. */
+   проверяем возраст данных — это reload=1, просто перечитывает таблицу без
+   похода сервиса bank-rates в банки. Кнопка менеджера (force=true) —
+   fresh=1, ставит в очередь реальный сбор и опрашивает его статус. */
 function ensureThbRates(force=false){
   if(!force&&Date.now()-Math.max(S.thbRatesAt||0,S.thbRatesAttemptAt||0)<THB_RATES_UI_TTL) return _thbRatesPromise;
   if(_thbRatesPromise) return _thbRatesPromise;
   S.thbRatesAttemptAt=Date.now();
-  _thbRatesPromise=fetch('/api/stand/thb-bank-rates?fresh=1',{credentials:'same-origin',cache:'no-store'})
+  const url=force?'/api/stand/thb-bank-rates?fresh=1':'/api/stand/thb-bank-rates?reload=1';
+  _thbRatesPromise=fetch(url,{credentials:'same-origin',cache:'no-store'})
     .then(async r=>{
       if(r.status===429){
         if(force)toast('Повторное обновление доступно через минуту');
@@ -1882,6 +1885,7 @@ function ensureThbRates(force=false){
       return r.json();
     })
     .then(j=>{if(j&&j.success){S.thbRates=j;S.thbRatesAt=Date.now();
+      if(j.refresh_pending&&j.request_id)pollThbRatesRefresh(j.request_id);
       if(S.draft&&S.draft.cur==='fhusd'&&S.draft.invoiceCurrency==='thb')recomputeDraftFhEstimate();
       render();}
       else if(!S.thbRates){S.thbRates=j;render();}return j;})
@@ -1889,6 +1893,37 @@ function ensureThbRates(force=false){
       if(force)toast('Не удалось обновить курс — попробуйте через минуту');})
     .finally(()=>{_thbRatesPromise=null;});
   return _thbRatesPromise;
+}
+const THB_RATES_REFRESH_POLL_MS=5000;
+const THB_RATES_REFRESH_TIMEOUT_MS=90000;
+/* После кнопки «Обновить курс» сервис bank-rates забирает запрос из очереди
+   в течение минуты. Опрашиваем статус 5с/90с; по таймауту тихо оставляем
+   прежние курсы — их время видно в thbRatesMeta(), без текста об ошибке. */
+function pollThbRatesRefresh(requestId){
+  S.thbRatesRefreshing=true;render();
+  const startedAt=Date.now();
+  const reloadAndStop=()=>{
+    fetch('/api/stand/thb-bank-rates?reload=1',{credentials:'same-origin',cache:'no-store'})
+      .then(r=>r.json())
+      .then(j=>{if(j&&j.success){S.thbRates=j;S.thbRatesAt=Date.now();
+        if(S.draft&&S.draft.cur==='fhusd'&&S.draft.invoiceCurrency==='thb')recomputeDraftFhEstimate();}})
+      .catch(()=>{})
+      .finally(()=>{S.thbRatesRefreshing=false;render();});
+  };
+  const poll=()=>{
+    fetch('/api/stand/thb-bank-rates-status?request_id='+requestId,{credentials:'same-origin',cache:'no-store'})
+      .then(r=>r.json())
+      .then(j=>{
+        if(j&&j.success&&j.done){reloadAndStop();return;}
+        if(Date.now()-startedAt>=THB_RATES_REFRESH_TIMEOUT_MS){S.thbRatesRefreshing=false;render();return;}
+        setTimeout(poll,THB_RATES_REFRESH_POLL_MS);
+      })
+      .catch(()=>{
+        if(Date.now()-startedAt>=THB_RATES_REFRESH_TIMEOUT_MS){S.thbRatesRefreshing=false;render();return;}
+        setTimeout(poll,THB_RATES_REFRESH_POLL_MS);
+      });
+  };
+  setTimeout(poll,THB_RATES_REFRESH_POLL_MS);
 }
 function taskUsesThbRates(){
   const d=S.open&&deal(S.open);
@@ -1905,11 +1940,12 @@ function thbRatesMeta(){
   const at=R&&R.updated_at?new Date(R.updated_at).toLocaleString('ru-RU'):'—';
   const age=S.thbRatesAt?ago(S.thbRatesAt):'';
   const sourceAt=R&&R.updated_at?new Date(R.updated_at).getTime():NaN;
-  const stale=!!(R&&R.stale)||(Number.isFinite(sourceAt)&&Date.now()-sourceAt>3*60*60*1000);
+  const stale=!!(R&&R.stale)||(Number.isFinite(sourceAt)&&Date.now()-sourceAt>26*60*60*1000);
   return 'Курсы TT Buying на '+at+(age?' · обновлено '+age:'')+
     (stale?' — данные устарели, сверьте с банком.':'.');
 }
 function thbRatesRefreshButton(){
+  if(S.thbRatesRefreshing)return '<span class="muted" style="margin-left:8px">Обновляем курсы…</span>';
   return '<button type="button" class="btn btn-outline btn-sm" onclick="ensureThbRates(true)" style="padding:4px 8px;gap:8px;margin-left:8px">Обновить курс</button>';
 }
 /* Текст-ориентир под полями ฿/банк в черновике заявки — и ошибки, которые

@@ -13447,8 +13447,8 @@ def stand_egress_status():
 
 
 _THB_BANK_RATES_CACHE = {'data': None, 'ts': 0.0}
-_THB_BANK_RATES_TTL = 600  # 10 минут — курс TT Buying обновляется сервисом bank-rates раз в час
-_THB_BANK_RATES_STALE_AFTER = timedelta(hours=3)
+_THB_BANK_RATES_TTL = 600  # 10 минут — сервис bank-rates собирает раз в сутки (09:00 Asia/Bangkok) + по запросу
+_THB_BANK_RATES_STALE_AFTER = timedelta(hours=26)  # дольше суточного цикла, чтобы утренний курс не считался устаревшим весь день
 
 
 def _thb_source_datetime(value):
@@ -13473,11 +13473,13 @@ def _thb_source_datetime(value):
 def _thb_bank_rates_cached(force=False):
     """Курсы TT Buying банков-застройщиков из таблицы bank_rates, кэш 10 минут.
 
-    Таблицу раз в час пишет отдельный Railway-сервис bank-rates (BankRates/),
-    независимый от PropertyPaymentBot и VPS — решение Карима. Берём последнюю
-    валидную строку по каждому банку. Если самая свежая запись старше 3 часов —
-    отдаём с флагом stale=True (сервис мог упасть), но не ошибкой: последний
-    известный курс лучше, чем отказ создать заявку.
+    Таблицу пишет отдельный Railway-сервис bank-rates (BankRates/) — раз в сутки
+    в 09:00 по Бангкоку плюс внепланово по запросу менеджера (см.
+    _thb_bank_rates_request_refresh), независимый от PropertyPaymentBot и VPS —
+    решение Карима. Берём последнюю валидную строку по каждому банку. Если самая
+    свежая запись старше _THB_BANK_RATES_STALE_AFTER — отдаём с флагом stale=True
+    (сервис мог упасть), но не ошибкой: последний известный курс лучше, чем отказ
+    создать заявку.
     """
     now = time.time()
     cached = _THB_BANK_RATES_CACHE['data']
@@ -13524,6 +13526,52 @@ def _thb_bank_rates_cached(force=False):
     return fresh
 
 
+def _ensure_bank_rates_refresh_table():
+    """Таблица запросов менеджера на внеплановый сбор bank-rates — схема общая
+    с BankRates/worker.py (ensure_schema), менять обе стороны синхронно.
+    CURRENT_TIMESTAMP вместо now() — одинаково работает в Postgres (прод) и
+    SQLite (тесты)."""
+    from sqlalchemy import text as _t
+    with engine.begin() as conn:
+        conn.execute(_t(
+            "CREATE TABLE IF NOT EXISTS bank_rates_refresh_requests ("
+            "    id INTEGER PRIMARY KEY AUTOINCREMENT,"
+            "    requested_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,"
+            "    requested_by TEXT NOT NULL DEFAULT '',"
+            "    done_at TIMESTAMP,"
+            "    result TEXT"
+            ")" if engine.dialect.name == 'sqlite' else
+            "CREATE TABLE IF NOT EXISTS bank_rates_refresh_requests ("
+            "    id BIGSERIAL PRIMARY KEY,"
+            "    requested_at TIMESTAMPTZ NOT NULL DEFAULT now(),"
+            "    requested_by TEXT NOT NULL DEFAULT '',"
+            "    done_at TIMESTAMPTZ,"
+            "    result JSONB"
+            ")"
+        ))
+
+
+def _thb_bank_rates_request_refresh(requested_by: str) -> dict:
+    """Ставит в очередь внеплановый сбор курсов (сервис bank-rates опрашивает
+    очередь раз в минуту). Несколько запросов за последние 2 минуты без
+    невыполненного — схлопываются в один: отдаём id уже стоящего в очереди."""
+    from sqlalchemy import text as _t
+    _ensure_bank_rates_refresh_table()
+    dedup_since = datetime.utcnow() - timedelta(minutes=2)
+    with engine.begin() as conn:
+        pending = conn.execute(_t(
+            "SELECT id FROM bank_rates_refresh_requests "
+            "WHERE done_at IS NULL AND requested_at > :since "
+            "ORDER BY id DESC LIMIT 1"
+        ), {'since': dedup_since}).fetchone()
+        if pending:
+            return {'inserted': False, 'request_id': pending[0]}
+        new_id = conn.execute(_t(
+            "INSERT INTO bank_rates_refresh_requests (requested_by) VALUES (:by) RETURNING id"
+        ), {'by': requested_by}).scalar()
+        return {'inserted': True, 'request_id': new_id}
+
+
 @app.route('/api/stand/thb-bank-rates', methods=['GET'])
 @limiter.limit('1/minute',
                key_func=lambda: str(flask_session.get('user_id') or get_remote_address()),
@@ -13534,12 +13582,51 @@ def stand_thb_bank_rates():
 
     Раньше проксировало api.exgreen.pro (данные бота на VPS) через egress-канал
     exgreen_thb_bank_rates. С переездом на отдельный сервис bank-rates канал
-    убран — стенд больше не обращается к VPS за курсами."""
+    убран — стенд больше не обращается к VPS за курсами.
+
+    fresh=1 (кнопка менеджера «Обновить курс») — помимо перечитывания таблицы
+    ставит в очередь реальный сбор у банков и отдаёт refresh_pending/request_id,
+    по которому фронт опрашивает /api/stand/thb-bank-rates-status.
+    reload=1 — только перечитать таблицу после done, без нового запроса."""
     if not STAND_MODE:
         return jsonify({'success': False, 'error': 'stand_only'}), 404
     if not flask_session.get('user_id'):
         return jsonify({'success': False, 'error': 'unauthorized'}), 401
-    return jsonify(_thb_bank_rates_cached(force=request.args.get('fresh') == '1'))
+    fresh = request.args.get('fresh') == '1'
+    reload_only = request.args.get('reload') == '1'
+    payload = dict(_thb_bank_rates_cached(force=fresh or reload_only))
+    if fresh:
+        requested_by = flask_session.get('username') or str(flask_session.get('user_id'))
+        try:
+            req = _thb_bank_rates_request_refresh(requested_by)
+        except Exception:
+            # Курсы из кэша/БД уже в payload — очередь на внеплановый сбор не критична.
+            payload['refresh_pending'] = False
+        else:
+            payload['refresh_pending'] = True
+            payload['request_id'] = req['request_id']
+    return jsonify(payload)
+
+
+@app.route('/api/stand/thb-bank-rates-status', methods=['GET'])
+def stand_thb_bank_rates_status():
+    """Выполнен ли запрос на внеплановый сбор (кнопка «Обновить курс» в tasks.html)."""
+    if not STAND_MODE:
+        return jsonify({'success': False, 'error': 'stand_only'}), 404
+    if not flask_session.get('user_id'):
+        return jsonify({'success': False, 'error': 'unauthorized'}), 401
+    request_id = request.args.get('request_id', type=int)
+    if not request_id:
+        return jsonify({'success': False, 'error': 'request_id_required'}), 400
+    from sqlalchemy import text as _t
+    _ensure_bank_rates_refresh_table()
+    with engine.connect() as conn:
+        row = conn.execute(_t(
+            "SELECT done_at FROM bank_rates_refresh_requests WHERE id = :id"
+        ), {'id': request_id}).fetchone()
+    if not row:
+        return jsonify({'success': False, 'error': 'not_found'}), 404
+    return jsonify({'success': True, 'done': row[0] is not None})
 
 
 @app.route('/api/stand/incoming/unlink', methods=['POST'])

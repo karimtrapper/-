@@ -1,20 +1,22 @@
 """Сервис курсов банков Таиланда — отдельный от бота и VPS (Railway).
 
-Раз в час собирает TT Buying USD трёх банков (Kasikornbank, SCB,
-Bangkok Bank) и пишет прошедшие валидацию значения в таблицу
-bank_rates базы stand-db. При старте сразу делает один сбор (backfill),
-чтобы таблица не была пустой.
+Плановый сбор TT Buying USD трёх банков (Kasikornbank, SCB, Bangkok Bank) —
+раз в сутки в 09:00 Asia/Bangkok. При старте сразу делает один сбор (backfill),
+чтобы таблица не была пустой. Между плановыми сборами раз в минуту проверяет
+таблицу bank_rates_refresh_requests — запросы менеджера (кнопка «Обновить
+курс» в tasks.html) на внеплановый сбор; несколько подряд схлопываются в один.
 
 Публичного домена и HTTP-сервера у сервиса нет — только фоновый цикл.
 """
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 import psycopg2
@@ -22,7 +24,8 @@ import psycopg2
 import rate_fetchers as rf
 
 LOGGER = logging.getLogger("bank_rates")
-POLL_INTERVAL_SECONDS = 3600  # раз в час — курс TT Buying обновляется банками реже
+DAILY_COLLECTION_HOUR_BKK = 9  # плановый сбор раз в сутки в 09:00 по Бангкоку
+REFRESH_POLL_INTERVAL_SECONDS = 60  # как часто проверяем очередь запросов менеджера
 
 
 def _database_url() -> str:
@@ -52,6 +55,19 @@ def ensure_schema(conn) -> None:
         cur.execute(
             "CREATE INDEX IF NOT EXISTS idx_bank_rates_bank_fetched "
             "ON bank_rates (bank, fetched_at DESC)"
+        )
+        # Запросы менеджера на внеплановый сбор — схема общая с app.py
+        # (_ensure_bank_rates_refresh_table), менять обе стороны синхронно.
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS bank_rates_refresh_requests (
+                id BIGSERIAL PRIMARY KEY,
+                requested_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                requested_by TEXT NOT NULL DEFAULT '',
+                done_at TIMESTAMPTZ,
+                result JSONB
+            )
+            """
         )
     conn.commit()
 
@@ -100,6 +116,46 @@ def collect_once(conn, bangkok_bank_api_key: str) -> dict[str, str]:
     return results
 
 
+def _next_daily_run(after: datetime) -> datetime:
+    """Следующее плановое время сбора — 09:00 Asia/Bangkok, строго после `after` (UTC)."""
+    after_bkk = after.astimezone(rf.BANGKOK_TZ)
+    candidate = after_bkk.replace(hour=DAILY_COLLECTION_HOUR_BKK, minute=0, second=0, microsecond=0)
+    if candidate <= after_bkk:
+        candidate += timedelta(days=1)
+    return candidate.astimezone(timezone.utc)
+
+
+def _pending_refresh_requests(conn) -> list[int]:
+    with conn.cursor() as cur:
+        cur.execute("SELECT id FROM bank_rates_refresh_requests WHERE done_at IS NULL ORDER BY id")
+        return [row[0] for row in cur.fetchall()]
+
+
+def _complete_refresh_requests(conn, ids: list[int], result: dict[str, str]) -> None:
+    if not ids:
+        return
+    with conn.cursor() as cur:
+        cur.execute(
+            "UPDATE bank_rates_refresh_requests SET done_at = now(), result = %s WHERE id = ANY(%s)",
+            (json.dumps(result), ids),
+        )
+    conn.commit()
+
+
+def _tick(conn, bangkok_bank_api_key: str, next_daily_at: datetime, now: datetime) -> datetime:
+    """Один проход цикла: сбор по расписанию и/или по запросам менеджера,
+    схлопнутым в один вызов collect_once. Возвращает новый next_daily_at."""
+    pending_ids = _pending_refresh_requests(conn)
+    due_daily = now >= next_daily_at
+    if pending_ids or due_daily:
+        result = collect_once(conn, bangkok_bank_api_key)
+        if pending_ids:
+            _complete_refresh_requests(conn, pending_ids, result)
+        if due_daily:
+            next_daily_at = _next_daily_run(now)
+    return next_daily_at
+
+
 def main() -> int:
     logging.basicConfig(
         level=logging.INFO,
@@ -110,14 +166,16 @@ def main() -> int:
     conn = _connect()
     ensure_schema(conn)
     LOGGER.info("Сервис курсов запущен. Backfill — немедленный сбор при старте.")
+    collect_once(conn, bangkok_bank_api_key)
+    next_daily_at = _next_daily_run(datetime.now(timezone.utc))
     while True:
         try:
             if conn.closed:
                 conn = _connect()
-            collect_once(conn, bangkok_bank_api_key)
+            next_daily_at = _tick(conn, bangkok_bank_api_key, next_daily_at, datetime.now(timezone.utc))
         except Exception as exc:
             LOGGER.error("Цикл сбора упал целиком: %s", exc)
-        time.sleep(POLL_INTERVAL_SECONDS)
+        time.sleep(REFRESH_POLL_INTERVAL_SECONDS)
 
 
 if __name__ == "__main__":

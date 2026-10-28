@@ -142,10 +142,11 @@ def test_no_cache_and_database_error_is_explicit_failure(client_with_user, monke
 
 
 def test_old_database_rows_are_stale(client_with_user, monkeypatch):
+    # _THB_BANK_RATES_STALE_AFTER = 26ч (сбор раз в сутки в 09:00 BKK) — 27ч старше этого.
     from datetime import datetime, timedelta
     client, user_id = client_with_user
     _login(client, user_id)
-    fake_bank_database(monkeypatch, [('SCB', 33, None, datetime.now()-timedelta(hours=4))])
+    fake_bank_database(monkeypatch, [('SCB', 33, None, datetime.now()-timedelta(hours=27))])
     body = client.get('/api/stand/thb-bank-rates').json
     assert body['success'] and body['stale']
 
@@ -155,7 +156,7 @@ def test_old_bank_quote_is_stale_even_when_recently_fetched(client_with_user, mo
     from zoneinfo import ZoneInfo
     client, user_id = client_with_user
     _login(client, user_id)
-    old_source = (datetime.now(ZoneInfo('Asia/Bangkok')) - timedelta(hours=4)).strftime('%Y-%m-%d %H:%M:%S')
+    old_source = (datetime.now(ZoneInfo('Asia/Bangkok')) - timedelta(hours=27)).strftime('%Y-%m-%d %H:%M:%S')
     fake_bank_database(monkeypatch, [('SCB', 33, old_source, datetime.now())])
     body = client.get('/api/stand/thb-bank-rates').json
     assert body['success'] and body['stale']
