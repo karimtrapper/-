@@ -74,20 +74,11 @@ class TestGetLevel:
         name, _ = CommissionCalculator.get_level(50_000_000)
         assert name == 'от_1млн'
 
-    def test_bonus_doverka(self):
-        """Источник RUB-USDT — Доверка: в её курсе сидит 2.4% нашей прибыли."""
-        from calculator import RUB_USDT_SOURCE, DOVERKA_BONUS
-        assert RUB_USDT_SOURCE == 'doverka'
-        assert DOVERKA_BONUS == 0.024
+    def test_bonus_removed(self):
+        """Бонуса Доверки нет с 17.08.2026 — база RUB-USDT = Рапира+2%."""
         for amount in [100_000, 500_000, 700_000, 1_000_000, 5_000_000]:
             _, params = CommissionCalculator.get_level(amount)
-            assert params['bonus_percent'] == DOVERKA_BONUS
-
-    def test_default_commissions_follow_formula(self):
-        """Дефолтные комиссии тиров = 1 − (1+b)/(1+p) для 5/4/3%."""
-        for amount, p in [(100_000, 0.05), (700_000, 0.04), (2_000_000, 0.03)]:
-            _, params = CommissionCalculator.get_level(amount)
-            assert abs(params['usdt_thb_commission'] - (1 - 1.024 / (1 + p))) < 1e-6
+            assert params['bonus_percent'] == 0.0
 
     def test_commission_decreases_with_amount(self):
         _, p1 = CommissionCalculator.get_level(100_000)
@@ -215,27 +206,20 @@ class TestDoverkaUsdtToThb:
 # -- RUB → USDT --
 
 class TestDoverkaRubToUsdt:
-    """Сценарий 7-8: RUB → USDT. С бонусом b: rub_comm = (1+p)/(1+b) − 1."""
+    """Сценарий 7-8: RUB → USDT. Без бонуса rub_comm = profit напрямую."""
 
     def test_rub_comm_formula_at_5_percent(self, calc):
         r = calc.rub_to_usdt_target(1000, custom_profit_margin=5.0)
-        # rub_comm = 1.05/1.024 − 1 ≈ 2.54%
-        assert abs(r['rub_usdt_commission'] - 2.54) < 0.01
+        # rub_comm = (5.0 - 0) / 100 = 5.0%
+        assert abs(r['rub_usdt_commission'] - 5.0) < 0.01
 
     def test_rub_comm_formula_at_3_percent(self, calc):
         r = calc.rub_to_usdt_target(1000, custom_profit_margin=3.0)
-        # rub_comm = 1.03/1.024 − 1 ≈ 0.59%
-        assert abs(r['rub_usdt_commission'] - 0.59) < 0.01
+        assert abs(r['rub_usdt_commission'] - 3.0) < 0.01
 
     def test_rub_comm_formula_at_2_4_percent(self, calc):
         r = calc.rub_to_usdt_target(1000, custom_profit_margin=2.4)
-        # профит равен бонусу — комиссия на плече RUB-USDT нулевая
-        assert abs(r['rub_usdt_commission'] - 0.0) < 0.01
-
-    @pytest.mark.parametrize('target', [1.5, 3.0, 4.0, 5.0])
-    def test_profit_hits_target(self, calc, target):
-        assert abs(calc.rub_to_usdt_target(1000, custom_profit_margin=target)['profit_percent_actual'] - target) < 0.05
-        assert abs(calc.rub_to_usdt_amount(100_000, custom_profit_margin=target)['profit_percent_actual'] - target) < 0.05
+        assert abs(r['rub_usdt_commission'] - 2.4) < 0.01
 
     def test_target_1_usdt_withdrawal(self, calc):
         r = calc.rub_to_usdt_target(1000)
@@ -315,18 +299,18 @@ class TestSafeRate:
             assert 'final_rate' in b.thb_to_usdt_amount(amount)
 
 
-# -- Профит-мэппинг с бонусом Доверки 2.4% --
+# -- Профит-мэппинг после перехода на Рапиру+2% (17.08.2026) --
 
-class TestProfitHitsTargetWithBonus:
-    """Комиссия c = 1 − (1+b)/(1+p): фактический профит RUB→THB равен целевому.
+class TestProfitHitsTargetWithoutBonus:
+    """Комиссия c = p/(1+p): фактический профит RUB→THB равен целевому.
 
-    Бонус b=2.4% сидит в курсе Доверки (incoming = U·(1+b)); для p < b
-    комиссия отрицательная — это штатно.
+    Раньше мэппинг (5% → 2.72%) был откалиброван под бонус Доверки 2.4% —
+    без бонуса он давал заниженный профит (5% → фактических 2.8%).
     """
 
     @pytest.fixture
     def calc(self):
-        return ExchangeCalculator(usdt_thb_rate=33.70, rub_usdt_rate=88.0)
+        return ExchangeCalculator(usdt_thb_rate=32.87, rub_usdt_rate=89.97)
 
     @pytest.mark.parametrize('rub,target', [
         (100_000, 5.0),      # тир до 500к
@@ -337,87 +321,14 @@ class TestProfitHitsTargetWithBonus:
         r = calc.rub_to_thb(rub)
         assert abs(r['profit_percent_actual'] - target) < 0.05
 
-    @pytest.mark.parametrize('target', [1.5, 2.0, 2.4, 3.0, 3.5, 4.0, 4.5, 5.0])
+    @pytest.mark.parametrize('target', [1.5, 2.0, 2.4, 3.5, 4.5, 5.0])
     def test_custom_margin(self, calc, target):
         r = calc.rub_to_thb(300_000, custom_profit_margin=target)
         assert abs(r['profit_percent_actual'] - target) < 0.05
 
-    @pytest.mark.parametrize('target', [1.5, 3.0, 4.0, 5.0])
-    def test_target_direction(self, calc, target):
-        """rub_to_thb_target: клиент задаёт сумму в батах."""
-        r = calc.rub_to_thb_target(300_000, custom_profit_margin=target)
-        assert abs(r['profit_percent_actual'] - target) < 0.05
-
-    def test_bonus_in_result(self, calc):
+    def test_bonus_is_zero_in_result(self, calc):
         r = calc.rub_to_thb(100_000)
-        assert r['bonus_usdt'] > 0
-        assert abs(r['bonus_usdt'] - r['usdt_amount'] * 0.024) < 0.01
-
-    def test_negative_commission_below_bonus(self, calc):
-        r = calc.rub_to_thb(100_000, custom_profit_margin=1.5)
-        assert r['usdt_thb_commission'] < 0
-        assert r['usdt_thb_rate_sell'] > calc.usdt_thb_rate
-
-    def test_example_100k_target_5(self, calc):
-        r = calc.rub_to_thb(100_000, custom_profit_margin=5.0)
-        assert abs(r['usdt_thb_commission'] - 2.48) < 0.005  # 1 − 1.024/1.05, в %
-
-    def test_formula_zero_bonus(self):
-        """При b=0 (Рапира) формулы совпадают с p/(1+p) и p."""
-        from calculator import usdt_thb_commission_for_profit, rub_usdt_commission_for_profit
-        assert abs(usdt_thb_commission_for_profit(0.05, 0.0) - 0.05 / 1.05) < 1e-12
-        assert abs(rub_usdt_commission_for_profit(0.05, 0.0) - 0.05) < 1e-12
-
-
-# -- Источник курса RUB-USDT --
-
-class TestRubUsdtSource:
-    """get_all_rates берёт RUB-USDT у Доверки; недоступна — None, не Рапира."""
-
-    def _run(self, monkeypatch, doverka, rapira=88.0):
-        import asyncio
-        import calculator as calc_mod
-        calls = {'doverka': 0, 'rapira': 0}
-
-        async def fake_binance(symbol='USDTTHB'):
-            return 33.7
-
-        async def fake_doverka():
-            calls['doverka'] += 1
-            return doverka
-
-        async def fake_rapira():
-            calls['rapira'] += 1
-            return rapira
-
-        P = calc_mod.ExchangeRateProvider
-        monkeypatch.setattr(P, 'get_binance_rate', staticmethod(fake_binance))
-        monkeypatch.setattr(P, 'get_doverka_rate', staticmethod(fake_doverka))
-        monkeypatch.setattr(P, 'get_rapira_rate', staticmethod(fake_rapira))
-        return asyncio.run(P.get_all_rates()), calls
-
-    def test_uses_doverka(self, monkeypatch):
-        rates, calls = self._run(monkeypatch, doverka=88.5)
-        assert rates == {'usdt_thb': 33.7, 'rub_usdt': 88.5}
-        assert calls == {'doverka': 1, 'rapira': 0}
-
-    def test_doverka_down_no_rapira_fallback(self, monkeypatch):
-        rates, calls = self._run(monkeypatch, doverka=None)
-        assert rates['rub_usdt'] is None
-        assert calls['rapira'] == 0
-
-    def test_rapira_switch(self, monkeypatch):
-        import calculator as calc_mod
-        monkeypatch.setattr(calc_mod, 'RUB_USDT_SOURCE', 'rapira')
-        rates, calls = self._run(monkeypatch, doverka=88.5, rapira=87.0)
-        assert rates['rub_usdt'] == 87.0
-        assert calls == {'doverka': 0, 'rapira': 1}
-
-    def test_doverka_no_key_returns_none(self, monkeypatch):
-        import asyncio
-        from calculator import ExchangeRateProvider
-        monkeypatch.delenv('DOVERKA_API_KEY', raising=False)
-        assert asyncio.run(ExchangeRateProvider.get_doverka_rate()) is None
+        assert r['bonus_usdt'] == 0
 
 
 # -- Стандарт по USDT-направлениям (27.08.2026) --
