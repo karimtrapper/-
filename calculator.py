@@ -1,6 +1,6 @@
 """
 Exchange Calculator Bot - Калькулятор обмена RUB-THB
-Получает реальные курсы от Binance (USDT/THB) и Rapira (RUB/USDT)
+Получает реальные курсы от Binance (USDT/THB) и Doverka (RUB/USDT; Rapira — запасной источник)
 """
 
 import aiohttp
@@ -146,26 +146,59 @@ except ImportError:
     from broker_detailed import BrokerCalculatorDetailed
 
 
+# Источник курса RUB-USDT: 'doverka' | 'rapira'. Временный переключатель:
+# сейчас курс берём у Доверки и считаем, что в нём сидит DOVERKA_BONUS нашей
+# прибыли. Код Рапиры оставлен — вернуть её = сменить значение здесь.
+RUB_USDT_SOURCE = 'doverka'
+
+# Доля нашей прибыли внутри курса Доверки (бонус 2.4%). Относится ТОЛЬКО к курсу
+# Доверки: у Рапиры другая база, бонус к ней неприменим — там 0.
+DOVERKA_BONUS = 0.024
+
+# Бонус, действующий при выбранном источнике
+ACTIVE_BONUS = DOVERKA_BONUS if RUB_USDT_SOURCE == 'doverka' else 0.0
+
+
+def usdt_thb_commission_for_profit(profit: float, bonus: float = 0.0) -> float:
+    """Комиссия USDT-THB под целевой профит.
+
+    Args:
+        profit: целевой профит, доля (0.05 = 5%)
+        bonus: доля нашей прибыли внутри курса RUB-USDT (0.024 для Доверки)
+
+    incoming = U·(1+b), outgoing = U·(1−c), профит = (1+b)/(1−c) − 1,
+    откуда c = 1 − (1+b)/(1+p). При b=0 это p/(1+p). Для p < b комиссия
+    отрицательная — клиенту на плече USDT-THB даём лучше рынка.
+    """
+    return 1 - (1 + bonus) / (1 + profit)
+
+
+def rub_usdt_commission_for_profit(profit: float, bonus: float = 0.0) -> float:
+    """Комиссия на плече RUB-USDT под целевой профит.
+
+    Профит = (1+b)·(1+rc) − 1, откуда rc = (1+p)/(1+b) − 1. При b=0 rc = p.
+    """
+    return (1 + profit) / (1 + bonus) - 1
+
+
 class ExchangeRateProvider:
     """Провайдер курсов валют"""
     
     BINANCE_API = "https://api.binance.th/api/v1"
+    DOVERKA_API = "https://api.doverkapay.com"
     RAPIRA_API = "https://api.rapira.net"
 
-    # API ключи из переменных окружения
+    # API ключи из переменных окружения (ключ Доверки читается при вызове)
     BINANCE_API_KEY = os.getenv('BINANCE_API_KEY', '')
     BINANCE_API_SECRET = os.getenv('BINANCE_API_SECRET', '')
 
-    # RUB-USDT = чистый стакан Рапиры, без наценки (решение Карима 19.08.2026).
-    # Раньше было +2% «за прогон рублей через биржу», но эти 2% сидели внутри
-    # курса и не попадали в показанную прибыль: при заявленных 5% фактическая
-    # маржа выходила 7.1% к стакану. Теперь база = ask, вся маржа собирается
-    # видимой комиссией USDT-THB, profit_percent_actual = правда.
-    # Доверка как источник курса убрана 17.08.2026 — её курс был на ~5% выше
-    # рынка и держал экономику на бонусе 2.4%.
+    # Наценка на стакан Рапиры (используется при RUB_USDT_SOURCE = 'rapira').
+    # 1.0 — чистый ask без наценки (решение Карима 19.08.2026): раньше было +2%,
+    # но они сидели внутри курса и не попадали в показанную прибыль.
     RAPIRA_MARKUP = 1.0
 
-    # Фоллбэк, если Рапира недоступна (стакан + тикер): уровень стакана без наценки
+    # Фоллбэк для Рапиры, если недоступны стакан и тикер: уровень стакана без наценки.
+    # Для Доверки фоллбэка нет — её база другая, подменять курс Рапирой нельзя.
     FALLBACK_RUB_USDT = 88.0  # обновлён 19.08.2026
     
     @staticmethod
@@ -219,9 +252,55 @@ class ExchangeRateProvider:
         return None
     
     @staticmethod
+    async def get_doverka_rate() -> float:
+        """
+        Курс RUB-USDT от Doverka API (GET /v1/currencies, символ USD/USDT).
+
+        Берём rate_from_rub, если он похож на рублёвую цену USDT (> 80),
+        иначе rate_to_rub. 2 попытки. Нет ключа или Доверка недоступна — None
+        (на Рапиру НЕ падаем: база другая, бонус 2.4% к ней неприменим).
+        """
+        api_key = os.getenv('DOVERKA_API_KEY', '')
+        if not api_key:
+            print("⚠️ Doverka API key не найден")
+            return None
+
+        for attempt in range(2):
+            try:
+                async with aiohttp.ClientSession() as session:
+                    url = f"{ExchangeRateProvider.DOVERKA_API}/v1/currencies"
+                    headers = {
+                        'Authorization': f'Bearer {api_key}',
+                        'accept': 'application/json'
+                    }
+                    async with session.get(url, headers=headers, timeout=10) as response:
+                        if response.status != 200:
+                            print(f"⚠️ Doverka API error status: {response.status}")
+                            continue
+                        data = await response.json()
+                        currencies = data if isinstance(data, list) else [data]
+                        for currency in currencies:
+                            symbol = currency.get('symbol', '').upper()
+                            rate_to_rub = currency.get('rate_to_rub')
+                            rate_from_rub = currency.get('rate_from_rub')
+                            if symbol in ['USD', 'USDT']:
+                                print(f"DEBUG: Doverka {symbol}: to_rub={rate_to_rub}, from_rub={rate_from_rub}", flush=True)
+                                if rate_from_rub and float(rate_from_rub) > 80:
+                                    return float(rate_from_rub)
+                                if rate_to_rub:
+                                    return float(rate_to_rub)
+            except Exception as e:
+                print(f"⚠️ Doverka attempt {attempt+1} error: {e}")
+
+        print("❌ Doverka недоступна — курс RUB/USDT не получен")
+        return None
+
+    @staticmethod
     async def get_rapira_rate() -> float:
         """
-        Курс RUB-USDT: топ ask стакана Рапиры × RAPIRA_MARKUP (сейчас 1.0, без наценки).
+        Курс RUB-USDT от Рапиры: топ ask стакана × RAPIRA_MARKUP (сейчас 1.0, без наценки).
+
+        Запасной источник: включается через RUB_USDT_SOURCE = 'rapira'.
 
         Ask — потому что мы ПОКУПАЕМ USDT за рубли клиента; глубина топа
         обычно шестизначная в USDT, VWAP не нужен. Стакан отдаётся ТОЛЬКО
@@ -269,11 +348,17 @@ class ExchangeRateProvider:
         """
         Получить все необходимые курсы
 
+        RUB-USDT берётся из источника RUB_USDT_SOURCE; если он недоступен —
+        None (без подмены другим источником: у них разная база).
+
         Returns:
             dict: {"usdt_thb": float, "rub_usdt": float}
         """
         usdt_thb = await ExchangeRateProvider.get_binance_rate("USDTTHB")
-        rub_usdt = await ExchangeRateProvider.get_rapira_rate()
+        if RUB_USDT_SOURCE == 'rapira':
+            rub_usdt = await ExchangeRateProvider.get_rapira_rate()
+        else:
+            rub_usdt = await ExchangeRateProvider.get_doverka_rate()
 
         return {
             "usdt_thb": usdt_thb,
@@ -438,39 +523,40 @@ PROFIT_USDT_TO_THB = 2.4
 class CommissionCalculator:
     """Расчет комиссий по уровням сумм"""
     
-    # После перехода RUB-USDT на Рапиру+2% (17.08.2026) бонуса Доверки нет:
-    # профит целиком собирается комиссией USDT-THB. Чтобы фактический профит
-    # равнялся целевому p, комиссия c = p/(1+p) — вывод: profit% = c/(1−c).
+    # Профит собирается комиссией USDT-THB; бонус Доверки (если источник —
+    # Доверка) уже сидит в её курсе и входит в формулу:
+    # c = 1 − (1+b)/(1+p), см. usdt_thb_commission_for_profit.
+    # Для Рапиры b = 0 и c = p/(1+p).
     LEVELS = {
         'до_500к': {
             'min': 0,
             'max': 500_000,
-            'usdt_thb_commission': 0.047619,  # профит 5%: 0.05/1.05
+            'usdt_thb_commission': round(usdt_thb_commission_for_profit(0.05, ACTIVE_BONUS), 6),  # профит 5%
             'rub_usdt_commission': 0.0,       # 0%
             'withdrawal_percent': 0.0025,     # 0.25%
             'withdrawal_fixed': 20,           # 20 THB
             'profit_percent': 0.05,           # 5%
-            'bonus_percent': 0.0              # бонуса Доверки больше нет
+            'bonus_percent': ACTIVE_BONUS     # 2.4% при источнике Доверка, иначе 0
         },
         '500к_1млн': {
             'min': 500_000,
             'max': 1_000_000,
-            'usdt_thb_commission': 0.038462,  # профит 4%: 0.04/1.04
+            'usdt_thb_commission': round(usdt_thb_commission_for_profit(0.04, ACTIVE_BONUS), 6),  # профит 4%
             'rub_usdt_commission': 0.0,       # 0%
             'withdrawal_percent': 0.0025,     # 0.25%
             'withdrawal_fixed': 20,           # 20 THB
             'profit_percent': 0.04,           # 4%
-            'bonus_percent': 0.0
+            'bonus_percent': ACTIVE_BONUS
         },
         'от_1млн': {
             'min': 1_000_000,
             'max': float('inf'),
-            'usdt_thb_commission': 0.029126,  # профит 3%: 0.03/1.03
+            'usdt_thb_commission': round(usdt_thb_commission_for_profit(0.03, ACTIVE_BONUS), 6),  # профит 3%
             'rub_usdt_commission': 0.0,       # 0%
             'withdrawal_percent': 0.0025,     # 0.25%
             'withdrawal_fixed': 20,           # 20 THB
             'profit_percent': 0.03,           # 3%
-            'bonus_percent': 0.0
+            'bonus_percent': ACTIVE_BONUS
         }
     }
     
@@ -494,7 +580,7 @@ class CommissionCalculator:
 
 
 class ExchangeCalculator:
-    """Калькулятор обмена валют для режима СБП (бывш. Doverka)"""
+    """Калькулятор обмена валют для режима СБП (курс RUB-USDT — RUB_USDT_SOURCE)"""
     
     def __init__(self, usdt_thb_rate: float, rub_usdt_rate: float,
                  withdrawal_percent: float = WITHDRAWAL_PCT_BINANCE,
@@ -512,19 +598,18 @@ class ExchangeCalculator:
         self.withdrawal_fixed = withdrawal_fixed
     
     def _get_commissions(self, target_profit: float, rub_amount: float = 0):
-        """Комиссии режима СБП: профит целиком в комиссии USDT-THB.
+        """Комиссии режима СБП: профит собирается комиссией USDT-THB.
 
-        Без бонуса Доверки связь точная: фактический профит = c/(1−c),
-        поэтому под целевой p комиссия c = p/(1+p). Старый эмпирический
-        мэппинг (5% → 2.72% и т.д.) был откалиброван под бонус 2.4% —
-        с базой Рапира+2% он занижал бы профит.
+        С бонусом b (доля нашей прибыли в курсе Доверки) фактический профит =
+        (1+b)/(1−c) − 1, поэтому под целевой p комиссия c = 1 − (1+b)/(1+p).
+        При b=0 (Рапира) это p/(1+p). Для p < b комиссия отрицательная —
+        клиенту на плече USDT-THB даём лучше рынка.
         """
         _, default_comm = CommissionCalculator.get_level(rub_amount)
-        bonus = default_comm['bonus_percent']  # 0.0 — оставлен для совместимости формул
+        bonus = default_comm['bonus_percent']
 
         if target_profit is not None:
-            p = target_profit / 100.0
-            usdt_comm = p / (1 + p)
+            usdt_comm = usdt_thb_commission_for_profit(target_profit / 100.0, bonus)
             return 0.0, usdt_comm, bonus, f"Индивидуальный ({target_profit}%)"
         else:
             return 0.0, default_comm['usdt_thb_commission'], bonus, "Стандартный"
@@ -784,10 +869,11 @@ class ExchangeCalculator:
         estimated_rub = usdt_target * self.rub_usdt_rate * 1.05
         _, default_comm = CommissionCalculator.get_level(estimated_rub)
         target_profit = custom_profit_margin if custom_profit_margin is not None else default_comm['profit_percent'] * 100
-        bonus = default_comm["bonus_percent"]  # 0.0 — бонуса Доверки больше нет
+        bonus = default_comm["bonus_percent"]  # 2.4% при источнике Доверка, иначе 0
 
-        # Комиссия с учётом бонуса: если target_profit=5% и bonus=2.4%, то rub_comm=2.6%
-        rub_comm = (target_profit - bonus * 100) / 100.0
+        # Комиссия с учётом бонуса: профит = (1+b)(1+rc) − 1, значит
+        # rc = (1+p)/(1+b) − 1 (5% и b=2.4% → rc≈2.54%; при b=0 rc = p)
+        rub_comm = rub_usdt_commission_for_profit(target_profit / 100.0, bonus)
 
         withdrawal_commission = 1  # 1 USDT
         usdt_before_commission = usdt_target + withdrawal_commission
@@ -833,10 +919,10 @@ class ExchangeCalculator:
         # Тиры по сумме рублей
         _, default_comm = CommissionCalculator.get_level(rub_amount)
         target_profit = custom_profit_margin if custom_profit_margin is not None else default_comm['profit_percent'] * 100
-        bonus = default_comm["bonus_percent"]  # 0.0 — бонуса Доверки больше нет
+        bonus = default_comm["bonus_percent"]  # 2.4% при источнике Доверка, иначе 0
 
-        # Комиссия с учётом бонуса
-        rub_comm = (target_profit - bonus * 100) / 100.0
+        # Комиссия с учётом бонуса (см. rub_to_usdt_target)
+        rub_comm = rub_usdt_commission_for_profit(target_profit / 100.0, bonus)
 
         rub_usdt_rate_sell = self.rub_usdt_rate * (1 + rub_comm)
         usdt_before_commission = rub_amount / rub_usdt_rate_sell
