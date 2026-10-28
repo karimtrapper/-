@@ -4409,7 +4409,8 @@ def send_deal_completed_webhook(deal):
 
 # ==================== CALCULATOR IMPORTS ====================
 from calculator import (ExchangeRateProvider, ExchangeCalculator, playwright_queue,
-                        WITHDRAWAL_PCT_BINANCE, WITHDRAWAL_PCT_BITAZZA, WITHDRAWAL_FIXED_THB)
+                        WITHDRAWAL_PCT_BINANCE, WITHDRAWAL_PCT_BITAZZA, WITHDRAWAL_FIXED_THB,
+                        RUB_USDT_SOURCE)
 # Курс партнёрских ссылок — другие рельсы (Rapira + Bitazza), не путать с calculator
 import partner_rates
 
@@ -4829,7 +4830,7 @@ def get_rates():
         if not usdt_thb:
             errors.append('USDT/THB недоступен (Binance)')
         if not rub_usdt:
-            errors.append('RUB/USDT недоступен (Doverka)')
+            errors.append(f"RUB/USDT недоступен ({'Rapira' if RUB_USDT_SOURCE == 'rapira' else 'Doverka'})")
         # Bitazza — второй источник USDT/THB; его недоступность не роняет ответ
         bz = None
         try:
