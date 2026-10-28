@@ -83,23 +83,28 @@ class TestGetLevel:
             _, params = CommissionCalculator.get_level(amount)
             assert params['bonus_percent'] == DOVERKA_BONUS
 
-    def test_default_commissions_follow_formula(self):
-        """Дефолтные комиссии тиров = 1 − (1+b)/(1+p) для 5/4/3%."""
-        for amount, p in [(100_000, 0.05), (700_000, 0.04), (2_000_000, 0.03)]:
+    def test_default_commissions_zero_for_doverka(self):
+        """СБП (Доверка): наши 2.4% уже в курсе — комиссия USDT-THB = 0 на любой сумме."""
+        for amount in [100_000, 700_000, 2_000_000]:
             _, params = CommissionCalculator.get_level(amount)
-            assert abs(params['usdt_thb_commission'] - (1 - 1.024 / (1 + p))) < 1e-6
+            assert params['usdt_thb_commission'] == 0
 
-    def test_commission_decreases_with_amount(self):
-        _, p1 = CommissionCalculator.get_level(100_000)
-        _, p2 = CommissionCalculator.get_level(700_000)
-        _, p3 = CommissionCalculator.get_level(2_000_000)
-        assert p1['usdt_thb_commission'] > p2['usdt_thb_commission'] > p3['usdt_thb_commission']
+    def test_profit_percent_flat_for_doverka(self):
+        """Лестницы нет: профит всех тиров = бонус Доверки (2.4%)."""
+        from calculator import ACTIVE_BONUS
+        for amount in [100_000, 700_000, 2_000_000]:
+            _, params = CommissionCalculator.get_level(amount)
+            assert params['profit_percent'] == ACTIVE_BONUS == 0.024
 
-    def test_profit_percent_decreases_with_amount(self):
-        _, p1 = CommissionCalculator.get_level(100_000)
-        _, p2 = CommissionCalculator.get_level(700_000)
-        _, p3 = CommissionCalculator.get_level(2_000_000)
-        assert p1['profit_percent'] > p2['profit_percent'] > p3['profit_percent']
+    def test_rapira_source_keeps_ladder(self, monkeypatch):
+        """При источнике Рапира (b = 0) — прежняя лестница 5/4/3% и c = p/(1+p)."""
+        import calculator
+        monkeypatch.setattr(calculator, 'RUB_USDT_SOURCE', 'rapira')
+        monkeypatch.setattr(calculator, 'ACTIVE_BONUS', 0.0)
+        levels = CommissionCalculator._build_levels()
+        for name, p in [('до_500к', 0.05), ('500к_1млн', 0.04), ('от_1млн', 0.03)]:
+            assert levels[name]['profit_percent'] == p
+            assert abs(levels[name]['usdt_thb_commission'] - p / (1 + p)) < 1e-6
 
 
 # ── Doverka: ExchangeCalculator ────────────────────────────────────────────
@@ -328,14 +333,12 @@ class TestProfitHitsTargetWithBonus:
     def calc(self):
         return ExchangeCalculator(usdt_thb_rate=33.70, rub_usdt_rate=88.0)
 
-    @pytest.mark.parametrize('rub,target', [
-        (100_000, 5.0),      # тир до 500к
-        (700_000, 4.0),      # тир 500к-1млн
-        (1_500_000, 3.0),    # тир от 1млн
-    ])
-    def test_standard_tiers(self, calc, rub, target):
+    @pytest.mark.parametrize('rub', [100_000, 700_000, 1_500_000])
+    def test_standard_is_bonus_only(self, calc, rub):
+        """СБП без custom_profit_margin: профит = только наши 2.4%, c = 0, на любой сумме."""
         r = calc.rub_to_thb(rub)
-        assert abs(r['profit_percent_actual'] - target) < 0.05
+        assert r['usdt_thb_commission'] == 0
+        assert abs(r['profit_percent_actual'] - 2.4) < 0.05
 
     @pytest.mark.parametrize('target', [1.5, 2.0, 2.4, 3.0, 3.5, 4.0, 4.5, 5.0])
     def test_custom_margin(self, calc, target):

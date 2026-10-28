@@ -498,40 +498,35 @@ class CommissionCalculator:
     # Профит собирается комиссией USDT-THB; бонус Доверки (если источник —
     # Доверка) уже сидит в её курсе и входит в формулу:
     # c = 1 − (1+b)/(1+p), см. usdt_thb_commission_for_profit.
-    # Для Рапиры b = 0 и c = p/(1+p).
-    LEVELS = {
-        'до_500к': {
-            'min': 0,
-            'max': 500_000,
-            'usdt_thb_commission': round(usdt_thb_commission_for_profit(0.05, ACTIVE_BONUS), 6),  # профит 5%
-            'rub_usdt_commission': 0.0,       # 0%
-            'withdrawal_percent': 0.0025,     # 0.25%
-            'withdrawal_fixed': 20,           # 20 THB
-            'profit_percent': 0.05,           # 5%
-            'bonus_percent': ACTIVE_BONUS     # 2.4% при источнике Доверка, иначе 0
-        },
-        '500к_1млн': {
-            'min': 500_000,
-            'max': 1_000_000,
-            'usdt_thb_commission': round(usdt_thb_commission_for_profit(0.04, ACTIVE_BONUS), 6),  # профит 4%
-            'rub_usdt_commission': 0.0,       # 0%
-            'withdrawal_percent': 0.0025,     # 0.25%
-            'withdrawal_fixed': 20,           # 20 THB
-            'profit_percent': 0.04,           # 4%
-            'bonus_percent': ACTIVE_BONUS
-        },
-        'от_1млн': {
-            'min': 1_000_000,
-            'max': float('inf'),
-            'usdt_thb_commission': round(usdt_thb_commission_for_profit(0.03, ACTIVE_BONUS), 6),  # профит 3%
-            'rub_usdt_commission': 0.0,       # 0%
-            'withdrawal_percent': 0.0025,     # 0.25%
-            'withdrawal_fixed': 20,           # 20 THB
-            'profit_percent': 0.03,           # 3%
-            'bonus_percent': ACTIVE_BONUS
-        }
-    }
-    
+    # Доверка (СБП): стандартный профит = только наши 2.4% из курса, сверху
+    # ничего не накручиваем (c = 0) — на любой сумме, лестницы нет.
+    # Рапира (b = 0): лестница 5/4/3%, c = p/(1+p).
+    _TIER_PROFITS = (
+        ('до_500к', 0, 500_000, 0.05),
+        ('500к_1млн', 500_000, 1_000_000, 0.04),
+        ('от_1млн', 1_000_000, float('inf'), 0.03),
+    )
+
+    @staticmethod
+    def _build_levels() -> dict:
+        levels = {}
+        for name, lo, hi, ladder_profit in CommissionCalculator._TIER_PROFITS:
+            # при Доверке профит тира = бонус курса (комиссия 0), иначе — лестница
+            profit = ACTIVE_BONUS if RUB_USDT_SOURCE == 'doverka' else ladder_profit
+            levels[name] = {
+                'min': lo,
+                'max': hi,
+                'usdt_thb_commission': round(usdt_thb_commission_for_profit(profit, ACTIVE_BONUS), 6),
+                'rub_usdt_commission': 0.0,       # 0%
+                'withdrawal_percent': 0.0025,     # 0.25%
+                'withdrawal_fixed': 20,           # 20 THB
+                'profit_percent': profit,
+                'bonus_percent': ACTIVE_BONUS     # 2.4% при источнике Доверка, иначе 0
+            }
+        return levels
+
+    LEVELS = None  # заполняется сразу после определения класса
+
     @staticmethod
     def get_level(rub_amount: float) -> Tuple[str, dict]:
         """
@@ -549,6 +544,9 @@ class CommissionCalculator:
         
         # По умолчанию - последний уровень
         return 'от_1млн', CommissionCalculator.LEVELS['от_1млн']
+
+
+CommissionCalculator.LEVELS = CommissionCalculator._build_levels()
 
 
 class ExchangeCalculator:

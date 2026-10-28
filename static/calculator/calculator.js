@@ -50,12 +50,13 @@ const CONFIG = {
     // Синхронно с calculator.py (DOVERKA_BONUS; при источнике Рапира там 0)
     DOVERKA_BONUS: 0.024,
 
-    // Комиссии СБП (профит 5/4/3%, b = 2.4%)
+    // Комиссии СБП: стандартный профит 2.4% (b = 2.4%), c = 0 — наши 2.4% уже
+    // в курсе Доверки, сверху не накручиваем (на любой сумме)
     DOVERKA_COMMISSIONS: {
         'до_500к': {
             min: 0,
             max: 500000,
-            usdt_thb_commission: 0.024762,   // профит 5%
+            usdt_thb_commission: 0,          // профит 2.4%, c = 0
             withdrawal_percent: 0.0025,
             withdrawal_fixed: 20,
             bonus_percent: 0.024
@@ -63,7 +64,7 @@ const CONFIG = {
         '500к_1млн': {
             min: 500000,
             max: 1000000,
-            usdt_thb_commission: 0.015385,   // профит 4%
+            usdt_thb_commission: 0,          // профит 2.4%, c = 0
             withdrawal_percent: 0.0025,
             withdrawal_fixed: 20,
             bonus_percent: 0.024
@@ -71,7 +72,7 @@ const CONFIG = {
         'от_1млн': {
             min: 1000000,
             max: Infinity,
-            usdt_thb_commission: 0.005825,   // профит 3%
+            usdt_thb_commission: 0,          // профит 2.4%, c = 0
             withdrawal_percent: 0.0025,
             withdrawal_fixed: 20,
             bonus_percent: 0.024
@@ -109,6 +110,9 @@ const PROFIT_LADDER_MEDIUM = 4.0;  // 500 000 – 1 000 000 ₽
 const PROFIT_LADDER_LARGE = 3.0;   // от 1 000 000 ₽
 const PROFIT_USDT_TO_THB = 2.4;    // решение Карима 27.08.2026
 const PROFIT_THB_TO_USDT = 3.0;
+// СБП (Доверка): наши 2.4% уже сидят в курсе Доверки, сверху не накручиваем —
+// стандарт один на любой сумме, лестницы 5/4/3% для СБП нет
+const PROFIT_DOVERKA = 2.4;
 const PROFIT_FLOOR = 1.5;          // ниже — только с согласованием
 
 /** Сумма сделки в рублях — база для порогов лестницы, из чего бы клиент ни платил. */
@@ -125,6 +129,7 @@ function rubBase(amount, scenario = state.scenario, direction = state.direction)
 function ladderProfit(amount, scenario = state.scenario, direction = state.direction) {
     if (scenario === 'usdt-to-thb') return PROFIT_USDT_TO_THB;
     if (scenario === 'thb-to-usdt') return PROFIT_THB_TO_USDT;
+    if (state.method === 'doverka') return PROFIT_DOVERKA;
     const base = rubBase(amount, scenario, direction);
     if (base < 500000) return PROFIT_LADDER_SMALL;
     if (base < 1000000) return PROFIT_LADDER_MEDIUM;
