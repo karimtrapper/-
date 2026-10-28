@@ -664,3 +664,13 @@ def test_race_poller_vs_operator_marking_is_one_event(chain, sent):
         per_role[n['role']] = per_role.get(n['role'], 0) + 1
     assert per_role and set(per_role.values()) == {1}
     assert len([e for e in deal['log'] if e['text'].startswith('Подписано')]) == 1
+
+
+def test_former_executor_cannot_mark_sent_after_takeover(chain):
+    u, at = exchange_claimed(chain)
+    assert api(u['dispatcher'], 'handoff', toRole='teodor', takeover=True, claimAt=at).status_code == 200
+    chain.rows.append(transfer(1, 5000, sender=EXCHANGE, ts=at + 1000))
+    before = board()
+    assert mark(u['operator'], ref(1)).status_code == 409           # прежний исполнитель
+    assert board() == before
+    assert mark(u['dispatcher'], ref(1)).status_code == 200         # другой операционист — можно

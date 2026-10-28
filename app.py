@@ -1675,6 +1675,8 @@ class Wallet(Base):
             'signer_weights': wallet_policy.normalize_weights(self.signer_weights),
             'threshold': self.threshold,
             'policy_log': json.loads(self.policy_log or '[]'),
+            # Короткая подсказка о назначении кошелька для интерфейса (только у кошельков из сида).
+            'purpose_note': POLICY_WALLET_SEED.get(self.address, {}).get('note'),
             'system_balance': round(system_balance, 2)
         }
 
@@ -7333,6 +7335,9 @@ def stand_transfer_mark_sent():
                      for d in state.get('deals') or [] if d.get('id') not in members
                      for s in (d.get('transfer') or {}).get('sends') or []}
         round_claims = _stand_policy_round_claims(main, fingerprint)
+        if any(c.get('byId') == actor_id for c in main.get('transferClaimHistory') or []
+               if c.get('fingerprint') == fingerprint):
+            return jsonify(success=False, error='Перевод передан другому исполнителю'), 409
         lower = min((c['at'] for c in round_claims), default=None)
         if lower is None:
             lower = main.get('stepEnteredAt') or 0     # ограничение: у старых досок отметки входа в s23 нет
@@ -11458,6 +11463,11 @@ def _stand_state_events(previous, state, actor, version):
     for deal in state.get('deals', []):
         before = old.get(deal.get('id')) or {}
         events = []
+        # Время входа в шаг ставит только сервер: то, что прислал браузер, не принимаем.
+        if before.get('step') == deal.get('step') and before.get('stepEnteredAt') is not None:
+            deal['stepEnteredAt'] = before['stepEnteredAt']
+        elif before.get('step') == deal.get('step'):
+            deal.pop('stepEnteredAt', None)
         if before.get('step') != deal.get('step'):
             role = _stand_current_step_role(state, deal)
             if role:
@@ -11488,7 +11498,6 @@ _STAND_TRANSFER_SERVER_FIELDS = (
     'transferClaim', 'transferConfirmation', 'transferOwnerApproval',
     'transferHandoff', 'signHandoff', 'transferClaimHistory',
     'transferFound', 'transferAlarm', 'transferAlarmCleared', 'transferClosedKeys',
-    'stepEnteredAt',
 )
 
 

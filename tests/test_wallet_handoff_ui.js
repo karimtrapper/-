@@ -14,7 +14,7 @@ const consts = html.slice(html.indexOf('const POLICY_ROLE_ORDER'), html.indexOf(
 const names = ['hasPolicy', 'policyInitiators', 'policyInitiateTargets', 'policyInitiateRole', 'policySignRole',
   'policySignTargets', 'policyCanClaim', 'policyRoleNames', 'bkkTime', 'policyReleasedByMe', 'policyLastReleased',
   'policyLocked', 'policyOwnsSend', 'policyOwnsSign', 'policyNeedsApproval', 'policyApprovalActor',
-  'handoffTargets', 'handoffBlock', 'handoffToggle', 'markSentBlock', 'transferMarkSent', 'policyActions', 'policyStatusLine', 'walletPolicyLine', 'transferHandoff',
+  'dispatchRole', 'handoffTargets', 'handoffBlock', 'handoffToggle', 'takeoverWarning', 'takeoverAskView', 'takeoverCancel', 'takeoverConfirm', 'markSentBlock', 'transferMarkSent', 'policyActions', 'policyStatusLine', 'walletPolicyLine', 'transferHandoff',
   'transferClaim', 'walletRolesFields', 'txShort'];
 const table = JSON.parse(fs.readFileSync('tests/fixtures/wallet_policy_table.json', 'utf8'));
 
@@ -29,7 +29,7 @@ function makeCtx(overrides = {}) {
     dealWallet: () => ctx.wallet,
     standAction: async (path, body) => { calls.push({path, body}); return {success: true}; },
     deal: id => ctx.deals[id],
-    window: {confirm: () => true}, document: {querySelectorAll: () => []},
+    document: {querySelectorAll: () => []},
     ...overrides,
   };
   vm.createContext(ctx);
@@ -74,6 +74,15 @@ for (const viewer of ['operator', 'admin']) {
   eq(targets(viewer, MFSTR, {}), ['teodor'], 'Mfstr: у финансиста → владелец');
   eq(targets(viewer, C99, {}), ['teodor'], '99: только «Владельцу»');
   eq(targets(viewer, REALTY, {transferHandoff: {role: 'findir'}}), ['operator', 'teodor']);
+}
+// admin ходит под ролью-маской «manager», но права у него админские (реальная роль — standMe)
+{
+  const ctx = makeCtx({S: {role: 'manager'}, standMe: 'admin'});
+  ctx.wallet = walletOf(REALTY);
+  eq(ctx.handoffTargets({id: 1, step: 's23'}), ['findir', 'teodor']);
+  const asManager = makeCtx({S: {role: 'operator'}, standMe: 'manager'});
+  asManager.wallet = walletOf(REALTY);
+  eq(asManager.handoffTargets({id: 1, step: 's23'}), [], 'реальная роль manager — кнопок нет, даже если маска operator');
 }
 for (const viewer of ['manager', 'findir', 'teodor']) {
   eq(targets(viewer, REALTY, {}), [], viewer + ' не передаёт');
@@ -124,20 +133,27 @@ console.log('handoff targets by role/wallet/state: PASS');
     await ctx.transferHandoff(1, 'findir');
     eq(ctx.calls[0], {path: '/api/stand/transfer/handoff',
       body: {dealId: 1, version: 11, toRole: 'findir'}});
-    // перехват: confirm-диалог с именем и временем, takeover + claimAt
-    const asked = [];
-    ctx.window.confirm = text => { asked.push(text); return true; };
+    // перехват: окно подтверждения с именем и временем, затем takeover + claimAt
     ctx.deals[2] = Object.assign({id: 2, step: 's23'}, claimed);
     ctx.calls.length = 0;
     await ctx.transferHandoff(2, 'findir');
-    assert.equal(asked.length, 1);
-    assert.match(asked[0], /^Настя начал перевод в \d\d:\d\d\. Если транзакция уже заведена в кошельке, второй раз не заводите\./);
+    assert.equal(ctx.calls.length, 0, 'без подтверждения на сервер ничего не уходит');
+    const view = ctx.takeoverAskView();
+    assert.match(view, /data-takeover-ask/);
+    assert.match(view, /Настя начал перевод в \d\d:\d\d\. Если транзакция уже заведена в кошельке, второй раз не заводите\./);
+    assert.match(view, /Передать финансисту/);
+    await ctx.takeoverConfirm();
     eq(ctx.calls[0].body, {dealId: 2, version: 11, toRole: 'findir', takeover: true, claimAt: 1700000000000});
-    // отказ в диалоге — ничего не уходит на сервер
-    ctx.window.confirm = () => false;
+    // отмена — ничего не уходит
     ctx.calls.length = 0;
     await ctx.transferHandoff(2, 'teodor');
+    ctx.takeoverCancel();
     assert.equal(ctx.calls.length, 0);
+    assert.equal(ctx.takeoverAskView(), '');
+    // окно не показывается, если claim уже другой (устаревшее подтверждение)
+    await ctx.transferHandoff(2, 'teodor');
+    ctx.deals[2].transferClaim = Object.assign({}, claimed.transferClaim, {at: 1});
+    assert.equal(ctx.takeoverAskView(), '');
     console.log('handoff / takeover requests: PASS');
   })().catch(e => { console.error(e); process.exitCode = 1; });
 }
@@ -224,7 +240,7 @@ console.log('task ownership (send/sign): PASS');
   ctx.standMeId = 7;
   out = ctx.policyStatusLine({id: 1, step: 's23', transferClaim: {byName: 'Настя', at, role: 'operator'},
     transferAlarm: {hashes: ['aa', 'bb']}});
-  assert.match(out, /data-transfer-alarm[^]*Найдено два перевода:<\/b> aa, bb\. Проверьте возврат\./);
+  assert.match(out, /data-transfer-alarm[^]*Найдено два перевода:<\/b> <span[^>]*>aa, bb<\/span>\. Проверьте возврат\./);
   assert.doesNotMatch(out, /Снять тревогу/, 'оператор тревогу не снимает');
   ctx.S.role = 'teodor';
   assert.match(ctx.policyStatusLine({id: 1, step: 's23', transferClaim: {byName: 'Н', at, role: 'operator'},
@@ -288,4 +304,23 @@ console.log('task ownership (send/sign): PASS');
   assert.doesNotMatch(operator, /data-nw-roles/);
   assert.match(operator, /задаёт админ/);
   console.log('new wallet form roles (admin only): PASS');
+}
+
+// ---- 8. Кошелёк по умолчанию — Недвижимость / Обменник при любой сумме; все шесть доступны вручную
+{
+  const addrs = Object.keys(table);
+  const registry = addrs.map((address, i) => Object.assign({id: i + 1, address, blockchain: 'TRON', owner: 'компания',
+    is_multisig: true, accepts_payin: true, not_for_new_deals: false, label: table[address].purpose, purpose: table[address].purpose,
+    initiator_roles: table[address].initiator_roles, confirmer_roles: table[address].confirmer_roles}));
+  const ctx = makeCtx({CRM_WALLETS: registry});
+  vm.runInContext(['uniqueWallets', 'crmWalletNet', 'crmPayinChoices', 'payinWalletView', 'walletPurpose', 'payinDefaultWallet']
+    .map(source).join('\n'), ctx);
+  assert.equal(ctx.crmPayinChoices('TRC-20').length, 6, 'все шесть доступны в ручном выборе');
+  for (const amount of [9999.99, 10000, 25000, undefined]) {
+    assert.equal(ctx.payinDefaultWallet('TRC-20', {type: 'Оплата недвижимости', amountUsdt: amount}).addr,
+      'TDuDeRiwrLLN3hnnA57G5yM6ibg58A6wZk', 'недвижимость -> Груша Недвижимость, сумма ' + amount);
+    assert.equal(ctx.payinDefaultWallet('TRC-20', {type: 'Обмен валюты', amountUsdt: amount}).addr,
+      'TA6S3RBEY57jq8fXEVVsU6H9JZ18inenG4', 'обмен -> Груша Обменник, сумма ' + amount);
+  }
+  console.log('default payin wallet (no amount rule), all six selectable: PASS');
 }

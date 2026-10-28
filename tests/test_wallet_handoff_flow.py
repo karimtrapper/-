@@ -5,6 +5,7 @@
 """
 import copy
 import threading
+import time
 
 import pytest
 import requests
@@ -585,3 +586,18 @@ def test_operator_cannot_place_manual_confirmation_on_own_transfer(clean_board):
     assert confirm(u['operator']).status_code == 403              # своя отметка
     assert confirm(u['dispatcher']).status_code == 403            # другой оператор: подпись назначена teodor
     assert main_deal().get('transferConfirmation') is None
+
+
+def test_step_entered_at_is_stamped_by_server_and_not_taken_from_browser(clean_board):
+    """Нижняя граница времени для «Деньги отправлены» без claim: сервер штампует вход в шаг сам."""
+    previous = {'deals': [{'id': 1, 'step': 's22', 'log': []}, {'id': 2, 'step': 's23', 'stepEnteredAt': 111, 'log': []}]}
+    new = {'deals': [{'id': 1, 'step': 's23', 'stepEnteredAt': 5, 'log': []},          # подделка при смене шага
+                     {'id': 2, 'step': 's23', 'stepEnteredAt': 999, 'log': []}]}       # подделка без смены шага
+    before = int(time.time() * 1000)
+    m._stand_state_events(previous, new, 'operator', 7)
+    stamped = new['deals'][0]['stepEnteredAt']
+    assert before <= stamped <= int(time.time() * 1000)
+    assert new['deals'][1]['stepEnteredAt'] == 111
+    again = {'deals': [{'id': 1, 'step': 's23', 'log': []}]}
+    m._stand_state_events({'deals': [{'id': 1, 'step': 's23', 'log': []}]}, again, 'operator', 8)
+    assert 'stepEnteredAt' not in again['deals'][0]

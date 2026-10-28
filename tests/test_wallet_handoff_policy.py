@@ -469,3 +469,30 @@ def test_shared_policy_table_matches_python_functions():
             assert row['can_claim'][role] == wp.can_claim(alone, first, role)
             default = wp.default_sign_role(conf, role)
             assert row['sign'][role] == {'default': default, 'targets': wp.sign_targets(conf, role, default)}
+
+
+# ------------------------------- кошелёк по умолчанию: без выбора по сумме, все шесть доступны вручную
+
+@pytest.mark.parametrize('amount', [9999.99, 10000, 25000, None])
+def test_default_payin_wallet_ignores_amount(seeded, amount):
+    """Недвижимость -> Груша Недвижимость, обмен -> Груша Обменник при любой сумме; Property/Mfstr/99/Martrust
+    автоматически не выбираются."""
+    for deal_type, expected in (('Оплата недвижимости', REALTY), ('Обмен валюты', EXCHANGE)):
+        deal = {'id': 1, 'type': deal_type, 'amountUsdt': amount}
+        network, address = m._stand_payin_target({}, deal)
+        assert (network, address) == ('trc20', expected), (deal_type, amount)
+
+
+def test_all_six_wallets_are_selectable_by_hand_and_carry_purpose_notes(seeded):
+    s = m.get_session()
+    try:
+        for address in SIX:
+            assert m._crm_payin_wallet_id(s, wallet_row(address)['id']) == wallet_row(address)['id']
+    finally:
+        s.close()
+    notes = {a: wallet_row(a)['purpose_note'] for a in SIX}
+    assert notes[PROPERTY] == 'Приём оплаты за недвижимость до $10 000'
+    assert notes[MFSTR] == 'Приём от провайдеров, расчёт с клиентом'
+    assert notes[CLIENT99] == 'Только средства клиента: приём, хранение, оплата'
+    assert notes[MARTRUST] == 'Только клиент Martrust: приём и выплата'
+    assert notes[REALTY] is None and notes[EXCHANGE] is None and wallet_row(LEGACY)['purpose_note'] is None

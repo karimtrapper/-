@@ -146,6 +146,7 @@ td{overflow-wrap:anywhere}
 .checkfile .fops{display:flex;gap:8px;flex-wrap:wrap}
 .btn:disabled{opacity:.45;cursor:not-allowed}
 .row{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px}
+.act-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .fg{margin-bottom:14px}
 .fl{display:block;margin-bottom:6px;font-weight:500;font-size:13px;color:var(--navy-600)}
 .fl .rq{color:var(--coral);margin-left:3px}
@@ -2164,7 +2165,7 @@ function crmWalletToLegacy(w){
     addr:w.address, multisig:!!w.is_multisig,purpose:w.purpose||null,
     limit_usd:w.limit_usd,initiator_roles:w.initiator_roles||[],
     confirmer_roles:w.confirmer_roles||[],owner_can_alone:!!w.owner_can_alone,
-    signer_weights:w.signer_weights||{},threshold:w.threshold==null?null:w.threshold,
+    signer_weights:w.signer_weights||{},threshold:w.threshold==null?null:w.threshold,purpose_note:w.purpose_note||null,
     signer_addresses:w.signer_addresses||{},not_for_new_deals:!!w.not_for_new_deals};
 }
 function syncWalletRegistry(){
@@ -2468,7 +2469,7 @@ function walletFormOn(v,key){S.walletNew=v?key:false;render();}
    (_wallet_edit_denied — operator/findir/admin). */
 /* «Заводит» / «Подписывает»: 1–2 роли каждая; задаёт только админ */
 function walletRolesFields(){
-  if(S.role!=='admin')return '<p class="fh" data-roles-hint>«Заводит» и «Подписывает» задаёт админ. До этого кошелёк не выбрать в новых сделках.</p>';
+  if(dispatchRole()!=='admin')return '<p class="fh" data-roles-hint>«Заводит» и «Подписывает» задаёт админ. До этого кошелёк не выбрать в новых сделках.</p>';
   const box=(group,label)=>`<div class="fg"><label class="fl">${label}<span class="rq">*</span> <span class="sub2">1–2 роли</span></label>
     <div class="row" style="gap:12px;flex-wrap:wrap">${POLICY_ROLE_ORDER.map(r=>`<label style="display:flex;gap:4px;align-items:center"><input type="checkbox" data-nw-roles="${group}" value="${r}"> ${POLICY_ROLE_NAMES[r]}</label>`).join('')}</div></div>`;
   return `<div class="fr" data-nw-policy>${box('initiator','Заводит')}${box('confirmer','Подписывает')}</div>
@@ -2480,7 +2481,7 @@ function walletRolesRead(group){
 async function walletAdd(id){
   if(need({nw_own:'чей кошелёк',nw_addr:'адрес'}))return;
   let roles={};
-  if(S.role==='admin'){
+  if(dispatchRole()==='admin'){
     const ini=walletRolesRead('initiator'), conf=walletRolesRead('confirmer');
     if(ini.length<1||ini.length>2){toast('«Заводит»: выберите одну или две роли');return;}
     if(conf.length<1||conf.length>2){toast('«Подписывает»: выберите одну или две роли');return;}
@@ -2497,7 +2498,7 @@ async function walletAdd(id){
   if(!j)return;
   S.walletNew=false;
   await loadCrmWallets();
-  render();toast(S.role==='admin'?'Кошелёк добавлен в реестр — выберите его в списке'
+  render();toast(dispatchRole()==='admin'?'Кошелёк добавлен в реестр — выберите его в списке'
     :'Кошелёк добавлен. Админ задаст «Заводит» и «Подписывает» — до этого в новых сделках его не выбрать');
 }
 
@@ -2600,17 +2601,33 @@ async function transferClaim(id){
 /* «Передать»: менеджер и админ выбирают роль. Если перевод уже начат — это перехват,
    сервер требует подтверждённое время начала (claimAt). */
 function handoffToggle(id){S.handoffOpen=S.handoffOpen===id?null:id;render();}
+/* Перехват уже начатого перевода идёт через подтверждение в окне: время начала берётся
+   из claim, который видел сотрудник, и уходит на сервер как claimAt. */
+function takeoverWarning(claim){
+  return `${claim.byName||'Сотрудник'} начал перевод в ${bkkTime(claim.at)}. Если транзакция уже заведена в кошельке, второй раз не заводите.`;
+}
+function takeoverAskView(){
+  const a=S.takeoverAsk, d=a&&deal(a.id);
+  if(!d||!d.transferClaim||d.transferClaim.at!==a.claimAt)return '';
+  return `<div class="ov" data-takeover-ask onclick="if(event.target===this)takeoverCancel()"><div class="modal">
+    <div class="modal-h"><div class="t">Передать перевод</div></div>
+    <div class="modal-b"><p>${htmlText(takeoverWarning(d.transferClaim))}</p>
+      <div class="row"><button type="button" class="btn btn-primary" data-takeover-ok onclick="takeoverConfirm()">Передать ${htmlText((POLICY_ROLE_DATIVE[a.toRole]||a.toRole).toLowerCase())}</button>
+      <button type="button" class="btn btn-outline" onclick="takeoverCancel()">Отмена</button></div></div></div></div>`;
+}
+function takeoverCancel(){S.takeoverAsk=null;render();}
+async function takeoverConfirm(){
+  const a=S.takeoverAsk;S.takeoverAsk=null;S.handoffOpen=null;
+  if(!a){render();return;}
+  const j=await standAction('/api/stand/transfer/handoff',{dealId:a.id,version:standVer,toRole:a.toRole,takeover:true,claimAt:a.claimAt});
+  if(j?.success)toast('Перевод передан');else render();
+}
 async function transferHandoff(id,toRole){
   const d=deal(id), claim=d.step==='s23'?d.transferClaim:null;
-  const body={dealId:id,version:standVer,toRole};
-  if(claim){
-    const warn=`${claim.byName||'Сотрудник'} начал перевод в ${bkkTime(claim.at)}. Если транзакция уже заведена в кошельке, второй раз не заводите.`;
-    if(!window.confirm(warn+'\n\nПередать '+(POLICY_ROLE_DATIVE[toRole]||toRole).toLowerCase()+'?'))return;
-    body.takeover=true;body.claimAt=claim.at;
-  }
+  if(claim){S.takeoverAsk={id,toRole,claimAt:claim.at};S.handoffOpen=null;render();return;}
   S.handoffOpen=null;
-  const j=await standAction('/api/stand/transfer/handoff',body);
-  if(j?.success)toast(claim?'Перевод передан':'Передано: '+(POLICY_ROLE_DATIVE[toRole]||toRole).toLowerCase());
+  const j=await standAction('/api/stand/transfer/handoff',{dealId:id,version:standVer,toRole});
+  if(j?.success)toast('Передано: '+(POLICY_ROLE_DATIVE[toRole]||toRole).toLowerCase());
 }
 async function transferAlarmClear(id){
   const j=await standAction('/api/stand/transfer/alarm/clear',{dealId:id,version:standVer});
@@ -2618,10 +2635,13 @@ async function transferAlarmClear(id){
 }
 /* Варианты «Передать» для менеджера/админа: s23 до подтверждения — завести,
    s24 до подтверждения — подписать. [] — передавать нечего. */
+/* Права «Передать», «Деньги отправлены», снятия тревоги и ролей кошелька определяет реальная
+   роль сотрудника (admin ходит под любой ролью-маской, но права у него админские) */
+function dispatchRole(){return (typeof standMe==='string'&&standMe)?standMe:S.role;}
 function handoffTargets(d){
   const w=dealWallet(d);
   if(!hasPolicy(w)||d.closed||d.outgoingReview?.requestedAt)return [];
-  if(!(S.role==='operator'||S.role==='admin'))return [];
+  if(!['operator','admin'].includes(dispatchRole()))return [];
   if(d.transferAlarm)return [];
   const myClaim=d.transferClaim&&String(d.transferClaim.byId)===String(standMeId);
   if(d.step==='s23'){
@@ -2646,20 +2666,21 @@ async function transferMarkSent(id){
 }
 function markSentBlock(d){
   const w=dealWallet(d);
-  if(!hasPolicy(w)||d.closed||!(S.role==='operator'||S.role==='admin'))return '';
+  if(!hasPolicy(w)||d.closed||!['operator','admin'].includes(dispatchRole()))return '';
   if(!(d.step==='s23'||d.step==='s24')||d.transferAlarm||d.serverTransferComplete||d.outgoingReview?.requestedAt)return '';
   if(d.transferClaim&&String(d.transferClaim.byId)===String(standMeId))return '';
+  if(policyReleasedByMe(d))return '';
   const found=((d.transferFound||{}).hashes||[])[0]||'';
   return `<div class="card" data-mark-sent style="margin-bottom:12px"><div class="fg"><label class="fl">Хеш перевода</label>
     <input class="fc addr" id="ms_hash_${d.id}" value="${htmlText(found)}" placeholder="64 символа или ссылка на транзакцию"></div>
-    <div class="row"><button type="button" class="btn btn-outline" data-mark-sent-btn onclick="transferMarkSent(${d.id})">Деньги отправлены</button></div></div>`;
+    <div class="act-row"><button type="button" class="btn btn-outline" data-mark-sent-btn onclick="transferMarkSent(${d.id})">Деньги отправлены</button></div></div>`;
 }
 function policyActions(d){return handoffBlock(d)+markSentBlock(d);}
 function handoffBlock(d){
   const targets=handoffTargets(d);
   if(!targets.length)return '';
   const open=S.handoffOpen===d.id;
-  return `<div class="card" style="margin-bottom:12px"><div class="row" style="align-items:center;gap:8px;flex-wrap:wrap">
+  return `<div class="card" data-handoff style="margin-bottom:12px"><div class="act-row">
     <button type="button" class="btn btn-outline" data-handoff-open aria-expanded="${open}" onclick="handoffToggle(${d.id})">Передать</button>
     ${open?targets.map(r=>`<button type="button" class="btn btn-outline btn-sm" data-handoff-to="${r}" onclick="transferHandoff(${d.id},'${r}')">${POLICY_ROLE_DATIVE[r]}</button>`).join(''):''}</div></div>`;
 }
@@ -2681,8 +2702,8 @@ function policyStatusLine(d){
   if(mineReleased)html=`<div class="derived" data-policy-status>Передана: ${nameOf(policyInitiateRole(d,w))}</div>`;
   if(released&&!mineReleased)html+=`<div class="alert a-warn" data-takeover-warning><div>${htmlText(released.byName||'Сотрудник')} начал перевод в ${bkkTime(released.at)}. Если транзакция уже заведена в кошельке, второй раз не заводите.</div></div>`;
   if(d.transferFound)html+=`<div class="alert a-info"><div>Перевод найден в сети: ${(d.transferFound.hashes||[]).map(h=>htmlText(txShort(h))).join(', ')}</div></div>`;
-  if(d.transferAlarm)html+=`<div class="alert a-err" data-transfer-alarm><div><b>Найдено два перевода:</b> ${(d.transferAlarm.hashes||[]).map(h=>htmlText(h)).join(', ')}. Проверьте возврат.</div>
-    ${(S.role==='admin'||S.role==='teodor')?`<div class="row" style="margin-top:8px"><button class="btn btn-outline btn-sm" onclick="transferAlarmClear(${d.id})">Снять тревогу</button></div>`:''}</div>`;
+  if(d.transferAlarm)html+=`<div class="alert a-err" data-transfer-alarm><div><b>Найдено два перевода:</b> <span style="word-break:break-all">${(d.transferAlarm.hashes||[]).map(h=>htmlText(h)).join(', ')}</span>. Проверьте возврат.
+    ${['admin','teodor'].includes(dispatchRole())?`<div class="act-row" style="margin-top:8px"><button class="btn btn-outline btn-sm" onclick="transferAlarmClear(${d.id})">Снять тревогу</button></div>`:''}</div></div>`;
   return html;
 }
 async function transferApprove(id){
@@ -5626,7 +5647,7 @@ function render(){
   else main=(VIEWS[S.tab]||VIEWS.tasks)();
   if(S.edit) crmDraftCapture();
   else crmDraftActive=null;
-  app.innerHTML=main+(S.modal?viewModal():'')+(S.doc?viewDoc():'')+(S.cnv?viewCnv():'')+(S.refEdit?viewRefEdit():'');
+  app.innerHTML=main+(S.modal?viewModal():'')+(S.doc?viewDoc():'')+(S.cnv?viewCnv():'')+(S.refEdit?viewRefEdit():'')+(S.takeoverAsk?takeoverAskView():'');
   if(S.open&&S.manualCloseDraft[S.open])mcPreviewUpdate(S.open);
   if(taskUsesThbRates()) ensureThbRates();
   document.body.classList?.toggle?.('deal-task-mode',!!S.open&&S.view==='task');
@@ -10893,6 +10914,10 @@ function stepGoal(d){
               dealWallet(d)?(needsSecondSign(d)?'нужна вторая':'одна, владелец'):'—']]};
     case 's23': {
       const n=cnvMembers(d).filter(x=>pcSends(x)).length;
+      /* адрес получателя и сумма — часть блока «завести в кошельке»: только у держателя claim */
+      const pw=dealWallet(d);
+      if(hasPolicy(pw)&&!d.outgoingReview?.requestedAt&&!(d.transferClaim&&String(d.transferClaim.byId)===String(standMeId)))
+        return {t:'Перевод с кошелька',nums:[['Кошелёк',pw.name]]};
       /* цель — зачем уходят деньги, а не «чем платим получателю» (аудит 27.09 №4) */
       return {t:sendActionHead(d),
       nums:[['К отправке',moneyKop(pcOut(d),'USDT')],
@@ -10975,7 +11000,7 @@ function walletLine(w){
 }
 function walletPolicyLine(w){
   if(!hasPolicy(w))return '';
-  return `<div class="derived" data-policy-line style="margin-top:8px">Заводит: <b>${htmlText(policyRoleNames(policyInitiators(w)))}</b> · Подписывает: <b>${htmlText(policyRoleNames(w.confirmer_roles))}</b>${w.owner_can_alone?' · владелец может отправить сам':''}</div>`;
+  return `<div class="derived" data-policy-line style="margin-top:8px"><span>Заводит: <b>${htmlText(policyRoleNames(policyInitiators(w)))}</b> · Подписывает: <b>${htmlText(policyRoleNames(w.confirmer_roles))}</b>${w.owner_can_alone?' · владелец может отправить сам':''}${w.purpose_note?` · ${htmlText(w.purpose_note)}`:''}</span></div>`;
 }
 /* Выбранный кошелёк уже виден в карточках выбора — строку с ним не дублируем (27.09) */
 function walletBlock(d,key){
