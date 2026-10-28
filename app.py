@@ -7331,16 +7331,9 @@ def stand_transfer_mark_sent():
         orders = [o for o in policy['orders'] if normalize_network(o.get('net')) == 'trc20' and o.get('to')]
         members = {d['id']: d for d in _stand_members(state, main['id'])}
         used = {str(h).lower() for h in get_used_transaction_hashes(db) if h}
-        elsewhere = {str(s.get('hash') or s.get('ref') or '').lower()
-                     for d in state.get('deals') or [] if d.get('id') not in members
-                     for s in (d.get('transfer') or {}).get('sends') or []}
-        round_claims = _stand_policy_round_claims(main, fingerprint)
         if any(c.get('byId') == actor_id for c in main.get('transferClaimHistory') or []
                if c.get('fingerprint') == fingerprint):
             return jsonify(success=False, error='Перевод передан другому исполнителю'), 409
-        lower = min((c['at'] for c in round_claims), default=None)
-        if lower is None:
-            lower = main.get('stepEnteredAt') or 0     # ограничение: у старых досок отметки входа в s23 нет
         claim = main.get('transferClaim') or {}
         if claim.get('byId') == actor_id:
             executor = None
@@ -7354,10 +7347,8 @@ def stand_transfer_mark_sent():
     finally:
         db.close()
     # Сеть опрашиваем вне блокировки; ниже всё перепроверяется под блокировкой.
-    if tx_hash in elsewhere or (tx_hash in used and not any(
-            str(s.get('hash') or s.get('ref') or '').lower() == tx_hash
-            for d in members.values() for s in (d.get('transfer') or {}).get('sends') or [])):
-        return jsonify(success=False, error='Этот хеш уже использован в другой операции'), 409
+    already_attached = any(str(s.get('hash') or s.get('ref') or '').lower() == tx_hash
+                           for d in members.values() for s in (d.get('transfer') or {}).get('sends') or [])
     chosen, reasons = None, []
     for order in orders:
         send_list = (members[order['dealId']].get('transfer') or {}).get('sends') or []
@@ -7373,10 +7364,10 @@ def stand_transfer_mark_sent():
     if not chosen:
         return jsonify(success=False, error='Перевод не подходит: ' + (reasons[0] if reasons else 'нет поручения для проверки')), 409
     order, proof = chosen
-    if not proof.get('timestampMs'):
-        return jsonify(success=False, error='Сеть не вернула время перевода — отметить нельзя'), 409
-    if proof['timestampMs'] < lower:
-        return jsonify(success=False, error='Перевод сделан раньше начала отправки'), 409
+    if not already_attached:
+        problem = _stand_policy_send_problem(state, main, policy, tx_hash, proof.get('timestampMs'), used)
+        if problem:
+            return jsonify(success=False, error=problem), 409
     db = get_session()
     try:
         if engine.dialect.name == 'sqlite':
@@ -7400,12 +7391,10 @@ def stand_transfer_mark_sent():
         now_ms = int(time.time() * 1000)
         name = _stand_user_name(user)
         if present is None:
-            elsewhere = {str(s.get('hash') or s.get('ref') or '').lower()
-                         for d in state.get('deals') or [] if d.get('id') != member['id']
-                         for s in (d.get('transfer') or {}).get('sends') or []}
             used = {str(h).lower() for h in get_used_transaction_hashes(db) if h}
-            if tx_hash in elsewhere or tx_hash in used:
-                return jsonify(success=False, error='Этот хеш уже использован в другой операции'), 409
+            problem = _stand_policy_send_problem(state, main, policy, tx_hash, proof.get('timestampMs'), used)
+            if problem:
+                return jsonify(success=False, error=problem), 409
             send = dict(ref=tx_hash, hash=tx_hash, net='TRC-20', amount=float(Decimal(order['amount'])),
                         markedBy={'kind': 'operator', 'byId': user.id, 'byName': name,
                                   'forName': executor})
@@ -8749,7 +8738,8 @@ def stand_crm_close(stand_deal_id):
             {'at': _at, 'ts': _ts, 'role': actor, 'text': 'Закрыта: Успешно завершена'})
         if manual_override and crm_row.payout_wallet_id:
             payout_wallet = db.get(Wallet, crm_row.payout_wallet_id)
-            if payout_wallet and payout_wallet.address in POLICY_WALLET_ADDRESSES:
+            if payout_wallet and (payout_wallet.address in POLICY_WALLET_ADDRESSES
+                                  or _wallet_policy_ready(payout_wallet)):
                 closed['log'].append({
                     'at': _at, 'ts': _ts, 'role': actor,
                     'text': 'Закрыто вручную без отметок подписи в системе'})
@@ -9113,14 +9103,15 @@ def _stand_transfer_policy(db, state, main):
     mirror = stand_prepay.wallet(state, main) or {}
     source_addr = mirror.get('addr') or ((main.get('payinCustom') or {}).get('addr')
                                          if wallet_id == 'custom' else None)
+    policy_addresses = _stand_policy_addresses(db)
     try:
         registry_id = int(wallet_id)
     except (TypeError, ValueError):
-        if source_addr in POLICY_WALLET_ADDRESSES:
+        if source_addr in policy_addresses:
             raise ValueError('Кошелёк с политикой подписей выбирают по записи реестра')
         return None
     wallet = db.query(Wallet).filter_by(id=registry_id).first()
-    if source_addr in POLICY_WALLET_ADDRESSES and (not wallet or wallet.address != source_addr):
+    if source_addr in policy_addresses and (not wallet or wallet.address != source_addr):
         raise ValueError('Адрес кошелька с политикой не совпадает с записью реестра')
     if not _wallet_policy_ready(wallet):
         return None
@@ -9269,6 +9260,45 @@ def _stand_commit_cas(db, row, state, old_version, updated_by):
         StandState.updated_at: datetime.utcnow()}, synchronize_session=False)
     return won == 1
 
+
+
+def _stand_policy_addresses(db):
+    """Адреса, которые нельзя использовать как «свой» кошелёк: 6 адресов сида и любой активный
+    кошелёк реестра с готовой политикой (в том числе созданный админом)."""
+    found = set(POLICY_WALLET_ADDRESSES)
+    for wallet in db.query(Wallet).filter(Wallet.initiator_roles.isnot(None)).all():
+        if wallet.active and _wallet_policy_ready(wallet):
+            found.add(wallet.address)
+    return found
+
+
+def _stand_policy_round_start(main, fingerprint):
+    """Не раньше чего перевод относится к раунду: самый ранний claim раунда, без claim — вход в шаг."""
+    claims = _stand_policy_round_claims(main, fingerprint)
+    if claims:
+        return min(c['at'] for c in claims)
+    return main.get('stepEnteredAt') or 0
+
+
+def _stand_policy_send_problem(state, main, policy, tx_hash, timestamp_ms, used):
+    """Единая проверка «перевод годится для закрытия раунда политики».
+
+    Её применяют все три пути: поиск в сети (поллер), «Я отправил» держателя claim (хеш в
+    общем PUT, проверка сети) и «Деньги отправлены». Возвращает причину отказа или None."""
+    tx = str(tx_hash or '').lower()
+    if not tx or tx.startswith('demo:'):
+        return None                           # demo-переводы идут отдельным контуром
+    if not timestamp_ms:
+        return 'Сеть не вернула время перевода — отметить нельзя'
+    if timestamp_ms < _stand_policy_round_start(main, policy['fingerprint']):
+        return 'Перевод сделан раньше начала отправки'
+    members = {d['id'] for d in _stand_members(state, main['id'])}
+    elsewhere = {str(s.get('hash') or s.get('ref') or '').lower()
+                 for d in state.get('deals') or [] if d.get('id') not in members
+                 for s in (d.get('transfer') or {}).get('sends') or []}
+    if tx in elsewhere or tx in {str(h).lower() for h in used or ()}:
+        return 'Этот хеш уже использован в другой операции'
+    return None
 
 
 def _stand_note(state, event_id, role, deal, text):
@@ -11652,7 +11682,8 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
                 old_registry = db.query(Wallet).filter_by(id=int(old_source)).first()
             except (TypeError, ValueError):
                 old_registry = None
-            if old_registry and old_registry.address in POLICY_WALLET_ADDRESSES and old_source != new_source:
+            if old_registry and (old_registry.address in POLICY_WALLET_ADDRESSES
+                                 or _wallet_policy_ready(old_registry)) and old_source != new_source:
                 return 'Кошелёк отправки закреплён до передачи на подпись'
             try:
                 new_policy = _stand_transfer_policy(db, new_state,
@@ -12063,7 +12094,8 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
             return 'freehold_loss_ack_server_only'
         if (_stand_is_crypto(deal)
                 or (before and (_stand_is_crypto(before)))):
-            if (deal.get('payinCustom') or {}).get('addr') in POLICY_WALLET_ADDRESSES:
+            if (deal.get('payinCustom') or {}).get('addr') in (
+                    _stand_policy_addresses(db) if db is not None else POLICY_WALLET_ADDRESSES):
                 return 'Кошелёк с политикой подписей выбирают из реестра'
             if not before and (deal.get('walletId') in ('custom', 'teodor-erc')
                                or deal.get('payinCustom')):
@@ -13206,17 +13238,15 @@ def _stand_track_policy_outgoing(deal_id=None, *, cache_ttl=0):
             claims = _stand_policy_round_claims(main, policy['fingerprint'])
             if not claims:
                 continue
-            jobs.append((main['id'], policy, min(c['at'] for c in claims)))
+            jobs.append((main['id'], policy, min(c['at'] for c in claims), main, snapshot))
         used = {str(h).lower() for h in get_used_transaction_hashes(db) if h} if jobs else set()
     finally:
         db.close()
     if not jobs:
         return
     results = []
-    for main_id, policy, after_ts in jobs:
+    for main_id, policy, after_ts, job_main, job_state in jobs:
         sender = policy['address']
-        own = {str(s.get('hash') or s.get('ref') or '').lower()
-               for member in policy['members'] for s in (member.get('transfer') or {}).get('sends') or []}
         groups = {}
         complete = True
         for (to, amount), orders in _stand_policy_group_orders(policy).items():
@@ -13232,8 +13262,8 @@ def _stand_track_policy_outgoing(deal_id=None, *, cache_ttl=0):
                 continue
             matches = sorted((tx for tx in found['candidates']
                               if tx['to'] == to and tx['amount'] == Decimal(amount)
-                              and tx['timestamp_ms'] >= after_ts
-                              and (tx['hash'] in own or tx['hash'].lower() not in used)),
+                              and _stand_policy_send_problem(job_state, job_main, policy, tx['hash'],
+                                                             tx['timestamp_ms'], used) is None),
                              key=lambda tx: (tx['timestamp_ms'], tx['hash']))
             groups[(to, amount)] = (orders, matches)
         proofs = {}
@@ -13270,16 +13300,11 @@ def _stand_track_policy_outgoing(deal_id=None, *, cache_ttl=0):
             if not claims or min(c['at'] for c in claims) != after_ts:
                 continue
             members = {m['id']: m for m in _stand_members(state, main_id)}
-            elsewhere = {str(s.get('hash') or s.get('ref') or '').lower()
-                         for d in state.get('deals') or [] if d.get('id') not in members
-                         for s in (d.get('transfer') or {}).get('sends') or []}
             now_ms = int(time.time() * 1000)
             attach, alarm_hashes = [], []
             for (to, amount), (orders, matches) in groups.items():
-                matches = [tx for tx in matches if tx['hash'].lower() not in elsewhere
-                           and (tx['hash'].lower() not in used or any(
-                               str(s.get('hash') or s.get('ref') or '').lower() == tx['hash'].lower()
-                               for o in orders for s in (members[o['dealId']].get('transfer') or {}).get('sends') or []))]
+                matches = [tx for tx in matches if _stand_policy_send_problem(
+                    state, main, policy, tx['hash'], tx['timestamp_ms'], used) is None]
                 if len(matches) > len(orders):
                     alarm_hashes.extend(tx['hash'] for tx in matches)
                     continue
@@ -13466,6 +13491,7 @@ def _stand_check_transfers(deal_id=None, *, poll=False):
             if key[0]:
                 all_claims[(key[0], key[1])] = all_claims.get((key[0], key[1]), 0) + 1
     results = []
+    policy_by_main = {}
     for member_id, key, deal, send, demo_outcome in jobs:
         sender, receiver = expected_addresses(snapshot, deal)
         if deal.get('outgoingReview'):
@@ -13505,6 +13531,23 @@ def _stand_check_transfers(deal_id=None, *, poll=False):
             elif (not deal['outgoingReview'].get('legacyTime')
                   and result['timestampMs'] < deal['outgoingReview']['afterTs']):
                 result.update(beforeOrder=True, checkError='Перевод сделан до поручения — требуется подтверждение операциониста')
+        if result.get('status') == 'confirmed' and main and not deal.get('demoTransfers'):
+            # «Я отправил» держателя claim проходит ту же проверку, что поллер и «Деньги отправлены»:
+            # перевод не старше раунда и хеш не занят другой операцией.
+            if main['id'] not in policy_by_main:
+                policy_db = get_session()
+                try:
+                    policy_by_main[main['id']] = _stand_transfer_policy(policy_db, snapshot, main)
+                except ValueError:
+                    policy_by_main[main['id']] = None
+                finally:
+                    policy_db.close()
+            round_policy = policy_by_main[main['id']]
+            if round_policy and main.get('step') in ('s23', 's24'):
+                problem = _stand_policy_send_problem(snapshot, main, round_policy, key[0],
+                                                     result.get('timestampMs'), registry_claims)
+                if problem:
+                    result = {'status': 'mismatch', 'checkError': problem}
         result['lastCheckedAt'] = datetime.utcnow().isoformat() + 'Z'
         results.append((member_id, key, demo_outcome, result))
     db = get_session()
@@ -22491,6 +22534,12 @@ def _wallet_apply_roles(session, wallet, fields):
     if wallet_policy.policy_ready(after['initiator_roles'], after['confirmer_roles']):
         # Правила заданы явно: кошелёк можно выбирать в новых сделках.
         wallet.not_for_new_deals = False
+    _wallet_journal_append(session, wallet, before, after)
+    return True
+
+
+def _wallet_journal_append(session, wallet, before, after):
+    """Одна строка журнала кошелька: кто, когда, было, стало."""
     uid = flask_session.get('user_id')
     user = session.query(AdminUser).filter_by(id=uid).first() if uid else None
     try:
@@ -22503,7 +22552,44 @@ def _wallet_apply_roles(session, wallet, fields):
     wallet.policy_log = json.dumps(journal[-200:], ensure_ascii=False)
     app.logger.info('wallet_policy_change address=%s by=%s before=%s after=%s',
                     wallet.address, uid, before, after)
-    return True
+
+
+def _wallet_busy_deals(session, wallet):
+    """Коды сделок на шаге отправки или подписи с этим кошельком (только на стенде)."""
+    if not STAND_MODE:
+        return []
+    row = session.query(StandState).filter_by(id=1).first()
+    if not row:
+        return []
+    try:
+        state = json.loads(row.data or '{}')
+    except ValueError:
+        return []
+    codes = []
+    for deal in state.get('deals') or []:
+        if deal.get('step') not in ('s23', 's24') or deal.get('closed'):
+            continue
+        try:
+            main = _stand_batch_main(state, deal['id'])
+            if main and main.get('id') == deal.get('id') and str(stand_prepay.wallet_id(state, main)) == str(wallet.id):
+                codes.append(str(main.get('code') or main['id']))
+        except (TypeError, ValueError, KeyError, AttributeError):
+            continue
+    return codes
+
+
+def _wallet_protected_change_denied(session, wallet):
+    """Удалить или отключить кошелёк с готовой политикой: только admin и только когда нет
+    сделки на s23/s24 с этим кошельком. None — можно."""
+    if not _wallet_policy_ready(wallet):
+        return None
+    if STAND_MODE and current_role() != 'admin':
+        return jsonify({'success': False, 'error': 'Кошелёк с политикой удаляет или отключает только админ'}), 403
+    busy = _wallet_busy_deals(session, wallet)
+    if busy:
+        return jsonify({'success': False, 'error': 'С этим кошельком есть сделка на шаге отправки или подписи: '
+                                                   + ', '.join(busy)}), 409
+    return None
 
 
 def _wallet_edit_denied():
@@ -23000,7 +23086,9 @@ def delete_wallet(wallet_id):
             return jsonify({'success': False, 'error': 'Кошелёк не найден'}), 404
         if wallet.address in POLICY_WALLET_ADDRESSES:
             return jsonify({'success': False, 'error': 'Служебный кошелёк нельзя удалить'}), 403
-        
+        denied = _wallet_protected_change_denied(session, wallet)
+        if denied:
+            return denied
 
         # Отвязываем кошелек от всех сделок перед удалением
         session.query(Deal).filter(Deal.payout_wallet_id == wallet_id).update({Deal.payout_wallet_id: None})
@@ -23043,6 +23131,14 @@ def update_wallet(wallet_id):
             wallet.label = (data.get('label') or '').strip()[:100]
         # Флаги правятся здесь же: balance-кошелёк фаундера не попадал в списки
         # переводов, а чтобы это исправить, приходилось удалять и заводить заново
+        if 'active' in data and bool(data.get('active')) != bool(wallet.active):
+            if _wallet_policy_ready(wallet):
+                if not data.get('active'):
+                    denied = _wallet_protected_change_denied(session, wallet)
+                    if denied:
+                        return denied
+                _wallet_journal_append(session, wallet, {'active': bool(wallet.active)},
+                                       {'active': bool(data.get('active'))})
         for flag in ('is_monitored', 'is_balance', 'active'):
             if flag in data:
                 setattr(wallet, flag, bool(data.get(flag)))

@@ -25,7 +25,9 @@ DEFAULT_WALLETS = {
 LEGACY_GRUSHA_ADDRESS = 'TWBgeUo74DehAPgw5cKTdYUTXtJELqwwqn'
 TRONSCAN_USER_AGENT = 'Mozilla/5.0 (Apple) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
 SERVER_FIELDS = ('status', 'verifiedAmount', 'verifiedAt', 'from', 'to',
-                 'lastCheckedAt', 'checkError', 'demoOutcome', 'demo', 'timestampMs', 'registeredAtMs', 'timeUnverified', 'beforeOrder')
+                 'lastCheckedAt', 'checkError', 'demoOutcome', 'demo', 'timestampMs', 'registeredAtMs', 'timeUnverified', 'beforeOrder',
+                 # отметку «кто закрыл» и подписантов из сети пишет только сервер
+                 'markedBy', 'signers')
 # Инвойс и тариф фиксируются с s11; сумму клиента операционист ещё может
 # исправить на s11 до первого выпуска документов.
 FREEHOLD_LOCKED_STEPS = {'s11', 's11b', 's12', 's14', 's14m', 's15', 's18', 's18w',
