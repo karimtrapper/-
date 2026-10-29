@@ -6138,6 +6138,79 @@ def stand_file_upload():
         db.close()
 
 
+# Виды документов, которые проходят через черновик менеджера (managerDraftDocTarget во фронте).
+STAND_DRAFT_DOC_KINDS = frozenset({'pass', 'inv', 'spa', 'ipds'})
+STAND_DRAFT_STEPS = ('s4', 's5', 's6', 's8')
+
+
+def _stand_doc_published(deal, kind):
+    """Опубликован ли документ вида kind: сделка уже передана операционисту.
+
+    Зеркало критерия managerDraftDocTarget, но без привязки к роли зрителя.
+    """
+    if deal.get('step') not in STAND_DRAFT_STEPS:
+        return True
+    return deal.get('step') == 's8' and bool((deal.get('docs') or {}).get(kind))
+
+
+def _stand_is_file(item, file_id):
+    return isinstance(item, dict) and (item.get('id') == file_id or item.get('storageId') == file_id)
+
+
+def _stand_find_deleted(deal, kind, file_id):
+    """Найти удалённый файл: сначала в журнале сделки, затем в журнале черновика (старые записи)."""
+    owners = [deal]
+    if kind in STAND_DRAFT_DOC_KINDS:
+        owners.append(deal.get('_managerDraft') or {})
+    for owner in owners:
+        journal = (owner.get('deletedFiles') or {}).get(kind) or []
+        item = next((f for f in journal if _stand_is_file(f, file_id)), None)
+        if item is not None:
+            return owner, item
+    return None, None
+
+
+def _stand_forget_deleted(deal, kind, file_id):
+    """Убрать файл из обоих журналов удалений, чтобы он не остался дублем."""
+    for owner in (deal, deal.get('_managerDraft') or {}):
+        lists = owner.get('deletedFiles') or {}
+        if kind in lists:
+            lists[kind] = [f for f in lists[kind] if not _stand_is_file(f, file_id)]
+
+
+def _stand_publish_journal(prior, incoming):
+    """Перенести журнал удалений черновика в журнал сделки для уже опубликованных документов.
+
+    Клиент не может записать deletedFiles в сделку сам (deleted_files_server_only),
+    поэтому перенос делает сервер при сохранении менеджером или админом.
+    """
+    journal = (prior.get('_managerDraft') or {}).get('deletedFiles') or {}
+    moved = {k: v for k, v in journal.items()
+             if k in STAND_DRAFT_DOC_KINDS and v and _stand_doc_published(incoming, k)}
+    if not moved:
+        return
+    deal_journal = dict(incoming.get('deletedFiles') or {})
+    for kind, items in moved.items():
+        merged = list(deal_journal.get(kind) or [])
+        seen = {f.get('id') or f.get('storageId') for f in merged if isinstance(f, dict)}
+        for item in items:
+            key = item.get('id') or item.get('storageId')
+            if key and key in seen:
+                continue
+            merged.append(item)
+            if key:
+                seen.add(key)
+        deal_journal[kind] = merged
+    incoming['deletedFiles'] = deal_journal
+    draft = incoming.get('_managerDraft')
+    if isinstance(draft, dict) and isinstance(draft.get('deletedFiles'), dict):
+        rest = {k: v for k, v in draft['deletedFiles'].items() if k not in moved}
+        if rest:
+            draft['deletedFiles'] = rest
+        else:
+            draft.pop('deletedFiles')
+
+
 @app.route('/api/stand/files/<int:deal_id>/<kind>/<file_id>', methods=['PATCH'])
 def stand_file_change(deal_id, kind, file_id):
     """Move a deal attachment between the active and recoverable lists."""
@@ -6170,7 +6243,15 @@ def stand_file_change(deal_id, kind, file_id):
                     (manager.display_name or '').strip().casefold(),
                     (manager.username or '').strip().casefold()}:
                 return jsonify(success=False, error='Документы этой сделки меняет её менеджер'), 403
-        target = deal.setdefault('_managerDraft', {}) if draft else deal
+        if action == 'restore':
+            # Куда вернуть файл решает сервер по фактическому месту файла и публикации,
+            # а не клиентский draft: черновик, опубликованный после удаления, уже не черновик.
+            owner, item = _stand_find_deleted(deal, kind, file_id)
+            to_draft = (owner is not None and owner is not deal and kind in STAND_DRAFT_DOC_KINDS
+                        and not _stand_doc_published(deal, kind))
+            target = deal.setdefault('_managerDraft', {}) if to_draft else deal
+        else:
+            target = deal.setdefault('_managerDraft', {}) if draft else deal
         if action == 'delete' and actor != 'admin':
             crm_id = deal.get('crmDealId')
             try:
@@ -6180,11 +6261,9 @@ def stand_file_change(deal_id, kind, file_id):
             if (deal.get('closed') and deal.get('closeReason') == 'Успешно завершена'
                     or crm_deal and crm_deal.status == DealStatus.COMPLETED):
                 return jsonify(success=False, error='Сделка закрыта, удаление документов — только администратором'), 403
-        source_key, dest_key = (('deletedFiles', 'files') if action == 'restore'
-                                else ('files', 'deletedFiles'))
-        source = (target.get(source_key) or {}).get(kind) or []
-        item = next((f for f in source if isinstance(f, dict)
-                     and (f.get('id') == file_id or f.get('storageId') == file_id)), None)
+        if action == 'delete':
+            source = (target.get('files') or {}).get(kind) or []
+            item = next((f for f in source if _stand_is_file(f, file_id)), None)
         if not item:
             return jsonify(success=False, error='Файл не найден'), 404
         if action == 'delete' and kind == STAND_CLIENT_PAYIN_KIND and actor != 'admin':
@@ -6195,8 +6274,12 @@ def stand_file_change(deal_id, kind, file_id):
                     or (deal.get('manualBankReceipt') or {}).get('status') != 'pending'):
                 return jsonify(success=False, error='Выписку можно менять только до подтверждения прихода'), 403
         previous = json.loads(row.data or '{}')
-        target.setdefault(source_key, {})[kind] = [f for f in source if f is not item]
-        target.setdefault(dest_key, {}).setdefault(kind, []).append(item)
+        if action == 'delete':
+            target.setdefault('files', {})[kind] = [f for f in source if f is not item]
+            target.setdefault('deletedFiles', {}).setdefault(kind, []).append(item)
+        else:
+            _stand_forget_deleted(deal, kind, file_id)
+            target.setdefault('files', {}).setdefault(kind, []).append(item)
         if kind not in (STAND_CLIENT_PAYIN_KIND, STAND_BANK_CREDIT_KIND, 'additional'):
             active = target.get('files', {}).get(kind) or []
             target.setdefault('docs', {})[kind] = bool(active)
@@ -7567,6 +7650,8 @@ def stand_state_put():
                         or crm_deal and crm_deal.status == DealStatus.COMPLETED):
                     return jsonify(success=False, error='Сделка закрыта, удаление документов — только администратором'), 403
                 return jsonify(success=False, error='Удаляйте документы кнопкой «Удалить»'), 409
+            if actor in ('manager', 'admin'):
+                _stand_publish_journal(prior_deal, incoming_deal)
         # Other roles receive a projected board. Preserve the hidden draft in
         # their versioned PUT, and reject any attempt to forge it explicitly.
         if actor not in ('manager', 'admin'):

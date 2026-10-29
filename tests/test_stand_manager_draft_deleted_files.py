@@ -18,6 +18,94 @@ def _manager_with_deleted_invoice(api):
     return item
 
 
+def _publish_as_client(api):
+    """Публикация черновика так, как её отправляет клиент: файлы и комментарий переезжают в сделку.
+
+    Журнал deletedFiles клиент не переносит (сервер ведёт его сам), поэтому он остаётся в черновике.
+    """
+    version, current = _snapshot(api)
+    deal = current['deals'][0]
+    draft = deal['_managerDraft']
+    deal['files'], deal['docs'], deal['docMeta'] = draft['files'], draft['docs'], draft['docMeta']
+    deal['docComment'] = draft.get('comment', '')
+    deal['_managerDraft'] = {'deletedFiles': draft.get('deletedFiles', {})}
+    deal['step'] = 's11'
+    response = api[0].put('/api/stand/state', json={'version': version, 'data': current})
+    assert response.status_code == 200, response.json
+
+
+def test_qa_publish_then_admin_restore_puts_invoice_into_deal(api):
+    """QA Codex 29.10: удалил, загрузил заново, передал операционисту, админ восстановил первый инвойс."""
+    first = _manager_with_deleted_invoice(api)
+    assert upload(api, b'%PDF-1.4\npassport', kind='pass', name='passport.pdf').status_code == 200
+    again = upload(api, b'%PDF-1.4\ninvoice v2', kind='inv', name='invoice_v2.pdf')
+    assert again.status_code == 200, again.json
+    _, state = read_db()
+    state['deals'][0]['step'] = 's8'
+    seed(state)
+    _publish_as_client(api)
+    _, published = read_db()
+    deal = published['deals'][0]
+    assert deal['step'] == 's11'
+    assert not (deal['_managerDraft'].get('deletedFiles') or {}).get('inv'), 'журнал должен уйти из черновика'
+    assert [f['id'] for f in deal['deletedFiles']['inv']] == [first['id']]
+    api[1][0] = 'admin'
+    restored = api[0].patch(f"/api/stand/files/1473/inv/{first['id']}", json={'action': 'restore'})
+    assert restored.status_code == 200, restored.json
+    _, state = read_db()
+    deal = state['deals'][0]
+    ids = [f['id'] for f in deal['files']['inv']]
+    assert sorted(ids) == sorted([first['id'], again.json['data']['deals'][0]['_managerDraft']['files']['inv'][0]['id']])
+    assert len(set(ids)) == len(ids), 'дублей быть не должно'
+    draft_ids = [f['id'] for f in (deal['_managerDraft'].get('files') or {}).get('inv', [])]
+    assert first['id'] not in draft_ids, 'восстановленный файл не должен уйти в черновик'
+    assert not (deal.get('deletedFiles') or {}).get('inv')
+
+
+def test_restore_before_publish_returns_invoice_to_manager_draft(api):
+    item = _manager_with_deleted_invoice(api)
+    api[1][0] = 'admin'
+    restored = api[0].patch(f"/api/stand/files/1473/inv/{item['id']}?draft=1", json={'action': 'restore'})
+    assert restored.status_code == 200, restored.json
+    deal = read_db()[1]['deals'][0]
+    assert [f['id'] for f in deal['_managerDraft']['files']['inv']] == [item['id']]
+    assert not (deal.get('files') or {}).get('inv')
+    assert not (deal['_managerDraft'].get('deletedFiles') or {}).get('inv')
+
+
+def test_stuck_deal_restore_finds_journal_in_draft_and_puts_file_into_documents(api):
+    """Сделка, зависшая до фикса: опубликована, но старая запись удаления осталась в черновике."""
+    api[1][0] = 'admin'
+    state = board('s11')
+    deal = state['deals'][0]
+    deal['docs'] = {'inv': True}
+    deal['files'] = {'inv': [dict(pdf(b'current', 'invoice_v2.pdf'), id='sf_current_inv')]}
+    deal['_managerDraft'] = {'deletedFiles': {'inv': [dict(pdf(b'stuck', 'invoice.pdf'), id='sf_stuck_inv')]}}
+    seed(state)
+    restored = api[0].patch('/api/stand/files/1473/inv/sf_stuck_inv?draft=1', json={'action': 'restore'})
+    assert restored.status_code == 200, restored.json
+    deal = read_db()[1]['deals'][0]
+    assert [f['id'] for f in deal['files']['inv']] == ['sf_current_inv', 'sf_stuck_inv']
+    assert not (deal['_managerDraft'].get('deletedFiles') or {}).get('inv')
+    assert not (deal['_managerDraft'].get('files') or {}).get('inv')
+
+
+def test_client_cannot_move_draft_journal_into_deal_by_put(api):
+    """Журнал сделки пишет только сервер: клиент не переносит его сам (deleted_files_server_only)."""
+    api[1][0] = 'manager'
+    state = board('s8')
+    state['deals'][0]['_managerDraft'] = {'deletedFiles': {'inv': [dict(pdf(b'old', 'old.pdf'), id='sf_old_inv')]}}
+    seed(state)
+    version, current = _snapshot(api)
+    deal = current['deals'][0]
+    deal['deletedFiles'] = {'inv': [{'id': 'sf_old_inv', 'file': 'old.pdf'}]}
+    deal['_managerDraft'] = {}
+    deal['step'] = 's11'
+    response = api[0].put('/api/stand/state', json={'version': version, 'data': current})
+    assert response.status_code == 409, response.json
+    assert response.json['error'] == 'deleted_files_server_only'
+
+
 def _snapshot(api):
     """Состояние так, как его получает клиент (без сырых байтов в deletedFiles)."""
     body = api[0].get('/api/stand/state').json
