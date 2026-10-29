@@ -463,7 +463,6 @@ function updateScenarioUI() {
 function setProfitMargin(profit) {
     const value = parseFloat(profit);
     const amount = getAmount();
-    const ladder = ladderProfit(amount);
 
     // Пол 1.5 % — ниже менеджер не опускает без согласования (решение Карима 27.08.2026)
     if (value < PROFIT_FLOOR) {
@@ -473,10 +472,8 @@ function setProfitMargin(profit) {
 
     state.profitMargin = parseFloat(profit);
     updateB2ExtrasMeta();
-    if (state.applyDiscount && state.profitMargin < ladder) {
-        const delta = (ladder - state.profitMargin).toFixed(2).replace(/\.?0+$/, '');
-        showToast(`Скидка ${delta} п.п. ниже стандарта (${ladder}%) — согласовано?`, 'info', 4000);
-    }
+    // Предупреждение «ниже стандарта — согласовано?» дублировало #marginWarning в блоке
+    // результата (Карим, 2026-10-29) — отдельного всплывающего тоста тут больше нет.
 
     // Скрываем кастом-инпут и чистим его (вызов из пресета)
     const customWrapper = document.getElementById('customProfitWrapper');
@@ -584,11 +581,8 @@ function onCustomProfitInput(el) {
 
     state.profitMargin = capped;
     state.applyDiscount = true;
-    const ladderNow = ladderProfit(getAmount());
-    if (state.profitMargin < ladderNow) {
-        const d = (ladderNow - state.profitMargin).toFixed(2).replace(/\.?0+$/, '');
-        showToast(`Скидка ${d} п.п. ниже стандарта (${ladderNow}%) — согласовано?`, 'info', 4000);
-    }
+    // Предупреждение «ниже стандарта — согласовано?» дублировало #marginWarning в блоке
+    // результата (Карим, 2026-10-29) — отдельного всплывающего тоста тут больше нет.
     console.log(`🎯 Кастомная маржа: ${state.profitMargin}%`);
     updateProfitDisplay();
 
@@ -767,6 +761,18 @@ function updateRatesDisplay() {
     const now = new Date();
     document.getElementById('updateTime').textContent = now.toLocaleTimeString('ru-RU');
     updateB2RateAge();
+    updateRatesSummary();
+}
+
+// Свёрнутая плашка курсов на мобильном — одна строка с уже отрисованными значениями.
+function updateRatesSummary() {
+    const summary = document.getElementById('ratesSummaryText');
+    if (!summary) return;
+    const usdtThbLabel = document.getElementById('usdtThbLabel');
+    const usdtThbVal = document.getElementById('usdtThbRate');
+    const rubUsdtVal = document.getElementById('rubUsdtRate');
+    const src = usdtThbLabel ? usdtThbLabel.textContent.replace(/^USDT-THB\s*\(([^)]+)\)$/, '$1') : '';
+    summary.textContent = `Курс: ${src ? src + ' ' : ''}${usdtThbVal ? usdtThbVal.textContent : '—'} · RUB-USDT ${rubUsdtVal ? rubUsdtVal.textContent : '—'}`;
 }
 
 // Обновление UI полей кастомных курсов (пустое / заполненное)
@@ -2799,6 +2805,8 @@ function initB2Layout() {
     updateProfitDisplay();
     updateB2RateAge();
     setInterval(updateB2RateAge, 30000);
+    // На мобильном плашка курсов стартует свёрнутой — раскрытие по тапу, без сохранения состояния.
+    if (rates.tagName === 'DETAILS' && window.matchMedia('(max-width: 700px)').matches) rates.open = false;
     // Существующие inline-обработчики уже меняют state и вызывают hideResults().
     // Для полей без такого обработчика достаточно поймать input на форме.
     params.addEventListener('input', event => {

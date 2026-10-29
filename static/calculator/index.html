@@ -150,6 +150,7 @@
         body.calc-b2 .rates-card { padding: 0; margin: 0; background: transparent; border: 0; box-shadow: none; }
         body.calc-b2 .rates-header { display: grid; grid-template-columns: 1fr auto; gap: 8px; margin-bottom: 16px; }
         body.calc-b2 .rates-title { font-size: 16px; font-weight: 600; color: var(--b2-n300); }
+        body.calc-b2 .rates-summary { display: none; }
         body.calc-b2 .rate-source-toggle { grid-column: 1 / -1; order: 3; background: var(--b2-n700); border-color: var(--b2-n600); }
         body.calc-b2 .src-btn { color: var(--b2-n300); }
         body.calc-b2 .src-btn.active { color: var(--b2-ink); background: var(--b2-white); }
@@ -199,7 +200,13 @@
             .b2-layout { display: flex; flex-direction: column; gap: 16px; }
             body.calc-b2 .b2-layout .b2-side { display: contents; position: static; }
             .b2-side-title { display: none; }
-            body.calc-b2 .rates-card { order: 0; width: 100%; padding: 16px; background: var(--b2-ink); border-radius: 12px; }
+            body.calc-b2 .rates-card { order: 3; width: 100%; padding: 16px; background: var(--b2-ink); border-radius: 12px; }
+            body.calc-b2 .rates-card:not([open]) { padding: 12px 16px; }
+            body.calc-b2 .rates-summary { display: flex; align-items: center; gap: 8px; cursor: pointer; list-style: none; color: var(--b2-n300); font-size: 14px; font-weight: 600; }
+            body.calc-b2 .rates-summary::-webkit-details-marker { display: none; }
+            body.calc-b2 .rates-summary-arrow { margin-left: auto; transition: transform .15s; }
+            body.calc-b2 .rates-card[open] .rates-summary-arrow { transform: rotate(180deg); }
+            body.calc-b2 .rates-card[open] .rates-summary { margin-bottom: 16px; }
             .b2-params { order: 1; width: 100%; padding: 16px; }
             body.calc-b2 #resultsSection { display: contents !important; }
             body.calc-b2 .b2-result-bar { position: fixed; z-index: 50; left: 0; right: 0; bottom: 0; padding: 12px 16px max(12px, env(safe-area-inset-bottom)); background: var(--b2-ink); border-top: 1px solid var(--b2-n700); gap: 8px; }
@@ -294,7 +301,11 @@
         </div>
 
         <!-- Актуальные курсы -->
-        <div class="rates-card" id="ratesCard">
+        <details class="rates-card" id="ratesCard" open>
+            <summary class="rates-summary">
+                <span id="ratesSummaryText">Курс: загрузка…</span>
+                <span class="rates-summary-arrow" aria-hidden="true">⌄</span>
+            </summary>
             <div class="rates-header">
                 <span class="rates-title">Курс сейчас</span>
                 <div class="rate-source-toggle" id="rateSourceToggle">
@@ -323,7 +334,7 @@
             <div class="rates-updated" id="ratesUpdated">
                 Обновлено: <span id="updateTime">загрузка...</span>
             </div>
-        </div>
+        </details>
 
         <!-- Сценарии обмена -->
         <div class="b2-direction-label" id="b2DirectionLabel">Направление</div>
