@@ -2393,6 +2393,25 @@ def _stand_manual_account_key(receipt):
     return 'sber'
 
 
+def _stand_doc_agent(rub_account, method='bank'):
+    """Компания-агент документов сделки стенда → ключ из реестра doc_agents.
+
+    Агент — та компания, на чей счёт платит клиент: `flowsole` и custom-реквизиты,
+    которые по БИК+счёту узнаются как Flow Sole, дают flow_sole; Сбер, чужие
+    custom-счета, USDT, наличные и СБП — MF. Счёт узнаём той же функцией, что и
+    при сверке прихода, а не по названию банка.
+    """
+    import doc_agents
+    if method != 'bank' or not isinstance(rub_account, dict) or not rub_account:
+        return doc_agents.DEFAULT_AGENT
+    mode = rub_account.get('mode')
+    if mode not in ('sber', 'custom', 'flowsole'):
+        return doc_agents.DEFAULT_AGENT
+    key = _stand_manual_account_key({'actualMode': mode, 'bankBik': rub_account.get('bik'),
+                                     'account': rub_account.get('account') or ''})
+    return doc_agents.agent_for_account(key)
+
+
 _FEE_PURPOSE_RE = re.compile(r'комисси', re.IGNORECASE)
 
 
@@ -2525,6 +2544,8 @@ class Agreement(Base):
     def to_dict(self, with_docs=True, include_deleted=False):
         d = {'id': self.id, 'client_id': self.client_id, 'client_name': self.client_name,
              'client_key': self.client_key, 'route_key': self.route_key,
+             # компания-агент договора; записи без ключа в route_key — MF
+             'agent': __import__('doc_agents').agent_of_route_key(self.route_key),
              'deal_type': self.deal_type, 'number': self.number, 'status': self.status,
              'payments_count': self.payments_count or 1,
              'fields': json.loads(self.fields_json or '{}'),
@@ -15587,6 +15608,7 @@ def _stand_doc_request(state, deal, F):
     выпускать нельзя: пусто в обязательном поле или курс не сходится с суммами.
     """
     from decimal import Decimal
+    import doc_agents
     import doc_routes
     from stand_workflow import exchange_pair
     pair = exchange_pair(deal)
@@ -15668,6 +15690,8 @@ def _stand_doc_request(state, deal, F):
              'rate_basis': doc_routes.DIRECT_RATE if (crypto and not freehold) else doc_routes.INVERSE_RATE,
              'rate_valid_until': str(F.get('validTill') or '').strip()
                                  or f'{today:%d.%m.%Y}, 23:59 (GMT+7)'}
+    # Агент документов — компания, на чей счёт платит клиент (rubReceivingAccount)
+    money['agent'] = _stand_doc_agent(deal.get('rubReceivingAccount'), money['payin_method'])
     if pair:
         money['pair'] = pair[0].upper() + '_' + pair[1].upper()
         # THB→RUB uses the same RUB/THB quote as the UI; documents store
@@ -15724,11 +15748,13 @@ def _stand_doc_request(state, deal, F):
         if not pay_to:
             missing.append('payTo')
         recipient_name = pay_to.split(' · ')[0] if pay_to else ''
-        # Получатель рублёвого счёта может быть не самим Агентом (ЭМ ЭФ), а его
-        # уполномоченным платёжным партнёром (например, Flow Sole по счёту в
-        # СГБ) — тогда и роль в договоре должна называть его правильно.
-        role = ('Агент (рублёвый счёт MF в РФ) / Agent (MF RUB account in Russia)'
-                if not recipient_name or recipient_name == 'ООО «ЭМ ЭФ КОРПОРЕЙШН»'
+        # Получатель рублёвого счёта может быть не самим Агентом, а его
+        # уполномоченным платёжным партнёром (custom-счёт чужого получателя) —
+        # тогда и роль в договоре должна называть его правильно. Счёт самого
+        # Агента (ЭМ ЭФ у MF, Flow Sole у Flow Sole) — роль «Агент».
+        agent_profile = doc_agents.get_agent(money['agent'])
+        role = (agent_profile.rub_account_role
+                if not recipient_name or recipient_name in agent_profile.payin_recipients
                 else 'Уполномоченный платёжный партнёр Агента (рублёвый счёт в РФ) / '
                      'Agent’s authorised payment partner (RUB account in Russia)')
         money.update(payin_recipient=recipient_name,
@@ -15808,6 +15834,7 @@ def stand_docs_issue():
     if not STAND_MODE:
         return jsonify({'success': False, 'error': 'stand_only'}), 404
     import docgen
+    import doc_agents
     data = request.get_json(silent=True) or {}
     try:
         deal_id = int(data.get('dealId'))
@@ -15868,7 +15895,13 @@ def stand_docs_issue():
                                  f"{rub_account['bank'].strip()} · р/с {rub_account['account']} · "
                                  f"к/с {rub_account['correspondent']} · БИК {rub_account['bik']}")
                 else:
-                    F['payTo'] = (f"ООО «ЭМ ЭФ КОРПОРЕЙШН» · ИНН 9909726886 · КПП 770387001 · {rub_account['bank'].strip()} · "
+                    # Получатель не назван: это сам Агент, чей счёт узнан по БИК+счёту —
+                    # ЭМ ЭФ у MF, Flow Sole у Flow Sole (а не ЭМ ЭФ с чужим счётом).
+                    if _stand_doc_agent(rub_account) == 'flow_sole':
+                        default_recipient = 'ФЛОУ СОЛЕ КО., ЛТД · ИНН 9909773251 · КПП 770387001'
+                    else:
+                        default_recipient = 'ООО «ЭМ ЭФ КОРПОРЕЙШН» · ИНН 9909726886 · КПП 770387001'
+                    F['payTo'] = (f"{default_recipient} · {rub_account['bank'].strip()} · "
                                  f"р/с {rub_account['account']} · к/с {rub_account['correspondent']} · "
                                  f"БИК {rub_account['bik']}")
             elif rub_account.get('mode') == 'sber':
@@ -15909,6 +15942,7 @@ def stand_docs_issue():
                         'detail': req['detail']}), 400
 
     deal_type, fields, money = req['deal_type'], req['fields'], req['money']
+    agent_key = money['agent']
     if deal_type == 'freehold' and not _stand_is_crypto(deal) and deal.get('freeholdClientInput') == 'sum':
         F.update(amountPay=money['total_payin'], amountThb=money['transfer_amount'], rate=money['rate'])
     if money.get('payin_method') == 'usdt':
@@ -15931,7 +15965,16 @@ def stand_docs_issue():
         a = None
         if prior.get('agreementId'):
             a = db.query(Agreement).filter(Agreement.id == prior['agreementId']).first()
-        route_key = money['pair'] + ':' + money['payin_method']
+        if a is not None and doc_agents.agent_of_route_key(a.route_key) != agent_key:
+            # Платёж теперь идёт на реквизиты другой компании: перевыпускать тот же
+            # договор / допник от другого имени нельзя. Прежние файлы остаются как
+            # есть, документы выпускаются заново от нужной компании.
+            note = '. '.join(filter(None, [
+                f'Реквизиты оплаты сменили компанию-агента на {doc_agents.get_agent(agent_key).name}: '
+                'документы выпущены от неё, ранее выпущенные файлы сохранены', note]))
+            a = None
+            prior = {}
+        route_key = doc_agents.route_key(money['pair'], money['payin_method'], agent_key)
         existing = _docs_route_agreement(db, _docs_client_key(fields), deal_type, route_key)
         # Назначение платежа должно называть настоящий номер АГЕНТСКОГО
         # ДОГОВОРА (MF-<паспорт>-<ДДММ>-<N>), а не внутренний код задачи
@@ -15989,17 +16032,18 @@ def stand_docs_issue():
     purpose = ''
     if used.get('payin_method') == 'bank':
         purpose = used.get('payment_reference') or docgen.payment_reference(
-            fields, 'bank', used.get('part'))
+            fields, 'bank', used.get('part'), agent_key)
     try:
         at = int(time.time() * 1000)
         version = int(deal.get('docVersion') or 0) + 1
         entries = [{'kind': STAND_DOC_KIND[x['kind']], 'docId': x['id'], 'file': x['filename'],
                     'mime': x['mime'], 'size': x['size'], 'number': x['number'],
-                    'version': version, 'at': at} for x in issued]
+                    'version': version, 'agent': agent_key, 'at': at} for x in issued]
         deal['docsIssued'] = ((deal.get('docsIssued') or []) + entries)[-40:]
         deal['docPack'] = {
             'version': version, 'mode': mode, 'agreementId': agreement['id'],
             'agreementNumber': agreement['number'], 'number': entries[-1]['number'],
+            'agent': agent_key,
             'paymentNo': payload.get('payment_no') or 1, 'dealType': deal_type,
             'pair': used['pair'], 'method': used['payin_method'],
             'amount': used.get('total_payin'), 'currency': used.get('payin_currency'),
@@ -16010,6 +16054,9 @@ def stand_docs_issue():
         deal['docVersion'] = version
         deal['docFields'] = F
         deal['issuedDocPayTo'] = F.get('payTo')
+        # От какой компании выпущены документы: перевыпуск и аудит смотрят сюда,
+        # а не гадают по реквизитам. Старые сделки без ключа — MF.
+        deal['issuedDocAgent'] = agent_key
         # Снимок исходных чисел s6 фиксируем вместе с успешным выпуском версии.
         # Прибыль показывает тот же расчёт freeholdEstimate на клиенте; после
         # переиздания предыдущий ориентир больше не относится к договору.
@@ -29749,7 +29796,13 @@ def docs_parse():
 
 
 def _docs_route_agreement(db, client_key, deal_type, route_key, exclude_id=None):
-    """Действующий договор клиента этого типа на этом маршруте (пара + способ оплаты)."""
+    """Действующий договор клиента этого типа на этом маршруте.
+
+    Маршрут = пара + способ оплаты + компания-агент (doc_agents.route_key): договор
+    MF не подходит под платёж на Flow Sole и наоборот — это два разных договора.
+    Записи без ключа агента в route_key считаются договорами MF.
+    """
+    import doc_agents
     import doc_routes
     candidates = db.query(Agreement).filter(Agreement.client_key == client_key,
                                            Agreement.deal_type == deal_type).all()
@@ -29761,7 +29814,8 @@ def _docs_route_agreement(db, client_key, deal_type, route_key, exclude_id=None)
         old = json.loads(candidate.money_json or '{}')
         try:
             old = doc_routes.normalize(old, deal_type)
-            old_key = old['pair'] + ':' + old['payin_method']
+            old_key = doc_agents.route_key(old['pair'], old['payin_method'],
+                                           doc_agents.agent_of_route_key(candidate.route_key))
         except ValueError:
             old_key = candidate.route_key
         if old_key == route_key:
@@ -29801,6 +29855,7 @@ def _docs_new_agreement(db, deal_type, fields, money, client_id=None, uploads=()
     (стенд, «Поправить и пересоздать»): номер сохраняется, файлы добавляются.
     """
     import docgen
+    import doc_agents
     import doc_routes
     if deal_type not in DOCS_DEAL_TYPES:
         return {'success': False, 'error': 'bad_deal_type'}, 400
@@ -29808,17 +29863,20 @@ def _docs_new_agreement(db, deal_type, fields, money, client_id=None, uploads=()
     try:
         money = doc_routes.normalize(money, deal_type)
         missing += doc_routes.validate(money, deal_type)
-    except ValueError as exc:
+        # Компания-агент: явная в money (стенд) или по реквизитам оплаты (CRM)
+        agent = doc_agents.get_agent(doc_agents.agent_for_money(money))
+    except ValueError as exc:    # UnknownAgent — тоже ValueError
         return {'success': False, 'error': 'invalid_route', 'detail': str(exc)}, 400
     if missing:
         return {'success': False, 'error': 'missing_fields', 'fields': missing}, 400
+    money['agent'] = agent.key
 
     if stand_thb_pending:
         money['_stand_thb_pending'] = True
     client_name = (fields.get('client_name_ru') or fields.get('client_name_en') or '').strip()
     money['deal_type'] = deal_type
     client_key = _docs_client_key(fields)
-    route_key = money['pair'] + ':' + money['payin_method']
+    route_key = doc_agents.route_key(money['pair'], money['payin_method'], agent)
     dup = _docs_route_agreement(db, client_key, deal_type, route_key,
                                 exclude_id=reissue.id if reissue is not None else None)
     if dup:
@@ -29837,12 +29895,12 @@ def _docs_new_agreement(db, deal_type, fields, money, client_id=None, uploads=()
     money['part'] = 1
     # Договор — рамочный, приложения в нём остаются бланками: клиент
     # подписывает его один раз и держит неизменным.
-    data, _ = docgen.build_agreement(deal_type, fields, money, number=number)
-    addendum = docgen.build_addendum(deal_type, fields, money, number, number, 1)
-    invoice = docgen.build_commercial_invoice(fields, money, number, deal_type)
-    problems = (docgen.check(data, allow_forms=True)
-                + docgen.check(addendum, stand_thb_pending=stand_thb_pending)
-                + docgen.check(invoice))
+    data, _ = docgen.build_agreement(deal_type, fields, money, number=number, agent=agent)
+    addendum = docgen.build_addendum(deal_type, fields, money, number, number, 1, agent=agent)
+    invoice = docgen.build_commercial_invoice(fields, money, number, deal_type, agent=agent)
+    problems = (docgen.check(data, allow_forms=True, agent=agent)
+                + docgen.check(addendum, stand_thb_pending=stand_thb_pending, agent=agent)
+                + docgen.check(invoice, agent=agent))
     if problems:
         return {'success': False, 'error': 'incomplete_document', 'problems': problems}, 422
     money.pop('_stand_thb_pending', None)
@@ -29867,9 +29925,9 @@ def _docs_new_agreement(db, deal_type, fields, money, client_id=None, uploads=()
     # допник и инвойс — на конкретный платёж.
     saved = []
     for kind, raw, base in (
-            ('agreement', data, f'MF_Agreement_{deal_type}_{safe}_{number}'),
-            ('addendum', addendum, f'MF_Addendum_1_{safe}_{number}'),
-            ('invoice', invoice, f'MF_Commercial_Invoice_{number}')):
+            ('agreement', data, f'{agent.file_prefix}_Agreement_{deal_type}_{safe}_{number}'),
+            ('addendum', addendum, f'{agent.file_prefix}_Addendum_1_{safe}_{number}'),
+            ('invoice', invoice, f'{agent.file_prefix}_Commercial_Invoice_{number}')):
         out, fname, mime = docgen.as_pdf(raw, base)
         saved.append(_docs_save(db, a.id, kind, number, 1, fname, out, mime))
 
@@ -29918,6 +29976,7 @@ def _docs_payment(db, a, submitted_fields, submitted_money, payment_no=None,
     новой версией (стенд, «Поправить и пересоздать»): счётчик платежей не растёт.
     """
     import docgen
+    import doc_agents
     import doc_routes
     submitted_fields = submitted_fields or {}
     submitted_money = submitted_money or {}
@@ -29949,6 +30008,16 @@ def _docs_payment(db, a, submitted_fields, submitted_money, payment_no=None,
         for key in (*doc_routes.ROUTE_FIELDS, 'rate_valid_until', 'payment_reference'):
             money[key] = submitted_money.get(key, '')
         route_missing = doc_routes.validate(money, a.deal_type)
+        # Допник выпускает та же компания, что и договор. Платёж на реквизиты другой
+        # компании — это другой договор, а не допник к этому.
+        agent = doc_agents.get_agent(doc_agents.agent_of_route_key(a.route_key))
+        payment_agent = doc_agents.get_agent(doc_agents.agent_for_money(
+            dict(money, agent=submitted_money.get('agent'))))
+        if payment_agent.key != agent.key:
+            raise ValueError(
+                f'Платёж идёт на реквизиты {payment_agent.name}, а договор выпущен от {agent.name}. '
+                'Создайте новый договор для этой компании: допник к чужому договору не выпускается')
+        money['agent'] = agent.key
     except ValueError as exc:
         return {'success': False, 'error': 'invalid_route', 'detail': str(exc)}, 400
 
@@ -29972,10 +30041,11 @@ def _docs_payment(db, a, submitted_fields, submitted_money, payment_no=None,
             AgreementDoc.number == number, Agreement.id != a.id).first():
         tail += 1
         number = docgen.make_number(fields.get('client_passport_no', ''), None, tail)
-    add = docgen.build_addendum(a.deal_type, fields, money, number, a.number, payment_no)
+    add = docgen.build_addendum(a.deal_type, fields, money, number, a.number, payment_no, agent=agent)
     money['parent_number'] = a.number
-    inv = docgen.build_commercial_invoice(fields, money, number, a.deal_type)
-    problems = docgen.check(add, stand_thb_pending=stand_thb_pending) + docgen.check(inv)
+    inv = docgen.build_commercial_invoice(fields, money, number, a.deal_type, agent=agent)
+    problems = (docgen.check(add, stand_thb_pending=stand_thb_pending, agent=agent)
+                + docgen.check(inv, agent=agent))
     if problems:
         return {'success': False, 'error': 'incomplete_document', 'problems': problems}, 422
     money.pop('_stand_thb_pending', None)
@@ -29983,8 +30053,8 @@ def _docs_payment(db, a, submitted_fields, submitted_money, payment_no=None,
     safe = re.sub(r'[^\w\-.]+', '_', a.client_name)[:40] or 'client'
     saved = []
     for kind, raw, base in (
-            ('addendum', add, f'MF_Addendum_{payment_no}_{safe}_{number}'),
-            ('invoice', inv, f'MF_Commercial_Invoice_{number}')):
+            ('addendum', add, f'{agent.file_prefix}_Addendum_{payment_no}_{safe}_{number}'),
+            ('invoice', inv, f'{agent.file_prefix}_Commercial_Invoice_{number}')):
         out, fname, mime = docgen.as_pdf(raw, base)
         saved.append(_docs_save(db, a.id, kind, number, payment_no, fname, out, mime))
     a.payments_count = max(a.payments_count or 1, payment_no)

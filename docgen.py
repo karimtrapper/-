@@ -20,6 +20,7 @@ import io
 import os
 import re
 from datetime import datetime
+import doc_agents
 import doc_routes
 
 TEMPLATE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'doc_templates')
@@ -44,12 +45,14 @@ DEAL_TYPE_TITLES = {
     'payment': 'Перевод / обмен',
 }
 
+# Совместимость: реквизиты MF как словарь. Источник правды — doc_agents.AGENTS.
+_MF = doc_agents.get_agent('mf_corp')
 AGENT = {
-    'name': 'MF Corporation Company Limited',
-    'reg': '0835565024547',
-    'address': '9/31, Mu 5, Choeng Thale Sub-district, Thalang District, Phuket Province 83110, Thailand',
-    'director': 'Miss Katika Sakornnoi',
-    'email': 'mfcorpthai@gmail.com',
+    'name': _MF.name,
+    'reg': _MF.reg_no,
+    'address': _MF.address,
+    'director': _MF.director,
+    'email': _MF.email,
 }
 
 MONTHS_RU = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
@@ -71,7 +74,7 @@ DEFAULTS = {
     'report_days': '5',
     'terminate_days': '10',
     'remaining_balance': 'отсутствует / none',
-    'confirmation_contact': f"{AGENT['email']}; менеджер MF Corporation / MF Corporation manager",
+    'confirmation_contact': _MF.confirmation_contact,   # у остальных агентов — из профиля
     'bank_charges_local': ('Внутренний тайский перевод; дополнительные банковские расходы '
                            'с Клиента не взимаются / Domestic Thai transfer; no additional '
                            'bank charges are payable by the Client'),
@@ -182,35 +185,334 @@ def _unique_cells(doc):
     return cells
 
 
-def _sign_agent(doc, when: datetime) -> None:
-    """Подпись Катики, дата и печать в блоки АГЕНТА — сразу, без прочерков.
+# ─────────────────────── компания-агент: шаблоны и подпись ───────────────────────
+
+_W = '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}'
+
+
+def _agent(agent=None, money: dict | None = None) -> doc_agents.Agent:
+    """Профиль агента: явный аргумент, иначе `money['agent']`, иначе MF."""
+    if agent is None and money:
+        agent = money.get('agent')
+    return doc_agents.get_agent(agent)
+
+
+def _preamble(ag: doc_agents.Agent, lang: str) -> str:
+    """Начало преамбулы договора — как в шаблоне, но с данными конкретного агента."""
+    if lang == 'ru':
+        return (f'{ag.name}, юридическое лицо, учрежденное по праву {ag.jurisdiction_ru}, '
+                f'{ag.reg_ru} {ag.reg_no}, адрес: {ag.address}, '
+                f'в лице {ag.director_title} {ag.director}, {ag.acting_ru} на основании')
+    return (f'{ag.name}, a legal entity incorporated under the laws of {ag.jurisdiction_en}, '
+            f'{ag.reg_en} {ag.reg_no}, address: {ag.address}, '
+            f'represented by {ag.director_title} {ag.director},')
+
+
+def _agent_text_pairs(ag: doc_agents.Agent) -> list[tuple[str, str]]:
+    """Замены текста шаблонов MF → агент. Длинные формулировки первыми, общие после."""
+    mf = _MF
+    return [
+        (_preamble(mf, 'ru'), _preamble(ag, 'ru')),
+        (_preamble(mf, 'en'), _preamble(ag, 'en')),
+        (f'{mf.reg_label_en}: {mf.reg_no}', f'{ag.reg_label_en}: {ag.reg_no}'),
+        (mf.address, ag.address),
+        (f'{mf.director_title}: {mf.director}', f'{ag.director_title}: {ag.director}'),
+        (f'{mf.director_title} {mf.director}', f'{ag.director_title} {ag.director}'),
+        (f'{mf.fee_label}:', f'{ag.fee_label}:'),
+        (mf.name, ag.name),
+        (f'менеджеру {mf.short_name}', f'менеджеру {ag.short_name}'),
+        (f'the {mf.short_name} manager', f'the {ag.short_name} manager'),
+    ]
+
+
+# одиночное «MF» (но не «MF-242-…» и не часть слова) — в шаблонах это краткое имя агента
+_BARE_MF_RE = re.compile(r'(?<![\w-])MF(?![\w-])')
+
+
+def _replace_in_paragraph(p, old: str, new: str) -> bool:
+    """Замена в параграфе: сначала внутри одного run (формат сохраняется), иначе со склейкой."""
+    hit = False
+    for r in p.runs:
+        if old in r.text:
+            r.text = r.text.replace(old, new)
+            hit = True
+    if hit:
+        return True
+    return _para_replace(p, old, new)
+
+
+def _all_paragraphs(doc):
+    """Параграфы тела, таблиц (в том числе вложенных) и существующих колонтитулов — по разу."""
+    from docx.text.paragraph import Paragraph  # noqa: PLC0415
+
+    roots = [doc.element.body]
+    for sec in doc.sections:
+        for part in (sec.header, sec.footer, sec.first_page_header, sec.even_page_header,
+                     sec.first_page_footer, sec.even_page_footer):
+            if not part.is_linked_to_previous:     # отсутствующие не создаём
+                roots.append(part._element)
+    seen = []
+    for root in roots:
+        for el in root.iter(_W + 'p'):
+            # сравниваем элементы, а не id(): lxml пересоздаёт прокси (см. _unique_cells)
+            if any(el is q for q in seen):
+                continue
+            seen.append(el)
+            yield Paragraph(el, None)
+
+
+def _apply_agent_text(doc, ag: doc_agents.Agent) -> None:
+    pairs = [(o, n) for o, n in _agent_text_pairs(ag) if o != n]
+    for p in list(_all_paragraphs(doc)):
+        for old, new in pairs:
+            _replace_in_paragraph(p, old, new)
+        if ag.short_name != _MF.short_name:
+            for r in p.runs:
+                if _BARE_MF_RE.search(r.text):
+                    r.text = _BARE_MF_RE.sub(ag.short_name, r.text)
+
+
+def _par_text(p_xml) -> str:
+    return ''.join(t.text or '' for t in p_xml.iter(_W + 't'))
+
+
+def _png_size(path: str) -> tuple[int, int]:
+    """(ширина, высота) PNG из заголовка IHDR — без Pillow, его нет в зависимостях."""
+    import struct  # noqa: PLC0415
+
+    with open(path, 'rb') as fh:
+        head = fh.read(24)
+    if head[:8] != b'\x89PNG\r\n\x1a\n':
+        raise ValueError(f'не PNG: {path}')
+    return struct.unpack('>II', head[16:24])
+
+
+def _brand_header(xml: bytes, ag: doc_agents.Agent, logo_size: tuple | None) -> bytes:
+    """Шапка: название, адрес, телефон, e-mail и размер логотипа — из профиля агента.
+
+    Абзацы узнаём по тексту шапки MF. Строку E-mail без адреса опустошаем, но абзац
+    оставляем: высота шапки и разбивка по страницам не должны съехать.
+    """
+    from lxml import etree  # noqa: PLC0415
+
+    mf = _MF
+    root = etree.fromstring(xml)
+    for p in root.iter(_W + 'p'):
+        text = _par_text(p).strip()
+        ts = list(p.iter(_W + 't'))
+        if not ts:
+            continue
+        if text == mf.header_name:
+            ts[0].text = ag.header_name
+        elif text == mf.header_address[0].strip():
+            ts[0].text = ag.header_address[0]
+            for extra in ts[1:]:
+                extra.text = ''
+        elif text == mf.header_address[1].strip():
+            ts[0].text = ag.header_address[1]
+        elif text.startswith('Tel:'):
+            ts[0].text = f'Tel: {ag.phone}'
+        elif text.startswith('E-mail') or any('mailto' in (i.text or '') for i in p.iter(_W + 'instrText')):
+            if ag.email is None:
+                for child in list(p):
+                    if child.tag != _W + 'pPr':
+                        p.remove(child)
+            else:
+                for t in ts:
+                    t.text = (t.text or '').replace(mf.email, ag.email)
+                for i in p.iter(_W + 'instrText'):
+                    i.text = (i.text or '').replace(mf.email, ag.email)
+    out = etree.tostring(root, xml_declaration=True, encoding='UTF-8', standalone=True)
+    if logo_size and ag.logo_height_emu:
+        cy = ag.logo_height_emu
+        cx = round(cy * logo_size[0] / logo_size[1])
+        out = out.decode('utf8')
+        out = re.sub(r'<wp:extent cx="\d+" cy="\d+"/>', f'<wp:extent cx="{cx}" cy="{cy}"/>', out)
+        out = re.sub(r'<a:ext cx="\d+" cy="\d+"/>', f'<a:ext cx="{cx}" cy="{cy}"/>', out)
+        out = out.encode('utf8')
+    return out
+
+
+def _brand_footer(xml: bytes, ag: doc_agents.Agent) -> bytes:
+    """Футер: слоган и иконка агента; нет слогана — футер пустой."""
+    from lxml import etree  # noqa: PLC0415
+
+    root = etree.fromstring(xml)
+    mf = _MF
+    for p in list(root.iter(_W + 'p')):
+        slogan = mf.footer and mf.footer in _par_text(p)
+        if slogan:
+            if ag.footer is None:
+                p.getparent().remove(p)
+            else:
+                for t in p.iter(_W + 't'):
+                    t.text = (t.text or '').replace(mf.footer, ag.footer)
+            continue
+        for drawing_run in [r for r in p.iter(_W + 'r') if r.find(_W + 'drawing') is not None]:
+            if not ag.footer_icon:
+                drawing_run.getparent().remove(drawing_run)
+    return etree.tostring(root, xml_declaration=True, encoding='UTF-8', standalone=True)
+
+
+def _agent_template_parts(name: str, ag: doc_agents.Agent) -> bytes:
+    """Шаблон MF → docx-байты с шапкой, футером, логотипом и свойствами агента."""
+    import zipfile  # noqa: PLC0415
+
+    from lxml import etree  # noqa: PLC0415
+
+    src = zipfile.ZipFile(os.path.join(TEMPLATE_DIR, name))
+    names = src.namelist()
+
+    def rels_of(part: str) -> str:
+        return 'word/_rels/' + part.split('/')[-1] + '.rels'
+
+    def media_targets(rels_name: str) -> list[str]:
+        if rels_name not in names:
+            return []
+        return ['word/' + t for t in re.findall(r'Target="(media/[^"]+)"', src.read(rels_name).decode('utf8'))]
+
+    # логотип — картинка той шапки, где стоит название MF; остальные картинки
+    # колонтитулов (иконка футера, заглушки пустых шапок) — иконки MF
+    logo_media = None
+    for part in names:
+        if re.fullmatch(r'word/header\d+\.xml', part) and _MF.header_name in _par_text(
+                etree.fromstring(src.read(part))):
+            targets = media_targets(rels_of(part))
+            logo_media = targets[0] if targets else None
+    drop_media = set()
+    for part in names:
+        if re.fullmatch(r'word/(header|footer)\d+\.xml', part):
+            for target in media_targets(rels_of(part)):
+                if target != logo_media:
+                    drop_media.add(target)
+    if ag.footer_icon:
+        drop_media = set()       # иконка агента подменяется ниже, а не удаляется
+    logo_size = _png_size(ag.logo_path)
+
+    buf = io.BytesIO()
+    out = zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED)
+    for item in src.infolist():
+        data = src.read(item.filename)
+        fn = item.filename
+        if fn in drop_media:
+            continue
+        if fn == logo_media:
+            with open(ag.logo_path, 'rb') as fh:
+                data = fh.read()
+        elif re.fullmatch(r'word/header\d+\.xml', fn):
+            data = _brand_header(data, ag, logo_size)
+        elif re.fullmatch(r'word/footer\d+\.xml', fn):
+            data = _brand_footer(data, ag)
+        elif re.fullmatch(r'word/_rels/(header|footer)\d+\.xml\.rels', fn):
+            text = data.decode('utf8')
+            for target in drop_media:
+                text = re.sub(r'<Relationship [^>]*Target="' + re.escape(target[len('word/'):]) + r'"/>', '', text)
+            data = text.encode('utf8')
+        elif fn == 'docProps/core.xml':
+            text = data.decode('utf8').replace(_MF.name, ag.name)
+            text = re.sub(r'(<dc:title>)MF\s+', r'\1', text)
+            data = text.encode('utf8')
+        out.writestr(item, data)
+    out.close()
+    return buf.getvalue()
+
+
+_AGENT_TEMPLATES: dict = {}
+
+
+def _agent_template(name: str, ag: doc_agents.Agent) -> bytes:
+    """Фирменный шаблон агента (кэш: сборка — разбор zip и xml)."""
+    from docx import Document  # noqa: PLC0415
+
+    key = (TEMPLATE_DIR, name, ag)
+    if key not in _AGENT_TEMPLATES:
+        doc = Document(io.BytesIO(_agent_template_parts(name, ag)))
+        _apply_agent_text(doc, ag)
+        doc.core_properties.author = ag.name
+        buf = io.BytesIO()
+        doc.save(buf)
+        _AGENT_TEMPLATES[key] = buf.getvalue()
+    return _AGENT_TEMPLATES[key]
+
+
+def _open_template(name: str, agent=None):
+    """Открыть шаблон под агента. MF — файл как есть (без обработки)."""
+    from docx import Document  # noqa: PLC0415
+
+    ag = _agent(agent)
+    if ag.native_template:
+        return Document(os.path.join(TEMPLATE_DIR, name))
+    return Document(io.BytesIO(_agent_template(name, ag)))
+
+
+_SECTION_HEADING_RE = re.compile(r'^\d+\.\s+[^\d\s]')
+
+
+def _is_section_heading(text: str) -> bool:
+    """«6. ОТВЕТСТВЕННОСТЬ» / «6. LIABILITY» — заголовок раздела, а не пункт «6.1.»."""
+    text = text.strip()
+    return bool(_SECTION_HEADING_RE.match(text)) and text == text.upper() and len(text) < 90
+
+
+def _tidy_layout(doc, agent=None) -> None:
+    """Раскладка страниц у агентов с фирменным футером другого вида.
+
+    Без слогана в футере страница вмещает больше строк, и заголовок раздела
+    («6. ОТВЕТСТВЕННОСТЬ», «8. РЕКВИЗИТЫ И ПОДПИСИ / АГЕНТ») оставался одиноким
+    внизу страницы. Заголовки держим со следующей строкой, блок подписей не рвём.
+    Файлы MF (родные шаблоны) не трогаем: их раскладка утверждена как есть.
+    """
+    from docx.oxml import OxmlElement  # noqa: PLC0415
+
+    if _agent(agent).native_template:
+        return
+    for table in doc.tables:
+        for row in table.rows:
+            texts = {c.text.strip() for c in row.cells}
+            if any(_is_section_heading(t) or t == 'АГЕНТ / AGENT' for t in texts):
+                seen = []
+                for cell in row.cells:
+                    if any(cell._tc is x for x in seen):
+                        continue
+                    seen.append(cell._tc)
+                    for p in cell.paragraphs:
+                        p.paragraph_format.keep_with_next = True
+    # последняя строка последней таблицы — подписи и печать: одним куском
+    if doc.tables:
+        last = doc.tables[-1].rows[-1]._tr
+        if last.xpath('.//w:drawing') or 'Signature' in ''.join(last.itertext()):
+            last.get_or_add_trPr().append(OxmlElement('w:cantSplit'))
+
+
+def _sign_agent(doc, when: datetime, agent=None) -> None:
+    """Подпись директора агента, дата и печать — сразу, без прочерков.
 
     Клиенту документ уходит уже подписанным с нашей стороны: так просил Карим,
     прочерков под подпись Агента не оставляем.
     """
     from docx.shared import Inches  # noqa: PLC0415
 
-    sig = os.path.join(ASSETS, 'signature.png')
-    stamp = os.path.join(ASSETS, 'stamp.png')
+    ag = _agent(agent)
+    sig, stamp = ag.signature_path, ag.stamp_path
     date_txt = f'Date: {when:%d.%m.%Y} / {when.day} {MONTHS_EN[when.month - 1]} {when.year}'
     for cell in _unique_cells(doc):
         text = cell.text
         # блок АГЕНТА: и в теле договора, и в приложении. У клиента в той же
         # строке отдельная ячейка — её не трогаем, там подпись ставит клиент.
-        if AGENT['director'] not in text and 'Registration / Tax No.' not in text:
+        if ag.director not in text and f'{ag.reg_label_en}' not in text:
             continue
         signed = False
         for p in cell.paragraphs:
             for r in p.runs:
                 if r.text.strip().startswith('Signature:') and os.path.exists(sig):
                     r.text = 'Signature: '
-                    r.add_picture(sig, width=Inches(1.4))
+                    r.add_picture(sig, width=Inches(ag.signature_width_in))
                     signed = True
                 elif r.text.strip().startswith('Date:'):
                     r.text = date_txt
         if signed and os.path.exists(stamp):
             sp = cell.add_paragraph()
-            sp.add_run().add_picture(stamp, width=Inches(1.2))
+            sp.add_run().add_picture(stamp, width=Inches(ag.stamp_width_in))
 
 
 def _strip_draft_mark(doc) -> None:
@@ -400,7 +702,7 @@ def property_description(f: dict, deal_type: str) -> str:
     return f'Оплата по графику за апартаменты {body}{tail}.'
 
 
-def payment_reference(f: dict, method: str, part: int | None = None) -> str:
+def payment_reference(f: dict, method: str, part: int | None = None, agent=None) -> str:
     """Назначение платежа для банка клиента.
 
     Формулировка каноническая — переписана с реальных инвойсов MF Corp:
@@ -412,8 +714,9 @@ def payment_reference(f: dict, method: str, part: int | None = None) -> str:
     инвойсом застройщика, поэтому отсебятина здесь дороже всего.
     """
     if method in ('sbp', 'usdt', 'cash'):
-        return ('Без указания назначения платежа; подтверждение оплаты направляется менеджеру MF / '
-                'No payment reference in the transfer; the payment evidence is sent to the MF manager')
+        short = _agent(agent).short_name
+        return (f'Без указания назначения платежа; подтверждение оплаты направляется менеджеру {short} / '
+                f'No payment reference in the transfer; the payment evidence is sent to the {short} manager')
     head = 'ОПЛАТА ПО ИНВОЙСУ'
     if f.get('invoice_no'):
         head += f" № {f['invoice_no']}"
@@ -457,7 +760,8 @@ def _fill_client_signature(table, f: dict, money: dict) -> None:
                 _para_replace(p, '[Authorised signatory, if applicable]', '—')
 
 
-def _fill_appendix1(doc, f: dict, deal_type: str, money: dict, number: str, when: datetime) -> None:
+def _fill_appendix1(doc, f: dict, deal_type: str, money: dict, number: str, when: datetime,
+                    agent=None) -> None:
     t = doc.tables[1]
     _, incoming, outgoing = doc_routes.pair_for(money, deal_type)
     payin = doc_routes.amount(money.get('total_payin'), incoming)
@@ -498,7 +802,7 @@ def _fill_appendix1(doc, f: dict, deal_type: str, money: dict, number: str, when
     _set_field(t, 'Срок исполнения',
                f'{days} {word} после выполнения п. 2.2 Договора / '
                f'{days} business day(s) after Clause 2.2 is met')
-    _set_field(t, 'Контакт для подтверждения', DEFAULTS['confirmation_contact'])
+    _set_field(t, 'Контакт для подтверждения', _agent(agent).confirmation_contact)
 
     # Итоговый блок: строка Agent повторяет основную оговорку крипто-фрихолда;
     # остальные маршруты сохраняют прежний шаблон.
@@ -547,7 +851,7 @@ def _fill_appendix1(doc, f: dict, deal_type: str, money: dict, number: str, when
     _fill_client_signature(t, f, money)
 
 
-def _fill_appendix2(doc, f: dict, money: dict, number: str, when: datetime) -> None:
+def _fill_appendix2(doc, f: dict, money: dict, number: str, when: datetime, agent=None) -> None:
     """Приложение 2 — маршрут pay-in.
 
     Реквизиты и назначение здесь НЕ дублируются, а отсылают к коммерческому
@@ -559,7 +863,8 @@ def _fill_appendix2(doc, f: dict, money: dict, number: str, when: datetime) -> N
     t = doc.tables[2]
     method = money.get('payin_method') or 'bank'
     valid = money.get('rate_valid_until') or f'{when:%d.%m.%Y}, 23:59 (GMT+7)'
-    agent = AGENT['name']
+    ag = _agent(agent)
+    agent = ag.name
     _set_field(t, 'Способ pay-in', doc_routes.METHODS.get(method, method))
     _set_field(t, 'Валюта / Currency', money.get('payin_currency') or 'RUB')
     _set_field(t, 'Получатель платежа',
@@ -586,7 +891,7 @@ def _fill_appendix2(doc, f: dict, money: dict, number: str, when: datetime) -> N
     if method in ('usdt', 'cash') or money.get('payin_details'):
         _set_field(t, 'Реквизиты / Payment details', doc_routes.details(money))
     if method != 'bank':
-        _set_field(t, 'Назначение платежа', payment_reference(f, method))
+        _set_field(t, 'Назначение платежа', payment_reference(f, method, agent=ag))
     _set_field(t, 'Наличные', doc_routes.details(money) if method == 'cash' else
                'Не применимо / Not applicable')
 
@@ -679,23 +984,24 @@ def _drop_annexes(doc) -> None:
 
 def build_agreement(deal_type: str, fields: dict, money: dict,
                     number: str | None = None, when: datetime | None = None,
-                    blank_annexes: bool = True) -> tuple[bytes, str]:
+                    blank_annexes: bool = True, agent=None) -> tuple[bytes, str]:
     """Рамочный договор. → (docx-байты, номер).
 
     По умолчанию Приложения 1 и 2 остаются пустыми формами: договор клиент
     подписывает один раз и держит у себя неизменным, а суммы и курс каждого
     платежа живут в отдельном дополнительном соглашении. Заполненные
     приложения внутри договора сделали бы его привязанным к первому платежу.
-    """
-    from docx import Document  # noqa: PLC0415
 
+    `agent` — ключ или профиль компании-агента (doc_agents); по умолчанию MF.
+    """
     if deal_type not in TEMPLATES:
         raise ValueError(f'неизвестный тип сделки: {deal_type}')
+    ag = _agent(agent, money)
     when = when or datetime.now()
     number = number or make_number(fields.get('client_passport_no', ''), when, 1)
     money = doc_routes.normalize(money, deal_type)
 
-    doc = Document(os.path.join(TEMPLATE_DIR, TEMPLATES[deal_type]))
+    doc = _open_template(TEMPLATES[deal_type], ag)
     _strip_draft_mark(doc)
     _apply_route(doc, money, deal_type)
 
@@ -703,7 +1009,7 @@ def build_agreement(deal_type: str, fields: dict, money: dict,
         if p.text.startswith('АГЕНТСКИЙ ДОГОВОР'):
             p.add_run(f' № {number}')
         _para_replace(p, 'г. [●] / [●], [дата / date]',
-                      f'г. Пхукет, Таиланд / Phuket, Thailand, {date_ru_en(when)}')
+                      f'{ag.place_ru} / {ag.place_en}, {date_ru_en(when)}')
 
     body = doc.tables[0]
     for row in body.rows:
@@ -738,9 +1044,10 @@ def build_agreement(deal_type: str, fields: dict, money: dict,
         # бланки внутри подписанного договора только путают клиента.
         _drop_annexes(doc)
     else:
-        _fill_appendix1(doc, fields, deal_type, money, number, when)
-        _fill_appendix2(doc, fields, money, number, when)
-    _sign_agent(doc, when)
+        _fill_appendix1(doc, fields, deal_type, money, number, when, ag)
+        _fill_appendix2(doc, fields, money, number, when, ag)
+    _sign_agent(doc, when, ag)
+    _tidy_layout(doc, ag)
 
     buf = io.BytesIO()
     doc.save(buf)
@@ -748,22 +1055,23 @@ def build_agreement(deal_type: str, fields: dict, money: dict,
 
 
 def build_addendum(deal_type: str, fields: dict, money: dict, number: str,
-                   parent_number: str, seq: int, when: datetime | None = None) -> bytes:
+                   parent_number: str, seq: int, when: datetime | None = None,
+                   agent=None) -> bytes:
     """Доп. соглашение на очередной платёж: только Приложения 1 и 2.
 
     Договор не перевыпускаем — допник ссылается на него, как и требует шаблон
     инвойса («договор № … от …; платёжная инструкция № … от …»).
     """
-    from docx import Document  # noqa: PLC0415
-
+    ag = _agent(agent, money)
     when = when or datetime.now()
     money = doc_routes.normalize(money, deal_type)
-    doc = Document(os.path.join(TEMPLATE_DIR, TEMPLATES[deal_type]))
+    doc = _open_template(TEMPLATES[deal_type], ag)
     _strip_draft_mark(doc)
     _apply_route(doc, money, deal_type)
-    _fill_appendix1(doc, fields, deal_type, money, number, when)
-    _fill_appendix2(doc, fields, money, number, when)
-    _sign_agent(doc, when)
+    _fill_appendix1(doc, fields, deal_type, money, number, when, ag)
+    _fill_appendix2(doc, fields, money, number, when, ag)
+    _sign_agent(doc, when, ag)
+    _tidy_layout(doc, ag)
 
     # выкидываем тело договора — остаются только приложения
     body = doc.tables[0]._element
@@ -783,7 +1091,7 @@ def build_addendum(deal_type: str, fields: dict, money: dict, number: str,
     anchor.insert_paragraph_before(
         f'SUPPLEMENTARY AGREEMENT No. {seq} to Agency Agreement No. {parent_number}')
     anchor.insert_paragraph_before(
-        f'г. Пхукет, Таиланд / Phuket, Thailand, {date_ru_en(when)}')
+        f'{ag.place_ru} / {ag.place_en}, {date_ru_en(when)}')
 
     buf = io.BytesIO()
     doc.save(buf)
@@ -791,12 +1099,11 @@ def build_addendum(deal_type: str, fields: dict, money: dict, number: str,
 
 
 def build_invoice(fields: dict, money: dict, number: str, parent_number: str,
-                  instruction_number: str, when: datetime | None = None) -> bytes:
+                  instruction_number: str, when: datetime | None = None, agent=None) -> bytes:
     """Счёт клиенту на pay-in. Всегда ссылается на рамочный договор."""
-    from docx import Document  # noqa: PLC0415
-
+    ag = _agent(agent, money)
     when = when or datetime.now()
-    doc = Document(os.path.join(TEMPLATE_DIR, INVOICE_TEMPLATE))
+    doc = _open_template(INVOICE_TEMPLATE, ag)
     _strip_draft_mark(doc)
     method = money.get('payin_method') or 'bank'
     valid = money.get('rate_valid_until') or f'{when:%d.%m.%Y}, 23:59 (GMT+7)'
@@ -817,10 +1124,10 @@ def build_invoice(fields: dict, money: dict, number: str, parent_number: str,
         '[сумма]': str(money.get('total_payin') or ''),
         '[банковский перевод / СБП / USDT / иной согласованный способ]':
             PAYIN_METHODS.get(method, method),
-        '[полное наименование получателя]': AGENT['name'],
+        '[полное наименование получателя]': ag.name,
         '[счёт, банк, БИК / СБП / сеть и адрес кошелька]': money.get('payin_details') or '',
         '[указать строго в этой формулировке]':
-            money.get('payment_reference') or payment_reference(fields, method, money.get('part')),
+            money.get('payment_reference') or payment_reference(fields, method, money.get('part'), ag),
     }
     for p in doc.paragraphs:
         for old, new in repl.items():
@@ -831,7 +1138,7 @@ def build_invoice(fields: dict, money: dict, number: str, parent_number: str,
                 for p in cell.paragraphs:
                     for old, new in repl.items():
                         _para_replace(p, old, new)
-    _sign_agent(doc, when)
+    _sign_agent(doc, when, ag)
     buf = io.BytesIO()
     doc.save(buf)
     return buf.getvalue()
@@ -852,7 +1159,7 @@ def money_ru(amount, currency: str = 'RUB') -> str:
 
 
 def build_commercial_invoice(fields: dict, money: dict, number: str,
-                             deal_type: str, when: datetime | None = None) -> bytes:
+                             deal_type: str, when: datetime | None = None, agent=None) -> bytes:
     """Инвойс по выбранному маршруту и реквизитам конкретной операции.
 
     Старый RUB-шаблон оставлен лишь для совместимости прямых legacy-вызовов;
@@ -860,12 +1167,15 @@ def build_commercial_invoice(fields: dict, money: dict, number: str,
     """
     from docx import Document  # noqa: PLC0415
 
+    ag = _agent(agent, money)
     when = when or datetime.now()
     money = doc_routes.normalize(money, deal_type)
     # Один платёжный маршрут — один источник реквизитов. Старый банковский
     # шаблон допустим только для legacy-вызовов RUB/bank без новых полей.
-    if money['payin_method'] != 'bank' or money['payin_currency'] != 'RUB' or money.get('payin_details'):
-        return _route_invoice(fields, money, number, when)
+    # Старый бланк зашит под MF (логотип, реквизиты ООО) — другим агентам только route invoice.
+    if (money['payin_method'] != 'bank' or money['payin_currency'] != 'RUB' or money.get('payin_details')
+            or not ag.native_template):
+        return _route_invoice(fields, money, number, when, ag)
     doc = Document(os.path.join(TEMPLATE_DIR, COMMERCIAL_INVOICE_TEMPLATE))
     method = money.get('payin_method') or 'bank'
     client_bits = [fields.get('client_name_en') or fields.get('client_name_ru') or '']
@@ -881,7 +1191,7 @@ def build_commercial_invoice(fields: dict, money: dict, number: str,
                          or property_description(fields, deal_type),
         '[AMOUNT]': money_ru(money.get('total_payin'), money.get('payin_currency') or 'RUB'),
         '[PURPOSE]': money.get('payment_reference')
-                     or payment_reference(fields, method, money.get('part')),
+                     or payment_reference(fields, method, money.get('part'), ag),
     }
     targets = list(doc.paragraphs)
     for t in doc.tables:
@@ -891,16 +1201,17 @@ def build_commercial_invoice(fields: dict, money: dict, number: str,
     for p in targets:
         for old, new in repl.items():
             _para_replace(p, old, new)
-    _sign_agent(doc, when)
+    _sign_agent(doc, when, ag)
     buf = io.BytesIO()
     doc.save(buf)
     return buf.getvalue()
 
 
-def _route_invoice(fields, money, number, when):
+def _route_invoice(fields, money, number, when, agent=None):
     from docx import Document
+    ag = _agent(agent, money)
     doc = Document(io.BytesIO(build_invoice(fields, money, number,
-                   money.get('parent_number') or number, number, when)))
+                   money.get('parent_number') or number, number, when, ag)))
     _set_field(doc.tables[1], 'Клиент', client_line(fields, 'ru') + '\n' + client_line(fields, 'en'))
     _set_field(doc.tables[1], 'Сделка', property_line(fields, money.get('deal_type', 'payment')) or
                f"Перевод / Transfer {money['pair'].replace('_', ' → ')}")
@@ -913,23 +1224,25 @@ def _route_invoice(fields, money, number, when):
     _set_field(doc.tables[3], 'Реквизиты', doc_routes.details(money))
     _set_field(doc.tables[3], 'Способ оплаты', doc_routes.METHODS[money['payin_method']])
     _set_field(doc.tables[3], 'Назначение платежа', money.get('payment_reference') or
-               payment_reference(fields, money['payin_method']))
+               payment_reference(fields, money['payin_method'], agent=ag))
     row = doc.tables[3].rows[-1]
     role = money.get('payin_recipient_role') or ''
     _set_cell(row.cells[0], f'Роль получателя / Recipient role: {role}\n'
-              'Оплата указанному получателю по реквизитам настоящего счёта является надлежащим исполнением обязательства Клиента перед MF Corporation Company Limited по указанной операции.\n'
-              'Payment to the named recipient using the details in this Invoice constitutes due performance of the Client’s obligation to MF Corporation Company Limited for this transaction.\n'
-              + PAYIN_EVIDENCE[money['payin_method']] + ': направить менеджеру MF / send to the MF manager.')
+              f'Оплата указанному получателю по реквизитам настоящего счёта является надлежащим исполнением обязательства Клиента перед {ag.name} по указанной операции.\n'
+              f'Payment to the named recipient using the details in this Invoice constitutes due performance of the Client’s obligation to {ag.name} for this transaction.\n'
+              + PAYIN_EVIDENCE[money['payin_method']]
+              + f': направить менеджеру {ag.short_name} / send to the {ag.short_name} manager.')
     # Короткий шаблон не содержит блока подписи, поэтому добавляем его явно.
     # Подпись и печать те же, что в договоре; размещаем рядом для компактности.
     signature_table = doc.add_table(rows=1, cols=2)
     cell = signature_table.cell(0, 0)
-    _set_cell(cell, f"{AGENT['name']}\nDirector: {AGENT['director']}")
+    _set_cell(cell, f"{ag.name}\nDirector: {ag.director}")
     cell.add_paragraph('Signature: ')
     cell.add_paragraph('Date: ')
-    _sign_agent(doc, when)
+    _sign_agent(doc, when, ag)
     if cell.paragraphs[-1]._p.xpath('.//w:drawing'):
         signature_table.cell(0, 1)._tc.append(cell.paragraphs[-1]._p)
+    _tidy_layout(doc, ag)
     buf = io.BytesIO()
     doc.save(buf)
     return buf.getvalue()
@@ -1018,11 +1331,16 @@ def as_pdf(docx_bytes: bytes, basename: str) -> tuple[bytes, str, str]:
 PLACEHOLDER_RE = re.compile(r'\[●\]|\[[^\]\n]{2,80}?\s/\s[^\]\n]{2,80}?\]')
 
 
-def check(data: bytes, allow_forms: bool = False, stand_thb_pending: bool = False) -> list[str]:
+def check(data: bytes, allow_forms: bool = False, stand_thb_pending: bool = False,
+          agent=None) -> list[str]:
     """Аналог check_doc.py: не отдаём документ с незаполненными местами.
 
     `allow_forms` — для рамочного договора: приложения в нём намеренно пустые
     бланки, плейсхолдеры там не дефект. В допнике и инвойсе — дефект всегда.
+
+    `agent` — компания, от которой выпускается документ: если в тексте остались
+    название, регистрационный номер или директор ДРУГОЙ компании реестра, документ
+    не отдаём (иначе клиент получит договор одной компании с реквизитами другой).
     """
     from docx import Document  # noqa: PLC0415
 
@@ -1043,6 +1361,11 @@ def check(data: bytes, allow_forms: bool = False, stand_thb_pending: bool = Fals
                 continue
             for cell in row.cells:
                 texts.append(cell.text)
+    if agent is not None:
+        whole = '\n'.join(texts)
+        for marker in doc_agents.foreign_markers(agent):
+            if marker in whole:
+                problems.append(f'в документе остались данные другой компании: {marker}')
     for txt in texts:
         if txt.strip() == 'ОБЕЗЛИЧЕННЫЙ ШАБЛОН':
             problems.append('осталась пометка «ОБЕЗЛИЧЕННЫЙ ШАБЛОН»')

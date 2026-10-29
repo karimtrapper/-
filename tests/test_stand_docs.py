@@ -555,6 +555,7 @@ def test_crypto_freehold_payment_ignores_rate_inherited_from_agreement(stand):
 # ────────────────── rubReceivingAccount: пресет Flow Sole и custom-получатель ──────────────────
 
 ROLE_AGENT = 'Агент (рублёвый счёт MF в РФ) / Agent (MF RUB account in Russia)'
+ROLE_FLOWSOLE_AGENT = 'Агент (рублёвый счёт в РФ) / Agent (RUB account in Russia)'
 ROLE_PARTNER = ('Уполномоченный платёжный партнёр Агента (рублёвый счёт в РФ) / '
                 "Agent’s authorised payment partner (RUB account in Russia)")
 
@@ -579,8 +580,12 @@ def test_flowsole_preset_sets_payto_and_authorised_partner_role(stand):
     assert '40807810938720000286' not in texts['dog']
     invoice = texts['bill']
     assert '044525094' in invoice
-    assert ROLE_PARTNER in invoice
+    # Счёт Flow Sole — это счёт самого Агента: документы выпускает Flow Sole,
+    # получатель выступает в роли Агента, а не «партнёра Агента» (см. test_doc_agents)
+    assert ROLE_FLOWSOLE_AGENT in invoice
+    assert ROLE_PARTNER not in invoice
     assert ROLE_AGENT not in invoice
+    assert saved['issuedDocAgent'] == 'flow_sole'
 
 
 def test_custom_rub_account_with_explicit_recipient_uses_it_and_partner_role(stand):
