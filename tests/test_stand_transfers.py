@@ -565,8 +565,11 @@ def test_crypto_payin_hash_fills_payer_wallet_and_flags_other_sender(monkeypatch
         assert deal['payinHashes'][0]['verified'] is True
         assert not deal['payinHashes'][0].get('otherSender')
 
+        # повтор того же хеша на ЭТОЙ ЖЕ сделке идемпотентен: успех без второй записи
         dup = client.post('/api/stand/payin/check', json={'dealId': 7, 'hash': HASH})
-        assert dup.status_code == 409
+        assert dup.status_code == 200 and dup.json['idempotent'] is True
+        assert len(dup.json['data']['deals'][0]['payinHashes']) == 1
+        assert dup.json['version'] == first.json['version']
 
         fake.amount, fake.sender = 599.0, FROM
         other = client.post('/api/stand/payin/check', json={'dealId': 7, 'hash': 'b' * 64})
@@ -660,7 +663,9 @@ def test_erc_payin_uses_saved_receiver_and_network_with_t9_receipt(monkeypatch):
         assert first.json['data']['deals'][0]['step'] == 's14'  # partial payment stays open
         assert calls == ['eth_tx_receipt', 'eth_block_by_number']
         duplicate = client.post('/api/stand/payin/check', json={'dealId': 7, 'hash': '0x' + HASH})
-        assert duplicate.status_code == 409
+        assert duplicate.status_code == 200 and duplicate.json['idempotent'] is True
+        assert len(duplicate.json['data']['deals'][0]['payinHashes']) == 1
+        assert duplicate.json['version'] == first.json['version']
         proposal = first.json['data']
         proposal['deals'][0]['walletId'] = 'custom'
         proposal['deals'][0]['payinCustom'] = {'network': 'ERC-20', 'addr': '0x' + '3' * 40}

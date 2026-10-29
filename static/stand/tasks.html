@@ -10772,7 +10772,10 @@ function payinSettle(id,network=false){
     toast(foreign?'Пришёл перевод не с кошелька клиента — засчитайте или уберите':'Получено '+money(got,'USDT')+' — ждём ещё '+money(rnd2(exp-got),'USDT'));return;}
   const hs=(d.payinHashes||[]).filter(h=>!payinForeign(d,h));
   d.incomeAmount=got; d.amountUsdt=d.amountUsdt||exp;
-  /* Получение крипты не меняет режим проверки дальнейших переводов. */
+  /* Получение крипты не меняет режим проверки дальнейших переводов.
+     walletId обычно уже записан на s11 (act 's11'); запись здесь — только для сделок,
+     где он остался пустым: сервер принимает её как первичную фиксацию дефолтного
+     кошелька, любое другое значение отклонит. */
   if(!d.walletId){
     const selected=payinDefaultWallet('TRC-20',d);
     if(!selected&&walletPurpose(d)){toast('В реестре нет кошелька для этой сделки');return;}
@@ -12388,6 +12391,14 @@ async function act(id,step){
       const el=document.getElementById('df_'+miss[0]); if(el){el.scrollIntoView({block:'center'});el.focus();}
       return;}
     d.docMiss=[];d.docErr='';
+    /* Кошелёк прихода записываем в сделку явно, даже если select не трогали: иначе он
+       остаётся «виртуальным» (payinWallet() выводит дефолт), а первая запись walletId
+       случается на «Ждём приход» вместе с переходом шага — сервер её отклоняет (QA 29.10).
+       Это отдельное сохранение на s11; docIssue ниже ждёт его результата. */
+    if(isCrypto(d)&&!d.walletId){
+      const def=payinDefaultWallet('TRC-20',d);
+      if(def){d.walletId=def.id;save();}
+    }
     /* Договор, приложение и счёт выпускает сервер тем же генератором, что CRM */
     docIssue(d.id,F,ch,val('sn_s11'));return;}
   if(step==='s11b'){if(!d.docPack){toast('Пакет не выпущен — «Поправить и пересоздать»');return;}

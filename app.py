@@ -12118,6 +12118,16 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
             continue
         if _signer_s23(previous, was) == _signer_s23(new_state, deal):
             continue
+        # Первичная фиксация дефолтного кошелька на s14: подписант меняется только
+        # из-за самой записи walletId (null → дефолт), больше ничем.
+        if _stand_first_payin_wallet_fixation(was, deal):
+            # Роль s23 ищет сделку в самой доске, поэтому «до + только walletId» собираем
+            # как отдельную доску, а не подменой копии сделки.
+            fixed = dict(was, walletId=deal.get('walletId'))
+            hypothetical = dict(previous, deals=[fixed if x.get('id') == was.get('id') else x
+                                                 for x in previous.get('deals', [])])
+            if _signer_s23(hypothetical, fixed) == _signer_s23(new_state, deal):
+                continue
         before_step, after_step = was.get('step'), deal.get('step')
         allowed = {'s11': ('s11',), 's18': ('s18', 's18w')}.get(before_step, ())
         if after_step not in allowed:
@@ -12197,7 +12207,8 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
             changed_target = bool(before and (
                 before.get('payType') != deal.get('payType')
                 or before.get('curBase') != deal.get('curBase')
-                or before.get('walletId') != deal.get('walletId')
+                or (before.get('walletId') != deal.get('walletId')
+                    and not _stand_first_payin_wallet_fixation(before, deal))
                 or before.get('payinCustom') != deal.get('payinCustom')
                 or _stand_payin_target(previous, before) != _stand_payin_target(new_state, deal)))
             # Кошелёк прихода меняют только стоя на s11 и не сдвигая шаг в том же
@@ -14718,19 +14729,41 @@ def _stand_payin_wallet_row(session, wallet_id):
                                         Wallet.active == True).first()
 
 
+def _stand_default_payin_wallet_id(deal):
+    """Кошелёк прихода по умолчанию для сделки без сохранённого walletId: активный
+    кошелёк реестра с `purpose` сделки и `accepts_payin`, иначе легаси 'grusha'.
+    Это ровно тот кошелёк, который клиент показывает через payinWallet()."""
+    purpose = {'Оплата недвижимости': 'realty', 'Обмен валюты': 'exchange'}.get(deal.get('type'))
+    wallet_id = None
+    if purpose:
+        selected = get_session().query(Wallet).filter_by(purpose=purpose, active=True,
+                                                         accepts_payin=True).first()
+        wallet_id = selected.id if selected else None
+    return wallet_id or 'grusha'
+
+
+def _stand_first_payin_wallet_fixation(before, deal):
+    """Первичная фиксация кошелька прихода на s14: в сделке walletId не сохранили
+    (оператор не трогал select на s11, QA 29.10), и теперь записывается ровно тот
+    кошелёк, который сервер сам считает дефолтом для этой сделки. Это не смена
+    подписанта, а запись уже действующего значения. Любое другое значение — смена."""
+    if not before or before.get('step') != 's14' or before.get('walletId') or not deal.get('walletId'):
+        return False
+    if not (_stand_is_crypto(before) and _stand_is_crypto(deal)):
+        return False
+    if before.get('payinCustom') or deal.get('payinCustom'):
+        return False
+    if before.get('payType') != deal.get('payType') or before.get('curBase') != deal.get('curBase'):
+        return False
+    return str(deal['walletId']) == str(_stand_default_payin_wallet_id(before))
+
+
 def _stand_payin_target(state, deal):
     """Кошелёк и сеть прихода — из единого реестра кошельков CRM (`wallets`),
     не из отдельного справочника задачника. Свой кошелёк, введённый вручную и не
     сохранённый в реестр (`payinCustom`), резолвится напрямую из сделки."""
     from sqlalchemy import func
-    wallet_id = deal.get('walletId')
-    if not wallet_id:
-        purpose = {'Оплата недвижимости': 'realty', 'Обмен валюты': 'exchange'}.get(deal.get('type'))
-        if purpose:
-            selected = get_session().query(Wallet).filter_by(purpose=purpose, active=True,
-                                                             accepts_payin=True).first()
-            wallet_id = selected.id if selected else None
-    wallet_id = wallet_id or 'grusha'
+    wallet_id = deal.get('walletId') or _stand_default_payin_wallet_id(deal)
     if wallet_id == 'custom':
         custom = deal.get('payinCustom') or {}
         if not isinstance(custom, dict):
@@ -14957,6 +14990,22 @@ def stand_payin_check():
             db.commit()
             return jsonify(success=False, error='Перевод пришёл на другой кошелёк — проверьте адрес и подтвердите расхождение',
                            warning=warning, version=row.version, data=_stand_strip_files(state)), 409
+        # Повтор хеша, уже записанного в ЭТУ сделку (хеш привязан, а переход на
+        # следующий шаг сорвался): идемпотентный успех без новой записи, чтобы
+        # клиент мог повторить payinSettle() по сохранённым payinHashes. Приход партнёра
+        # наличными (общий реестр переводов) остаётся строгим: повтор хеша там — 409.
+        def _same_ref(h):
+            return (normalize_network(h.get('network') or 'trc20') == network
+                    and normalize_ref(h.get('hash'), network) == tx_hash)
+        own_hit = next((h for h in deal.get('payinHashes') or [] if _same_ref(h)), None)
+        if own_hit is not None and not cash_partner and not any(
+                _same_ref(h) for d in state.get('deals', []) if d is not deal
+                for h in d.get('payinHashes') or []) and not any(
+                normalize_network(t.get('net') or 'trc20') == network
+                and normalize_ref(t.get('hash'), network) == tx_hash
+                for c in state.get('convs', []) for t in c.get('txs') or []):
+            return jsonify({'success': True, 'tx': own_hit, 'version': row.version,
+                            'data': state, 'idempotent': True})
         used = any(normalize_network(h.get('network') or 'trc20') == network
                    and normalize_ref(h.get('hash'), network) == tx_hash
                    for d in state.get('deals', []) for h in d.get('payinHashes') or []) or any(
