@@ -6109,8 +6109,8 @@ def _stand_purge_deleted():
             db.delete(doc)
             docs += 1
         db.commit()
-        print(f'[STAND] Очистка stand_files: файлов {files}, байт {size}, полей deletedFiles {deleted_fields}')
-        print(f'[STAND] Очистка agreement_docs: файлов {docs}, байт {docs_size}, ссылок в сделках {refs_cleaned}')
+        app.logger.warning(f'[STAND] Очистка stand_files: файлов {files}, байт {size}, полей deletedFiles {deleted_fields}')
+        app.logger.warning(f'[STAND] Очистка agreement_docs: файлов {docs}, байт {docs_size}, ссылок в сделках {refs_cleaned}')
         return files, size, docs, docs_size
     except Exception:
         db.rollback()
@@ -30266,7 +30266,8 @@ if STAND_MODE:
     except stand_object_store.StorageUnavailable:
         app.logger.warning('Хранилище файлов не настроено; перенос вложений отложен')
     else:
-        _stand_migrate_files()
+        migrated = _stand_migrate_files()
+        app.logger.warning(f'[STAND] Перенос вложений: сделок обновлено {migrated}')
         try:
             _stand_purge_deleted()
         except Exception:
