@@ -94,18 +94,23 @@
             padding: 4px; background: var(--b2-n200); border: 1px solid var(--b2-n300); border-radius: 8px;
         }
         body.calc-b2 .dealtype-switcher { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-        body.calc-b2 .b2-group--compact .switcher-caption { font-size: 13px; margin-bottom: 4px; }
-        body.calc-b2 .b2-group--compact .dealtype-switcher { gap: 2px; }
-        body.calc-b2 .b2-group--compact :is(.dealtype-btn) { min-height: 36px; font-size: 14px; }
         body.calc-b2 .method-switcher { grid-template-columns: repeat(3, minmax(0, 1fr)); }
         body.calc-b2 .scenarios-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-        body.calc-b2 .b2-profit-control { display: flex; flex-direction: column; gap: 8px; }
+        body.calc-b2 .profit-steps { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; background: transparent; border: 0; padding: 0; }
+        body.calc-b2 .profit-header { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+        body.calc-b2 .profit-header .input-label { margin: 0; }
         body.calc-b2 .profit-current { font-size: 14px; font-weight: 600; color: var(--b2-n600); }
-        body.calc-b2 .profit-stepper { display: flex; align-items: center; gap: 12px; }
-        body.calc-b2 .profit-step-btn { width: 44px; height: 44px; border-radius: 8px; border: 1px solid var(--b2-n300); background: var(--b2-white); font-size: 22px; font-weight: 700; color: var(--b2-ink); }
-        body.calc-b2 .profit-value { flex: 1; text-align: center; font-size: 22px; font-weight: 700; color: var(--b2-ink); }
-        body.calc-b2 .profit-quick-variants { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }
-        body.calc-b2 .profit-floor-hint { font-size: 13px; color: #92400E; }
+        body.calc-b2 #commissionLevelSection .commission-btn { background: var(--b2-white); border: 1px solid var(--b2-n300); border-radius: 8px; }
+        body.calc-b2 .profit-custom-btn { display: block; width: 100%; margin-top: 8px; }
+        /* Оранжевый — только у кнопок прибыли (глобальный .commission-btn.active!important из styles.css)
+           и главной кнопки. У переключателей инвойса/тарифа IPPS — тот же белый «выбранный сегмент». */
+        body.calc-b2 .prop-chips .commission-btn.active, body.calc-b2 .prop-chips .commission-btn.active:hover {
+            background: var(--b2-white) !important; color: var(--b2-ink) !important;
+            border-color: var(--b2-n300) !important; box-shadow: var(--card-shadow) !important;
+        }
+        body.calc-b2 .prop-tariff-btn { height: auto; min-height: 48px; line-height: 1.3; padding: 8px 6px; }
+        body.calc-b2 .prop-tariff-price { display: block; font-size: 12px; font-weight: 500; opacity: .8; }
+        body.calc-b2 .profit-floor-hint { font-size: 13px; color: #92400E; margin-top: 8px; }
         body.calc-b2 :is(.dealtype-btn, .method-btn, .direction-btn, .scenario-btn, .commission-btn, .src-btn) {
             min-width: 0; min-height: 48px; padding: 8px; margin: 0; border: 1px solid transparent;
             background: transparent; color: var(--b2-n600); border-radius: 8px;
@@ -124,7 +129,7 @@
         body.calc-b2 .custom-rate-top { margin: 0; }
         body.calc-b2 .custom-rate-card, body.calc-b2 .property-extra, body.calc-b2 .calculator-card { padding: 0; margin: 0; background: transparent; border: 0; box-shadow: none; }
         body.calc-b2 .custom-rate-card + .custom-rate-card { margin-top: 16px !important; }
-        body.calc-b2 .property-badge { display: block; padding: 0; margin-bottom: 16px; background: transparent; color: var(--b2-ink); font-size: 16px; font-weight: 600; }
+        body.calc-b2 .property-badge { display: block; padding: 0; margin-bottom: 8px; background: transparent; border: 0; border-radius: 0; color: var(--b2-n700); font-size: 16px; font-weight: 600; }
         body.calc-b2 .input-section { margin: 0; }
         body.calc-b2 .input-wrapper { display: flex; align-items: center; min-width: 0; height: 60px; background: var(--b2-white); border: 1px solid var(--b2-n300); border-radius: 8px; }
         body.calc-b2 .input-wrapper:focus-within { outline: 2px solid var(--b2-action); outline-offset: 2px; }
@@ -168,6 +173,9 @@
         body.calc-b2 .result-label { font-size: 16px; font-weight: 600; color: var(--b2-n300); opacity: 1; }
         body.calc-b2 .result-value { font-size: 36px; font-weight: 700; line-height: 1.15; letter-spacing: -.01em; color: var(--b2-white); white-space: nowrap; }
         body.calc-b2 .result-rate { font-size: 16px; font-weight: 600; color: var(--b2-white); opacity: 1; }
+        body.calc-b2 .result-empty-hint { display: none; font-size: 14px; font-weight: 400; color: var(--b2-n400); }
+        body.calc-b2 .result-main.is-empty #resultLabel, body.calc-b2 .result-main.is-empty #resultValue, body.calc-b2 .result-main.is-empty .result-rate { display: none; }
+        body.calc-b2 .result-main.is-empty .result-empty-hint { display: block; }
         body.calc-b2 .result-profit { padding: 0; margin: 8px 0 0; background: transparent !important; color: var(--b2-n300) !important; font-size: 14px; font-weight: 400; }
         body.calc-b2 #marginWarning { font-size: 14px !important; font-weight: 600 !important; }
         body.calc-b2 #createDealSection { min-width: 0 !important; width: 100%; }
@@ -195,9 +203,13 @@
             body.calc-b2 .dealtype-switcher { grid-template-columns: repeat(2, minmax(0, 1fr)); }
         }
         @media (max-width: 700px) {
+            body.calc-b2 .dealtype-switcher { grid-template-columns: repeat(4, minmax(0, 1fr)); }
             body.calc-b2 .container { padding: 16px; }
+            body.calc-b2 .header { margin-bottom: 16px; }
             body.calc-b2 .top-nav { position: static; }
             .b2-layout { display: flex; flex-direction: column; gap: 16px; }
+            body.calc-b2 .b2-params { gap: 16px; }
+            body.calc-b2 .b2-extras summary span:first-child { flex: none; }
             body.calc-b2 .b2-layout .b2-side { display: contents; position: static; }
             .b2-side-title { display: none; }
             body.calc-b2 .rates-card { order: 3; width: 100%; padding: 16px; background: var(--b2-ink); border-radius: 12px; }
@@ -209,7 +221,8 @@
             body.calc-b2 .rates-card[open] .rates-summary { margin-bottom: 16px; }
             .b2-params { order: 1; width: 100%; padding: 16px; }
             body.calc-b2 #resultsSection { display: contents !important; }
-            body.calc-b2 .b2-result-bar { position: fixed; z-index: 50; left: 0; right: 0; bottom: 0; padding: 12px 16px max(12px, env(safe-area-inset-bottom)); background: var(--b2-ink); border-top: 1px solid var(--b2-n700); gap: 8px; }
+            body.calc-b2 .b2-result-bar { position: fixed; z-index: 50; left: 0; right: 0; bottom: 0; padding: 12px 16px max(12px, env(safe-area-inset-bottom)); background: var(--b2-ink); border-top: 1px solid var(--b2-n700); gap: 8px; display: none; }
+            body.calc-b2.b2-result-ready .b2-result-bar { display: flex; }
             body.nav-shell-on.calc-b2 .b2-result-bar { bottom: calc(61px + env(safe-area-inset-bottom)); z-index: 221; padding-bottom: 12px; }
             body.calc-b2 .b2-result-bar .result-main { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
             body.calc-b2 .b2-result-bar .result-value { font-size: 36px; text-align: left; max-width: 100%; overflow-x: auto; }
@@ -221,11 +234,12 @@
             body.calc-b2 .details-section { border-top-color: var(--b2-n200); }
             body.calc-b2 .details-header { color: var(--b2-ink); }
             body.calc-b2 .footer { padding-bottom: 24px; }
-            body.calc-b2 .container::after { display: block; height: 160px; content: ''; }
+            body.calc-b2 .container::after { display: none; content: ''; }
+            body.calc-b2.b2-result-ready .container::after { display: block; height: 160px; }
             body.calc-b2 #b2ExtrasMeta { display: none; }
         }
         @media (max-width: 600px) {
-            body.calc-b2 .dealtype-switcher { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+            body.calc-b2 .dealtype-btn { padding: 6px 4px; font-size: 14px; }
             body.calc-b2 .method-switcher { grid-template-columns: repeat(3, minmax(0, 1fr)); }
             body.calc-b2 .rate-value { font-size: 24px; }
             body.calc-b2 .top-nav .instruction-btn { display: none; }
@@ -418,17 +432,17 @@
                     </div>
                     <div class="fee-hint" id="propInvResult" style="font-weight: 600;"></div>
                 </div>
-                <div class="fee-hint" id="propInvUsdHint">Инвойс в USD: введите сумму в поле ниже — сценарий «Хочу получить» (USDT).</div>
+                <div class="fee-hint" id="propInvUsdHint">Сумма, которую должен получить застройщик.</div>
 
                 <label class="input-label" style="margin-top: 14px;">Тариф IPPS</label>
                 <div class="prop-chips" id="propTariffChips">
-                    <button type="button" class="commission-btn active" data-tariff="bank" onclick="setPropTariff('bank')">Банк · 0,8% + 50$</button>
-                    <button type="button" class="commission-btn" data-tariff="soft" onclick="setPropTariff('soft')">Софт-счёт · 1,5% + 50$</button>
+                    <button type="button" class="commission-btn prop-tariff-btn active" data-tariff="bank" onclick="setPropTariff('bank')">Банк<br><span class="prop-tariff-price">0,8% + 50$</span></button>
+                    <button type="button" class="commission-btn prop-tariff-btn" data-tariff="soft" onclick="setPropTariff('soft')">Софт-счёт<br><span class="prop-tariff-price">1,5% + 50$</span></button>
                 </div>
                 <!-- Значения тарифа читает applyPropertyFee(); выставляет setPropTariff() -->
                 <input type="hidden" id="propFeePercent" value="0.8">
                 <input type="hidden" id="propFeeFixed" value="50">
-                <div class="fee-hint" id="propFeeHint">Тариф IPPS — расход на перевод в USD, ляжет в расчёт ниже. Банк: обычный FET-платёж от компании. Софт-счёт: платёж от имени клиента.</div>
+                <div class="fee-hint" id="propFeeHint">Тариф ляжет в расчёт ниже.</div>
             </div>
         </div>
 
@@ -484,28 +498,28 @@
                 </div>
 
                 <!-- Скидка/наценка — всегда видна, без галочек и раскрытий -->
-                <div id="commissionLevelSection" class="commission-level-section b2-profit-control" style="margin-top: 25px; border-top: 1px solid #e2e8f0; padding-top: 20px;">
-                    <label class="input-label">Наша прибыль</label>
-                    <div class="profit-current" id="profitCurrentLabel">Стандарт 4%</div>
-                    <div class="profit-stepper">
-                        <button type="button" class="profit-step-btn" onclick="stepProfit(-0.1)" aria-label="Уменьшить прибыль на 0,1%">−</button>
-                        <div class="profit-value" id="profitValueDisplay">4,0%</div>
-                        <button type="button" class="profit-step-btn" onclick="stepProfit(0.1)" aria-label="Увеличить прибыль на 0,1%">+</button>
+                <div id="commissionLevelSection" class="commission-level-section" style="margin-top: 25px; border-top: 1px solid #e2e8f0; padding-top: 20px;">
+                    <div class="profit-header">
+                        <label class="input-label">Наша прибыль</label>
+                        <span class="profit-current" id="profitCurrentLabel">Стандарт 4%</span>
                     </div>
-                    <div class="profit-quick-variants">
-                        <button class="commission-btn" data-offset="-1" onclick="applyQuickProfit(-1)">−1%</button>
-                        <button class="commission-btn" data-offset="-0.5" onclick="applyQuickProfit(-0.5)">−0,5%</button>
-                        <button class="commission-btn" data-offset="0" onclick="applyQuickProfit(0)">Стандарт</button>
-                        <button class="commission-btn" data-offset="0.5" onclick="applyQuickProfit(0.5)">+0,5%</button>
-                        <button class="commission-btn" data-offset="1" onclick="applyQuickProfit(1)">+1%</button>
-                        <button class="commission-btn" id="customProfitBtn" data-profit="custom" onclick="toggleCustomProfit()">Своё</button>
+                    <div class="profit-steps">
+                        <button class="commission-btn" data-profit="1.5" onclick="choosePresetProfit(1.5)">1.5%</button>
+                        <button class="commission-btn" data-profit="2.0" onclick="choosePresetProfit(2.0)">2%</button>
+                        <button class="commission-btn" data-profit="2.4" onclick="choosePresetProfit(2.4)">2.4%</button>
+                        <button class="commission-btn" data-profit="3.0" onclick="choosePresetProfit(3.0)">3%</button>
+                        <button class="commission-btn" data-profit="3.5" onclick="choosePresetProfit(3.5)">3.5%</button>
+                        <button class="commission-btn" data-profit="4.0" onclick="choosePresetProfit(4.0)">4%</button>
+                        <button class="commission-btn" data-profit="4.5" onclick="choosePresetProfit(4.5)">4.5%</button>
+                        <button class="commission-btn" data-profit="5.0" onclick="choosePresetProfit(5.0)">5%</button>
                     </div>
+                    <button type="button" class="commission-btn profit-custom-btn" id="customProfitBtn" data-profit="custom" onclick="toggleCustomProfit()">Своё</button>
                     <div id="customProfitWrapper" style="display: none; margin-top: 10px;">
                         <div class="input-wrapper small">
                             <input type="text" inputmode="decimal" id="customProfitInput" class="amount-input" placeholder="Например 10" oninput="onCustomProfitInput(this)">
                             <span class="input-currency">%</span>
                         </div>
-                        <div class="custom-profit-hint">Любое число от 0 до 99</div>
+                        <div class="custom-profit-hint">Любое число от 0 до 99 — больше стандарта — наценка</div>
                     </div>
                     <div id="profitFloorHint" class="profit-floor-hint" style="display:none;">Ниже 1,5% — только с согласованием менеджера</div>
                 </div>
@@ -543,6 +557,7 @@
             <!-- Результаты -->
             <div class="results-section" id="resultsSection" style="display: none;">
                 <div class="result-main">
+                    <div class="result-empty-hint" id="resultEmptyHint" style="display: none;">Введите сумму</div>
                     <div class="result-label" id="resultLabel">Клиент получит:</div>
                     <div class="result-value" id="resultValue">0 ฿</div>
                     <div class="result-rate">

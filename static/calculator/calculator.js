@@ -214,6 +214,11 @@ function hideResults() {
     const copy = document.getElementById('b2CopyClient');
     if (copy) copy.disabled = true;
     updateB2ExtrasMeta();
+    // Панель результата на мобильном видна только при реальном расчёте — пока его нет,
+    // не занимает экран (Карим, 2026-10-29).
+    document.body.classList.remove('b2-result-ready');
+    const resultMain = document.querySelector('.result-main');
+    if (resultMain) resultMain.classList.toggle('is-empty', getAmount() <= 0);
     scheduleB2Calculate();
 }
 
@@ -493,30 +498,14 @@ function setProfitMargin(profit) {
     }
 }
 
-// Шаг прибыли на 0,1% от текущего эффективного значения (кнопки −/+)
-function stepProfit(delta) {
-    const amount = getAmount();
-    const current = effectiveProfit(amount);
+// Выбор готового процента прибыли (кнопки 1.5%…5%) — всегда виден, без галочки «Сделать скидку».
+// Любое число через «Своё» выше стандарта — наценка (см. onCustomProfitInput).
+function choosePresetProfit(value) {
     state.applyDiscount = true;
-    setProfitMargin(+(current + delta).toFixed(2));
+    setProfitMargin(value);
 }
 
-// Быстрый вариант прибыли относительно лестничного стандарта (−1%, −0,5%, стандарт, +0,5%, +1%)
-function applyQuickProfit(offset) {
-    const amount = getAmount();
-    if (offset === 0) {
-        resetDiscount();
-        if (amount > 0) {
-            if (document.body.classList.contains('calc-b2')) hideResults();
-            else calculate();
-        }
-        return;
-    }
-    state.applyDiscount = true;
-    setProfitMargin(+(ladderProfit(amount) + offset).toFixed(2));
-}
-
-// Перерисовка степпера скидки/наценки: подпись, значение, активный быстрый вариант, подсказка про пол
+// Перерисовка блока «Наша прибыль»: подпись словами, активная кнопка, подсказка про пол
 function updateProfitDisplay() {
     const amount = getAmount();
     const ladder = ladderProfit(amount);
@@ -525,11 +514,17 @@ function updateProfitDisplay() {
     const modeWord = mode === 'discount' ? 'Скидка' : mode === 'markup' ? 'Наценка' : 'Стандарт';
     const label = document.getElementById('profitCurrentLabel');
     if (label) label.textContent = mode === 'standard' ? `Стандарт ${ladder}%` : `${modeWord} ${Math.abs(deltaPct)}%`;
-    const value = document.getElementById('profitValueDisplay');
-    if (value) value.textContent = `${eff.toFixed(1).replace('.', ',')}%`;
-    document.querySelectorAll('#commissionLevelSection .commission-btn[data-offset]').forEach(btn => {
-        btn.classList.toggle('active', Math.abs(parseFloat(btn.dataset.offset) - deltaPct) < 0.001);
+    let matchedPreset = false;
+    document.querySelectorAll('#commissionLevelSection .commission-btn[data-profit]').forEach(btn => {
+        const btnProfit = parseFloat(btn.dataset.profit);
+        const isMatch = !isNaN(btnProfit) && Math.abs(btnProfit - eff) < 0.001;
+        if (isMatch) matchedPreset = true;
+        btn.classList.toggle('active', isMatch);
     });
+    // «Своё» подсвечивается, когда прибыль задана вручную и не совпала ни с одним пресетом
+    // (иначе подсветка пропадала при вводе значения — найдено на QA-сравнении с макетом Карима 2026-10-29).
+    const customBtn = document.getElementById('customProfitBtn');
+    if (customBtn) customBtn.classList.toggle('active', state.applyDiscount && !matchedPreset);
     const floorHint = document.getElementById('profitFloorHint');
     if (floorHint) floorHint.style.display = eff <= PROFIT_FLOOR + 0.001 ? '' : 'none';
 }
@@ -1533,6 +1528,9 @@ function displayResult(result) {
         document.getElementById('createDealBtn').disabled = false;
         const copy = document.getElementById('b2CopyClient');
         if (copy) copy.disabled = false;
+        document.body.classList.add('b2-result-ready');
+        const resultMain = document.querySelector('.result-main');
+        if (resultMain) resultMain.classList.remove('is-empty');
     }
     
     // Показываем/скрываем секцию создания платежа (только для Doverka)
@@ -2739,9 +2737,10 @@ function initB2Layout() {
         nodes.forEach(node => { if (node) wrap.appendChild(node); });
         params.appendChild(wrap);
     }
-    // Направление+метод — главный выбор связки, идут первыми и рядом (решение 2026-10-29).
-    group(document.getElementById('b2DirectionLabel'), document.getElementById('directionSwitcher'), container.querySelector('.scenarios-grid'), document.getElementById('b2DirectionHint'));
+    // Порядок: Тип сделки → Метод → Направление → Сумма → Наша прибыль (решение Карима 2026-10-29).
+    group(document.getElementById('dealtypeCaption'), container.querySelector('.dealtype-switcher'));
     group(document.getElementById('methodCaption'), document.getElementById('methodSwitcher'));
+    group(document.getElementById('b2DirectionLabel'), document.getElementById('directionSwitcher'), container.querySelector('.scenarios-grid'), document.getElementById('b2DirectionHint'));
     params.append(document.getElementById('customRateSection'), document.getElementById('propertyExtra'));
 
     const exchange = document.getElementById('exchangeCard');
@@ -2752,13 +2751,6 @@ function initB2Layout() {
     extras.appendChild(settings);
     params.appendChild(exchange);
     params.appendChild(extras);
-
-    // Тип сделки — второстепенный выбор, идёт компактно ниже суммы.
-    const dealtypeWrap = document.createElement('div');
-    dealtypeWrap.className = 'b2-group b2-group--compact';
-    dealtypeWrap.appendChild(document.getElementById('dealtypeCaption'));
-    dealtypeWrap.appendChild(container.querySelector('.dealtype-switcher'));
-    params.appendChild(dealtypeWrap);
 
     const rates = document.getElementById('ratesCard');
     side.appendChild(rates);
@@ -2803,6 +2795,7 @@ function initB2Layout() {
     updateB2DirectionHint();
     updateB2ExtrasMeta();
     updateProfitDisplay();
+    document.querySelector('.result-main')?.classList.add('is-empty');
     updateB2RateAge();
     setInterval(updateB2RateAge, 30000);
     // На мобильном плашка курсов стартует свёрнутой — раскрытие по тапу, без сохранения состояния.
