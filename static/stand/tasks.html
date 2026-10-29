@@ -7182,7 +7182,6 @@ function overview(d,st,mine,p,wh){
   const activeMine=branchMine&&(branch==='conversion'||!d.assigneeAdminId||String(d.assigneeAdminId)===String(standMeId));
   const got=['pass','inv','spa','ipds'].filter(k=>d.docs[k]);
   const docRows=docListRows(d), docN=docRows.issued.length+docRows.client.length;
-  const deletedRows=typeof docDeletedRows==='function'?docDeletedRows(d):'';
   const extraControl=typeof docExtraControl==='function'?docExtraControl(d):'';
   const row=(k,v,s)=>v==null||v===''||v==='—'?'':`<tr><th>${k}</th><td>${v}${s?` <span style="color:var(--text-muted);font-size:12px">${s}</span>`:''}</td></tr>`;
   // Внутренний комментарий — ввод человека, который может оказаться простыней
@@ -7357,9 +7356,9 @@ function overview(d,st,mine,p,wh){
       ?'Плановый доход известен из суммы клиента и отправки в IPPS. Фактическую прибыль покажем после подтверждения прихода USDT по хешам и расходов на оплату застройщика.'
       :'Прибыль посчитается, когда будут известны '+(d.type==='Оплата недвижимости'?'курс партнёра USDT→THB и приход':'себестоимость выдачи и приход')+'. '+(isCrypto(d)?'':'Для рублёвой сделки нужен ещё курс обмена у брокера.')}</div></div></div>`}
 
-  ${(docN||deletedRows||extraControl||(S.role==='manager'&&signedBlock(d)))?`<div class="card" style="margin-bottom:16px"><div class="card-title">Документы<span class="sub">${docN} шт.</span></div>
-    <div class="list doc-list">${docRows.issued.join('')}${docRows.client.join('')}${deletedRows}</div>
-    ${!docN&&!deletedRows?'<p class="doc-empty">Файлов пока нет.</p>':''}
+  ${(docN||extraControl||(S.role==='manager'&&signedBlock(d)))?`<div class="card" style="margin-bottom:16px"><div class="card-title">Документы<span class="sub">${docN} шт.</span></div>
+    <div class="list doc-list">${docRows.issued.join('')}${docRows.client.join('')}</div>
+    ${!docN?'<p class="doc-empty">Файлов пока нет.</p>':''}
     ${extraControl}
     ${S.role==='manager'?signedBlock(d):''}</div>`:''}
   ${fixCard(d)}
@@ -8354,39 +8353,36 @@ function docExtraUpload(id,input){
   fileAddReal(id,'additional',f,type);
   input.value='';
 }
-async function docIssuedAction(id,docId,action){
+async function docIssuedAction(id,docId){
   const d=deal(id);
   const refs=[...(d?.docsIssued||[]),...Object.values(d?.issued||{})];
   const f=refs.find(x=>x?.docId===docId);
   if(!f)return toast('Файл не найден — обновите страницу');
-  if(action==='delete'&&!confirm('Удалить файл '+f.file+'?'))return;
+  if(!confirm('Удалить документ '+f.file+' насовсем?'))return;
   try{
     const r=await fetch('/api/docs/file/'+docId,{method:'PATCH',credentials:'same-origin',
-      headers:{'Content-Type':'application/json'},body:JSON.stringify({action})});
+      headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'delete'})});
     const j=await r.json();
     if(!r.ok||!j.success)throw new Error(j.error||'Не удалось изменить документ');
     await standPull(true);
-    toast(action==='delete'?'Документ удалён':'Документ восстановлен');
+    toast('Документ удалён');
   }catch(e){toast(e.message||'Не удалось изменить документ');}
 }
 function docFileButton(d,k,f,action){
   const fileId=f.id||f.storageId;
   if(!fileId || (STAND&&!['manager','operator','admin'].includes(standMe)))return '';
-  if(action==='restore'&&STAND&&standMe!=='admin')return '';
   if(action==='delete'&&k==='clientPayinReceipt'&&!clientPayinCanDelete(f))return '';
   if(action==='delete'&&k==='bankCreditEvidence'&&standMe!=='admin'&&!bankEvidenceCanEdit(d))return '';
   const call=`docFileAction(${d.id},${JSON.stringify(k)},${JSON.stringify(fileId)},${JSON.stringify(action)})`;
-  return `<button class="btn btn-outline btn-sm" onclick="${htmlText(call)}">${action==='delete'?'Удалить':'Восстановить'}</button>`;
+  return `<button class="btn btn-outline btn-sm" onclick="${htmlText(call)}">Удалить</button>`;
 }
 async function docFileAction(id,k,fileId,action){
   const d=deal(id);
-  const field=action==='restore'?'deletedFiles':'files';
-  const draft=!!((d?._managerDraft?.[field]?.[k]||[]).some(x=>(x.id||x.storageId)===fileId));
+  const draft=!!((d?._managerDraft?.files?.[k]||[]).some(x=>(x.id||x.storageId)===fileId));
   const target=draft?d._managerDraft:d;
-  const lists=target?.[field];
-  const f=((lists||{})[k]||[]).find(x=>(x.id||x.storageId)===fileId);
+  const f=((target?.files||{})[k]||[]).find(x=>(x.id||x.storageId)===fileId);
   if(!f)return toast('Файл не найден — обновите страницу');
-  if(action==='delete'&&!confirm('Удалить файл '+f.file+'?'))return;
+  if(action==='delete'&&!confirm('Удалить документ '+f.file+' насовсем?'))return;
   if(!STAND||SCREEN||SNAP){
     if(action==='delete')fileDel(id,k,((d.files||{})[k]||[]).indexOf(f));
     return;
@@ -8416,7 +8412,7 @@ function docListRows(d,small){
       <div><div class="t1"${fs}>${docIssuedTitle(d,k)}${f.own?' <span class="badge b-done">свой файл</span>':''}</div>
         <div class="t2" style="word-break:break-all">${docFileNameHtml(f.file)}</div></div>
       <span class="t3"><button class="btn btn-outline btn-sm" onclick="docDownload(${d.id},'${k}','file')">${docExt(f)}</button>
-      ${!STAND||['manager','operator','admin'].includes(standMe)?`<button class="btn btn-outline btn-sm" onclick="docIssuedAction(${d.id},${f.docId},'delete')">Удалить</button>`:''}</span></div>`);
+      ${!STAND||['manager','operator','admin'].includes(standMe)?`<button class="btn btn-outline btn-sm" onclick="docIssuedAction(${d.id},${f.docId})">Удалить</button>`:''}</span></div>`);
   const client=[];
   ['pass','inv','spa','ipds'].filter(k=>d.docs[k]||filesOf(d,k).length).forEach(k=>{
     const files=filesOf(d,k);
@@ -8448,22 +8444,6 @@ function docListRows(d,small){
    Раньше плитка «Документов» считала Object.keys(d.docs) — это чек-лист НУЖНЫХ типов
    документов, а не факт прикреплённых файлов: давало другое число (приёмка Карима 18.10). */
 function docFilesCount(d){const {issued,client}=docListRows(d);return issued.length+client.length;}
-function docDeletedRows(d){
-  if(STAND&&standMe!=='admin')return '';
-  const removed=[d.deletedFiles||{},d._managerDraft?.deletedFiles||{}];
-  const attached=removed.flatMap(group=>Object.entries(group).flatMap(([k,files])=>(files||[]).map(f=>
-    `<div class="li" style="cursor:default"><span class="av">Д</span>
-      <div><div class="t1">${htmlText(DOCT[k==='additional'?f.documentType:k]||'Документ')} · удалён</div>
-      <div class="t2" style="word-break:break-all">${docFileNameHtml(f.file)}</div></div>
-      <span class="t3">${docFileButton(d,k,f,'restore')}</span></div>`)));
-  const issued=[...(d.docsIssued||[]),...Object.values(d.issued||{})]
-    .filter(f=>f&&f.deletedAt&&f.docId).filter((f,i,a)=>a.findIndex(x=>x.docId===f.docId)===i)
-    .map(f=>`<div class="li" style="cursor:default"><span class="av">Д</span>
-      <div><div class="t1">${htmlText(DOCT[f.kind]||'Документ')} · удалён</div>
-      <div class="t2" style="word-break:break-all">${docFileNameHtml(f.file)}</div></div>
-      <span class="t3"><button class="btn btn-outline btn-sm" onclick="docIssuedAction(${d.id},${f.docId},'restore')">Восстановить</button></span></div>`);
-  return [...attached,...issued].join('');
-}
 /* Подписанный договор менеджер загружает в любой момент после выпуска пакета — на
    любом шаге, путь он не блокирует, загрузка пишется в журнал (Карим, 27.09) */
 function signedBlock(d,small){
@@ -8480,15 +8460,13 @@ function signedBlock(d,small){
 function docSide(d){
   const {issued,client}=docListRows(d,true);
   const wait=!d.docPack&&!d.closed;
-  const deleted=docDeletedRows(d);
-  if(!issued.length&&!client.length&&!wait&&!deleted&&!docExtraControl(d))return '';
+  if(!issued.length&&!client.length&&!wait&&!docExtraControl(d))return '';
   return `<details class="card side doc-side fold-card"><summary>Документы<span class="fold-total">${issued.length+client.length} ${plural(issued.length+client.length,'файл','файла','файлов')}</span></summary>
     ${issued.length?`<div class="list doc-list">${issued.join('')}</div>`
       :wait?`<p style="font-size:12.5px;color:var(--text-muted);margin:0 0 10px">Договор, приложение и счёт появятся после «Создать договор» у операциониста.</p>`:''}
     ${issued.length&&d.docPack?`<p style="font-size:12px;color:var(--text-muted);margin:8px 0 10px">Пакет версии ${d.docPack.version} · <a href="javascript:void(0)" onclick="docDownloadAll(${d.id})">скачать всё</a></p>`:''}
     ${client.length?`<div class="list doc-list">${client.join('')}</div>`:''}
-    ${deleted?`<div class="list doc-list">${deleted}</div>`:''}
-    ${!issued.length&&!client.length&&!deleted&&!wait?'<p class="doc-empty">Файлов пока нет.</p>':''}
+    ${!issued.length&&!client.length&&!wait?'<p class="doc-empty">Файлов пока нет.</p>':''}
     ${docExtraControl(d)}
     ${S.role==='manager'?signedBlock(d,true):''}</details>`;
 }

@@ -846,7 +846,6 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
 .docs-file-row { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,2fr) auto auto;
   gap:12px; align-items:center; padding:8px 0; border-bottom:1px solid var(--border); font-size:14px; }
 .docs-file-row a,.docs-file-row span { overflow-wrap:anywhere; }
-.docs-file-row.is-deleted { color:var(--text-sec); }
 .docs-file-empty { color:var(--navy-600); font-size:14px; padding:8px 0; }
 .docs-file-kind { font-weight:600; color:var(--navy-700); }
 .docs-file-row .btn { min-height:44px; }
@@ -15883,13 +15882,11 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                 </div></div>`;
             Object.keys(bySeq).sort((x,y)=>x-y).forEach(seq=>{
                 html += `<h4 style="font-size:.85rem;margin:16px 0 6px;color:var(--text-sec);font-weight:600">${seq==1?'Договор и первый платёж':'Платёж № '+seq}</h4>`;
-                html += bySeq[seq].map(x=>`<div class="docs-file-row${x.deleted_at?' is-deleted':''}">
+                html += bySeq[seq].map(x=>`<div class="docs-file-row">
                     <span class="docs-file-kind">${DOCS_KIND_LABEL[x.kind]||'Документ'}</span>
-                    ${x.deleted_at?`<span>${docsEsc(x.filename)} · удалён ${new Date(x.deleted_at).toLocaleString('ru-RU')} · ${docsEsc(x.deleted_by||'')}</span>`:
-                        `<a href="/api/docs/file/${x.id}">${docsEsc(x.filename)}</a>`}
+                    <a href="/api/docs/file/${x.id}">${docsEsc(x.filename)}</a>
                     <span class="docs-num">${Math.round((x.size||0)/1024)} КБ</span>
-                    ${x.deleted_at?(CRM_ROLE==='admin'?`<button class="btn btn-sm" onclick="docsChangeFile(${x.id},'restore')">Восстановить</button>`:''):
-                        (['manager','operator','admin'].includes(CRM_ROLE)?`<button class="btn btn-sm" onclick="docsChangeFile(${x.id},'delete')">Удалить</button>`:'')}
+                    ${['manager','operator','admin'].includes(CRM_ROLE)?`<button class="btn btn-sm" onclick="docsChangeFile(${x.id})">Удалить</button>`:''}
                 </div>`).join('');
             });
             if(!Object.keys(bySeq).length)html += '<p class="docs-file-empty">Файлов пока нет.</p>';
@@ -16005,14 +16002,14 @@ ${Math.abs(c.debits_delta_rub) < 0.01
             input.value='';
         }
 
-        async function docsChangeFile(docId,action){
+        async function docsChangeFile(docId){
             const doc=(docsState.current?.docs||[]).find(x=>x.id===docId);
             if(!doc)return;
-            if(action==='delete'&&!confirm(`Удалить файл ${doc.filename}?`))return;
+            if(!confirm(`Удалить документ ${doc.filename} насовсем?`))return;
             const st=document.getElementById('docsDetailStatus');
             const r=await fetch('/api/docs/file/'+docId,{
                 method:'PATCH',headers:{'Content-Type':'application/json'},
-                body:JSON.stringify({action})});
+                body:JSON.stringify({action:'delete'})});
             const result=await r.json();
             if(!r.ok||!result.success){st.classList.add('is-error');st.textContent=result.error||'Не удалось изменить файл';return;}
             const agreementId=docsState.current.id;
