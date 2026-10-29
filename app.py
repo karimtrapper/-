@@ -10432,7 +10432,7 @@ def _stand_valid_receipt(deal):
 
 STAND_MANAGER_REQ_FIELDS = {'payTo', 'dev', 'bank', 'reqTask', 'log', 'stepNotes',
                              '_managerDraft', 'payToConfirm'}
-STAND_MANAGER_DRAFT_FIELDS = {'payTo', 'files', 'docs', 'docMeta', 'comment'}
+STAND_MANAGER_DRAFT_FIELDS = {'payTo', 'files', 'docs', 'docMeta', 'comment', 'deletedFiles'}
 STAND_MANAGER_DRAFT_PAYTO_FIELDS = {'dev', 'bank', 'acc', 'inv', 'purpose',
                                     'amount', 'swift', 'branch', 'bankAddr', 'pobo'}
 # До штатного s8 клиентские файлы живут в приватном черновике. После передачи
@@ -12058,11 +12058,12 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
             if (draft is not None and
                     (not isinstance(draft, dict) or
                      set(draft) - STAND_MANAGER_DRAFT_FIELDS or
-                     any(not isinstance(draft.get(key), dict) for key in ('payTo', 'files', 'docs', 'docMeta')
+                     any(not isinstance(draft.get(key), dict) for key in ('payTo', 'files', 'docs', 'docMeta', 'deletedFiles')
                          if key in draft) or
                      set(draft.get('payTo') or {}) - STAND_MANAGER_DRAFT_PAYTO_FIELDS or
                      any(set(draft.get(key) or {}) - {'pass', 'inv', 'spa', 'ipds'}
-                         for key in ('files', 'docs', 'docMeta')) or
+                         for key in ('files', 'docs', 'docMeta', 'deletedFiles')) or
+                     any(not isinstance(files, list) for files in (draft.get('deletedFiles') or {}).values()) or
                      ('comment' in draft and not isinstance(draft['comment'], str)))):
                 return 'Некорректный черновик менеджера'
             publishing = bool(before and (before.get('step') != deal.get('step') or
