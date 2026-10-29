@@ -638,3 +638,18 @@ def test_legacy_upload_author_comes_from_session(api):
     with api[0].session_transaction() as session: uid=session['user_id']
     with m.SessionLocal() as db:
         assert db.query(m.StandFile).one().uploaded_by==str(uid)
+
+
+def test_manager_adds_file_through_board_save_on_deal_with_manager(api):
+    """Сохранение доски менеджером с новым файлом в сделке, где указан менеджер,
+    не должно падать 500 (баг 29.10: UnboundLocalError actor_id в stand_state_put)."""
+    api[1][0] = 'manager'
+    state = board('s5')
+    state['deals'][0]['manager'] = 'Другой менеджер'
+    seed(state)
+    version, current = read_db()
+    current['deals'][0]['files'] = {'pass': [dict(pdf(b'board-save', 'pass.pdf'))]}
+    response = api[0].put('/api/stand/state', json={'version': version, 'data': current})
+    assert response.status_code != 500, response.data[:300]
+    assert response.status_code == 403
+    assert 'её менеджер' in response.json['error']

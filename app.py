@@ -7487,7 +7487,7 @@ def stand_state_put():
         return jsonify({'success': False, 'error': 'no_data'}), 400
     if type(payload.get('version')) is not int or payload['version'] < 0:
         return jsonify(success=False, error='version_required'), 400
-    actor = current_role()
+    actor, actor_id = current_role(), flask_session.get('user_id')
     db = get_session()
     try:
         if 'postgresql' not in DATABASE_URL:
@@ -7597,7 +7597,6 @@ def stand_state_put():
         if old_ids - new_ids:
             return jsonify({'success': False, 'error': 'missing_deals_forbidden',
                             'version': row.version or 0, 'data': _stand_strip_files(previous)}), 409
-        actor_id = flask_session.get('user_id')
         before_by_id = {d.get('id'): d for d in previous.get('deals', [])}
         for deal in payload['data'].get('deals', []):
             before = before_by_id.get(deal.get('id'))
