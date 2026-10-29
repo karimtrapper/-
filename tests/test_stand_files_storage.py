@@ -192,7 +192,7 @@ def test_stale_base64_and_missing_large_file_do_not_erase_references(api):
     assert api[0].get('/api/stand/file/1473/inv/0').data == storage.decode(pdf())
 
 
-def test_delete_soft_and_wrong_reference_forbidden(api):
+def test_delete_hard_and_wrong_reference_forbidden(api):
     api[1][0] = 'manager';seed(board())
     response = upload(api, b'%PDF-1.4\ndelete')
     assert response.status_code == 200, response.json
@@ -203,49 +203,47 @@ def test_delete_soft_and_wrong_reference_forbidden(api):
     response = api[0].put('/api/stand/state',json={'version':2,'fileStorageVersion':1,'data':state})
     assert response.status_code == 409
     assert response.json['error'] == 'Удаляйте документы кнопкой «Удалить»'
+    with m.SessionLocal() as db:
+        key = db.get(m.StandFile, item['storageId']).object_key
     response = api[0].patch(f"/api/stand/files/1473/inv/{item['id']}", json={'action': 'delete'})
     assert response.status_code == 200, response.json
     with m.SessionLocal() as db:
-        row = db.get(m.StandFile, item['storageId'])
-        assert row.deleted_at is not None
-        assert objects.read_verified(row.object_key, row.size, row.sha256) == b'%PDF-1.4\ndelete'
+        assert db.get(m.StandFile, item['storageId']) is None
+    with pytest.raises(FileNotFoundError):
+        objects.storage().open(key)
     assert api[0].get('/api/stand/file/1473/inv/0').status_code == 404
 
 
-def test_document_delete_and_admin_restore_keep_object_and_history(api):
+def test_document_delete_removes_object_and_ignores_stale_journal(api):
     api[1][0] = 'manager'
     seed(board('s23'))
-    raw = b'%PDF-1.4\nrecoverable'
+    raw = b'%PDF-1.4\nremovable'
     uploaded = upload(api, raw)
     assert uploaded.status_code == 200, uploaded.json
     item = uploaded.json['data']['deals'][0]['files']['inv'][0]
     url = f"/api/stand/files/1473/inv/{item['id']}"
+    with m.SessionLocal() as db:
+        key = db.get(m.StandFile, item['storageId']).object_key
     deleted = api[0].patch(url, json={'action': 'delete'})
     assert deleted.status_code == 200, deleted.json
     deal = deleted.json['data']['deals'][0]
     assert not deal['files']['inv']
-    assert deal['deletedFiles']['inv'][0]['id'] == item['id']
+    assert 'deletedFiles' not in deal
     assert 'Удалён документ invoice.pdf' in deal['log'][-1]['text']
-    with m.SessionLocal() as db:
-        stored = db.get(m.StandFile, item['storageId'])
-        assert stored.deleted_at is not None
-        assert objects.read_verified(stored.object_key, stored.size, stored.sha256) == raw
+    with pytest.raises(FileNotFoundError):
+        objects.storage().open(key)
     assert api[0].get('/api/stand/file/1473/inv/0').status_code == 404
     stale = api[0].get('/api/stand/state').json
-    stale['data']['deals'][0].pop('deletedFiles')
+    stale['data']['deals'][0]['deletedFiles'] = {'inv': [dict(item)]}
     saved = api[0].put('/api/stand/state', json={
         'version': stale['version'], 'fileStorageVersion': 1, 'data': stale['data']})
     assert saved.status_code == 200, saved.json
-    assert saved.json['data']['deals'][0]['deletedFiles']['inv'][0]['id'] == item['id']
-    assert api[0].patch(url, json={'action': 'restore'}).status_code == 403
-    api[1][0] = 'admin'
-    restored = api[0].patch(url, json={'action': 'restore'})
-    assert restored.status_code == 200, restored.json
-    assert restored.json['data']['deals'][0]['files']['inv'][0]['id'] == item['id']
-    assert api[0].get('/api/stand/file/1473/inv/0').data == raw
+    assert 'deletedFiles' not in saved.json['data']['deals'][0]
+    assert 'deletedFiles' not in read_db()[1]['deals'][0]
+    assert api[0].patch(url, json={'action': 'restore'}).status_code == 400
 
 
-def test_manager_draft_file_can_be_soft_deleted_and_restored(api):
+def test_manager_draft_file_delete_is_hard_and_restore_route_is_gone(api):
     api[1][0] = 'manager'
     seed(board('s5'))
     uploaded = upload(api, b'%PDF-1.4\ndraft', kind='pass', name='passport.pdf')
@@ -256,12 +254,14 @@ def test_manager_draft_file_can_be_soft_deleted_and_restored(api):
     assert deleted.status_code == 200, deleted.json
     draft = deleted.json['data']['deals'][0]['_managerDraft']
     assert not draft['files']['pass']
-    assert draft['deletedFiles']['pass'][0]['id'] == item['id']
+    assert 'deletedFiles' not in draft
     assert 'Удалён документ passport.pdf' in deleted.json['data']['deals'][0]['log'][-1]['text']
+    with m.SessionLocal() as db:
+        assert db.get(m.StandFile, item['storageId']) is None
     api[1][0] = 'admin'
     restored = api[0].patch(url, json={'action': 'restore'})
-    assert restored.status_code == 200, restored.json
-    assert restored.json['data']['deals'][0]['_managerDraft']['files']['pass'][0]['id'] == item['id']
+    assert restored.status_code == 400, restored.json
+    assert restored.json['error'] == 'Неизвестное действие'
 
 
 def test_closed_deal_rejects_non_admin_document_delete(api):
@@ -288,7 +288,7 @@ def test_closed_deal_rejects_non_admin_document_delete(api):
     assert denied.json['error'] == 'Сделка закрыта, удаление документов — только администратором'
     api[1][0] = 'admin'
     assert api[0].patch(url, json={'action': 'delete'}).status_code == 200
-    assert api[0].patch(url, json={'action': 'restore'}).status_code == 200
+    assert api[0].patch(url, json={'action': 'restore'}).status_code == 400
 
 
 def test_completed_crm_deal_blocks_delete_even_if_board_is_open(api):
@@ -319,12 +319,11 @@ def test_completed_crm_deal_blocks_delete_even_if_board_is_open(api):
     assert 'только администратором' in bypass.json['error']
 
 
-def test_agreement_document_soft_delete_history_and_admin_restore(api):
-    api[1][0] = 'manager'
-    raw = b'%PDF-1.4\nissued'
+def _agreement_with_issued_doc(raw, number):
+    """Договор с выпущенным документом; возвращает (agreement_id, doc_id)."""
     with m.SessionLocal() as db:
-        agreement = m.Agreement(client_name='Документы QA', client_key='qa-docs',
-                                route_key='legacy', deal_type='freehold', number='QA-DOC-1')
+        agreement = m.Agreement(client_name='Документы QA', client_key='qa-docs-' + number,
+                                route_key='legacy', deal_type='freehold', number=number)
         db.add(agreement)
         db.flush()
         doc = m.AgreementDoc(agreement_id=agreement.id, kind='invoice', filename='issued.pdf',
@@ -333,11 +332,22 @@ def test_agreement_document_soft_delete_history_and_admin_restore(api):
         db.flush()
         agreement_id, doc_id = agreement.id, doc.id
         db.commit()
-    state = board('s14')
+    return agreement_id, doc_id
+
+
+def _link_issued_doc(agreement_id, doc_id, step='s14'):
+    state = board(step)
     state['deals'][0].update(docPack={'agreementId': agreement_id, 'version': 1},
                              docsIssued=[{'kind':'bill', 'docId':doc_id, 'file':'issued.pdf',
                                           'version':1}])
     seed(state)
+
+
+def test_agreement_document_hard_delete_removes_row_and_refs(api):
+    api[1][0] = 'manager'
+    raw = b'%PDF-1.4\nissued'
+    agreement_id, doc_id = _agreement_with_issued_doc(raw, 'QA-DOC-1')
+    _link_issued_doc(agreement_id, doc_id)
     url = f'/api/docs/file/{doc_id}'
     whole = api[0].delete(f'/api/docs/agreements/{agreement_id}')
     assert whole.status_code == 409
@@ -345,20 +355,22 @@ def test_agreement_document_soft_delete_history_and_admin_restore(api):
     deleted = api[0].patch(url, json={'action': 'delete'})
     assert deleted.status_code == 200, deleted.json
     with m.SessionLocal() as db:
-        saved = db.get(m.AgreementDoc, doc_id)
-        assert saved.deleted_at is not None and saved.data == raw
+        assert db.get(m.AgreementDoc, doc_id) is None
     deal = read_db()[1]['deals'][0]
     assert 'Удалён документ issued.pdf' in deal['log'][-1]['text']
-    assert deal['docsIssued'][0]['deletedAt']
+    assert deal['docsIssued'] == []
     assert api[0].get(url).status_code == 404
     assert not api[0].get(f'/api/docs/agreements/{agreement_id}').json['agreement']['docs']
-    assert api[0].patch(url, json={'action': 'restore'}).status_code == 403
+    assert api[0].patch(url, json={'action': 'restore'}).status_code == 400
     api[1][0] = 'admin'
-    assert api[0].get(f'/api/docs/agreements/{agreement_id}').json['agreement']['docs'][0]['deleted_at']
-    restored = api[0].patch(url, json={'action': 'restore'})
-    assert restored.status_code == 200, restored.json
-    assert api[0].get(url).data == raw
-    assert not read_db()[1]['deals'][0]['docsIssued'][0].get('deletedAt')
+    assert api[0].patch(url, json={'action': 'restore'}).status_code == 400
+
+
+def test_agreement_document_delete_blocked_for_closed_crm_deal(api):
+    api[1][0] = 'manager'
+    raw = b'%PDF-1.4\nclosed-crm'
+    agreement_id, doc_id = _agreement_with_issued_doc(raw, 'QA-DOC-2')
+    _link_issued_doc(agreement_id, doc_id)
     with m.SessionLocal() as db:
         crm = m.Deal(deal_type=m.DealType.PAY_IN, status=m.DealStatus.COMPLETED)
         db.add(crm)
@@ -368,13 +380,16 @@ def test_agreement_document_soft_delete_history_and_admin_restore(api):
         state['deals'][0]['crmDealId'] = crm.id
         row.data = json.dumps(state, ensure_ascii=False)
         db.commit()
-    api[1][0] = 'manager'
+    url = f'/api/docs/file/{doc_id}'
     denied = api[0].patch(url, json={'action': 'delete'})
     assert denied.status_code == 403
     assert denied.json['error'] == 'Сделка закрыта, удаление документов — только администратором'
+    with m.SessionLocal() as db:
+        assert db.get(m.AgreementDoc, doc_id) is not None
     api[1][0] = 'admin'
     assert api[0].patch(url, json={'action': 'delete'}).status_code == 200
-    assert api[0].patch(url, json={'action': 'restore'}).status_code == 200
+    with m.SessionLocal() as db:
+        assert db.get(m.AgreementDoc, doc_id) is None
 
 
 def test_crm_additional_document_upload_uses_existing_kind(api):
