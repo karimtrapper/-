@@ -28,6 +28,13 @@ class LocalStore:
     def open(self, key):
         return self.path(key).open('rb')
 
+    def delete(self, key):
+        try:
+            self.path(key).unlink()
+        except FileNotFoundError:
+            # Объекта уже нет: повторное удаление безопасно.
+            pass
+
 
 class S3Store:
     def __init__(self, endpoint, bucket, access, secret):
@@ -66,6 +73,10 @@ class S3Store:
 
     def open(self, key):
         return self.call('get_object', Key=key)['Body']
+
+    def delete(self, key):
+        # delete_object идемпотентен: отсутствующий ключ не считается ошибкой.
+        self.call('delete_object', Key=key)
 
 
 def storage():

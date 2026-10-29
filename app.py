@@ -6044,6 +6044,81 @@ def _stand_migrate_files():
         db.close()
 
 
+def _stand_purge_deleted():
+    """Разовая очистка при старте: удалённые вложения задачника и документы договоров.
+
+    Идемпотентна: повторный запуск ничего не находит. Объекта, которого уже нет, не ошибка.
+    Вложение или документ, на которые ещё ссылается доска, не трогаем.
+    Возвращает (файлы stand_files, байты, файлы agreement_docs, байты).
+    """
+    db = SessionLocal()
+    try:
+        if engine.dialect.name == 'sqlite':
+            from sqlalchemy import text
+            db.execute(text('BEGIN IMMEDIATE'))
+        dead_docs = {doc_id for (doc_id,) in db.query(AgreementDoc.id)
+                     .filter(AgreementDoc.deleted_at.isnot(None))}
+        live, live_docs = set(), set()
+        deleted_fields = refs_cleaned = 0
+        for row in db.query(StandState).with_for_update().all():
+            state = json.loads(row.data or '{}')
+            changed = False
+            for deal in state.get('deals') or []:
+                # Система A: журнал deletedFiles больше не используется.
+                for target in (deal, deal.get('_managerDraft') or {}):
+                    if isinstance(target, dict) and 'deletedFiles' in target:
+                        target.pop('deletedFiles')
+                        deleted_fields += 1
+                        changed = True
+                # Система B: метки удаления в ссылках на выпущенные документы.
+                issued = deal.get('docsIssued')
+                if isinstance(issued, list):
+                    kept = [ref for ref in issued if not (isinstance(ref, dict) and ref.get('deletedAt'))]
+                    if len(kept) != len(issued):
+                        refs_cleaned += len(issued) - len(kept)
+                        deal['docsIssued'] = kept
+                        changed = True
+                slots = deal.get('issued')
+                if isinstance(slots, dict):
+                    for slot in [k for k, ref in slots.items() if isinstance(ref, dict) and ref.get('deletedAt')]:
+                        slots.pop(slot)
+                        refs_cleaned += 1
+                        changed = True
+                for ref in (deal.get('docsIssued') or []) + list((deal.get('issued') or {}).values()):
+                    if isinstance(ref, dict) and ref.get('docId') in dead_docs:
+                        live_docs.add(ref['docId'])
+            live.update(f['storageId'] for _, _, f in stand_file_storage.entries(state)
+                        if f.get('storageId'))
+            if changed:
+                row.data = json.dumps(state, ensure_ascii=False)
+                row.version = (row.version or 0) + 1
+                row.updated_at = datetime.utcnow()
+                row.updated_by = 'Система: очистка удалённых файлов'
+        files = size = 0
+        for file_row in db.query(StandFile).filter(StandFile.deleted_at.isnot(None)).all():
+            if file_row.id in live:
+                continue
+            size += file_row.size or 0
+            stand_file_storage.purge(db, StandFile, file_row)
+            files += 1
+        docs = docs_size = 0
+        for doc in db.query(AgreementDoc).filter(AgreementDoc.deleted_at.isnot(None)).all():
+            if doc.id in live_docs:
+                continue
+            docs_size += doc.size or 0
+            db.delete(doc)
+            docs += 1
+        db.commit()
+        print(f'[STAND] Очистка stand_files: файлов {files}, байт {size}, полей deletedFiles {deleted_fields}')
+        print(f'[STAND] Очистка agreement_docs: файлов {docs}, байт {docs_size}, ссылок в сделках {refs_cleaned}')
+        return files, size, docs, docs_size
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
 @app.errorhandler(413)
 def stand_file_request_too_large(error):
     if STAND_MODE and request.path.startswith('/api/stand/'):
@@ -6106,8 +6181,6 @@ def stand_file_upload():
         target = deal.setdefault('_managerDraft', {}) if use_draft else deal
         files = target.setdefault('files', {}).setdefault(kind, [])
         sha = stand_file_storage.digest(raw)
-        if any(f.get('sha256') == sha for f in (deal.get('deletedFiles') or {}).get(kind, [])):
-            return jsonify(success=False, error='Этот файл был удалён. Администратор может восстановить его.'), 409
         duplicate = next((f for f in files if f.get('sha256') == sha or (
             str(f.get('data') or '').startswith('data:')
             and stand_file_storage.digest(stand_file_storage.decode(f)) == sha)), None)
@@ -6159,92 +6232,21 @@ def stand_file_upload():
         db.close()
 
 
-# Виды документов, которые проходят через черновик менеджера (managerDraftDocTarget во фронте).
-STAND_DRAFT_DOC_KINDS = frozenset({'pass', 'inv', 'spa', 'ipds'})
-STAND_DRAFT_STEPS = ('s4', 's5', 's6', 's8')
-
-
-def _stand_doc_published(deal, kind):
-    """Опубликован ли документ вида kind: сделка уже передана операционисту.
-
-    Зеркало критерия managerDraftDocTarget, но без привязки к роли зрителя.
-    """
-    if deal.get('step') not in STAND_DRAFT_STEPS:
-        return True
-    return deal.get('step') == 's8' and bool((deal.get('docs') or {}).get(kind))
-
-
 def _stand_is_file(item, file_id):
     return isinstance(item, dict) and (item.get('id') == file_id or item.get('storageId') == file_id)
 
 
-def _stand_find_deleted(deal, kind, file_id):
-    """Найти удалённый файл: сначала в журнале сделки, затем в журнале черновика (старые записи)."""
-    owners = [deal]
-    if kind in STAND_DRAFT_DOC_KINDS:
-        owners.append(deal.get('_managerDraft') or {})
-    for owner in owners:
-        journal = (owner.get('deletedFiles') or {}).get(kind) or []
-        item = next((f for f in journal if _stand_is_file(f, file_id)), None)
-        if item is not None:
-            return owner, item
-    return None, None
-
-
-def _stand_forget_deleted(deal, kind, file_id):
-    """Убрать файл из обоих журналов удалений, чтобы он не остался дублем."""
-    for owner in (deal, deal.get('_managerDraft') or {}):
-        lists = owner.get('deletedFiles') or {}
-        if kind in lists:
-            lists[kind] = [f for f in lists[kind] if not _stand_is_file(f, file_id)]
-
-
-def _stand_publish_journal(prior, incoming):
-    """Перенести журнал удалений черновика в журнал сделки для уже опубликованных документов.
-
-    Клиент не может записать deletedFiles в сделку сам (deleted_files_server_only),
-    поэтому перенос делает сервер при сохранении менеджером или админом.
-    """
-    journal = (prior.get('_managerDraft') or {}).get('deletedFiles') or {}
-    moved = {k: v for k, v in journal.items()
-             if k in STAND_DRAFT_DOC_KINDS and v and _stand_doc_published(incoming, k)}
-    if not moved:
-        return
-    deal_journal = dict(incoming.get('deletedFiles') or {})
-    for kind, items in moved.items():
-        merged = list(deal_journal.get(kind) or [])
-        seen = {f.get('id') or f.get('storageId') for f in merged if isinstance(f, dict)}
-        for item in items:
-            key = item.get('id') or item.get('storageId')
-            if key and key in seen:
-                continue
-            merged.append(item)
-            if key:
-                seen.add(key)
-        deal_journal[kind] = merged
-    incoming['deletedFiles'] = deal_journal
-    draft = incoming.get('_managerDraft')
-    if isinstance(draft, dict) and isinstance(draft.get('deletedFiles'), dict):
-        rest = {k: v for k, v in draft['deletedFiles'].items() if k not in moved}
-        if rest:
-            draft['deletedFiles'] = rest
-        else:
-            draft.pop('deletedFiles')
-
-
 @app.route('/api/stand/files/<int:deal_id>/<kind>/<file_id>', methods=['PATCH'])
 def stand_file_change(deal_id, kind, file_id):
-    """Move a deal attachment between the active and recoverable lists."""
+    """Удалить вложение сделки насовсем: строка StandFile и объект в хранилище."""
     if not STAND_MODE:
         return jsonify(success=False, error='stand_only'), 404
     actor, actor_id = current_role(), flask_session.get('user_id')
     if not actor_id or actor not in ('manager', 'operator', 'admin'):
         return jsonify(success=False, error='Недостаточно прав для документов'), 403
     action = (request.get_json(silent=True) or {}).get('action')
-    if action not in ('delete', 'restore'):
+    if action != 'delete':
         return jsonify(success=False, error='Неизвестное действие'), 400
-    if action == 'restore' and actor != 'admin':
-        return jsonify(success=False, error='Восстановление доступно только администратору'), 403
     draft = request.args.get('draft') == '1'
     if draft and actor not in ('manager', 'admin'):
         return jsonify(success=False, error='Черновик документов доступен только менеджеру'), 403
@@ -6264,16 +6266,8 @@ def stand_file_change(deal_id, kind, file_id):
                     (manager.display_name or '').strip().casefold(),
                     (manager.username or '').strip().casefold()}:
                 return jsonify(success=False, error='Документы этой сделки меняет её менеджер'), 403
-        if action == 'restore':
-            # Куда вернуть файл решает сервер по фактическому месту файла и публикации,
-            # а не клиентский draft: черновик, опубликованный после удаления, уже не черновик.
-            owner, item = _stand_find_deleted(deal, kind, file_id)
-            to_draft = (owner is not None and owner is not deal and kind in STAND_DRAFT_DOC_KINDS
-                        and not _stand_doc_published(deal, kind))
-            target = deal.setdefault('_managerDraft', {}) if to_draft else deal
-        else:
-            target = deal.setdefault('_managerDraft', {}) if draft else deal
-        if action == 'delete' and actor != 'admin':
+        target = deal.setdefault('_managerDraft', {}) if draft else deal
+        if actor != 'admin':
             crm_id = deal.get('crmDealId')
             try:
                 crm_deal = db.get(Deal, int(crm_id)) if crm_id else None
@@ -6282,25 +6276,18 @@ def stand_file_change(deal_id, kind, file_id):
             if (deal.get('closed') and deal.get('closeReason') == 'Успешно завершена'
                     or crm_deal and crm_deal.status == DealStatus.COMPLETED):
                 return jsonify(success=False, error='Сделка закрыта, удаление документов — только администратором'), 403
-        if action == 'delete':
-            source = (target.get('files') or {}).get(kind) or []
-            item = next((f for f in source if _stand_is_file(f, file_id)), None)
+        source = (target.get('files') or {}).get(kind) or []
+        item = next((f for f in source if _stand_is_file(f, file_id)), None)
         if not item:
             return jsonify(success=False, error='Файл не найден'), 404
-        if action == 'delete' and kind == STAND_CLIENT_PAYIN_KIND and actor != 'admin':
+        if kind == STAND_CLIENT_PAYIN_KIND and actor != 'admin':
             if item.get('uploadedById') != actor_id:
                 return jsonify(success=False, error='Удалить чек может загрузивший его сотрудник или админ'), 403
-        if action == 'delete' and kind == STAND_BANK_CREDIT_KIND and actor != 'admin':
+        if kind == STAND_BANK_CREDIT_KIND and actor != 'admin':
             if (actor != 'operator' or deal.get('step') != 's14'
                     or (deal.get('manualBankReceipt') or {}).get('status') != 'pending'):
                 return jsonify(success=False, error='Выписку можно менять только до подтверждения прихода'), 403
-        previous = json.loads(row.data or '{}')
-        if action == 'delete':
-            target.setdefault('files', {})[kind] = [f for f in source if f is not item]
-            target.setdefault('deletedFiles', {}).setdefault(kind, []).append(item)
-        else:
-            _stand_forget_deleted(deal, kind, file_id)
-            target.setdefault('files', {}).setdefault(kind, []).append(item)
+        target.setdefault('files', {})[kind] = [f for f in source if f is not item]
         if kind not in (STAND_CLIENT_PAYIN_KIND, STAND_BANK_CREDIT_KIND, 'additional'):
             active = target.get('files', {}).get(kind) or []
             target.setdefault('docs', {})[kind] = bool(active)
@@ -6314,18 +6301,19 @@ def stand_file_change(deal_id, kind, file_id):
         user = db.get(AdminUser, actor_id)
         author = user.display_name or user.username
         stamp = stand_now()
-        event = 'Удалён документ ' if action == 'delete' else 'Восстановлен документ '
         deal.setdefault('log', []).append({
-            'text': event + item.get('file', 'файл') + ' · ' + author + ' · ' + stamp.strftime('%d.%m, %H:%M'),
+            'text': 'Удалён документ ' + item.get('file', 'файл') + ' · ' + author + ' · ' + stamp.strftime('%d.%m, %H:%M'),
             'role': actor, 'by': author, 'at': int(time.time() * 1000),
             'ts': stamp.strftime('%d.%m, %H:%M')})
-        if action == 'delete':
-            stand_file_storage.mark_deleted(db, StandFile, previous, state)
-        else:
-            stored = db.get(StandFile, item.get('storageId')) if item.get('storageId') else None
-            if stored:
-                stored.deleted_at = None
-            _stand_externalize_files(db, row, state, actor=actor_id, previous=previous)
+        file_row = db.get(StandFile, item['storageId']) if item.get('storageId') else None
+        # Общий объект (тот же sha256) может ещё стоять в другом месте JSON: тогда строку не трогаем.
+        still_used = any(f.get('storageId') == item.get('storageId')
+                         for _, _, f in stand_file_storage.entries(state))
+        if file_row and not still_used:
+            try:
+                stand_file_storage.purge(db, StandFile, file_row)
+            except stand_object_store.StorageUnavailable:
+                raise ValueError('Хранилище файлов недоступно. Повторите позже.') from None
         row.data = json.dumps(state, ensure_ascii=False)
         row.version = (row.version or 0) + 1
         row.updated_by, row.updated_at = author, datetime.utcnow()
@@ -7625,8 +7613,11 @@ def stand_state_put():
             _stand_restore_files(previous, payload['data'])
         except ValueError:
             return jsonify({'success': False, 'error': 'invalid_file_marker', 'version': row.version or 0, 'data': _stand_strip_files(previous)}), 409
-        # Deleted attachments are server owned. An older board snapshot cannot
-        # silently erase the recovery list or restore a file by editing JSON.
+        # Журнала удалений больше нет: поле deletedFiles от клиента молча стираем.
+        for incoming_deal in payload['data'].get('deals', []):
+            incoming_deal.pop('deletedFiles', None)
+            if isinstance(incoming_deal.get('_managerDraft'), dict):
+                incoming_deal['_managerDraft'].pop('deletedFiles', None)
         prior_deals = {d.get('id'): d for d in previous.get('deals', [])}
         def _file_keys(target):
             return {(kind, f.get('storageId') or f.get('id') or json.dumps(f, sort_keys=True))
@@ -7639,14 +7630,6 @@ def stand_state_put():
                                             incoming_deal.get('_managerDraft') or {})):
                 if old_target is not prior_deal and actor not in ('manager', 'admin'):
                     continue  # The projection has no private draft; it is copied below.
-                old_deleted = old_target.get('deletedFiles', {})
-                def _public_deleted(value):
-                    return _stand_strip_files({'deals': [{'deletedFiles': value}]})['deals'][0]['deletedFiles']
-                if ('deletedFiles' in new_target and
-                        new_target['deletedFiles'] != _public_deleted(old_deleted)):
-                    return jsonify(success=False, error='deleted_files_server_only'), 409
-                if old_deleted:
-                    new_target['deletedFiles'] = old_deleted
                 added = _file_keys(new_target) - _file_keys(old_target)
                 if added and actor not in ('manager', 'operator', 'admin'):
                     return jsonify(success=False, error='Недостаточно прав для документов'), 403
@@ -7671,8 +7654,6 @@ def stand_state_put():
                         or crm_deal and crm_deal.status == DealStatus.COMPLETED):
                     return jsonify(success=False, error='Сделка закрыта, удаление документов — только администратором'), 403
                 return jsonify(success=False, error='Удаляйте документы кнопкой «Удалить»'), 409
-            if actor in ('manager', 'admin'):
-                _stand_publish_journal(prior_deal, incoming_deal)
         # Other roles receive a projected board. Preserve the hidden draft in
         # their versioned PUT, and reject any attempt to forge it explicitly.
         if actor not in ('manager', 'admin'):
@@ -10546,7 +10527,7 @@ def _stand_valid_receipt(deal):
 
 STAND_MANAGER_REQ_FIELDS = {'payTo', 'dev', 'bank', 'reqTask', 'log', 'stepNotes',
                              '_managerDraft', 'payToConfirm'}
-STAND_MANAGER_DRAFT_FIELDS = {'payTo', 'files', 'docs', 'docMeta', 'comment', 'deletedFiles'}
+STAND_MANAGER_DRAFT_FIELDS = {'payTo', 'files', 'docs', 'docMeta', 'comment'}
 STAND_MANAGER_DRAFT_PAYTO_FIELDS = {'dev', 'bank', 'acc', 'inv', 'purpose',
                                     'amount', 'swift', 'branch', 'bankAddr', 'pobo'}
 # До штатного s8 клиентские файлы живут в приватном черновике. После передачи
@@ -12172,12 +12153,11 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
             if (draft is not None and
                     (not isinstance(draft, dict) or
                      set(draft) - STAND_MANAGER_DRAFT_FIELDS or
-                     any(not isinstance(draft.get(key), dict) for key in ('payTo', 'files', 'docs', 'docMeta', 'deletedFiles')
+                     any(not isinstance(draft.get(key), dict) for key in ('payTo', 'files', 'docs', 'docMeta')
                          if key in draft) or
                      set(draft.get('payTo') or {}) - STAND_MANAGER_DRAFT_PAYTO_FIELDS or
                      any(set(draft.get(key) or {}) - {'pass', 'inv', 'spa', 'ipds'}
-                         for key in ('files', 'docs', 'docMeta', 'deletedFiles')) or
-                     any(not isinstance(files, list) for files in (draft.get('deletedFiles') or {}).values()) or
+                         for key in ('files', 'docs', 'docMeta')) or
                      ('comment' in draft and not isinstance(draft['comment'], str)))):
                 return 'Некорректный черновик менеджера'
             publishing = bool(before and (before.get('step') != deal.get('step') or
@@ -30179,10 +30159,8 @@ def docs_change_file(doc_id):
     if not actor_id or role not in ('manager', 'operator', 'admin'):
         return jsonify(success=False, error='Недостаточно прав для документов'), 403
     action = (request.get_json(silent=True) or {}).get('action')
-    if action not in ('delete', 'restore'):
+    if action != 'delete':
         return jsonify(success=False, error='Неизвестное действие'), 400
-    if action == 'restore' and role != 'admin':
-        return jsonify(success=False, error='Восстановление доступно только администратору'), 403
     db = get_session()
     try:
         if engine.dialect.name == 'sqlite':
@@ -30195,25 +30173,23 @@ def docs_change_file(doc_id):
         row, state, linked = _docs_linked_deals(db, doc.agreement_id, doc_id)
         if role == 'manager' and not _docs_manager_allowed(db, linked, actor_id):
             return jsonify(success=False, error='Документы этой сделки меняет её менеджер'), 403
-        if action == 'delete' and role != 'admin' and _docs_delete_blocked(db, agreement, linked):
+        if role != 'admin' and _docs_delete_blocked(db, agreement, linked):
             return jsonify(success=False, error='Сделка закрыта, удаление документов — только администратором'), 403
-        if bool(doc.deleted_at) == (action == 'delete'):
-            return jsonify(success=False, error='Состояние документа уже изменилось'), 409
         user = db.get(AdminUser, actor_id)
         author = user.display_name or user.username
         stamp = stand_now()
-        doc.deleted_at = datetime.utcnow() if action == 'delete' else None
-        doc.deleted_by = author if action == 'delete' else None
+        # Байты лежат в строке: удаление строки удаляет и файл, отдельного хранилища нет.
+        db.delete(doc)
         for deal in linked:
-            for ref in (deal.get('docsIssued') or []) + list((deal.get('issued') or {}).values()):
-                if isinstance(ref, dict) and ref.get('docId') == doc_id:
-                    if action == 'delete':
-                        ref['deletedAt'] = stamp.isoformat()
-                    else:
-                        ref.pop('deletedAt', None)
-            event = 'Удалён документ ' if action == 'delete' else 'Восстановлен документ '
+            for key in ('docsIssued', 'issued'):
+                refs = deal.get(key)
+                if key == 'docsIssued' and isinstance(refs, list):
+                    deal[key] = [ref for ref in refs if not (isinstance(ref, dict) and ref.get('docId') == doc_id)]
+                elif key == 'issued' and isinstance(refs, dict):
+                    for slot in [k for k, ref in refs.items() if isinstance(ref, dict) and ref.get('docId') == doc_id]:
+                        refs.pop(slot)
             deal.setdefault('log', []).append({
-                'text': event + doc.filename + ' · ' + author + ' · ' + stamp.strftime('%d.%m, %H:%M'),
+                'text': 'Удалён документ ' + doc.filename + ' · ' + author + ' · ' + stamp.strftime('%d.%m, %H:%M'),
                 'role': role, 'by': author, 'at': int(time.time() * 1000),
                 'ts': stamp.strftime('%d.%m, %H:%M')})
         if row and linked:
@@ -30291,6 +30267,10 @@ if STAND_MODE:
         app.logger.warning('Хранилище файлов не настроено; перенос вложений отложен')
     else:
         _stand_migrate_files()
+        try:
+            _stand_purge_deleted()
+        except Exception:
+            app.logger.exception('Очистка удалённых файлов отложена до следующего запуска')
 
 
 def _stand_transfer_poll_loop():

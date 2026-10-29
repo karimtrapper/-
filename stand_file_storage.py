@@ -183,6 +183,12 @@ def safe_name(name):
     return re.sub(r'[<>"\x27`&\x00-\x1f/\\]', '_', str(name or 'file'))[:200]
 
 
+def purge(db, model, row):
+    """Удалить объект и строку насовсем. Транзакцию ведёт вызывающий; при ошибке хранилища строка остаётся."""
+    storage().delete(row.object_key)
+    db.delete(row)
+
+
 def mark_deleted(db, model, previous, current):
     old = {f['storageId'] for _, _, f in entries(previous) if f.get('storageId')}
     new = {f['storageId'] for _, _, f in entries(current) if f.get('storageId')}
