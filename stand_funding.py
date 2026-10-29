@@ -76,6 +76,17 @@ def account_identity(key):
     return ACCOUNT_ALIASES.get(key, key) if key else None
 
 
+# Номер счёта каждого пресета: старый ключ other:<счёт>, записанный до нормализации, сверяем с ним.
+PRESET_ACCOUNT_NUMBERS = {identity: key.split(':')[2] for key, identity in ACCOUNT_ALIASES.items()}
+
+
+def legacy_account_identity(key, canonical):
+    """Ключ строки реестра относительно канонической идентичности зеркала (канон уже проверен по БИК)."""
+    if canonical in PRESET_ACCOUNT_NUMBERS and key == 'other:' + PRESET_ACCOUNT_NUMBERS[canonical]:
+        return canonical
+    return account_identity(key)
+
+
 def income_account_identity(income, deal=None):
     """Счёт прихода; противоречие явного ключа реквизитам возвращает None."""
     key = income.get('accountKey')

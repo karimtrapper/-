@@ -25,7 +25,7 @@ import stand_object_store
 import binascii
 import stand_notify
 from sber_acquiring import parse_sber_acquiring
-from stand_funding import account_identity, income_account_identity, incoming_shares
+from stand_funding import account_identity, income_account_identity, incoming_shares, legacy_account_identity
 from stand_funding import check_batch as _stand_check_batch_funding, check_state as _stand_check_funding_state
 import stand_prepay
 import wallet_policy
@@ -2376,11 +2376,19 @@ def _account_label(key):
 
 
 def _stand_manual_account_key(receipt):
-    """For another account, use the existing 20-digit requisites ID (account number)."""
+    """Ключ счёта прихода: известный пресет узнаём по БИК+счёту, иначе other:<счёт>."""
     mode = receipt.get('actualMode')
     if mode == 'flowsole':
         return 'flow_sole'
     if mode == 'custom':
+        # Та же нормализация, что в income_account_identity: ручной ввод тех же реквизитов
+        # не должен расходиться с каноническим ключом при сверке с пачкой.
+        bik = ''.join(ch for ch in str(receipt.get('bankBik') or '') if ch.isdigit())
+        account = ''.join(ch for ch in str(receipt.get('account') or '') if ch.isdigit())
+        if len(bik) == 9 and len(account) == 20:
+            identity = account_identity(f'bank:{bik}:{account}')
+            if identity in ('sber', 'flow_sole'):
+                return identity
         return 'other:' + str(receipt['account'])
     return 'sber'
 
@@ -17588,10 +17596,10 @@ def _stand_sync_crm_conversions(db, previous, state):
             key = 'sber:' + row.uuid
             mirror = board_incomes.get(key) or next((i for i in board_incomes.values()
                 if i.get('crmIncomeId') == row.id), {})
+            mirror_identity = income_account_identity(mirror, board_deals.get(mirror.get('dealId')))
             if (mirror.get('source') not in ('sber', 'manual_confirmed', 'registry')
                     or mirror.get('cnvId') != item.get('id')
-                    or income_account_identity(mirror, board_deals.get(mirror.get('dealId')))
-                    != account_identity(_income_account_key(row))):
+                    or mirror_identity != legacy_account_identity(_income_account_key(row), mirror_identity)):
                 raise ValueError('Поступление не привязано к пачке на своём счёте')
             if ids_by_uuid[row.uuid] is not None:
                 source = ids_by_uuid[row.uuid]
