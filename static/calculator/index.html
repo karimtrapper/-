@@ -94,9 +94,18 @@
             padding: 4px; background: var(--b2-n200); border: 1px solid var(--b2-n300); border-radius: 8px;
         }
         body.calc-b2 .dealtype-switcher { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+        body.calc-b2 .b2-group--compact .switcher-caption { font-size: 13px; margin-bottom: 4px; }
+        body.calc-b2 .b2-group--compact .dealtype-switcher { gap: 2px; }
+        body.calc-b2 .b2-group--compact :is(.dealtype-btn) { min-height: 36px; font-size: 14px; }
         body.calc-b2 .method-switcher { grid-template-columns: repeat(3, minmax(0, 1fr)); }
         body.calc-b2 .scenarios-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-        body.calc-b2 .profit-steps { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+        body.calc-b2 .b2-profit-control { display: flex; flex-direction: column; gap: 8px; }
+        body.calc-b2 .profit-current { font-size: 14px; font-weight: 600; color: var(--b2-n600); }
+        body.calc-b2 .profit-stepper { display: flex; align-items: center; gap: 12px; }
+        body.calc-b2 .profit-step-btn { width: 44px; height: 44px; border-radius: 8px; border: 1px solid var(--b2-n300); background: var(--b2-white); font-size: 22px; font-weight: 700; color: var(--b2-ink); }
+        body.calc-b2 .profit-value { flex: 1; text-align: center; font-size: 22px; font-weight: 700; color: var(--b2-ink); }
+        body.calc-b2 .profit-quick-variants { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }
+        body.calc-b2 .profit-floor-hint { font-size: 13px; color: #92400E; }
         body.calc-b2 :is(.dealtype-btn, .method-btn, .direction-btn, .scenario-btn, .commission-btn, .src-btn) {
             min-width: 0; min-height: 48px; padding: 8px; margin: 0; border: 1px solid transparent;
             background: transparent; color: var(--b2-n600); border-radius: 8px;
@@ -161,14 +170,14 @@
         body.calc-b2 .result-profit { padding: 0; margin: 8px 0 0; background: transparent !important; color: var(--b2-n300) !important; font-size: 14px; font-weight: 400; }
         body.calc-b2 #marginWarning { font-size: 14px !important; font-weight: 600 !important; }
         body.calc-b2 #createDealSection { min-width: 0 !important; width: 100%; }
-        body.calc-b2 #createDealBtn { width: 100%; min-height: 50px; padding: 0 16px; border: 0; border-radius: 8px; background: var(--b2-action) !important; color: var(--b2-white); font-size: 16px; font-weight: 600; box-shadow: none; }
-        body.calc-b2 #createDealBtn:hover { background: var(--b2-action-hover) !important; }
-        body.calc-b2 #createDealBtn:disabled { background: var(--b2-n200) !important; color: var(--b2-n600); cursor: not-allowed; }
+        body.calc-b2 .b2-copy-primary { width: 100%; min-height: 50px; padding: 0 16px; border: 0; border-radius: 8px; background: var(--b2-action) !important; color: var(--b2-white); font-size: 16px; font-weight: 600; box-shadow: none; }
+        body.calc-b2 .b2-copy-primary:hover { background: var(--b2-action-hover) !important; }
+        body.calc-b2 .b2-copy-primary:disabled { background: var(--b2-n200) !important; color: var(--b2-n600); cursor: not-allowed; }
+        body.calc-b2 .b2-copy-preview { font-size: 13px; color: var(--b2-n300); white-space: pre-line; }
         body.calc-b2 .b2-side-more { display: flex; flex-direction: column; gap: 12px; margin-top: 16px; }
-        body.calc-b2 #paymentActionSection { min-width: 0 !important; width: 100%; }
-        body.calc-b2 #createPaymentBtn, body.calc-b2 #b2CopyClient { width: 100%; min-height: 48px; padding: 0 16px; border: 1px solid var(--b2-n500); border-radius: 8px; background: transparent !important; color: var(--b2-white); font-size: 16px; font-weight: 600; box-shadow: none; }
-        body.calc-b2 #b2CopyClient { border: 0; text-decoration: underline; }
-        body.calc-b2 #b2CopyClient:disabled { opacity: .5; cursor: not-allowed; }
+        body.calc-b2 #createDealSection, body.calc-b2 #paymentActionSection { min-width: 0 !important; width: 100%; }
+        body.calc-b2 #createDealBtn, body.calc-b2 #createPaymentBtn { width: 100%; min-height: 44px; padding: 0 16px; border: 1px solid var(--b2-n500); border-radius: 8px; background: transparent !important; color: var(--b2-white); font-size: 15px; font-weight: 600; box-shadow: none; }
+        body.calc-b2 #createDealBtn:disabled { opacity: .5; cursor: not-allowed; }
         body.calc-b2 .comment-section { margin: 8px 0 !important; }
         body.calc-b2 .comment-section .input-label { color: var(--b2-n300); }
         body.calc-b2 .comment-section .amount-input { font-size: 16px !important; font-weight: 400; }
@@ -200,7 +209,7 @@
             body.calc-b2 .b2-result-bar .result-rate { font-size: 14px; }
             body.calc-b2 .b2-result-bar .result-profit, body.calc-b2 .b2-result-bar #marginWarning { display: none !important; }
             body.calc-b2 .b2-side-more { order: 2; width: 100%; margin: 0; padding: 16px; background: var(--b2-white); border: 1px solid var(--b2-n300); border-radius: 12px; }
-            body.calc-b2 #createPaymentBtn, body.calc-b2 #b2CopyClient { color: var(--b2-n700); border-color: var(--b2-n300); }
+            body.calc-b2 #createPaymentBtn, body.calc-b2 #createDealBtn { color: var(--b2-n700); border-color: var(--b2-n300); }
             body.calc-b2 .comment-section .input-label { color: var(--b2-n700); }
             body.calc-b2 .details-section { border-top-color: var(--b2-n200); }
             body.calc-b2 .details-header { color: var(--b2-ink); }
@@ -234,7 +243,7 @@
         </header>
 
         <!-- Тип сделки -->
-        <div class="switcher-caption">Тип сделки</div>
+        <div class="switcher-caption" id="dealtypeCaption">Тип сделки</div>
         <div class="dealtype-switcher">
             <button class="dealtype-btn active" data-category="exchange" onclick="switchDealCategory('exchange')">
                 Обмен
@@ -463,40 +472,35 @@
                     </button>
                 </div>
 
-                <!-- Блок настроек скидки и партнёра -->
-                <div class="calculator-settings" style="margin-top: 25px; border-top: 1px solid #e2e8f0; padding-top: 20px;">
-                    <!-- Скидки -->
-                    <div id="commissionLevelSection" class="commission-level-section">
-                        <div class="discount-header">
-                            <label class="checkbox-label">
-                                <input type="checkbox" id="applyDiscount" onchange="toggleDiscount()">
-                                <span class="checkbox-text">Сделать скидку (изменить прибыль)</span>
-                            </label>
-                        </div>
-                        
-                        <div id="profitMarginWrapper" style="display: none; margin-top: 15px;">
-                            <label class="input-label">Желаемая прибыль</label>
-                            <div class="commission-buttons profit-steps">
-                                <button class="commission-btn" data-profit="1.5" onclick="setProfitMargin(1.5)">1.5%</button>
-                                <button class="commission-btn" data-profit="2.0" onclick="setProfitMargin(2.0)">2%</button>
-                                <button class="commission-btn" data-profit="2.4" onclick="setProfitMargin(2.4)">2.4%</button>
-                                <button class="commission-btn" data-profit="3.0" onclick="setProfitMargin(3.0)">3%</button>
-                                <button class="commission-btn" data-profit="3.5" onclick="setProfitMargin(3.5)">3.5%</button>
-                                <button class="commission-btn" data-profit="4.0" onclick="setProfitMargin(4.0)">4%</button>
-                                <button class="commission-btn" data-profit="4.5" onclick="setProfitMargin(4.5)">4.5%</button>
-                                <button class="commission-btn" data-profit="5.0" onclick="setProfitMargin(5.0)">5%</button>
-                                <button class="commission-btn" id="customProfitBtn" data-profit="custom" onclick="toggleCustomProfit()">Своё</button>
-                            </div>
-                            <div id="customProfitWrapper" style="display: none; margin-top: 10px;">
-                                <div class="input-wrapper small">
-                                    <input type="text" inputmode="decimal" id="customProfitInput" class="amount-input" placeholder="Например 10" oninput="onCustomProfitInput(this)">
-                                    <span class="input-currency">%</span>
-                                </div>
-                                <div class="custom-profit-hint">Любое число от 0 до 99</div>
-                            </div>
-                        </div>
+                <!-- Скидка/наценка — всегда видна, без галочек и раскрытий -->
+                <div id="commissionLevelSection" class="commission-level-section b2-profit-control" style="margin-top: 25px; border-top: 1px solid #e2e8f0; padding-top: 20px;">
+                    <label class="input-label">Наша прибыль</label>
+                    <div class="profit-current" id="profitCurrentLabel">Стандарт 4%</div>
+                    <div class="profit-stepper">
+                        <button type="button" class="profit-step-btn" onclick="stepProfit(-0.1)" aria-label="Уменьшить прибыль на 0,1%">−</button>
+                        <div class="profit-value" id="profitValueDisplay">4,0%</div>
+                        <button type="button" class="profit-step-btn" onclick="stepProfit(0.1)" aria-label="Увеличить прибыль на 0,1%">+</button>
                     </div>
+                    <div class="profit-quick-variants">
+                        <button class="commission-btn" data-offset="-1" onclick="applyQuickProfit(-1)">−1%</button>
+                        <button class="commission-btn" data-offset="-0.5" onclick="applyQuickProfit(-0.5)">−0,5%</button>
+                        <button class="commission-btn" data-offset="0" onclick="applyQuickProfit(0)">Стандарт</button>
+                        <button class="commission-btn" data-offset="0.5" onclick="applyQuickProfit(0.5)">+0,5%</button>
+                        <button class="commission-btn" data-offset="1" onclick="applyQuickProfit(1)">+1%</button>
+                        <button class="commission-btn" id="customProfitBtn" data-profit="custom" onclick="toggleCustomProfit()">Своё</button>
+                    </div>
+                    <div id="customProfitWrapper" style="display: none; margin-top: 10px;">
+                        <div class="input-wrapper small">
+                            <input type="text" inputmode="decimal" id="customProfitInput" class="amount-input" placeholder="Например 10" oninput="onCustomProfitInput(this)">
+                            <span class="input-currency">%</span>
+                        </div>
+                        <div class="custom-profit-hint">Любое число от 0 до 99</div>
+                    </div>
+                    <div id="profitFloorHint" class="profit-floor-hint" style="display:none;">Ниже 1,5% — только с согласованием менеджера</div>
+                </div>
 
+                <!-- Блок настроек партнёра -->
+                <div class="calculator-settings" style="margin-top: 25px; border-top: 1px solid #e2e8f0; padding-top: 20px;">
                     <!-- Партнер -->
                     <div class="partner-section" style="margin-top: 20px;">
                         <label class="checkbox-label">

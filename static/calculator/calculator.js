@@ -133,6 +133,18 @@ function effectiveProfit(amount) {
     return Math.max(state.profitMargin, PROFIT_FLOOR);
 }
 
+/** Словесная метка режима прибыли относительно лестничного стандарта. */
+function profitLabel(ladder, profit) {
+    const deltaPct = +(profit - ladder).toFixed(2);
+    const mode = Math.abs(deltaPct) < 0.001 ? 'standard' : (deltaPct < 0 ? 'discount' : 'markup');
+    return { mode, deltaPct: mode === 'standard' ? 0 : deltaPct };
+}
+
+/** Числовой пол прибыли — ниже менеджер не опускает без согласования. */
+function clampProfitFloor(value) {
+    return Math.max(+value, PROFIT_FLOOR);
+}
+
 /** Сброс скидки — при смене метода, сценария или направления процент не «липнет». */
 function resetDiscount() {
     state.applyDiscount = false;
@@ -144,6 +156,7 @@ function resetDiscount() {
     if (customWrapper) customWrapper.style.display = 'none';
     document.querySelectorAll('.commission-btn').forEach(btn => btn.classList.remove('active'));
     state.profitMargin = ladderProfit(getAmount());
+    updateProfitDisplay();
 }
 
 // Проверка авторизации — редирект на логин если не залогинен
@@ -446,37 +459,6 @@ function updateScenarioUI() {
     hidePreciseRateFallback();
 }
 
-// Переключение скидки
-function toggleDiscount() {
-    state.applyDiscount = document.getElementById('applyDiscount').checked;
-    const wrapper = document.getElementById('profitMarginWrapper');
-    
-    if (state.applyDiscount) {
-        // Без суммы лестницу не посчитать, а в блоке останется чужой процент —
-        // так 27.08.2026 клиенту уехали 4 % вместо лестничных 5 %.
-        const amount = getAmount();
-        if (amount <= 0) {
-            state.applyDiscount = false;
-            document.getElementById('applyDiscount').checked = false;
-            wrapper.style.display = 'none';
-            showToast('Сначала введите сумму сделки — процент подставится по лестнице', 'error');
-            return;
-        }
-        wrapper.style.display = 'block';
-        setProfitMargin(ladderProfit(amount));
-    } else {
-        wrapper.style.display = 'none';
-        // Скидка выключена — пересчитываем без маржи
-        const amount = getAmount();
-        if (amount > 0) {
-            if (document.body.classList.contains('calc-b2')) hideResults();
-            else calculate();
-        } else {
-            hideResults();
-        }
-    }
-}
-
 // Установка маржи (прибыли)
 function setProfitMargin(profit) {
     const value = parseFloat(profit);
@@ -486,8 +468,8 @@ function setProfitMargin(profit) {
     // Пол 1.5 % — ниже менеджер не опускает без согласования (решение Карима 27.08.2026)
     if (value < PROFIT_FLOOR) {
         showToast(`Ниже ${PROFIT_FLOOR}% — только с согласованием. Поставил ${PROFIT_FLOOR}%`, 'error');
-        profit = PROFIT_FLOOR;
     }
+    profit = clampProfitFloor(value);
 
     state.profitMargin = parseFloat(profit);
     updateB2ExtrasMeta();
@@ -502,13 +484,8 @@ function setProfitMargin(profit) {
     if (customWrapper) customWrapper.style.display = 'none';
     if (customInput) customInput.value = '';
 
-    // Обновляем визуальное состояние кнопок
-    document.querySelectorAll('.commission-btn').forEach(btn => {
-        const btnProfit = parseFloat(btn.dataset.profit);
-        btn.classList.toggle('active', btnProfit === state.profitMargin);
-    });
-
     console.log(`🎯 Выбрана маржа: ${state.profitMargin}%`);
+    updateProfitDisplay();
 
     // СРАЗУ вызываем расчет если сумма введена
     if (amount > 0) {
@@ -517,6 +494,47 @@ function setProfitMargin(profit) {
     } else {
         hideResults();
     }
+}
+
+// Шаг прибыли на 0,1% от текущего эффективного значения (кнопки −/+)
+function stepProfit(delta) {
+    const amount = getAmount();
+    const current = effectiveProfit(amount);
+    state.applyDiscount = true;
+    setProfitMargin(+(current + delta).toFixed(2));
+}
+
+// Быстрый вариант прибыли относительно лестничного стандарта (−1%, −0,5%, стандарт, +0,5%, +1%)
+function applyQuickProfit(offset) {
+    const amount = getAmount();
+    if (offset === 0) {
+        resetDiscount();
+        if (amount > 0) {
+            if (document.body.classList.contains('calc-b2')) hideResults();
+            else calculate();
+        }
+        return;
+    }
+    state.applyDiscount = true;
+    setProfitMargin(+(ladderProfit(amount) + offset).toFixed(2));
+}
+
+// Перерисовка степпера скидки/наценки: подпись, значение, активный быстрый вариант, подсказка про пол
+function updateProfitDisplay() {
+    const amount = getAmount();
+    const ladder = ladderProfit(amount);
+    const eff = effectiveProfit(amount);
+    const { mode, deltaPct } = profitLabel(ladder, eff);
+    const modeWord = mode === 'discount' ? 'Скидка' : mode === 'markup' ? 'Наценка' : 'Стандарт';
+    const label = document.getElementById('profitCurrentLabel');
+    if (label) label.textContent = mode === 'standard' ? `Стандарт ${ladder}%` : `${modeWord} ${Math.abs(deltaPct)}%`;
+    const value = document.getElementById('profitValueDisplay');
+    if (value) value.textContent = `${eff.toFixed(1).replace('.', ',')}%`;
+    document.querySelectorAll('#commissionLevelSection .commission-btn[data-offset]').forEach(btn => {
+        btn.classList.toggle('active', Math.abs(parseFloat(btn.dataset.offset) - deltaPct) < 0.001);
+    });
+    const floorHint = document.getElementById('profitFloorHint');
+    if (floorHint) floorHint.style.display = eff <= PROFIT_FLOOR + 0.001 ? '' : 'none';
 }
 
 // Переключение «Своё» — раскрытие инпута для произвольного %
@@ -565,13 +583,14 @@ function onCustomProfitInput(el) {
     }
 
     state.profitMargin = capped;
-    updateB2ExtrasMeta();
+    state.applyDiscount = true;
     const ladderNow = ladderProfit(getAmount());
     if (state.profitMargin < ladderNow) {
         const d = (ladderNow - state.profitMargin).toFixed(2).replace(/\.?0+$/, '');
         showToast(`Скидка ${d} п.п. ниже стандарта (${ladderNow}%) — согласовано?`, 'info', 4000);
     }
     console.log(`🎯 Кастомная маржа: ${state.profitMargin}%`);
+    updateProfitDisplay();
 
     const amount = getAmount();
     if (amount > 0) {
@@ -1653,19 +1672,10 @@ function displayResult(result) {
     let inputCurrency = document.getElementById('inputCurrency').textContent;
     let outputAmount = resultValue;
 
-    // Форматирование без лишних .00 для копирования клиенту
-    const fmtClean = (n) => { const s = n % 1 === 0 ? n.toFixed(0) : n.toFixed(2); return s.replace(/\B(?=(\d{3})+(?!\d))/g, ' '); };
-    const cleanOutput = outputAmount.replace(/\.00(?=\s)/, '').replace(/\.00$/, '');
-
-    // Определяем текст для клиента
-    let clientMsg;
-    if (isTarget) {
-        clientMsg = `Отдаёте: ${cleanOutput}\nПолучаете: ${fmtClean(inputAmount)} ${inputCurrency}\nКурс: ${rateValue} ${rateCurrency}`;
-    } else {
-        clientMsg = result.__prop_fee_applied
-            ? `Отдаёте: ${fmtClean(inputAmount)} ${inputCurrency}\nЗастройщик получит: ${cleanOutput}\nКурс: ${rateValue} ${rateCurrency}`
-            : `Отдаёте: ${fmtClean(inputAmount)} ${inputCurrency}\nПолучаете: ${cleanOutput}\nКурс: ${rateValue} ${rateCurrency}`;
-    }
+    const clientMsg = buildClientMessage({
+        isTarget, propFeeApplied: result.__prop_fee_applied,
+        inputAmount, inputCurrency, outputAmount, rateValue, rateCurrency,
+    });
 
     copyText.textContent = clientMsg;
     copyBlock.style.display = '';
@@ -2039,16 +2049,43 @@ async function createPayment() {
 
 // Функция для копирования ссылки в буфер обмена
 // Копирование сообщения для клиента
+// Текст для клиента — только сумма/курс/направление, никогда прибыль/скидка/наценка.
+function buildClientMessage({ isTarget, propFeeApplied, inputAmount, inputCurrency, outputAmount, rateValue, rateCurrency }) {
+    const fmtClean = (n) => { const s = n % 1 === 0 ? n.toFixed(0) : n.toFixed(2); return s.replace(/\B(?=(\d{3})+(?!\d))/g, ' '); };
+    const cleanOutput = String(outputAmount).replace(/\.00(?=\s)/, '').replace(/\.00$/, '');
+    if (isTarget) {
+        return `Отдаёте: ${cleanOutput}\nПолучаете: ${fmtClean(inputAmount)} ${inputCurrency}\nКурс: ${rateValue} ${rateCurrency}`;
+    }
+    return propFeeApplied
+        ? `Отдаёте: ${fmtClean(inputAmount)} ${inputCurrency}\nЗастройщик получит: ${cleanOutput}\nКурс: ${rateValue} ${rateCurrency}`
+        : `Отдаёте: ${fmtClean(inputAmount)} ${inputCurrency}\nПолучаете: ${cleanOutput}\nКурс: ${rateValue} ${rateCurrency}`;
+}
+
 function copyClientMessage() {
     const text = document.getElementById('clientCopyText').textContent;
     if (!text) return;
 
     navigator.clipboard.writeText(text).then(() => {
-        const btn = document.getElementById('copyClientBtn');
-        const original = btn.innerHTML;
-        btn.innerHTML = '✅ Скопировано!';
-        btn.style.background = '#059669';
-        setTimeout(() => { btn.innerHTML = original; btn.style.background = '#4F46E5'; }, 2000);
+        const b2Btn = document.getElementById('b2CopyClient');
+        if (b2Btn) {
+            const original = b2Btn.textContent;
+            b2Btn.textContent = '✅ Скопировано';
+            setTimeout(() => { b2Btn.textContent = original; }, 2000);
+        }
+        const preview = document.getElementById('b2CopyPreview');
+        if (preview) {
+            preview.textContent = text;
+            preview.style.display = '';
+            clearTimeout(preview._hideTimer);
+            preview._hideTimer = setTimeout(() => { preview.style.display = 'none'; }, 4000);
+        }
+        const legacyBtn = document.getElementById('copyClientBtn');
+        if (legacyBtn) {
+            const original = legacyBtn.innerHTML;
+            legacyBtn.innerHTML = '✅ Скопировано!';
+            legacyBtn.style.background = '#059669';
+            setTimeout(() => { legacyBtn.innerHTML = original; legacyBtn.style.background = '#4F46E5'; }, 2000);
+        }
     }).catch(() => {
         const ta = document.createElement('textarea');
         ta.value = text;
@@ -2656,10 +2693,9 @@ function updateB2RateAge() {
 function updateB2ExtrasMeta() {
     const meta = document.getElementById('b2ExtrasMeta');
     if (!meta) return;
-    const discount = document.getElementById('applyDiscount').checked;
     const partner = document.getElementById('hasPartner').checked;
     const pct = document.getElementById('partnerPercent').value;
-    meta.textContent = `${discount ? `Прибыль ${state.profitMargin}%` : 'Без скидки'} · ${partner ? `Партнёр ${pct}%` : 'без партнёра'}`;
+    meta.textContent = partner ? `Партнёр ${pct}%` : 'Без партнёра';
 }
 
 function updateB2DirectionHint() {
@@ -2697,19 +2733,26 @@ function initB2Layout() {
         nodes.forEach(node => { if (node) wrap.appendChild(node); });
         params.appendChild(wrap);
     }
-    group(container.querySelector('.switcher-caption'), container.querySelector('.dealtype-switcher'));
-    group(document.getElementById('methodCaption'), document.getElementById('methodSwitcher'));
+    // Направление+метод — главный выбор связки, идут первыми и рядом (решение 2026-10-29).
     group(document.getElementById('b2DirectionLabel'), document.getElementById('directionSwitcher'), container.querySelector('.scenarios-grid'), document.getElementById('b2DirectionHint'));
+    group(document.getElementById('methodCaption'), document.getElementById('methodSwitcher'));
     params.append(document.getElementById('customRateSection'), document.getElementById('propertyExtra'));
 
     const exchange = document.getElementById('exchangeCard');
     const settings = exchange.querySelector('.calculator-settings');
     const extras = document.createElement('details');
     extras.className = 'b2-extras';
-    extras.innerHTML = '<summary><span>Скидка и партнёр</span><span id="b2ExtrasMeta">Без скидки · без партнёра</span><span aria-hidden="true">⌄</span></summary>';
+    extras.innerHTML = '<summary><span>Партнёр</span><span id="b2ExtrasMeta">Без партнёра</span><span aria-hidden="true">⌄</span></summary>';
     extras.appendChild(settings);
     params.appendChild(exchange);
     params.appendChild(extras);
+
+    // Тип сделки — второстепенный выбор, идёт компактно ниже суммы.
+    const dealtypeWrap = document.createElement('div');
+    dealtypeWrap.className = 'b2-group b2-group--compact';
+    dealtypeWrap.appendChild(document.getElementById('dealtypeCaption'));
+    dealtypeWrap.appendChild(container.querySelector('.dealtype-switcher'));
+    params.appendChild(dealtypeWrap);
 
     const rates = document.getElementById('ratesCard');
     side.appendChild(rates);
@@ -2718,18 +2761,24 @@ function initB2Layout() {
     const bar = document.createElement('div');
     bar.className = 'b2-result-bar';
     bar.appendChild(results.querySelector('.result-main'));
-    bar.appendChild(document.getElementById('createDealSection'));
-    results.prepend(bar);
-    const more = document.createElement('div');
-    more.className = 'b2-side-more';
-    more.appendChild(document.getElementById('paymentActionSection'));
     const copy = document.createElement('button');
     copy.id = 'b2CopyClient';
     copy.type = 'button';
+    copy.className = 'b2-copy-primary';
     copy.textContent = 'Скопировать для клиента';
     copy.disabled = true;
     copy.addEventListener('click', copyClientMessage);
-    more.appendChild(copy);
+    bar.appendChild(copy);
+    const preview = document.createElement('div');
+    preview.id = 'b2CopyPreview';
+    preview.className = 'b2-copy-preview';
+    preview.style.display = 'none';
+    bar.appendChild(preview);
+    results.prepend(bar);
+    const more = document.createElement('div');
+    more.className = 'b2-side-more';
+    more.appendChild(document.getElementById('createDealSection'));
+    more.appendChild(document.getElementById('paymentActionSection'));
     more.appendChild(results.querySelector('.comment-section'));
     more.appendChild(document.getElementById('paymentResult'));
     more.appendChild(document.getElementById('clientCopyBlock'));
@@ -2747,6 +2796,7 @@ function initB2Layout() {
     b2Ready = true;
     updateB2DirectionHint();
     updateB2ExtrasMeta();
+    updateProfitDisplay();
     updateB2RateAge();
     setInterval(updateB2RateAge, 30000);
     // Существующие inline-обработчики уже меняют state и вызывают hideResults().
@@ -2757,6 +2807,7 @@ function initB2Layout() {
             event.target.id === 'propFxCustom' || event.target.id === 'propInvoiceThb') {
             hideResults();
         }
+        if (event.target.id === 'amount') updateProfitDisplay();
     });
     params.addEventListener('change', event => {
         if (event.target.matches('input[type="checkbox"], input[name="partnerModel"]')) hideResults();
