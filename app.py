@@ -7082,6 +7082,20 @@ def _stand_transfer_request():
     return payload, actor, actor_id, deal_id, None
 
 
+def _stand_transfer_policy_role(payload, actor, user):
+    """Маска админа действует только в шагах политики кошелька.
+
+    Для claim и запрета второй подписи сохраняем ID настоящего сотрудника.
+    Обычный сотрудник не может подменить свою роль.
+    """
+    if not user or user.login_disabled or user.role != actor:
+        return None
+    requested = payload.get('actorRole')
+    if actor == 'admin':
+        return requested if requested in wallet_policy.POLICY_ROLES else None
+    return actor if requested is None else None
+
+
 def _stand_stale_response(row, state, message='Доска изменилась — обновите её'):
     return jsonify(success=False, error=message, version=row.version,
                    data=_stand_strip_files(state)), 409
@@ -7104,9 +7118,14 @@ def stand_transfer_claim():
         policy, error, status = _stand_policy_state_problem(db, state, main, 's23')
         if error:
             return jsonify(success=False, error=error), status
+        user = db.query(AdminUser).filter_by(id=actor_id).first()
+        actor = _stand_transfer_policy_role(payload, actor, user)
+        if actor is None:
+            return jsonify(success=False, error='Эта роль не начинает перевод с кошелька'), 403
         claim = main.get('transferClaim')
         if claim:
-            if claim.get('byId') == actor_id and claim.get('fingerprint') == policy['fingerprint']:
+            if (claim.get('byId') == actor_id and claim.get('role') == actor
+                    and claim.get('fingerprint') == policy['fingerprint']):
                 return jsonify(success=True, version=row.version, data=_stand_strip_files(state), claim=claim)
             name = claim.get('byName') or 'другой сотрудник'
             return jsonify(success=False, error=f'Шаг уже взял {name}', taken_by=name), 409
@@ -7120,9 +7139,6 @@ def stand_transfer_claim():
                     if c.get('byId') == actor_id]
         if released:
             return jsonify(success=False, error='Перевод передан другому исполнителю'), 409
-        user = db.query(AdminUser).filter_by(id=actor_id).first()
-        if not user or user.login_disabled or user.role != actor:
-            return jsonify(success=False, error='Эта роль не начинает перевод с кошелька'), 403
         current = _stand_initiate_role(wallet, main)
         if not wallet_policy.can_claim(wallet.owner_can_alone, current, actor):
             return jsonify(success=False, error='Сейчас перевод у роли: ' +
@@ -7310,12 +7326,13 @@ def stand_transfer_confirm():
         claim = main.get('transferClaim') or {}
         if not claim or claim.get('fingerprint') != policy['fingerprint']:
             return jsonify(success=False, error='Отправка не взята или поручение изменилось'), 409
-        if (claim.get('byId') == actor_id or (actor and claim.get('role') == actor)
+        user = db.query(AdminUser).filter_by(id=actor_id).first()
+        actor = _stand_transfer_policy_role(payload, actor, user)
+        if actor is None:
+            return jsonify(success=False, error='Эта роль не подтверждает перевод'), 403
+        if (claim.get('byId') == actor_id or claim.get('role') == actor
                 or actor_id in {c.get('byId') for c in _stand_policy_round_claims(main, policy['fingerprint'])}):
             return jsonify(success=False, error='Нельзя подтвердить собственную отправку'), 403
-        user = db.query(AdminUser).filter_by(id=actor_id).first()
-        if not user or user.login_disabled or user.role != actor:
-            return jsonify(success=False, error='Эта роль не подтверждает перевод'), 403
         sign_role = _stand_sign_role(policy['wallet'], main)
         if actor != sign_role:
             return jsonify(success=False, error='Сейчас подпись у роли: ' +
@@ -7364,7 +7381,8 @@ def stand_transfer_propose():
             return jsonify(success=False, error=error), status
         claim = main.get('transferClaim') or {}
         user = db.query(AdminUser).filter_by(id=actor_id).first()
-        if (not user or user.login_disabled or user.role != actor
+        actor = _stand_transfer_policy_role(payload, actor, user)
+        if (actor is None
                 or claim.get('byId') != actor_id or claim.get('role') != actor
                 or claim.get('fingerprint') != policy['fingerprint']):
             return jsonify(success=False, error='Поручение передаёт сотрудник, взявший отправку'), 403
@@ -7424,7 +7442,8 @@ def stand_transfer_report_sent():
             return jsonify(success=False, error=error), status
         claim = main.get('transferClaim') or {}
         user = db.query(AdminUser).filter_by(id=actor_id).first()
-        if not user or user.login_disabled or user.role != actor or claim.get('fingerprint') != policy['fingerprint']:
+        actor = _stand_transfer_policy_role(payload, actor, user)
+        if actor is None or claim.get('fingerprint') != policy['fingerprint']:
             return jsonify(success=False, error='Нет доступа к отправке'), 403
         alone = main['step'] == 's23' and (main.get('transferConfirmation') or {}).get('ownerAlone')
         if alone:

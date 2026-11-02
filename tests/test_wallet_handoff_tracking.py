@@ -141,6 +141,69 @@ def test_proposal_without_hash_reaches_signer_then_operator_verifies(chain):
     assert deal['transfer']['sends'][0]['hash'] == ref(1)
 
 
+def test_admin_operator_mask_keeps_identity_through_proposal_and_verification(chain):
+    board_with(postConv='coins')
+    u = roles()
+    with u['admin'].session_transaction() as session:
+        admin_id = session['user_id']
+    at_result = api(u['admin'], 'claim', actorRole='operator')
+    assert at_result.status_code == 200, at_result.get_json()
+    claim = main_deal()['transferClaim']
+    assert claim['byId'] == admin_id and claim['role'] == 'operator'
+    claim_version = board()[1]
+    assert api(u['admin'], 'claim', actorRole='operator').status_code == 200
+    assert board()[1] == claim_version, 'повторный клик не создаёт второй claim'
+    assert api(u['admin'], 'claim', actorRole='teodor').status_code == 409
+    at = claim['at']
+    assert api(u['admin'], 'propose', actorRole='operator').status_code == 200
+    assert main_deal()['step'] == 's24' and notes_for('подпишите перевод') == ['teodor']
+    assert api(u['admin'], 'report-sent', actorRole='teodor').status_code == 403
+    assert api(u['admin'], 'confirm', actorRole='teodor').status_code == 403
+    assert main_deal().get('transferSentReport') is None
+    assert api(u['teodor'], 'report-sent').status_code == 200
+    assert notes_for('проверьте исходящий перевод') == ['operator']
+    chain.rows.append(transfer(1, 5000, ts=at + 5000))
+    result = u['admin'].post('/api/stand/transfers/check', json={'dealId': DEAL})
+    assert result.status_code == 200, result.get_json()
+    assert main_deal()['serverTransferComplete'] is True
+    assert main_deal()['transfer']['sends'][0]['hash'] == ref(1)
+
+
+def test_only_real_admin_may_supply_policy_actor_role(chain):
+    board_with(postConv='coins')
+    u = roles()
+    before = board()
+    assert api(u['manager'], 'claim', actorRole='operator').status_code == 403
+    assert api(u['operator'], 'claim', actorRole='teodor').status_code == 403
+    assert board() == before
+    assert api(u['operator'], 'claim').status_code == 200
+    before = board()
+    assert api(u['operator'], 'propose', actorRole='operator').status_code == 403
+    assert board() == before
+
+
+def test_admin_owner_mask_direct_send_only_when_wallet_allows_it(chain):
+    board_with(postConv='coins')
+    u = roles()
+    result = api(u['admin'], 'claim', actorRole='teodor')
+    assert result.status_code == 200, result.get_json()
+    claim = main_deal()['transferClaim']
+    assert claim['role'] == 'teodor' and main_deal()['transferConfirmation']['ownerAlone'] is True
+    assert api(u['admin'], 'report-sent', actorRole='teodor').status_code == 200
+    assert main_deal()['step'] == 's23' and not main_deal().get('serverTransferComplete')
+
+    address = 'TA4Y62o6YC2Zsck9rZVGTvqW1AQ7X9zTnj'
+    registered = u['admin'].post('/api/wallets', json={
+        'address': address, 'blockchain': 'TRON', 'owner': 'Тест',
+        'accepts_payin': True, 'initiator_roles': ['operator'],
+        'confirmer_roles': ['teodor'], 'owner_can_alone': False})
+    assert registered.status_code == 200, registered.get_json()
+    board_with(wallet=address, postConv='coins')
+    before = board()
+    assert api(u['admin'], 'claim', actorRole='teodor').status_code == 403
+    assert board() == before
+
+
 def test_operator_manual_hash_after_report_requires_verified_transfer(chain):
     board_with(postConv='coins')
     u = roles()

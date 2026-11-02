@@ -15,7 +15,8 @@ const names = ['hasPolicy', 'policyInitiators', 'policyInitiateTargets', 'policy
   'policySignTargets', 'policyCanClaim', 'policyRoleNames', 'bkkTime', 'policyReleasedByMe', 'policyLastReleased',
   'policyLocked', 'policyOwnsSend', 'policyOwnsSign', 'policyOwnsVerification', 'policyNeedsApproval', 'policyApprovalActor',
   'dispatchRole', 'handoffTargets', 'handoffBlock', 'handoffToggle', 'takeoverWarning', 'takeoverAskView', 'takeoverCancel', 'takeoverConfirm', 'markSentBlock', 'transferMarkSent', 'policyActions', 'policyStatusLine', 'walletPolicyLine', 'transferHandoff',
-  'transferClaim', 'walletRolesFields', 'txShort'];
+  'transferPolicyActor', 'transferClaim', 'transferPropose', 'transferConfirm', 'transferReportSent',
+  'walletSourceLine', 'walletRolesFields', 'txShort'];
 const table = JSON.parse(fs.readFileSync('tests/fixtures/wallet_policy_table.json', 'utf8'));
 
 // Массивы из vm-контекста другой realm: сравниваем через JSON.
@@ -24,21 +25,68 @@ function makeCtx(overrides = {}) {
   const calls = [];
   const ctx = {calls,
     S: {role: 'manager'}, standMeId: 7, standVer: 11, wallet: null, deals: {},
+    transferClaimPending: new Set(), standRequireSaved: async () => true,
     htmlText: s => String(s ?? ''), usd: n => '$' + n, render: () => {}, toast: () => {},
+    val: () => '', checkSends: () => {},
     cnvMembers: () => [], bkkLabel: null,
     dealWallet: () => ctx.wallet,
     standAction: async (path, body) => { calls.push({path, body}); return {success: true}; },
     deal: id => ctx.deals[id],
-    document: {querySelectorAll: () => []},
+    document: {querySelectorAll: () => [], querySelector: () => null},
     ...overrides,
   };
   vm.createContext(ctx);
   vm.runInContext(consts + names.map(source).join('\n'), ctx);
   return ctx;
 }
+
+// Только админ передаёт серверу роль открытой маски в policy-действиях.
+{
+  (async () => {
+    const admin = makeCtx({S: {role: 'operator'}, standMe: 'admin'});
+    await admin.transferClaim(1);
+    await admin.transferPropose(1);
+    await admin.transferConfirm(1);
+    await admin.transferReportSent(1);
+    assert.equal(admin.calls.length, 4);
+    admin.calls.forEach(({body}) => assert.equal(body.actorRole, 'operator'));
+    const ordinary = makeCtx({S: {role: 'operator'}, standMe: 'manager'});
+    await ordinary.transferClaim(1);
+    assert.equal('actorRole' in ordinary.calls[0].body, false);
+    console.log('admin policy role mask payload: PASS');
+  })().catch(e => { console.error(e); process.exitCode = 1; });
+}
 const walletOf = row => ({name: row.purpose, initiator_roles: row.initiator_roles,
   confirmer_roles: row.confirmer_roles, owner_can_alone: row.owner_can_alone});
 const run = (ctx, code) => vm.runInContext(code, ctx);
+
+// Claim ждёт подтверждённого сохранения; повторный тап не отправляет второй запрос.
+{
+  (async () => {
+    let release;
+    const saved = new Promise(resolve => { release = resolve; });
+    const button = {textContent: 'Начать работу', disabled: false,
+      dataset: {claimBlocked: 'false', claimLabel: 'Начать работу'}};
+    const ctx = makeCtx({standRequireSaved: () => saved,
+      document: {querySelector: () => button}});
+    const first = ctx.transferClaim(1), second = ctx.transferClaim(1);
+    assert.equal(ctx.calls.length, 0, 'пока save не завершён, claim не уходит');
+    assert.equal(button.disabled, true);
+    assert.equal(button.textContent, 'Начинаем…');
+    ctx.standVer = 12;
+    release(true);
+    await Promise.all([first, second]);
+    eq(ctx.calls, [{path: '/api/stand/transfer/claim', body: {dealId: 1, version: 12}}]);
+    assert.equal(button.disabled, false);
+    assert.equal(button.textContent, 'Начать работу');
+    ctx.calls.length = 0;
+    ctx.standRequireSaved = async () => false;
+    await ctx.transferClaim(1);
+    assert.equal(ctx.calls.length, 0, 'ошибка/таймаут сохранения не запускает claim');
+    assert.equal(button.disabled, false, 'после ошибки кнопку можно нажать повторно');
+    console.log('claim waits for saved board and current version: PASS');
+  })().catch(e => { console.error(e); process.exitCode = 1; });
+}
 
 // ---- 1. Те же таблицы, что у Python: «завести», «передать», «подписать» — все 6 кошельков
 for (const [address, row] of Object.entries(table)) {
@@ -293,7 +341,7 @@ console.log('task ownership (send/sign): PASS');
   function s23(role, d, me = 7) {
     const ctx = makeCtx({S: {role}, standMeId: me});
     ctx.val = () => '';
-    ctx.wallet = walletOf(REALTY);
+    ctx.wallet = Object.assign(walletOf(REALTY), {addr: 'TDuDeRiwrLLN3hnnA57G5yM6ibg58A6wZk'});
     Object.assign(ctx, {num: () => 0, avgUsdt: () => 30, SOURCES_PAY: {coins: {cur: 'thb'}}, convOf: () => null,
       policySignerCards: () => '', packTasks: () => 'PACK_BLOCK', transferModeBlock: () => '',
       outgoingReviewBlock: () => '', personalSend: () => false, isCrypto: () => true, trow: () => '',
@@ -318,6 +366,16 @@ console.log('task ownership (send/sign): PASS');
   const before = s23('operator', {});
   assert.doesNotMatch(before, /PACK_BLOCK/, 'до claim блока нет даже у назначенной роли');
   assert.match(before, /data-claim[^>]*>Начать работу<\/button>/);
+  assert.match(before, /TRC-20/);
+  assert.match(before, /TDuDeRiwrLLN3hnnA57G5yM6ibg58A6wZk/,
+    'полный адрес кошелька виден перед началом работы');
+  assert.match(before, /Копировать адрес/);
+  assert.doesNotMatch(before.match(/data-wallet-source[^]*?<\/div>/)?.[0]||'', /<details/,
+    'полный адрес не спрятан в details');
+  const ercAddress = '0x68aEA0F5386a57b48953F6fFF2f22D29D00D9ba9';
+  const ercCard = makeCtx({jsLiteralAttr: String}).walletSourceLine({addr: ercAddress});
+  assert.match(ercCard, /ERC-20/);
+  assert.match(ercCard, new RegExp(ercAddress));
   assert.match(s23('operator', {}), /Проверить хеш/, 'операционист может проверить уже отправленный перевод');
   const owner = s23('teodor', {transferClaim: {byId: 7, byName: 'Я', role: 'teodor', fingerprint: 'f'},
     transferConfirmation: {ownerAlone: true}});

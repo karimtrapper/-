@@ -777,6 +777,9 @@ a.hash:hover{background:#BAE6FD}
 .deal-screen .task-action .goalt{font-size:var(--ds-display)!important;font-weight:var(--ds-bold)!important;line-height:1.25;margin-bottom:var(--ds-lg)}
 .deal-screen .task-action .goalnums{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:var(--ds-md)}
 .deal-screen .task-action .goalnums>div{background:var(--ds-page);padding:var(--ds-md) var(--ds-lg);border-radius:var(--ds-control);min-width:0}
+.deal-screen .policy-wallet-source{margin:var(--ds-md) 0;padding:var(--ds-md);background:var(--ds-page);border-radius:var(--ds-control);min-width:0}
+.deal-screen .policy-wallet-source-head{display:flex;align-items:center;justify-content:space-between;gap:var(--ds-sm);flex-wrap:wrap;margin-bottom:var(--ds-xs)}
+.deal-screen .policy-wallet-source-address{display:block;max-width:100%;font:var(--ds-regular) var(--ds-body) ui-monospace,SFMono-Regular,Menlo,monospace;white-space:normal;overflow-wrap:anywhere;word-break:break-all;user-select:all}
 .deal-screen .policy-send-goal .goalnums>div{align-self:start}
 .deal-screen .policy-pack-heading{font-size:var(--ds-body);font-weight:var(--ds-semibold);color:var(--ds-ink)}
 .deal-screen .task-action .goalnums .k{font-size:var(--ds-caption)!important;font-weight:var(--ds-regular)!important;text-transform:none;letter-spacing:normal;color:var(--ds-muted)}
@@ -2597,10 +2600,34 @@ function addressDisclosure(value){
   const v=String(value||'');
   return `<span class="hrow" style="display:inline-flex;gap:8px;align-items:center;flex-wrap:wrap"><details class="deal-detail"><summary class="addr">${htmlText(txShort(v))}</summary><span class="addr">${htmlText(v)}</span></details><button type="button" class="btn btn-outline btn-sm" onclick="copyAsk(${jsLiteralAttr(v)})">Копировать</button></span>`;
 }
+function walletSourceLine(w){
+  const address=String(w?.addr||'').trim();
+  const network=address.startsWith('0x')?'ERC-20':'TRC-20';
+  return `<div class="policy-wallet-source" data-wallet-source><div class="policy-wallet-source-head"><b>Кошелёк отправки · ${network}</b>
+    ${address?`<button type="button" class="btn btn-outline btn-sm" onclick="copyAsk(${jsLiteralAttr(address)})">Копировать адрес</button>`:''}</div>
+    <span class="policy-wallet-source-address">${htmlText(address||'Адрес не указан')}</span></div>`;
+}
+const transferClaimPending=new Set();
+function transferPolicyActor(){return typeof standMe!=='undefined'&&standMe==='admin'?{actorRole:S.role}:{};}
 async function transferClaim(id){
-  const j=await standAction('/api/stand/transfer/claim',{dealId:id,version:standVer});
-  if(j?.success)toast('Перевод у вас в работе');
-  else if(j?.taken_by)toast('Шаг уже взял '+j.taken_by);
+  if(transferClaimPending.has(id))return;
+  transferClaimPending.add(id);
+  const button=document.querySelector(`[data-claim="${id}"]`);
+  const buttonText=button?.textContent;
+  if(button){button.disabled=true;button.textContent='Начинаем…';}
+  try{
+    if(!await standRequireSaved('Сначала дождитесь сохранения сделки'))return;
+    const j=await standAction('/api/stand/transfer/claim',{dealId:id,version:standVer,...transferPolicyActor()});
+    if(j?.success)toast('Перевод у вас в работе');
+    else if(j?.taken_by)toast('Шаг уже взял '+j.taken_by);
+  }finally{
+    transferClaimPending.delete(id);
+    const current=document.querySelector(`[data-claim="${id}"]`);
+    if(current){
+      current.disabled=current.dataset.claimBlocked==='true';
+      current.textContent=buttonText||current.dataset.claimLabel||'Начать работу';
+    }
+  }
 }
 /* «Передать»: менеджер и админ выбирают роль. Если перевод уже начат — это перехват,
    сервер требует подтверждённое время начала (claimAt). */
@@ -2718,16 +2745,16 @@ async function transferApprove(id){
   if(j?.success)toast('Согласование владельца отмечено');
 }
 async function transferConfirm(id){
-  const j=await standAction('/api/stand/transfer/confirm',{dealId:id,version:standVer});
+  const j=await standAction('/api/stand/transfer/confirm',{dealId:id,version:standVer,...transferPolicyActor()});
   if(j?.success){toast('Подтверждение записано — проверяем сеть');checkSends(id);}
 }
 async function transferPropose(id){
   const j=await standAction('/api/stand/transfer/propose',
-    {dealId:id,version:standVer,check:String(val('c')||'')});
+    {dealId:id,version:standVer,check:String(val('c')||''),...transferPolicyActor()});
   if(j?.success)toast('Поручение передано на подпись');
 }
 async function transferReportSent(id){
-  const j=await standAction('/api/stand/transfer/report-sent',{dealId:id,version:standVer});
+  const j=await standAction('/api/stand/transfer/report-sent',{dealId:id,version:standVer,...transferPolicyActor()});
   if(j?.success){toast('Операционисту передана проверка перевода');checkSends(id);}
 }
 function policyNeedsApproval(d,w){
@@ -11249,7 +11276,7 @@ function packTasks(d,edit){
    econ() — своих формул здесь нет (Карим, 27.09). По строке на сделку пачки. */
 function signSummary(d){
   const c=convOf(d), w=dealWallet(d);
-  const wl=w?htmlText(w.name)+' ('+addressDisclosure(w.addr)+')':'наш кошелёк';
+  const wl=w?htmlText(w.name)+(hasPolicy(w)?'':' ('+addressDisclosure(w.addr)+')'):'наш кошелёк';
   const hs=l=>(l||[]).filter(h=>h&&h.hash).map(h=>addressDisclosure(h.hash)).join(', ')||'хешей нет';
   return cnvMembers(d).map(x=>{
     const tr=x.transfer||{}, E=econ(x), pt=x.payTo||{}, k=x.postConv;
@@ -12038,7 +12065,7 @@ function stepCard(d){
     const foundTx=(d.outgoingReview?.candidates||[]).find(t=>t.to===d.transfer?.addr&&!t.networkFee&&t.hash);
     const policyWallet=dealWallet(d);
     if(hasPolicy(policyWallet)&&d.transferSentReport)return `<div class="card"><div class="card-title">Проверить отправку с кошелька ${htmlText(policyWallet.name)}</div>
-      ${policyStatusLine(d)}${signSummary(d)}${packTasks(d,false)}
+      ${walletSourceLine(policyWallet)}${policyStatusLine(d)}${signSummary(d)}${packTasks(d,false)}
       <div class="row"><button class="btn btn-outline" onclick="checkSends(${d.id})">Найти перевод в сети</button></div>
       <p class="fh">Если поиск не нашёл перевод, вставьте хеш ниже. Проверим кошелёк, получателя и сумму.</p>
       ${markSentBlock(d)}</div>`;
@@ -12052,17 +12079,17 @@ function stepCard(d){
         const alone=S.role==='teodor'&&!!policyWallet.owner_can_alone;
         const canClaim=!claim&&!policyLocked(d)&&!policyReleasedByMe(d)&&policyCanClaim(d,policyWallet,S.role);
         return `<div class="card"><div class="card-title">Перевод с кошелька ${htmlText(policyWallet.name)}</div>
-        ${walletPolicyLine(policyWallet)}${policyStatusLine(d)}
+        ${walletSourceLine(policyWallet)}${walletPolicyLine(policyWallet)}${policyStatusLine(d)}
         ${needsApproval?`<div class="${approval?'derived':'alert a-warn'}"><div>${approval?
           `Согласование владельца на отправку свыше ${usd(policyWallet.limit_usd)} отметил ${htmlText(approval.byName)}.`:
           `Для отправки свыше ${usd(policyWallet.limit_usd)} нужно согласование владельца.`}</div></div>`:''}
         ${needsApproval&&!approval&&policyApprovalActor(S.role)&&!claim?
           `<div class="row"><button class="btn btn-outline" onclick="transferApprove(${d.id})">Отметить согласование владельца</button></div>`:''}
-        ${canClaim?`<div class="row"><button class="btn btn-primary" data-claim ${needsApproval&&!approval?'disabled':''} onclick="transferClaim(${d.id})">${alone?'Отправить':'Начать работу'}</button></div>`:''}</div>${policyActions(d)}`;
+        ${canClaim?`<div class="row"><button class="btn btn-primary" data-claim="${d.id}" data-claim-blocked="${needsApproval&&!approval}" data-claim-label="${alone?'Отправить':'Начать работу'}" ${needsApproval&&!approval||transferClaimPending.has(d.id)?'disabled':''} onclick="transferClaim(${d.id})">${transferClaimPending.has(d.id)?'Начинаем…':alone?'Отправить':'Начать работу'}</button></div>`:''}</div>${policyActions(d)}`;
       }
     }
     return `<div class="card s23-action-fields">
-    ${hasPolicy(policyWallet)?walletPolicyLine(policyWallet)+policyStatusLine(d)+policySignerCards(policyWallet):''}
+    ${hasPolicy(policyWallet)?walletSourceLine(policyWallet)+walletPolicyLine(policyWallet)+policyStatusLine(d)+policySignerCards(policyWallet):''}
     ${foundTx&&S.role==='teodor'?`<div class="alert a-warn">В сети уже есть перевод · ${new Date(foundTx.timestamp_ms).toLocaleString('ru-RU',{timeZone:'Europe/Moscow'})} МСК ·
       <a href="https://tronscan.org/#/transaction/${encodeURIComponent(foundTx.hash)}" target="_blank" rel="noopener noreferrer">${htmlText(txShort(foundTx.hash))} · TronScan</a>
       <button class="btn btn-outline btn-sm" onclick="copyAsk(${jsLiteralAttr(foundTx.hash)})">Копировать хеш</button></div>`:''}
@@ -12108,11 +12135,12 @@ function stepCard(d){
     const sObj=SOURCES_PAY[d.paySrc]||SOURCES_PAY.coins;
     const policyWallet=dealWallet(d), policy=!!hasPolicy(policyWallet);
     if(policy&&d.transferSentReport)return `<div class="card"><div class="card-title">Проверить отправку с кошелька ${htmlText(policyWallet.name)}</div>
-      ${policyStatusLine(d)}${signSummary(d)}${packTasks(d,false)}
+      ${walletSourceLine(policyWallet)}${policyStatusLine(d)}${signSummary(d)}${packTasks(d,false)}
       <div class="row"><button class="btn btn-outline" onclick="checkSends(${d.id})">Найти перевод в сети</button></div>
       <p class="fh">Если поиск не нашёл перевод, вставьте хеш ниже. Проверим кошелёк, получателя и сумму.</p>
       ${markSentBlock(d)}</div>`;
     return `<div class="card"><div class="card-title">Суть сделки<span class="sub">по шаблону из Telegram — проверьте и подпишите</span></div>
+    ${policy?walletSourceLine(policyWallet):''}
     ${signSummary(d)}
     ${policy?walletPolicyLine(policyWallet)+policyStatusLine(d)+policySignerCards(policyWallet)+policyActions(d):''}
     <div class="${policy?'derived':'alert a-info'}"><div><b>Подпишите перевод в кошельке — дальше всё пойдёт само.</b> Как только сеть подтвердит перевод, ${d.kind==='Фрихолд'?'операционист перейдёт к учёту MT103 по согласованной заявке':'операционист известит Coins'}.</div></div>
