@@ -319,3 +319,45 @@ def test_tron_proof_requires_confirmed_success(monkeypatch, confirmed, revert, r
 
     monkeypatch.setattr(module.requests, 'get', lambda *args, **kwargs: Response())
     assert module._tron_confirmed_payin_amount('proof-hash') == expected
+
+
+def test_create_realty_with_verified_incoming_and_outgoing_atomically(tc, monkeypatch):
+    monkeypatch.setattr(module, '_tron_confirmed_payin_amount', lambda _: 61070)
+    monkeypatch.setattr(module, '_tron_tx_info', lambda *args, **kwargs: None)
+    payload = {
+        'client_name': 'Flow verified realty regression', 'deal_type': 'pay_in',
+        'deal_kind': 'mf_realty', 'status': 'pending', 'payin_method': 'sber_reqs',
+        'payin_account_key': 'flow_sole', 'payin_amount_rub': 5000000,
+        'payin_amount_usdt': 61070, 'payin_tx_hash': 'flow-atomic-incoming',
+        'payin_tx_hashes': [{'hash': 'flow-atomic-incoming', 'network': 'trc20'}],
+        'invoice_amount_thb': 1945500, 'buy_rate_thb_usdt': 33.58,
+        'company_percent': 1, 'payout_tx_hashes': [
+            {'hash': 'flow-atomic-outgoing', 'amount_usdt': 58515.63}],
+    }
+    deal = _create(tc, payload)
+    assert deal['payin_tx_verified'] is True
+    assert deal['status'] == 'pending'
+    assert deal['payout_tx_hashes'][0]['hash'] == 'flow-atomic-outgoing'
+    db = module.get_session()
+    try:
+        assert db.query(module.PayinTxUse).filter_by(deal_id=deal['id']).count() == 1
+        assert db.query(module.PayoutTxUse).filter_by(deal_id=deal['id']).count() == 1
+    finally:
+        db.close()
+
+
+def test_failed_incoming_verification_rolls_back_entire_create(tc, monkeypatch):
+    monkeypatch.setattr(module, '_tron_confirmed_payin_amount', lambda _: 999)
+    payload = _exchange(client_name='Flow atomic rollback', payin_account_key='flow_sole',
+        payin_tx_hash='flow-atomic-mismatch',
+        payin_tx_hashes=[{'hash': 'flow-atomic-mismatch', 'network': 'trc20'}],
+        payout_tx_hashes=[{'hash': 'flow-atomic-outgoing-rejected', 'amount_usdt': 970}])
+    response = tc.post('/api/deals', json=payload)
+    assert response.status_code == 409
+    assert 'Расхождение' in response.json['error']
+    db = module.get_session()
+    try:
+        assert db.query(module.Deal).filter_by(client_name='Flow atomic rollback').count() == 0
+        assert db.query(module.PayinTx).filter_by(tx_hash='flow-atomic-mismatch').count() == 0
+    finally:
+        db.close()

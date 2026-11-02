@@ -5659,6 +5659,83 @@ def get_payin_tx(tx_hash):
         session.close()
 
 
+def _verify_flow_sole_payin(session, deal):
+    """Validate chain proof and allocate it inside the caller's transaction."""
+    if deal.payin_account_key != 'flow_sole':
+        return jsonify({'success': False, 'error': 'Сверка доступна только для Flow Sole'}), 400
+    try:
+        raw_parts = json.loads(deal.payin_tx_hashes) if deal.payin_tx_hashes else []
+    except (ValueError, TypeError):
+        raw_parts = []
+    if deal.payin_tx_hash and (not isinstance(raw_parts, list) or not raw_parts or any(
+            not isinstance(p, dict) or p.get('network') not in ('trc20', 'erc20')
+            for p in raw_parts)):
+        return jsonify({'success': False, 'error': 'Для сверки выберите сеть каждого hash: TRC-20 или ERC-20'}), 409
+    parts = _payin_tx_parts(deal)
+    if not parts or not deal.payin_amount_usdt or deal.payin_amount_usdt <= 0:
+        return jsonify({'success': False, 'error': 'Укажите USDT и hash прихода'}), 400
+    chain_total = 0.0
+    claimed_total = 0.0
+    differences = []
+    network_amounts = []
+    allocation_parts = []
+    for part in parts:
+        network = _normalize_tx_network(part.get('network'))
+        tx_hash = part['hash']
+        try:
+            if network == 'trc20':
+                amount = _tron_confirmed_payin_amount(tx_hash)
+            elif network == 'erc20':
+                amount = (_etherscan_tx_info(tx_hash) or {}).get('amount_usdt')
+            else:
+                return jsonify({'success': False, 'error': 'Укажите сеть прихода'}), 400
+        except TransactionVerificationError as exc:
+            return jsonify({'success': False, 'error': str(exc)}), 409
+        if amount is None:
+            return jsonify({'success': False, 'error': 'Сеть пока не подтвердила hash прихода',
+                            'tx_hash': tx_hash}), 409
+        chain_total += float(amount)
+        network_amounts.append((tx_hash, network, float(amount)))
+        claimed = part.get('amount_usdt')
+        # A stored JSON amount is an explicit allocation. The scalar
+        # payin_tx_hash fallback is never proof of an explicit share.
+        explicit = bool(deal.payin_tx_hashes) and claimed is not None
+        if explicit and (claimed is None or float(claimed) <= 0 or float(claimed) > float(amount) + 0.01):
+            differences.append({'tx_hash': tx_hash, 'entered_usdt': claimed,
+                                'chain_usdt': round(float(amount), 2)})
+        share = float(claimed) if explicit and claimed is not None else float(amount)
+        claimed_total += share
+        allocation_parts.append({'hash': tx_hash, 'network': network,
+                                 'amount_usdt': share})
+    chain_total = round(chain_total, 2)
+    claimed_total = round(claimed_total, 2)
+    entered = round(float(deal.payin_amount_usdt), 2)
+    if differences or abs(entered - claimed_total) > 0.01:
+        return jsonify({'success': False,
+                        'error': f'Расхождение: введено ${entered:.2f}, по hash подтверждается ${claimed_total:.2f} (в сети ${chain_total:.2f}). Исправьте сумму, долю или hash; ввод не изменён.',
+                        'entered_usdt': entered, 'claimed_usdt': claimed_total,
+                        'chain_usdt': chain_total,
+                        'differences': differences}), 409
+    try:
+        _sync_payin_tx_uses(session, deal, allocation_parts)
+    except ValueError as exc:
+        session.rollback()
+        return jsonify({'success': False, 'error': str(exc)}), 409
+    for tx_hash, network, amount in network_amounts:
+        tx = session.query(PayinTx).filter(PayinTx.tx_hash == tx_hash).first()
+        if tx.used_usdt() > amount + 0.01:
+            session.rollback()
+            return jsonify({'success': False, 'error': 'Hash уже распределён между сделками сверх суммы в сети',
+                            'tx_hash': tx_hash}), 409
+        tx.amount_usdt = amount
+        tx.source = 'tronscan' if network == 'trc20' else 'etherscan'
+        tx.notes = None
+    deal.payin_tx_verified = True
+    return jsonify({'success': True, 'verified': True, 'entered_usdt': entered,
+                    'claimed_usdt': claimed_total, 'chain_usdt': chain_total,
+                    'deal': deal.to_dict()})
+
+
 @app.route('/api/deals/<int:deal_id>/verify-payin', methods=['POST'])
 def verify_flow_sole_payin(deal_id):
     """Confirm a saved Flow Sole quote against the chain without changing its USDT."""
@@ -5667,80 +5744,10 @@ def verify_flow_sole_payin(deal_id):
         deal = session.query(Deal).filter(Deal.id == deal_id).with_for_update().first()
         if not deal:
             return jsonify({'success': False, 'error': 'Сделка не найдена'}), 404
-        if deal.payin_account_key != 'flow_sole':
-            return jsonify({'success': False, 'error': 'Сверка доступна только для Flow Sole'}), 400
-        try:
-            raw_parts = json.loads(deal.payin_tx_hashes) if deal.payin_tx_hashes else []
-        except (ValueError, TypeError):
-            raw_parts = []
-        if deal.payin_tx_hash and (not isinstance(raw_parts, list) or not raw_parts or any(
-                not isinstance(p, dict) or p.get('network') not in ('trc20', 'erc20')
-                for p in raw_parts)):
-            return jsonify({'success': False, 'error': 'Для сверки выберите сеть каждого hash: TRC-20 или ERC-20'}), 409
-        parts = _payin_tx_parts(deal)
-        if not parts or not deal.payin_amount_usdt or deal.payin_amount_usdt <= 0:
-            return jsonify({'success': False, 'error': 'Укажите USDT и hash прихода'}), 400
-        chain_total = 0.0
-        claimed_total = 0.0
-        differences = []
-        network_amounts = []
-        allocation_parts = []
-        for part in parts:
-            network = _normalize_tx_network(part.get('network'))
-            tx_hash = part['hash']
-            try:
-                if network == 'trc20':
-                    amount = _tron_confirmed_payin_amount(tx_hash)
-                elif network == 'erc20':
-                    amount = (_etherscan_tx_info(tx_hash) or {}).get('amount_usdt')
-                else:
-                    return jsonify({'success': False, 'error': 'Укажите сеть прихода'}), 400
-            except TransactionVerificationError as exc:
-                return jsonify({'success': False, 'error': str(exc)}), 409
-            if amount is None:
-                return jsonify({'success': False, 'error': 'Сеть пока не подтвердила hash; USDT сохранены как черновые',
-                                'tx_hash': tx_hash}), 409
-            chain_total += float(amount)
-            network_amounts.append((tx_hash, network, float(amount)))
-            claimed = part.get('amount_usdt')
-            # A stored JSON amount is an explicit allocation. The scalar
-            # payin_tx_hash fallback is never proof of an explicit share.
-            explicit = bool(deal.payin_tx_hashes) and claimed is not None
-            if explicit and (claimed is None or float(claimed) <= 0 or float(claimed) > float(amount) + 0.01):
-                differences.append({'tx_hash': tx_hash, 'entered_usdt': claimed,
-                                    'chain_usdt': round(float(amount), 2)})
-            share = float(claimed) if explicit and claimed is not None else float(amount)
-            claimed_total += share
-            allocation_parts.append({'hash': tx_hash, 'network': network,
-                                     'amount_usdt': share})
-        chain_total = round(chain_total, 2)
-        claimed_total = round(claimed_total, 2)
-        entered = round(float(deal.payin_amount_usdt), 2)
-        if differences or abs(entered - claimed_total) > 0.01:
-            return jsonify({'success': False,
-                            'error': f'Расхождение: введено ${entered:.2f}, по hash подтверждается ${claimed_total:.2f} (в сети ${chain_total:.2f}). Исправьте сумму, долю или hash; ввод не изменён.',
-                            'entered_usdt': entered, 'claimed_usdt': claimed_total,
-                            'chain_usdt': chain_total,
-                            'differences': differences}), 409
-        try:
-            _sync_payin_tx_uses(session, deal, allocation_parts)
-        except ValueError as exc:
-            session.rollback()
-            return jsonify({'success': False, 'error': str(exc)}), 409
-        for tx_hash, network, amount in network_amounts:
-            tx = session.query(PayinTx).filter(PayinTx.tx_hash == tx_hash).first()
-            if tx.used_usdt() > amount + 0.01:
-                session.rollback()
-                return jsonify({'success': False, 'error': 'Hash уже распределён между сделками сверх суммы в сети',
-                                'tx_hash': tx_hash}), 409
-            tx.amount_usdt = amount
-            tx.source = 'tronscan' if network == 'trc20' else 'etherscan'
-            tx.notes = None
-        deal.payin_tx_verified = True
-        session.commit()
-        return jsonify({'success': True, 'verified': True, 'entered_usdt': entered,
-                        'claimed_usdt': claimed_total, 'chain_usdt': chain_total,
-                        'deal': deal.to_dict()})
+        response = app.make_response(_verify_flow_sole_payin(session, deal))
+        if response.status_code == 200:
+            session.commit()
+        return response
     finally:
         session.close()
 
@@ -8337,9 +8344,6 @@ def create_deal():
             return jsonify({'success': False, 'error': str(e)}), 400
         if payin_account_key and data.get('payin_parts'):
             return jsonify({'success': False, 'error': 'Flow Sole не использует пул приходов Сбера'}), 400
-        if payin_account_key and _requested_payout_hashes(data):
-            return jsonify({'success': False,
-                            'error': 'Flow Sole: фактическую выдачу можно записать после подтверждения hash прихода'}), 409
         
         # Парсим дату если передана
         created_at = None
@@ -8527,6 +8531,16 @@ def create_deal():
 
         session.add(deal)
         session.flush()
+
+        # При внесении уже выполненной выдачи сначала сверяем приход в сети.
+        # Ошибка откатывает всю сделку, включая распределение прихода.
+        if payin_account_key and _requested_payout_hashes(data):
+            verification = app.make_response(_verify_flow_sole_payin(session, deal))
+            if verification.status_code != 200:
+                session.rollback()
+                if verification.status_code == 400:
+                    verification.status_code = 409
+                return verification
 
         # Фактические переводы выдачи с кошелька оунера. Недвижимость разбирает
         # свои переводы внутри _apply_mf_* — здесь только обмен.
