@@ -7,6 +7,7 @@
 тестах не вызывается, поэтому socket не патчится и заворачивать вызовы можно
 прямо на локальный http.server, как и остальной стенд-код это делает.
 """
+import copy
 import json
 import threading
 import http.server
@@ -17,6 +18,7 @@ from sqlalchemy import text
 import app as appmod
 import stand_egress
 import stand_notify as notify
+import stand_transfers
 
 
 def _fake_server(handler_factory):
@@ -109,6 +111,195 @@ def lk(monkeypatch):
 
 def note(number, role='manager', deal_id=7):
     return {'id': f'lk-note-{number}', 'role': role, 'text': f'Задача {number}', 'dealId': deal_id}
+
+
+def payto_deal(manager_id=None, *, step='s26'):
+    return {'id': 7, 'code': 'СД-7', 'client': 'Тест', 'step': step,
+            'type': 'Оплата недвижимости', 'kind': 'Лизхолд', 'reqTask': 'done',
+            'managerUserId': manager_id, 'assigneeAdminId': None, 'pay': {},
+            'payTo': {'dev': 'Synthetic Ltd', 'bank': 'Synthetic Bank', 'acc': 'SYNTHETIC-1',
+                      'purpose': 'Invoice', 'amount': 10000}, 'log': []}
+
+
+def test_payto_confirm_note_follows_gate_snapshot_and_manager(lk):
+    ids, _ = lk
+    before = {'deals': [payto_deal(ids['manager'], step='s25')], 'notes': []}
+    current = copy.deepcopy(before)
+    current['deals'][0]['step'] = 's26'
+    appmod._stand_state_events(before, current, 'system', 1)
+    notes = [n for n in current['notes'] if str(n['id']).startswith('stand:payto-confirm:')]
+    assert len(notes) == 1 and notes[0]['recipientAdminId'] == ids['manager']
+    assert 'Подтвердите реквизиты' in notes[0]['text']
+    first_key = current['deals'][0]['payToConfirmNotice']['key']
+    again = copy.deepcopy(current)
+    appmod._stand_state_events(current, again, 'operator', 2)
+    assert len([n for n in again['notes'] if str(n['id']).startswith('stand:payto-confirm:')]) == 1
+    assert again['deals'][0]['payToConfirmNotice']['key'] == first_key
+
+    confirmed = copy.deepcopy(again)
+    confirmed['deals'][0]['payToConfirm'] = {'payTo': dict(confirmed['deals'][0]['payTo']), 'at': 3}
+    appmod._stand_state_events(again, confirmed, 'manager', 3)
+    assert confirmed['deals'][0]['payToConfirmNotice']['active'] is False
+    edited = copy.deepcopy(confirmed)
+    edited['deals'][0]['payTo']['acc'] = 'SYNTHETIC-2'
+    appmod._stand_state_events(confirmed, edited, 'manager', 4)
+    assert edited['deals'][0]['payToConfirmNotice']['sequence'] == 2
+    assert edited['deals'][0]['payToConfirmNotice']['key'] != first_key
+    changed_manager = copy.deepcopy(edited)
+    changed_manager['deals'][0]['managerUserId'] = ids['manager2']
+    appmod._stand_state_events(edited, changed_manager, 'admin', 5)
+    latest = [n for n in changed_manager['notes'] if str(n['id']).startswith('stand:payto-confirm:')][0]
+    assert latest['recipientAdminId'] == ids['manager2']
+    assert changed_manager['deals'][0]['payToConfirmNotice']['sequence'] == 3
+    paid = copy.deepcopy(changed_manager)
+    paid['deals'][0]['pay']['invoicePaid'] = True
+    appmod._stand_state_events(changed_manager, paid, 'operator', 6)
+    assert paid['deals'][0]['payToConfirmNotice']['active'] is False
+
+
+def test_payto_confirm_get_reconciles_pending_once_and_skips_completed(lk, monkeypatch):
+    ids, board = lk
+    calls = []
+    monkeypatch.setattr(appmod, '_stand_deliver_notes', lambda: calls.append('deliver'))
+    deal = payto_deal(ids['manager'])
+    deal['assigneeAdminId'] = ids['operator']
+    board([], deals=[deal])
+    with appmod.app.test_client() as client:
+        _login(client, ids['manager'])
+        first = _get_state(client)
+        assert first['success'] is True
+        assert first['data']['deals'][0]['payToConfirmNotice']['active'] is True
+        note_id = 'stand:payto-confirm:7:1'
+        assert [n['id'] for n in first['data']['notes'] if n['id'] == note_id] == [note_id]
+        assert _get_state(client) == first
+    assert calls == ['deliver']
+
+    for completed in (
+            {**payto_deal(ids['manager']), 'step': 's27'},
+            {**payto_deal(ids['manager']), 'payToConfirm': {'payTo': dict(deal['payTo'])}},
+            {**payto_deal(ids['manager']), 'pay': {'invoicePaid': True}},
+            {**payto_deal(ids['manager']), 'closed': True}):
+        board([], deals=[completed])
+        with appmod.app.test_client() as client:
+            _login(client, ids['manager'])
+            result = _get_state(client)
+            assert not any(str(n['id']).startswith('stand:payto-confirm:')
+                           for n in result['data'].get('notes') or [])
+
+
+def test_payto_notice_marker_is_server_owned_for_existing_and_new_deals():
+    existing = payto_deal()
+    existing['payToConfirmNotice'] = {'key': 'trusted', 'sequence': 1, 'active': True}
+    old = {'deals': [existing], 'incomes': [], 'convs': []}
+    submitted = copy.deepcopy(old)
+    submitted['deals'][0]['payToConfirmNotice'] = {'key': 'forged', 'sequence': 99, 'active': False}
+    assert stand_transfers.preserve_server_fields(old, submitted)['deals'][0]['payToConfirmNotice'] == \
+        existing['payToConfirmNotice']
+    forged_new = {'deals': [payto_deal()], 'incomes': [], 'convs': []}
+    forged_new['deals'][0]['payToConfirmNotice'] = {'key': 'forged', 'sequence': 99, 'active': True}
+    clean = stand_transfers.preserve_server_fields({'deals': [], 'incomes': [], 'convs': []}, forged_new)
+    assert 'payToConfirmNotice' not in clean['deals'][0]
+
+
+@pytest.mark.parametrize('target_name,expected', [
+    ('manager', {'manager', 'karim'}),
+    ('offduty', {'karim'}),
+    ('operator', {'karim'}),
+    ('bad', {'karim'}),
+    ('none', {'manager', 'manager2', 'karim'}),
+])
+def test_payto_note_targets_manager_not_current_operator_assignee(lk, monkeypatch,
+                                                                   target_name, expected):
+    ids, board = lk
+    monkeypatch.setenv('STAND_NOTIFY_PROFILE', 'lk_send_only')
+    monkeypatch.setenv('STAND_LK_BOT_TOKEN', '555:secret-fake')
+    monkeypatch.setenv('STAND_LK_BOT_ID', '555')
+    sent = []
+    monkeypatch.setattr(notify.stand_egress, 'lk_call', lambda payload: sent.append(payload) or {'ok': True})
+    monkeypatch.setattr(notify.stand_egress, 'lk_preflight_ok', lambda: True)
+    deal = payto_deal(ids['manager'])
+    deal['assigneeAdminId'] = ids['operator']
+    state = {'deals': [deal], 'notes': []}
+    assert appmod._stand_reconcile_payto_confirm_notes(state)
+    target = (None if target_name == 'none' else 'bad' if target_name == 'bad'
+              else ids[target_name])
+    state['notes'][0]['recipientAdminId'] = target
+    board(state['notes'], deals=state['deals'])
+    notify.deliver()
+    recipients = {name for name, uid in ids.items() if any(
+        payload['chat_id'] == {ids['karim']: 201, ids['manager']: 202,
+                              ids['manager2']: 203, ids['operator']: 204,
+                              ids['offduty']: 205, ids['teodor']: 206}[uid]
+        and 'Подтвердите реквизиты' in payload['text'] for payload in sent)}
+    assert recipients == expected
+    assert 'operator' not in recipients
+
+
+@pytest.mark.parametrize('stale_kind', ['confirmed', 'changed_snapshot'])
+def test_stale_payto_note_is_suppressed_before_delivery(lk, monkeypatch, stale_kind):
+    ids, board = lk
+    monkeypatch.setenv('STAND_NOTIFY_PROFILE', 'lk_send_only')
+    monkeypatch.setenv('STAND_LK_BOT_TOKEN', '555:secret-fake')
+    monkeypatch.setenv('STAND_LK_BOT_ID', '555')
+    sent = []
+    monkeypatch.setattr(notify.stand_egress, 'lk_call', lambda payload: sent.append(payload) or {'ok': True})
+    monkeypatch.setattr(notify.stand_egress, 'lk_preflight_ok', lambda: True)
+    deal = payto_deal(ids['manager'])
+    state = {'deals': [deal], 'notes': []}
+    appmod._stand_reconcile_payto_confirm_notes(state)
+    if stale_kind == 'confirmed':
+        deal['payToConfirm'] = {'payTo': dict(deal['payTo']), 'at': 1}
+        deal['payToConfirmNotice']['active'] = False
+    else:
+        deal['payTo']['acc'] = 'SYNTHETIC-2'  # marker ещё старый: доставка сверяет снимок сама
+    board(state['notes'], deals=state['deals'])
+    notify.deliver()
+    assert not any('Подтвердите реквизиты' in payload['text'] for payload in sent)
+    assert log_rows('stand:payto-confirm:7:1')[ids['manager']][0] == 'suppressed'
+
+
+def test_malformed_manager_id_never_fans_out_payto_note(lk, monkeypatch):
+    ids, board = lk
+    monkeypatch.setenv('STAND_NOTIFY_PROFILE', 'lk_send_only')
+    monkeypatch.setenv('STAND_LK_BOT_TOKEN', '555:secret-fake')
+    monkeypatch.setenv('STAND_LK_BOT_ID', '555')
+    sent = []
+    monkeypatch.setattr(notify.stand_egress, 'lk_call', lambda payload: sent.append(payload) or {'ok': True})
+    monkeypatch.setattr(notify.stand_egress, 'lk_preflight_ok', lambda: True)
+    deal = payto_deal('invalid-manager-id')
+    deal['assigneeAdminId'] = ids['operator']
+    state = {'deals': [deal], 'notes': []}
+    appmod._stand_reconcile_payto_confirm_notes(state)
+    assert state['notes'][0]['recipientAdminId'] == 'invalid-manager-id'
+    board(state['notes'], deals=state['deals'])
+    notify.deliver()
+    assert not any(payload['chat_id'] in (202, 203, 204) for payload in sent)
+
+
+def test_old_failed_payto_note_stays_stale_after_same_snapshot_reopens(lk, monkeypatch):
+    ids, board = lk
+    monkeypatch.setenv('STAND_NOTIFY_PROFILE', 'lk_send_only')
+    monkeypatch.setenv('STAND_LK_BOT_TOKEN', '555:secret-fake')
+    monkeypatch.setenv('STAND_LK_BOT_ID', '555')
+    sent = []
+    monkeypatch.setattr(notify.stand_egress, 'lk_call', lambda payload: sent.append(payload) or {'ok': True})
+    monkeypatch.setattr(notify.stand_egress, 'lk_preflight_ok', lambda: True)
+    deal = payto_deal(ids['manager'])
+    state = {'deals': [deal], 'notes': []}
+    appmod._stand_reconcile_payto_confirm_notes(state)
+    first_key = state['notes'][0]['payToConfirmKey']
+    deal['payToConfirm'] = {'payTo': dict(deal['payTo']), 'at': 1}
+    appmod._stand_reconcile_payto_confirm_notes(state)
+    deal.pop('payToConfirm')
+    appmod._stand_reconcile_payto_confirm_notes(state)
+    assert state['notes'][0]['payToConfirmKey'] == first_key
+    assert state['notes'][0]['payToConfirmSequence'] == 2
+    board(state['notes'], deals=state['deals'])
+    notify.deliver()
+    assert log_rows('stand:payto-confirm:7:1')[ids['manager']][0] == 'suppressed'
+    assert log_rows('stand:payto-confirm:7:2')[ids['manager']][0] == 'sent'
+    assert sum('Подтвердите реквизиты' in payload['text'] and payload['chat_id'] == 202
+               for payload in sent) == 1
 
 
 def log_rows(note_id):

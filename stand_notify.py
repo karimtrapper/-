@@ -253,7 +253,17 @@ def deliver():
                 # переназначение или отзыв применяется сразу же, без нового
                 # события: старый исполнитель просто перестаёт быть recipient.
                 deal = deals.get(str(note.get('dealId'))) or {}
-                raw_assignee = deal.get('assigneeAdminId')
+                typed_key = note.get('payToConfirmKey')
+                marker = deal.get('payToConfirmNotice')
+                marker = marker if isinstance(marker, dict) else {}
+                stale_payto_note = bool(typed_key and (
+                    not marker.get('active') or marker.get('key') != typed_key
+                    or marker.get('sequence') != note.get('payToConfirmSequence')
+                    or _app._stand_payto_confirm_key(deal) != typed_key))
+                specific_target = ('recipientAdminId' in note and
+                                   note.get('recipientAdminId') is not None)
+                raw_assignee = (note.get('recipientAdminId') if 'recipientAdminId' in note
+                                else deal.get('assigneeAdminId'))
                 has_assignee_field = raw_assignee is not None
                 assignee_id = raw_assignee if _positive_id(raw_assignee) else None
                 # Присутствующее, но испорченное значение (строка, отрицательное,
@@ -275,8 +285,11 @@ def deliver():
                                           and not assignee_user.login_disabled
                                           and (assignee_user.role or 'admin') not in
                                           ('admin', note.get('role') or 'admin'))
-                suppress_only = assignee_broken or assignee_missing_or_disabled
-                fallback_to_role = (not has_assignee_field) or assignee_role_mismatch
+                specific_target_wrong_role = (specific_target and assignee_user is not None
+                                              and assignee_user.role not in ('admin', note.get('role')))
+                suppress_only = (stale_payto_note or assignee_broken or assignee_missing_or_disabled
+                                 or specific_target_wrong_role)
+                fallback_to_role = ((not has_assignee_field) or assignee_role_mismatch) and not specific_target
                 for user in users:
                     # Слот конкретного исполнителя ведёт свой дедуп-ключ: у нового
                     # адресата после переназначения нет истории под этим ключом,
@@ -301,7 +314,7 @@ def deliver():
                         recipient = (user.role or 'admin') in ('admin', note.get('role'))
                     else:
                         recipient = user.id == assignee_id or (user.role or 'admin') == 'admin'
-                    allowed = (profile_ready and channel and recipient and _user_allowed(user)
+                    allowed = (not stale_payto_note and profile_ready and channel and recipient and _user_allowed(user)
                                and can_send(channel, chat_id, 'sendMessage'))
                     status = 'suppressed'
                     attempts = (existing[1] if existing else 0)

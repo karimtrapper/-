@@ -5852,6 +5852,7 @@ def stand_state_get():
     if not STAND_MODE:
         return jsonify({'success': False, 'error': 'stand_only'}), 404
     db = get_session()
+    payto_note_added = False
     try:
         # Миграция под тем же замком, что и PUT: параллельное сохранение не
         # должно вернуть снятый флаг или затереть чужие изменения.
@@ -5863,11 +5864,14 @@ def stand_state_get():
         repaired, warnings = stand_demo.repair(state)
         ownership_moved = _stand_move_legacy_s14_to_operator(db, state)
         repaired = repaired or ownership_moved
+        payto_note_added = _stand_reconcile_payto_confirm_notes(state)
+        repaired = repaired or payto_note_added
         if repaired:
             row.data = json.dumps(state, ensure_ascii=False)
             row.version = (row.version or 0) + 1
-            row.updated_by = ('Система: передача s14 операционисту' if ownership_moved
-                              else 'Система: исправление тестового режима')
+            row.updated_by = ('Система: передача s14 операционисту' if ownership_moved else
+                              'Система: уведомление о реквизитах' if payto_note_added else
+                              'Система: исправление тестового режима')
             row.updated_at = datetime.utcnow()
         response = {'success': True, 'version': row.version or 0,
                     'data': _stand_strip_files(state),
@@ -5875,9 +5879,11 @@ def stand_state_get():
                     'updated_by': row.updated_by, 'role': current_role()}
         if repaired:
             db.commit()
-        return jsonify(response)
     finally:
         db.close()
+    if payto_note_added:
+        _stand_deliver_notes()
+    return jsonify(response)
 
 
 @app.route('/api/stand/nav-count')
@@ -9567,12 +9573,22 @@ def _stand_policy_send_problem(state, main, policy, tx_hash, timestamp_ms, used,
     return None
 
 
-def _stand_note(state, event_id, role, deal, text):
+_STAND_NOTE_NO_TARGET = object()
+
+
+def _stand_note(state, event_id, role, deal, text, recipient_admin_id=_STAND_NOTE_NO_TARGET,
+                payto_confirm_key=None, payto_confirm_sequence=None):
     notes = state.setdefault('notes', [])
     if any(str(n.get('id')) == event_id for n in notes):
         return
-    notes.insert(0, {'id': event_id, 'role': role, 'dealId': deal.get('id'),
-                     'text': text, 'at': int(time.time() * 1000), 'read': False})
+    note = {'id': event_id, 'role': role, 'dealId': deal.get('id'),
+            'text': text, 'at': int(time.time() * 1000), 'read': False}
+    if recipient_admin_id is not _STAND_NOTE_NO_TARGET:
+        note['recipientAdminId'] = recipient_admin_id
+    if payto_confirm_key:
+        note['payToConfirmKey'] = payto_confirm_key
+        note['payToConfirmSequence'] = payto_confirm_sequence
+    notes.insert(0, note)
     del notes[40:]
 
 
@@ -11764,6 +11780,62 @@ def _stand_workflow_problem(previous, state, actor, db):
     return None
 
 
+def _stand_payto_confirm_gate(deal):
+    """Та же параллельная задача подтверждения, что needsPayConfirm() в UI."""
+    if (deal.get('closed') or deal.get('type') != 'Оплата недвижимости'
+            or _stand_payto_problem(deal) or _stand_payto_confirmed(deal)):
+        return None
+    step = deal.get('step')
+    if deal.get('kind') == 'Фрихолд' and step in ('s22', 's23', 's24'):
+        return 'ipps'
+    if step == 's26' and not (deal.get('pay') or {}).get('invoicePaid'):
+        return 'invoice'
+    return None
+
+
+def _stand_payto_confirm_key(deal):
+    gate = _stand_payto_confirm_gate(deal)
+    if not gate:
+        return None
+    snapshot = {'gate': gate, 'payTo': deal.get('payTo') or {},
+                'managerUserId': deal.get('managerUserId')}
+    return hashlib.sha256(json.dumps(snapshot, sort_keys=True, ensure_ascii=False,
+                                     separators=(',', ':')).encode()).hexdigest()
+
+
+def _stand_reconcile_payto_confirm_notes(state):
+    """Один серверный note на открытие gate и актуальный снимок реквизитов.
+
+    Маркер хранится на сделке: обрезка списка notes, повторный PUT и рестарт
+    не создают второе уведомление. При закрытии gate сбрасываем только active,
+    чтобы повторное открытие с теми же реквизитами получило новый номер.
+    """
+    changed = False
+    for deal in state.get('deals') or []:
+        marker = deal.get('payToConfirmNotice')
+        marker = marker if isinstance(marker, dict) else {}
+        gate = _stand_payto_confirm_gate(deal)
+        if not gate:
+            if marker.get('active'):
+                deal['payToConfirmNotice'] = {**marker, 'active': False}
+                changed = True
+            continue
+        manager_id = deal.get('managerUserId')
+        key = _stand_payto_confirm_key(deal)
+        if marker.get('active') and marker.get('key') == key:
+            continue
+        sequence = marker.get('sequence') if type(marker.get('sequence')) is int else 0
+        sequence += 1
+        deal['payToConfirmNotice'] = {'key': key, 'sequence': sequence, 'active': True}
+        text = ('Подтвердите реквизиты перед отправкой IPPS' if gate == 'ipps'
+                else 'Подтвердите реквизиты перед оплатой')
+        _stand_note(state, f"stand:payto-confirm:{deal['id']}:{sequence}", 'manager', deal,
+                    text, recipient_admin_id=manager_id, payto_confirm_key=key,
+                    payto_confirm_sequence=sequence)
+        changed = True
+    return changed
+
+
 def _stand_state_events(previous, state, actor, version):
     """Notification text comes only from events accepted by the server."""
     old = {d.get('id'): d for d in previous.get('deals', [])}
@@ -11798,6 +11870,7 @@ def _stand_state_events(previous, state, actor, version):
             events.append(('manager' if actor == 'operator' else 'operator', 'Курсы сделки обновлены'))
         for index, (role, text) in enumerate(events):
             _stand_note(state, f'stand:state:{version}:{deal["id"]}:{index}', role, deal, text)
+    _stand_reconcile_payto_confirm_notes(state)
 
 
 # Поля передачи, подписи и поиска в сети пишет только сервер; общий PUT их не меняет.

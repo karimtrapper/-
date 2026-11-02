@@ -184,6 +184,12 @@ def preserve_server_fields(old_state, new_state):
     for deal in new_state.get('deals', []):
         transfer = deal.get('transfer') or {}
         previous = old_deals.get(deal.get('id')) or {}
+        # Уведомление о подтверждении реквизитов создаёт только сервер. Даже
+        # новый deal не может принести маркер из браузерного снимка.
+        if 'payToConfirmNotice' in previous:
+            deal['payToConfirmNotice'] = previous['payToConfirmNotice']
+        else:
+            deal.pop('payToConfirmNotice', None)
         # IPPS payout approval is stamped only by /api/stand/state after the
         # manager's guarded s22→s23 handoff. Keep it through stale client writes.
         if previous.get('ippsPayoutOrder'):
