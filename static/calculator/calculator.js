@@ -638,7 +638,7 @@ function updateRatesDisplay() {
         usdtThbEl.style.color = '';
         usdtThbEl.style.fontWeight = '';
     } else if (state.rateSource === 'bitazza') {
-        // Bitazza — дефолтный источник, эффективный курс (VWAP − 0.15%)
+        // Bitazza — дефолтный источник, эффективный курс (VWAP − 0.25%)
         if (usdtThbLabel) usdtThbLabel.textContent = 'USDT-THB (Bitazza)';
         const eff = state.rates.bitazza_usdt_thb;
         if (eff) {
@@ -646,7 +646,7 @@ function updateRatesDisplay() {
             usdtThbEl.classList.remove('rate-error');
             if (usdtThbSub) {
                 const raw = state.rates.bitazza_raw;
-                const feeP = state.rates.bitazza_fee_percent ?? 0.15;
+                const feeP = state.rates.bitazza_fee_percent ?? 0.25;
                 const feeF = state.rates.bitazza_fee_fixed_thb ?? 20;
                 usdtThbSub.textContent = `VWAP ${raw ? raw.toFixed(2) : '—'} · −${feeP}% · −${feeF}฿/сделку`;
                 usdtThbSub.style.display = 'block';
@@ -1226,7 +1226,7 @@ function calculateLocal(amount) {
         const thb_before_fees = usdt_initial * usdt_thb_rate_sell;
         
         // 3. Комиссии за выдачу
-        const wdRate = state.rateSource === 'bitazza' ? 0.0015 : 0.0025;
+        const wdRate = 0.0025;
         const withdrawal_percent_fee = thb_before_fees * wdRate;
         const withdrawal_fixed = 20;
         const thbNet = thb_before_fees - withdrawal_percent_fee - withdrawal_fixed;
@@ -1263,7 +1263,7 @@ function calculateLocal(amount) {
     if (state.method === 'doverka' && state.scenario === 'thb-to-rub') {
         // 1. Комиссии за выдачу
         const withdrawal_fixed = 20;
-        const wdRate2 = state.rateSource === 'bitazza' ? 0.0015 : 0.0025;
+        const wdRate2 = 0.0025;
         const withdrawal_percent_fee = amount * wdRate2;  // amount - это THB
         
         // 2. THB к обмену

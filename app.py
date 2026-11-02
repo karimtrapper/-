@@ -4764,7 +4764,7 @@ def crm_index():
 # ==================== CALCULATOR API ====================
 
 # Комиссии Bitazza для калькулятора (позже переедут в настройки CRM)
-CALC_BITAZZA_FEE_PCT = 0.0015     # 0.15% комиссия биржи
+CALC_BITAZZA_FEE_PCT = WITHDRAWAL_PCT_BITAZZA  # 0.25% комиссия биржи
 CALC_BITAZZA_FEE_FIXED_THB = 20   # фикс за вывод, ฿ (разово со сделки)
 CALC_BITAZZA_QUOTE_VOLUME = 1000  # номинальный объём USDT для карточки курса
 
@@ -4798,7 +4798,7 @@ def _estimate_usdt_volume(scenario, direction, amount, rates):
 
 
 def _bitazza_calc_quote(usdt_amount=CALC_BITAZZA_QUOTE_VOLUME):
-    """Курс Bitazza для калькулятора: VWAP по bids на объём × (1 − 0.15%).
+    """Курс Bitazza для калькулятора: VWAP по bids на объём × (1 − 0.25%).
 
     Фикс 20฿ здесь НЕ вычитается — он разовый на сделку, применяется в расчёте.
     None — стакан недоступен или объём не покрыт.
@@ -5040,7 +5040,7 @@ def calculate():
         rates = asyncio.run(ExchangeRateProvider.get_all_rates())
 
         # Источник курса USDT-THB: bitazza (стакан по API) | binance | custom (ручной).
-        # От него зависит и комиссия площадки за выдачу: Bitazza 0.15%, Binance 0.25%.
+        # От него зависит комиссия площадки за выдачу: Bitazza и Binance 0.25%.
         rate_source = str(data.get('rate_source') or 'binance').lower()
         withdrawal_pct = WITHDRAWAL_PCT_BINANCE
 
@@ -5055,7 +5055,7 @@ def calculate():
             # и курс отличается от номинальной карточки.
             bz = _bitazza_calc_quote(_estimate_usdt_volume(scenario, direction, amount, rates))
             if bz:
-                # raw VWAP: комиссию биржи 0.15% вычитаем ниже как комиссию за выдачу,
+                # raw VWAP: комиссию биржи 0.25% вычитаем ниже как комиссию за выдачу,
                 # иначе она удержится дважды.
                 rates['usdt_thb'] = bz['raw_vwap']
                 withdrawal_pct = WITHDRAWAL_PCT_BITAZZA
@@ -5116,7 +5116,7 @@ def calculate():
             return jsonify({'error': 'Сумма слишком мала для расчёта'}), 400
 
         # Откуда курс и по какой ставке считали выдачу — фронт подписывает этим
-        # строку «Комиссия за выдачу (0,15%)» вместо захардкоженных 0,25%.
+        # строку «Комиссия за выдачу» с применённым процентом.
         result['rate_source'] = rate_source
         result['withdrawal_percent_rate'] = round(withdrawal_pct * 100, 3)
 

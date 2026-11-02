@@ -482,9 +482,9 @@ class ExchangeRateProvider:
 
 
 # Комиссия площадки за выдачу бат. Зависит от того, где откупаем:
-# Binance 0.25%, Bitazza 0.15%. Фикс за вывод одинаковый.
+# Binance и Bitazza 0.25%. Фикс за вывод одинаковый.
 WITHDRAWAL_PCT_BINANCE = 0.0025
-WITHDRAWAL_PCT_BITAZZA = 0.0015
+WITHDRAWAL_PCT_BITAZZA = 0.0025
 WITHDRAWAL_FIXED_THB = 20
 
 # Стандарт по USDT-направлениям. Раньше сервер без явной маржи считал USDT → THB
@@ -559,7 +559,7 @@ class ExchangeCalculator:
         Args:
             usdt_thb_rate: Курс USDT-THB биржи, на которой откупаем баты
             rub_usdt_rate: Курс RUB-USDT
-            withdrawal_percent: комиссия площадки за выдачу, доля (Binance 0.25%, Bitazza 0.15%)
+            withdrawal_percent: комиссия площадки за выдачу, доля (Binance и Bitazza 0.25%)
             withdrawal_fixed: фикс за вывод, ฿
         """
         self.usdt_thb_rate = usdt_thb_rate
