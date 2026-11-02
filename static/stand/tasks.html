@@ -8012,6 +8012,8 @@ const CRM_FACTS_MISMATCH=['locked_invoice_mismatch','transfer_sent_mismatch','pa
   'payout_source_mismatch','recipient_mismatch','custom_facts_mismatch',
   'custom_origin_mismatch','company_percent_mismatch','buy_rate_mismatch'];
 function crmFactsMismatchMessage(error){
+  if(error==='payin_basis_missing')return 'Не найден подтверждённый приход USDT для сделки. Проверьте хеши и сумму, а для конвертации — распределение по сделкам.';
+  if(error==='payin_basis_unverified')return 'Приход USDT ещё не подтверждён. Проверьте хеш и результат проверки сети.';
   return CRM_FACTS_MISMATCH.includes(error)
     ?'Цифры или переводы отличаются от сохранённой сделки. Верните значения из доски и проверьте факты.'
     :null;

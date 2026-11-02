@@ -8478,6 +8478,81 @@ def _stand_income_part_basis(income, part, deal):
     return _stand_number(gross) if gross is not None else None
 
 
+def _stand_accepted_conversion_payin(state, deal):
+    """Сумма прихода сделки из подтверждённой пачки и точных долей её хешей.
+
+    План `source.usdt` и `pay.usdt` не служат доказательством. Для общей пачки
+    сверяем сохранённые фактические доли всех сделок с номиналом сетевого
+    перевода, не пересчитывая уже принятую аллокацию заново по RUB-весам.
+    """
+    from decimal import Decimal
+    if deal.get('cnvId') is None:
+        return None
+    convs = [c for c in state.get('convs') or [] if c.get('id') == deal.get('cnvId')]
+    if len(convs) != 1:
+        return None
+    conv = convs[0]
+    if conv.get('status') not in (None, 'received'):
+        return None
+    sources = conv.get('sources') or []
+    matches = [i for i, source in enumerate(sources) if source.get('dealId') == deal.get('id')]
+    if len(matches) != 1 or not conv.get('txs') or not deal.get('payinHashes'):
+        return None
+    tx_amounts = {}
+    for tx in conv['txs']:
+        if not isinstance(tx, dict) or tx.get('status') != 'confirmed':
+            return None
+        amount = _amount(tx.get('amount'))
+        network = normalize_network(tx.get('net') or tx.get('network') or 'TRC20')
+        tx_hash = str(tx.get('hash') or '').strip().lower()
+        key = (tx_hash, network)
+        if amount is None or amount <= 0 or not network or not tx_hash or key in tx_amounts:
+            return None
+        tx_amounts[key] = amount
+    deals = {item.get('id'): item for item in state.get('deals') or []}
+    deals[deal.get('id')] = deal
+    used = Counter()
+    result = None
+    source_ids = [source.get('dealId') for source in sources if source.get('dealId') is not None]
+    if len(source_ids) != len(set(source_ids)):
+        return None
+    for source in sources:
+        source_deal = deals.get(source.get('dealId'))
+        if source_deal is None:
+            if source.get('dealId') is None:
+                continue  # свободное банковское поступление ещё не относится к сделке
+            return None
+        if source_deal.get('cnvId') != conv.get('id'):
+            return None
+        receipts = source_deal.get('payinHashes') or []
+        own = Counter()
+        for receipt in receipts:
+            if not isinstance(receipt, dict):
+                return None
+            amount = _amount(receipt.get('amount'))
+            network = normalize_network(receipt.get('net') or receipt.get('network') or 'TRC20')
+            key = (str(receipt.get('hash') or '').strip().lower(), network)
+            if amount is None or amount <= 0 or key not in tx_amounts or key in own:
+                return None
+            own[key] = amount
+            used[key] += amount
+            if used[key] > tx_amounts[key]:
+                return None
+        share = sum(own.values(), Decimal(0))
+        fact = _amount(source.get('usdtFact'))
+        if fact is None and len(sources) == 1 and len(own) == len(tx_amounts):
+            # Старый одиночный источник ещё не записывал usdtFact. План здесь
+            # только сверяем: сумму доказывают полные подтверждённые хеши.
+            planned = _amount(source.get('usdt'))
+            if all(own.get(key) == amount for key, amount in tx_amounts.items()) and planned == share:
+                fact = share
+        if fact is None or fact <= 0 or share != fact:
+            return None
+        if source.get('dealId') == deal.get('id'):
+            result = share
+    return result
+
+
 def _stand_close_fact_source(state, deal, kind):
     """Return verifiable provenance or a precise missing fact for a signoff."""
     if not stand_demo.enabled() and deal.get('demoTransfers') and stand_demo.evidence(state, deal):
@@ -8499,25 +8574,7 @@ def _stand_close_fact_source(state, deal, kind):
         # A bank receipt proves RUB only. Allocated USDT must also match the
         # server-verified conversion; never let a bank receipt mask failed hashes.
         if hashes or deal.get('cnvId') is not None:
-            conv = next((c for c in state.get('convs') or []
-                         if c.get('id') == deal.get('cnvId')), None)
-            source = next((s for s in (conv or {}).get('sources') or []
-                           if s.get('dealId') == deal.get('id')), None)
-            source_amount = _stand_number((source or {}).get('usdtFact') or (source or {}).get('usdt'))
-            board_amount = sum(_stand_number(h.get('amount')) for h in hashes)
-            def hash_counts(items):
-                return Counter((str(h.get('hash') or '').strip(),
-                                normalize_network(h.get('net') or h.get('network') or 'TRC20'),
-                                round(_stand_number(h.get('amount')), 2))
-                               for h in items or [] if isinstance(h, dict))
-            board_hashes = hash_counts(hashes)
-            confirmed_hashes = hash_counts((conv or {}).get('txs'))
-            if (source and source_amount > 0 and board_amount > 0
-                    and abs(source_amount - board_amount) < .01
-                    and (conv or {}).get('txs') and all(t.get('status') == 'confirmed'
-                        for t in conv['txs']) and board_hashes
-                    and all(confirmed_hashes[key] >= count
-                            for key, count in board_hashes.items())):
+            if _stand_accepted_conversion_payin(state, deal) is not None:
                 return 'accepted_conversion', None
             return None, 'verified_payin_missing'
         parts = deal.get('payinParts') or []
@@ -8893,7 +8950,7 @@ def stand_crm_close(stand_deal_id):
             crm_data['deal_kind'] = 'exchange'
         if crm_data.get('deal_kind') != kind:
             return jsonify({'success': False, 'error': 'deal_kind_mismatch'}), 400
-        fact_problem = _stand_crm_fact_problem(stand_deal, crm_data, kind)
+        fact_problem = _stand_crm_fact_problem(stand_deal, crm_data, kind, state=state)
         if fact_problem:
             return jsonify({'success': False, 'error': fact_problem}), 409
         if (not str(crm_data.get('client_name') or '').strip()
@@ -9818,7 +9875,7 @@ def _stand_broker_payin_basis(rub, rate):
     }.items()}
 
 
-def _stand_crm_fact_problem(board, crm, kind):
+def _stand_crm_fact_problem(board, crm, kind, *, state=None):
     """Reject CRM money and transfer facts that contradict the persisted board.
 
     The CRM preview permits editing descriptive fields, but a POST may not
@@ -10002,9 +10059,13 @@ def _stand_crm_fact_problem(board, crm, kind):
     if flow_sole:
         # Flow Sole stores the deal's declared share separately from the
         # network transfer. A missing hash amount means “use the full transfer”
-        # in the strict proof path; it is not missing board pay-in basis.
-        main_usdt = money(custom.get('payinUsdt') if board.get('custom') is True
-                          else board.get('amountUsdt'))
+        # in the strict proof path. Older ordinary deals have no declared
+        # amountUsdt: accept only their exact confirmed conversion allocation.
+        declared = custom.get('payinUsdt') if board.get('custom') is True else board.get('amountUsdt')
+        main_usdt = money(declared)
+        if declared is None and board.get('custom') is not True and state is not None:
+            confirmed = _stand_accepted_conversion_payin(state, board)
+            main_usdt = money(confirmed) if confirmed is not None else None
     elif main_hashes:
         if not all(isinstance(h, dict) and positive(h.get('amount')) is not None
                    for h in main_hashes):

@@ -1515,6 +1515,50 @@ def test_accepted_conversion_pay_in_hash_identity_and_default_network():
     assert m._stand_close_fact_source(state, deal, 'payin')[1] == 'verified_payin_missing'
 
 
+def test_accepted_conversion_uses_only_this_deals_share_of_common_hash():
+    own = {'id': 1474, 'cnvId': 2, 'payType': 'По реквизитам',
+           'payinHashes': [{'hash': 'shared', 'amount': 100, 'net': 'TRC20'}]}
+    state = {'deals': [{'id': 1475, 'cnvId': 2,
+                       'payinHashes': [{'hash': 'shared', 'amount': 200, 'net': 'TRC20'}]}],
+             'convs': [{'id': 2, 'status': 'received',
+             'sources': [{'dealId': 1474, 'rub': 10000, 'usdtFact': 100},
+                         {'dealId': 1475, 'rub': 20000, 'usdtFact': 200}],
+             'txs': [{'hash': 'shared', 'net': 'TRC20', 'amount': 300,
+                      'status': 'confirmed'}]}]}
+    assert m._stand_accepted_conversion_payin(state, own) == 100
+    assert m._stand_close_fact_source(state, own, 'payin') == ('accepted_conversion', None)
+    own['payinHashes'][0]['amount'] = 110
+    state['deals'][0]['payinHashes'][0]['amount'] = 190
+    state['convs'][0]['sources'][0]['usdtFact'] = 110
+    state['convs'][0]['sources'][1]['usdtFact'] = 190
+    assert m._stand_accepted_conversion_payin(state, own) == 110  # сохранённые доли, не RUB-пропорция
+    own['payinHashes'][0]['amount'] = 100
+    state['deals'][0]['payinHashes'][0]['amount'] = 200
+    state['convs'][0]['sources'][0]['usdtFact'] = 100
+    state['convs'][0]['sources'][1]['usdtFact'] = 200
+    own['payinHashes'][0]['amount'] = 300
+    assert m._stand_accepted_conversion_payin(state, own) is None
+    own['payinHashes'][0]['amount'] = 100
+    state['convs'][0]['sources'][0]['usdtFact'] = 101
+    assert m._stand_accepted_conversion_payin(state, own) is None
+
+
+def test_legacy_single_bank_source_without_usdt_fact_needs_full_confirmed_hash():
+    deal = {'id': 1474, 'cnvId': 9, 'payType': 'СБП',
+            'payinHashes': [{'hash': 'old-full', 'amount': 120, 'net': 'TRC20'}]}
+    state = {'convs': [{'id': 9, 'status': 'received',
+             'sources': [{'dealId': 1474, 'usdt': 120}],
+             'txs': [{'hash': 'old-full', 'amount': 120, 'net': 'TRC20',
+                      'status': 'confirmed'}]}]}
+    assert m._stand_accepted_conversion_payin(state, deal) == 120
+    assert m._stand_close_fact_source(state, deal, 'payin') == ('accepted_conversion', None)
+    state['convs'][0]['sources'][0]['usdt'] = 121
+    assert m._stand_accepted_conversion_payin(state, deal) is None
+    state['convs'][0]['sources'][0]['usdt'] = 120
+    state['convs'][0]['sources'].append({'dealId': None, 'usdt': 0})
+    assert m._stand_accepted_conversion_payin(state, deal) is None
+
+
 def test_payin_extra_keeps_part_money_and_hash_provenance(monkeypatch):
     uid = _setup(monkeypatch)
     db = m.get_session()

@@ -130,5 +130,11 @@ function fixture(responses, confirmAnswer) {
     assert.equal(d.crmDealId, null);
     assert.ok(!toasts.some(t => t.includes(code)), 'сырой код не показываем');
   }
+  for (const code of ['payin_basis_missing', 'payin_basis_unverified']) {
+    const {ctx, toasts} = fixture([{status: 409, json: {success: false, error: code}}], true);
+    await ctx.crmPushClose(1,10);
+    assert.ok(toasts.some(t => t.includes('Проверьте хеш')), code + ' → ' + JSON.stringify(toasts));
+    assert.ok(!toasts.some(t => t.includes(code)), 'сырой код не показываем');
+  }
   console.log('stand crmPushClose: 5 сценариев + хеш прихода PASS');
 })();

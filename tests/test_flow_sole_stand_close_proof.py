@@ -175,6 +175,81 @@ def test_flow_explicit_pool_share_mismatch_is_rejected_before_close(monkeypatch)
     assert client.get('/api/stand/state').json['data']['deals'][0]['closed'] is False
 
 
+def test_missing_declared_amount_uses_exact_confirmed_conversion_share(monkeypatch):
+    """Старый s27 хранит факт в CNV, но никогда не имел amountUsdt на сделке."""
+    client, crm, first_hash = _flow_board(monkeypatch, hash_amount=70, declared_amount=70)
+    second_hash = uuid.uuid4().hex + uuid.uuid4().hex
+    db = m.get_session()
+    try:
+        row = db.query(m.StandState).filter_by(id=1).one()
+        state = json.loads(row.data)
+        deal = state['deals'][0]
+        deal['amountUsdt'] = None
+        deal['pay']['usdt'] = 61070
+        deal['payinHashes'] = [{'hash': first_hash, 'net': 'TRC20', 'amount': 70},
+                               {'hash': second_hash, 'net': 'TRC20', 'amount': 61000}]
+        conv = state['convs'][0]
+        conv['txs'].append({'hash': second_hash, 'net': 'TRC20', 'amount': 61000,
+                            'status': 'confirmed'})
+        conv['sources'][0]['usdt'] = 61070.47  # старый план не равен факту
+        conv['sources'][0]['usdtFact'] = 61070
+        row.data = json.dumps(state)
+        db.commit()
+    finally:
+        db.close()
+    crm['payin_amount_usdt'] = 61070
+    crm['payin_tx_hashes'] = [{'hash': first_hash, 'network': 'trc20', 'amount_usdt': 70},
+                              {'hash': second_hash, 'network': 'trc20', 'amount_usdt': 61000}]
+    _tron_proof(monkeypatch, {first_hash: 70, second_hash: 61000})
+    response = client.post('/api/stand/deals/1474/crm-close',
+                           json={'version': 1, 'crm': crm})
+    assert response.status_code == 201, response.json
+    assert response.json['deal']['payin_amount_usdt'] == 61070
+    assert response.json['deal']['payin_tx_verified'] is True
+    assert response.json['data']['deals'][0]['closed'] is True
+
+
+@pytest.mark.parametrize('damage', ['fabricated', 'unverified', 'duplicate',
+                                    'allocation', 'plan_mismatch', 'payload'])
+def test_missing_declared_amount_rejects_unproved_basis(monkeypatch, damage):
+    client, crm, receipt_hash = _flow_board(monkeypatch, hash_amount=400, declared_amount=400)
+    db = m.get_session()
+    try:
+        row = db.query(m.StandState).filter_by(id=1).one()
+        state = json.loads(row.data)
+        deal = state['deals'][0]
+        deal['amountUsdt'] = None
+        deal['pay']['usdt'] = 400
+        conv = state['convs'][0]
+        if damage == 'fabricated':
+            deal['payinHashes'][0]['amount'] = 500
+        elif damage == 'unverified':
+            conv['txs'][0]['status'] = 'pending'
+        elif damage == 'duplicate':
+            deal['payinHashes'].append(dict(deal['payinHashes'][0]))
+        elif damage == 'allocation':
+            conv['sources'][0]['usdtFact'] = 300
+        elif damage == 'plan_mismatch':
+            conv['sources'][0].pop('usdtFact')
+            conv['sources'][0]['usdt'] = 401
+        row.data = json.dumps(state)
+        db.commit()
+    finally:
+        db.close()
+    if damage == 'payload':
+        crm['payin_amount_usdt'] = 500
+    _tron_proof(monkeypatch, {receipt_hash: 400})
+    before = _counts()
+    response = client.post('/api/stand/deals/1474/crm-close',
+                           json={'version': 1, 'crm': crm})
+    assert response.status_code == 409, response.json
+    assert response.json['error'] in ('payin_basis_missing', 'payin_amount_mismatch',
+                                      'Распределение USDT не совпадает с подтверждённым приходом и долями RUB',
+                                      'Распределять можно только подтверждённый приход USDT',
+                                      'Для отправки нужен уникальный подтверждённый приход USDT')
+    assert _counts() == before
+
+
 @pytest.mark.parametrize(('board_share', 'payload_share'), [(100, None), (None, 100)])
 def test_flow_hash_amount_null_and_explicit_share_cannot_be_swapped(
         monkeypatch, board_share, payload_share):

@@ -73,6 +73,14 @@ const flowPoolShare=ctx.crmPayload({...base,type:'Обмен валюты',kind:
 assert.equal(flowPoolShare.payin_amount_usdt,100);
 assert.equal(flowPoolShare.payin_tx_hashes[0].amount_usdt,100,
   'an explicitly entered Flow Sole pool share survives CRM payload serialization');
+const legacyFlow=ctx.crmPayload({...base,type:'Оплата недвижимости',kind:'Лизхолд',
+  payType:'По реквизитам',rubReceivingAccount:{mode:'flowsole'},
+  amountRub:5000000,incomeAmount:5000000,amountUsdt:null,pay:{usdt:61070},
+  payinParts:[],payinExtra:[],rates:{broker:80.9,usdtThb:33.61,client:2.57},
+  payinHashes:[{hash:'a'.repeat(64),net:'TRC20',amount:70},
+               {hash:'b'.repeat(64),net:'TRC20',amount:61000}]});
+assert.equal(legacyFlow.payin_amount_usdt,61070,
+  'legacy Flow Sole CRM preview uses allocated hash facts, not the RUB/rate plan');
 const rateOnly=ctx.crmPayload({...base,type:'Обмен валюты',kind:'',payType:'Крипта',
   amountUsdt:100,payinParts:[],payinExtra:[{method:'sber_reqs',
     amount_rub:2000,rate_rub_usdt:100,amount_usdt:null}]});
