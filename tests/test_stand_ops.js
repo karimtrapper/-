@@ -67,7 +67,7 @@ const num = x => (x == null || x === '') ? null : parseFloat(String(x).replace('
 // s22 не пускает дальше с адресом не той сети — подсветка и тост.
 {
   const d = {id: 1, code: 'СД-1', step: 's22', closed: false, postConv: 'coins', log: [], pay: {},
-    transfer: {amount: '100,00', addr: '4490404', net: 'TRC-20'}};
+    transfer: {amount: '100,00', addr: '4490404'}};
   const toasts = [], marked = [];
   const ctx = run(['act', 'addrValid'], {
     deal: () => d, cnvMembers: () => [d], saveNote: () => {},
@@ -75,7 +75,7 @@ const num = x => (x == null || x === '') ? null : parseFloat(String(x).replace('
     hashSum: txs => txs.reduce((sum, tx) => sum + tx.amount, 0), isCrypto: () => false,
     document: {getElementById: id => ({id, scrollIntoView() {}, focus() {},
       classList: {add: c => marked.push(id + ':' + c)}})},
-    pcSends: () => true, pcInside: () => false, pcNet: x => x.transfer.net,
+    pcSends: () => true, pcInside: () => false, pcNet: x => x.transfer.net||'TRC-20',
     pcAmount: x => num(String(x.transfer.amount).replace(/\s/g, '')),
     toast: t => toasts.push(t), go: (x, s) => { x.step = s; }, log: () => {},
     packSettle: () => {}, flowOf: () => ['s22', 's23'], POST_CONV: [], usd: String, pcOut: () => 100,
@@ -88,6 +88,7 @@ const num = x => (x == null || x === '') ? null : parseFloat(String(x).replace('
   d.transfer.addr = 'TZG8xz2sSvtge3WXaD5acYvVBN1t9kjpcX';
   await ctx.act(1, 's22');
   assert.equal(d.step, 's23');
+  assert.equal(d.transfer.net, 'TRC-20', 'сеть из проверенной формы сохранена до поручения');
 }
 
 // Удаление перевода фин диром пишется в журнал (аудит 27.09 №6).

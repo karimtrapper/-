@@ -12677,6 +12677,8 @@ async function act(id,step){
     mem.forEach(x=>{
       const o=POST_CONV.find(p=>p.k===x.postConv);
       const tr=x.transfer||{};
+      /* При переходе к поручению сохраняем сеть, которую проверили и показали в форме. */
+      if(pcSends(x)&&!tr.net){x.transfer=tr;tr.net=pcNet(x);}
       log(x,'Назначение: '+(o?o.t:x.postConv)+(pcSends(x)
         ? ' · '+(tr.amount||'—')+' USDT · '+(tr.to||'—')+' · '+(tr.addr||'адрес не указан')
         : ' · перевода с кошелька нет'));

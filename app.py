@@ -7570,7 +7570,7 @@ def stand_transfer_mark_sent():
         if not re.fullmatch(r'[0-9a-f]{64}', tx_hash):
             return jsonify(success=False, error='Нужен полный хеш перевода из 64 символов'), 400
         fingerprint, wallet_address = policy['fingerprint'], policy['address']
-        orders = [o for o in policy['orders'] if normalize_network(o.get('net')) == 'trc20' and o.get('to')]
+        orders = [o for o in policy['orders'] if _stand_policy_trc20_order(policy, o)]
         members = {d['id']: d for d in _stand_members(state, main['id'])}
         used = {str(h).lower() for h in get_used_transaction_hashes(db) if h}
         if any(c.get('byId') == actor_id for c in main.get('transferClaimHistory') or []
@@ -7599,6 +7599,12 @@ def stand_transfer_mark_sent():
             continue            # поручение уже закрыто другим переводом
         proof = verify_transfer(tx_hash, 'trc20', wallet_address, order['to'], float(Decimal(order['amount'])))
         if proof.get('status') == 'confirmed':
+            if not already_attached:
+                problem = _stand_policy_send_problem(state, main, policy, tx_hash,
+                                                     proof.get('timestampMs'), used, order)
+                if problem:
+                    reasons.append(problem)
+                    continue
             chosen = (order, proof)
             break
         reasons.append(proof.get('checkError') or {'pending': 'перевод ещё не подтверждён сетью',
@@ -7607,7 +7613,7 @@ def stand_transfer_mark_sent():
         return jsonify(success=False, error='Перевод не подходит: ' + (reasons[0] if reasons else 'нет поручения для проверки')), 409
     order, proof = chosen
     if not already_attached:
-        problem = _stand_policy_send_problem(state, main, policy, tx_hash, proof.get('timestampMs'), used)
+        problem = _stand_policy_send_problem(state, main, policy, tx_hash, proof.get('timestampMs'), used, order)
         if problem:
             return jsonify(success=False, error=problem), 409
     db = get_session()
@@ -7634,7 +7640,7 @@ def stand_transfer_mark_sent():
         name = _stand_user_name(user)
         if present is None:
             used = {str(h).lower() for h in get_used_transaction_hashes(db) if h}
-            problem = _stand_policy_send_problem(state, main, policy, tx_hash, proof.get('timestampMs'), used)
+            problem = _stand_policy_send_problem(state, main, policy, tx_hash, proof.get('timestampMs'), used, order)
             if problem:
                 return jsonify(success=False, error=problem), 409
             send = dict(ref=tx_hash, hash=tx_hash, net='TRC-20', amount=float(Decimal(order['amount'])),
@@ -9385,6 +9391,20 @@ def _stand_transfer_policy(db, state, main):
             'orders': orders}
 
 
+def _stand_policy_trc20_order(policy, order):
+    """Для старого поручения без net выводим сеть только из двух Tron-адресов.
+
+    Сохранённое net остаётся в fingerprint без изменений: у начатых переводов
+    claim и поручение должны совпасть с тем же снимком, что при их создании.
+    Явную иную или некорректную сеть не заменяем догадкой.
+    """
+    raw_net = order.get('net')
+    if raw_net and normalize_network(raw_net) != 'trc20':
+        return False
+    return (valid_address(policy.get('address'), 'trc20')
+            and valid_address(order.get('to'), 'trc20'))
+
+
 def _wallet_policy_ready(wallet):
     """Политика задачника действует для любого кошелька с заданными
     «Заводит» и «Подписывает», а не только для адресов из сида."""
@@ -9508,15 +9528,25 @@ def _stand_policy_addresses(db):
     return found
 
 
-def _stand_policy_round_start(main, fingerprint):
-    """Не раньше чего перевод относится к раунду: самый ранний claim раунда, без claim — вход в шаг."""
+def _stand_policy_round_start(main, fingerprint, order=None):
+    """Нижняя граница — серверное поручение, а у старых досок — claim/вход в шаг.
+
+    Подписант мог отправить после поручения, пока инициатор ещё не нажал
+    «Начать работу». Поздний claim не делает такую отправку недействительной.
+    """
+    from stand_outgoing_review import timestamp
+    stamp = (order.get('outgoingOrderAt') if order is not None
+             and order.get('outgoingOrderAt') is not None else main.get('outgoingOrderAt'))
+    ordered_at = timestamp(stamp)
+    if ordered_at is not None and ordered_at > 0:
+        return ordered_at
     claims = _stand_policy_round_claims(main, fingerprint)
     if claims:
         return min(c['at'] for c in claims)
     return main.get('stepEnteredAt') or 0
 
 
-def _stand_policy_send_problem(state, main, policy, tx_hash, timestamp_ms, used):
+def _stand_policy_send_problem(state, main, policy, tx_hash, timestamp_ms, used, order=None):
     """Единая проверка «перевод годится для закрытия раунда политики».
 
     Её применяют все три пути: поиск в сети (поллер), «Я отправил» держателя claim (хеш в
@@ -9526,7 +9556,7 @@ def _stand_policy_send_problem(state, main, policy, tx_hash, timestamp_ms, used)
         return None                           # demo-переводы идут отдельным контуром
     if not timestamp_ms:
         return 'Сеть не вернула время перевода — отметить нельзя'
-    if timestamp_ms < _stand_policy_round_start(main, policy['fingerprint']):
+    if timestamp_ms < _stand_policy_round_start(main, policy['fingerprint'], order):
         return 'Перевод сделан раньше начала отправки'
     members = {d['id'] for d in _stand_members(state, main['id'])}
     elsewhere = {str(s.get('hash') or s.get('ref') or '').lower()
@@ -13461,7 +13491,7 @@ def _stand_policy_group_orders(policy):
     ждут столько же одинаковых переводов."""
     groups = {}
     for order in policy['orders']:
-        if normalize_network(order.get('net')) != 'trc20' or not order.get('to'):
+        if not _stand_policy_trc20_order(policy, order):
             continue
         groups.setdefault((order['to'], order['amount']), []).append(order)
     return groups
@@ -13503,7 +13533,8 @@ def _stand_track_policy_outgoing(deal_id=None, *, cache_ttl=0):
             claims = _stand_policy_round_claims(main, policy['fingerprint'])
             if not claims:
                 continue
-            jobs.append((main['id'], policy, min(c['at'] for c in claims), main, snapshot))
+            jobs.append((main['id'], policy, _stand_policy_round_start(main, policy['fingerprint']),
+                         main, snapshot))
         used = {str(h).lower() for h in get_used_transaction_hashes(db) if h} if jobs else set()
     finally:
         db.close()
@@ -13515,10 +13546,12 @@ def _stand_track_policy_outgoing(deal_id=None, *, cache_ttl=0):
         groups = {}
         complete = True
         for (to, amount), orders in _stand_policy_group_orders(policy).items():
+            group_after = min(_stand_policy_round_start(job_main, policy['fingerprint'], order)
+                              for order in orders)
             try:
                 found = discover_transfers(direction='outgoing', wallet_addr=sender,
                     counterparty_addr=to, expected_amount=Decimal(amount), tolerance=Decimal(0),
-                    after_ts=after_ts, collect_outgoing=True, cache_ttl=cache_ttl)
+                    after_ts=group_after, collect_outgoing=True, cache_ttl=cache_ttl)
             except (ValueError, TypeError, ArithmeticError):
                 complete = False
                 continue
@@ -13527,8 +13560,9 @@ def _stand_track_policy_outgoing(deal_id=None, *, cache_ttl=0):
                 continue
             matches = sorted((tx for tx in found['candidates']
                               if tx['to'] == to and tx['amount'] == Decimal(amount)
-                              and _stand_policy_send_problem(job_state, job_main, policy, tx['hash'],
-                                                             tx['timestamp_ms'], used) is None),
+                              and any(_stand_policy_send_problem(
+                                  job_state, job_main, policy, tx['hash'], tx['timestamp_ms'],
+                                  used, order) is None for order in orders)),
                              key=lambda tx: (tx['timestamp_ms'], tx['hash']))
             groups[(to, amount)] = (orders, matches)
         proofs = {}
@@ -13562,14 +13596,15 @@ def _stand_track_policy_outgoing(deal_id=None, *, cache_ttl=0):
             if not policy or policy['fingerprint'] != fingerprint:
                 continue
             claims = _stand_policy_round_claims(main, fingerprint)
-            if not claims or min(c['at'] for c in claims) != after_ts:
+            if not claims or _stand_policy_round_start(main, fingerprint) != after_ts:
                 continue
             members = {m['id']: m for m in _stand_members(state, main_id)}
             now_ms = int(time.time() * 1000)
             attach, alarm_hashes = [], []
             for (to, amount), (orders, matches) in groups.items():
-                matches = [tx for tx in matches if _stand_policy_send_problem(
-                    state, main, policy, tx['hash'], tx['timestamp_ms'], used) is None]
+                matches = [tx for tx in matches if any(_stand_policy_send_problem(
+                    state, main, policy, tx['hash'], tx['timestamp_ms'], used, order) is None
+                    for order in orders)]
                 if len(matches) > len(orders):
                     alarm_hashes.extend(tx['hash'] for tx in matches)
                     continue
@@ -13577,15 +13612,25 @@ def _stand_track_policy_outgoing(deal_id=None, *, cache_ttl=0):
                 for order in orders:
                     sends = (members[order['dealId']].get('transfer') or {}).get('sends') or []
                     present = {str(s.get('hash') or s.get('ref') or '').lower() for s in sends}
-                    mine = next((tx for tx in pool if tx['hash'].lower() in present), None)
+                    mine = next((tx for tx in pool if tx['hash'].lower() in present
+                                 and _stand_policy_send_problem(state, main, policy, tx['hash'],
+                                     tx['timestamp_ms'], used, order) is None), None)
                     if mine:
                         pool.remove(mine)
                         attach.append((order['dealId'], mine, True))
-                for order in orders:
-                    sends = (members[order['dealId']].get('transfer') or {}).get('sends') or []
+                starts = {o['dealId']: _stand_policy_round_start(main, fingerprint, o) for o in orders}
+                staggered = len(set(starts.values())) > 1
+                for order in sorted(orders, key=lambda o: starts[o['dealId']], reverse=True):
                     if any(a[0] == order['dealId'] for a in attach) or not pool:
                         continue
-                    attach.append((order['dealId'], pool.pop(0), False))
+                    candidates = reversed(pool) if staggered else iter(pool)
+                    candidate = next((tx for tx in candidates if _stand_policy_send_problem(
+                        state, main, policy, tx['hash'], tx['timestamp_ms'], used, order) is None), None)
+                    if candidate:
+                        pool.remove(candidate)
+                        attach.append((order['dealId'], candidate, False))
+                if pool:
+                    alarm_hashes.extend(tx['hash'] for tx in matches)
             cleared = set((main.get('transferAlarmCleared') or {}).get('hashes') or [])
             if alarm_hashes and not set(alarm_hashes) <= cleared:
                 hashes = sorted(set(alarm_hashes))
@@ -13810,8 +13855,10 @@ def _stand_check_transfers(deal_id=None, *, poll=False):
                     policy_db.close()
             round_policy = policy_by_main[main['id']]
             if round_policy and main.get('step') in ('s23', 's24'):
+                round_order = next((o for o in round_policy['orders'] if o['dealId'] == deal['id']), None)
                 problem = _stand_policy_send_problem(snapshot, main, round_policy, key[0],
-                                                     result.get('timestampMs'), registry_claims)
+                                                     result.get('timestampMs'), registry_claims,
+                                                     round_order)
                 if problem:
                     result = {'status': 'mismatch', 'checkError': problem}
         result['lastCheckedAt'] = datetime.utcnow().isoformat() + 'Z'

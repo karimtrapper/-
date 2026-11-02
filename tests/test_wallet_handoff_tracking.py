@@ -5,6 +5,7 @@
 """
 import threading
 import time
+from datetime import datetime, timezone
 from decimal import Decimal
 
 import requests
@@ -216,6 +217,74 @@ def test_operator_manual_hash_after_report_requires_verified_transfer(chain):
     chain.rows.append(transfer(1, 5000, ts=at + 5000))
     assert api(u['operator'], 'mark-sent', hash=ref(1)).status_code == 200
     assert main_deal()['serverTransferComplete'] is True
+
+
+def test_legacy_missing_network_keeps_claim_fingerprint_and_accepts_verified_hash(chain):
+    ordered_at = int(time.time() * 1000) - 2 * 60 * 60 * 1000
+    order_iso = datetime.fromtimestamp(ordered_at / 1000, timezone.utc).isoformat()
+    board_with(postConv='coins', outgoingOrderAt=order_iso,
+               transfer={'addr': DEST, 'amount': '58\xa0515,63', 'sends': []})
+    u = roles()
+    at = claim_now(u)
+    fingerprint = main_deal()['transferClaim']['fingerprint']
+    assert 'net' not in main_deal()['transfer']
+    assert api(u['operator'], 'propose').status_code == 200
+    assert api(u['teodor'], 'report-sent').status_code == 200
+    assert main_deal()['transferClaim']['fingerprint'] == fingerprint
+    assert ordered_at < at
+    chain.rows.append(transfer(2, 58515.63, ts=ordered_at - 1000))
+    too_old = api(u['operator'], 'mark-sent', hash=ref(2))
+    assert too_old.status_code == 409 and 'раньше начала отправки' in too_old.get_json()['error']
+    assert main_deal()['transfer']['sends'] == []
+    chain.rows.append(transfer(3, 58515.63, ts=None))
+    no_time = api(u['operator'], 'mark-sent', hash=ref(3))
+    assert no_time.status_code == 409 and 'не вернула время' in no_time.get_json()['error']
+    chain.rows.pop()
+    chain.rows.append(transfer(1, 58515.63, ts=ordered_at + 60 * 60 * 1000))
+    assert chain.rows[-1]['block_ts'] < at, 'синтетический перевод после поручения, до claim'
+    state, version = board()
+    state['deals'].append({'id': 9500, 'step': 's27', 'code': 'СД-9500', 'log': [],
+                           'transfer': {'sends': [{'ref': ref(1), 'hash': ref(1),
+                                                   'amount': 58515.63, 'net': 'TRC-20',
+                                                   'status': 'confirmed'}]}})
+    put_board(state, version)
+    used = api(u['operator'], 'mark-sent', hash=ref(1))
+    assert used.status_code == 409 and 'уже использован' in used.get_json()['error']
+    state, version = board()
+    state['deals'] = [d for d in state['deals'] if d['id'] != 9500]
+    put_board(state, version)
+    result = api(u['operator'], 'mark-sent', hash=ref(1))
+    assert result.status_code == 200, result.get_json()
+    deal = main_deal()
+    assert deal['serverTransferComplete'] is True and deal['transfer']['sends'][0]['hash'] == ref(1)
+    assert 'net' not in deal['transfer']
+
+
+def test_legacy_missing_network_uses_same_guard_for_auto_lookup(chain):
+    ordered_at = int(time.time() * 1000) - 2 * 60 * 60 * 1000
+    order_iso = datetime.fromtimestamp(ordered_at / 1000, timezone.utc).isoformat()
+    board_with(postConv='coins', outgoingOrderAt=order_iso,
+               transfer={'addr': DEST, 'amount': 5000, 'sends': []})
+    u = roles()
+    at = claim_now(u)
+    assert api(u['operator'], 'propose').status_code == 200
+    assert api(u['teodor'], 'report-sent').status_code == 200
+    chain.rows.append(transfer(1, 5000, ts=ordered_at + 60 * 60 * 1000))
+    assert chain.rows[0]['block_ts'] < at
+    result = u['operator'].post('/api/stand/transfers/check', json={'dealId': DEAL})
+    assert result.status_code == 200, result.get_json()
+    deal = main_deal()
+    assert deal['serverTransferComplete'] is True and deal['transfer']['sends'][0]['hash'] == ref(1)
+
+
+def test_missing_network_inference_requires_both_tron_addresses(chain):
+    policy = {'address': REALTY}
+    order = {'to': DEST, 'net': None}
+    assert m._stand_policy_trc20_order(policy, order)
+    assert not m._stand_policy_trc20_order(policy, dict(order, net='ERC-20'))
+    assert not m._stand_policy_trc20_order(policy, dict(order, net='unknown'))
+    assert not m._stand_policy_trc20_order(policy, dict(order, to='0x' + 'a' * 40))
+    assert not m._stand_policy_trc20_order({'address': '0x' + 'b' * 40}, order)
 
 
 def test_owner_direct_send_reports_without_hash_and_needs_network(chain):
@@ -494,6 +563,45 @@ def test_two_identical_orders_two_transfers_is_not_an_alarm(chain):
     assert main_deal(DEAL)['transfer']['sends'][0]['hash'] == ref(1)
     assert main_deal(9002)['transfer']['sends'][0]['hash'] == ref(2)
     assert 'transferAlarm' not in main_deal()
+
+
+def test_identical_orders_with_different_server_times_match_each_transfer(chain):
+    identical_batch()
+    state, version = board()
+    ordered_at = int(time.time() * 1000) - 2 * 60 * 60 * 1000
+    state['deals'][0]['outgoingOrderAt'] = datetime.fromtimestamp(
+        ordered_at / 1000, timezone.utc).isoformat()
+    state['deals'][1]['outgoingOrderAt'] = datetime.fromtimestamp(
+        (ordered_at + 90 * 60 * 1000) / 1000, timezone.utc).isoformat()
+    put_board(state, version)
+    u = roles()
+    at = claim_now(u)
+    assert ordered_at + 90 * 60 * 1000 < at
+    chain.rows.extend([transfer(1, 3000, ts=ordered_at + 30 * 60 * 1000),
+                       transfer(2, 3000, ts=ordered_at + 100 * 60 * 1000)])
+    m._stand_track_policy_outgoing(DEAL)
+    assert main_deal(DEAL)['transfer']['sends'][0]['hash'] == ref(1)
+    assert main_deal(9002)['transfer']['sends'][0]['hash'] == ref(2)
+    assert 'transferAlarm' not in main_deal()
+
+
+def test_identical_orders_cannot_credit_transfer_before_second_order(chain):
+    identical_batch()
+    state, version = board()
+    ordered_at = int(time.time() * 1000) - 2 * 60 * 60 * 1000
+    state['deals'][0]['outgoingOrderAt'] = datetime.fromtimestamp(
+        ordered_at / 1000, timezone.utc).isoformat()
+    state['deals'][1]['outgoingOrderAt'] = datetime.fromtimestamp(
+        (ordered_at + 90 * 60 * 1000) / 1000, timezone.utc).isoformat()
+    put_board(state, version)
+    u = roles()
+    claim_now(u)
+    chain.rows.extend([transfer(1, 3000, ts=ordered_at + 30 * 60 * 1000),
+                       transfer(2, 3000, ts=ordered_at + 40 * 60 * 1000)])
+    m._stand_track_policy_outgoing(DEAL)
+    assert main_deal(DEAL)['transfer']['sends'] == []
+    assert main_deal(9002)['transfer']['sends'] == []
+    assert main_deal()['transferAlarm']['hashes'] == [ref(1), ref(2)]
 
 
 def test_two_identical_orders_three_transfers_is_an_alarm(chain):
