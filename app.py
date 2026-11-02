@@ -7344,6 +7344,129 @@ def stand_transfer_confirm():
         db.close()
 
 
+@app.route('/api/stand/transfer/propose', methods=['POST'])
+def stand_transfer_propose():
+    """Передать поручение подписанту после claim, не требуя сетевого хеша."""
+    if not STAND_MODE:
+        return jsonify(success=False, error='stand_only'), 404
+    payload, actor, actor_id, deal_id, failure = _stand_transfer_request()
+    if failure:
+        return failure
+    db = get_session()
+    try:
+        if engine.dialect.name == 'sqlite':
+            db.execute(text('BEGIN IMMEDIATE'))
+        row = _stand_row(db, lock=True)
+        state = json.loads(row.data or '{}')
+        main = _stand_batch_main(state, deal_id)
+        policy, error, status = _stand_policy_state_problem(db, state, main, 's23')
+        if error:
+            return jsonify(success=False, error=error), status
+        claim = main.get('transferClaim') or {}
+        user = db.query(AdminUser).filter_by(id=actor_id).first()
+        if (not user or user.login_disabled or user.role != actor
+                or claim.get('byId') != actor_id or claim.get('role') != actor
+                or claim.get('fingerprint') != policy['fingerprint']):
+            return jsonify(success=False, error='Поручение передаёт сотрудник, взявший отправку'), 403
+        if (main.get('transferConfirmation') or {}).get('ownerAlone'):
+            return jsonify(success=False, error='Владелец отправляет сам'), 409
+        if _stand_transfer_locked(main):
+            return jsonify(success=False, error=_stand_transfer_locked(main)), 409
+        if payload.get('version') != row.version:
+            return _stand_stale_response(row, state)
+        sign_role = _stand_sign_role(policy['wallet'], main)
+        if not sign_role or sign_role == actor:
+            return jsonify(success=False, error='Для поручения не назначен другой подписант'), 409
+        now_ms = int(time.time() * 1000)
+        name = _stand_user_name(user)
+        main['transferProposal'] = {'byId': actor_id, 'at': now_ms,
+                                    'fingerprint': policy['fingerprint']}
+        main['step'] = 's24'
+        main['stepEnteredAt'] = now_ms
+        main['assigneeAdminId'] = None
+        note = str(payload.get('check') or '').strip()[:2000]
+        if note:
+            main.setdefault('pay', {})['check'] = note
+        main.setdefault('log', []).append({'at': now_ms, 'role': actor, 'by': actor_id,
+            'text': f'{name} передал поручение на подпись'})
+        _stand_note(state, f'stand:transfer-propose:{main["id"]}:{now_ms}', sign_role, main,
+                    f'{main.get("code") or main["id"]}: подпишите перевод с кошелька')
+        old_version = row.version or 0
+        if not _stand_commit_cas(db, row, state, old_version, name):
+            db.rollback()
+            return jsonify(success=False, error='Доска изменилась — обновите её'), 409
+        db.commit()
+        _stand_deliver_notes()
+        return jsonify(success=True, version=old_version + 1, data=_stand_strip_files(state))
+    finally:
+        db.close()
+
+
+@app.route('/api/stand/transfer/report-sent', methods=['POST'])
+def stand_transfer_report_sent():
+    """Отметка подписанта: оператор проверит сеть; сама отметка деньги не учитывает."""
+    if not STAND_MODE:
+        return jsonify(success=False, error='stand_only'), 404
+    payload, actor, actor_id, deal_id, failure = _stand_transfer_request()
+    if failure:
+        return failure
+    db = get_session()
+    try:
+        if engine.dialect.name == 'sqlite':
+            db.execute(text('BEGIN IMMEDIATE'))
+        row = _stand_row(db, lock=True)
+        state = json.loads(row.data or '{}')
+        main = _stand_batch_main(state, deal_id)
+        if not main or main.get('step') not in ('s23', 's24'):
+            return jsonify(success=False, error='Шаг отправки недоступен'), 409
+        policy, error, status = _stand_policy_state_problem(db, state, main, main['step'])
+        if error:
+            return jsonify(success=False, error=error), status
+        claim = main.get('transferClaim') or {}
+        user = db.query(AdminUser).filter_by(id=actor_id).first()
+        if not user or user.login_disabled or user.role != actor or claim.get('fingerprint') != policy['fingerprint']:
+            return jsonify(success=False, error='Нет доступа к отправке'), 403
+        alone = main['step'] == 's23' and (main.get('transferConfirmation') or {}).get('ownerAlone')
+        if alone:
+            allowed = claim.get('byId') == actor_id and actor == wallet_policy.OWNER
+        else:
+            allowed = (main['step'] == 's24' and
+                       ((main.get('transferProposal') or {}).get('fingerprint') == policy['fingerprint']
+                        or not main.get('transferProposal')) and
+                       actor == _stand_sign_role(policy['wallet'], main) and
+                       actor != claim.get('role') and actor_id != claim.get('byId') and
+                       actor_id not in {c.get('byId') for c in _stand_policy_round_claims(main, policy['fingerprint'])})
+        if not allowed:
+            return jsonify(success=False, error='Отметить отправку может назначенный подписант'), 403
+        if main.get('transferSentReport'):
+            return jsonify(success=True, version=row.version, data=_stand_strip_files(state))
+        if main.get('transferAlarm'):
+            return jsonify(success=False, error=_stand_transfer_locked(main)), 409
+        if payload.get('version') != row.version:
+            return _stand_stale_response(row, state)
+        now_ms = int(time.time() * 1000)
+        name = _stand_user_name(user)
+        main['transferSentReport'] = {'byId': actor_id, 'byName': name, 'role': actor,
+                                      'at': now_ms, 'fingerprint': policy['fingerprint']}
+        if not alone:
+            main['transferConfirmation'] = {'byId': actor_id, 'byName': name, 'role': actor,
+                'at': now_ms, 'claimFingerprint': policy['fingerprint'], 'ownerAlone': False}
+        main['assigneeAdminId'] = None
+        main.setdefault('log', []).append({'at': now_ms, 'role': actor, 'by': actor_id,
+            'text': f'{name} отметил отправку; операционист проверяет перевод в сети'})
+        _stand_note(state, f'stand:transfer-reported:{main["id"]}:{now_ms}', 'operator', main,
+                    f'{main.get("code") or main["id"]}: проверьте исходящий перевод в сети')
+        old_version = row.version or 0
+        if not _stand_commit_cas(db, row, state, old_version, name):
+            db.rollback()
+            return jsonify(success=False, error='Доска изменилась — обновите её'), 409
+        db.commit()
+        _stand_deliver_notes()
+        return jsonify(success=True, version=old_version + 1, data=_stand_strip_files(state))
+    finally:
+        db.close()
+
+
 @app.route('/api/stand/transfer/alarm/clear', methods=['POST'])
 def stand_transfer_alarm_clear():
     """Админ или владелец снимает тревогу «найдено два перевода»; запись в журнал."""
@@ -10797,8 +10920,12 @@ def _stand_current_step_role(state, deal):
             main, wallet = deal, None
         if wallet:
             if step == 's23':
+                if main.get('transferSentReport'):
+                    return 'operator'
                 claim_role = (main.get('transferClaim') or {}).get('role')
                 return claim_role or _stand_initiate_role(wallet, main)
+            if main.get('transferSentReport'):
+                return 'operator'
             return _stand_sign_role(wallet, main) or _STAND_STEP_ROLE.get(step)
     if step == 's23' and (deal.get('transferClaim') or {}).get('role'):
         return deal['transferClaim']['role']
@@ -11567,6 +11694,13 @@ def _stand_workflow_problem(previous, state, actor, db):
         if start == 's22' and end == 's26' and deal.get('postConv') not in ('keep', 'ipps'):
             return 'Маршрут требует исходящего перевода'
         if start == 's23' and end == 's24':
+            try:
+                main = _stand_batch_main(previous, before.get('id'))
+                policy = _stand_transfer_policy(db, previous, main) if db and main else None
+            except ValueError as exc:
+                return str(exc)
+            if policy:
+                return 'Поручение передают подписанту через действие без хеша'
             sends = (deal.get('transfer') or {}).get('sends') or []
             if not sends or sum(_stand_number(s.get('amount')) for s in sends) + .005 < _stand_number((before.get('transfer') or {}).get('amount')):
                 return 'Сначала подготовьте переводы на всю сумму поручения'
@@ -11622,6 +11756,7 @@ _STAND_TRANSFER_SERVER_FIELDS = (
     'transferClaim', 'transferConfirmation', 'transferOwnerApproval',
     'transferHandoff', 'signHandoff', 'transferClaimHistory',
     'transferFound', 'transferAlarm', 'transferAlarmCleared', 'transferClosedKeys',
+    'transferProposal', 'transferSentReport',
 )
 
 
@@ -12698,7 +12833,12 @@ def _stand_settle_verified(state, members):
         claim = policy_main.get('transferClaim') or {}
         if claim and claim.get('fingerprint') != policy['fingerprint']:
             return False
-        if policy_main.get('transferAlarm'):
+        operator_verified = any((s.get('markedBy') or {}).get('kind') == 'operator'
+                                and s.get('status') == 'confirmed'
+                                for d in members for s in (d.get('transfer') or {}).get('sends') or [])
+        if (policy_main.get('transferAlarm') or
+                (policy_main.get('transferProposal') and not policy_main.get('transferSentReport')
+                 and not operator_verified)):
             return False
     changed = False
     for deal in members:
@@ -12818,7 +12958,7 @@ def _stand_settle_verified(state, members):
                                  + ('' if deal is main else f' · {deal.get("code") or deal.get("id")}'))})
             previous_owner = _stand_current_step_role(state, main)
             main['step'] = ('s26' if main.get('kind') == 'Фрихолд' or main.get('postConv') == 'ipps' else 's25')
-            if _stand_current_step_role(state, main) != previous_owner:
+            if policy or _stand_current_step_role(state, main) != previous_owner:
                 main['assigneeAdminId'] = None
             if main.get('postConv') == 'client' and main.get('outgoingReview'):
                 main.update(step='done', closed=True, closeReason='Успешно завершена',
@@ -13309,7 +13449,7 @@ def _stand_policy_group_orders(policy):
 
 
 def _stand_track_policy_outgoing(deal_id=None, *, cache_ttl=0):
-    """Поиск исходящих переводов с кошелька с политикой, пока на s23 есть claim.
+    """Поиск исходящих переводов с кошелька с политикой после отметки отправки.
 
     Ищем в сети теми же средствами, что и обычную проверку отправки
     (`discover_transfers` + `verify_transfer`). Совпадение — перевод С адреса
@@ -13325,14 +13465,15 @@ def _stand_track_policy_outgoing(deal_id=None, *, cache_ttl=0):
         wanted = {d['id'] for d in _stand_members(snapshot, deal_id)} if deal_id is not None else None
         jobs = []
         for deal in snapshot.get('deals') or []:
-            if deal.get('step') != 's23' or deal.get('closed'):
+            if deal.get('step') not in ('s23', 's24') or deal.get('closed'):
                 continue
             main = _stand_batch_main(snapshot, deal['id'])
             if not main or main.get('id') != deal.get('id'):
                 continue
             if wanted is not None and main['id'] not in wanted:
                 continue
-            if main.get('transferFound') or main.get('transferAlarm') or main.get('demoTransfers'):
+            if (main.get('transferFound') or main.get('transferAlarm') or main.get('demoTransfers')
+                    or (main.get('transferProposal') and not main.get('transferSentReport'))):
                 continue
             try:
                 policy = _stand_transfer_policy(db, snapshot, main)
@@ -13392,7 +13533,7 @@ def _stand_track_policy_outgoing(deal_id=None, *, cache_ttl=0):
         changed = False
         for main_id, fingerprint, after_ts, groups, proofs, complete in results:
             main = next((d for d in state.get('deals') or [] if d.get('id') == main_id), None)
-            if (not main or main.get('step') != 's23' or main.get('transferFound')
+            if (not main or main.get('step') not in ('s23', 's24') or main.get('transferFound')
                     or main.get('transferAlarm')):
                 continue
             try:
@@ -13472,7 +13613,8 @@ def _stand_track_policy_outgoing(deal_id=None, *, cache_ttl=0):
                         if k not in ('takenById', 'takenByName', 'takenAt', 'toRole')}
                     main['transferClaimHistory'] = [c for c in previous if c is not last and c != last]
             main['transferFound'] = {'hashes': bound, 'at': now_ms}
-            main['assigneeAdminId'] = (main.get('transferClaim') or {}).get('byId')
+            main['assigneeAdminId'] = (None if main.get('transferSentReport') else
+                                       (main.get('transferClaim') or {}).get('byId'))
             for hash_value in bound:
                 main.setdefault('log', []).append({'at': now_ms, 'role': 'system',
                     'text': f'Перевод найден в сети: {hash_value}'})
@@ -13749,7 +13891,7 @@ def stand_transfers_check():
         if policy and main.get('step') == 's24':
             claim = main.get('transferClaim') or {}
             actor_id = flask_session.get('user_id')
-            if actor_id and actor_id == claim.get('byId'):
+            if actor_id and actor_id == claim.get('byId') and not main.get('transferSentReport'):
                 return jsonify(success=False, error='Нельзя подтвердить собственную отправку'), 403
             if not main.get('transferConfirmation'):
                 return jsonify(success=False, error='Сначала подтвердите отправку своей ролью'), 409

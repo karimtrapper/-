@@ -111,6 +111,87 @@ def notes_for(text_part):
     return sorted(n['role'] for n in board()[0].get('notes') or [] if text_part in n['text'])
 
 
+def test_proposal_without_hash_reaches_signer_then_operator_verifies(chain):
+    board_with(postConv='coins')
+    u = roles()
+    at = claim_now(u)
+    assert api(u['manager'], 'propose').status_code == 403
+    assert api(u['operator'], 'propose', check='Сумма и адрес сверены').status_code == 200
+    deal = main_deal()
+    assert deal['step'] == 's24' and deal['transfer']['sends'] == []
+    assert deal['pay']['check'] == 'Сумма и адрес сверены'
+    assert m._stand_current_step_role(board()[0], deal) == 'teodor'
+    assert notes_for('подпишите перевод') == ['teodor']
+    chain.rows.append(transfer(1, 5000, ts=at + 5000))
+    m._stand_check_transfers(DEAL)
+    assert main_deal()['step'] == 's24' and main_deal()['transfer']['sends'] == [], \
+        'proposal не означает, что подписант уже отправил деньги'
+    assert api(u['operator'], 'report-sent').status_code == 403
+    assert api(u['teodor'], 'report-sent').status_code == 200
+    deal = main_deal()
+    assert deal['step'] == 's24' and not deal.get('serverTransferComplete')
+    assert deal['transfer']['sends'] == [] and m._stand_current_step_role(board()[0], deal) == 'operator'
+    assert notes_for('проверьте исходящий перевод') == ['operator']
+    assert api(u['teodor'], 'report-sent').status_code == 200  # повтор без второго события
+    assert len([n for n in board()[0]['notes'] if 'проверьте исходящий перевод' in n['text']]) == 1
+    result = u['operator'].post('/api/stand/transfers/check', json={'dealId': DEAL})
+    assert result.status_code == 200, result.get_json()
+    deal = main_deal()
+    assert deal['serverTransferComplete'] is True and deal['step'] == 's25'
+    assert deal['transfer']['sends'][0]['hash'] == ref(1)
+
+
+def test_operator_manual_hash_after_report_requires_verified_transfer(chain):
+    board_with(postConv='coins')
+    u = roles()
+    at = claim_now(u)
+    assert api(u['operator'], 'propose').status_code == 200
+    assert api(u['teodor'], 'report-sent').status_code == 200
+    chain.broken = True  # автосписок пуст, но проверка конкретного хеша доступна
+    assert api(u['operator'], 'mark-sent', hash=ref(2)).status_code != 200
+    assert main_deal()['step'] == 's24' and not main_deal().get('serverTransferComplete')
+    chain.rows.append(transfer(1, 5000, ts=at + 5000))
+    assert api(u['operator'], 'mark-sent', hash=ref(1)).status_code == 200
+    assert main_deal()['serverTransferComplete'] is True
+
+
+def test_owner_direct_send_reports_without_hash_and_needs_network(chain):
+    board_with(postConv='coins')
+    u = roles()
+    at = claim_now(u, 'teodor')
+    assert main_deal()['transferConfirmation']['ownerAlone'] is True
+    assert api(u['teodor'], 'propose').status_code == 409
+    assert api(u['teodor'], 'report-sent').status_code == 200
+    deal = main_deal()
+    assert deal['step'] == 's23' and deal['transfer']['sends'] == []
+    assert not deal.get('serverTransferComplete')
+    assert m._stand_current_step_role(board()[0], deal) == 'operator'
+    chain.rows.append(transfer(1, 5000, ts=at + 5000))
+    assert u['operator'].post('/api/stand/transfers/check', json={'dealId': DEAL}).status_code == 200
+    assert main_deal()['serverTransferComplete'] is True
+
+
+def test_legacy_s24_without_proposal_can_report(chain):
+    board_with()
+    u = roles()
+    claim_now(u)
+    data, version = board()
+    data['deals'][0]['step'] = 's24'  # уже открытая на stage задача прежней версии
+    put_board(data, version)
+    assert api(u['teodor'], 'report-sent').status_code == 200
+    assert main_deal()['transferSentReport']['role'] == 'teodor'
+
+
+def test_operator_can_verify_actual_send_when_signer_forgets_report(chain):
+    board_with(postConv='coins')
+    u = roles()
+    at = claim_now(u)
+    assert api(u['operator'], 'propose').status_code == 200
+    chain.rows.append(transfer(1, 5000, ts=at + 5000))
+    assert api(u['operator'], 'mark-sent', hash=ref(1)).status_code == 200
+    assert main_deal()['serverTransferComplete'] is True
+
+
 # ---------------------------------------------------------------- один перевод
 
 def test_single_transfer_after_claim_is_bound_like_initiator_hash(chain):

@@ -13,7 +13,7 @@ const source = name => {
 const consts = html.slice(html.indexOf('const POLICY_ROLE_ORDER'), html.indexOf('function policyInitiators'));
 const names = ['hasPolicy', 'policyInitiators', 'policyInitiateTargets', 'policyInitiateRole', 'policySignRole',
   'policySignTargets', 'policyCanClaim', 'policyRoleNames', 'bkkTime', 'policyReleasedByMe', 'policyLastReleased',
-  'policyLocked', 'policyOwnsSend', 'policyOwnsSign', 'policyNeedsApproval', 'policyApprovalActor',
+  'policyLocked', 'policyOwnsSend', 'policyOwnsSign', 'policyOwnsVerification', 'policyNeedsApproval', 'policyApprovalActor',
   'dispatchRole', 'handoffTargets', 'handoffBlock', 'handoffToggle', 'takeoverWarning', 'takeoverAskView', 'takeoverCancel', 'takeoverConfirm', 'markSentBlock', 'transferMarkSent', 'policyActions', 'policyStatusLine', 'walletPolicyLine', 'transferHandoff',
   'transferClaim', 'walletRolesFields', 'txShort'];
 const table = JSON.parse(fs.readFileSync('tests/fixtures/wallet_policy_table.json', 'utf8'));
@@ -167,13 +167,23 @@ console.log('handoff targets by role/wallet/state: PASS');
     ctx.val = id => 'https://tronscan.org/#/transaction/' + found;
     return ctx.markSentBlock(Object.assign({id: 1, step: 's23'}, d));
   };
-  assert.match(block('operator', {}), /data-mark-sent-btn[^>]*>Деньги отправлены<\/button>/);
-  assert.match(block('admin', {}), /Деньги отправлены/);
-  assert.match(block('operator', {step: 's24', transferClaim: {byId: 3, role: 'operator'}}), /Деньги отправлены/);
+  assert.match(block('operator', {}), /data-mark-sent-btn[^>]*>Проверить хеш<\/button>/);
+  assert.match(block('operator', {}), /^<details[^>]*>\s*<summary>Перевод уже отправлен\?<\/summary>/,
+    'до отметки отправки ручной хеш свёрнут');
+  assert.match(block('admin', {}), /Проверить хеш/);
+  assert.match(block('operator', {step: 's24', transferClaim: {byId: 3, role: 'operator'}}), /Проверить хеш/);
   assert.match(block('operator', {transferFound: {hashes: [found]}}), new RegExp('value="' + found + '"'), 'найденный хеш подставлен');
   for (const role of ['manager', 'findir', 'teodor'])
     assert.equal(block(role, {}), '', role + ' кнопки не видит');
   assert.equal(block('operator', {transferClaim: {byId: 7, role: 'operator'}}), '', 'у держателя claim — «Я отправил»');
+  const beforeSignerReport = block('operator', {step: 's24', transferClaim: {byId: 7, role: 'operator'},
+    transferProposal: {fingerprint: 'f'}});
+  assert.match(beforeSignerReport, /^<details[^>]*>/, 'после передачи на подпись инициатору доступен свёрнутый fallback');
+  assert.match(beforeSignerReport, /Проверить хеш/, 'инициатор может проверить уже отправленный перевод');
+  const afterReport = block('operator', {step: 's24', transferClaim: {byId: 7, role: 'operator'},
+    transferSentReport: {byId: 8}});
+  assert.match(afterReport, /^<div[^>]*>/, 'после подписи ручной хеш сразу открыт');
+  assert.match(afterReport, /Проверить хеш/, 'после подписи инициатор проверяет вручную');
   assert.equal(block('operator', {transferAlarm: {hashes: ['a', 'b']}}), '', 'при тревоге кнопки нет');
   assert.equal(block('operator', {serverTransferComplete: true}), '');
   assert.equal(block('operator', {step: 's22'}), '');
@@ -214,7 +224,29 @@ assert.equal(owns('sign', 'teodor', EXCHANGE, Object.assign({signHandoff: {role:
 assert.equal(owns('sign', 'findir', EXCHANGE, Object.assign({signHandoff: {role: 'teodor', claimFingerprint: 'f'}},
   claimBy('operator', 8))), false);
 assert.equal(owns('sign', 'findir', REALTY, claimBy('findir', 7)), false, 'кто завёл — не подписывает');
+{
+  const ctx = makeCtx({S: {role: 'operator'}, standMeId: 7});
+  const d = Object.assign({transferSentReport: {byId: 8}}, claimBy('operator', 7));
+  assert.equal(ctx.policyOwnsVerification(d, walletOf(REALTY), 'operator'), true,
+    'оператор открывает карточку проверки после отчёта подписанта');
+  assert.equal(ctx.policyOwnsVerification(d, walletOf(REALTY), 'teodor'), false);
+  d.transferSentReport = null;
+  ctx.standMeId = 8;
+  const signer = ctx.policySignRole(d, walletOf(REALTY));
+  assert.equal(ctx.policyOwnsVerification(d, walletOf(REALTY), signer), true,
+    'до отчёта карточка остаётся у подписанта');
+}
 console.log('task ownership (send/sign): PASS');
+{
+  const ctx = {STEPS: {s23: {title: 'Отправить перевод'}, s24: {title: 'Одобрить перевод'}}};
+  vm.createContext(ctx);
+  vm.runInContext(source('stepTitle'), ctx);
+  for (const step of ['s23', 's24']) {
+    assert.equal(ctx.stepTitle({step, transferSentReport: {byId: 8}}), 'Проверить перевод',
+      'после отметки отправки заголовок не предлагает отправить повторно');
+  }
+  assert.equal(ctx.stepTitle({step: 's24'}), 'Одобрить перевод');
+}
 
 // ---- 5. Строка статуса и предупреждения
 {
@@ -276,8 +308,9 @@ console.log('task ownership (send/sign): PASS');
   const theirs = {transferClaim: {byId: 8, byName: 'Настя', role: 'operator', at: 1700000000000, fingerprint: 'f'}};
   const claimerCard = s23('operator', mine);
   assert.match(claimerCard, /PACK_BLOCK/, 'держатель claim видит реквизиты');
-  assert.match(claimerCard, /onclick="act\(1,'s23'\)">Я отправил<\/button>/, 'кнопка исполнителя называется «Я отправил»');
-  assert.doesNotMatch(claimerCard, /Передать на подтверждение|Проверить перевод в сети|Деньги отправлены/);
+  assert.match(claimerCard, /onclick="transferPropose\(1\)">Передать на подпись<\/button>/,
+    'инициатор передаёт поручение без хеша');
+  assert.doesNotMatch(claimerCard, /Добавить хеш|Хеш или ссылка на подготовленную транзакцию/);
   const other = s23('findir', theirs);
   assert.doesNotMatch(other, /PACK_BLOCK/, 'остальные блок реквизитов не получают');
   assert.match(other, /В работе у Настя с \d\d:\d\d/);
@@ -285,7 +318,11 @@ console.log('task ownership (send/sign): PASS');
   const before = s23('operator', {});
   assert.doesNotMatch(before, /PACK_BLOCK/, 'до claim блока нет даже у назначенной роли');
   assert.match(before, /data-claim[^>]*>Начать работу<\/button>/);
-  assert.match(s23('operator', {}), /Деньги отправлены/, 'операционисту без claim доступно «Деньги отправлены»');
+  assert.match(s23('operator', {}), /Проверить хеш/, 'операционист может проверить уже отправленный перевод');
+  const owner = s23('teodor', {transferClaim: {byId: 7, byName: 'Я', role: 'teodor', fingerprint: 'f'},
+    transferConfirmation: {ownerAlone: true}});
+  assert.match(owner, /onclick="transferReportSent\(1\)">Деньги отправлены<\/button>/,
+    'владелец отправляет сам и сообщает об отправке без хеша');
   assert.match(s23('teodor', {}), /data-claim[^>]*>Отправить<\/button>/, 'владелец, отправляющий один — «Отправить»');
   assert.doesNotMatch(s23('findir', {}), /data-claim/, 'до передачи финансисту кнопки нет');
   assert.doesNotMatch(s23('operator', {transferClaimHistory: [{byId: 7, byName: 'Я', at: 1}]}), /data-claim/,

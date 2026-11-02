@@ -225,6 +225,7 @@ def test_forged_handoff_fields_via_general_put_are_rejected(clean_board):
     attacker = users()['findir']
     fake = {'role': 'findir', 'byId': 1, 'byName': 'Я', 'byRole': 'manager', 'at': 1}
     for field, value in (('transferHandoff', fake), ('signHandoff', fake), ('transferClaimHistory', [fake]),
+                         ('transferProposal', fake), ('transferSentReport', fake),
                          ('transferFound', {'hashes': [HASH], 'at': 1}), ('transferAlarm', {'hashes': [HASH]}),
                          ('transferAlarmCleared', {'hashes': [HASH]})):
         before = board()

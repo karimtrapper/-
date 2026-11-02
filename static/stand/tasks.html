@@ -2569,6 +2569,7 @@ function policyLocked(d){return !!(d?.transferAlarm||d?.transferFound);}
    (если может сам); после claim — только у взявшего. Согласование владельца выше
    лимита ставит финансист/владелец до claim. */
 function policyOwnsSend(d,w,role){
+  if(d.transferSentReport)return role==='operator';
   if(d.transferClaim)return String(d.transferClaim.byId)===String(standMeId);
   if(policyReleasedByMe(d))return false;
   if(d.transferAlarm)return false;
@@ -2577,8 +2578,11 @@ function policyOwnsSend(d,w,role){
 }
 /* Подпись: у назначенной роли, кроме того, кто завёл (по id и по роли) */
 function policyOwnsSign(d,w,role){
-  return role===policySignRole(d,w)&&String(d.transferClaim?.byId)!==String(standMeId)
+  return !d.transferSentReport&&role===policySignRole(d,w)&&String(d.transferClaim?.byId)!==String(standMeId)
     &&d.transferClaim?.role!==role;
+}
+function policyOwnsVerification(d,w,role){
+  return d.transferSentReport?role==='operator':policyOwnsSign(d,w,role);
 }
 function policySignerCards(w){
   if(!hasPolicy(w))return '';
@@ -2668,12 +2672,14 @@ function markSentBlock(d){
   const w=dealWallet(d);
   if(!hasPolicy(w)||d.closed||!['operator','admin'].includes(dispatchRole()))return '';
   if(!(d.step==='s23'||d.step==='s24')||d.transferAlarm||d.serverTransferComplete||d.outgoingReview?.requestedAt)return '';
-  if(d.transferClaim&&String(d.transferClaim.byId)===String(standMeId))return '';
-  if(policyReleasedByMe(d))return '';
+  if(!d.transferSentReport&&d.transferClaim&&String(d.transferClaim.byId)===String(standMeId)
+      &&!(d.step==='s24'&&d.transferProposal))return '';
+  if(!d.transferSentReport&&policyReleasedByMe(d))return '';
   const found=((d.transferFound||{}).hashes||[])[0]||'';
-  return `<div class="card" data-mark-sent style="margin-bottom:12px"><div class="fg"><label class="fl">Хеш перевода</label>
+  const collapsed=!d.transferSentReport&&!d.transferFound;
+  return `<${collapsed?'details':'div'} class="card" data-mark-sent style="margin-bottom:12px">${collapsed?'<summary>Перевод уже отправлен?</summary>':''}<div class="fg"><label class="fl">Хеш перевода</label>
     <input class="fc addr" id="ms_hash_${d.id}" value="${htmlText(found)}" placeholder="64 символа или ссылка на транзакцию"></div>
-    <div class="act-row"><button type="button" class="btn btn-outline" data-mark-sent-btn onclick="transferMarkSent(${d.id})">Деньги отправлены</button></div></div>`;
+    <div class="act-row"><button type="button" class="btn btn-outline" data-mark-sent-btn onclick="transferMarkSent(${d.id})">Проверить хеш</button></div></${collapsed?'details':'div'}>`;
 }
 function policyActions(d){return handoffBlock(d)+markSentBlock(d);}
 function handoffBlock(d){
@@ -2699,6 +2705,7 @@ function policyStatusLine(d){
   const released=d.step==='s23'&&!claim&&policyLastReleased(d);
   const mineReleased=d.step==='s23'&&!claim&&policyReleasedByMe(d);
   let html=`<div class="derived" data-policy-status>${main}${by}</div>`;
+  if(d.transferSentReport)html=`<div class="derived" data-policy-status>${htmlText(d.transferSentReport.byName||'Подписант')} отметил отправку. Операционист проверяет перевод в сети.</div>`;
   if(mineReleased)html=`<div class="derived" data-policy-status>Передана: ${nameOf(policyInitiateRole(d,w))}</div>`;
   if(released&&!mineReleased)html+=`<div class="alert a-warn" data-takeover-warning><div>${htmlText(released.byName||'Сотрудник')} начал перевод в ${bkkTime(released.at)}. Если транзакция уже заведена в кошельке, второй раз не заводите.</div></div>`;
   if(d.transferFound)html+=`<div class="alert a-info"><div>Перевод найден в сети: ${(d.transferFound.hashes||[]).map(h=>htmlText(txShort(h))).join(', ')}</div></div>`;
@@ -2713,6 +2720,15 @@ async function transferApprove(id){
 async function transferConfirm(id){
   const j=await standAction('/api/stand/transfer/confirm',{dealId:id,version:standVer});
   if(j?.success){toast('Подтверждение записано — проверяем сеть');checkSends(id);}
+}
+async function transferPropose(id){
+  const j=await standAction('/api/stand/transfer/propose',
+    {dealId:id,version:standVer,check:String(val('c')||'')});
+  if(j?.success)toast('Поручение передано на подпись');
+}
+async function transferReportSent(id){
+  const j=await standAction('/api/stand/transfer/report-sent',{dealId:id,version:standVer});
+  if(j?.success){toast('Операционисту передана проверка перевода');checkSends(id);}
 }
 function policyNeedsApproval(d,w){
   if(w?.purpose!=='exchange'||w.limit_usd==null)return false;
@@ -4172,7 +4188,9 @@ const STEPS={
 };
 function stepTitle(d){
   const checking=d.step==='s23'&&d.outgoingReview?.requestedAt;
-  if(d.prepay)return 'Параллельно: '+(d.prepay.brokerStep==='done'?'USDT получены':STEPS[d.prepay.brokerStep].title)+' · '+(checking?'Проверить отправку':d.step==='s22'?'Подготовить заявку IPPS':STEPS[d.step].title);
+  const reported=['s23','s24'].includes(d.step)&&d.transferSentReport;
+  if(d.prepay)return 'Параллельно: '+(d.prepay.brokerStep==='done'?'USDT получены':STEPS[d.prepay.brokerStep].title)+' · '+(reported?'Проверить перевод':checking?'Проверить отправку':d.step==='s22'?'Подготовить заявку IPPS':STEPS[d.step].title);
+  if(reported)return 'Проверить перевод';
   if(checking)return 'Проверить отправку';
   return d.step==='s25'&&d.kind==='Фрихолд'?'Ожидать MT103 по согласованной заявке':
     (STEPS[d.step]?STEPS[d.step].title:d.step);
@@ -4505,8 +4523,8 @@ function stepWho(d,step){
   step=step||(d&&d.step);
   if(step==='s22'&&d&&d.kind==='Фрихолд')return payToReady(d)&&payToConfirmed(d)?'operator':'manager';
   if(step==='s23'&&d?.outgoingReview?.requestedAt)return 'operator';
-  if(step==='s23'&&d){const w=dealWallet(d);if(hasPolicy(w))return d.transferClaim?.role||policyInitiateRole(d,w)||'operator';}
-  if(step==='s24'&&d){const w=dealWallet(d);if(hasPolicy(w))return policySignRole(d,w)||(w.confirmer_roles||[])[0]||'teodor';}
+  if(step==='s23'&&d){const w=dealWallet(d);if(hasPolicy(w))return d.transferSentReport?'operator':d.transferClaim?.role||policyInitiateRole(d,w)||'operator';}
+  if(step==='s24'&&d){const w=dealWallet(d);if(hasPolicy(w))return d.transferSentReport?'operator':policySignRole(d,w)||(w.confirmer_roles||[])[0]||'teodor';}
   if(step==='s23'&&d){const w=dealWallet(d); if(w&&!w.multisig) return w.role||'teodor';}
   return STEPS[step]?STEPS[step].who:null;
 }
@@ -4517,7 +4535,7 @@ function taskBranchesForRole(d,role){
   const policyConfirm=d.step==='s24'&&hasPolicy(policyWallet);
   const ownsPayment=!!STEPS[d.step]&&((!policySend&&!policyConfirm&&stepWho(d)===role)||
     (policySend&&policyOwnsSend(d,policyWallet,role))||
-    (policyConfirm&&policyOwnsSign(d,policyWallet,role)));
+    (policyConfirm&&policyOwnsVerification(d,policyWallet,role)));
   const sidePayment=(role==='manager'&&(reqOpen(d)||needsPayConfirm(d)))||
     (role==='operator'&&d.step==='s27'&&d.type==='Оплата недвижимости')||
     (role==='operator'&&d.step==='s14'&&(d.manualBankReceipt?.status==='pending'||(!d.manualBankReceipt&&!rubApiAccount(d))));
@@ -7049,7 +7067,8 @@ function prepayBranchAssignee(d,branch){
 }
 function prepayBranchStatus(d,branch){
   const step=branch==='conversion'?d.prepay.brokerStep:d.step;
-  const title=branch==='conversion'&&prepayRefundRole(d)?'возместить оплату':
+  const title=branch==='payment'&&['s23','s24'].includes(step)&&d.transferSentReport?'проверить перевод':
+    branch==='conversion'&&prepayRefundRole(d)?'возместить оплату':
     step==='done'?'завершена':(STEPS[step]?.title||step).replace(/^./,s=>s.toLowerCase());
   return (branch==='conversion'?'Конвертация':'Оплата')+' — '+title+' · '+prepayBranchAssignee(d,branch);
 }
@@ -7064,7 +7083,7 @@ function viewDeal(d){
   const mine=!d.closed&&((!policySend&&!policyConfirm&&who===S.role)||
     (S.role==='admin'&&d.step==='s27')||
     (policySend&&policyOwnsSend(d,policyWallet,S.role))||
-    (policyConfirm&&policyOwnsSign(d,policyWallet,S.role)));
+    (policyConfirm&&policyOwnsVerification(d,policyWallet,S.role)));
   const p=progress(d), view=S.view||'deal';
   const branch=d.prepay?(S.taskBranch||((S.role==='operator'&&d.prepay.brokerStep!=='done')||prepayRefundRole(d)===S.role?'conversion':'payment')):null;
   const branchPath=view==='task'?dealTaskPath(d,branch):null;
@@ -10895,6 +10914,9 @@ function stepGoal(d){
               dealWallet(d)?(needsSecondSign(d)?'нужна вторая':'одна, владелец'):'—']]};
     case 's23': {
       const n=cnvMembers(d).filter(x=>pcSends(x)).length;
+      if(d.transferSentReport)return {t:'Проверить перевод в сети',
+        nums:[['К проверке',usd(pcOut(d))],['Переводов',String(n)],
+              ['Кошелёк',(dealWallet(d)||{}).name||'—']]};
       /* адрес получателя и сумма — часть блока «завести в кошельке»: только у держателя claim */
       const pw=dealWallet(d);
       if(hasPolicy(pw)&&!d.outgoingReview?.requestedAt&&!(d.transferClaim&&String(d.transferClaim.byId)===String(standMeId)))
@@ -10906,6 +10928,9 @@ function stepGoal(d){
             ['С кошелька',(dealWallet(d)||{}).addr||'не выбран',hasPolicy(dealWallet(d))?dealWallet(d).name:null]]};}
     case 's24': {
       const n=cnvMembers(d).filter(x=>pcSends(x)).length;
+      if(d.transferSentReport)return {t:'Проверить перевод в сети',
+        nums:[['К проверке',usd(pcOut(d))],['Переводов',String(n)],
+              ['Кошелёк',(dealWallet(d)||{}).name||'—']]};
       return {t:'Проверить суть сделки и подписать перевод в кошельке',
       nums:[['Сумма',usd(pcOut(d))],['Переводов',String(n)],['Подписей','1 из 2']]};}
     case 's25': {
@@ -10954,8 +10979,8 @@ function goalCard(d){
     s12:'Отправьте документы клиенту',s14:'Сверьте приход клиента',s14m:'Разберите поступление',
     s15:'Подтвердите реквизиты',s18:'Отправьте рубли брокеру',s18w:'Сверьте USDT от брокера',
     s22:d.kind==='Фрихолд'?'Согласуйте заявку IPPS':'Выберите назначение USDT',
-    s23:d.outgoingReview&&['operator','admin'].includes(S.role)?'Засчитайте перевод':
-      'Отправьте USDT с кошелька',s24:'Одобрите перевод',s25:d.pay?.coinsNotified?'Сверьте баты на SCB':'Известите Coins',
+    s23:d.transferSentReport?'Проверьте перевод':d.outgoingReview&&['operator','admin'].includes(S.role)?'Засчитайте перевод':
+      'Отправьте USDT с кошелька',s24:d.transferSentReport?'Проверьте перевод':'Одобрите перевод',s25:d.pay?.coinsNotified?'Сверьте баты на SCB':'Известите Coins',
     s26:d.kind==='Фрихолд'?'Приложите MT103':'Оплатите инвойс',s27:'Закройте сделку'};
   const machine=v=>/^(T[A-Za-z0-9]{32,}|0x[A-Fa-f0-9]{40,})$/.test(String(v||''));
   return `<div class="card goal${d.step==='s23'&&hasPolicy(dealWallet(d))?' policy-send-goal':''}" style="margin-bottom:16px">
@@ -12012,6 +12037,11 @@ function stepCard(d){
     const cost=sObj.cur==='usdt'?need/rate:null;
     const foundTx=(d.outgoingReview?.candidates||[]).find(t=>t.to===d.transfer?.addr&&!t.networkFee&&t.hash);
     const policyWallet=dealWallet(d);
+    if(hasPolicy(policyWallet)&&d.transferSentReport)return `<div class="card"><div class="card-title">Проверить отправку с кошелька ${htmlText(policyWallet.name)}</div>
+      ${policyStatusLine(d)}${signSummary(d)}${packTasks(d,false)}
+      <div class="row"><button class="btn btn-outline" onclick="checkSends(${d.id})">Найти перевод в сети</button></div>
+      <p class="fh">Если поиск не нашёл перевод, вставьте хеш ниже. Проверим кошелёк, получателя и сумму.</p>
+      ${markSentBlock(d)}</div>`;
     if(hasPolicy(policyWallet)&&!d.outgoingReview?.requestedAt){
       const claim=d.transferClaim;
       const needsApproval=policyNeedsApproval(d,policyWallet);
@@ -12055,7 +12085,7 @@ function stepCard(d){
     </div>`:`<div class="alert a-warn"><div><b>Пачки конвертации нет.</b> ${isCrypto(d)?'Клиент платил криптой — USDT пришли напрямую, конвертировать было нечего.':'Рубли ещё не конвертированы — проверьте, откуда берутся деньги на этот платёж.'}</div></div>`}
 
     ${transferModeBlock(d)}
-    ${packTasks(d,!personalSend(d)||(['operator','admin'].includes(S.role)&&!!d.outgoingReview))}
+    ${packTasks(d,!hasPolicy(policyWallet)&&(!personalSend(d)||(['operator','admin'].includes(S.role)&&!!d.outgoingReview)))}
     </details>
     ${cnvMembers(d).map(outgoingReviewBlock).join('')}
     ${(function(){const w=dealWallet(d);
@@ -12064,7 +12094,7 @@ function stepCard(d){
         <textarea class="fc" id="c" placeholder="Деньги на кошельке, адреса сверены с задачами операциониста">${d.pay.check||''}</textarea></div>
       <div class="${hasPolicy(w)?'derived':'alert a-info'}"><div>${hasPolicy(w)?`Подписи с кошелька ${htmlText(w.name)}: ${htmlText(walletSends(w))}. ${d.transferConfirmation?.ownerAlone?'Владелец ведёт перевод один; завершение только после Success в сети.':'Перевод появится в сети после всех подписей — проверенный перевод закроет шаг сам.'}`:
         `Кошелёк с мультисигом: <b>${walletSigner(w)}</b> завешивает каждый перевод и подписывает первым — будет 1 из 2, дальше одобряет Теодор. Транзакция живёт сутки: не одобрят — завешивать заново.`}</div></div>
-      <div class="row"><button class="btn btn-primary" onclick="act(${d.id},'s23')">${hasPolicy(w)?'Я отправил':'Подписал — передать Теодору'}</button></div>`
+      <div class="row"><button class="btn btn-primary" onclick="${hasPolicy(w)?(d.transferConfirmation?.ownerAlone?'transferReportSent':'transferPropose'):'act'}(${d.id}${hasPolicy(w)?'':",'s23'"})">${hasPolicy(w)?(d.transferConfirmation?.ownerAlone?'Деньги отправлены':'Передать на подпись'):'Подписал — передать Теодору'}</button></div>`
       :`
       ${d.outgoingReview?'<p class="fh">Проверьте найденные переводы и хеши.</p>':''}
       ${!d.outgoingReview?`<div class="row"><button class="btn btn-success" onclick="outgoingReviewAction(${d.id},'sent')">Отправил</button></div>`:''}`;})()}
@@ -12077,6 +12107,11 @@ function stepCard(d){
        подменить перевод (аудит 27.09 №5, 6, Карим, 27.09) */
     const sObj=SOURCES_PAY[d.paySrc]||SOURCES_PAY.coins;
     const policyWallet=dealWallet(d), policy=!!hasPolicy(policyWallet);
+    if(policy&&d.transferSentReport)return `<div class="card"><div class="card-title">Проверить отправку с кошелька ${htmlText(policyWallet.name)}</div>
+      ${policyStatusLine(d)}${signSummary(d)}${packTasks(d,false)}
+      <div class="row"><button class="btn btn-outline" onclick="checkSends(${d.id})">Найти перевод в сети</button></div>
+      <p class="fh">Если поиск не нашёл перевод, вставьте хеш ниже. Проверим кошелёк, получателя и сумму.</p>
+      ${markSentBlock(d)}</div>`;
     return `<div class="card"><div class="card-title">Суть сделки<span class="sub">по шаблону из Telegram — проверьте и подпишите</span></div>
     ${signSummary(d)}
     ${policy?walletPolicyLine(policyWallet)+policyStatusLine(d)+policySignerCards(policyWallet)+policyActions(d):''}
@@ -12086,7 +12121,7 @@ function stepCard(d){
     <div class="${policy?'derived':'alert a-info'}"><div><b>${policy?htmlText(d.transferClaim?.byName||'Инициатор'):'Фин дир'} проверил:</b> ${d.pay.check?htmlText(d.pay.check):'комментарий не оставлен'}</div></div>
     <div class="row">${policy&&String(d.transferClaim?.byId)===String(standMeId)?
       '<div class="alert a-warn"><div>Сотрудник, начавший отправку, не может подтвердить её сам.</div></div>':
-      `<button class="btn btn-primary" onclick="act(${d.id},'s24')">Подписал — проверить перевод</button>`}</div>
+      `<button class="btn btn-primary" onclick="${policy?'transferReportSent':'act'}(${d.id}${policy?'':",'s24'"})">${policy?'Деньги отправлены':'Подписал — проверить перевод'}</button>`}</div>
     ${packTasks(d,false)}
     </div>`;},
 
@@ -12629,6 +12664,11 @@ async function act(id,step){
     go(d,nxt,'Решение по USDT: '+(mine?mine.t:d.postConv)+(mem.length>1?' · задач по пачке: '+mem.length:''));
     toast('К отправке '+usd(pcOut(d)));return;}
   if(step==='s23'){
+    if(hasPolicy(dealWallet(d))){
+      if(d.transferConfirmation?.ownerAlone)await transferReportSent(id);
+      else await transferPropose(id);
+      return;
+    }
     if(personalSend(d)){await outgoingReviewAction(id,'sent');return;}
     const sends=cnvMembers(d).filter(pcSends), multi=needsSecondSign(d);
     if(!sends.length){toast('Отправлять нечего: не выбрано назначение USDT — верните на шаг «Что делаем с USDT»');return;}
