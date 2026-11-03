@@ -569,3 +569,78 @@ class TestRealtyPayloadGuard:
             payout_tx_hashes=[{'hash': 'ab' * 16, 'amount_usdt': 39373}]))
         assert r.status_code == 201
         assert approx(r.json['deal']['transfer_sent_usd'], 39373)
+
+
+class TestAutoPayment:
+    def test_auto_uses_freehold_math_and_keeps_distinct_kind(self, tc):
+        result = tc.post('/api/deals', json=_fh_payload(
+            client_name='Покупатель авто', deal_kind='mf_auto',
+            realty_purpose='Toyota, VIN 123', skip_sync=True))
+        assert result.status_code == 201, result.json
+        deal = result.json['deal']
+        assert deal['deal_kind'] == 'mf_auto'
+        assert approx(deal['transfer_sent_usd'], 39373.00)
+        assert approx(deal['transfer_arrive_usd'], 39010.91)
+        assert approx(deal['profit_usdt'], 160.77)
+        assert deal['needs_reimbursement'] is False
+
+        auto = tc.get('/api/deals?deal_kind=mf_auto').json
+        property_deals = tc.get('/api/deals?deal_kind=realty').json
+        assert [d['id'] for d in auto['deals']] == [deal['id']]
+        assert all(d['id'] != deal['id'] for d in property_deals['deals'])
+
+    def test_auto_empty_payload_rejected(self, tc):
+        r = tc.post('/api/deals', json={
+            'client_name': 'Авто', 'deal_kind': 'mf_auto', 'deal_type': 'pay_in',
+            'payin_method': 'crypto_direct', 'payin_amount_usdt': 999,
+        })
+        assert r.status_code == 400
+        assert 'счёта продавца' in r.json['error']
+
+    def test_auto_export_and_notification_use_seller(self, monkeypatch):
+        sheet = FakeSheet()
+        monkeypatch.setattr(A, 'get_gsheet_client', lambda: FakeClient(sheet))
+        s, deal = _make_freehold_deal(deal_kind='mf_auto', realty_purpose='Toyota VIN 123')
+        try:
+            result = sync_realty_deal_to_gsheet(deal)
+            message = _mf_freehold_telegram_text(deal)
+        finally:
+            s.close()
+        assert result['sheet'] == 'август auto'
+        assert 'продавца авто' in sheet.worksheet('август auto').rows[0][7]
+        assert 'все сделки auto' in sheet.added
+        assert 'Оплата авто' in message
+        assert 'дойдёт продавцу' in message
+        assert 'застройщику' not in message
+
+    def test_switch_auto_to_exchange_clears_payment_fields_and_back(self, tc):
+        created = tc.post('/api/deals', json=_fh_payload(
+            deal_kind='mf_auto', realty_purpose='Toyota VIN 123', skip_sync=True))
+        assert created.status_code == 201
+        deal_id = created.json['deal']['id']
+
+        switched = tc.put(f'/api/deals/{deal_id}', json={
+            'deal_kind': 'exchange', 'status': 'pending',
+            'payout_method': 'transfer', 'payout_amount_usdt': 39000,
+            'agents': [],
+        })
+        assert switched.status_code == 200, switched.json
+        exchange = tc.get(f'/api/deals/{deal_id}').json['deal']
+        assert exchange['deal_kind'] == 'exchange'
+        assert approx(exchange['profit_usdt'], 533.77)
+        for field in (A.MF_FREEHOLD_INPUT_FIELDS
+                      + ('transfer_fee_usd', 'transfer_arrive_usd')):
+            assert exchange[field] is None, field
+
+        back = tc.put(f'/api/deals/{deal_id}', json={
+            'deal_kind': 'mf_auto', 'status': 'pending',
+            'realty_purpose': 'Honda VIN 456', 'invoice_amount_usd': 38000,
+            'transfer_fee_percent': 1, 'transfer_fee_fixed_usd': 40,
+            'agents': [],
+        })
+        assert back.status_code == 200, back.json
+        auto = tc.get(f'/api/deals/{deal_id}').json['deal']
+        assert auto['deal_kind'] == 'mf_auto'
+        assert auto['realty_purpose'] == 'Honda VIN 456'
+        assert approx(auto['transfer_sent_usd'], 38420)
+        assert approx(auto['profit_usdt'], 1113.77)

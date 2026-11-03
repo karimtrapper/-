@@ -370,6 +370,7 @@ DEAL_KIND_LABELS = {
     'exchange': 'обычный обмен',
     'mf_realty': 'недвижимость: лизхолд (через MF Corp)',
     'mf_freehold': 'недвижимость: фрихолд (SWIFT застройщику)',
+    'mf_auto': 'Оплата авто',
 }
 
 class PayOutMethod(str, Enum):
@@ -1703,9 +1704,12 @@ def compute_agent_cascade(profit_usdt, volume_usdt, agents, crypto_base_usdt=Non
 
 MF_REALTY_KIND = 'mf_realty'      # недвижимость через тайскую компанию (лизхолд)
 MF_FREEHOLD_KIND = 'mf_freehold'  # недвижимость фрихолд: оплата SWIFT-ом из-за рубежа
+MF_AUTO_KIND = 'mf_auto'          # оплата автомобиля: те же расчёты перевода
 # Оба типа недвижимости: своя математика, возмещение не нужно, выгрузка в
 # «Cделки недвижимость», свой шаблон Telegram. Общая ветка кода — по этому кортежу.
-REALTY_KINDS = (MF_REALTY_KIND, MF_FREEHOLD_KIND)
+REALTY_KINDS = (MF_REALTY_KIND, MF_FREEHOLD_KIND, MF_AUTO_KIND)
+SWIFT_PAYMENT_KINDS = (MF_FREEHOLD_KIND, MF_AUTO_KIND)
+PROPERTY_KINDS = (MF_REALTY_KIND, MF_FREEHOLD_KIND)
 
 
 def compute_mf_realty(invoice_thb, buy_rate, payin_usdt, sell_rate=None,
@@ -3301,6 +3305,10 @@ GSHEET_FREEHOLD_HEADERS = [
 # CRM ID больше не последняя колонка — позицию берём по имени, а не по длине
 GSHEET_REALTY_ID_COL = GSHEET_REALTY_HEADERS.index('CRM ID') + 1
 GSHEET_FREEHOLD_ID_COL = GSHEET_FREEHOLD_HEADERS.index('CRM ID') + 1
+GSHEET_AUTO_HEADERS = GSHEET_FREEHOLD_HEADERS.copy()
+GSHEET_AUTO_HEADERS[7] = 'счёт продавца авто usd'
+GSHEET_AUTO_HEADERS[12] = 'дойдёт продавцу авто usd'
+GSHEET_AUTO_HEADERS[16] = 'счёт продавца'
 GSHEET_REALTY_MONTHS = [
     'январь', 'февраль', 'март', 'апрель', 'май', 'июнь',
     'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь',
@@ -3581,27 +3589,29 @@ def _sync_freehold_impl(sh, deal, when):
     несовпадении заголовка пишем в «<месяц> freehold CRM», а ручной лист
     оставляем как есть.
     """
-    title = freehold_month_sheet_name(when)
-    ws = _find_month_worksheet(sh, title, ('freehold',))
+    is_auto = deal.deal_kind == MF_AUTO_KIND
+    headers = GSHEET_AUTO_HEADERS if is_auto else GSHEET_FREEHOLD_HEADERS
+    title = f'{GSHEET_REALTY_MONTHS[when.month - 1]} auto' if is_auto else freehold_month_sheet_name(when)
+    ws = _find_month_worksheet(sh, title, ('auto',) if is_auto else ('freehold',))
     created = False
     if ws is None:
-        ws = _realty_get_or_create_ws(sh, title, headers=GSHEET_FREEHOLD_HEADERS)
+        ws = _realty_get_or_create_ws(sh, title, headers=headers)
         created = True
     else:
         header = _sheet_header(ws)
         if not any(header):
             # Лист завели руками и не заполнили — без шапки строка читалась бы заголовком
-            ws.append_row(GSHEET_FREEHOLD_HEADERS, value_input_option='USER_ENTERED')
-        elif GSHEET_FREEHOLD_HEADERS[:len(header)] != header:
+            ws.append_row(headers, value_input_option='USER_ENTERED')
+        elif headers[:len(header)] != header:
             title = f'{title} CRM'
-            ws = _realty_get_or_create_ws(sh, title, headers=GSHEET_FREEHOLD_HEADERS)
+            ws = _realty_get_or_create_ws(sh, title, headers=headers)
             created = True
     rows = build_freehold_rows(deal)
     inserted = _realty_upsert(ws, rows, deal.id, id_col=GSHEET_FREEHOLD_ID_COL)
     try:
         _realty_upsert(
-            _realty_get_or_create_ws(sh, GSHEET_FREEHOLD_ALL, rows=2000,
-                                     headers=GSHEET_FREEHOLD_HEADERS),
+            _realty_get_or_create_ws(sh, 'все сделки auto' if is_auto else GSHEET_FREEHOLD_ALL, rows=2000,
+                                     headers=headers),
             rows, deal.id, id_col=GSHEET_FREEHOLD_ID_COL)
     except Exception as e:
         print(f'[GSheet freehold] сводный лист: {e}', flush=True)
@@ -3615,7 +3625,7 @@ def _sync_realty_deal_impl(deal):
             return {'ok': False, 'error': 'no_credentials'}
         sh = gc.open_by_key(GSHEET_REALTY_ID)
         when = deal.created_at or datetime.utcnow()
-        if deal.deal_kind == MF_FREEHOLD_KIND:
+        if deal.deal_kind in SWIFT_PAYMENT_KINDS:
             return _sync_freehold_impl(sh, deal, when)
         month_name = realty_month_sheet_name(when)
         ws = _realty_find_month_worksheet(sh, month_name)
@@ -4230,6 +4240,7 @@ def _mf_freehold_telegram_text(deal):
     дойдёт до застройщика. Прибыль здесь тонкая (сотни долларов на десятки
     тысяч), поэтому расход показываем строкой, а не прячем в себестоимость.
     """
+    is_auto = deal.deal_kind == MF_AUTO_KIND
     date_str = deal.created_at.strftime('%d.%m.%Y') if deal.created_at else ''
     client = (deal.client.name if deal.client else deal.client_name) or 'без имени'
     sent = deal.transfer_sent_usd or 0
@@ -4237,14 +4248,14 @@ def _mf_freehold_telegram_text(deal):
     fee = deal.transfer_fee_usd or 0
     invoice = deal.invoice_amount_usd or 0
     msg = (
-        f"🏠 <b>Фрихолд {deal.id} — {client} — {date_str}</b>\n"
+        f"{'🚗' if is_auto else '🏠'} <b>{'Оплата авто' if is_auto else 'Фрихолд'} {deal.id} — {client} — {date_str}</b>\n"
         f"{deal.realty_purpose or ''}\n"
         f"Приход: ${deal.payin_amount_usdt or 0:,.2f}"
         f"{_payin_parts_block(deal)}\n"
         f"Отправлено: ${sent:,.2f}\n"
         f"— комиссия за перевод: ${fee:,.2f} "
         f"({deal.transfer_fee_percent or 0:.2f}% + ${deal.transfer_fee_fixed_usd or 0:,.0f})\n"
-        f"— дойдёт застройщику: ${arrive:,.2f}"
+        f"— дойдёт {'продавцу' if is_auto else 'застройщику'}: ${arrive:,.2f}"
     )
     gap = round(arrive - invoice, 2) if invoice else 0
     if gap < -0.01:
@@ -4289,7 +4300,7 @@ def _send_deal_telegram(deal):
         return
     if deal.deal_kind == MF_REALTY_KIND:
         return send_telegram_notification(_mf_realty_telegram_text(deal))
-    if deal.deal_kind == MF_FREEHOLD_KIND:
+    if deal.deal_kind in SWIFT_PAYMENT_KINDS:
         return send_telegram_notification(_mf_freehold_telegram_text(deal))
     date_str = deal.created_at.strftime('%d.%m.%Y') if deal.created_at else ''
     payout_usdt = deal.payout_amount_usdt or 0
@@ -5167,6 +5178,16 @@ def get_deals():
         # Демо-сделки тестового реферера в CRM не показываем (?include_test=1 — вернуть)
         if request.args.get('include_test') != '1':
             query = query.filter(Deal.is_test.isnot(True))
+        kind = request.args.get('deal_kind')
+        if kind:
+            if kind not in ('exchange', 'realty') + REALTY_KINDS:
+                return jsonify({'success': False, 'error': 'Invalid deal_kind'}), 400
+            if kind == 'exchange':
+                query = query.filter(or_(Deal.deal_kind.is_(None), Deal.deal_kind.notin_(REALTY_KINDS)))
+            elif kind == 'realty':
+                query = query.filter(Deal.deal_kind.in_(PROPERTY_KINDS))
+            else:
+                query = query.filter(Deal.deal_kind == kind)
         manager = request.args.get('manager')
         if manager:
             query = query.filter(Deal.manager_name.ilike(f'%{manager}%'))
@@ -8596,7 +8617,7 @@ def create_deal():
             # обычный пересчёт прибыли для неё не подходит
             if deal.deal_kind == MF_REALTY_KIND:
                 _apply_mf_realty(deal, data)
-            elif deal.deal_kind == MF_FREEHOLD_KIND:
+            elif deal.deal_kind in SWIFT_PAYMENT_KINDS:
                 _apply_mf_freehold(deal, data)
             else:
                 # Себестоимость выдачи — из отмеченных переводов, до пересчёта
@@ -8937,6 +8958,26 @@ def update_deal(deal_id):
 
         if 'deal_kind' in data:
             deal.deal_kind = data.get('deal_kind') or None
+        if old_kind != deal.deal_kind:
+            # При смене направления старые переводы не должны становиться
+            # себестоимостью новой сделки, а их доли — занимать реестр.
+            if old_kind in REALTY_KINDS or deal.deal_kind in REALTY_KINDS:
+                deal.payout_tx_hashes = None
+                deal.payout_tx_hash = None
+                _sync_payout_tx_uses(session, deal, [])
+            if old_kind in SWIFT_PAYMENT_KINDS and deal.deal_kind not in SWIFT_PAYMENT_KINDS:
+                # Инвойс и отправка относятся к прежнему продавцу. При возврате
+                # к оплате авто их вводят заново, без скрытых старых значений.
+                for field in MF_FREEHOLD_INPUT_FIELDS + ('transfer_fee_usd', 'transfer_arrive_usd'):
+                    setattr(deal, field, None)
+                if 'payout_amount_usdt' not in data:
+                    deal.payout_amount_usdt = None
+            if deal.deal_kind in REALTY_KINDS and old_kind not in REALTY_KINDS:
+                deal.payout_amount_thb = None
+                deal.payout_method = None
+                deal.payout_source = None
+                deal.payout_wallet_id = None
+                deal.bank_card_id = None
 
         # Автоматический пересчёт прибыли и выплаты рефереру.
         # Недвижимость — по своим формулам (лизхолд: два кармана; фрихолд: расходы
@@ -9435,8 +9476,8 @@ def _ledger_realty(deal):
             'katika_fee_usdt': deal.katika_fee_usdt,
             'crypto_remainder_usdt': deal.crypto_remainder_usdt,
         }
-    if deal.deal_kind == MF_FREEHOLD_KIND:
-        # Фрихолд: карман один, комиссию банка съедает сама отправка
+    if deal.deal_kind in SWIFT_PAYMENT_KINDS:
+        # Фрихолд и оплата авто: карман один, комиссию банка съедает сама отправка
         return {
             'purpose': deal.realty_purpose,
             'invoice_usd': deal.invoice_amount_usd,
@@ -9647,7 +9688,7 @@ def deals_ledger():
         if kind == 'exchange':
             q = q.filter(or_(Deal.deal_kind.is_(None), Deal.deal_kind.notin_(REALTY_KINDS)))
         elif kind == 'realty':
-            q = q.filter(Deal.deal_kind.in_(REALTY_KINDS))
+            q = q.filter(Deal.deal_kind.in_(PROPERTY_KINDS))
         elif kind in REALTY_KINDS:
             q = q.filter(Deal.deal_kind == kind)
 
@@ -9764,6 +9805,7 @@ FINANCE_ARTICLES = {
     'realty_send':           ('Отправка по сделке недвижимости', 'transfer'),
     'payout_client_thb':     ('Выдача клиенту, ฿', 'out'),
     'payout_developer':      ('Оплата застройщику', 'out'),
+    'payout_auto_seller':    ('Оплата продавцу авто', 'out'),
     'referral_payout':       ('Выплата реферальному партнёру', 'out'),
     'founder_reimbursement': ('Возврат фаундеру', 'out'),
 }
@@ -9772,6 +9814,7 @@ FINANCE_PRODUCTS = {
     'exchange': 'Обмен',
     'mf_realty': 'Недвижимость: лизхолд',
     'mf_freehold': 'Недвижимость: фрихолд',
+    'mf_auto': 'Оплата авто',
     'unassigned': 'Без привязки к сделке',
 }
 
@@ -10014,9 +10057,10 @@ def _finance_events(session, date_from=None, date_to=None):
                 day, 'payout_developer', d.invoice_amount_thb, 'THB', 'mf_corp',
                 counterparty=d.realty_purpose, deal_id=d.id, product=product,
                 ref=f'deal:{d.id}', date_estimated=True))
-        elif d.deal_kind == MF_FREEHOLD_KIND and d.transfer_sent_usd:
+        elif d.deal_kind in SWIFT_PAYMENT_KINDS and d.transfer_sent_usd:
             events.append(_fin_event(
-                day, 'payout_developer', d.transfer_sent_usd, 'USD', 'mf_corp',
+                day, 'payout_auto_seller' if d.deal_kind == MF_AUTO_KIND else 'payout_developer',
+                d.transfer_sent_usd, 'USD', 'mf_corp',
                 counterparty=d.realty_purpose, deal_id=d.id, product=product,
                 ref=f'deal:{d.id}', date_estimated=True))
 
@@ -11443,11 +11487,13 @@ def realty_payload_error(deal):
         if not (deal.invoice_amount_thb and deal.buy_rate_thb_usdt):
             return ('Лизхолд без суммы инвойса в батах и курса покупки. '
                     'Проверь тип сделки — похоже, форма сохранила не то.')
-    if deal.deal_kind == MF_FREEHOLD_KIND:
+    if deal.deal_kind in SWIFT_PAYMENT_KINDS:
         if not (deal.invoice_amount_usd or deal.transfer_sent_usd
                 or _payout_transfers_total(deal)):
-            return ('Фрихолд без инвойса застройщику и суммы отправки. '
-                    'Проверь тип сделки — похоже, форма сохранила не то.')
+            return (('Оплата авто без счёта продавца и суммы отправки. '
+                     if deal.deal_kind == MF_AUTO_KIND else
+                     'Фрихолд без инвойса застройщику и суммы отправки. ')
+                    + 'Проверь тип сделки — похоже, форма сохранила не то.')
     return None
 
 
@@ -12654,7 +12700,7 @@ def get_dashboard():
             deals_q = deals_q.filter(or_(Deal.deal_kind.is_(None),
                                          Deal.deal_kind.notin_(REALTY_KINDS)))
         elif kind_filter == 'realty':
-            deals_q = deals_q.filter(Deal.deal_kind.in_(REALTY_KINDS))
+            deals_q = deals_q.filter(Deal.deal_kind.in_(PROPERTY_KINDS))
         elif kind_filter in REALTY_KINDS:
             deals_q = deals_q.filter(Deal.deal_kind == kind_filter)
         period_deals = deals_q.all()
@@ -12674,10 +12720,13 @@ def get_dashboard():
         # разницу «объём − себестоимость» не попадает. Без разреза месяц с одной
         # сделкой на $500k читается как «прогнали полтора миллиона, заработали
         # копейки»: обменная нога тонет в транзите.
-        _realty_deals = [d for d in period_deals if d.deal_kind in REALTY_KINDS]
+        _realty_deals = [d for d in period_deals if d.deal_kind in PROPERTY_KINDS]
+        _auto_deals = [d for d in period_deals if d.deal_kind == MF_AUTO_KIND]
         _exch_deals = [d for d in period_deals if d.deal_kind not in REALTY_KINDS]
         period_volume_realty = round(sum(usdt[d.id][0] for d in _realty_deals), 2)
         period_cost_realty = round(sum(usdt[d.id][1] for d in _realty_deals), 2)
+        period_volume_auto = round(sum(usdt[d.id][0] for d in _auto_deals), 2)
+        period_cost_auto = round(sum(usdt[d.id][1] for d in _auto_deals), 2)
         period_volume_exchange = round(sum(usdt[d.id][0] for d in _exch_deals), 2)
         period_cost_exchange = round(sum(usdt[d.id][1] for d in _exch_deals), 2)
         # Сделки с реферралами и сумма выплат реферралам
@@ -13011,6 +13060,9 @@ def get_dashboard():
                     'volume_realty_usdt': period_volume_realty,
                     'cost_realty_usdt': period_cost_realty,
                     'realty_deals_count': len(_realty_deals),
+                    'volume_auto_usdt': period_volume_auto,
+                    'cost_auto_usdt': period_cost_auto,
+                    'auto_deals_count': len(_auto_deals),
                     'volume_exchange_usdt': period_volume_exchange,
                     'cost_exchange_usdt': period_cost_exchange,
                     'exchange_deals_count': len(_exch_deals),
