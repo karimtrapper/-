@@ -5254,7 +5254,7 @@ function docDownload(id,k,ext){
        document.body.appendChild(a);a.click();a.remove();
        log(d,'Скачан файл: '+(DOCT[k]||k)+' · '+f.file);save();return;
     }
-    const blob=f&&fileBlob(f);
+    const blob=f&&fileBlob(f,k);
     if(!blob){toast('Файл не загружен — скачивать нечего');return;}
     const url=URL.createObjectURL(blob), a=document.createElement('a');
     a.href=url;a.download=f.file||'document';a.style.display='none';
@@ -5453,7 +5453,7 @@ function docOpen(id,k,index){
        if(!tab)toast('Браузер заблокировал окно — используйте «Скачать»');
        return;
     }
-    const blob=f&&fileBlob(f);
+    const blob=f&&fileBlob(f,k);
     if(!blob){toast('Файл не загружен — откройте его после загрузки');return;}
     const url=URL.createObjectURL(blob), tab=window.open(url,'_blank','noopener,noreferrer');
     if(!tab)toast('Браузер заблокировал окно — используйте «Скачать»');
@@ -9888,26 +9888,32 @@ const FILE_NAMES={
   signed:['signed_contract.pdf','signed_appendix.pdf','signed_invoice.pdf','signed_scan_2.jpg'],
   receipt:['bank_receipt_scb.pdf','receipt_part2.pdf','swift_confirmation.pdf','receipt_scan.jpg']
 };
-function fileValid(f){
+function fileValid(f,k){
   if(!f||typeof f.data!=='string')return false;
   if(f.data!=='__detached__' && f.data.length>28*1024*1024)return false;
   if(f.bytes!=null&&(!Number.isFinite(Number(f.bytes))||Number(f.bytes)>20*1024*1024))return false;
   const allowed={'application/pdf':['pdf'],'image/png':['png'],
     'image/jpeg':['jpg','jpeg'],'image/webp':['webp']};
+  if(k==='bankCreditEvidence'){
+    allowed['application/vnd.ms-excel']=['xls'];
+    allowed['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet']=['xlsx'];
+  }
   const ext=String(f.file||'').split('.').pop().toLowerCase();
   if(!Object.prototype.hasOwnProperty.call(allowed,f.mime)||!allowed[f.mime].includes(ext))return false;
   if(f.data==='__detached__')return true;
   if(!f.data.startsWith('data:'+f.mime+';base64,'))return false;
   try{
     const first=atob(f.data.split(',')[1].slice(0,32));
+    if(f.mime==='application/vnd.ms-excel')return first.startsWith('\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1');
+    if(f.mime==='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')return first.startsWith('PK\x03\x04');
     if(f.mime==='application/pdf')return first.startsWith('%PDF-');
     if(f.mime==='image/png')return first.startsWith('\x89PNG\r\n\x1a\n');
     if(f.mime==='image/jpeg')return first.startsWith('\xff\xd8\xff');
     return first.startsWith('RIFF')&&first.slice(8,12)==='WEBP';
   }catch(e){return false;}
 }
-function fileBlob(f){
-  if(!fileValid(f))return null;
+function fileBlob(f,k){
+  if(!fileValid(f,k))return null;
   try{
     const data=atob(f.data.split(',')[1]), bytes=new Uint8Array(data.length);
     for(let i=0;i<data.length;i++)bytes[i]=data.charCodeAt(i);
@@ -10083,7 +10089,7 @@ function filesOf(d,k){
   target.files=target.files||{};
   /* Старые записи с одним именем файла не содержат байтов: их нельзя выдавать за чек. */
   if(!Array.isArray(target.files[k]))target.files[k]=[];
-  target.files[k]=target.files[k].filter(fileValid);
+  target.files[k]=target.files[k].filter(f=>fileValid(f,k));
   if(k==='receipt'||k==='signed')d.docs[k]=target.files[k].length>0||
     (k==='receipt'&&((d.files||{}).additional||[]).some(f=>f&&f.documentType==='receipt'&&fileValid(f)));
   return target.files[k];
@@ -10161,8 +10167,18 @@ function fileAddReal(id,k,f,extraType){
   const ext=String(f.name||'').split('.').pop().toLowerCase();
   const allowed={'application/pdf':['pdf'],'image/png':['png'],
     'image/jpeg':['jpg','jpeg'],'image/webp':['webp']};
+  if(k==='bankCreditEvidence'){
+    allowed['application/vnd.ms-excel']=['xls'];
+    allowed['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet']=['xlsx'];
+    if(f.type===''||f.type==='application/octet-stream'){
+      const mime=ext==='xls'?'application/vnd.ms-excel':ext==='xlsx'
+        ?'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':null;
+      if(mime)f=new File([f],f.name,{type:mime});
+    }
+  }
   if(!Object.prototype.hasOwnProperty.call(allowed,f.type)||!allowed[f.type].includes(ext)){
-    toast('Разрешены только PDF, PNG, JPEG или WEBP');return;}
+    toast(k==='bankCreditEvidence'?'Разрешены PDF, PNG, JPEG, WEBP, XLS или XLSX':
+      'Разрешены только PDF, PNG, JPEG или WEBP');return;}
   if(f.size>20*1024*1024){toast('Файл больше 20 МБ');return;}
   if(STAND&&!SCREEN&&!SNAP){
     fileUploadQueue=fileUploadQueue.catch(()=>{}).then(async()=>{
@@ -10182,7 +10198,9 @@ function fileAddReal(id,k,f,extraType){
 async function fileAppend(id,k,f){
   const d=deal(id);if(!d){toast('Сделка уже недоступна');return;}
   const l=filesOf(d,k);
-  if(!fileValid(f)){toast('Разрешены только настоящие PDF, PNG, JPEG или WEBP');return;}
+  if(!fileValid(f,k)){toast(k==='bankCreditEvidence'?
+    'Разрешены только настоящие PDF, PNG, JPEG, WEBP, XLS или XLSX':
+    'Разрешены только настоящие PDF, PNG, JPEG или WEBP');return;}
   if(f.bytes>20*1024*1024){toast('Файл больше 20 МБ');return;}
   if(k==='clientPayinReceipt'){
     if(!clientPayinCanAdd(d)){toast('Чеки доступны после отправки реквизитов или при сверке прихода');return;}
@@ -10231,7 +10249,8 @@ function fileAdd(id,k){
       mime:'application/pdf',bytes:atob(data.split(',')[1]).length,data:data,demo:true});return;
   }
   const input=document.createElement('input');input.type='file';
-  input.accept='.pdf,.png,.jpg,.jpeg,.webp,application/pdf,image/png,image/jpeg,image/webp';
+  input.accept='.pdf,.png,.jpg,.jpeg,.webp,application/pdf,image/png,image/jpeg,image/webp'+
+    (k==='bankCreditEvidence'?',.xls,.xlsx,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':'');
   input.onchange=()=>{const f=input.files&&input.files[0];fileAddReal(id,k,f);};
   input.click();
 }
@@ -10270,7 +10289,7 @@ function bankEvidenceCanEdit(d){
 function bankEvidenceBlock(d){
   const k='bankCreditEvidence',l=filesOf(d,k),can=bankEvidenceCanEdit(d);
   return `<div class="sberbox" style="margin-top:10px"><div class="chtitle">Выписка / подтверждение зачисления</div>
-    <p class="fh">Для ручного подтверждения нужен хотя бы один файл из банка: PDF, PNG, JPG или WEBP.</p>
+    <p class="fh">Для ручного подтверждения нужен хотя бы один файл из банка: PDF, PNG, JPG, WEBP, XLS или XLSX.</p>
     <div class="list" ${can?`ondragover="dzOver(event)" ondragleave="dzLeave(event)" ondrop="fileDrop(event,${d.id},'${k}')"`:''}>
       ${l.map((f,i)=>`<div class="li on" style="cursor:default"><span class="av">✓</span><div style="flex:1;min-width:0">
         <div class="t1">${htmlText(f.file)}</div><div class="t2">${htmlText(f.size)} · ${htmlText(f.at)} · ${htmlText(f.uploadedBy||'операционист')}</div></div>

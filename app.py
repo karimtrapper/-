@@ -6159,7 +6159,11 @@ def stand_file_upload():
         raw = upload.read(stand_file_storage.FILE_LIMIT + 1)
         name = stand_file_storage.safe_name(upload.filename)
         mime = upload.mimetype
-        stand_file_storage.validate(raw, mime, name)
+        if kind == STAND_BANK_CREDIT_KIND and mime in ('', 'application/octet-stream'):
+            mime = {'xls': 'application/vnd.ms-excel',
+                    'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}.get(
+                        name.rsplit('.', 1)[-1].lower(), mime)
+        stand_file_storage.validate(raw, mime, name, kind)
     except (TypeError, ValueError) as exc:
         return jsonify(success=False, error=str(exc)), 400
     db = get_session()
@@ -10752,22 +10756,28 @@ def _stand_apply_prepay_fees_to_crm(session, crm_deal, board, agents):
     _apply_deal_agents(session, crm_deal, agents or [])
 
 
-def _stand_valid_receipt(deal):
-    """Чек — реальный PDF/PNG/JPEG/WebP, а не отметка docs.receipt."""
-    for item in _stand_receipt_items(deal):
+def _stand_valid_receipt(deal, *, kind='receipt'):
+    """Проверить байты чека; Excel допустим лишь для банковской выписки."""
+    bank_credit = kind == 'bankCreditEvidence'
+    items = ((deal.get('files') or {}).get(kind) or []) if bank_credit else _stand_receipt_items(deal)
+    for item in items:
         try:
             if item.get('storageId'):
                 # Заимствуем сессию обработчика; здесь её нельзя закрывать.
-                row = stand_file_storage.resolve(get_session(), StandFile, item)
+                row = stand_file_storage.resolve(get_session(), StandFile, item,
+                                                 kind=kind if bank_credit else None)
                 # Ссылку выдаёт сервер лишь после проверки байтов при загрузке.
                 if row.size > stand_file_storage.FILE_LIMIT:
                     continue
-                if row.content_valid and row.mime in stand_file_storage.MIMES:
+                allowed = (stand_file_storage.MIMES if bank_credit
+                           else stand_file_storage.DOCUMENT_MIMES)
+                if row.content_valid and row.mime in allowed:
                     return True
                 continue
             else:
                 raw = stand_file_storage.decode(item)
-            stand_file_storage.validate(raw, item.get('mime'), item.get('file'))
+            stand_file_storage.validate(raw, item.get('mime'), item.get('file'),
+                                        kind if bank_credit else None)
             return True
         except (ValueError, AttributeError, TypeError):
             continue
@@ -10828,7 +10838,8 @@ def _stand_bank_credit_problem(before, deal, actor, actor_id, db=None):
             return 'Файл выписки нельзя менять'
         if file_id not in old_by_id:
             if (item.get('uploadedById') != actor_id or item.get('demo') is not False
-                    or not _stand_valid_receipt({'files': {'receipt': [item]}})):
+                    or not _stand_valid_receipt({'files': {STAND_BANK_CREDIT_KIND: [item]}},
+                                                kind=STAND_BANK_CREDIT_KIND)):
                 return 'Некорректная выписка о зачислении'
             added.append(item)
     if db:
@@ -15749,7 +15760,8 @@ def stand_manual_bank_receipt_confirm(deal_id):
         if assignee_problem:
             return jsonify({'success': False, 'error': assignee_problem}), 409
         evidence = ((deal.get('files') or {}).get(STAND_BANK_CREDIT_KIND) or [])
-        if not evidence or not _stand_valid_receipt({'files': {'receipt': evidence}}):
+        if not evidence or not _stand_valid_receipt(
+                {'files': {STAND_BANK_CREDIT_KIND: evidence}}, kind=STAND_BANK_CREDIT_KIND):
             return jsonify({'success': False, 'error': 'Приложите выписку или скрин подтверждения зачисления'}), 409
         expected = deal.get('expect') or {}
         receiving = deal.get('rubReceivingAccount') or {}

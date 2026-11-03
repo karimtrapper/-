@@ -1,6 +1,7 @@
 """Сверка ручного рублёвого прихода операционистом по банковской выписке."""
 import copy
 import base64
+import io
 import json
 import secrets
 import subprocess
@@ -9,6 +10,7 @@ import pytest
 
 import app as m
 from stand_funding import check_batch
+from tests.test_stand_files_storage import workbook_xlsx
 
 
 def board():
@@ -315,6 +317,35 @@ def test_operator_can_record_then_confirm_after_statement_review(monkeypatch):
     assert confirmed.status_code == 200, confirmed.json
     receipt = confirmed.json['data']['deals'][0]['manualBankReceipt']
     assert receipt['requestedRole'] == 'operator' and receipt['confirmedRole'] == 'operator'
+
+
+def test_excel_bank_evidence_allows_confirmation_but_not_payment_receipt(monkeypatch):
+    state = board()
+    state['deals'][0]['files']['bankCreditEvidence'] = []
+    client = seed(monkeypatch, state)
+    monkeypatch.setattr(m, 'current_role', lambda: 'operator')
+    pending = client.post('/api/stand/manual-bank-receipt', json=payload())
+    assert pending.status_code == 200, pending.json
+
+    raw = workbook_xlsx()
+    mime = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    wrong_slot = client.post('/api/stand/files', data={
+        'dealId': '9301', 'kind': 'receipt', 'file': (io.BytesIO(raw), 'bank.xlsx', mime)})
+    assert wrong_slot.status_code == 400
+
+    uploaded = client.post('/api/stand/files', data={
+        'dealId': '9301', 'kind': 'bankCreditEvidence', 'file': (io.BytesIO(raw), 'bank.xlsx', mime)})
+    assert uploaded.status_code == 200, uploaded.json
+    file_ref = uploaded.json['data']['deals'][0]['files']['bankCreditEvidence'][0]
+    assert m._stand_valid_receipt({'files': {'receipt': [file_ref]}}) is False
+    assert m._stand_valid_receipt({'files': {'bankCreditEvidence': [file_ref]}},
+                                  kind='bankCreditEvidence') is True
+
+    confirmed = client.post('/api/stand/manual-bank-receipt/9301/confirm',
+                            json={'version': uploaded.json['version'], 'statementVerified': True})
+    assert confirmed.status_code == 200, confirmed.json
+    assert confirmed.json['data']['deals'][0]['manualBankReceipt']['status'] == 'confirmed'
+    assert confirmed.json['data']['incomes'][0]['source'] == 'manual_confirmed'
 
 
 def test_manual_request_notification_is_created_and_delivery_runs_after_commit(monkeypatch):

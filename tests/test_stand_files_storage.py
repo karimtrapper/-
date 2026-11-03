@@ -3,6 +3,7 @@ import base64
 import copy
 import io
 import json
+import zipfile
 
 import pytest
 import app as m
@@ -27,6 +28,63 @@ def pdf(data=b'test', name='invoice.pdf'):
 def upload(api, raw, kind='inv', name='invoice.pdf', mime='application/pdf'):
     return api[0].post('/api/stand/files', data={'dealId': '1473', 'kind': kind,
                        'file': (io.BytesIO(raw), name, mime)})
+
+
+def workbook_xlsx():
+    out = io.BytesIO()
+    with zipfile.ZipFile(out, 'w') as archive:
+        archive.writestr('[Content_Types].xml',
+                         '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+                         '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
+                         '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
+                         '</Types>')
+        archive.writestr('_rels/.rels',
+                         '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+                         '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>'
+                         '</Relationships>')
+        archive.writestr('xl/workbook.xml',
+                         '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '
+                         'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+                         '<sheets><sheet name="Sheet1" sheetId="1" r:id="rId1"/></sheets></workbook>')
+        archive.writestr('xl/_rels/workbook.xml.rels',
+                         '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+                         '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" '
+                         'Target="worksheets/sheet1.xml"/></Relationships>')
+        archive.writestr('xl/worksheets/sheet1.xml',
+                         '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"/>')
+    return out.getvalue()
+
+
+def bof_only_ole_xls():
+    # Валидная FAT-цепочка OLE с потоком Workbook, в котором нет EOF и листа.
+    raw = bytearray(11 * 512)
+    raw[:8] = b'\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1'
+    raw[24:32] = b'\x3e\x00\x03\x00\xfe\xff\x09\x00'
+    raw[32:34] = b'\x06\x00'
+    def put32(offset, value):
+        raw[offset:offset + 4] = value.to_bytes(4, 'little')
+    put32(44, 1)           # FAT sector count
+    put32(48, 1)           # directory sector
+    put32(56, 4096)        # mini stream cutoff
+    put32(60, 0xFFFFFFFE)  # no mini FAT
+    put32(68, 0xFFFFFFFE)  # no DIFAT
+    for i in range(109):
+        put32(76 + i * 4, 0 if i == 0 else 0xFFFFFFFF)
+    for i in range(128):
+        value = (0xFFFFFFFD if i == 0 else 0xFFFFFFFE if i in (1, 9)
+                 else i + 1 if 2 <= i < 9 else 0xFFFFFFFF)
+        put32(512 + i * 4, value)
+    root, book = 1024, 1152
+    for offset, name, kind, start, size in ((root, 'Root Entry', 5, 0xFFFFFFFE, 0),
+                                            (book, 'Workbook', 2, 2, 4096)):
+        encoded = name.encode('utf-16le') + b'\x00\x00'
+        raw[offset:offset + len(encoded)] = encoded
+        raw[offset + 64:offset + 66] = len(encoded).to_bytes(2, 'little')
+        raw[offset + 66] = kind
+        put32(offset + 116, start)
+        raw[offset + 120:offset + 128] = size.to_bytes(8, 'little')
+    raw[1536:1544] = b'\x09\x08\x10\x00\x00\x06\x05\x00'
+    return bytes(raw)
 
 
 def read_db():
@@ -477,6 +535,202 @@ def test_bank_evidence_delete_keeps_step_and_role_rules(api):
     assert 'до подтверждения' in denied.json['error']
     api[1][0] = 'admin'
     assert api[0].patch(url, json={'action': 'delete'}).status_code == 200
+
+
+def test_bank_evidence_xlsx_upload_and_download_only_in_own_slot(api):
+    api[1][0] = 'operator'
+    state = board('s14')
+    state['deals'][0]['manualBankReceipt'] = {'status': 'pending'}
+    seed(state)
+    raw = workbook_xlsx()
+    mime = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    denied = upload(api, raw, kind='receipt', name='bank.xlsx', mime=mime)
+    assert denied.status_code == 400
+    assert read_db()[0] == 1
+    uploaded = upload(api, raw, kind='bankCreditEvidence', name='bank.xlsx', mime=mime)
+    assert uploaded.status_code == 200, uploaded.json
+    item = uploaded.json['data']['deals'][0]['files']['bankCreditEvidence'][0]
+    assert item['mime'] == mime and item['data'] == '__detached__'
+    downloaded = api[0].get('/api/stand/file/1473/bankCreditEvidence/0?download=1')
+    assert downloaded.status_code == 200 and downloaded.data == raw
+    assert 'attachment' in downloaded.headers['Content-Disposition']
+    assert read_db()[0] == 2
+
+
+def test_bank_evidence_excel_type_fallback_and_false_workbook_rejected(api):
+    api[1][0] = 'operator'
+    state = board('s14')
+    state['deals'][0]['manualBankReceipt'] = {'status': 'pending'}
+    seed(state)
+    raw = workbook_xlsx()
+    accepted = upload(api, raw, kind='bankCreditEvidence', name='bank.xlsx', mime='application/octet-stream')
+    assert accepted.status_code == 200, accepted.json
+    item = accepted.json['data']['deals'][0]['files']['bankCreditEvidence'][0]
+    assert item['mime'] == 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    fake = io.BytesIO()
+    with zipfile.ZipFile(fake, 'w') as archive:
+        archive.writestr('not-a-workbook.txt', 'irrelevant')
+    denied = upload(api, fake.getvalue(), kind='bankCreditEvidence', name='fake.xlsx',
+                    mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    assert denied.status_code == 400
+    assert read_db()[0] == 2
+
+
+def test_excel_lookalike_containers_do_not_pass_validation():
+    mime_xlsx = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    malformed = io.BytesIO()
+    with zipfile.ZipFile(malformed, 'w') as archive:
+        archive.writestr('[Content_Types].xml',
+                         '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"/>')
+        archive.writestr('xl/workbook.xml', '<workbook')
+    with pytest.raises(ValueError):
+        storage.validate(malformed.getvalue(), mime_xlsx, 'fake.xlsx', 'bankCreditEvidence')
+
+    missing_sheet = io.BytesIO()
+    with zipfile.ZipFile(missing_sheet, 'w') as archive:
+        with zipfile.ZipFile(io.BytesIO(workbook_xlsx())) as source:
+            for name in source.namelist():
+                if name != 'xl/worksheets/sheet1.xml':
+                    archive.writestr(name, source.read(name))
+    with pytest.raises(ValueError):
+        storage.validate(missing_sheet.getvalue(), mime_xlsx, 'missing-sheet.xlsx',
+                         'bankCreditEvidence')
+
+    entity_workbook = io.BytesIO()
+    with zipfile.ZipFile(entity_workbook, 'w') as archive:
+        with zipfile.ZipFile(io.BytesIO(workbook_xlsx())) as source:
+            for name in source.namelist():
+                content = source.read(name)
+                if name == 'xl/workbook.xml':
+                    content = b'<!DOCTYPE workbook [<!ENTITY fake "test">]>' + content
+                archive.writestr(name, content)
+    with pytest.raises(ValueError):
+        storage.validate(entity_workbook.getvalue(), mime_xlsx, 'entity.xlsx',
+                         'bankCreditEvidence')
+
+    corrupt_crc = bytearray(workbook_xlsx())
+    workbook_start = corrupt_crc.find(b'<workbook')
+    assert workbook_start > 0
+    corrupt_crc[workbook_start] = ord('?')
+    with pytest.raises(ValueError):
+        storage.validate(bytes(corrupt_crc), mime_xlsx, 'corrupt.xlsx',
+                         'bankCreditEvidence')
+
+    extra_member = io.BytesIO()
+    with zipfile.ZipFile(extra_member, 'w') as archive:
+        with zipfile.ZipFile(io.BytesIO(workbook_xlsx())) as source:
+            for name in source.namelist():
+                archive.writestr(name, source.read(name))
+        archive.writestr('xl/sharedStrings.xml',
+                         '<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"/>')
+    corrupt_extra = bytearray(extra_member.getvalue())
+    extra_start = corrupt_extra.find(b'<sst')
+    assert extra_start > 0
+    corrupt_extra[extra_start] = ord('?')
+    with pytest.raises(ValueError):
+        storage.validate(bytes(corrupt_extra), mime_xlsx, 'corrupt-extra.xlsx',
+                         'bankCreditEvidence')
+
+    unsupported = bytearray(workbook_xlsx())
+    central = unsupported.find(b'PK\x01\x02')
+    assert central > 0
+    unsupported[central + 10:central + 12] = (99).to_bytes(2, 'little')
+    with pytest.raises(ValueError):
+        storage.validate(bytes(unsupported), mime_xlsx, 'unsupported.xlsx',
+                         'bankCreditEvidence')
+
+    fake_ole = bytearray(1024)
+    fake_ole[:8] = b'\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1'
+    fake_ole[28:32] = b'\xfe\xff\x09\x00'
+    name = 'Workbook'.encode('utf-16le') + b'\x00\x00'
+    fake_ole[512:512 + len(name)] = name
+    fake_ole[576:578] = len(name).to_bytes(2, 'little')
+    fake_ole[578] = 2
+    with pytest.raises(ValueError):
+        storage.validate(bytes(fake_ole), 'application/vnd.ms-excel', 'fake.xls',
+                         'bankCreditEvidence')
+    with pytest.raises(ValueError):
+        storage.validate(bof_only_ole_xls(), 'application/vnd.ms-excel', 'bof-only.xls',
+                         'bankCreditEvidence')
+
+    two_sheet_ole = bytearray(bof_only_ole_xls())
+    stream = 1536
+    two_sheet_ole[stream + 20:stream + 32] = (b'\x85\x00\x08\x00'
+                                                + (64).to_bytes(4, 'little') + b'\x00\x00\x01\x00')
+    two_sheet_ole[stream + 32:stream + 44] = (b'\x85\x00\x08\x00'
+                                                + (128).to_bytes(4, 'little') + b'\x00\x00\x01\x00')
+    two_sheet_ole[stream + 44:stream + 48] = b'\x0a\x00\x00\x00'
+    two_sheet_ole[stream + 64:stream + 84] = b'\x09\x08\x10\x00\x00\x06\x10\x00' + bytes(12)
+    two_sheet_ole[stream + 84:stream + 88] = b'\x0a\x00\x00\x00'
+    with pytest.raises(ValueError):
+        storage.validate(bytes(two_sheet_ole), 'application/vnd.ms-excel',
+                         'bad-second-sheet.xls', 'bankCreditEvidence')
+
+    two_sheets = io.BytesIO()
+    with zipfile.ZipFile(two_sheets, 'w') as archive:
+        with zipfile.ZipFile(io.BytesIO(workbook_xlsx())) as source:
+            for name in source.namelist():
+                content = source.read(name)
+                if name == '[Content_Types].xml':
+                    content = content.replace(b'</Types>',
+                        b'<Override PartName="/xl/worksheets/sheet2.xml" '
+                        b'ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
+                        b'</Types>')
+                if name == 'xl/workbook.xml':
+                    content = content.replace(b'</sheets>',
+                        b'<sheet name="Sheet2" sheetId="2" r:id="rId2"/></sheets>')
+                if name == 'xl/_rels/workbook.xml.rels':
+                    content = content.replace(b'</Relationships>',
+                        b'<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" '
+                        b'Target="worksheets/sheet2.xml"/></Relationships>')
+                archive.writestr(name, content)
+        archive.writestr('xl/worksheets/sheet2.xml', b'<worksheet')
+    with pytest.raises(ValueError):
+        storage.validate(two_sheets.getvalue(), mime_xlsx, 'bad-second-sheet.xlsx',
+                         'bankCreditEvidence')
+
+    utf16_dtd = io.BytesIO()
+    with zipfile.ZipFile(utf16_dtd, 'w') as archive:
+        with zipfile.ZipFile(io.BytesIO(workbook_xlsx())) as source:
+            for name in source.namelist():
+                content = source.read(name)
+                if name == 'xl/workbook.xml':
+                    content = ('<?xml version="1.0" encoding="utf-16"?>'
+                               '<!DOCTYPE workbook [<!ENTITY fake "Injected">]>'
+                               + content.decode().replace('Sheet1', '&fake;')).encode('utf-16')
+                archive.writestr(name, content)
+    with pytest.raises(ValueError):
+        storage.validate(utf16_dtd.getvalue(), mime_xlsx, 'utf16-dtd.xlsx',
+                         'bankCreditEvidence')
+
+
+@pytest.mark.parametrize('shared_strings', [
+    b'<sst',
+    (b'<!DOCTYPE sst [<!ENTITY fake "Injected">]>'
+     b'<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+     b'<si><t>&fake;</t></si></sst>'),
+])
+def test_excel_rejects_invalid_optional_xml_part(shared_strings):
+    out = io.BytesIO()
+    with zipfile.ZipFile(out, 'w') as archive:
+        with zipfile.ZipFile(io.BytesIO(workbook_xlsx())) as source:
+            for name in source.namelist():
+                content = source.read(name)
+                if name == '[Content_Types].xml':
+                    content = content.replace(b'</Types>',
+                        b'<Override PartName="/xl/sharedStrings.xml" '
+                        b'ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml"/>'
+                        b'</Types>')
+                if name == 'xl/_rels/workbook.xml.rels':
+                    content = content.replace(b'</Relationships>',
+                        b'<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings" '
+                        b'Target="sharedStrings.xml"/></Relationships>')
+                archive.writestr(name, content)
+        archive.writestr('xl/sharedStrings.xml', shared_strings)
+    with pytest.raises(ValueError):
+        storage.validate(out.getvalue(),
+                         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                         'bad-strings.xlsx', 'bankCreditEvidence')
 
 
 def test_size_limits_and_no_total_board_limit(api, monkeypatch):
