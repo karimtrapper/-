@@ -32,6 +32,7 @@ import tempfile
 import shutil
 import uuid
 from datetime import datetime, timezone
+from urllib.parse import urlsplit, urlunsplit
 
 STAND_BASE_URL = os.environ.get("STAND_BASE_URL", "https://grusha-new.up.railway.app").rstrip('/')
 STAND_CHANNEL_SYNC_KEY = os.environ.get("STAND_CHANNEL_SYNC_KEY", "")
@@ -419,6 +420,95 @@ def sync_whatsapp(account_name, db_path, api_url=None):
             
     push_to_stand("wa", account_name, chats)
 
+
+async def fetch_whatsapp_mcp_chats(session, page_size=200):
+    """Читаем только метаданные; неполный ответ не должен очистить стенд."""
+    chats = []
+    seen = set()
+    for page in range(100):
+        result = await session.call_tool("list_chats", {
+            "limit": page_size, "page": page, "include_last_message": False,
+        })
+        if result.isError or result.structuredContent is not None:
+            raise ValueError("WhatsApp MCP returned an incompatible result")
+        if not isinstance(result.content, list):
+            raise ValueError("WhatsApp MCP returned invalid content")
+        batch = []
+        for item in result.content:
+            if getattr(item, "type", None) != "text":
+                raise ValueError("WhatsApp MCP returned non-text content")
+            try:
+                row = json.loads(item.text)
+            except (TypeError, ValueError):
+                raise ValueError("WhatsApp MCP returned invalid JSON") from None
+            if not isinstance(row, dict) or not isinstance(row.get("jid"), str) or not row["jid"]:
+                raise ValueError("WhatsApp MCP returned invalid chat metadata")
+            if any(row.get(field) is not None for field in ("last_message", "last_sender", "last_is_from_me")):
+                raise ValueError("WhatsApp MCP returned message data")
+            jid = row["jid"]
+            if jid in seen:
+                raise ValueError("WhatsApp MCP pagination repeated a chat")
+            seen.add(jid)
+            name = row.get("name")
+            if name is not None and not isinstance(name, str):
+                raise ValueError("WhatsApp MCP returned invalid chat name")
+            timestamp = row.get("last_message_time")
+            if timestamp is not None and not isinstance(timestamp, str):
+                raise ValueError("WhatsApp MCP returned invalid activity time")
+            try:
+                last_active = int(datetime.fromisoformat(timestamp.replace('Z', '+00:00')).timestamp()) if timestamp else 0
+            except (TypeError, ValueError, OverflowError):
+                raise ValueError("WhatsApp MCP returned invalid activity time") from None
+            batch.append({"id": jid, "name": name or jid, "last_active": last_active})
+        chats.extend(batch)
+        if len(batch) < page_size:
+            if not chats:
+                raise ValueError("WhatsApp MCP returned no chats; preserving previous sync")
+            return chats
+    raise ValueError("WhatsApp MCP pagination exceeded safety limit")
+
+
+async def whatsapp_mcp_chat_count(http_client, status_url):
+    response = await http_client.get(status_url)
+    response.raise_for_status()
+    status = response.json()
+    count = status.get("chats") if isinstance(status, dict) else None
+    if type(count) is not int or count <= 0:
+        raise ValueError("WhatsApp MCP status has no valid chat count")
+    return count
+
+
+async def _sync_whatsapp_mcp(account_name, url, token):
+    import httpx
+    from mcp import ClientSession
+    from mcp.client.streamable_http import streamable_http_client
+
+    parsed_url = urlsplit(url)
+    if parsed_url.path != "/mcp" or parsed_url.query or parsed_url.fragment:
+        raise ValueError("WhatsApp MCP URL must end in /mcp")
+    status_url = urlunsplit((parsed_url.scheme, parsed_url.netloc, "/status", "", ""))
+    async with httpx.AsyncClient(
+        headers={"Authorization": f"Bearer {token}"}, timeout=httpx.Timeout(30, read=60)
+    ) as http_client:
+        before_count = await whatsapp_mcp_chat_count(http_client, status_url)
+        async with streamable_http_client(url, http_client=http_client) as (read, write, _):
+            async with ClientSession(read, write) as session:
+                await session.initialize()
+                tools = await session.list_tools()
+                if "list_chats" not in {tool.name for tool in tools.tools}:
+                    raise ValueError("WhatsApp MCP has no list_chats tool")
+                chats = await fetch_whatsapp_mcp_chats(session)
+        after_count = await whatsapp_mcp_chat_count(http_client, status_url)
+        if before_count != after_count or len(chats) != after_count:
+            raise ValueError("WhatsApp MCP chat count changed or pagination incomplete")
+    push_to_stand("wa", account_name, chats)
+
+
+def sync_whatsapp_mcp(account_name, url, token):
+    if not url or not token or not url.startswith("https://"):
+        raise ValueError("WhatsApp MCP configuration incomplete")
+    asyncio.run(_sync_whatsapp_mcp(account_name, url, token))
+
 def _parse_bitrix_date(date_str):
     if not date_str: return 0
     try:
@@ -491,6 +581,8 @@ def main():
     
     
     loop_interval = os.environ.get("SYNC_LOOP_INTERVAL")
+    wa_mcp_url = os.environ.get("SYNC_WA_MCP_URL")
+    wa_mcp_token = os.environ.get("SYNC_WA_MCP_TOKEN")
     
     while True:
         all_ready = True
@@ -508,21 +600,24 @@ def main():
             
             # Check WA
             try:
-                if acc["required"] and not acc.get("wa_db_path") and not acc.get("wa_api_url"):
+                if acc["name"] == "Елизавета" and (wa_mcp_url or wa_mcp_token):
+                    sync_whatsapp_mcp("WhatsApp", wa_mcp_url, wa_mcp_token)
+                elif acc["required"] and not acc.get("wa_db_path") and not acc.get("wa_api_url"):
                     print(f"[PENDING] WhatsApp DB/API NOT CONFIGURED for {acc['name']}")
                     all_ready = False
                 elif acc.get("wa_db_path") or acc.get("wa_api_url"):
                     sync_whatsapp(acc["name"], acc.get("wa_db_path"), acc.get("wa_api_url"))
             except Exception as e:
-                print(f"[ERROR] WA sync failed for {acc['name']}: {e}")
+                if acc["name"] == "Елизавета" and (wa_mcp_url or wa_mcp_token):
+                    print(f"[ERROR] WA MCP sync failed: {type(e).__name__}")
+                else:
+                    print(f"[ERROR] WA sync failed for {acc['name']}: {e}")
                 if acc["required"]: all_ready = False
 
         if not all_ready:
             print("===========================================================")
             print("БЛОКЕР СИНХРОНИЗАЦИИ:")
-            print("Функционал CRM не будет работать корректно, пока клиентский")
-            print("менеджер Елизавета не подключит Telegram и WhatsApp.")
-            print("Один или несколько каналов всё ещё ожидают авторизации.")
+            print("Один или несколько каналов не синхронизированы.")
             print("===========================================================")
 
         # Bitrix
