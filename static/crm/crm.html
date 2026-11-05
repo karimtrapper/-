@@ -12874,7 +12874,9 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                             </div>
                         `).join('');
                     } else {
-                        document.getElementById('availableTransactions').innerHTML = walletsData.wallets?.length > 0
+                        document.getElementById('availableTransactions').innerHTML = data.wallets_errors?.length
+                            ? '<p style="color:#b45309;text-align:center;padding:2rem;">Не удалось загрузить транзакции. Попробуйте обновить позже.</p>'
+                            : walletsData.wallets?.length > 0
                             ? '<p style="color: #666; text-align: center; padding: 2rem;">Нет новых входящих транзакций</p>'
                             : '<p style="color: #f59e0b; text-align: center; padding: 2rem;">Добавьте кошелек для мониторинга</p>';
                     }

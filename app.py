@@ -11231,6 +11231,37 @@ def _merge_partial_with_cache(fresh, cache_key, failed_addresses, addr_field):
     return merged
 
 
+def _trongrid_fetch_incoming(wallet, start_ts=None, end_ts=None):
+    """Резервный источник подтверждённых переводов, если TronScan недоступен."""
+    params = {'limit': 100, 'contract_address': USDT_TRC20_CONTRACT,
+              'only_confirmed': 'true'}
+    if start_ts:
+        params['min_timestamp'] = start_ts
+    if end_ts:
+        params['max_timestamp'] = end_ts - 1
+    headers = {}
+    if os.environ.get('TRONGRID_API_KEY'):
+        headers['TRON-PRO-API-KEY'] = os.environ['TRONGRID_API_KEY']
+    response = requests.get(f'https://api.trongrid.io/v1/accounts/{wallet.address}/transactions/trc20',
+                            params=params, headers=headers, timeout=15)
+    response.raise_for_status()
+    data = response.json()
+    if not data.get('success') or not isinstance(data.get('data'), list):
+        raise ValueError('TronGrid не вернул список переводов')
+    result = []
+    for tx in data['data']:
+        if tx.get('type') != 'Transfer' or (tx.get('token_info') or {}).get('address') != USDT_TRC20_CONTRACT:
+            continue
+        ts = tx.get('block_timestamp')
+        if not ts or not tx.get('transaction_id'):
+            continue
+        result.append({'tx_hash': tx['transaction_id'], 'from_address': tx.get('from'),
+                       'to_address': tx.get('to'), 'amount_usdt': float(tx.get('value', 0)) / 1_000_000,
+                       'timestamp': datetime.fromtimestamp(ts / 1000).isoformat(),
+                       'confirmed': True, 'is_incoming': tx.get('to') == wallet.address})
+    return result
+
+
 def _tronscan_fetch_incoming(wallets, start_ts=None, end_ts=None):
     """Обход TronScan по кошелькам: TRC20-USDT переводы (входящие помечены is_incoming).
 
@@ -11244,6 +11275,7 @@ def _tronscan_fetch_incoming(wallets, start_ts=None, end_ts=None):
 
     for wallet_idx, wallet in enumerate(wallets):
         wallet_tx_count = 0
+        wallet_start = len(all_incoming)
         wallets_checked.append(wallet.address)
 
         # Пауза между кошельками чтобы не словить 429 от TronScan
@@ -11313,6 +11345,16 @@ def _tronscan_fetch_incoming(wallets, start_ts=None, end_ts=None):
         except Exception as e:
             wallets_errors.append({'address': wallet.address, 'error': str(e)})
             print(f"[DEBUG] TronScan request error for {wallet.address}: {e}")
+
+        if any(e.get('address') == wallet.address for e in wallets_errors):
+            try:
+                fallback = _trongrid_fetch_incoming(wallet, start_ts=start_ts, end_ts=end_ts)
+                del all_incoming[wallet_start:]
+                all_incoming.extend(fallback)
+                wallets_errors = [e for e in wallets_errors if e.get('address') != wallet.address]
+                wallet_tx_count = len(fallback)
+            except Exception as fallback_error:
+                print(f"[DEBUG] TronGrid fallback failed for {wallet.address}: {fallback_error}")
 
         print(f"[DEBUG] Wallet {wallet.address[:10]}... fetched {wallet_tx_count} transfers")
 

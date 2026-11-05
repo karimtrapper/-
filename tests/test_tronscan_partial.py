@@ -130,3 +130,24 @@ def test_filtered_wallet_does_not_use_other_wallets_cache(monkeypatch):
     assert [t['tx_hash'] for t in result['available']] == ['new']
     assert not result['cached']
     assert TRONSCAN_CACHE['incoming']['data'] == [cached]
+
+
+def test_incoming_uses_trongrid_when_tronscan_rate_limited(monkeypatch):
+    from types import SimpleNamespace
+    class Response:
+        def __init__(self, status, data): self.status_code, self.data = status, data
+        def json(self): return self.data
+        def raise_for_status(self):
+            if self.status_code != 200: raise RuntimeError('HTTP error')
+    def get(url, **kwargs):
+        if 'trongrid' not in url: return Response(429, {})
+        return Response(200, {'success': True, 'data': [{
+            'transaction_id': 'abc', 'block_timestamp': 1793802906000,
+            'type': 'Transfer', 'value': '12500000', 'to': W1, 'from': W2,
+            'token_info': {'address': A.USDT_TRC20_CONTRACT}}]})
+    monkeypatch.setattr(A.requests, 'get', get)
+    monkeypatch.setattr(A.time, 'sleep', lambda *_: None)
+    rows, checked, errors = A._tronscan_fetch_incoming([SimpleNamespace(address=W1)])
+    assert checked == [W1] and errors == []
+    assert rows[0]['tx_hash'] == 'abc' and rows[0]['amount_usdt'] == 12.5
+    assert rows[0]['is_incoming'] and rows[0]['confirmed']
