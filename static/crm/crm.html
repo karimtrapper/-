@@ -6495,7 +6495,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
             const network = document.getElementById('payinManualNetwork').value;
             pendingManualPayinHash = hash;
             try {
-                const response = await fetch(`${API_URL}/api/tx/lookup?hash=${encodeURIComponent(hash)}&network=${encodeURIComponent(network)}`);
+                const response = await fetch(`${API_URL}/api/tx/lookup?hash=${encodeURIComponent(hash)}&network=${encodeURIComponent(network)}&purpose=payin`);
                 const data = await response.json();
                 if (!data.success || !(Number(data.amount_usdt) > 0)) {
                     showToast((data.error || 'Не удалось получить сумму перевода') + '. Укажите сумму вручную', 'warning');
@@ -6801,7 +6801,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
             if (payinUsedHashes().has(hash)) { showToast('Этот хэш уже привязан', 'error'); return; }
             input.disabled = true;
             try {
-                const response = await fetch(`${API_URL}/api/tx/lookup?hash=${encodeURIComponent(hash)}&network=${encodeURIComponent(network)}`);
+                const response = await fetch(`${API_URL}/api/tx/lookup?hash=${encodeURIComponent(hash)}&network=${encodeURIComponent(network)}&purpose=payin`);
                 const data = await response.json();
                 if (!data.success || !(Number(data.amount_usdt) > 0)) {
                     showToast((data.error || 'Не удалось получить сумму перевода') + '. Укажите сумму вручную', 'warning');

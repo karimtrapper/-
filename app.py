@@ -13428,6 +13428,43 @@ def _tron_tx_to_address(tx_hash):
         return None
 
 
+def _trongrid_payin_tx_info(tx_hash):
+    """Подтверждённые USDT Transfer события для ручного хэша прихода."""
+    if not re.fullmatch(r'[0-9a-fA-F]{64}', tx_hash):
+        return {}
+    headers = {}
+    if os.environ.get('TRONGRID_API_KEY'):
+        headers['TRON-PRO-API-KEY'] = os.environ['TRONGRID_API_KEY']
+    try:
+        response = requests.get(f'https://api.trongrid.io/v1/transactions/{tx_hash}/events',
+                                params={'only_confirmed': 'true', 'limit': 200},
+                                headers=headers, timeout=15)
+        response.raise_for_status()
+        data = response.json()
+        if not data.get('success'):
+            return {}
+        transfers = []
+        for event in data.get('data', []):
+            if event.get('contract_address') != USDT_TRC20_CONTRACT or event.get('event_name') != 'Transfer':
+                continue
+            result = event.get('result') or {}
+            try:
+                amount = int(result.get('value', 0)) / 1_000_000
+            except (ValueError, TypeError):
+                continue
+            if amount > 0:
+                transfers.append((amount, result.get('from')))
+        if not transfers:
+            return {}
+        amount, sender = max(transfers, key=lambda item: item[0])
+        total = sum(value for value, origin in transfers if origin == sender)
+        return {'amount_usdt': amount, 'total_out_usdt': total,
+                'extra_out_usdt': round(total - amount, 6), 'transfer_count': len(transfers)}
+    except Exception as exc:
+        app.logger.warning('TronGrid payin lookup: %s', exc)
+        return {}
+
+
 @app.route('/api/tx/lookup', methods=['GET'])
 def lookup_tx_by_network():
     """Проверяет USDT-хэш в сети, которую явно выбрал оператор."""
@@ -13445,6 +13482,8 @@ def lookup_tx_by_network():
         info = _tx_info_by_network(tx_hash, network)
     except TransactionVerificationError as exc:
         return jsonify({'success': False, 'error': str(exc)}), 422
+    if not info and network == 'trc20' and request.args.get('purpose') == 'payin':
+        info = _trongrid_payin_tx_info(tx_hash)
     if not info:
         provider = 'Etherscan' if network == 'erc20' else 'TronScan'
         return jsonify({'success': False,
