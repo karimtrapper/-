@@ -460,3 +460,22 @@ def test_reimbursement_prefill_rounding_and_shortfall_validation(ui, monkeypatch
     finally:
         db.close()
     assert not errors, errors
+
+
+def test_manual_payin_hashes_autofill_and_sum(ui):
+    page, errors, _, _ = ui
+    def lookup(route):
+        h = route.request.url.split('hash=')[1].split('&')[0]
+        route.fulfill(json={'success': True, 'amount_usdt': 125 if h.startswith('a') else 75})
+    page.route('**/api/tx/lookup?*', lookup)
+    page.route('**/api/payin-txs/*', lambda route: route.fulfill(status=404, json={'success': False}))
+    page.evaluate("showSection('create')")
+    field = page.locator('#payinManualHash')
+    field.fill('a' * 64)
+    field.dispatch_event('change')
+    expect(page.locator('#payinTxPoolBox')).to_contain_text('125.00')
+    field.fill('b' * 64)
+    field.dispatch_event('change')
+    expect(page.locator('#payinTxPoolBox')).to_contain_text('200.00')
+    expect(page.locator('[name=payin_amount_usdt]')).to_have_value('200.00')
+    assert not errors

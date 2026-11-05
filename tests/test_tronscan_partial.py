@@ -109,3 +109,24 @@ def test_outgoing_fetch_backward_compatible(monkeypatch):
     class W:
         def __init__(self, a): self.address = a
     assert A._tronscan_fetch_outgoing([W(W1)], set()) == []
+
+
+def test_filtered_wallet_does_not_use_other_wallets_cache(monkeypatch):
+    from types import SimpleNamespace
+    cached = {'tx_hash': 'cached', 'to_address': W1, 'timestamp': '2026-11-01T10:00:00', 'amount_usdt': 100, 'is_incoming': True}
+    fresh = {'tx_hash': 'new', 'to_address': W2, 'timestamp': '2026-11-02T10:00:00', 'amount_usdt': 200, 'is_incoming': True}
+    TRONSCAN_CACHE['incoming'] = {'data': [cached], 'timestamp': A.time.time()}
+    class Query:
+        def filter(self, *args): return self
+        def all(self): return [SimpleNamespace(address=W2)]
+    class DB:
+        def query(self, *args): return Query()
+        def close(self): pass
+    monkeypatch.setattr(A, 'get_session', lambda: DB())
+    monkeypatch.setattr(A, 'get_used_transaction_hashes', lambda db: set())
+    monkeypatch.setattr(A, '_tronscan_fetch_incoming', lambda wallets, **kw: ([fresh], [W2], []))
+    with A.app.test_request_context('/api/transactions/incoming?wallet=' + W2):
+        result = A.get_incoming_transactions().get_json()
+    assert [t['tx_hash'] for t in result['available']] == ['new']
+    assert not result['cached']
+    assert TRONSCAN_CACHE['incoming']['data'] == [cached]

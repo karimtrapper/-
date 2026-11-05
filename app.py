@@ -11354,7 +11354,7 @@ def get_incoming_transactions():
         current_time = time.time()
         
         # Если не форсируем и есть свежий кэш
-        if not force_refresh and TRONSCAN_CACHE['incoming']['data'] and (current_time - TRONSCAN_CACHE['incoming']['timestamp'] < CACHE_TTL):
+        if not force_refresh and not wallet_filter and not start_date_str and not end_date_str and TRONSCAN_CACHE['incoming']['data'] and (current_time - TRONSCAN_CACHE['incoming']['timestamp'] < CACHE_TTL):
             # Фильтруем кэшированные данные по кошельку, если нужно
             cached_data = TRONSCAN_CACHE['incoming']['data']
             if wallet_filter:
@@ -11381,12 +11381,16 @@ def get_incoming_transactions():
         # один rate-limit TronScan обнуляет их переводы в выборке
         failed = {e.get('address') for e in wallets_errors if e.get('address')}
         all_incoming = _merge_partial_with_cache(all_incoming, 'incoming', failed, 'to_address')
+        if start_ts or end_ts:
+            all_incoming = [tx for tx in all_incoming
+                            if (not start_ts or datetime.fromisoformat(tx['timestamp']).timestamp() * 1000 >= start_ts)
+                            and (not end_ts or datetime.fromisoformat(tx['timestamp']).timestamp() * 1000 < end_ts)]
 
         # Обновляем кэш. Атомарно (одним присваиванием sub-dict), иначе читатель
         # мог увидеть новые data со старым timestamp (окно рассинхрона).
         # Частичный результат кэшируем со СТАРЫМ timestamp — чтобы следующий
         # запрос попробовал снова, а не ждал полный TTL на неполных данных.
-        if not wallet_filter:
+        if not wallet_filter and not start_date_str and not end_date_str:
             ts = current_time if not failed else (
                 TRONSCAN_CACHE['incoming'].get('timestamp') or current_time)
             TRONSCAN_CACHE['incoming'] = {'data': all_incoming, 'timestamp': ts}

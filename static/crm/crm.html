@@ -1453,8 +1453,10 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                                     </div>
                                     <div>
                                         <label class="form-label" for="payinManualHash">Ручной TxHash</label>
-                                        <input type="text" class="form-control" id="payinManualHash" name="payin_tx_hash"
-                                            placeholder="Вставьте полный хэш транзакции">
+                                        <input type="text" class="form-control" id="payinManualHash"
+                                            placeholder="Вставьте полный хэш транзакции" onchange="addManualPayinTx()">
+                                        <input type="hidden" name="payin_tx_hash">
+                                        <button type="button" class="btn btn-sm btn-secondary" style="margin-top:6px;" onclick="addManualPayinTx()">Добавить хэш</button>
                                         <label style="display:block;margin-top:6px;font-size:0.82rem;color:#64748b;">
                                             <input type="checkbox" id="payinManualShareExplicit"> Указанный USDT — доля этого перевода
                                         </label>
@@ -5484,6 +5486,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                             // терялись при пересохранении сделки
                             tx_hashes: (p.tx_hashes || []).map(t => ({
                                 hash: t.hash,
+                                network: t.network || 'trc20',
                                 amount_usdt: t.amount_usdt != null ? Number(t.amount_usdt) : null,
                             })),
                             note: p.note || '',
@@ -6422,7 +6425,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
             const amountInput = document.querySelector('[name="payin_amount_usdt"]');
             const hashInput = document.querySelector('[name="payin_tx_hash"]');
             if (payinTxPool.length) {
-                if (amountInput && (document.getElementById('payinMethod').value !== 'flow_sole_reqs'
+                if (amountInput && payinTxPoolTotal() > 0 && (document.getElementById('payinMethod').value !== 'flow_sole_reqs'
                         || !amountInput.value)) amountInput.value = payinTxPoolTotal().toFixed(2);
                 // Первый хэш дублируем в поле — его читают карточка сделки и выгрузка
                 if (hashInput) hashInput.value = payinTxPool[0].hash;
@@ -6481,6 +6484,30 @@ select.period-btn:hover:not(.active) { color: var(--text); }
             flowSoleProofVerified = false;
             syncPayinAmountFromPool();
             loadPayinTxLedger(txHash);
+        }
+
+        let pendingManualPayinHash = '';
+        async function addManualPayinTx() {
+            const input = document.getElementById('payinManualHash');
+            const hash = input.value.trim();
+            if (!hash || pendingManualPayinHash === hash) return;
+            if (payinUsedHashes().has(hash)) { showToast('Этот хэш уже привязан', 'error'); return; }
+            const network = document.getElementById('payinManualNetwork').value;
+            pendingManualPayinHash = hash;
+            try {
+                const response = await fetch(`${API_URL}/api/tx/lookup?hash=${encodeURIComponent(hash)}&network=${encodeURIComponent(network)}`);
+                const data = await response.json();
+                if (!data.success || !(Number(data.amount_usdt) > 0)) {
+                    showToast((data.error || 'Не удалось получить сумму перевода') + '. Укажите сумму вручную', 'warning');
+                }
+                if (payinUsedHashes().has(hash)) return;
+                payinTxPool.push({hash, network, amount_usdt: data.success && Number(data.amount_usdt) > 0 ? Number(data.amount_usdt) : null, _auto: true, date: ''});
+                if (input.value.trim() === hash) input.value = '';
+                syncPayinAmountFromPool();
+                loadPayinTxLedger(hash);
+            } catch (e) {
+                showToast('Не удалось проверить хэш. Попробуйте ещё раз', 'error');
+            } finally { pendingManualPayinHash = ''; }
         }
 
         function removePayinTx(index) {
@@ -6748,7 +6775,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
         // Добавляет хэш части и подтягивает сумму. Первый хэш задаёт сумму части
         // (она же курс), последующие — прибавляются: часть закрыта несколькими
         // переводами, и её приход равен их сумме
-        function payinExtraHashPush(i, hash, amountUsdt) {
+        function payinExtraHashPush(i, hash, amountUsdt, network = 'trc20') {
             hash = String(hash || '').trim();
             if (!hash) return;
             const p = payinExtra[i];
@@ -6756,7 +6783,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                 showToast('Этот хэш уже привязан', 'error');
                 return;
             }
-            peHashes(p).push({ hash, amount_usdt: amountUsdt });
+            peHashes(p).push({ hash, network, amount_usdt: amountUsdt });
             const total = peHashTotal(p);
             if (total > 0) {
                 p.amount_usdt = +total.toFixed(2);
@@ -6765,11 +6792,25 @@ select.period-btn:hover:not(.active) { color: var(--text); }
             payinExtraRender();
         }
 
-        function payinExtraHashManual(i) {
+        async function payinExtraHashManual(i) {
             const input = document.getElementById(`pe-${i}-hash`);
-            if (!input) return;
-            payinExtraHashPush(i, input.value, null);
-            input.value = '';
+            const hash = input?.value.trim();
+            if (!hash || input.disabled) return;
+            const part = payinExtra[i];
+            const network = document.getElementById(`pe-${i}-network`).value;
+            if (payinUsedHashes().has(hash)) { showToast('Этот хэш уже привязан', 'error'); return; }
+            input.disabled = true;
+            try {
+                const response = await fetch(`${API_URL}/api/tx/lookup?hash=${encodeURIComponent(hash)}&network=${encodeURIComponent(network)}`);
+                const data = await response.json();
+                if (!data.success || !(Number(data.amount_usdt) > 0)) {
+                    showToast((data.error || 'Не удалось получить сумму перевода') + '. Укажите сумму вручную', 'warning');
+                }
+                const index = payinExtra.indexOf(part);
+                if (index < 0) return;
+                payinExtraHashPush(index, hash, data.success && Number(data.amount_usdt) > 0 ? Number(data.amount_usdt) : null, network);
+            } catch (e) { showToast('Не удалось проверить хэш. Попробуйте ещё раз', 'error'); }
+            finally { input.disabled = false; }
         }
 
         function payinExtraHashRemove(i, k) {
@@ -7018,6 +7059,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                                     ${free.map(t => `<option value="${t.tx_hash}" data-amount="${t.amount_usdt}">+$${t.amount_usdt.toFixed(2)} | ${(t.from_address || '').substring(0, 10)}… | ${formatDate(t.timestamp)}</option>`).join('')}
                                 </select>`;
                             })()}
+                            <select class="form-control" style="max-width:150px;" id="pe-${i}-network" aria-label="Сеть перевода"><option value="trc20">TRC-20</option><option value="erc20">ERC-20</option></select>
                             <input type="text" class="form-control" style="max-width:260px;"
                                 placeholder="Или TxHash вручную..." id="pe-${i}-hash">
                             <button type="button" class="btn btn-sm btn-secondary"
@@ -7059,7 +7101,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                     tx_hashes: peHashes(p)
                         .filter(t => t.hash && String(t.hash).trim())
                         .map(t => ({ hash: String(t.hash).trim(),
-                                     amount_usdt: t.amount_usdt ?? null })),
+                                     amount_usdt: t.amount_usdt ?? null, network: t.network || 'trc20' })),
                     sber_uuids: (p.sber_parts || []).map(x => x.uuid).filter(Boolean),
                     note: p.note || '',
                 }));
@@ -8897,6 +8939,11 @@ select.period-btn:hover:not(.active) { color: var(--text); }
 
         document.getElementById('createDealForm').addEventListener('submit', async function (e) {
             e.preventDefault();
+            if (pendingManualPayinHash || document.getElementById('payinManualHash')?.value.trim() ||
+                    Array.from(document.querySelectorAll('[id^="pe-"][id$="-hash"]')).some(el => el.value.trim())) {
+                showToast('Дождитесь проверки хэша и добавьте его к приходу', 'warning');
+                return;
+            }
             if (reportInvalidField(this)) return;
 
             // Если включена кастомная сделка — перенаправляем на кастомный обработчик
@@ -12827,7 +12874,7 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                             </div>
                         `).join('');
                     } else {
-                        document.getElementById('availableTransactions').innerHTML = data.wallets_checked?.length > 0
+                        document.getElementById('availableTransactions').innerHTML = walletsData.wallets?.length > 0
                             ? '<p style="color: #666; text-align: center; padding: 2rem;">Нет новых входящих транзакций</p>'
                             : '<p style="color: #f59e0b; text-align: center; padding: 2rem;">Добавьте кошелек для мониторинга</p>';
                     }
@@ -12880,7 +12927,7 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                 if (data.success) {
                     showToast(`Кошелек добавлен!\nUSDT: $${data.wallet.usdt_balance.toFixed(2)}\nTRX: ${data.wallet.trx_balance.toFixed(2)}`);
                     this.reset();
-                    loadTransactions();
+                    loadTransactions(true);
                 } else {
                     showToast('Ошибка: ' + data.error, 'error');
                 }
