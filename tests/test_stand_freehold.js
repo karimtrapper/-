@@ -30,7 +30,7 @@ function consts(names) {
 function run(fnNames, constNames, context) {
   context.SIGN={rub:'₽',thb:'฿',usdt:'USDT'};
   vm.createContext(context);
-  vm.runInContext(consts(constNames) + '\n' + functions(['payCur','exchangeSpec','amountField','exchangeSync','quoteDirs',...fnNames]), context);
+  vm.runInContext(consts(constNames) + '\n' + functions(['payCur','exchangeSpec','amountField','exchangeSync','quoteDirs','dealDisplayKind','recipientTitle',...fnNames]), context);
   return context;
 }
 function divTree(markup) {

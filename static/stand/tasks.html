@@ -1585,13 +1585,13 @@ function freeholdInvoiceTariffBlock(d){
   const fp=freeholdLossFingerprint(d);
   const ack=loss&&d.freeholdLossAck?.fingerprint===fp;
   return `<div class="fr" style="margin-top:10px">
-    <div class="fg"><label class="fl">Инвойс застройщику, $<span class="rq">*</span></label>
+    <div class="fg"><label class="fl">${d.autoPayment===true?'Продавцу авто, USD':'Инвойс застройщику, $'}<span class="rq">*</span></label>
       <input class="fc num" id="fh_inv_${d.id}" value="${X?Number(X).toLocaleString('ru-RU',{minimumFractionDigits:2,maximumFractionDigits:2}):''}"
-        oninput="freeholdLivePreview(${d.id},'invoiceUsd',this.value)" onchange="freeholdInvoiceSet(${d.id},'invoiceUsd',this.value)">
+        ${d.autoPayment===true?'readonly':`oninput="freeholdLivePreview(${d.id},'invoiceUsd',this.value)" onchange="freeholdInvoiceSet(${d.id},'invoiceUsd',this.value)"`}>
       ${d.invoiceUsdEstimate?'<p class="fh">Сумма — ориентир по курсу банка; впишите точную, если она известна.</p>':''}</div>
     <div class="fg w2"><label class="fl">Тариф IPPS</label>
       <div class="chips">${Object.keys(IPPS_TARIFFS).map(k=>
-        `<span class="chip ${(d.ippsTariff||'bank')===k?'on':''}" onclick="freeholdInvoiceSet(${d.id},'ippsTariff','${k}')">${IPPS_TARIFFS[k].label}</span>`).join('')}</div></div>
+        `<span class="chip ${(d.ippsTariff||'bank')===k?'on':''}" ${d.autoPayment===true?'':`onclick="freeholdInvoiceSet(${d.id},'ippsTariff','${k}')"`}>${IPPS_TARIFFS[k].label}</span>`).join('')}</div></div>
     <div class="fg"><label class="fl">В IPPS уйдёт${isCrypto(d)?', USDT':', USD'}</label><input class="fc num" id="fh_sent_${d.id}" readonly value="${isCrypto(d)?money(S,'USDT'):usd(S)}"></div>
   </div>
   ${isCrypto(d)?`<div class="fr">
@@ -1612,7 +1612,7 @@ function freeholdInvoiceTariffBlock(d){
     <div class="fg"><label class="fl">Доход, USDT</label><input class="fc num" id="fh_income_${d.id}" readonly value="${income==null?'—':income.toFixed(2)}"></div>
     <div class="fg"><label class="fl">Доход, %</label><input class="fc num" id="fh_pct_${d.id}" readonly value="${pct==null?'—':pct.toFixed(4)}"></div>
   </div><div id="fh_loss_${d.id}">${loss?`<div class="alert a-warn"><div><b>Сделка в минус</b> · ${money(income,'USDT')}. ${ack?'Риск подтверждён для этих сумм.':'Перед договором подтвердите риск отдельно.'}</div></div>${ack?'':`<button class="btn btn-outline" onclick="freeholdLossAck(${d.id})">Подтвердить сделку в минус</button>`}`:''}${d.amountUsdt==null&&d.freeholdMarkupPct!=null?`<div class="alert a-warn"><div>Старая запись содержит процент, но сумму клиента нужно ввести явно. Процент не применяется.</div></div>`:''}</div>`:''}
-  <p class="fh">Инвойс и тариф правятся до шага «Подготовить договор». Сумму клиента, USDT, операционист может уточнить там до выпуска документов.</p>
+  ${d.autoPayment===true?'':`<p class="fh">Инвойс и тариф правятся до шага «Подготовить договор». Сумму клиента, USDT, операционист может уточнить там до выпуска документов.</p>`}
   ${hadRate?`<div class="alert a-warn" style="margin-top:8px"><div>${isCrypto(d)?'Сумма клиента уже задана':'Курс клиенту уже назван'} — смена инвойса или тарифа меняет доход; сумму клиента не пересчитываем. Проверьте расчёт.</div></div>`:''}`;
 }
 function freeholdLivePreview(id,field,raw){
@@ -1648,6 +1648,7 @@ function freeholdInvoiceSet(id,field,raw){
   }else if(field==='ippsTariff'){
     if(!IPPS_TARIFFS[raw])return;
     d.ippsTariff=raw;
+    if(d.autoPayment===true)autoRecalc(d);
   }else if(field==='amountUsdt'){
     const v=String(raw).trim()===''?null:num(cleanNum(raw));
     d.amountUsdt=v;
@@ -1665,7 +1666,7 @@ function freeholdInvoiceSet(id,field,raw){
   }
   const after=freeholdSend(d.invoiceUsd||0,ippsTariff(d));
   const delta=Math.round((after-before)*100)/100;
-  if(already&&Math.abs(delta)>=0.01){
+  if(already&&d.autoPayment!==true&&Math.abs(delta)>=0.01){
     log(d,'Инвойс/тариф изменены после того, как '+(isCrypto(d)?'сумма клиента уже была задана':'курс назван клиенту')+
       ': в IPPS уйдёт '+usd(after)+' вместо '+usd(before)+' ('+(delta>0?'+':'')+usd(delta)+') — маржа сдвинулась, решение за менеджером');
     toast((isCrypto(d)?'Сумма клиента уже задана':'Курс клиенту уже назван')+' — S изменился на '+(delta>0?'+':'')+usd(delta)+', проверьте доход');
@@ -1715,7 +1716,7 @@ function freeholdDealSet(id,field,raw){
 /* Поля инвойса и курса ฿/$ — над расчётом клиенту. Тариф и сумма $ — те же поля сделки,
    что и в блоке s8 (freeholdInvoiceSet), второй копии нет. */
 function freeholdInvoiceInputs6(d){
-  const thb=d.invoiceCurrency==='thb';
+  const thb=d.autoPayment!==true&&d.invoiceCurrency==='thb';
   if(thb) ensureThbRates();
   const R=S.thbRates, banksOk=!!(R&&R.success&&R.rates);
   const X=d.invoiceUsd||0, rateNow=freeholdFxRateFor(d);
@@ -1725,12 +1726,12 @@ function freeholdInvoiceInputs6(d){
     :!banksOk?'Курсы банков недоступны — впишите «Свой курс» вручную.'
     :thbRatesMeta();
   const fmt=v=>v?Number(v).toLocaleString('ru-RU',{minimumFractionDigits:2,maximumFractionDigits:2}):'';
-  return `<div class="card-title" style="font-size:14px;margin:6px 0 4px">Инвойс застройщика<span class="sub">впишите то, что назвал банк/застройщик</span></div>
+  return `<div class="card-title" style="font-size:14px;margin:6px 0 4px">${d.autoPayment===true?'Счёт продавца авто':'Инвойс застройщика'}<span class="sub">${d.autoPayment===true?'сверьте сумму USD с документом продавца':'впишите то, что назвал банк/застройщик'}</span></div>
   <div class="fr">
     <div class="fg w2"><label class="fl">Валюта инвойса</label>
       <div class="chips">
         <span class="chip ${!thb?'on':''}" onclick="freeholdInvoiceSet(${d.id},'invoiceCurrency','usd')">В USD</span>
-        <span class="chip ${thb?'on':''}" onclick="freeholdInvoiceSet(${d.id},'invoiceCurrency','thb')">В THB</span>
+        ${d.autoPayment===true?'':`<span class="chip ${thb?'on':''}" onclick="freeholdInvoiceSet(${d.id},'invoiceCurrency','thb')">В THB</span>`}
       </div></div>
     ${thb?`<div class="fg"><label class="fl">Сумма инвойса, ฿<span class="rq">*</span></label>
       <input class="fc num" id="fh_invthb_${d.id}" value="${d.invoiceThb?Number(d.invoiceThb).toLocaleString('ru-RU'):''}" placeholder="например, 4 500 000"
@@ -1745,9 +1746,9 @@ function freeholdInvoiceInputs6(d){
         onchange="freeholdDealSet(${d.id},'fxRate',this.value)"></div>`:''}
   </div>`:''}
   <div class="fr">
-    <div class="fg"><label class="fl">${thb?'Сумма USD к отправке застройщику':'Инвойс застройщику, $'}<span class="rq">*</span></label>
+    <div class="fg"><label class="fl">${d.autoPayment===true?'Продавцу авто, USD':thb?'Сумма USD к отправке застройщику':'Инвойс застройщику, $'}<span class="rq">*</span></label>
       <input class="fc num" id="fh_inv_${d.id}" value="${fmt(X)}" placeholder="сумма в $"
-        onchange="freeholdInvoiceSet(${d.id},'invoiceUsd',this.value)">
+        ${d.autoPayment===true?'readonly':`onchange="freeholdInvoiceSet(${d.id},'invoiceUsd',this.value)"`}>
       ${thb?`<p class="fh">${calc==null?'считается по ฿ и курсу; можно вписать точную сумму руками':(Math.abs(calc-X)>=0.01?'по курсу выходит '+usd(calc)+' — сумма изменена вручную':'= ฿ / курс')}</p>`:''}</div>
     <div class="fg w2"><label class="fl">Тариф IPPS</label>
       <div class="chips">${Object.keys(IPPS_TARIFFS).map(k=>
@@ -1764,6 +1765,88 @@ function freeholdEstimate(d,amountRub,brokerRate){
   const incoming=rub&&rate?brokerSend(rub).sent/rate:null;
   const profit=incoming!=null&&sent?Math.round((incoming-sent)*100)/100:null;
   return {sent,incoming,profit,pct:profit!=null&&sent?profit/sent*100:null};
+}
+/* Авто: исходная сумма заявки остаётся отдельной от согласованной суммы и факта входа. */
+function autoMarginPct(d,rub){
+  const manual=Number(d.autoMarkupPct);
+  if(d.autoMarkupPct!=null&&Number.isFinite(manual)&&manual>=0)return Math.max(1.5,manual);
+  const base=d.autoRequestMode==='usd'?num(d.requestedUsd)*num(d.rates.rubUsdt):rub;
+  return base<500000?5:base<1000000?4:3;
+}
+function autoMarginSet(id,raw){
+  const d=deal(id),v=Number(String(raw).replace(',','.'));
+  if(!d||d.autoPayment!==true||d.step!=='s6')return;
+  if(!Number.isFinite(v)||v<1.5||v>5){toast('Укажите прибыль от 1,5 до 5 %');render();return;}
+  d.autoMarkupPct=v;autoRecalc(d);save();render();
+}
+/* Запас двух десятичных разрядов нужен для процентов и округления комиссий.
+   SafeInteger только для копеек недостаточно: у больших RUB шаг Number уже > 0,01. */
+function autoSafeCents(amount,round){
+  if(!Number.isFinite(amount)||amount<=0)return null;
+  const cents=(round||Math.round)(amount*100);
+  return cents>0&&Number.isSafeInteger(cents*100)?cents:null;
+}
+function autoClientRubForUsd(usdAmount,brokerRate,tariff,margin){
+  if(autoSafeCents(usdAmount)==null||!Number.isFinite(brokerRate)||brokerRate<=0||!Number.isFinite(1/brokerRate)||
+     !Number.isFinite(margin)||margin<1.5||!tariff||
+     !Number.isFinite(tariff.percent)||tariff.percent<0||
+     !Number.isFinite(tariff.fixed)||tariff.fixed<0)return null;
+  const needed=freeholdSend(usdAmount,tariff)*(1+margin/100)*brokerRate;
+  const neededCents=autoSafeCents(needed,Math.ceil);
+  if(neededCents==null)return null;
+  const maxCents=Math.floor(Number.MAX_SAFE_INTEGER/100);
+  let low=0,high=neededCents,iterations=0;
+  while(brokerSend(high/100).sent+0.000001<needed){
+    if(++iterations>64||high===maxCents)return null;
+    high=Math.min(high*2,maxCents);
+  }
+  iterations=0;
+  while(low<high){
+    if(++iterations>64)return null;
+    const mid=low+Math.floor((high-low)/2);
+    if(brokerSend(mid/100).sent+0.000001>=needed)high=mid;else low=mid+1;
+  }
+  return low/100;
+}
+function autoRecalc(d){
+  if(d.autoPayment!==true||!['s5','s6'].includes(d.step))return;
+  if(!d.rates||typeof d.rates!=='object')d.rates={};
+  const clear=()=>{if(d.autoRequestMode==='rub')d.invoiceUsd=null;else d.amountRub=null;
+    d.rates.client=null;d.autoQuoteError='Не удалось рассчитать платёж. Проверьте сумму и курс';return false;};
+  const rate=num(d.rates.rubUsdt),tariff=ippsTariff(d);
+  if(!(rate>0)||!Number.isFinite(rate)||!Number.isFinite(1/rate)||!tariff||
+     !Number.isFinite(tariff.percent)||tariff.percent<0||
+     !Number.isFinite(tariff.fixed)||tariff.fixed<0)return clear();
+  if(d.autoRequestMode==='rub'){
+    const rub=num(d.requestedRub),margin=autoMarginPct(d,rub);
+    if(autoSafeCents(rub)==null||!Number.isFinite(margin)||margin<1.5)return clear();
+    const available=brokerSend(rub).sent/rate/(1+margin/100);
+    if(autoSafeCents(available,Math.floor)==null)return clear();
+    const pct=tariff.percent/100, fixed=tariff.fixed;
+    let cents=Math.floor(((available-fixed)/(1+pct))*100+0.0000001),iterations=0;
+    if(!Number.isSafeInteger(cents)||cents<0)return clear();
+    while(cents>0&&freeholdSend(cents/100,tariff)>available+0.0000001){
+      if(++iterations>64)return clear();
+      cents--;
+    }
+    while(cents>=0&&freeholdSend((cents+1)/100,tariff)<=available+0.0000001){
+      if(++iterations>64||autoSafeCents((cents+1)/100)==null)return clear();
+      cents++;
+    }
+    if(cents<=0)return clear();
+    d.invoiceUsd=cents/100;d.amountRub=rub;d.freeholdClientInput='sum';
+  }else if(d.autoRequestMode==='usd'){
+    const usdAmount=num(d.requestedUsd),margin=autoMarginPct(d,0);
+    if(autoSafeCents(usdAmount)==null)return clear();
+    const amountRub=autoClientRubForUsd(usdAmount,rate,tariff,margin);
+    if(amountRub==null)return clear();
+    d.invoiceUsd=usdAmount;d.amountRub=amountRub;d.freeholdClientInput='sum';
+  }else return clear();
+  const clientRate=d.amountRub/d.invoiceUsd;
+  if(!Number.isFinite(clientRate)||clientRate<=0||!Number.isFinite(clientRate*1e6))return clear();
+  d.rates.client=(Math.round(clientRate*1e6)/1e6).toFixed(6).replace('.',',');
+  delete d.autoQuoteError;
+  return true;
 }
 function freeholdSummary6(d){
   const X=d.invoiceUsd||0, k=num(d.rates.client);
@@ -3371,6 +3454,7 @@ function calcOpen(id){
   save(); window.open(u,'_blank'); render();
 }
 function calcBtn(d){
+  if(d.autoPayment===true)return '';
   const has=d.rates.rubUsdt||d.rates.usdtThb;
   const fhRub=d.kind==='Фрихолд'&&!isCrypto(d);
   return `<div class="derived" style="margin:14px 0">
@@ -3572,6 +3656,7 @@ async function quoteSet(id,cpId,dir){
      не ждём — иначе шаг никогда не отпускал бы (спека 28.09-freehold-no-baht). */
   const ready=quoteDirs(d).every(dir=>quoteBest(d,dir));
   if(d.step==='s5'&&ready){
+    autoRecalc(d);
     go(d,'s6','Курсы отданы менеджеру: '+[(!isCrypto(d)&&quoteBest(d,'rub'))?'RUB→USDT '+quoteBest(d,'rub').rate:'',
       quoteBest(d,'thb')?'USDT→THB '+quoteBest(d,'thb').rate:''].filter(Boolean).join(' · '));
     toast('Курс ушёл менеджеру — остальные ответы можно досылать');
@@ -3589,7 +3674,15 @@ function quoteDel(id,cpId,dir){
   const q=(d.quotes||[]).find(x=>x.cpId===cpId&&x.dir===dir), c=cpById(cpId);
   if(q) log(d,'Курс убран — '+(c?c.name:q.name)+' ('+(quoteDirection(d,dir))+'): '+q.rate+' — в расчёте его больше нет');
   d.quotes=(d.quotes||[]).filter(q=>!(q.cpId===cpId&&q.dir===dir));
-  quoteApply(d); save();render();
+  if(d.autoPayment===true&&d.step==='s6'&&dir==='rub'&&!d.quotes.some(x=>x.dir==='rub')){
+    rerate(id,'ответ контрагента удалён');return;
+  }
+  quoteApply(d);
+  if(d.autoPayment===true&&dir==='rub'){
+    if(!quoteUsed(d,'rub')){d.rates.rubUsdt=null;d.rates.client=null;if(d.autoRequestMode==='rub')d.invoiceUsd=null;else d.amountRub=null;}
+    else autoRecalc(d);
+  }
+  save();render();
 }
 /* В сделку идёт лучший ответ, но менеджер может взять другой — например, когда у
    лучшего контрагента лимит. Ручной выбор не перетирается следующими ответами. */
@@ -3611,6 +3704,7 @@ function quotePick(id,cpId,dir){
   if(best&&best.cpId===cpId) delete d.ratePick[dir];   /* вернулись к лучшему — ручного выбора нет */
   else d.ratePick[dir]=cpId;
   quoteApply(d);
+  if(dir==='rub')autoRecalc(d);
   const q=(d.quotes||[]).find(x=>x.cpId===cpId&&x.dir===dir);
   log(d,'Курс в сделку выбран вручную: '+c.name+' · '+(q?q.rate:'—')+' ('+(quoteDirection(d,dir))+')');
   noteAdd('operator','Менеджер взял курс '+c.name+' '+(q?q.rate:'')+' — не лучший из присланных',d.id);
@@ -4964,7 +5058,7 @@ function ownerSummary(d){
   const receiptLine=line('Деньги клиента',receiptValue,receiptHint,
     (receiptDetails||item('Ожидаем',expected)+(!crypto?item('Ожидаемый счёт',expectOf(d).acc):''))+receiptProof+checksDetail);
   const invoice=d.kind==='Фрихолд'?(d.invoiceCurrency==='thb'&&d.invoiceThb?money(d.invoiceThb,'฿')+(d.invoiceUsd?' · '+usdMark(d,d.invoiceUsd):''):d.invoiceUsd?usd(d.invoiceUsd):null):d.amountThb?money(d.amountThb,'฿'):null;
-  const dealLine=line('Сделка',d.kind||d.type||'ещё нет',d.object||'объект ещё нет',
+  const dealLine=line('Сделка',d.autoPayment===true?'Оплата авто':d.kind||d.type||'ещё нет',d.object||'объект ещё нет',
     item('Объект',d.object)+item('Застройщик',d.dev)+item('Получатель',d.payTo?.dev)+
     item('Инвойс',[(d.payTo||{}).inv,invoice].filter(Boolean).join(' · '))+item('Курс клиенту',d.rates?.client?d.rates.client+' '+rateUnit(d):null));
   const route=d.kind==='Фрихолд'||d.postConv==='ipps_swift'?'IPPS':d.postConv==='coins'?'Coins':d.postConv==='client'?'кошелёк клиента':'ещё нет';
@@ -5069,12 +5163,14 @@ function newDeal(o){
     source:o.source,sourceRef:o.sourceRef,bitrixCloseProof:o.bitrixCloseProof||null,client:o.client,type:o.type,
     pair:(o.type==='Обмен валюты'?(o.pair||(o.payType==='Крипта'?'USDT → THB':'RUB → THB')):null),
     direction:o.direction||o.pair||'RUB → THB',
-    kind:(o.type==='Оплата недвижимости'?(o.kind||''):''),payType:o.payType||'По реквизитам',curBase:o.curBase||'thb',
+    kind:(o.type==='Оплата недвижимости'||o.autoPayment?(o.kind||'Фрихолд'):''),autoPayment:!!o.autoPayment,payType:o.payType||'По реквизитам',curBase:o.curBase||'thb',
     partial:!!o.partial,invoiceTotal:o.invoiceTotal||null,partNo:o.partNo||'',
     amountThb:o.amountThb||null,amountRub:o.amountRub||null,amountUsdt:o.amountUsdt||null,object:o.object||'',
     /* Фрихолд без батов: инвойс застройщику в USD и тариф IPPS — отдельные поля,
        не смешаны с amountThb (спека 28.09-freehold-no-baht). */
     invoiceUsd:o.invoiceUsd||null,ippsTariff:o.ippsTariff||null,
+    autoRequestMode:o.autoRequestMode||null,requestedRub:o.requestedRub||null,requestedUsd:o.requestedUsd||null,
+    freeholdClientInput:o.freeholdClientInput||null,
     /* Инвойс застройщика может быть в THB (Карим, 28.09) — сумма в ฿ только
        хранится/показывается, сделка считается от invoiceUsd (X) как обычно. */
     invoiceCurrency:o.invoiceCurrency||'usd',invoiceThb:o.invoiceThb||null,
@@ -5185,7 +5281,7 @@ function docFields(d){
     /* из инвойса и SPA */
     dev:parsed(d,'recipient_name')||d.dev||'', invNo:parsed(d,'invoice_no')||d.invNo||'',
     invDate:parsed(d,'invoice_date'),
-    object:d.object||[parsed(d,'project_name'),parsed(d,'unit_no')].filter(Boolean).join(', '),
+    object:d.autoPayment===true?(d.object||''):d.object||[parsed(d,'project_name'),parsed(d,'unit_no')].filter(Boolean).join(', '),
     /* из расчёта сделки */
     kind:d.kind||'', amountThb:ap.thb||'', rate:d.rates.client||'',
     amountPay:ap.pay||'', rateAt:d.rates.at?new Date(d.rates.at).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'',
@@ -5734,7 +5830,7 @@ function render(){
   const app=document.getElementById('app');
   let main;
   if(S.edit)main=viewEdit();                       /* правка — отдельный экран, как в CRM */
-  else if(S.open)main=viewDeal(S.deals.find(d=>d.id===S.open));
+  else if(S.open){const shown=S.deals.find(d=>d.id===S.open);main=viewDeal(shown);}
   else if(S.draft)main=viewCreate();
   else main=(VIEWS[S.tab]||VIEWS.tasks)();
   if(S.edit) crmDraftCapture();
@@ -5909,7 +6005,7 @@ function tgLines(d,step){
   switch(step){
     case 's5':
       if(d.reRequest)L.push({t:`♻️ Повторный запрос №${d.reRequest} — клиент вернулся`,b:true});
-      L.push({t:`${d.type}${d.kind?' · '+d.kind:''} · платит ${d.payType||'не указано'}`,b:true});
+      L.push({t:`${dealDisplayKind(d)} · платит ${d.payType||'не указано'}`,b:true});
       L.push({t:`Получателю ${apMoney(ap,'thb')} · от клиента ${apMoney(ap,'pay')}`,b:true});
       if(isCrypto(d))L.push({t:`платит USDT — нужен только курс USDT→THB`});
       L.push({t:`${d.object?d.object+' · ':''}${d.partial?'часть '+(d.partNo||'')+' из '+money(d.invoiceTotal,d.kind==='Фрихолд'?'$':'฿')+' · ':''}источник ${SOURCES[d.source]}`});
@@ -5924,7 +6020,7 @@ function tgLines(d,step){
       break;
     case 's11':
       L.push({t:d.isOld?`Клиент старый — допник к договору`:`Клиент новый — полный договор`,b:true});
-      L.push({t:`${d.kind||d.type} · платит ${d.payType||'не указано'} · ${both}`});
+      L.push({t:`${d.autoPayment===true?'Оплата авто':d.kind||d.type} · платит ${d.payType||'не указано'} · ${both}`});
       L.push({t:d.partial?`Часть ${d.partNo||''} из инвойса на ${money(d.invoiceTotal,d.kind==='Фрихолд'?'$':'฿')}`:`Платёж целиком`});
       break;
     case 's12':
@@ -5932,7 +6028,7 @@ function tgLines(d,step){
       L.push({t:`К оплате ${money(ap.pay,ap.sign)} · курс ${d.rates.client||'—'} ${rateUnit(d)}`});break;
     case 's11b':
       L.push({t:`Договор собран — проверьте перед отправкой`,b:true});
-      L.push({t:`${d.kind||d.type} · ${both}`});break;
+      L.push({t:`${d.autoPayment===true?'Оплата авто':d.kind||d.type} · ${both}`});break;
     case 's18':
       L.push({t:`Деньги получены: ${money(d.incomeAmount||ap.pay,ap.sign)}`,b:true});
       L.push({t:`К оплате получателю ${money(ap.thb,ap.thbSign||'฿')} · курс сделки ${d.rates.client||'—'} ${rateUnit(d)}`});break;
@@ -5953,7 +6049,7 @@ function tgLines(d,step){
       L.push({t:`Инвойс оплачен — можно закрывать`,b:true});
       L.push({t:`Отпишитесь клиенту и проверьте поля сделки`});break;
     default:
-      L.push({t:`${d.type}${d.kind?' · '+d.kind:''} · ${both}`});
+      L.push({t:`${dealDisplayKind(d)} · ${both}`});
       L.push({t:`источник ${SOURCES[d.source]}`});
   }
   return L;
@@ -6147,13 +6243,14 @@ function setTaskDealFilter(filter){taskDealFilter=filter;render();}
 function taskDealsHtml(role){
   const deals=S.deals.filter(d=>taskDealFilter==='exchange'?d.type==='Обмен валюты':
     taskDealFilter==='leasehold'?String(d.kind||'').toLowerCase().includes('лизхолд'):
-    taskDealFilter==='freehold'?String(d.kind||'').toLowerCase().includes('фрихолд'):
+    taskDealFilter==='freehold'?d.autoPayment!==true&&String(d.kind||'').toLowerCase().includes('фрихолд'):
+    taskDealFilter==='auto'?d.autoPayment===true:
     taskDealFilter==='prepay'?!!d.prepay:taskDealFilter==='batch'?!!convOf(d):true);
   if(!deals.length)return '<div class="task-list-empty"><strong>Сделок нет</strong>Для этого фильтра пока нет сделок.</div>';
   return `<div class="task-deals-table"><div class="task-deals-heading"><span>Сделка</span><span>Флоу</span><span>Этап</span><span>На ком</span><span>Сумма</span><span>С какого времени</span></div>${deals.map(d=>{
     const a=approx(d),amount=apMoney(a,'pay');
     const path=dealTaskPath(d,null),lastEvent=(d.log||[]).at(-1),sinceAt=lastEvent?.at;
-    return `<button type="button" class="task-deal-row" data-task-id="${d.id}" data-task-view="deal" onclick="openDeal(${d.id})"><span class="task-deal-name"><strong>${htmlText(d.code)} · ${htmlText(d.client)}</strong></span><span class="task-deal-flow">${htmlText(d.kind||d.type||'Сделка')}</span><span class="task-deal-stage">${htmlText(d.closed?d.closeReason||'Завершена':d.prepay?prepayBranchStatus(d,'payment'):stepTitle(d))}<span class="task-deal-progress" aria-label="Шаг ${path.index+1} из ${path.steps.length}">${path.steps.map((_,i)=>`<i class="${i<path.index?'done':i===path.index?'current':''}"></i>`).join('')}</span></span><span class="task-deal-who">${htmlText(d.closed?'—':d.prepay?prepayBranchAssignee(d,'payment'):(ROLES[stepWho(d)]||{}).n||'—')}</span><b class="task-deal-amount num">${amount==='посчитаем после курса'?apMoney(a,'thb'):amount}</b><span class="task-deal-since">${typeof sinceAt==='number'&&Number.isFinite(sinceAt)?since(sinceAt):'—'}</span></button>`;
+    return `<button type="button" class="task-deal-row" data-task-id="${d.id}" data-task-view="deal" onclick="openDeal(${d.id})"><span class="task-deal-name"><strong>${htmlText(d.code)} · ${htmlText(d.client)}</strong></span><span class="task-deal-flow">${htmlText(d.autoPayment===true?'Оплата авто':d.kind||d.type||'Сделка')}</span><span class="task-deal-stage">${htmlText(d.closed?d.closeReason||'Завершена':d.prepay?prepayBranchStatus(d,'payment'):stepTitle(d))}<span class="task-deal-progress" aria-label="Шаг ${path.index+1} из ${path.steps.length}">${path.steps.map((_,i)=>`<i class="${i<path.index?'done':i===path.index?'current':''}"></i>`).join('')}</span></span><span class="task-deal-who">${htmlText(d.closed?'—':d.prepay?prepayBranchAssignee(d,'payment'):(ROLES[stepWho(d)]||{}).n||'—')}</span><b class="task-deal-amount num">${amount==='посчитаем после курса'?apMoney(a,'thb'):amount}</b><span class="task-deal-since">${typeof sinceAt==='number'&&Number.isFinite(sinceAt)?since(sinceAt):'—'}</span></button>`;
   }).join('')}</div>`;
 }
 function showTaskListSection(section){
@@ -6226,7 +6323,7 @@ function viewTasks(){
         return `<button type="button" class="task-list-row" data-task-id="${d.id}" data-task-branch="${branch||''}" title="шаг ${path.index+1} из ${path.steps.length}"
           onclick="openTask(${d.id},${branch?`'${branch}'`:'null'})">
           <span class="task-list-row-main"><strong>${role==='admin'?htmlText((ROLES[stepWho(d)]||{}).n||'Сотрудник')+' · ':''}${htmlText(title)}</strong>
-            <span class="task-list-meta">${htmlText(d.code)} · ${htmlText(d.client)} · ${d.prepay?'Оплата наперёд · ':''}${htmlText(d.kind||d.type)}</span>
+            <span class="task-list-meta">${htmlText(d.code)} · ${htmlText(d.client)} · ${d.prepay?'Оплата наперёд · ':''}${htmlText(d.autoPayment===true?'Оплата авто':d.kind||d.type)}</span>
             ${side&&!branch?`<span class="task-list-meta">Параллельно: ${stepTitle(d)} · ${(ROLES[stepWho(d)]||{}).t||'—'}</span>`:''}</span>
           <span class="task-list-amount num">${amount==='посчитаем после курса'?apMoney(a,'thb'):amount}</span>
           <span class="task-list-arrow" aria-hidden="true">›</span></button>`;
@@ -6246,7 +6343,7 @@ function viewTasks(){
       return `<div class="task-list-row task-list-wait-row${canRemind?' task-list-wait-row-remind':''}" data-task-id="${d.id}" data-task-view="deal" role="button" tabindex="0"
           onclick="openDeal(${d.id})" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openDeal(${d.id})}">
         <span class="task-list-row-main"><strong>${htmlText(d.prepay?prepayBranchStatus(d,'payment'):stepTitle(d))}</strong>
-          <span class="task-list-meta">${d.code} · ${d.client} · ${d.type}${d.kind?' · '+d.kind:''}</span></span>
+          <span class="task-list-meta">${htmlText(d.code)} · ${htmlText(d.client)} · ${htmlText(dealDisplayKind(d))}</span></span>
         <span class="task-list-amount num">${pay==='посчитаем после курса'?apMoney(a,'thb'):pay}</span>
         ${canRemind
           ?`<button type="button" class="btn btn-outline btn-sm task-list-remind" onclick="event.stopPropagation();s14Ping(${d.id})">Напомнить</button>`
@@ -6256,7 +6353,7 @@ function viewTasks(){
   h+=`</section><section class="card task-list-panel task-list-all ${section==='all'?'on':''}" data-section="all">
     <button type="button" class="task-list-panel-head task-list-all-toggle" aria-expanded="${section==='all'}" onclick="showTaskListSection(taskListSection==='all'?'mine':'all')"><h2>Все сделки</h2><span aria-hidden="true">${section==='all'?'⌃':'›'}</span></button>
     <div class="task-list-all-content"><div class="task-list-filters" role="group" aria-label="Фильтр сделок">
-      ${[['all','Все'],['exchange','Обмены'],['leasehold','Лизхолд'],['freehold','Фрихолд'],['prepay','Наперёд'],['batch','Пачки']].map(([key,label])=>`<button type="button" class="${taskDealFilter===key?'on':''}" onclick="setTaskDealFilter('${key}')">${label}</button>`).join('')}
+      ${[['all','Все'],['exchange','Обмены'],['leasehold','Лизхолд'],['freehold','Фрихолд'],['auto','Оплата авто'],['prepay','Наперёд'],['batch','Пачки']].map(([key,label])=>`<button type="button" class="${taskDealFilter===key?'on':''}" onclick="setTaskDealFilter('${key}')">${label}</button>`).join('')}
     </div>${taskDealsHtml(role)}</div></section>`;
   return h+`</div></div>`;
 }
@@ -6536,7 +6633,7 @@ function viewCreateBody(D,srcCard){
     </div>
 
     <div class="fg"><label class="fl">Тип запроса<span class="rq">*</span></label>
-      <div class="chips">${['Оплата недвижимости','Обмен валюты'].map(x=>{
+      <div class="chips">${['Оплата недвижимости','Оплата авто','Обмен валюты'].map(x=>{
         const verified=draftTypeVerified(x),selected=D.type===x;
         const cls=selected?(verified?'on':'pending'):(verified?'':'disabled');
         return `<span class="chip ${cls}" ${verified?'':'title="Флоу в проверке — пока проводите через Карима"'} onclick="draftSetGated('type',${JSON.stringify(x).replace(/"/g,'&quot;')})">${x}</span>`;
@@ -6554,7 +6651,7 @@ function viewCreateBody(D,srcCard){
         return `<span class="chip ${cls}" ${verified?'':'title="Флоу в проверке — пока проводите через Карима"'} onclick="draftSetGated('kind',${JSON.stringify(x).replace(/"/g,'&quot;')})">${x}</span>`;
       }).join('')}</div></div>`:''}
 
-    ${D.type==='Оплата недвижимости'&&D.kind==='Фрихолд'?`<div class="fg"><label class="fl">Тариф IPPS<span class="rq">*</span></label>
+    ${(D.type==='Оплата недвижимости'&&D.kind==='Фрихолд'||D.type==='Оплата авто')?`<div class="fg"><label class="fl">Тариф IPPS<span class="rq">*</span></label>
       <div class="chips">${Object.keys(IPPS_TARIFFS).map(k=>
         `<span class="chip ${(D.ippsTariff||'bank')===k?'on':''}" onclick="draftSet('ippsTariff','${k}')">${IPPS_TARIFFS[k].label}</span>`).join('')}</div>
       <p class="fh">${IPPS_TARIFFS[D.ippsTariff||'bank'].note} — до договора можно сменить, с договора только чтение.</p></div>`:''}
@@ -6566,6 +6663,9 @@ function viewCreateBody(D,srcCard){
       </div>
       <p class="fh">${D.invoiceCurrency==='thb'?'Сумма в $ не нужна — посчитаем ориентир по курсу банка застройщика, точные суммы и курс впишете при расчёте клиенту.':'Инвойс уже в USD — обычный случай.'}</p></div>`:''}
 
+    ${D.type==='Оплата авто'?`<div class="fg"><label class="fl">Автомобиль / VIN</label>
+      <input class="fc" value="${htmlText(D.object||'')}" placeholder="Модель и VIN, если известны" oninput="draftSet('object',this.value,true)">
+      <p class="fh">Клиент перечисляет рубли по реквизитам. Продавец получает USD.</p></div>`:''}
     <div class="fg"><label class="fl">Как клиент платит<span class="rq">*</span></label>
       <div class="chips">${payWays(D).map(x=>{
         const verified=draftComboVerified(D.type,D.kind,x),selected=D.payType===x;
@@ -6592,7 +6692,7 @@ function viewCreateBody(D,srcCard){
         `<span class="chip ${D.fxBank===b?'on':''}" onclick="draftSet('fxBank','${b}')">${b}</span>`).join('')}${disabledBankRows()}</div>
       <p class="fh" id="d_fx_preview">${draftFhEstimateLine(D)}${thbRatesRefreshButton()}</p></div>`;})():''}
 
-    ${D.cur==='fhusd'&&D.invoiceCurrency!=='thb'?`<div class="fg"><label class="fl">Инвойс застройщику<span class="rq">*</span></label>
+    ${D.cur==='fhusd'&&D.invoiceCurrency!=='thb'?`<div class="fg"><label class="fl">${D.type==='Оплата авто'?'Счёт продавца авто':'Инвойс застройщику'}<span class="rq">*</span></label>
       <div style="display:flex;gap:8px;max-width:520px;flex-wrap:wrap;align-items:center">
         <input class="fc num" id="d_sum" style="flex:1;min-width:200px" value="${D.sum||''}" placeholder="сумма инвойса, $" oninput="draftSet('sum',this.value,true)">
         <span class="chip on" style="min-height:46px;cursor:default">$</span>
@@ -6600,12 +6700,12 @@ function viewCreateBody(D,srcCard){
       ${D.payType==='Крипта'?'':`<p class="fh">В IPPS уйдёт ${usd(freeholdSend(num(cleanNum(String(D.sum||'')))||0,IPPS_TARIFFS[D.ippsTariff||'bank']))}. Курс клиенту будет рассчитан на следующем шаге.</p>`}
     </div>`:''}
 
-    ${D.cur!=='fhusd'?`<div class="fg"><label class="fl">${D.cur==='thb'?'Сколько нужно оплатить':'Сколько есть у клиента'}<span class="rq">*</span></label>
+    ${D.cur!=='fhusd'?`<div class="fg"><label class="fl">${D.type==='Оплата авто'?'Бюджет клиента, ₽':D.cur==='thb'?'Сколько нужно оплатить':'Сколько есть у клиента'}<span class="rq">*</span></label>
       <div style="display:flex;gap:8px;max-width:520px;flex-wrap:wrap;align-items:center">
         <input class="fc num" id="d_sum" style="flex:1;min-width:200px" value="${D.sum||''}" placeholder="${D.cur==='thb'?'сумма в батах':'сумма, которая есть у клиента'}" oninput="draftSet('sum',this.value,true)">
         <span class="chip on" style="min-height:46px;cursor:default">${D.cur==='thb'?'฿':((D.cur==='usd')?'$':'₽')}</span>
       </div>
-      <p class="fh">${D.cur==='thb'?'Сколько отдаст клиент':'Сколько получится в батах'} — посчитаем после курса операциониста.</p>
+      <p class="fh">${D.type==='Оплата авто'?'Сколько получит продавец в USD':D.cur==='thb'?'Сколько отдаст клиент':'Сколько получится в батах'} — посчитаем после курса операциониста.</p>
     </div>`:''}
 
     ${D.type==='Оплата недвижимости'&&D.kind==='Фрихолд'&&D.payType==='Крипта'?`<div class="fg"><label class="fl">Клиент отправит, USDT<span class="rq">*</span></label>
@@ -6639,7 +6739,7 @@ function viewCreateBody(D,srcCard){
       <button class="btn btn-primary" onclick="createGo()">Создать заявку — курс спросит операционист</button>
       <button class="btn btn-secondary" onclick="createSelf()">Курс знаю — сам</button>
       ${D.type==='Обмен валюты'?`<button class="btn btn-outline" onclick="createQuick()">Без шагов</button>`:''}
-      <button class="btn btn-outline" onclick="createFull()">Внести целиком</button>
+      ${D.type==='Оплата авто'?'':`<button class="btn btn-outline" onclick="createFull()">Внести целиком</button>`}
       ${!STAND?`<button class="btn btn-outline" onclick="createClosed()">Закрыть сразу</button>`:''}`}
     </div>
     <p class="fh${cryptoFreehold?' create-next':''}" style="margin-top:10px">${cryptoFreehold?'Далее: загрузить паспорт и инвойс → передать Насте':'Заявка отправляет запрос курса операционисту. Остальные кнопки создают сделку для самостоятельного ведения.'}</p>
@@ -6729,8 +6829,8 @@ const STAND_PAYTYPE_CANON={'По реквизитам':'requisites','СБП':'sb
    загрузке (standBoot). Эти две карты — только перевод локальных ярлыков
    стенда в канонические ключи, сам список проверенных пар здесь не дублируется. */
 function draftComboVerified(type,kind,payType){
-  if(type!=='Оплата недвижимости')return false;
-  const kc=STAND_KIND_CANON[kind],pc=STAND_PAYTYPE_CANON[payType];
+  if(type!=='Оплата недвижимости'&&type!=='Оплата авто')return false;
+  const kc=type==='Оплата авто'?'auto':STAND_KIND_CANON[kind],pc=STAND_PAYTYPE_CANON[payType];
   if(!kc||!pc)return false;
   return (STAND_VERIFIED_FLOWS||[]).some(p=>p[0]===kc&&p[1]===pc);
 }
@@ -6739,7 +6839,7 @@ function draftComboVerified(type,kind,payType){
    иначе выбор «Оплата недвижимости» без ещё выбранного kind тоже считался бы
    непроверенным и блокировался бы преждевременно. */
 function draftTypeVerified(type){
-  return type==='Оплата недвижимости';
+  return type==='Оплата недвижимости'||type==='Оплата авто';
 }
 /* Чип всегда идёт через этот сеттер вместо draftSet напрямую: непроверенную
    комбинацию менеджер выбрать не может (чип и так visible-but-disabled),
@@ -6762,6 +6862,7 @@ function payWays(D){
   /* Клиент может заплатить криптой по любой недвижимости, включая лизхолд: USDT
      приходят нам, а получателю всё равно уходят баты (Карим, 23.09 — правка вчерашнего
      ограничения «лизхолд только рубли или баты»). */
+  if(D.type==='Оплата авто') return ['По реквизитам'];
   if(D.type!=='Обмен валюты') return ['По реквизитам','СБП','Крипта','Наличные'];
   return PAIR_CFG[pairOf(D)].ways;
 }
@@ -6779,6 +6880,9 @@ function askModes(D){
   }
   /* Фрихолд: батов нет вообще — единственный вход — инвойс застройщику в USD,
      остальное (курс клиенту, сумма в рублях/USDT) считается дальше по шагам. */
+  if(D.type==='Оплата авто')
+    return [{k:'need',t:'Счёт продавца',n:'сумма, которую должен получить продавец авто, в USD',cur:'fhusd'},
+      {k:'have',t:'Бюджет клиента',n:'сумма в RUB, которую клиент готов перечислить',cur:'rub'}];
   if(D.type==='Оплата недвижимости'&&D.kind==='Фрихолд')
     return [{k:'need',t:'Инвойс застройщику',n:'сумма, которую должен получить застройщик, в USD',cur:'fhusd'}];
   const have=D.type!=='Обмен валюты'?(D.payType==='Крипта'?'usd':'rub'):(PAIR_PAYCUR[pairOf(D)]||'rub');
@@ -6787,6 +6891,7 @@ function askModes(D){
 }
 function draftMode(k){
   const D=S.draft, m=askModes(D).find(x=>x.k===k); if(!m)return;
+  if(D.type==='Оплата авто'&&D.mode!==k)D.sum='';
   D.mode=k; D.cur=m.cur; save(); render();
 }
 function draftPair(v){
@@ -6822,6 +6927,8 @@ function draftSet(k,v,silent){
   if(k==='payType'&&S.draft.mode!=='need'&&S.draft.cur!=='thb') S.draft.cur=(v==='Крипта')?'usd':'rub';
   /* Смена типа сделки на фрихолд/с фрихолда переключает валюту суммы: у фрихолда
      единственный вход — инвойс в USD, у остального — снова баты (Карим, 28.09). */
+  if(k==='type'&&v==='Оплата авто'){S.draft.kind='Фрихолд';S.draft.mode='need';S.draft.cur='fhusd';S.draft.payType='По реквизитам';S.draft.ippsTariff=S.draft.ippsTariff||'bank';S.draft.invoiceCurrency='usd';S.draft.sum='';}
+  if(k==='type'&&v!=='Оплата авто'&&S.draft.type==='Оплата авто'){S.draft.kind='Лизхолд';S.draft.mode='need';S.draft.cur='thb';S.draft.sum='';}
   if(k==='kind'){
     if(v==='Фрихолд'){S.draft.mode='need';S.draft.cur='fhusd';S.draft.ippsTariff=S.draft.ippsTariff||'bank';}
     else if(S.draft.cur==='fhusd'){S.draft.cur='thb';S.draft.mode='need';}
@@ -6932,6 +7039,7 @@ function draftValid(){
   if(!D.clientId&&!D.client){toast('Выберите клиента из справочника или создайте нового');return false;}
   if(D.type==='Оплата недвижимости'&&!D.kind){toast('Уточните тип сделки — лизхолд, фрихолд или аренда');return false;}
   if(!D.payType){toast('Уточните, как клиент платит');return false;}
+  if(D.type==='Оплата авто'&&(D.payType!=='По реквизитам'||!['fhusd','rub'].includes(D.cur)||D.invoiceCurrency!=='usd')){toast('Для оплаты авто укажите сумму USD или RUB и платёж по реквизитам');return false;}
   /* Инвойс застройщика в THB (Карим, 06.10): $ руками не вводится — сумма в ฿ и
      банк обязательны, $ считается сам по курсу TT Buying; без курсов/банка/
      распознанной суммы заявку не создать (D.sum ниже остаётся пустым). */
@@ -6942,7 +7050,7 @@ function draftValid(){
     if(!S.thbRates||!S.thbRates.success){toast('Курсы банков недоступны — создать заявку нельзя, попробуйте позже');return false;}
     if(!D.sum||!D.fxRate){toast('Не удалось посчитать ориентир в $ — проверьте банк и курсы');return false;}
   }
-  if(!D.sum){toast('Укажите сумму — с неё начинается задача');return false;}
+  if(!(num(cleanNum(String(D.sum||'')))>0)){toast('Укажите положительную сумму — с неё начинается задача');return false;}
   if(D.partial&&!D.invoiceTotal){toast('Укажите сумму инвойса целиком');return false;}
   if(D.type==='Оплата недвижимости'&&D.kind==='Фрихолд'&&D.payType==='Крипта'){
     const amount=num(cleanNum(String(D.amountUsdt??'')));
@@ -6953,6 +7061,12 @@ function draftValid(){
 function draftAmounts(D){
   const v=Number(String(D.sum).replace(/\s/g,'').replace(',','.'));
   const planned=D.amountUsdt==null||D.amountUsdt===''?null:num(cleanNum(String(D.amountUsdt)));
+  if(D.type==='Оплата авто'&&D.cur==='rub')return {amountRub:v,amountThb:null,amountUsdt:null,invoiceUsd:null,
+    requestedRub:v,requestedUsd:null,autoRequestMode:'rub',freeholdClientInput:'sum',
+    curBase:'rub',invoiceCurrency:'usd',ippsTariff:D.ippsTariff||'bank'};
+  if(D.type==='Оплата авто'&&D.cur==='fhusd')return {invoiceUsd:v,requestedUsd:v,requestedRub:null,
+    autoRequestMode:'usd',amountRub:null,amountThb:null,amountUsdt:null,curBase:'fhusd',
+    invoiceCurrency:'usd',ippsTariff:D.ippsTariff||'bank'};
   if(D.cur==='fhusd'){
     const thb=D.invoiceCurrency==='thb';
     return {invoiceUsd:v,amountThb:null,amountRub:null,amountUsdt:D.payType==='Крипта'?planned:null,curBase:'fhusd',
@@ -6977,7 +7091,7 @@ function createGo(){
   /* Одним сохранением: иначе первый PUT ставит сделку на шаг операциониста s5,
      а второй (комментарий, лог, уведомление) сервер отклоняет как правку чужого
      шага — и операционист не получал уведомления о новой задаче. */
-  const d=newDeal({...D,step:cryptoFreehold?'s8':'s5',isTask:true,...draftAmounts(D),noSave:true});
+  const d=newDeal({...D,type:D.type==='Оплата авто'?'Оплата недвижимости':D.type,autoPayment:D.type==='Оплата авто',step:cryptoFreehold?'s8':'s5',isTask:true,...draftAmounts(D),noSave:true});
   d.comment=(D.note||'').trim();
   if(cryptoFreehold){
     log(d,'Крипто-фрихолд — курса не спрашиваем, сразу к сбору документов'+(d.comment?' · '+d.comment:''));
@@ -7014,7 +7128,7 @@ async function createSelf(){
      курс вводится в уже существующей форме s4, на s6 уходим только после
      selfRate() с проверенными курсами, одним подтверждённым PUT. */
   D.createError=null;
-  const d=newDeal({...D,step:'s4',isTask:true,...draftAmounts(D),noSave:true});
+  const d=newDeal({...D,type:D.type==='Оплата авто'?'Оплата недвижимости':D.type,autoPayment:D.type==='Оплата авто',step:'s4',isTask:true,...draftAmounts(D),noSave:true});
   d.self=true;
   log(d,'Курс менеджер ставит сам — заявка не уходит операционисту');
   save();render();
@@ -7222,7 +7336,7 @@ function viewDeal(d){
   if(d.demoTransfers&&!demoAllowed())body='<div class="alert a-warn">В истории есть DEMO-приходы или переводы. Автоматически снять флаг и продолжить нельзя: требуется сверка реальных платежей операционистом.</div>'+body;
   const tab=(v,label)=>`<span class="vtab ${view===v?'on':''}" onclick="setView('${v}')">${label}</span>`;
   return `<div class="deal-screen"><div class="task-card-nav"><button type="button" onclick="closeTaskToList()">‹ Все задачи</button><button type="button" onclick="nextTask()" ${typeof taskListCursor==='undefined'||typeof taskListEntries==='undefined'||taskListCursor<0||taskListCursor+1>=taskListEntries.length?'disabled':''}>Следующая задача ›</button></div><div class="deal-breadcrumb">Задачник / ${htmlText(d.code)}</div>
-  <header class="deal-head"><div><p class="deal-code">${htmlText(d.code)} · ${htmlText(d.kind||d.type)}${d.prepay?' · оплата наперёд':''}</p>
+  <header class="deal-head"><div><p class="deal-code">${htmlText(d.code)} · ${htmlText(d.autoPayment===true?'Оплата авто':d.kind||d.type)}${d.prepay?' · оплата наперёд':''}</p>
     <h1>${htmlText(d.client)}</h1><p>${htmlText([d.object,d.dev,d.manager?'менеджер '+d.manager:''].filter(Boolean).join(' · '))}</p></div>
     ${['manager','admin'].includes(S.role)&&!d.closed&&!d.manual?`<button class="btn btn-outline btn-sm" onclick="manualCloseAsk(${d.id})">Перенести в CRM и закрыть</button>`:''}
     ${view==='task'&&branchPath?`<div class="deal-progress"><span>${htmlText(branchPath.active==='refund'?'Возместить оплату':STEPS[branchPath.active]?.title||'Конвертация завершена')}</span>
@@ -7308,9 +7422,10 @@ function overview(d,st,mine,p,wh){
     <table class="tbl">
       ${row('Клиент',d.client,d.isOld?'знакомый, договор есть':'новый')}
       ${row('Откуда пришёл',SOURCES[d.source],sourceRefLabel(d.source,d.sourceRef))}
-      ${row('Что делаем',d.type+(d.kind?' · '+d.kind:''))}
+      ${row('Что делаем',d.autoPayment===true?'Оплата авто':d.type+(d.kind?' · '+d.kind:''))}
       ${row('Как платит',d.payType,isCrypto(d)?'сделка считается в USDT':'')}
-      ${row('Объект',d.object||'не указан')}
+      ${row(d.autoPayment===true?'Автомобиль / VIN':'Объект',d.object||'не указан')}
+      ${d.autoPayment===true?row('Исходная сумма заявки',d.autoRequestMode==='rub'?moneyKop(d.requestedRub,'₽'):usd(d.requestedUsd)):''}
       ${d.partial?row('Часть оплаты',(d.partNo||'')+' по инвойсу на '+money(d.invoiceTotal,d.kind==='Фрихолд'?'$':'฿')):''}
       ${row('Заведена',d.createdAt,started?dur(Date.now()-started)+' назад':'')}
       ${d.comment?row('Комментарий менеджера',d.comment):''}
@@ -7473,7 +7588,7 @@ function fixCard(d){
     paid?'<span class="fh" style="margin:0">инвойс оплачен — не меняются</span>'
       :reqOpen(d)?`<button class="btn btn-secondary btn-sm" onclick="openTask(${d.id})">Заполнить</button>`
       :`<button class="btn btn-secondary btn-sm" onclick="reqReopen(${d.id},'правка менеджера')">Поправить</button>`]);
-  rows.push(['Клиент и данные сделки',htmlText(d.client+' · '+d.type+(d.kind?' · '+d.kind:'')+(d.object?' · '+d.object:'')),
+  rows.push(['Клиент и данные сделки',htmlText(d.client+' · '+(d.autoPayment===true?'Оплата авто':d.type+(d.kind?' · '+d.kind:''))+(d.object?' · '+d.object:'')),
     `<button class="btn btn-outline btn-sm" onclick="editOpen(${d.id})">Поправить</button>`]);
   if(d.type==='Оплата недвижимости') rows.push(['Документы клиента',
     ['pass','inv','spa','ipds'].filter(k=>d.docs[k]).map(k=>doctOf(d,k)).join(', ')||'не приложены',
@@ -7594,7 +7709,7 @@ function crmGaps(d){
     if(d.kind==='Фрихолд'){
       /* Фрихолд без батов: инвойс в USD, курса покупки ฿/USDT нет вообще; курс
          клиенту (₽ за 1$) нужен только рублёвому фрихолду — у крипты его не спрашивают */
-      need(d.invoiceUsd,'Инвойс застройщику, $','Заявка');
+      need(d.invoiceUsd,d.autoPayment===true?'Счёт продавца, USD':'Инвойс застройщику, $','Заявка');
       need(!!IPPS_TARIFFS[d.ippsTariff],'Тариф IPPS из сделки','Заявка');
       if(!isCrypto(d)) need(num(d.rates.client),'Курс клиенту, ₽ за 1$','Отдать расчёт клиенту');
       else need(d.amountUsdt!=null,'Клиент отправит, USDT (план)','Документы клиента');
@@ -7605,7 +7720,7 @@ function crmGaps(d){
     }
     need((d.payTo&&d.payTo.purpose)||d.object,'Назначение платежа','Реквизиты для оплаты');
     need(mfList(d).length||hashSum(po.hashes)!=null||noncryptoPayout(d),'Переводы в MF Corp, факт','Одобрить перевод');
-    need(d.docs&&d.docs.inv,'Инвойс застройщика','Сбор документов');
+    need(d.docs&&d.docs.inv,d.autoPayment===true?'Счёт продавца авто':'Инвойс застройщика','Сбор документов');
     need(hasReceipt(d),'Подтверждение оплаты','Оплатить инвойс');
   }else{
     need(d.paySrc,'Источник выдачи','Что делаем с USDT');
@@ -7715,7 +7830,7 @@ function crmPayload(d){
     doc_invoice_url:d.docLinks?.invoice||null,
     doc_contract_url:d.docLinks?.contract||null,
     doc_payment_url:d.docLinks?.payment||null,
-    notes:'Из задачника стенда: '+d.code+' · '+d.type+(d.kind?' · '+d.kind:'')+(d.object?' · '+d.object:'')+(d.payerWallet?' · кошелёк клиента '+d.payerWallet:''),
+    notes:'Из задачника стенда: '+d.code+' · '+(d.autoPayment===true?'Оплата авто':d.type+(d.kind?' · '+d.kind:''))+(d.object?' · '+d.object:'')+(d.payerWallet?' · кошелёк клиента '+d.payerWallet:''),
     /* Агенты сделки — иначе CRM считает чистую прибыль до выплат партнёрам: на сделке
        с закреплённым партнёром в CRM ушло $155,59 вместо $66,59 (приёмка 25.09).
        referrer_id шлём только для агентов из настоящей таблицы referrers (refsSync,
@@ -7756,7 +7871,7 @@ function crmPayload(d){
        деление батов на курс (спека 28.09-freehold-no-baht). Формула — та же, что
        у сервера (compute_mf_freehold): S = X·(1+p)+F. */
     const t=IPPS_TARIFFS[d.ippsTariff]||{percent:null,fixed:null}, X=d.invoiceUsd??null;
-    Object.assign(p,{deal_kind:'mf_freehold',realty_purpose:(d.payTo&&d.payTo.purpose)||d.object||'',
+    Object.assign(p,{deal_kind:d.autoPayment===true?'mf_auto':'mf_freehold',realty_purpose:(d.payTo&&d.payTo.purpose)||d.object||'',
       invoice_amount_usd:r2(X),transfer_fee_percent:t.percent,transfer_fee_fixed_usd:t.fixed,
       transfer_sent_usd:r2(mf.reduce((a,t2)=>a+(+t2.amount_usdt||0),0))||r2(X!=null&&t.percent!=null?freeholdSend(X,t):null),payout_tx_hashes:mf});
   }else{
@@ -7963,7 +8078,7 @@ function crmForm(d){
         <span class="net">${esc(String(h.network||'').toUpperCase())}</span>
         <input class="fc addr" style="flex:1;min-width:180px" value="${esc(h.hash)}" placeholder="хеш перевода" readonly></div>`).join('')}</div>`
         :'<p class="fh">переводов нет</p>'}</div>`;};
-  const kindT={mf_realty:'Недвижимость через MF Corp · лизхолд',mf_freehold:'Фрихолд',exchange:'Обмен'}[p.deal_kind]||p.deal_kind;
+  const kindT={mf_realty:'Недвижимость через MF Corp · лизхолд',mf_freehold:'Фрихолд',mf_auto:'Оплата авто',exchange:'Обмен'}[p.deal_kind]||p.deal_kind;
   const MGR={};MANAGERS.concat(p.manager_name&&!MANAGERS.includes(p.manager_name)?[p.manager_name]:[]).forEach(m=>MGR[m]=m);
   return `<div class="crmform">
     <div class="fr">
@@ -7997,10 +8112,10 @@ function crmForm(d){
         ${'company_sent_thb' in p?inp('company_sent_thb','Отправлено в компанию, THB',{hint:'факт на SCB — процент CRM посчитает сама'}):inp('company_percent','Комиссия компании, %')}
       </div>
       ${hashes('payout_tx_hashes','Переводы в MF Corp (факт)')}`:''}
-      ${p.deal_kind==='mf_freehold'?`<div class="psec psnd">Оплата застройщику (фрихолд)</div>
+      ${(p.deal_kind==='mf_freehold'||p.deal_kind==='mf_auto')?`<div class="psec psnd">${p.deal_kind==='mf_auto'?'Оплата продавцу авто':'Оплата застройщику (фрихолд)'}</div>
       <div class="fr">
         ${inp('realty_purpose','Назначение',{w2:1})}
-        ${inp('invoice_amount_usd','Инвойс застройщику, $')}
+        ${inp('invoice_amount_usd',p.deal_kind==='mf_auto'?'Счёт продавца, USD':'Инвойс застройщику, $')}
       </div>
       <div class="fr">
         ${inp('transfer_fee_percent','Тариф IPPS, %',{hint:'0,8 — банк · 1,5 — софт-счёт'})}
@@ -8392,14 +8507,14 @@ function ctxCard(d){
   const rate=isCrypto(d)&&d.kind==='Фрихолд'
     ?'Клиент отправит: '+(d.amountUsdt==null?'—':money(d.amountUsdt,'USDT'))
     :(d.rates.client?d.rates.client+' '+rateUnit(d):'курса ещё нет');
-  const line=[d.client,d.type+(d.kind?' · '+d.kind:''),ap.thb?apMoney(ap,'thb'):null,rate].filter(Boolean).map(htmlText).join(' · ');
+  const line=[d.client,d.autoPayment===true?'Оплата авто':d.type+(d.kind?' · '+d.kind:''),ap.thb?apMoney(ap,'thb'):null,rate].filter(Boolean).map(htmlText).join(' · ');
   /* раскрытое состояние помним локально: доска перерисовывается при каждом обновлении */
   return `<details class="card ctx" style="margin-top:16px"${S.ctxOpen?' open':''} ontoggle="S.ctxOpen=this.open">
   <summary><span class="ctxh">Что это за сделка</span><span class="ctxl">${line}</span></summary>
   <div class="facts" style="margin-top:14px">
     ${fact('Клиент',d.client,d.isOld?'знакомый — договор уже есть':'новый — нужен полный пакет')}
     ${fact('Откуда пришёл',SOURCES[d.source],sourceRefLabel(d.source,d.sourceRef)||'без переписки')}
-    ${fact('Что делаем',d.type+(d.kind?' · '+d.kind:''),'платит: '+(d.payType||'не указано'))}
+    ${fact('Что делаем',d.autoPayment===true?'Оплата авто':d.type+(d.kind?' · '+d.kind:''),'платит: '+(d.payType||'не указано'))}
     ${fact('Объект',d.object||'не указан',d.partial?'часть оплаты '+(d.partNo||'')+' по инвойсу на '+money(d.invoiceTotal,d.kind==='Фрихолд'?'$':'฿'):'оплата целиком')}
     ${fact('Получатель получает',apMoney(ap,'thb'),'клиент отдаёт '+apMoney(ap,'pay'))}
     ${isCrypto(d)&&d.kind==='Фрихолд'
@@ -8643,17 +8758,21 @@ const MANAGERS=['Елизавета'];
 /* Тип сделки — тот же селект, что в форме CRM: обычная, кастомная, MF-недвижимость,
    фрихолд. В прототипе это раскладывается на type+kind, но человеку показываем одно поле. */
 const DEAL_KINDS=[['exchange','Обычная (обмен)'],['custom','Кастомная — нестандартные валюты'],
-  ['mf_realty','Недвижимость через MF Corp'],['mf_freehold','Недвижимость фрихолд']];
+  ['mf_realty','Недвижимость через MF Corp'],['mf_freehold','Недвижимость фрихолд'],['mf_auto','Оплата авто']];
+function dealDisplayKind(d){return d.autoPayment===true?'Оплата авто':d.type+(d.kind?' · '+d.kind:'');}
+function recipientTitle(d){return d.autoPayment===true?'продавцу авто':'застройщику';}
 function dealKind(d){
   if(d.custom) return 'custom';
+  if(d.autoPayment===true) return 'mf_auto';
   if(d.type==='Оплата недвижимости') return d.kind==='Фрихолд'?'mf_freehold':'mf_realty';
   return 'exchange';
 }
 function setDealKind(id,v){
   const d=deal(id); editApply(id);
   d.custom=(v==='custom');
+  d.autoPayment=v==='mf_auto';
   if(v==='exchange'||v==='custom'){d.type='Обмен валюты';d.kind='';}
-  else {d.type='Оплата недвижимости';d.kind=(v==='mf_freehold'?'Фрихолд':(d.kind==='Аренда'?'Аренда':'Лизхолд'));}
+  else {d.type='Оплата недвижимости';d.kind=(v==='mf_freehold'||v==='mf_auto'?'Фрихолд':(d.kind==='Аренда'?'Аренда':'Лизхолд'));}
   save();render();
 }
 function setRealtySubtype(id,kind){
@@ -9498,7 +9617,7 @@ function viewEdit(){
       <div class="fg" id="crmDraftRealtySubtypeBox" style="display:${kind==='mf_realty'?'block':'none'}"><label class="fl">Вид недвижимости</label>
         <select class="fc" id="crmDraftRealtySubtype"><option value="Лизхолд"${d.kind==='Аренда'?'':' selected'}>Лизхолд</option>
           <option value="Аренда"${d.kind==='Аренда'?' selected':''}>Аренда</option></select></div>
-      <div class="fg" id="crmDraftTariffBox" style="display:${kind==='mf_freehold'?'block':'none'}"><label class="fl">Тариф IPPS из сделки</label>
+      <div class="fg" id="crmDraftTariffBox" style="display:${kind==='mf_freehold'||kind==='mf_auto'?'block':'none'}"><label class="fl">Тариф IPPS из сделки</label>
         <select class="fc" id="crmDraftTariff"><option value="">— выберите тариф —</option>
           <option value="bank"${d.ippsTariff==='bank'?' selected':''}>Банк · 0,8% + 50$</option>
           <option value="soft"${d.ippsTariff==='soft'?' selected':''}>Софт-счёт · 1,5% + 50$</option></select></div>
@@ -9881,7 +10000,7 @@ function manualCloseScreen(d){
   return `<div class="deal-screen manual-close-screen">
     <div class="deal-breadcrumb">Задачник / ${htmlText(d.code)} / Ручной перенос в CRM</div>
     <header class="deal-head"><div>
-      <p class="deal-code">${htmlText(d.code)} · ${htmlText(d.kind||d.type)}</p>
+      <p class="deal-code">${htmlText(d.code)} · ${htmlText(d.autoPayment===true?'Оплата авто':d.kind||d.type)}</p>
       <h1>Закрыть вручную: ${htmlText(d.client||'без имени')}</h1>
       <p>Перенос минуя задачник — заполните то, чего не хватает, остальное уже известно.</p>
     </div>
@@ -10497,6 +10616,7 @@ function selfRate(id){
   d.rates.rubUsdt=quoteDirs(d).includes('rub')?r1:null; d.rates.usdtThb=quoteDirs(d).includes('thb')?r2:null; d.rates.at=Date.now();
   d.selfRate=true; d.self=false;
   d.comment=val('c')||d.comment;
+  autoRecalc(d);
   go(d,'s6','Курс проставил менеджер сам — операциониста не привлекали');
   toast('Курс ваш — считайте клиенту');
 }
@@ -10937,6 +11057,10 @@ function stepGoal(d){
             ['Тип',d.type+(d.kind?' · '+d.kind:'')]]};
     case 's5': if(d.kind==='Фрихолд'&&!isCrypto(d)){
       const t5=ippsTariff(d), S5=freeholdSend(d.invoiceUsd||0,t5);
+      if(d.autoPayment===true&&d.autoRequestMode==='rub')return {t:'Вернуть курс RUB → USDT для расчёта выплаты продавцу',
+        nums:[['RUB → USDT',d.rates.rubUsdt||'ждём'],['Бюджет клиента',moneyKop(d.requestedRub||0,'₽')],['Продавцу', 'посчитаем по курсу']]};
+      if(d.autoPayment===true)return {t:'Вернуть курс RUB → USDT для оплаты авто',
+        nums:[['RUB → USDT',d.rates.rubUsdt||'ждём'],['Объём',moneyKop(S5,'USDT')],['Продавцу',usdMark(d,d.invoiceUsd||0)]]};
       /* Объём для брокера — в USDT: это его валюта, не наша долларовая (аудит QA
          №3/№4, 28.09). Застройщику — по-прежнему $, это отдельная сумма (X, не S). */
       return {t:'Вернуть курс RUB → USDT — на объём '+moneyKop(S5,'USDT'),
@@ -10972,7 +11096,7 @@ function stepGoal(d){
     case 's14': return {t:'Дождаться денег от клиента и опознать их',
       nums:[['Ждём',money2(ap.pay,ap.sign)],['Куда',isCrypto(d)?'кошелёк TRC-20':`счёт в ${rubReceivingBankLabel(d)}`],['Допуск',isCrypto(d)?'± 5 USDT':'± 0,5 %']]};
     case 's15': {const pt=d.payTo||{};
-      return {t:d.kind==='Фрихолд'?'Внести реквизиты для оплаты застройщику (IPPS SWIFT)':'Внести реквизиты для оплаты инвойса',
+      return {t:d.kind==='Фрихолд'?`Внести реквизиты для оплаты ${recipientTitle(d)} (IPPS SWIFT)`:'Внести реквизиты для оплаты инвойса',
         nums:[['К оплате',money2(pt.amount||d.amountThb||ap.thb,ap.thbSign||'฿')],['Получатель',pt.dev||d.dev||'ещё не внесён'],
               ['Назначение для банка',pt.purpose?'внесено':'нужно внести']]};}
     case 's14m': return {t:'Понять, к какой сделке относится приход',
@@ -11000,7 +11124,7 @@ function stepGoal(d){
         nums:[['Ждём USDT',plan!=null?usd(plan):'—'],['Курс заявки',d.rates.broker||'—'],
               ['Ушло брокеру',(c&&c.sent?moneyKop(c.sent,'₽'):money2(rub,'₽'))+(n>1?' · '+n+' '+plural(n,'сделка','сделки','сделок'):'')]],
         sub:c&&c.sent?'сумма клиента '+money2(c.clientRubTotal!=null?c.clientRubTotal:rub,'₽')+' · не отправлено брокеру '+moneyKop(c.held,'₽'):''};})();
-    case 's22': if(d.prepay)return {t:'Согласовать заявку IPPS',nums:[['В IPPS',usd(d.prepay.amount)],['Источник',d.prepay.wallet.addr||'—',d.prepay.wallet.name],['Застройщику',usd(d.invoiceUsd||0)]],sub:'Оплата идёт параллельно с конвертацией у брокера'};
+    case 's22': if(d.prepay)return {t:'Согласовать заявку IPPS',nums:[['В IPPS',usd(d.prepay.amount)],['Источник',d.prepay.wallet.addr||'—',d.prepay.wallet.name],[d.autoPayment===true?'Продавцу':'Застройщику',usd(d.invoiceUsd||0)]],sub:'Оплата идёт параллельно с конвертацией у брокера'};
       return {t:'Решить, куда уходят пришедшие USDT',
       nums:[['На кошельке',(function(){const c=convOf(d);const g=c?hashSum(c.txs):d.pay.usdt;return g?usd(g):'—';})()],
             ['Кошелёк',hasPolicy(dealWallet(d))?dealWallet(d).addr:(dealWallet(d)||{}).name||'не выбран',hasPolicy(dealWallet(d))?dealWallet(d).name:null],
@@ -11032,7 +11156,7 @@ function stepGoal(d){
       if(d.kind==='Фрихолд'){
         const hashes=sendList(d).filter(t=>t.status==='confirmed'&&(t.hash||t.ref)).map(t=>t.hash||t.ref).filter(Boolean);
         return {t:'Отправить заявку в IPPS',
-          nums:[['Отправлено',usd(sendSum(d)||pcAmount(d)||0)],['Дойдёт застройщику',usd(E.invoiceUsd||0)],
+          nums:[['Отправлено',usd(sendSum(d)||pcAmount(d)||0)],[d.autoPayment===true?'Дойдёт продавцу':'Дойдёт застройщику',usd(E.invoiceUsd||0)],
                 ['Хешей',String(hashes.length)]]};
       }
       const cs=coinsSends(d), sum=Math.round(cs.reduce((s,x)=>s+x.usdt,0)*100)/100;
@@ -11050,7 +11174,7 @@ function stepGoal(d){
         rows:hashRows};}
     case 's26': {const pt=d.payTo||{};
       if(d.kind==='Фрихолд') return {t:'Подтверждение от IPPS — приложить MT103',
-        nums:[['Дойдёт застройщику',usd(E.invoiceUsd||0)],['Получатель',pt.dev||d.dev||'—'],['SWIFT',pt.swift||'—']]};
+        nums:[[d.autoPayment===true?'Дойдёт продавцу':'Дойдёт застройщику',usd(E.invoiceUsd||0)],['Получатель',pt.dev||d.dev||'—'],['SWIFT',pt.swift||'—']]};
       return {t:'Оплатить инвойс получателю и приложить чек',
       nums:[['К оплате',money2(pt.amount||ap.thb,'฿')],['Получатель',pt.dev||d.dev||'—'],['Счёт',pt.acc||'—']],
       rows:[['Назначение для банка застройщика',pt.purpose||'']]};}
@@ -11135,7 +11259,7 @@ function pcCard(d,x,share,w){
   return `<div class="paybox">
     <div class="payrow" style="border-bottom:none;padding-bottom:2px">
       <div><div class="k">${main?'ГЛАВНАЯ СДЕЛКА ЗАДАЧИ':'СДЕЛКА В ПАЧКЕ'}</div>
-        <div class="v"><b>${x.code} · ${x.client}</b> — ${x.type}${x.kind?' · '+x.kind:''}${
+        <div class="v"><b>${x.code} · ${x.client}</b> — ${x.autoPayment===true?'Оплата авто':x.type+(x.kind?' · '+x.kind:'')}${
           ap2.thb?' · получателю '+money(ap2.thb,ap2.thbSign||'฿'):''}</div>
         <div class="k" style="margin-top:3px">${pcOrigin(x)}</div></div>
       <span class="t3 num" style="white-space:nowrap">${share!=null?usd(share)+' доля':''}</span></div>
@@ -11281,7 +11405,7 @@ function taskFacts(d,x){
      а про сделки без задачника уже сказано в строке «клиент заплатил». */
   const f=(k,v,sub)=>v?`<div><div class="k">${k}</div><div class="v">${v}${sub?`<small>${sub}</small>`:''}</div></div>`:'';
   return `<div class="facts" style="margin:10px 0 2px">
-    ${f('Что за сделка',x.type+(x.kind?' · '+x.kind:''),x.object||x.pair||'')}
+    ${f('Что за сделка',x.autoPayment===true?'Оплата авто':x.type+(x.kind?' · '+x.kind:''),x.object||x.pair||'')}
     ${f('Клиент',x.client,SOURCES[x.source]?('из '+SOURCES[x.source]+(x.sourceRef?' · '+x.sourceRef:'')):'')}
     ${f('Клиент заплатил',paid||'—',(x.payType||'')+(x.readyAt?' · без задачника':''))}
     ${x.prepay?f('Источник оплаты',usd(x.prepay.amount),htmlText(prepayFundingText(x))):f('Стало USDT',fact!=null?usd(fact):'—',c?(c.name+' · '+c.broker+' · курс '+c.rate):'клиент платил криптой — конвертации не было')}
@@ -11416,12 +11540,14 @@ function stepCard(d){
          в фрихолде нет (спека 28.09-freehold-no-baht, §2 «s5»). */
       const t=ippsTariff(d), X=d.invoiceUsd||0, S2=freeholdSend(X,t);
       /* Брокер торгует USDT — объём ему называем в USDT, не в $ (аудит QA №3/№4, 28.09) */
-      const q='Какой курс RUB→USDT на '+moneyKop(S2,'USDT')+'?';
+      const q=d.autoPayment===true&&d.autoRequestMode==='rub'
+        ?'Какой курс RUB→USDT на '+moneyKop(d.requestedRub||0,'₽')+'?'
+        :'Какой курс RUB→USDT на '+moneyKop(S2,'USDT')+'?';
       const r=quoteBest(d,'rub');
       return `<div class="card"><div class="card-title">Что ответил брокер</div>
       ${d.reRequest?`<div class="alert a-info"><div><b>Повторный запрос №${d.reRequest}.</b> Клиент вернулся после паузы.</div></div>`:''}
-      <div class="alert a-warn"><div><b>Фрихолд · платит ${d.payType||'не указано'}.</b> Застройщику ${usd(X)} · тариф ${t.label} · в IPPS уйдёт <b>${moneyKop(S2,'USDT')}</b>.</div></div>
-      <div class="alert a-info"><div>Батов в фрихолде нет — спрашиваем только курс <b>RUB → USDT</b>, на точный объём в USDT, а не на средний курс.</div></div>
+      <div class="alert a-warn"><div><b>${d.autoPayment===true?'Оплата авто':'Фрихолд'} · платит ${d.payType||'не указано'}.</b> ${d.autoPayment===true&&d.autoRequestMode==='rub'?'Бюджет клиента '+moneyKop(d.requestedRub||0,'₽')+' · выплату USD рассчитаем по курсу':(d.autoPayment===true?'Продавцу авто ':'Застройщику ')+usd(X)+' · тариф '+t.label+' · в IPPS уйдёт '+moneyKop(S2,'USDT')}.</div></div>
+      <div class="alert a-info"><div>${d.autoPayment===true?'Нужен курс RUB → USDT для расчёта оплаты продавцу.':'Батов в фрихолде нет — спрашиваем только курс RUB → USDT на точный объём в USDT.'}</div></div>
       <div class="derived" style="margin-bottom:6px;display:block">
         <div style="font-size:12.5px;margin-bottom:6px"><b>Что уйдёт в сделку</b> — заполнять не нужно.</div>
         <div class="fr" style="margin:0"><div class="fg"><div class="fl">RUB → USDT</div>
@@ -11494,6 +11620,10 @@ function stepCard(d){
       const S6=freeholdSend(X,ippsTariff(d));
       const costRate=(brokerRateNow&&X)?Math.round(S6*brokerRateNow/X*10000)/10000:null;
       return `<div class="card"><div class="card-title">Расчёт клиенту<span class="sub">RUB→USDT получен ${ago(d.rates.at)||'—'}</span></div>
+      ${d.autoPayment===true&&d.autoQuoteError?`<div class="alert a-warn"><div>${htmlText(d.autoQuoteError)}. Уточните курс у брокера.</div></div>`:''}
+      ${d.autoPayment===true?`<div class="alert a-info"><div>Исходная заявка: ${d.autoRequestMode==='rub'?moneyKop(d.requestedRub||0,'₽')+' бюджет клиента':usd(d.requestedUsd||0)+' продавцу авто'}. Продавец получает USD; клиент платит RUB.</div></div>
+      <div class="fg"><label class="fl">Прибыль в расчёте</label><div class="chips">${[1.5,2,3,4,5].map(v=>`<span class="chip ${Math.abs(autoMarginPct(d,d.amountRub||d.requestedRub||0)-v)<0.00001?'on':''}" onclick="autoMarginSet(${d.id},'${v}')">${v} %</span>`).join('')}</div>
+      <input class="fc num" style="max-width:130px;margin-top:8px" inputmode="decimal" value="${autoMarginPct(d,d.amountRub||d.requestedRub||0)}" aria-label="Свой процент прибыли, от 1,5 до 5" onchange="autoMarginSet(${d.id},this.value)"><p class="fh">Свой процент: от 1,5 до 5. Ниже 1,5 % только по отдельному согласованию.</p></div>`:''}
       ${freeholdInvoiceInputs6(d)}
       <div class="card-title" style="font-size:14px;margin:14px 0 4px">Итог с клиентом</div>
       <div class="fr">
@@ -11501,9 +11631,9 @@ function stepCard(d){
           <input class="fc num" ${d.selfRate?'id="r1c" onchange="syncFreeholdBrokerRate('+d.id+')"':'readonly'} value="${d.rates.rubUsdt||''}"></div>
         <div class="fg"><label class="fl">Итоговый курс клиенту<span class="rq">*</span><span class="sub2"> ₽ за 1 $, 4 знака</span></label>
           <input class="fc num" id="r3" value="${k?k.toFixed(4).replace('.',','):''}" placeholder="курс клиенту, ₽ за 1 $"
-            onchange="syncFreeholdRate(${d.id},'rate')"></div>
+            ${d.autoPayment===true?'readonly':`onchange="syncFreeholdRate(${d.id},'rate')"`}></div>
         <div class="fg"><label class="fl">Сумма клиенту<span class="sub2"> ₽ — измените сумму или курс, второе пересчитается</span></label>
-          <input class="fc num" id="r4" value="${rub!=null?fmtAmount(String(rub).replace('.',',')):''}" oninput="fmtAmountEl(this)" onchange="syncFreeholdRate(${d.id},'sum')"></div>
+          <input class="fc num" id="r4" value="${rub!=null?fmtAmount(String(rub).replace('.',',')):''}" ${d.autoPayment===true?'readonly':`oninput="fmtAmountEl(this)" onchange="syncFreeholdRate(${d.id},'sum')"`}></div>
       </div>
       <div class="fr">
         <div class="fg"><label class="fl">Себестоимость<span class="sub2"> ₽ за 1 $ — S × курс брокера / X, для сверки с курсом клиенту</span></label>
@@ -11515,7 +11645,7 @@ function stepCard(d){
       <div class="row mainrow"><button class="btn btn-primary" onclick="act(${d.id},'s6')">Клиент согласен</button>
       <button class="btn btn-secondary" onclick="rerate(${d.id})">Запросить курсы заново</button>
       <button class="btn btn-outline" onclick="askClose(${d.id})">Клиент отказался</button></div>
-      <div class="alert a-info" style="margin-top:14px"><div>Измените курс или сумму клиенту — второе поле пересчитается. Введённая сумма сохраняется точно; курс отображается с 4 знаками. Наценка живёт внутри курса — S, себестоимость и прибыль в договор не идут; суммы инвойса и тариф IPPS идут.</div></div>
+      <div class="alert a-info" style="margin-top:14px"><div>${d.autoPayment===true?'Измените прибыль выше, чтобы пересчитать выплату продавцу и сумму клиенту. Исходная сумма заявки остаётся в карточке.':'Измените курс или сумму клиенту — второе поле пересчитается. Введённая сумма сохраняется точно; курс отображается с 4 знаками. Наценка живёт внутри курса — S, себестоимость и прибыль в договор не идут; суммы инвойса и тариф IPPS идут.'}</div></div>
       <p style="font-size:13px;color:var(--navy-600);line-height:1.65">Проговорите правило: при расхождении больше 0,5% к моменту зачисления условия пересчитываются.</p>
       ${quotesSummary(d)}</div>`;
     }
@@ -11566,8 +11696,8 @@ function stepCard(d){
             (Карим, 23.09). */
         docRow(d,'pass','Загранпаспорт',d.isOld?'не обязателен':'обязательно')}
       ${docRow(d,'inv','Инвойс','обязательно')}
-      ${d.type==='Оплата недвижимости'?docRow(d,'spa',doctOf(d,'spa'),'если есть'):''}
-      ${d.type==='Оплата недвижимости'?docRow(d,'ipds','Анкета ИПДС','если есть'):''}
+      ${d.type==='Оплата недвижимости'&&d.autoPayment!==true?docRow(d,'spa',doctOf(d,'spa'),'если есть'):''}
+      ${d.type==='Оплата недвижимости'&&d.autoPayment!==true?docRow(d,'ipds','Анкета ИПДС','если есть'):''}
     </div>
     ${docParseLine(d)}
     ${fioHint(d)}
@@ -11617,7 +11747,7 @@ function stepCard(d){
     <div class="keybox">
       <div class="sec po" style="margin:0 0 10px">${isCrypto(d)&&d.kind==='Фрихолд'?'ГЛАВНОЕ · СУММА':'ГЛАВНОЕ · СУММА И КУРС'}</div>
       <div class="fr">
-        ${fld('amountThb',d.kind==='Фрихолд'?'Инвойс застройщику, $':exchangeSpec(d)?'Сумма получателю, '+SIGN[exchangeSpec(d).output]:'Сумма инвойса к оплате, ฿',{req:1,num:1,big:1,money:1,ro:d.kind==='Фрихолд'})}
+        ${fld('amountThb',d.autoPayment===true?'Продавцу авто, USD':d.kind==='Фрихолд'?'Инвойс застройщику, $':exchangeSpec(d)?'Сумма получателю, '+SIGN[exchangeSpec(d).output]:'Сумма инвойса к оплате, ฿',{req:1,num:1,big:1,money:1,ro:d.kind==='Фрихолд'})}
         ${(isCrypto(d)&&d.kind==='Фрихолд')
           ?`<div class="fg"><label class="fl">Курс сделки</label><input class="fc" readonly value="—"></div>`
           :fld('rate','Курс сделки, '+(d.kind==='Фрихолд'?'₽ за 1$':rateUnit(d)),{req:1,num:1,big:1})}
@@ -11830,11 +11960,11 @@ function stepCard(d){
       const t=ippsTariff(d), soft=(d.ippsTariff||'bank')==='soft', F2=docFields(d);
       const amount=econ(d).invoiceUsd||d.invoiceUsd||ap.thb||0;
       return `<div class="card"><div class="card-title">Реквизиты для оплаты инвойса
-        <span class="sub">деньги у нас — застройщику платим через IPPS SWIFT в USD · тариф ${t.label}</span></div>
+        <span class="sub">деньги у нас — ${recipientTitle(d)} платим через IPPS SWIFT в USD · тариф ${t.label}</span></div>
       <div class="fr">
         <div class="fg w2"><label class="fl">Account Name (получатель)<span class="rq">*</span></label>
           <input class="fc" id="p_dev" value="${(pt.dev||d.dev||(d.docVersion?F2.dev:'')||parsed(d,'recipient_name')||'').replace(/"/g,'&quot;')}" placeholder="Account Name из инвойса"></div>
-        <div class="fg"><label class="fl">Сумма, $<span class="sub2"> из заявки (инвойс застройщика), только чтение</span></label>
+        <div class="fg"><label class="fl">Сумма, $<span class="sub2"> ${d.autoPayment===true?'согласованная выплата продавцу':'из заявки (инвойс застройщика)'}, только чтение</span></label>
           <input class="fc num big" readonly value="${amount?Number(amount).toLocaleString('ru-RU',{minimumFractionDigits:2,maximumFractionDigits:2}):''}"></div>
       </div>
       <div class="fr">
@@ -11853,12 +11983,12 @@ function stepCard(d){
         <div class="fg"><label class="fl">Инвойс</label>
           <input class="fc" id="p_inv" value="${(pt.inv||d.invNo||(d.docVersion?F2.invNo:'')||'').replace(/"/g,'&quot;')}" placeholder="номер инвойса"></div>
       </div>
-      ${soft?`<div class="fg"><label class="fl">POBO — ФИО клиента латиницей<span class="rq">*</span><span class="sub2"> софт-счёт: платёж от имени клиента, иначе Land Department не регистрирует</span></label>
+      ${soft?`<div class="fg"><label class="fl">POBO — ФИО клиента латиницей<span class="rq">*</span><span class="sub2"> ${d.autoPayment===true?'софт-счёт: платёж от имени клиента':'софт-счёт: платёж от имени клиента, иначе Land Department не регистрирует'}</span></label>
         <input class="fc" id="p_pobo" value="${(pt.pobo||F2.fioLat||'').replace(/"/g,'&quot;')}" placeholder="имя латиницей из паспорта"></div>`:''}
-      <div class="fg"><label class="fl">Назначение платежа для банка застройщика<span class="rq">*</span>
+      <div class="fg"><label class="fl">Назначение платежа для банка ${d.autoPayment===true?'продавца':'застройщика'}<span class="rq">*</span>
           <span class="sub2"> операционист вставит его в платёж дословно</span></label>
-        <input class="fc" id="p_purp" value="${(pt.purpose||'').replace(/"/g,'&quot;')}" placeholder="что требует застройщик: юнит, инвойс, покупатель">
-        <p class="fh">то, что требует застройщик или его банк: номер юнита, номер инвойса, имя покупателя. Поменялось — правится до оплаты кнопкой «Изменить реквизиты для оплаты»</p></div>
+        <input class="fc" id="p_purp" value="${(pt.purpose||'').replace(/"/g,'&quot;')}" placeholder="${d.autoPayment===true?'назначение из счёта продавца':'что требует застройщик: юнит, инвойс, покупатель'}">
+        <p class="fh">${d.autoPayment===true?'Сверьте назначение со счётом продавца.':'То, что требует застройщик или его банк: номер юнита, номер инвойса, имя покупателя.'} Поменялось — правится до оплаты кнопкой «Изменить реквизиты для оплаты»</p></div>
       <div class="derived" style="margin-top:6px;display:block">
         <div style="font-size:12.5px;margin-bottom:6px"><b>Так заявка уйдёт в IPPS</b> — после сохранения</div>
         <pre style="white-space:pre-wrap;font-size:12.5px;margin:0">${htmlText(ippsApplicationText(d,pt))}</pre>
@@ -12070,11 +12200,11 @@ function stepCard(d){
     if(d.kind==='Фрихолд'){
       const order=d.ippsPayoutOrder||{};
       const expected=freeholdSend(d.invoiceUsd||0,ippsTariff(d));
-      if(!payToReady(d)||reqOpen(d))return S.role==='manager'?stepCard({...d,step:'s15',_side:true}):'<div class="card">Ждём реквизиты застройщика от менеджера.</div>';
+      if(!payToReady(d)||reqOpen(d))return S.role==='manager'?stepCard({...d,step:'s15',_side:true}):`<div class="card">Ждём реквизиты ${d.autoPayment===true?'продавца авто':'застройщика'} от менеджера.</div>`;
       if(!payToConfirmed(d))return S.role==='manager'?payToConfirmBlock(d):'<div class="card">Ждём подтверждение актуальных реквизитов менеджером.</div>';
       if(!['operator','admin'].includes(S.role))return '<div class="card">Операционист согласует заявку с IPPS и поручит перевод.</div>';
       return `<div class="card"><div class="card-title">Согласовать заявку IPPS и поручить перевод</div>
-        <div class="${hasPolicy(w)?'derived':'alert a-info'}"><div>Реквизиты застройщика подтверждены менеджером. Получите от IPPS адрес и сеть для этой заявки, затем поручите перевод.</div></div>
+        <div class="${hasPolicy(w)?'derived':'alert a-info'}"><div>Реквизиты ${d.autoPayment===true?'продавца авто':'застройщика'} подтверждены менеджером. Получите от IPPS адрес и сеть для этой заявки, затем поручите перевод.</div></div>
         <div class="derived">${d.prepay?'Источник наперёд: '+htmlText(d.prepay.wallet.name):'Пришло '+(got!=null?usd(got):'—')} · расчёт по заявке ${usd(expected)} USDT</div>
         ${w?walletPolicyLine(w):''}
         <div class="fr" style="margin-top:12px">
@@ -12290,21 +12420,21 @@ function stepCard(d){
          никаких нет, перевод уже ушёл криптовым кошельком на шаге подписи (спека 28.09). */
       const X=econ(d).invoiceUsd||d.invoiceUsd||0;
       return `<div class="card"><div class="card-title">Подтверждение от IPPS
-        <span class="sub">MT103 / чек — застройщику должно дойти ${usd(X)}</span></div>
+        <span class="sub">MT103 / чек — ${recipientTitle(d)} должно дойти ${usd(X)}</span></div>
       ${pt.dev?'':`<div class="alert a-warn"><div>Менеджер ещё не заполнил реквизиты — платить не по чему. Верните задачу с вопросом.</div></div>`}
-      ${(pt.dev&&!String(pt.purpose||'').trim())?`<div class="alert a-warn"><div>Менеджер не указал назначение для банка застройщика — верните с вопросом.</div></div>`:''}
+      ${(pt.dev&&!String(pt.purpose||'').trim())?`<div class="alert a-warn"><div>Менеджер не указал назначение для банка ${d.autoPayment===true?'продавца':'застройщика'} — верните с вопросом.</div></div>`:''}
       ${(payToReady(d)&&!payToConfirmed(d))?`<div class="alert a-warn"><div>Ждём подтверждения реквизитов от менеджера.</div></div>`:''}
       <div class="paybox">
         ${line('Получатель',pt.dev||d.dev,1)}
         ${line('Банк',pt.bank,1)}
         ${line('SWIFT',pt.swift,1)}
         ${line('Номер счёта',pt.acc,1)}
-        ${line('Дойдёт застройщику',usd(X),0)}
+        ${line(d.autoPayment===true?'Дойдёт продавцу':'Дойдёт застройщику',usd(X),0)}
       </div>
       <div class="card-title" style="font-size:15px;margin:18px 0 8px">MT103 / чек об оплате
         <span class="sub">уйдёт менеджеру — он отправит его клиенту</span></div>
       <div style="border:1.5px dashed var(--coral);border-radius:var(--r);padding:4px">
-        ${fileBlock(d,'receipt','MT103 / чек IPPS об оплате','обязательно — подтверждение, что застройщику дошло')}
+        ${fileBlock(d,'receipt','MT103 / чек IPPS об оплате','обязательно — подтверждение, что '+recipientTitle(d)+' дошло')}
       </div>
       <div class="row" style="margin-top:14px">
         <button class="btn btn-primary" ${!payToConfirmed(d)?'disabled':''} onclick="act(${d.id},'s26')">MT103 приложен — передать чек менеджеру</button>
@@ -12435,6 +12565,7 @@ async function act(id,step){
     if(quoteDirs(d).includes('thb')&&!t){toast('Отправьте хотя бы один ответ по USDT → THB');return;}
     quoteApply(d);
     if(!needRub) d.rates.rubUsdt=null;
+    autoRecalc(d);
     const all=(d.quotes||[]).filter(q=>needRub||q.dir==='thb');
     go(d,'s6','Курсы отданы: '+[needRub&&r?'RUB→USDT '+r.rate+' ('+r.name+')':'',
       (!freeholdRub&&t)?'USDT→THB '+t.rate+' ('+t.name+')':''].filter(Boolean).join(' · ')+
@@ -12454,7 +12585,7 @@ async function act(id,step){
         if(!d.fxBank){toast('Выберите курс ฿/$: банк или «Свой курс»');return;}
         if(!(num(d.fxRate)>0)){toast('Укажите курс ฿/$');return;}
       }
-      if(!(d.invoiceUsd>0)){toast('Укажите сумму USD к отправке застройщику');return;}
+      if(!(d.invoiceUsd>0)){toast(d.autoPayment===true?'Укажите сумму USD к отправке продавцу авто':'Укажите сумму USD к отправке застройщику');return;}
       if(!thb){d.invoiceThb=null;d.fxBank=null;d.fxRate=null;d.fxAt=null;}
       d.invoiceUsdEstimate=false;
       d.ippsTariff=d.ippsTariff||'bank';
@@ -12464,7 +12595,7 @@ async function act(id,step){
         d.rates.client=(Math.round(d.amountRub/X6*1e6)/1e6).toFixed(6).replace('.',',');
       }else d.amountRub=Math.round(X6*k6*100)/100;
       go(d,'s8','Итог с клиентом: '+(thb?money(d.invoiceThb,'฿')+' по '+(d.fxBank==='custom'?'своему курсу':d.fxBank)+' '+d.fxRate+' = ':'')+
-        usd(X6)+' застройщику · '+t6.label+' · в IPPS '+usd(freeholdSend(X6,t6))+' · курс клиенту '+d.rates.client+' ₽/$ · клиенту '+moneyKop(d.amountRub,'₽'));
+        usd(X6)+' '+recipientTitle(d)+' · '+t6.label+' · в IPPS '+usd(freeholdSend(X6,t6))+' · курс клиенту '+d.rates.client+' ₽/$ · клиенту '+moneyKop(d.amountRub,'₽'));
       toast('Запросите документы');return;
     }
     if(d.type==='Обмен валюты'){
@@ -12820,7 +12951,7 @@ async function act(id,step){
        Без чека шаг не закрывается: именно его менеджер отправит клиенту. */
     const pt=d.payTo||{};
     if(!pt.acc){toast('Нет реквизитов — верните задачу менеджеру');return;}
-    if(!String(pt.purpose||'').trim()){toast('Менеджер не указал назначение для банка застройщика — верните с вопросом');return;}
+    if(!String(pt.purpose||'').trim()){toast('Менеджер не указал назначение для банка '+(d.autoPayment===true?'продавца':'застройщика')+' — верните с вопросом');return;}
     if(!payToReady(d)){toast('Нет подтверждённых реквизитов — верните задачу менеджеру');return;}
     if(!payToConfirmed(d)){toast('Ждём подтверждения реквизитов от менеджера');return;}
     if(d.postConv==='coins'&&!d.pay.coinsCredit){toast('Сначала подтвердите зачисление батов от Coins на SCB');return;}
@@ -12836,7 +12967,7 @@ async function act(id,step){
       const prev=d.payout||{};
       d.payout=Object.assign({},prev,{invoice:{source:'IPPS (SWIFT)',usd:X,to:pt.dev||'',at:now()}});
       if(!prev.source){d.paySrc='ipps_swift';Object.assign(d.payout,{method:'IPPS · SWIFT в USD',source:'IPPS (SWIFT)',usdt:sendSum(d)||pcAmount(d)||null});}
-      log(d,'Подтверждение от IPPS: MT103 приложен — застройщику дошло '+usd(X));
+      log(d,'Подтверждение от IPPS: MT103 приложен — '+recipientTitle(d)+' дошло '+usd(X));
       go(d,'s27','MT103 подтверждён, чек у менеджера — отправить клиенту и закрыть');
       toast('Чек ушёл менеджеру');return;
     }

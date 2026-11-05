@@ -786,7 +786,11 @@ def _fill_appendix1(doc, f: dict, deal_type: str, money: dict, number: str, when
     _set_field(t, 'Номер и дата', f'№ {number} от {date_ru_en(when)}')
     _set_field(t, 'Клиент / Client', client_line(f, 'ru') + '\n' + client_line(f, 'en'))
     _set_field(t, 'Основание платежа', payment_basis(f, deal_type))
-    _set_field(t, 'Объект / Property', property_line(f, deal_type) or
+    object_row = _find_row(t, 'Объект / Property')
+    if object_row is not None and money.get('object_label'):
+        _set_cell(object_row.cells[0], money['object_label'])
+    _set_field(t, 'Объект / Property' if not money.get('object_label') else money['object_label'],
+               property_line(f, deal_type) or
                ('Перевод средств / Funds transfer' if deal_type == 'payment' else ''))
     _set_field(t, 'Получатель / Recipient', f.get('recipient_name'))
     _set_field(t, 'Реквизиты получателя', recipient_details(f))

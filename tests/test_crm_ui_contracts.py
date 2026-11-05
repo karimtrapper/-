@@ -249,16 +249,15 @@ def test_kind_select_options_match_toggles(html):
     """Каждый пункт «Тип сделки» имеет обработку в onDealKindChange."""
     select = extract_subtree(html, 'dealKindSelect')
     values = set(re.findall(r'<option value="([\w_]+)"', select))
-    assert values == {'exchange', 'custom', 'mf_realty', 'mf_freehold', 'rental'}, values
-    # rental — без своего чекбокса-переключателя (как exchange): существует
-    # только для выбора/аналитики, не несёт realty-специфичной логики.
+    assert values == {'exchange', 'custom', 'mf_realty', 'mf_freehold', 'mf_auto', 'rental'}, values
     toggle_values = values - {'exchange', 'rental'}
     body = _function_body(html, 'onDealKindChange')
     for value in toggle_values:
         assert f"'{value}'" in body, f'onDealKindChange не обрабатывает тип {value}'
     sync = _function_body(html, 'syncDealKindSelect')
-    for value in toggle_values:
+    for value in values - {'exchange', 'mf_auto', 'mf_freehold', 'rental'}:
         assert f"'{value}'" in sync, f'syncDealKindSelect не знает про тип {value}'
+    assert 'swiftDealKind' in sync
 
 
 def test_agent_model_rerenders_on_referrer_pick(html):

@@ -948,6 +948,7 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
                     <option value="realty">Недвижимость — вся</option>
                     <option value="mf_realty">Недвижимость — лизхолд</option>
                     <option value="mf_freehold">Недвижимость — фрихолд</option>
+                    <option value="mf_auto">Оплата авто</option>
                 </select>
                 <select id="dashReferrer" class="period-btn" style="appearance:auto" onchange="loadDashboard()">
                     <option value="">Все клиенты</option>
@@ -1146,6 +1147,17 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
                         </select>
                     </div>
                     <div class="form-group">
+                        <label class="form-label">Тип сделки</label>
+                        <select class="form-control" id="filterDealKind">
+                            <option value="">Все</option>
+                            <option value="exchange">Обмен</option>
+                            <option value="realty">Недвижимость — вся</option>
+                            <option value="mf_realty">Недвижимость — лизхолд</option>
+                            <option value="mf_freehold">Недвижимость — фрихолд</option>
+                            <option value="mf_auto">Оплата авто</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
                         <label class="form-label">Менеджер</label>
                         <input type="text" class="form-control" id="filterManager" placeholder="Имя менеджера">
                     </div>
@@ -1177,6 +1189,7 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
                                 <th>Дата</th>
                                 <th>Менеджер</th>
                                 <th>Клиент</th>
+                                <th>Тип</th>
                                 <th>Партнёр</th>
                                 <th>Метод получения</th>
                                 <th>Сумма USDT</th>
@@ -1233,6 +1246,7 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
                                 <option value="mf_realty">Недвижимость через MF Corp</option>
                                 <option value="mf_freehold">Недвижимость фрихолд</option>
                                 <option value="rental">Аренда</option>
+                                <option value="mf_auto">Оплата авто</option>
                             </select>
                         </div>
                     </div>
@@ -1702,7 +1716,7 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
 
                         <!-- Недвижимость фрихолд: оплата застройщику SWIFT-ом -->
                         <div id="fhDealSection" style="display:none;">
-                            <h3 style="margin-bottom: 1rem; color: #0e7490;">Оплата застройщику (фрихолд)</h3>
+                            <h3 id="swiftPaymentTitle" style="margin-bottom: 1rem; color: #0e7490;">Оплата застройщику (фрихолд)</h3>
 
                             <div class="form-row">
                                 <div class="form-group" style="grid-column: span 2;">
@@ -1711,10 +1725,10 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
                                         placeholder="Проект / юнит / номер инвойса" oninput="fhRecalc()">
                                 </div>
                                 <div class="form-group">
-                                    <label class="form-label">Инвойс застройщику, $ *</label>
+                                    <label class="form-label" id="swiftInvoiceLabel">Инвойс застройщику, $ *</label>
                                     <input type="number" step="any" class="form-control" id="fhInvoiceUsd"
                                         placeholder="39008" oninput="fhRecalc('invoice')">
-                                    <small style="color:#6b7280;">сколько должно ДОЙТИ до застройщика</small>
+                                    <small id="swiftInvoiceHint" style="color:#6b7280;">сколько должно ДОЙТИ до застройщика</small>
                                 </div>
                             </div>
 
@@ -1723,7 +1737,7 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
                                     <label class="form-label">Комиссия за перевод, %</label>
                                     <input type="number" step="any" class="form-control" id="fhFeePercent"
                                         placeholder="0.8" value="0.8" oninput="fhRecalc('fee')">
-                                    <small style="color:#6b7280;">снимается С отправляемой суммы</small>
+                                    <small id="swiftFeeHint" style="color:#6b7280;">снимается С отправляемой суммы</small>
                                 </div>
                                 <div class="form-group">
                                     <label class="form-label">Фикс за перевод, $</label>
@@ -1745,7 +1759,7 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
 
                             <div class="form-row">
                                 <div class="form-group">
-                                    <label class="form-label">Ссылка на инвойс</label>
+                                    <label class="form-label" id="swiftInvoiceLinkLabel">Ссылка на инвойс</label>
                                     <input type="text" class="form-control" id="fhDocInvoice" placeholder="https://...">
                                 </div>
                                 <div class="form-group">
@@ -4274,6 +4288,7 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
                         <div class="stat-card crm-mobile-stat-display">
                             <div class="stat-value">$${formatNumber(p.volume_usdt ?? 0)}</div>
                             <div class="stat-label">Объём ${pl}</div>
+                            ${(p.volume_auto_usdt || 0) > 0 ? `<div>оплата авто $${formatNumber(p.volume_auto_usdt)} (${p.auto_deals_count ?? 0})</div>` : ''}
                             ${(p.volume_realty_usdt || 0) > 0 && (p.volume_exchange_usdt || 0) > 0 ? `
                             <div style="font-size:11px;color:#64748b;margin-top:4px;line-height:1.5">
                                 недвижимость $${formatNumber(p.volume_realty_usdt)} (${p.realty_deals_count ?? 0})<br>
@@ -4385,7 +4400,7 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
                                 : (deal.deal_kind === 'mf_realty' && deal.company_sent_thb
                                     // У MF-сделки клиенту баты не выдают — они уходят в компанию
                                     ? formatNumber(deal.company_sent_thb) + ' ฿'
-                                    : (deal.deal_kind === 'mf_freehold' && deal.transfer_sent_usd
+                                    : ((deal.deal_kind === 'mf_freehold' || deal.deal_kind === 'mf_auto') && deal.transfer_sent_usd
                                         // Фрихолд: ушло в USD застройщику, батов нет вообще
                                         ? '$' + formatNumber(deal.transfer_sent_usd)
                                         : '—')))}</td>
@@ -4806,12 +4821,14 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
             const params = new URLSearchParams();
 
             const status = document.getElementById('filterStatus').value;
+            const kind = document.getElementById('filterDealKind').value;
             const manager = document.getElementById('filterManager').value;
             const referrer = document.getElementById('filterReferrer').value;
             const dateFrom = document.getElementById('filterDateFrom').value;
             const dateTo = document.getElementById('filterDateTo').value;
 
             if (status) params.append('status', status);
+            if (kind) params.append('deal_kind', kind);
             if (manager) params.append('manager', manager);
             if (referrer) params.append('referrer_id', referrer);
             if (dateFrom) params.append('date_from', dateFrom);
@@ -4833,6 +4850,7 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
                             <td>${formatDate(deal.created_at)}</td>
                             <td>${escapeHtml(deal.manager_name) || '—'}</td>
                             <td>${escapeHtml(deal.client_name) || '—'}</td>
+                            <td>${deal.deal_kind === 'mf_auto' ? 'Оплата авто' : deal.deal_kind === 'mf_freehold' ? 'Фрихолд' : deal.deal_kind === 'mf_realty' ? 'Лизхолд' : deal.deal_kind === 'rental' ? 'Аренда' : 'Обмен'}</td>
                             <td>${escapeHtml(deal.referrer_name) || '—'}</td>
                             <td>${deal.is_custom ? 'Кастомная' : getPayinMethodLabel(deal.payin_method)}</td>
                             <td>${payinUsdtCell(deal)}</td>
@@ -4842,7 +4860,7 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
                                 : (deal.deal_kind === 'mf_realty' && deal.company_sent_thb
                                     // У MF-сделки клиенту баты не выдают — они уходят в компанию
                                     ? formatNumber(deal.company_sent_thb) + ' ฿'
-                                    : (deal.deal_kind === 'mf_freehold' && deal.transfer_sent_usd
+                                    : ((deal.deal_kind === 'mf_freehold' || deal.deal_kind === 'mf_auto') && deal.transfer_sent_usd
                                         // Фрихолд: ушло в USD застройщику, батов нет вообще
                                         ? '$' + formatNumber(deal.transfer_sent_usd)
                                         : '—')))}</td>
@@ -5110,14 +5128,14 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
                             <hr style="margin: 1rem 0;">
                         ` : ''}
 
-                        ${deal.deal_kind === 'mf_freehold' ? `
-                            <h4 style="color: #0e7490; margin-bottom: 0.5rem;">Оплата застройщику (фрихолд)</h4>
+                        ${(deal.deal_kind === 'mf_freehold' || deal.deal_kind === 'mf_auto') ? `
+                            <h4 style="color: #0e7490; margin-bottom: 0.5rem;">${deal.deal_kind === 'mf_auto' ? 'Оплата автомобиля' : 'Оплата застройщику (фрихолд)'}</h4>
                             ${deal.realty_purpose ? `<p><strong>Назначение:</strong> ${escapeHtml(deal.realty_purpose)}</p>` : ''}
-                            <p><strong>Инвойс застройщику:</strong> $${(deal.invoice_amount_usd || 0).toFixed(2)}</p>
+                            <p><strong>${deal.deal_kind === 'mf_auto' ? 'Счёт продавца' : 'Инвойс застройщику'}:</strong> $${(deal.invoice_amount_usd || 0).toFixed(2)}</p>
                             <p><strong>Отправлено:</strong> $${(deal.transfer_sent_usd || 0).toFixed(2)}</p>
                             <p style="color:#6b7280;">— комиссия за перевод: $${(deal.transfer_fee_usd || 0).toFixed(2)}
                                (${Number(deal.transfer_fee_percent || 0).toFixed(2)}% + $${Number(deal.transfer_fee_fixed_usd || 0).toFixed(0)})</p>
-                            <p><strong>Дойдёт застройщику:</strong> $${(deal.transfer_arrive_usd || 0).toFixed(2)}
+                            <p><strong>Дойдёт ${deal.deal_kind === 'mf_auto' ? 'продавцу' : 'застройщику'}:</strong> $${(deal.transfer_arrive_usd || 0).toFixed(2)}
                                ${(deal.invoice_amount_usd && (deal.transfer_arrive_usd || 0) - deal.invoice_amount_usd < -0.01)
                                   ? `<span style="color:#dc2626;">— не хватает $${(deal.invoice_amount_usd - (deal.transfer_arrive_usd || 0)).toFixed(2)}</span>` : ''}</p>
                             ${(deal.payout_tx_hashes && deal.payout_tx_hashes.length) ? (() => {
@@ -5138,7 +5156,7 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
                             <hr style="margin: 1rem 0;">
                         ` : ''}
 
-                        ${(deal.deal_kind === 'mf_realty' || deal.deal_kind === 'mf_freehold') ? '' : `
+                        ${(deal.deal_kind === 'mf_realty' || deal.deal_kind === 'mf_freehold' || deal.deal_kind === 'mf_auto') ? '' : `
                         <h4 style="color: #ef4444; margin-bottom: 0.5rem;">Pay-Out</h4>
                         ${deal.is_custom ? `
                             <p><strong>Валюта:</strong> ${deal.custom_payout_currency}</p>
@@ -5195,7 +5213,7 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
                                         <br><span style="color:#9ca3af;font-size:0.85rem;">в крипте $${crypto.toFixed(2)} · в компании ${formatNumber(deal.company_fee_thb || 0)} ฿ ($${fee.toFixed(2)})</span>`;
                                 })()
                                 : `<span style="color: #10b981;">$${(deal.profit_usdt || 0).toFixed(2)}</span> (${(deal.profit_percent || 0).toFixed(1)}%)`
-                               + (deal.deal_kind === 'mf_freehold'
+                               + ((deal.deal_kind === 'mf_freehold' || deal.deal_kind === 'mf_auto')
                                     ? '<br><span style="color:#9ca3af;font-size:0.85rem;">после расходов на перевод</span>' : ''))
                         }
                         </p>
@@ -5240,7 +5258,7 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
                         <p><strong>Чистая прибыль:</strong>
                             ${profitUnknown
                             ? '<span style="color: #f59e0b; font-weight: 600;">Ожидает возмещения</span>'
-                            : `<span style="color: #10b981; font-weight: 600; font-size: 1.15rem;">$${(deal.net_profit_usdt != null && (deal.referrer_name || deal.deal_kind === 'mf_realty' || deal.deal_kind === 'mf_freehold') ? deal.net_profit_usdt : (deal.profit_usdt || 0)).toFixed(2)}</span>`
+                            : `<span style="color: #10b981; font-weight: 600; font-size: 1.15rem;">$${(deal.net_profit_usdt != null && (deal.referrer_name || deal.deal_kind === 'mf_realty' || (deal.deal_kind === 'mf_freehold' || deal.deal_kind === 'mf_auto')) ? deal.net_profit_usdt : (deal.profit_usdt || 0)).toFixed(2)}</span>`
                             // Лизхолд: доход в двух карманах — комиссия лежит батами
                             // на MF Corp, в USDT остаётся только остаток кошелька
                             + (deal.deal_kind === 'mf_realty'
@@ -5566,7 +5584,8 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
 
                         // Недвижимость: лизхолд через MF Corp либо фрихолд по SWIFT
                         const isMf = deal.deal_kind === 'mf_realty';
-                        const isFh = deal.deal_kind === 'mf_freehold';
+                        const isFh = deal.deal_kind === 'mf_freehold' || deal.deal_kind === 'mf_auto';
+                        swiftDealKind = deal.deal_kind === 'mf_auto' ? 'mf_auto' : 'mf_freehold';
                         document.getElementById('mfDealToggle').checked = isMf;
                         document.getElementById('fhDealToggle').checked = isFh;
                         toggleMfDeal();
@@ -7830,7 +7849,7 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
         // Единственный источник истины — VERIFIED_FLOWS на сервере (app.py),
         // отданный через /api/deal-flow-config; эти две карты — только перевод
         // локальных значений select'ов в канонические ключи сервера.
-        const CRM_KIND_CANON = {'mf_freehold':'freehold','mf_realty':'leasehold','rental':'rental',
+        const CRM_KIND_CANON = {'mf_freehold':'freehold','mf_auto':'auto','mf_realty':'leasehold','rental':'rental',
             'exchange':'exchange','custom':'exchange'};
         const CRM_PAYIN_CANON = {'flow_sole_reqs':'requisites','sber_reqs':'requisites','sber_wl':'sbp',
             'spp_doverka':'sbp','crypto_direct':'crypto','partners_cash':'cash'};
@@ -7880,6 +7899,9 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
             }
         }
         // ===== Тип сделки (селект в шапке формы) =====
+        let swiftDealKind = 'mf_freehold';
+        function isAutoDeal() { return swiftDealKind === 'mf_auto'; }
+
         function onDealKindChange() {
             const kind = document.getElementById('dealKindSelect').value;
             applyFlowGateOptions();
@@ -7888,7 +7910,8 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
             const fh = document.getElementById('fhDealToggle');
             custom.checked = (kind === 'custom');
             mf.checked = (kind === 'mf_realty');
-            fh.checked = (kind === 'mf_freehold');
+            fh.checked = (kind === 'mf_freehold' || kind === 'mf_auto');
+            if (fh.checked) swiftDealKind = kind;
             toggleCustomDeal();
             toggleMfDeal();
             toggleFhDeal();
@@ -7902,7 +7925,7 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
             // onDealKindChange → toggle*Deal) молча откатывала выбранную
             // Аренду обратно на «Обычная (обмен)» сразу после выбора.
             sel.value = document.getElementById('mfDealToggle')?.checked ? 'mf_realty'
-                : document.getElementById('fhDealToggle')?.checked ? 'mf_freehold'
+                : document.getElementById('fhDealToggle')?.checked ? swiftDealKind
                 : (document.getElementById('customDealToggle')?.checked ? 'custom'
                     : (sel.value === 'rental' ? 'rental' : 'exchange'));
             applyFlowGateOptions();
@@ -7941,10 +7964,34 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
             if (slot && block.parentElement !== slot) slot.appendChild(block);
             const label = document.getElementById('realtyPayoutTxLabel');
             const hint = document.getElementById('realtyPayoutTxHint');
-            if (label) label.textContent = isFh ? 'Переводы застройщику (факт)' : 'Переводы в MF Corp (факт)';
+            if (label) label.textContent = isFh ? (isAutoDeal() ? 'Переводы продавцу авто (факт)' : 'Переводы застройщику (факт)') : 'Переводы в MF Corp (факт)';
             if (hint) hint.textContent = isFh
                 ? 'отметь переводы, которыми реально ушли деньги — сумма станет фактической отправкой'
                 : 'отметь переводы, которыми реально ушли деньги — себестоимость возьмём по факту';
+        }
+
+        function renderSwiftPaymentLabels() {
+            const auto = isAutoDeal();
+            const title = document.getElementById('swiftPaymentTitle');
+            if (title) title.textContent = auto ? 'Оплата автомобиля' : 'Оплата застройщику (фрихолд)';
+            const invoice = document.getElementById('swiftInvoiceLabel');
+            if (invoice) invoice.textContent = auto ? 'Счёт продавца, $ *' : 'Инвойс застройщику, $ *';
+            const hint = document.getElementById('swiftInvoiceHint');
+            if (hint) hint.textContent = auto ? 'сумма к получению продавцом' : 'сколько должно ДОЙТИ до застройщика';
+            const link = document.getElementById('swiftInvoiceLinkLabel');
+            if (link) link.textContent = auto ? 'Ссылка на счёт продавца' : 'Ссылка на инвойс';
+            const feeHint = document.getElementById('swiftFeeHint');
+            if (feeHint) feeHint.textContent = auto
+                ? 'процент от суммы счёта продавца; фикс добавляется сверху'
+                : 'снимается С отправляемой суммы';
+            const sent = document.getElementById('fhSentUsd');
+            if (sent) sent.placeholder = auto ? 'считается из счёта продавца' : 'считается из инвойса';
+            const purpose = document.getElementById('fhPurpose');
+            if (purpose) purpose.placeholder = auto ? 'Автомобиль / VIN / номер счёта' : 'Проект / юнит / номер инвойса';
+            const dealHint = document.getElementById('fhDealHint');
+            if (dealHint) dealHint.textContent = auto
+                ? 'Оплата продавцу авто: укажите счёт, отправку и комиссию перевода.'
+                : 'Фрихолд: платим застройщику SWIFT-ом из-за рубежа. Банк снимает комиссию из отправленной суммы, тайская компания не участвует — прибыль целиком в USDT, уже за вычетом расходов на перевод.';
         }
 
         // ===== Недвижимость через MF Corporation =====
@@ -8145,6 +8192,7 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
         function toggleFhDeal() {
             const isFh = document.getElementById('fhDealToggle').checked;
             document.getElementById('fhDealSection').style.display = isFh ? 'block' : 'none';
+            renderSwiftPaymentLabels();
             document.getElementById('fhDealHint').style.display = isFh ? 'block' : 'none';
             applyRealtyLayout();
             syncDealKindSelect();
@@ -8195,7 +8243,7 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
             const box = document.getElementById('fhSummary');
             const payload = fhInputs();
             if (!payload.invoice_amount_usd && !payload.transfer_sent_usd) {
-                box.innerHTML = '<div style="color:#6b7280;font-size:0.9rem;">Заполни инвойс застройщику (или фактическую отправку) — покажу расклад с расходами.</div>';
+                box.innerHTML = `<div style="color:#6b7280;font-size:0.9rem;">Укажите ${isAutoDeal() ? 'счёт продавца' : 'инвойс застройщику'} или фактическую отправку.</div>`;
                 return;
             }
             try {
@@ -8238,9 +8286,9 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
             box.innerHTML = `
               <div style="background:#ecfeff;border:1px solid #a5f3fc;border-radius:8px;padding:0.75rem;">
                 <div style="display:flex;justify-content:space-between;"><span style="color:#6b7280;">Приход от клиента</span><strong>${money(r.payin_usdt)}</strong></div>
-                <div style="display:flex;justify-content:space-between;"><span style="color:#6b7280;">Отправлено застройщику</span><strong>−${money(r.sent_usd)}</strong></div>
+                <div style="display:flex;justify-content:space-between;"><span style="color:#6b7280;">Отправлено ${isAutoDeal() ? 'продавцу' : 'застройщику'}</span><strong>−${money(r.sent_usd)}</strong></div>
                 <div style="display:flex;justify-content:space-between;"><span style="color:#9ca3af;padding-left:12px;">— комиссия за перевод (${(r.fee_percent || 0).toFixed(2)}% + ${money(r.fee_fixed_usd)})</span><span style="color:#6b7280;">${money(r.fee_usd)}</span></div>
-                <div style="display:flex;justify-content:space-between;"><span style="color:#9ca3af;padding-left:12px;">— дойдёт застройщику</span><span style="color:#6b7280;">${money(r.arrive_usd)}</span></div>
+                <div style="display:flex;justify-content:space-between;"><span style="color:#9ca3af;padding-left:12px;">— дойдёт ${isAutoDeal() ? 'продавцу' : 'застройщику'}</span><span style="color:#6b7280;">${money(r.arrive_usd)}</span></div>
                 <div style="display:flex;justify-content:space-between;border-top:1px solid #a5f3fc;margin-top:4px;padding-top:4px;">
                   <span>Прибыль после расходов</span>
                   <strong style="color:${negative ? '#dc2626' : 'inherit'};">${money(r.gross_profit_usdt)}</strong>
@@ -8250,8 +8298,8 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
                   <span><strong>Чистый доход</strong> <span style="color:#6b7280;font-size:0.85rem;">после расходов и выплат</span></span>
                   <strong style="color:${r.net_profit_usdt < 0 ? '#dc2626' : '#0e7490'};">${money(r.net_profit_usdt)}</strong>
                 </div>
-                ${gap < -0.01 ? `<div style="margin-top:6px;color:#dc2626;font-size:0.9rem;">⚠️ До застройщика дойдёт на ${money(-gap)} меньше инвойса — доотправь или пересчитай сумму.</div>` : ''}
-                ${gap > 0.01 ? `<div style="margin-top:6px;color:#b45309;font-size:0.9rem;">Переотправлено на ${money(gap)} сверх инвойса.</div>` : ''}
+                ${gap < -0.01 ? `<div style="margin-top:6px;color:#dc2626;font-size:0.9rem;">⚠️ ${isAutoDeal() ? 'Продавцу' : 'Застройщику'} дойдёт на ${money(-gap)} меньше ${isAutoDeal() ? 'счёта' : 'инвойса'} — доотправь или пересчитай сумму.</div>` : ''}
+                ${gap > 0.01 ? `<div style="margin-top:6px;color:#b45309;font-size:0.9rem;">Переотправлено на ${money(gap)} сверх ${isAutoDeal() ? 'счёта' : 'инвойса'}.</div>` : ''}
                 ${r.net_shortfall_usdt < 0 ? `<div style="margin-top:6px;color:#dc2626;font-size:0.9rem;">⚠️ Выплаты партнёрам больше заработка сделки на ${money(-r.net_shortfall_usdt)} — платим из своего кармана.</div>` : ''}
                 ${markupAgent ? `<div style="margin-top:6px;color:#0e7490;font-size:0.85rem;">ℹ️ Наценка партнёра считается от объёма (${money(Math.max(r.payin_usdt, r.sent_usd))}), а не от прибыли — она должна быть заложена в курс клиенту. Если нет, она вычитается из нашего заработка.</div>` : ''}
               </div>`;
@@ -8267,7 +8315,7 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
                 return v === '' || v === undefined ? null : v;
             };
             return {
-                deal_kind: 'mf_freehold',
+                deal_kind: swiftDealKind,
                 realty_purpose: val('fhPurpose'),
                 invoice_amount_usd: num('fhInvoiceUsd'),
                 transfer_sent_usd: num('fhSentUsd'),
@@ -12028,6 +12076,7 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
             }
             if (i.deal?.deal_kind === 'mf_realty') return 'недвижка (лизхолд)';
             if (i.deal?.deal_kind === 'mf_freehold') return 'недвижка (фрихолд)';
+            if (i.deal?.deal_kind === 'mf_auto') return 'оплата авто';
             if (i.deal) return 'обмен';
             return '<span style="color:#cbd5e1">—</span>';
         }

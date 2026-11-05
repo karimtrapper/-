@@ -16,7 +16,7 @@ import json
 import re
 import math
 import hashlib
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 import hmac
 import secrets
 import base64
@@ -519,9 +519,8 @@ DEAL_KIND_LABELS = {
     'exchange': 'обычный обмен',
     'mf_realty': 'недвижимость: лизхолд (через MF Corp)',
     'mf_freehold': 'недвижимость: фрихолд (SWIFT застройщику)',
-    # Добавлено для аналитики/паритета выбора со стендом — не несёт своей
-    # realty-специфичной бизнес-логики, в отличие от mf_realty/mf_freehold.
     'rental': 'Аренда',
+    'mf_auto': 'Оплата авто',
 }
 
 
@@ -529,6 +528,7 @@ class DealKindCanon(str, Enum):
     FREEHOLD = 'freehold'
     LEASEHOLD = 'leasehold'
     RENTAL = 'rental'
+    AUTO = 'auto'
     EXCHANGE = 'exchange'
 
 
@@ -545,6 +545,7 @@ class PayInCanon(str, Enum):
 VERIFIED_FLOWS = {
     (DealKindCanon.FREEHOLD.value, PayInCanon.REQUISITES.value),
     (DealKindCanon.LEASEHOLD.value, PayInCanon.REQUISITES.value),
+    (DealKindCanon.AUTO.value, PayInCanon.REQUISITES.value),
 }
 
 _STAND_KIND_CANON = {
@@ -562,6 +563,7 @@ _STAND_PAYTYPE_CANON = {
 
 _LEGACY_KIND_CANON = {
     'mf_freehold': DealKindCanon.FREEHOLD.value,
+    'mf_auto': DealKindCanon.AUTO.value,
     'mf_realty': DealKindCanon.LEASEHOLD.value,
     'rental': DealKindCanon.RENTAL.value,
     'exchange': DealKindCanon.EXCHANGE.value,
@@ -578,7 +580,9 @@ _LEGACY_PAYIN_CANON = {
 }
 
 
-def canonical_deal_kind_from_stand(deal_type, kind):
+def canonical_deal_kind_from_stand(deal_type, kind, auto_payment=False):
+    if auto_payment is True and deal_type == 'Оплата недвижимости' and kind == 'Фрихолд':
+        return DealKindCanon.AUTO.value
     if deal_type == 'Обмен валюты':
         return DealKindCanon.EXCHANGE.value
     return _STAND_KIND_CANON.get(kind)
@@ -2044,9 +2048,12 @@ def compute_agent_cascade(profit_usdt, volume_usdt, agents, crypto_base_usdt=Non
 
 MF_REALTY_KIND = 'mf_realty'      # недвижимость через тайскую компанию (лизхолд)
 MF_FREEHOLD_KIND = 'mf_freehold'  # недвижимость фрихолд: оплата SWIFT-ом из-за рубежа
+MF_AUTO_KIND = 'mf_auto'          # оплата автомобиля: те же расчёты перевода
 # Оба типа недвижимости: своя математика, возмещение не нужно, выгрузка в
 # «Cделки недвижимость», свой шаблон Telegram. Общая ветка кода — по этому кортежу.
-REALTY_KINDS = (MF_REALTY_KIND, MF_FREEHOLD_KIND)
+REALTY_KINDS = (MF_REALTY_KIND, MF_FREEHOLD_KIND, MF_AUTO_KIND)
+SWIFT_PAYMENT_KINDS = (MF_FREEHOLD_KIND, MF_AUTO_KIND)
+PROPERTY_KINDS = (MF_REALTY_KIND, MF_FREEHOLD_KIND)
 
 
 def compute_mf_realty(invoice_thb, buy_rate, payin_usdt, sell_rate=None,
@@ -4117,6 +4124,10 @@ GSHEET_FREEHOLD_HEADERS = [
 # CRM ID больше не последняя колонка — позицию берём по имени, а не по длине
 GSHEET_REALTY_ID_COL = GSHEET_REALTY_HEADERS.index('CRM ID') + 1
 GSHEET_FREEHOLD_ID_COL = GSHEET_FREEHOLD_HEADERS.index('CRM ID') + 1
+GSHEET_AUTO_HEADERS = GSHEET_FREEHOLD_HEADERS.copy()
+GSHEET_AUTO_HEADERS[7] = 'счёт продавца авто usd'
+GSHEET_AUTO_HEADERS[12] = 'дойдёт продавцу авто usd'
+GSHEET_AUTO_HEADERS[16] = 'счёт продавца'
 GSHEET_REALTY_MONTHS = [
     'январь', 'февраль', 'март', 'апрель', 'май', 'июнь',
     'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь',
@@ -4402,27 +4413,29 @@ def _sync_freehold_impl(sh, deal, when):
     несовпадении заголовка пишем в «<месяц> freehold CRM», а ручной лист
     оставляем как есть.
     """
-    title = freehold_month_sheet_name(when)
-    ws = _find_month_worksheet(sh, title, ('freehold',))
+    is_auto = deal.deal_kind == MF_AUTO_KIND
+    headers = GSHEET_AUTO_HEADERS if is_auto else GSHEET_FREEHOLD_HEADERS
+    title = f'{GSHEET_REALTY_MONTHS[when.month - 1]} auto' if is_auto else freehold_month_sheet_name(when)
+    ws = _find_month_worksheet(sh, title, ('auto',) if is_auto else ('freehold',))
     created = False
     if ws is None:
-        ws = _realty_get_or_create_ws(sh, title, headers=GSHEET_FREEHOLD_HEADERS)
+        ws = _realty_get_or_create_ws(sh, title, headers=headers)
         created = True
     else:
         header = _sheet_header(ws)
         if not any(header):
             # Лист завели руками и не заполнили — без шапки строка читалась бы заголовком
-            ws.append_row(GSHEET_FREEHOLD_HEADERS, value_input_option='USER_ENTERED')
-        elif GSHEET_FREEHOLD_HEADERS[:len(header)] != header:
+            ws.append_row(headers, value_input_option='USER_ENTERED')
+        elif headers[:len(header)] != header:
             title = f'{title} CRM'
-            ws = _realty_get_or_create_ws(sh, title, headers=GSHEET_FREEHOLD_HEADERS)
+            ws = _realty_get_or_create_ws(sh, title, headers=headers)
             created = True
     rows = build_freehold_rows(deal)
     inserted = _realty_upsert(ws, rows, deal.id, id_col=GSHEET_FREEHOLD_ID_COL)
     try:
         _realty_upsert(
-            _realty_get_or_create_ws(sh, GSHEET_FREEHOLD_ALL, rows=2000,
-                                     headers=GSHEET_FREEHOLD_HEADERS),
+            _realty_get_or_create_ws(sh, 'все сделки auto' if is_auto else GSHEET_FREEHOLD_ALL, rows=2000,
+                                     headers=headers),
             rows, deal.id, id_col=GSHEET_FREEHOLD_ID_COL)
     except Exception as e:
         print(f'[GSheet freehold] сводный лист: {e}', flush=True)
@@ -4436,7 +4449,7 @@ def _sync_realty_deal_impl(deal):
             return {'ok': False, 'error': 'no_credentials'}
         sh = gc.open_by_key(GSHEET_REALTY_ID)
         when = deal.created_at or datetime.utcnow()
-        if deal.deal_kind == MF_FREEHOLD_KIND:
+        if deal.deal_kind in SWIFT_PAYMENT_KINDS:
             return _sync_freehold_impl(sh, deal, when)
         month_name = realty_month_sheet_name(when)
         ws = _realty_find_month_worksheet(sh, month_name)
@@ -5051,6 +5064,7 @@ def _mf_freehold_telegram_text(deal):
     дойдёт до застройщика. Прибыль здесь тонкая (сотни долларов на десятки
     тысяч), поэтому расход показываем строкой, а не прячем в себестоимость.
     """
+    is_auto = deal.deal_kind == MF_AUTO_KIND
     date_str = deal.created_at.strftime('%d.%m.%Y') if deal.created_at else ''
     client = (deal.client.name if deal.client else deal.client_name) or 'без имени'
     sent = deal.transfer_sent_usd or 0
@@ -5058,14 +5072,14 @@ def _mf_freehold_telegram_text(deal):
     fee = deal.transfer_fee_usd or 0
     invoice = deal.invoice_amount_usd or 0
     msg = (
-        f"🏠 <b>Фрихолд {deal.id} — {client} — {date_str}</b>\n"
+        f"{'🚗' if is_auto else '🏠'} <b>{'Оплата авто' if is_auto else 'Фрихолд'} {deal.id} — {client} — {date_str}</b>\n"
         f"{deal.realty_purpose or ''}\n"
         f"Приход: ${deal.payin_amount_usdt or 0:,.2f}"
         f"{_payin_parts_block(deal)}\n"
         f"Отправлено: ${sent:,.2f}\n"
         f"— комиссия за перевод: ${fee:,.2f} "
         f"({deal.transfer_fee_percent or 0:.2f}% + ${deal.transfer_fee_fixed_usd or 0:,.0f})\n"
-        f"— дойдёт застройщику: ${arrive:,.2f}"
+        f"— дойдёт {'продавцу' if is_auto else 'застройщику'}: ${arrive:,.2f}"
     )
     gap = round(arrive - invoice, 2) if invoice else 0
     if gap < -0.01:
@@ -5115,7 +5129,7 @@ def _send_deal_telegram(deal, sender=None):
         return
     if deal.deal_kind == MF_REALTY_KIND:
         return sender(_mf_realty_telegram_text(deal))
-    if deal.deal_kind == MF_FREEHOLD_KIND:
+    if deal.deal_kind in SWIFT_PAYMENT_KINDS:
         return sender(_mf_freehold_telegram_text(deal))
     date_str = deal.created_at.strftime('%d.%m.%Y') if deal.created_at else ''
     payout_usdt = deal.payout_amount_usdt or 0
@@ -7977,6 +7991,86 @@ def stand_state_put():
         db.close()
 
 
+def _stand_auto_quote_calculate(deal):
+    """Quote the USD payout against a RUB client budget, or invert that quote."""
+    from decimal import Decimal, ROUND_HALF_UP, ROUND_FLOOR, ROUND_CEILING
+    max_cents = 90071992547409  # JS safe integer with two extra decimal digits for fee rounding
+    def safe_cents(value, rounding=ROUND_HALF_UP):
+        if value is None or value <= 0:
+            return None
+        cents = int((value*100).to_integral_value(rounding=rounding))
+        return cents if 0 < cents <= max_cents else None
+    if deal.get('autoPayment') is not True or deal.get('step') != 's6':
+        return False
+    rate = _stand_num((deal.get('rates') or {}).get('rubUsdt'))
+    if rate is None or rate <= 0:
+        return False
+    tariff = deal.get('ippsTariff') or 'bank'
+    pct = Decimal('0.008') if tariff == 'bank' else Decimal('0.015') if tariff == 'soft' else None
+    if pct is None:
+        return False
+    cent = Decimal('0.01')
+    def rounded(value):
+        return value.quantize(cent, rounding=ROUND_HALF_UP)
+    def broker_net(rub):
+        return rounded(rub - rounded(rub*Decimal('0.001')+40) - rounded(rub*Decimal('0.002')))
+    def sent(usd_amount):
+        return usd_amount + rounded(usd_amount*pct+50)
+    def margin(rub):
+        explicit = _stand_num(deal.get('autoMarkupPct'))
+        if deal.get('autoRequestMode') == 'usd':
+            rub = _stand_num(deal.get('requestedUsd')) * rate
+        return explicit if explicit is not None and explicit >= 0 else (
+            Decimal('5') if rub < 500000 else Decimal('4') if rub < 1000000 else Decimal('3'))
+    mode = deal.get('autoRequestMode')
+    if mode == 'rub':
+        rub = _stand_num(deal.get('requestedRub'))
+        if safe_cents(rub) is None:
+            return False
+        capacity = broker_net(rub) / rate / (1 + margin(rub)/100)
+        if safe_cents(capacity, ROUND_FLOOR) is None:
+            return False
+        usd_cents = int(((capacity-50)/(1+pct)*100).to_integral_value(rounding=ROUND_FLOOR))
+        while usd_cents > 0 and sent(Decimal(usd_cents)/100) > capacity:
+            usd_cents -= 1
+        while sent(Decimal(usd_cents+1)/100) <= capacity:
+            usd_cents += 1
+        if usd_cents <= 0:
+            return False
+        usd_amount = Decimal(usd_cents)/100
+    elif mode == 'usd':
+        usd_amount = _stand_num(deal.get('requestedUsd'))
+        if safe_cents(usd_amount) is None:
+            return False
+        def find_rub(markup):
+            needed = sent(usd_amount)*(1+markup/100)*rate
+            needed_cents = safe_cents(needed, ROUND_CEILING)
+            if needed_cents is None:
+                return None
+            low, high = 0, needed_cents
+            while broker_net(Decimal(high)/100) < needed:
+                if high == max_cents:
+                    return None
+                high = min(high*2, max_cents)
+            while low < high:
+                mid = (low+high)//2
+                if broker_net(Decimal(mid)/100) >= needed:
+                    high = mid
+                else:
+                    low = mid+1
+            return Decimal(low)/100
+        rub = find_rub(margin(Decimal(0)))
+        if rub is None:
+            return False
+    else:
+        return False
+    deal['invoiceUsd'] = float(usd_amount)
+    deal['amountRub'] = float(rub)
+    deal['freeholdClientInput'] = 'sum'
+    deal.setdefault('rates', {})['client'] = str((rub/usd_amount).quantize(Decimal('0.000001'), rounding=ROUND_HALF_UP))
+    return True
+
+
 @app.route('/api/stand/quote', methods=['POST'])
 def stand_quote_save():
     """Сохраняет ответ контрагента поверх актуальной доски, даже при позднем ответе."""
@@ -8038,6 +8132,9 @@ def stand_quote_save():
             rates = deal.setdefault('rates', {})
             rates['rubUsdt' if direction == 'rub' else 'usdtThb'] = selected['rate']
             rates['at'] = stamp_ms
+            if deal.get('step') == 's6' and direction == 'rub' and deal.get('autoPayment') is True:
+                if not _stand_auto_quote_calculate(deal):
+                    return jsonify(success=False, error='Сумма авто не помещается в точность расчёта'), 409
         deal.setdefault('log', []).append({'at': stamp_ms,
             'ts': stand_now().strftime('%d.%m, %H:%M'), 'role': actor,
             'text': ('Курс обновлён' if previous else 'Курс получен') +
@@ -8049,6 +8146,8 @@ def stand_quote_save():
             if ready:
                 deal['step'] = 's6'
                 deal['assigneeAdminId'] = None
+                if deal.get('autoPayment') is True and not _stand_auto_quote_calculate(deal):
+                    return jsonify(success=False, error='Сумма авто не помещается в точность расчёта'), 409
                 deal['log'].append({'at': stamp_ms,
                     'ts': stand_now().strftime('%d.%m, %H:%M'), 'role': actor,
                     'text': 'Курсы отданы менеджеру'})
@@ -8936,7 +9035,8 @@ def stand_crm_close(stand_deal_id):
         if (not manual and stand_deal.get('kind') == 'Фрихолд'
                 and stand_deal.get('postConv') != 'ipps_swift'):
             return jsonify({'success': False, 'error': 'freehold_route_invalid'}), 409
-        kind = ('mf_freehold' if stand_deal.get('kind') == 'Фрихолд' else
+        kind = ('mf_auto' if stand_deal.get('autoPayment') is True else
+                'mf_freehold' if stand_deal.get('kind') == 'Фрихолд' else
                 'mf_realty' if stand_deal.get('type') == 'Оплата недвижимости' else
                 'exchange')
         crm_data = dict(payload['crm'])
@@ -10049,10 +10149,10 @@ def _stand_crm_fact_problem(board, crm, kind, *, state=None):
         if _amount(crm.get('payin_rate_rub_usdt')) != _amount(expected_broker):
             return 'payin_rate_mismatch'
     main_hashes = board.get('payinHashes') or []
-    if (kind == 'mf_freehold' and board.get('payType') == 'Крипта'
+    if (kind in SWIFT_PAYMENT_KINDS and board.get('payType') == 'Крипта'
             and not main_hashes):
         return 'payin_basis_missing'
-    if kind == 'mf_freehold' and board.get('payType') == 'Крипта':
+    if kind in SWIFT_PAYMENT_KINDS and board.get('payType') == 'Крипта':
         payer = board.get('payerWallet')
         if any(not isinstance(h, dict) or not h.get('verified')
                or (not h.get('senderOk') and
@@ -10167,7 +10267,7 @@ def _stand_crm_fact_problem(board, crm, kind, *, state=None):
     if (payin is None or hashes(crm_payin_hashes, False) != payin
             or not recipients_match(board.get('payinHashes'), crm_payin_hashes)):
         return 'payin_facts_mismatch'
-    if kind == 'mf_freehold':
+    if kind in SWIFT_PAYMENT_KINDS:
         tariff = {'bank': (Decimal('0.8'), Decimal('50')),
                   'soft': (Decimal('1.5'), Decimal('50'))}.get(board.get('ippsTariff') or 'bank')
         invoice = money(board.get('invoiceUsd'))
@@ -12042,6 +12142,32 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
     old = {d.get('id'): d for d in previous.get('deals', [])}
     for deal in new_state.get('deals') or []:
         before = old.get(deal.get('id'))
+        auto_payment = deal.get('autoPayment', False)
+        if type(auto_payment) is not bool:
+            return 'Некорректный признак оплаты авто'
+        if auto_payment and (deal.get('type') != 'Оплата недвижимости' or
+                             deal.get('kind') != 'Фрихолд' or
+                             deal.get('payType') != 'По реквизитам' or
+                             deal.get('invoiceCurrency') != 'usd'):
+            return 'Оплата авто требует USD и приём по реквизитам'
+        if auto_payment:
+            mode = deal.get('autoRequestMode')
+            requested = _stand_num(deal.get('requestedRub' if mode == 'rub' else 'requestedUsd'))
+            if mode not in ('rub', 'usd') or requested is None or not requested.is_finite() or requested <= 0 or int((requested*100).to_integral_value(rounding=ROUND_HALF_UP)) > 90071992547409:
+                return 'Укажите исходную сумму заявки на оплату авто'
+            if not before and ((mode == 'rub' and (deal.get('invoiceUsd') is not None or
+                                                   deal.get('requestedUsd') is not None)) or
+                               (mode == 'usd' and (deal.get('amountRub') is not None or
+                                                   deal.get('requestedRub') is not None))):
+                return 'Не смешивайте сумму продавцу и бюджет клиента'
+            markup = _stand_num(deal.get('autoMarkupPct'))
+            if deal.get('autoMarkupPct') is not None and (markup is None or
+                   not markup.is_finite() or markup < Decimal('1.5') or markup > Decimal('5')):
+                return 'Прибыль для оплаты авто должна быть от 1,5 до 5 %'
+            if before and before.get('autoMarkupPct') != deal.get('autoMarkupPct') and before.get('step') != 's6':
+                return 'Прибыль меняют только до согласования с клиентом'
+        if deal.get('type') == 'Оплата авто':
+            return 'Некорректный тип сделки задачника'
         manager_id = deal.get('managerUserId')
         if manager_id is not None:
             if type(manager_id) is not int or manager_id <= 0:
@@ -12052,11 +12178,30 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
                     return 'Менеджер задачника не найден или неактивен'
         if before and before.get('managerUserId') != manager_id and actor not in ('manager', 'admin'):
             return 'Менеджера сделки выбирает менеджер или администратор'
+        if before and before.get('autoPayment', False) != auto_payment:
+            return 'Тип оплаты авто нельзя менять после создания заявки'
+        if before and before.get('autoPayment') is True:
+            if any(before.get(k) != deal.get(k) for k in ('autoRequestMode', 'requestedRub', 'requestedUsd')):
+                return 'Исходную сумму заявки на оплату авто нельзя менять'
+            if before.get('step') not in ('s5', 's6') and any(
+                    before.get(k) != deal.get(k) for k in ('invoiceUsd', 'ippsTariff')):
+                return 'Согласованную выплату продавцу и тариф нельзя менять'
+            if before.get('step') == 's6' and deal.get('step') in ('s6', 's8'):
+                expected = dict(deal, rates=dict(deal.get('rates') or {}), step='s6')
+                if not _stand_auto_quote_calculate(expected):
+                    return 'Нужен действующий курс для оплаты авто'
+                for field in ('invoiceUsd', 'amountRub'):
+                    got, want = _stand_num(deal.get(field)), _stand_num(expected.get(field))
+                    if got is None or want is None or abs(got-want) > Decimal('0.01'):
+                        return 'Суммы оплаты авто должны совпадать с расчётом'
+                got, want = _stand_num((deal.get('rates') or {}).get('client')), _stand_num(expected['rates'].get('client'))
+                if got is None or want is None or abs(got-want) > Decimal('0.000001'):
+                    return 'Курс оплаты авто должен совпадать с расчётом'
         if deal.get('type') in ('Обмен валюты', 'Оплата недвижимости'):
-            new_kind_canon = canonical_deal_kind_from_stand(deal.get('type'), deal.get('kind'))
+            new_kind_canon = canonical_deal_kind_from_stand(deal.get('type'), deal.get('kind'), deal.get('autoPayment'))
             new_payin_canon = canonical_payin_from_stand(deal.get('payType'))
             if before is not None:
-                old_kind_canon = canonical_deal_kind_from_stand(before.get('type'), before.get('kind'))
+                old_kind_canon = canonical_deal_kind_from_stand(before.get('type'), before.get('kind'), before.get('autoPayment'))
                 old_payin_canon = canonical_payin_from_stand(before.get('payType'))
                 combo_changed = (new_kind_canon, new_payin_canon) != (old_kind_canon, old_payin_canon)
             else:
@@ -15996,7 +16141,9 @@ def _stand_doc_request(state, deal, F):
     from stand_workflow import exchange_pair
     pair = exchange_pair(deal)
     crypto = _stand_is_crypto(deal)
-    if deal.get('type') == 'Оплата недвижимости':
+    if deal.get('autoPayment') is True:
+        deal_type = 'payment'
+    elif deal.get('type') == 'Оплата недвижимости':
         deal_type = STAND_DOC_TYPES.get(deal.get('kind') or 'Лизхолд', 'leasehold')
     else:
         deal_type = 'payment'
@@ -16021,7 +16168,13 @@ def _stand_doc_request(state, deal, F):
         take(key, stand_key)
     obj = str(F.get('object') or '').strip()
     auto_obj = ', '.join(str(x) for x in (parsed.get('project_name'), parsed.get('unit_no')) if x)
-    if obj and obj != auto_obj:
+    if deal.get('autoPayment') is True:
+        # OCR недвижимости не должен превращать VIN/модель в юнит или адрес.
+        for key in ('project_name', 'unit_no', 'property_address', 'lease_term', 'lease_start_date'):
+            fields.pop(key, None)
+        if obj:
+            fields['project_name'] = obj
+    elif obj and obj != auto_obj:
         # объект поправили руками — в документ идёт он, а не распознанный проект и юнит
         fields['project_name'] = obj
         fields.pop('unit_no', None)
@@ -16045,7 +16198,8 @@ def _stand_doc_request(state, deal, F):
     if deal_type in ('leasehold', 'freehold') and not fields.get('invoice_no') and not fields.get('contract_ref'):
         missing.append('invNo')
     freehold = deal_type == 'freehold'
-    if freehold and not crypto and deal.get('freeholdClientInput') == 'sum':
+    usd_payment = freehold or deal.get('autoPayment') is True
+    if usd_payment and not crypto and deal.get('freeholdClientInput') == 'sum':
         problem = _stand_freehold_explicit_rub_problem(deal)
         if problem:
             return {'error': problem, 'fields': ['amountPay', 'rate'],
@@ -16068,7 +16222,7 @@ def _stand_doc_request(state, deal, F):
     # Фрихолд — выход USD (RUB_USD / USDT_USD), а не THB: инвойс застройщику в USD,
     # никакого перевода в баты (спека 28.09-freehold-no-baht). DIRECT_RATE — только
     # для USDT_THB (курс ฿ за 1 USDT лизхолда), крипто-фрихолду он не подходит.
-    money = {'pair': ('USDT_USD' if freehold else 'USDT_THB') if crypto else ('RUB_USD' if freehold else 'RUB_THB'),
+    money = {'pair': ('USDT_USD' if usd_payment else 'USDT_THB') if crypto else ('RUB_USD' if usd_payment else 'RUB_THB'),
              'payin_method': 'usdt' if crypto else 'bank',
              'rate_basis': doc_routes.DIRECT_RATE if (crypto and not freehold) else doc_routes.INVERSE_RATE,
              'rate_valid_until': str(F.get('validTill') or '').strip()
@@ -16097,8 +16251,8 @@ def _stand_doc_request(state, deal, F):
         elif abs(rate - exact) / rate <= Decimal('0.001'):
             money['rate'] = _stand_plain(exact.quantize(Decimal('0.000001')))
         else:
-            unit = '฿ за 1 USDT' if crypto else ('₽ за 1 $' if freehold else '₽ за 1 ฿')
-            recv = '$' if freehold else '฿'
+            unit = '฿ за 1 USDT' if crypto else ('₽ за 1 $' if usd_payment else '₽ за 1 ฿')
+            recv = '$' if usd_payment else '฿'
             return {'error': 'rate_mismatch', 'fields': ['rate', 'amountPay'],
                     'detail': f'Курс {_stand_plain(rate)} не сходится с суммами: '
                               f'{_stand_plain(pay)} и {_stand_plain(thb)} {recv} дают '
@@ -16153,6 +16307,10 @@ def _stand_doc_request(state, deal, F):
     fee = str(F.get('feeNote') or '').strip()
     if fee and fee != 'Комиссия включена в курс, отдельно не взимается':
         money['fee_note'] = fee
+    if deal.get('autoPayment') is True:
+        money['object_label'] = 'Автомобиль / Vehicle'
+        money['invoice_description'] = 'Оплата автомобиля по счёту получателя / Vehicle payment under recipient invoice'
+        money['payment_purpose'] = 'Оплата автомобиля по счёту получателя'
     if freehold:
         # Инвойс застройщика может быть в THB (Карим, 28.09, поправка к спеке
         # 28.09-freehold-no-baht): сделка всё равно считается от X — суммы,
@@ -16326,7 +16484,7 @@ def stand_docs_issue():
 
     deal_type, fields, money = req['deal_type'], req['fields'], req['money']
     agent_key = money['agent']
-    if deal_type == 'freehold' and not _stand_is_crypto(deal) and deal.get('freeholdClientInput') == 'sum':
+    if (deal_type == 'freehold' or deal.get('autoPayment') is True) and not _stand_is_crypto(deal) and deal.get('freeholdClientInput') == 'sum':
         F.update(amountPay=money['total_payin'], amountThb=money['transfer_amount'], rate=money['rate'])
     if money.get('payin_method') == 'usdt':
         network_label = 'ERC-20' if 'ERC-20' in money.get('payin_network', '') else 'TRC-20'
@@ -17178,6 +17336,16 @@ def get_deals():
         # Демо-сделки тестового реферера в CRM не показываем (?include_test=1 — вернуть)
         if request.args.get('include_test') != '1':
             query = query.filter(Deal.is_test.isnot(True))
+        kind = request.args.get('deal_kind')
+        if kind:
+            if kind not in ('exchange', 'realty') + REALTY_KINDS:
+                return jsonify({'success': False, 'error': 'Invalid deal_kind'}), 400
+            if kind == 'exchange':
+                query = query.filter(or_(Deal.deal_kind.is_(None), Deal.deal_kind.notin_(REALTY_KINDS)))
+            elif kind == 'realty':
+                query = query.filter(Deal.deal_kind.in_(PROPERTY_KINDS))
+            else:
+                query = query.filter(Deal.deal_kind == kind)
         manager = request.args.get('manager')
         if manager:
             query = query.filter(Deal.manager_name.ilike(f'%{manager}%'))
@@ -20879,7 +21047,7 @@ def _create_deal_impl(session=None, *, data=None, defer_commit=False, skip_flow_
             # обычный пересчёт прибыли для неё не подходит
             if deal.deal_kind == MF_REALTY_KIND:
                 _apply_mf_realty(deal, data)
-            elif deal.deal_kind == MF_FREEHOLD_KIND:
+            elif deal.deal_kind in SWIFT_PAYMENT_KINDS:
                 _apply_mf_freehold(deal, data)
             else:
                 # Себестоимость выдачи — из отмеченных переводов, до пересчёта
@@ -21250,6 +21418,26 @@ def update_deal(deal_id):
 
         if 'deal_kind' in data:
             deal.deal_kind = data.get('deal_kind') or None
+        if old_kind != deal.deal_kind:
+            # При смене направления старые переводы не должны становиться
+            # себестоимостью новой сделки, а их доли — занимать реестр.
+            if old_kind in REALTY_KINDS or deal.deal_kind in REALTY_KINDS:
+                deal.payout_tx_hashes = None
+                deal.payout_tx_hash = None
+                _sync_payout_tx_uses(session, deal, [])
+            if old_kind in SWIFT_PAYMENT_KINDS and deal.deal_kind not in SWIFT_PAYMENT_KINDS:
+                # Инвойс и отправка относятся к прежнему продавцу. При возврате
+                # к оплате авто их вводят заново, без скрытых старых значений.
+                for field in MF_FREEHOLD_INPUT_FIELDS + ('transfer_fee_usd', 'transfer_arrive_usd'):
+                    setattr(deal, field, None)
+                if 'payout_amount_usdt' not in data:
+                    deal.payout_amount_usdt = None
+            if deal.deal_kind in REALTY_KINDS and old_kind not in REALTY_KINDS:
+                deal.payout_amount_thb = None
+                deal.payout_method = None
+                deal.payout_source = None
+                deal.payout_wallet_id = None
+                deal.bank_card_id = None
 
         # Автоматический пересчёт прибыли и выплаты рефереру.
         # Недвижимость — по своим формулам (лизхолд: два кармана; фрихолд: расходы
@@ -21785,8 +21973,8 @@ def _ledger_realty(deal):
             'katika_fee_usdt': deal.katika_fee_usdt,
             'crypto_remainder_usdt': deal.crypto_remainder_usdt,
         }
-    if deal.deal_kind == MF_FREEHOLD_KIND:
-        # Фрихолд: карман один, комиссию банка съедает сама отправка
+    if deal.deal_kind in SWIFT_PAYMENT_KINDS:
+        # Фрихолд и оплата авто: карман один, комиссию банка съедает сама отправка
         return {
             'purpose': deal.realty_purpose,
             'invoice_usd': deal.invoice_amount_usd,
@@ -21997,7 +22185,7 @@ def deals_ledger():
         if kind == 'exchange':
             q = q.filter(or_(Deal.deal_kind.is_(None), Deal.deal_kind.notin_(REALTY_KINDS)))
         elif kind == 'realty':
-            q = q.filter(Deal.deal_kind.in_(REALTY_KINDS))
+            q = q.filter(Deal.deal_kind.in_(PROPERTY_KINDS))
         elif kind in REALTY_KINDS:
             q = q.filter(Deal.deal_kind == kind)
 
@@ -22114,6 +22302,7 @@ FINANCE_ARTICLES = {
     'realty_send':           ('Отправка по сделке недвижимости', 'transfer'),
     'payout_client_thb':     ('Выдача клиенту, ฿', 'out'),
     'payout_developer':      ('Оплата застройщику', 'out'),
+    'payout_auto_seller':    ('Оплата продавцу авто', 'out'),
     'referral_payout':       ('Выплата реферальному партнёру', 'out'),
     'founder_reimbursement': ('Возврат фаундеру', 'out'),
 }
@@ -22122,6 +22311,7 @@ FINANCE_PRODUCTS = {
     'exchange': 'Обмен',
     'mf_realty': 'Недвижимость: лизхолд',
     'mf_freehold': 'Недвижимость: фрихолд',
+    'mf_auto': 'Оплата авто',
     'unassigned': 'Без привязки к сделке',
 }
 
@@ -22364,9 +22554,10 @@ def _finance_events(session, date_from=None, date_to=None):
                 day, 'payout_developer', d.invoice_amount_thb, 'THB', 'mf_corp',
                 counterparty=d.realty_purpose, deal_id=d.id, product=product,
                 ref=f'deal:{d.id}', date_estimated=True))
-        elif d.deal_kind == MF_FREEHOLD_KIND and d.transfer_sent_usd:
+        elif d.deal_kind in SWIFT_PAYMENT_KINDS and d.transfer_sent_usd:
             events.append(_fin_event(
-                day, 'payout_developer', d.transfer_sent_usd, 'USD', 'mf_corp',
+                day, 'payout_auto_seller' if d.deal_kind == MF_AUTO_KIND else 'payout_developer',
+                d.transfer_sent_usd, 'USD', 'mf_corp',
                 counterparty=d.realty_purpose, deal_id=d.id, product=product,
                 ref=f'deal:{d.id}', date_estimated=True))
 
@@ -24079,11 +24270,13 @@ def realty_payload_error(deal):
         if not (deal.invoice_amount_thb and deal.buy_rate_thb_usdt):
             return ('Лизхолд без суммы инвойса в батах и курса покупки. '
                     'Проверь тип сделки — похоже, форма сохранила не то.')
-    if deal.deal_kind == MF_FREEHOLD_KIND:
+    if deal.deal_kind in SWIFT_PAYMENT_KINDS:
         if not (deal.invoice_amount_usd or deal.transfer_sent_usd
                 or _payout_transfers_total(deal)):
-            return ('Фрихолд без инвойса застройщику и суммы отправки. '
-                    'Проверь тип сделки — похоже, форма сохранила не то.')
+            return (('Оплата авто без счёта продавца и суммы отправки. '
+                     if deal.deal_kind == MF_AUTO_KIND else
+                     'Фрихолд без инвойса застройщику и суммы отправки. ')
+                    + 'Проверь тип сделки — похоже, форма сохранила не то.')
     return None
 
 
@@ -25305,7 +25498,7 @@ def get_dashboard():
             deals_q = deals_q.filter(or_(Deal.deal_kind.is_(None),
                                          Deal.deal_kind.notin_(REALTY_KINDS)))
         elif kind_filter == 'realty':
-            deals_q = deals_q.filter(Deal.deal_kind.in_(REALTY_KINDS))
+            deals_q = deals_q.filter(Deal.deal_kind.in_(PROPERTY_KINDS))
         elif kind_filter in REALTY_KINDS:
             deals_q = deals_q.filter(Deal.deal_kind == kind_filter)
         period_deals = deals_q.all()
@@ -25325,10 +25518,13 @@ def get_dashboard():
         # разницу «объём − себестоимость» не попадает. Без разреза месяц с одной
         # сделкой на $500k читается как «прогнали полтора миллиона, заработали
         # копейки»: обменная нога тонет в транзите.
-        _realty_deals = [d for d in period_deals if d.deal_kind in REALTY_KINDS]
+        _realty_deals = [d for d in period_deals if d.deal_kind in PROPERTY_KINDS]
+        _auto_deals = [d for d in period_deals if d.deal_kind == MF_AUTO_KIND]
         _exch_deals = [d for d in period_deals if d.deal_kind not in REALTY_KINDS]
         period_volume_realty = round(sum(usdt[d.id][0] for d in _realty_deals), 2)
         period_cost_realty = round(sum(usdt[d.id][1] for d in _realty_deals), 2)
+        period_volume_auto = round(sum(usdt[d.id][0] for d in _auto_deals), 2)
+        period_cost_auto = round(sum(usdt[d.id][1] for d in _auto_deals), 2)
         period_volume_exchange = round(sum(usdt[d.id][0] for d in _exch_deals), 2)
         period_cost_exchange = round(sum(usdt[d.id][1] for d in _exch_deals), 2)
         # Сделки с реферралами и сумма выплат реферралам
@@ -25662,6 +25858,9 @@ def get_dashboard():
                     'volume_realty_usdt': period_volume_realty,
                     'cost_realty_usdt': period_cost_realty,
                     'realty_deals_count': len(_realty_deals),
+                    'volume_auto_usdt': period_volume_auto,
+                    'cost_auto_usdt': period_cost_auto,
+                    'auto_deals_count': len(_auto_deals),
                     'volume_exchange_usdt': period_volume_exchange,
                     'cost_exchange_usdt': period_cost_exchange,
                     'exchange_deals_count': len(_exch_deals),
