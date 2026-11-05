@@ -5213,16 +5213,19 @@ function knownBy(source,ref){
   return S.deals.filter(d=>d.source===source&&(d.sourceRef===ref || d.sourceRef===bareRef));
 }
 
-const DOCT={pass:'Загранпаспорт',inv:'Инвойс застройщика',spa:'SPA с застройщиком',ipds:'Анкета ИПДС',
+const DOCT={pass:'Загранпаспорт',inv:'Инвойс застройщика',spa:'SPA с застройщиком',vehicle_contract:'ДКП автомобиля',ipds:'Анкета ИПДС',
   dog:'Агентский договор',app:'Приложение с платежом',bill:'Счёт на оплату',
   signed:'Подписанный пакет от клиента', receipt:'Чек банка об оплате',
   clientPayinReceipt:'Чеки клиента об оплате',bankCreditEvidence:'Выписка / подтверждение зачисления',
   other:'Другое'};
 /* У лизхолда договор с застройщиком — Lease Agreement, SPA бывает только у фрихолда
    (аудит 27.09, №27) */
-function doctOf(d,k){return (k==='spa'&&d&&d.kind==='Лизхолд')?'Lease Agreement':DOCT[k];}
+function doctOf(d,k){
+  if(k==='inv'&&d&&d.autoPayment===true)return 'Инвойс по автомобилю';
+  return (k==='spa'&&d&&d.kind==='Лизхолд')?'Lease Agreement':DOCT[k];
+}
 const DOCFILE={pass:['passport_scan.jpg','2,4 МБ'],inv:['invoice_developer.pdf','384 КБ'],
-  spa:['spa_agreement.pdf','1,2 МБ'],ipds:['ipds_form.pdf','212 КБ'],
+  spa:['spa_agreement.pdf','1,2 МБ'],vehicle_contract:['vehicle_contract.pdf','1,2 МБ'],ipds:['ipds_form.pdf','212 КБ'],
   signed:['signed_contract.pdf','1,8 МБ'],receipt:['bank_receipt_scb.pdf','96 КБ']};
 const TR={'а':'A','б':'B','в':'V','г':'G','д':'D','е':'E','ё':'E','ж':'ZH','з':'Z','и':'I','й':'I','к':'K','л':'L','м':'M',
   'н':'N','о':'O','п':'P','р':'R','с':'S','т':'T','у':'U','ф':'F','х':'KH','ц':'TS','ч':'CH','ш':'SH','щ':'SHCH',
@@ -5279,7 +5282,14 @@ function docFields(d){
     passNo:parsed(d,'client_passport_no')||pp.passNo, passIss:parsed(d,'client_passport_issue_date')||pp.passIss,
     passOrg:parsed(d,'client_passport_issued_by')||pp.passOrg, born:parsed(d,'client_birth_date')||pp.born,
     /* из инвойса и SPA */
-    dev:parsed(d,'recipient_name')||d.dev||'', invNo:parsed(d,'invoice_no')||d.invNo||'',
+    dev:parsed(d,'recipient_name')||d.dev||'',
+    vehicleModel:parsed(d,'vehicle_model')||'',vehicleVin:parsed(d,'vehicle_vin')||'',
+    vinState:parsed(d,'vehicle_vin')?'known':'',vinEvidence:parsed(d,'vehicle_vin_pending_basis')||'',
+    vehicleDetails:parsed(d,'vehicle_details')||'',sellerName:parsed(d,'seller_name')||'',
+    sellerId:parsed(d,'seller_id')||'',sellerAddress:parsed(d,'seller_address')||'',contractNo:parsed(d,'vehicle_contract_no')||'',
+    contractDate:parsed(d,'vehicle_contract_date')||'',paymentStage:'',
+    contractTotal:parsed(d,'vehicle_contract_total')||'',reviewNote:'',
+    invNo:parsed(d,'invoice_no')||d.invNo||'',
     invDate:parsed(d,'invoice_date'),
     object:d.autoPayment===true?(d.object||''):d.object||[parsed(d,'project_name'),parsed(d,'unit_no')].filter(Boolean).join(', '),
     /* из расчёта сделки */
@@ -5347,22 +5357,25 @@ function docReq(d){
   /* Крипто-фрихолд: курса нет вообще (шаги s5/s6 выпадают из пути), поэтому «курс
      сделки» из обязательных полей пакета убираем — его просто не с чем сравнить. */
   const base=(isCrypto(d)&&d.kind==='Фрихолд')?DOC_REQ.filter(k=>k!=='rate'):DOC_REQ;
-  return base.concat(isCrypto(d)?[]:['purpose'],
-    (d.type==='Оплата недвижимости'&&(d.kind==='Лизхолд'||d.kind==='Фрихолд'))?['invNo']:[]);
+  return (d.autoPayment===true?base.filter(k=>k!=='object'):base).concat(d.autoPayment===true?['vehicleModel','sellerName','sellerId','dev','contractNo','contractDate','paymentStage','vinState','invNo','invDate']:[],
+    isCrypto(d)?[]:['purpose'],
+    (d.autoPayment!==true&&d.type==='Оплата недвижимости'&&(d.kind==='Лизхолд'||d.kind==='Фрихолд'))?['invNo']:[]);
 }
 const DOC_LABEL={payoutNetwork:'сеть получателя',payoutWallet:'кошелёк получателя',fio:'ФИО',fioLat:'латиница',passNo:'номер паспорта',passIss:'дата выдачи',
   passOrg:'кем выдан',born:'дата рождения',dev:'получатель',invNo:'номер инвойса',invDate:'дата инвойса',
   object:'объект',kind:'форма владения',amountThb:'сумма инвойса',rate:'курс',amountPay:'сумма клиенту',
   rateAt:'момент фиксации курса',partNo:'номер платежа',invoiceTotal:'инвойс целиком',
   agent:'агент',agentReg:'рег. номер',agentDir:'подписант',payTo:'реквизиты',purpose:'назначение',
-  feeNote:'оговорка о комиссии',validTill:'срок реквизитов'};
+  feeNote:'оговорка о комиссии',validTill:'срок реквизитов',vehicleModel:'марка и модель',vehicleVin:'VIN',vinState:'статус VIN',vinEvidence:'основание отсутствия VIN',vehicleDetails:'характеристики',sellerName:'продавец',sellerId:'идентификатор продавца',sellerAddress:'адрес продавца',contractNo:'номер ДКП',contractDate:'дата ДКП',paymentStage:'этап оплаты',contractTotal:'цена ДКП',reviewNote:'решение по расхождениям'};
 function docReset(id){const d=deal(id);d.docFields=null;draftsClear(id);save();render();toast('Поля подставлены заново');}
 const DOC_SRC={payoutNetwork:'реквизиты получателя',payoutWallet:'реквизиты получателя',fio:'паспорт',fioLat:'паспорт',passNo:'паспорт',passIss:'паспорт',passOrg:'паспорт',born:'паспорт',
   dev:'инвойс',invNo:'инвойс',invDate:'инвойс',object:'инвойс / SPA',
   kind:'сделка',amountThb:'расчёт',rate:'расчёт',amountPay:'расчёт',rateAt:'момент фиксации курса',
   partNo:'сделка',invoiceTotal:'инвойс',
   agent:'реквизиты MF Corp',agentReg:'реквизиты MF Corp',agentDir:'реквизиты MF Corp',
-  payTo:'реквизиты MF Corp',purpose:'пишет операционист',feeNote:'шаблон',validTill:'вручную'};
+  payTo:'реквизиты MF Corp',purpose:'пишет операционист',feeNote:'шаблон',validTill:'вручную',
+  vehicleModel:'ДКП',vehicleVin:'ДКП',vinState:'ДКП',vinEvidence:'ДКП',vehicleDetails:'ДКП',
+  sellerName:'ДКП',sellerId:'ДКП',sellerAddress:'ДКП',contractNo:'ДКП',contractDate:'ДКП',paymentStage:'ДКП',contractTotal:'ДКП',reviewNote:'сверка документов'};
 function docFieldSave(id){
   const d=deal(id), cur=docFields(d), out={}, ch=[];
   Object.keys(DOC_SRC).forEach(k=>{
@@ -5377,8 +5390,15 @@ function docFieldSave(id){
   // Оговорка не редактируется на s11; crypto-freehold выпускается с
   // утверждённой фразой независимо от сохранённого исторического поля.
   if(cur.feeNote!=null)out.feeNote=cur.feeNote;
+  if(d.autoPayment===true)out.reviewToken=autoReviewToken(d,out);
   d.docFields=out;
   return ch;
+}
+function autoReviewToken(d,F){
+  const shas=['vehicle_contract','inv'].flatMap(k=>filesOf(d,k).map(f=>f.sha256||''));
+  return [...shas,F.sellerName,F.sellerId,F.sellerAddress,F.dev,F.vehicleVin,F.vinEvidence,F.vinState,
+    F.contractNo,F.contractDate,F.paymentStage,F.reviewNote,
+    parsed(d,'vehicle_vin'),parsed(d,'vehicle_vin_pending_basis')].map(x=>String(x||'').trim()).join('|');
 }
 /* Скачивание пакета: PDF для подписи, DOC — когда случай нестандартный и договор
    правят руками. Свой файл заменяет сгенерированный, но сгенерированный не теряется:
@@ -7387,7 +7407,7 @@ function overview(d,st,mine,p,wh){
   const branch=d.prepay?(S.taskBranch||((S.role==='operator'&&d.prepay.brokerStep!=='done')||prepayRefundRole(d)===S.role?'conversion':'payment')):null;
   const branchMine=branch==='conversion'?taskBranchesForRole(d,S.role).includes('conversion'):mine;
   const activeMine=branchMine&&(branch==='conversion'||!d.assigneeAdminId||String(d.assigneeAdminId)===String(standMeId));
-  const got=['pass','inv','spa','ipds'].filter(k=>d.docs[k]);
+  const got=['pass','inv','spa','vehicle_contract','ipds'].filter(k=>d.docs[k]);
   const docRows=docListRows(d), docN=docRows.issued.length+docRows.client.length;
   const extraControl=typeof docExtraControl==='function'?docExtraControl(d):'';
   const row=(k,v,s)=>v==null||v===''||v==='—'?'':`<tr><th>${k}</th><td>${v}${s?` <span style="color:var(--text-muted);font-size:12px">${s}</span>`:''}</td></tr>`;
@@ -7591,7 +7611,7 @@ function fixCard(d){
   rows.push(['Клиент и данные сделки',htmlText(d.client+' · '+(d.autoPayment===true?'Оплата авто':d.type+(d.kind?' · '+d.kind:''))+(d.object?' · '+d.object:'')),
     `<button class="btn btn-outline btn-sm" onclick="editOpen(${d.id})">Поправить</button>`]);
   if(d.type==='Оплата недвижимости') rows.push(['Документы клиента',
-    ['pass','inv','spa','ipds'].filter(k=>d.docs[k]).map(k=>doctOf(d,k)).join(', ')||'не приложены',
+    ['pass','inv','spa','vehicle_contract','ipds'].filter(k=>d.docs[k]).map(k=>doctOf(d,k)).join(', ')||'не приложены',
     `<span class="t3" style="white-space:nowrap">${['pass','inv'].map(k=>`<button class="btn btn-outline btn-sm" onclick="fileAdd(${d.id},'${k}')">${d.docs[k]?'Добавить':'Загрузить'} ${k==='pass'?'паспорт':'инвойс'}</button>`).join(' ')}</span>`]);
   return `<div class="card" style="margin-bottom:16px"><div class="card-title">Поправить заполненное<span class="sub">без возврата по шагам — правка уходит в журнал</span></div>
     <div class="list">${rows.map(r=>`<div class="li" style="cursor:default"><span class="av">✎</span>
@@ -8502,7 +8522,7 @@ function fillNote(d,block){
 function ctxCard(d){
   const ap=approx(d);
   const last=d.log[d.log.length-1];
-  const all=['pass','inv','spa','ipds'].filter(k=>d.docs[k]);
+  const all=['pass','inv','spa','vehicle_contract','ipds'].filter(k=>d.docs[k]);
   const fact=(k,v,s)=>`<div><div class="k">${k}</div><div class="v">${v}${s?`<small>${s}</small>`:''}</div></div>`;
   const rate=isCrypto(d)&&d.kind==='Фрихолд'
     ?'Клиент отправит: '+(d.amountUsdt==null?'—':money(d.amountUsdt,'USDT'))
@@ -8543,7 +8563,7 @@ function docExtraControl(d){
     <button type="button" class="btn btn-outline btn-sm" onclick="docExtraToggle(${d.id})">+ Загрузить ещё</button>
     <div id="${key}" hidden>
       <label for="${key}-type">Тип документа</label>
-      <select id="${key}-type" class="fc">${['receipt','inv','spa','pass','other'].map(k=>
+      <select id="${key}-type" class="fc">${['receipt','inv','spa','vehicle_contract','pass','other'].map(k=>
         `<option value="${k}">${htmlText(DOCT[k])}</option>`).join('')}</select>
       <label for="${key}-file">Файл</label>
       <input id="${key}-file" type="file" class="fc" accept=".pdf,.png,.jpg,.jpeg,.webp,application/pdf,image/png,image/jpeg,image/webp"
@@ -8624,7 +8644,7 @@ function docListRows(d,small){
       <span class="t3"><button class="btn btn-outline btn-sm" onclick="docDownload(${d.id},'${k}','file')">${docExt(f)}</button>
       ${!STAND||['manager','operator','admin'].includes(standMe)?`<button class="btn btn-outline btn-sm" onclick="docIssuedAction(${d.id},${f.docId})">Удалить</button>`:''}</span></div>`);
   const client=[];
-  ['pass','inv','spa','ipds'].filter(k=>d.docs[k]||filesOf(d,k).length).forEach(k=>{
+  ['pass','inv','spa','vehicle_contract','ipds'].filter(k=>d.docs[k]||filesOf(d,k).length).forEach(k=>{
     const files=filesOf(d,k);
     if(!files.length){client.push(`<div class="li" style="cursor:default"><span class="av">${doctOf(d,k)[0]}</span>
       <div><div class="t1"${fs}>${doctOf(d,k)}</div><div class="t2">отмечен, но файл не приложен</div></div></div>`);return;}
@@ -8661,7 +8681,7 @@ function signedBlock(d,small){
   const l=filesOf(d,'signed'), fs=small?' style="font-size:12.5px"':'';
   return `<div class="list doc-list" style="margin-top:10px" ondragover="dzOver(event)" ondragleave="dzLeave(event)" ondrop="fileDrop(event,${d.id},'signed')">
     ${l.map((f,i)=>`<div class="li on" style="cursor:default"><span class="av">✓</span>
-      <div><div class="t1"${fs}>Подписанный договор${l.length>1?' · '+(i+1):''}</div><div class="t2" style="word-break:break-all">${docFileNameHtml(f.file)} · ${htmlText(f.at||'')}</div></div>
+      <div><div class="t1"${fs}>Подписанный договор · версия ${htmlText(f.docVersion==null?1:f.docVersion)}${l.length>1?' · '+(i+1):''}</div><div class="t2" style="word-break:break-all">${docFileNameHtml(f.file)} · ${htmlText(f.at||'')}</div></div>
       <span class="t3"><button class="btn btn-outline btn-sm" onclick="docOpen(${d.id},'signed',${i})">Открыть</button>${docFileButton(d,'signed',f,'delete')}</span></div>`).join('')}
     <div class="li" style="cursor:default"><span class="av">+</span>
       <div><div class="t1"${fs}>${l.length?'Ещё подписанный файл':'Подписанный договор от клиента'}</div><div class="t2">можно на любом шаге — путь не ждёт</div></div>
@@ -10104,7 +10124,7 @@ function demoPdfData(){
 /* Распознавание загруженных документов — тот же /api/docs/parse, что в CRM
    (docparse.py, OpenRouter). Раньше стенд подставлял выдуманный паспорт и инвойс;
    теперь поля договора и реквизиты берутся из настоящих файлов (Карим, 25.09). */
-const PARSE_SLOT={pass:'passport',inv:'invoice',spa:'spa'};
+const PARSE_SLOT={pass:'passport',inv:'invoice',spa:'spa',vehicle_contract:'vehicle_contract'};
 let DOC_PARSE_AVAILABLE=null;
 async function checkDocParseCapability(){
   try{
@@ -10140,12 +10160,12 @@ async function docParse(id,quiet){
         } else {
           blob = dataUrlBlob(f.data);
         }
-        fd.append(PARSE_SLOT[k],blob,f.file||(k+'.pdf'));n++;
+        fd.append(k==='inv'&&d.autoPayment===true?'auto_invoice':PARSE_SLOT[k],blob,f.file||(k+'.pdf'));n++;
       }
     }
   }catch(e){d.docParseState='ошибка: '+e.message;save();render();if(!quiet)toast('Не удалось прочитать файл: '+e.message);return;}
   if(!n){if(!quiet)toast('Нет загруженных паспорта или инвойса — распознавать нечего');return;}
-  fd.append('deal_type',d.kind==='Фрихолд'?'freehold':(d.kind==='Аренда'?'rental':'leasehold'));
+  fd.append('deal_type',d.autoPayment===true?'auto':d.kind==='Фрихолд'?'freehold':(d.kind==='Аренда'?'rental':'leasehold'));
   d.docParseState='идёт';
   DOC_PARSE_STARTED.set(id,Date.now());render();
   const progress=setInterval(()=>{
@@ -10170,13 +10190,14 @@ async function docParse(id,quiet){
       dd.docParseState='ошибка';save();render();
       if(!quiet)toast((j.failed||[]).some(x=>x.error==='timeout')?docParseErrorText('timeout'):'Не распознано: '+(j.detail||j.error));
       return;}
-    dd.docParse={fields:j.fields||{},warnings:j.warnings||[],ok:j.parsed_slots||[],failed:j.failed||[],at:now()};
+    dd.docParse={fields:j.fields||{},provenance:j.provenance||{},conflicts:j.conflicts||{},
+      warnings:j.warnings||[],ok:j.parsed_slots||[],failed:j.failed||[],at:now()};
     DOC_PARSE_AVAILABLE=true;
     dd.docParseState=dd.docParse.failed.length?'частично':'готово';
     /* Объект из инвойса — сразу в сделку, если его ещё нет: иначе в шапке и сводке до
        выпуска договора стояло «не указан», хотя инвойс уже распознан (аудит 27.09, №23) */
     const obj=[dd.docParse.fields.project_name,dd.docParse.fields.unit_no].filter(Boolean).join(', ');
-    if(!String(dd.object||'').trim()&&obj){dd.object=obj;log(dd,'Объект из инвойса: '+obj);}
+    if(dd.autoPayment!==true&&!String(dd.object||'').trim()&&obj){dd.object=obj;log(dd,'Объект из инвойса: '+obj);}
     /* поля пакета, которые ещё не правили руками, пересобираются из распознанного */
     if(dd.docFields&&!dd.docVersion){const keep=dd.docFields;dd.docFields=null;const auto=docFields(dd);
       dd.docFields=Object.assign({},auto,Object.fromEntries(Object.entries(keep).filter(([k,v])=>String(v||'').trim()&&v!==auto[k]&&!['fio','fioLat','passNo','passIss','passOrg','born','dev','invNo','invDate','object'].includes(k))));}
@@ -10188,7 +10209,7 @@ async function docParse(id,quiet){
   finally{clearInterval(progress);DOC_PARSE_STARTED.delete(id);}
 }
 function parsed(d,k){return ((d.docParse||{}).fields||{})[k]||'';}
-const MANAGER_DRAFT_DOCS=['pass','inv','spa','ipds'];
+const MANAGER_DRAFT_DOCS=['pass','inv','spa','vehicle_contract','ipds'];
 function fileUrl(id, k, index) {
   const isDraft = managerDraftDocTarget(deal(id), k) ? 1 : 0;
   return `/api/stand/file/${id}/${k}/${index}?draft=${isDraft}`;
@@ -10216,7 +10237,7 @@ function managerDraftPublishDocs(d){
   delete draft.files;delete draft.docs;delete draft.docMeta;delete draft.comment;
 }
 const DOC_PARSE_STARTED=new Map();
-const DOC_PARSE_SLOT_LABEL={passport:'Паспорт',invoice:'Инвойс',spa:'SPA'};
+const DOC_PARSE_SLOT_LABEL={passport:'Паспорт',invoice:'Инвойс',auto_invoice:'Инвойс автомобиля',spa:'SPA',vehicle_contract:'ДКП автомобиля'};
 function docParseErrorText(code){
   return code==='timeout'?'Модель не успела за 90 секунд — попробуйте ещё раз или заполните поля вручную':'Распознать не удалось — заполните поля вручную';
 }
@@ -10235,7 +10256,7 @@ function docParseStatus(d){
 function docParseLine(d){
   const st=d.docParseState, P=(d.docParse||{}).fields||{};
   const unavailable=STAND&&DOC_PARSE_AVAILABLE===false;
-  const have=['pass','inv','spa'].some(k=>filesOf(d,k).length);
+  const have=['pass','inv','spa','vehicle_contract'].some(k=>filesOf(d,k).length);
   if(!have) return '';
   const got=Object.keys(P).length;
   const status=docParseStatus(d);
@@ -10256,8 +10277,9 @@ function filesOf(d,k){
   /* Старые записи с одним именем файла не содержат байтов: их нельзя выдавать за чек. */
   if(!Array.isArray(target.files[k]))target.files[k]=[];
   target.files[k]=target.files[k].filter(f=>fileValid(f,k));
-  if(k==='receipt'||k==='signed')d.docs[k]=target.files[k].length>0||
-    (k==='receipt'&&((d.files||{}).additional||[]).some(f=>f&&f.documentType==='receipt'&&fileValid(f)));
+  if(k==='receipt')d.docs[k]=target.files[k].length>0||
+    ((d.files||{}).additional||[]).some(f=>f&&f.documentType==='receipt'&&fileValid(f));
+  if(k==='signed')d.docs[k]=target.files[k].some(f=>Number(f.docVersion==null?1:f.docVersion)===Number(d.docVersion||1));
   return target.files[k];
 }
 /* Чек выплаты лежит в слоте «Чек» или в «+ Загрузить ещё» с типом документа «чек»:
@@ -10278,7 +10300,9 @@ function fileSync(d,k){
   const l=filesOf(d,k);
   if(k==='clientPayinReceipt'||k==='bankCreditEvidence'||k==='additional')return;
   const target=managerDraftDocTarget(d,k)||d;
-  target.docs=target.docs||{};target.docs[k]=l.length>0;
+  target.docs=target.docs||{};target.docs[k]=k==='signed'
+    ?l.some(f=>Number(f.docVersion==null?1:f.docVersion)===Number(d.docVersion||1))
+    :l.length>0;
   target.docMeta=target.docMeta||{};
   if(l.length) target.docMeta[k]={file:l[0].file+(l.length>1?' и ещё '+(l.length-1):''),size:l[0].size,at:l[0].at};
   else delete target.docMeta[k];
@@ -10367,6 +10391,7 @@ async function fileAppend(id,k,f){
   if(!fileValid(f,k)){toast(k==='bankCreditEvidence'?
     'Разрешены только настоящие PDF, PNG, JPEG, WEBP, XLS или XLSX':
     'Разрешены только настоящие PDF, PNG, JPEG или WEBP');return;}
+  if(k==='signed')f.docVersion=Number(d.docVersion||1);
   if(f.bytes>20*1024*1024){toast('Файл больше 20 МБ');return;}
   if(k==='clientPayinReceipt'){
     if(!clientPayinCanAdd(d)){toast('Чеки доступны после отправки реквизитов или при сверке прихода');return;}
@@ -11076,7 +11101,7 @@ function stepGoal(d){
       nums:[['Курс клиенту',(d.rates.client||'—')+' '+rateUnit(d)],
             ['Клиент отдаёт',ap.pay?apMoney(ap,'pay'):'—'],['Получателю',ap.thb?apMoney(ap,'thb'):'—']],
       sub:d.kind==='Фрихолд'?'брокер RUB→USDT: '+(d.rates.rubUsdt||'—'):(isCrypto(d)?'Coins/Bitazza: '+(d.rates.usdtThb||'—'):'контрагенты: '+(d.rates.rubUsdt||'—')+' / '+(d.rates.usdtThb||'—'))};
-    case 's8': {const uploaded=['pass','inv','spa','ipds'].filter(k=>filesOf(d,k).length);
+    case 's8': {const uploaded=['pass','inv','spa','vehicle_contract','ipds'].filter(k=>filesOf(d,k).length);
       const required=d.isOld?['inv']:['pass','inv'];
       const ready=required.filter(k=>filesOf(d,k).length).length;
       return {t:d.isOld?'Приложить инвойс':'Приложить паспорт и инвойс',
@@ -11687,7 +11712,7 @@ function stepCard(d){
     <p style="font-size:12px;color:var(--text-muted);margin-top:11px">Клиент пропал и вернулся через неделю — курс давно другой. «Запросить заново» создаёт операционисту новую задачу, прошлые цифры останутся в истории.</p>
     ${quotesSummary(d)}</div>`;},
 
-  s8:()=>`<div class="card"><div class="card-title">Документы клиента<span class="sub">${d.isOld?'старый клиент — хватит инвойса':'новый клиент — паспорт и инвойс'}</span></div>
+  s8:()=>`<div class="card"><div class="card-title">Документы клиента<span class="sub">${d.autoPayment===true?'инвойс и ДКП автомобиля'+(d.isOld?'':' · паспорт'):d.isOld?'старый клиент — хватит инвойса':'новый клиент — паспорт и инвойс'}</span></div>
     ${d.isOld?`<p class="fh" style="margin:-4px 0 10px">Паспорт уже есть в старом договоре; приложите новый, только если он изменился.</p>`:''}
     ${d.kind==='Фрихолд'?`<div class="card-title" style="font-size:14px;margin:0 0 4px">Инвойс и тариф IPPS<span class="sub">последний раз можно поправить перед договором</span></div>${freeholdInvoiceTariffBlock(d)}`:''}
     <div class="list">
@@ -11696,6 +11721,7 @@ function stepCard(d){
             (Карим, 23.09). */
         docRow(d,'pass','Загранпаспорт',d.isOld?'не обязателен':'обязательно')}
       ${docRow(d,'inv','Инвойс','обязательно')}
+      ${d.autoPayment===true?docRow(d,'vehicle_contract','ДКП автомобиля','обязательно'):''}
       ${d.type==='Оплата недвижимости'&&d.autoPayment!==true?docRow(d,'spa',doctOf(d,'spa'),'если есть'):''}
       ${d.type==='Оплата недвижимости'&&d.autoPayment!==true?docRow(d,'ipds','Анкета ИПДС','если есть'):''}
     </div>
@@ -11711,11 +11737,18 @@ function stepCard(d){
     const bad=(d.docMiss||[]);
     const fld=(k,label,opts)=>{
       opts=opts||{};
+      const autoParseKey={vehicleModel:'vehicle_model',vehicleVin:'vehicle_vin',vinEvidence:'vehicle_vin_pending_basis',
+        vehicleDetails:'vehicle_details',sellerName:'seller_name',sellerId:'seller_id',sellerAddress:'seller_address',
+        contractNo:'vehicle_contract_no',contractDate:'vehicle_contract_date',
+        contractTotal:'vehicle_contract_total',paymentStage:'vehicle_payment_stage',
+        dev:'recipient_name',invNo:'invoice_no',invDate:'invoice_date'}[k];
+      const rawSource=autoParseKey&&d.docParse?.provenance?.[autoParseKey]||DOC_SRC[k]||'';
+      const source=DOC_PARSE_SLOT_LABEL[rawSource]||rawSource;
       /* паспортные ФИО и номер подсвечены сразу, если не распознались: имени из заявки
          там больше нет, пустое поле — сигнал вписать по скану (Карим, 27.09) */
       const flag=(bad.indexOf(k)>=0||(opts.req&&['fio','fioLat','passNo'].indexOf(k)>=0))&&!String(F[k]==null?'':F[k]).trim();
       return `<div class="fg"><label class="fl">${label}${opts.req?'<span class="rq">*</span>':''}
-        <span class="src">${DOC_SRC[k]||''}</span></label>
+        <span class="src">${htmlText(source)}</span></label>
         ${opts.area?`<textarea class="fc${flag?' bad':''}" id="df_${k}">${F[k]||''}</textarea>`
           :`<input class="fc ${opts.num?'num':''}${opts.big?' big':''}${flag?' bad':''}" id="df_${k}" ${opts.ro?'readonly':''} ${opts.input?`oninput="${opts.input}"`:''} ${opts.change?`onchange="${opts.change}"`:''} value="${(function(){
               const raw=String(F[k]==null?'':F[k]);
@@ -11730,7 +11763,9 @@ function stepCard(d){
     return `<div class="card"><div class="card-title">Документы клиента
       <span class="sub">сверьте поля ниже с этими файлами — значения распознаны из них</span></div>
     ${docParseLine(d)}
-    ${(function(){const keys=['pass','inv','spa','ipds'].filter(k=>d.docs[k]);
+    ${d.autoPayment===true&&Object.keys(d.docParse?.conflicts||{}).length?`<div class="alert a-warn"><div><b>Расхождения в документах</b><ul>${Object.entries(d.docParse.conflicts).map(([key,rows])=>`<li>${htmlText(DOC_LABEL[key]||key)}: ${rows.map(x=>htmlText(x.value)+' ('+htmlText(DOC_PARSE_SLOT_LABEL[x.file]||x.file)+')').join(' / ')}</li>`).join('')}</ul>Сверьте оригиналы и запишите решение ниже.</div></div>`:''}
+    ${d.autoPayment===true&&parsed(d,'vehicle_vin')&&parsed(d,'vehicle_vin_pending_basis')?`<div class="alert a-warn"><div><b>Проверьте статус VIN</b>: в ДКП есть VIN и условие о его присвоении позже. Выберите статус для текущего платежа и запишите решение ниже.</div></div>`:''}
+    ${(function(){const keys=['pass','inv','spa','vehicle_contract','ipds'].filter(k=>d.docs[k]);
       if(!keys.length)return `<div class="alert a-warn" style="margin:0"><div>Документов нет — сверять поля не с чем. Вернитесь к менеджеру, если пакет не приложен.</div></div>`;
       return `<div class="docstrip">${keys.map(k=>{const m=(d.docMeta||{})[k]||{};
         return `<div class="doccard" onclick="docOpen(${d.id},'${k}')">
@@ -11777,7 +11812,23 @@ function stepCard(d){
       ${fld('passOrg','Кем выдан')}
     </div>
 
-    <div class="sec snd" style="margin:18px 0 10px">ПРЕДМЕТ · ИЗ ИНВОЙСА</div>
+    ${d.autoPayment===true?`<div class="sec snd" style="margin:18px 0 10px">АВТОМОБИЛЬ И ОСНОВАНИЕ ПЛАТЕЖА</div>
+    <div class="fr">${fld('vehicleModel','Марка и модель',{req:1})}${fld('vehicleVin','VIN',{req:F.vinState==='known'})}</div>
+    <div class="fr"><div class="fg"><label class="fl">Статус VIN<span class="rq">*</span><span class="src">ДКП</span></label><select class="fc" id="df_vinState"><option value="">Выберите</option><option value="known" ${F.vinState==='known'?'selected':''}>VIN указан</option><option value="pending" ${F.vinState==='pending'?'selected':''}>Ещё не присвоен, аванс</option></select></div>${fld('vinEvidence','Основание отсутствия VIN в ДКП',{req:F.vinState==='pending'})}</div>
+    ${fld('vehicleDetails','Характеристики и комплектация',{area:1})}
+    <div class="fr">${fld('sellerName','Продавец по ДКП',{req:1})}${fld('sellerId','Регистрационный номер продавца',{req:1})}</div>
+    ${fld('sellerAddress','Адрес продавца по ДКП')}
+    <div class="fr">${fld('contractNo','Номер ДКП',{req:1})}${fld('contractDate','Дата ДКП',{req:1})}</div>
+    <div class="fr">${fld('invNo','Номер инвойса',{req:1})}${fld('invDate','Дата инвойса',{req:1})}
+      <div class="fg"><label class="fl">Текущий этап оплаты<span class="rq">*</span><span class="src">ДКП</span></label>
+        <select class="fc" id="df_paymentStage"><option value="">Выберите</option>
+          <option value="advance" ${F.paymentStage==='advance'?'selected':''}>Аванс</option>
+          <option value="balance" ${F.paymentStage==='balance'?'selected':''}>Остаток</option>
+          <option value="full" ${F.paymentStage==='full'?'selected':''}>Полная оплата</option></select>
+        ${parsed(d,'vehicle_payment_stage')?`<p class="fh">В ДКП: ${htmlText(parsed(d,'vehicle_payment_stage'))}</p>`:''}</div></div>
+    <div class="fr">${fld('contractTotal','Полная цена ДКП с валютой, если указана')}${fld('dev','Банковский получатель',{req:1})}</div>
+    ${fld('reviewNote','Как разрешены расхождения документов',{area:1})}
+    <p class="fh">Сверьте продавца с ДКП, получателя с инвойсом и платёжным маршрутом. При расхождении запишите решение.</p>`:`<div class="sec snd" style="margin:18px 0 10px">ПРЕДМЕТ · ИЗ ИНВОЙСА</div>
     <div class="fr">
       ${fld('dev','Получатель платежа',{req:1})}
       ${fld('object','Объект',{req:1,ph:'проект и номер юнита'})}
@@ -11787,13 +11838,13 @@ function stepCard(d){
       ${fld('invNo','Номер инвойса',{req:docReq(d).indexOf('invNo')>=0})}
       ${fld('invDate','Дата инвойса')}
       ${fld('validTill','Реквизиты действуют до',{ph:'если указан срок'})}
-    </div>
+    </div>`}
 
     <div class="sec po" style="margin:18px 0 10px">ДЕНЬГИ · ОСТАЛЬНОЕ</div>
     <div class="fr">
       ${isCrypto(d)&&d.kind==='Фрихолд'?'':fld('rateAt','Курс зафиксирован',{ph:'дата и время'})}
-      ${fld('invoiceTotal','Инвойс целиком, '+(d.kind==='Фрихолд'?'$':'฿'),{num:1,money:1})}
-      ${fld('partNo','Какой это платёж',{ph:'номер платежа из скольких'})}
+      ${d.autoPayment===true?'':fld('invoiceTotal','Инвойс целиком, '+(d.kind==='Фрихолд'?'$':'฿'),{num:1,money:1})}
+      ${d.autoPayment===true?'':fld('partNo','Какой это платёж',{ph:'номер платежа из скольких'})}
     </div>
 
     <div class="sec fin" style="margin:18px 0 10px">РЕКВИЗИТЫ И ОГОВОРКИ</div>
@@ -12623,9 +12674,10 @@ async function act(id,step){
     go(d,'s8','Клиент согласен с курсом '+r3);toast('Запросите документы');return;}
   if(step==='s8'){
     /* Повтор после отката заново сохраняет передачу; прежний отказ не блокирует кнопку. */
-    if(STAND){try{await standWaitSaved();}catch(e){toast(standSaveError({error:'timeout'}));return;}}
     if(!d.isOld&&!filesOf(d,'pass').length){toast('Нужен паспорт');return;}
     if(!filesOf(d,'inv').length){toast('Нужен инвойс');return;}
+    if(d.autoPayment===true&&!filesOf(d,'vehicle_contract').length){toast('Нужен ДКП автомобиля');return;}
+    if(STAND){try{await standWaitSaved();}catch(e){toast(standSaveError({error:'timeout'}));return;}}
     managerDraftPublishDocs(d);
     d.docComment=val('sn_s8')||d.docComment||'';go(d,'s11','Документы переданы операционисту');
     if(STAND&&!SCREEN&&!SNAP){
@@ -12633,6 +12685,7 @@ async function act(id,step){
       try{saved=await standWaitSaved();}catch(e){saved={ok:false,error:'timeout'};}
       const current=deal(id);
       const published=current&&current.step==='s11'&&filesOf(current,'inv').length>0&&
+        (current.autoPayment!==true||filesOf(current,'vehicle_contract').length>0)&&
         (current.isOld||filesOf(current,'pass').length>0);
       if(!saved.ok||!published){
         standRollbackHandoff(id);
@@ -12644,6 +12697,11 @@ async function act(id,step){
     if(!d.docParse)docParse(d.id,true);return;}
   if(step==='s11'){
     const ch=docFieldSave(d.id), F=d.docFields;
+    if(d.autoPayment===true){
+      const vinMiss=F.vinState==='known'&&!F.vehicleVin?'vehicleVin':
+        F.vinState==='pending'&&!F.vinEvidence?'vinEvidence':null;
+      if(vinMiss){d.docMiss=[vinMiss];save();render();toast('Проверьте статус VIN и основание в ДКП');return;}
+    }
     const rubAccount=d.rubReceivingAccount||{};
     if(!isCrypto(d)&&rubAccount.mode==='custom'&&(!String(rubAccount.bank||'').trim()||!/^\d{20}$/.test(String(rubAccount.account||''))||!/^\d{20}$/.test(String(rubAccount.correspondent||''))||!/^\d{9}$/.test(String(rubAccount.bik||'')))){
       toast('Укажите банк, номер счёта, корреспондентский счёт (20 цифр) и БИК (9 цифр) до выпуска документов');render();return;}

@@ -6160,9 +6160,9 @@ def stand_file_upload():
         deal_id = int(request.form.get('dealId'))
         kind = request.form.get('kind')
         document_type = request.form.get('documentType') if extra else None
-        if extra and (kind != 'additional' or document_type not in {'receipt', 'inv', 'spa', 'pass', 'other'}):
+        if extra and (kind != 'additional' or document_type not in {'receipt', 'inv', 'spa', 'vehicle_contract', 'pass', 'other'}):
             raise ValueError('Неизвестный тип документа')
-        if kind not in {'pass', 'inv', 'spa', 'ipds', 'signed', 'receipt',
+        if kind not in {'pass', 'inv', 'spa', 'vehicle_contract', 'ipds', 'signed', 'receipt',
                         STAND_CLIENT_PAYIN_KIND, STAND_BANK_CREDIT_KIND, 'additional'}:
             raise ValueError('Неизвестный тип вложения')
         if kind == 'additional' and not extra:
@@ -6199,7 +6199,7 @@ def stand_file_upload():
                 return jsonify(success=False, error='Документы этой сделки меняет её менеджер'), 403
         if deal.get('closed') and not extra:
             return jsonify(success=False, error='Сделка закрыта'), 409
-        use_draft = (not extra and actor in ('manager', 'admin') and kind in {'pass', 'inv', 'spa', 'ipds'}
+        use_draft = (not extra and actor in ('manager', 'admin') and kind in {'pass', 'inv', 'spa', 'vehicle_contract', 'ipds'}
                      and deal.get('step') in ('s4', 's5', 's6', 's8')
                      and not (deal.get('step') == 's8' and (deal.get('docs') or {}).get(kind)))
         target = deal.setdefault('_managerDraft', {}) if use_draft else deal
@@ -6216,6 +6216,8 @@ def stand_file_upload():
                 'at': stand_now().strftime('%d.%m, %H:%M'), 'demo': False,
                 'uploadedById': actor_id, 'uploadedBy': author,
                 'data': 'data:' + mime + ';base64,' + base64.b64encode(raw).decode()}
+        if kind == 'signed':
+            item['docVersion'] = int(deal.get('docVersion') or 0)
         if extra:
             item['documentType'] = document_type
         if kind == STAND_CLIENT_PAYIN_KIND:
@@ -10891,7 +10893,7 @@ STAND_MANAGER_DRAFT_PAYTO_FIELDS = {'dev', 'bank', 'acc', 'inv', 'purpose',
                                     'amount', 'swift', 'branch', 'bankAddr', 'pobo'}
 # До штатного s8 клиентские файлы живут в приватном черновике. После передачи
 # на s11 менеджер сохраняет прежнюю возможность исправить их до закрытия.
-STAND_MANAGER_DOC_KINDS = {'signed', 'pass', 'inv', 'spa', 'ipds'}
+STAND_MANAGER_DOC_KINDS = {'signed', 'pass', 'inv', 'spa', 'vehicle_contract', 'ipds'}
 STAND_CLIENT_PAYIN_KIND = 'clientPayinReceipt'
 STAND_BANK_CREDIT_KIND = 'bankCreditEvidence'
 
@@ -11085,7 +11087,7 @@ def _stand_client_docs_changed(before, deal):
         if not isinstance(old, dict) or not isinstance(new, dict):
             return True
         if any((old.get(kind) or None) != (new.get(kind) or None)
-               for kind in ('pass', 'inv', 'spa', 'ipds')):
+               for kind in ('pass', 'inv', 'spa', 'vehicle_contract', 'ipds')):
             return True
     return False
 
@@ -11892,7 +11894,10 @@ def _stand_workflow_problem(previous, state, actor, db):
             elif not positive(deal.get('invoiceUsd') if deal.get('kind') == 'Фрихолд' else deal.get('amountThb')):
                 return 'Нужна сумма получателю'
         if start == 's8' and end == 's11':
-            for kind in (('inv',) if deal.get('isOld') else ('pass', 'inv')):
+            required = (('inv',) if deal.get('isOld') else ('pass', 'inv'))
+            if deal.get('autoPayment') is True:
+                required += ('vehicle_contract',)
+            for kind in required:
                 valid = False
                 for item in (deal.get('files') or {}).get(kind) or []:
                     try:
@@ -11908,7 +11913,9 @@ def _stand_workflow_problem(previous, state, actor, db):
                     if valid:
                         break
                 if not valid:
-                    return 'Для передачи документов нужен файл: ' + kind
+                    label = {'pass': 'загранпаспорт', 'inv': 'инвойс',
+                             'vehicle_contract': 'ДКП автомобиля'}
+                    return 'Для передачи документов нужен файл: ' + label.get(kind, kind)
         if start in ('s11', 's11b') and end in ('s11b', 's12'):
             if not before.get('docPack'):
                 return 'Сначала выпустите пакет документов на сервере'
@@ -12640,7 +12647,7 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
                      any(not isinstance(draft.get(key), dict) for key in ('payTo', 'files', 'docs', 'docMeta')
                          if key in draft) or
                      set(draft.get('payTo') or {}) - STAND_MANAGER_DRAFT_PAYTO_FIELDS or
-                     any(set(draft.get(key) or {}) - {'pass', 'inv', 'spa', 'ipds'}
+                     any(set(draft.get(key) or {}) - {'pass', 'inv', 'spa', 'vehicle_contract', 'ipds'}
                          for key in ('files', 'docs', 'docMeta')) or
                      ('comment' in draft and not isinstance(draft['comment'], str)))):
                 return 'Некорректный черновик менеджера'
@@ -16064,7 +16071,12 @@ STAND_DOC_LABELS = {
     'amountThb': 'сумма инвойса, ฿', 'rate': 'курс сделки', 'amountPay': 'сумма клиенту',
     'payTo': 'куда платит клиент', 'validTill': 'реквизиты действуют до',
     'purpose': 'назначение платежа', 'object': 'объект', 'dev': 'получатель платежа',
-    'invNo': 'номер инвойса',
+    'invNo': 'номер инвойса', 'vehicleModel': 'марка и модель автомобиля',
+    'vehicleVin': 'VIN', 'vinState': 'статус VIN', 'vinEvidence': 'основание ожидания VIN в ДКП',
+    'sellerName': 'продавец', 'sellerId': 'идентификатор продавца',
+    'sellerAddress': 'адрес продавца',
+    'contractNo': 'номер ДКП', 'contractDate': 'дата ДКП',
+    'paymentStage': 'этап оплаты', 'reviewNote': 'решение по расхождениям',
 }
 # ключ генератора → поле пакета на шаге «Подготовить договор»
 STAND_DOC_FIELD_OF = {
@@ -16166,14 +16178,31 @@ def _stand_doc_request(state, deal, F):
                            ('recipient_name', 'dev'), ('invoice_no', 'invNo'),
                            ('invoice_date', 'invDate')):
         take(key, stand_key)
+    if deal.get('autoPayment') is True:
+        auto_keys = {'vehicle_model': 'vehicleModel', 'vehicle_vin': 'vehicleVin',
+                     'vehicle_vin_state': 'vinState', 'vehicle_vin_pending_basis': 'vinEvidence',
+                     'vehicle_details': 'vehicleDetails', 'seller_name': 'sellerName',
+                     'seller_id': 'sellerId', 'seller_address': 'sellerAddress',
+                     'vehicle_contract_no': 'contractNo',
+                     'vehicle_contract_date': 'contractDate', 'vehicle_payment_stage': 'paymentStage',
+                     'vehicle_contract_total': 'contractTotal'}
+        for field_key, stand_key in auto_keys.items():
+            take(field_key, stand_key)
+        fields['contract_ref'] = ('ДКП № ' + fields.get('vehicle_contract_no', '')
+                                  + ' от ' + fields.get('vehicle_contract_date', '')).strip()
+    else:
+        for key in ('vehicle_model', 'vehicle_vin', 'vehicle_vin_state',
+                    'vehicle_vin_pending_basis', 'vehicle_details', 'seller_name',
+                    'seller_id', 'vehicle_contract_no', 'vehicle_contract_date',
+                    'vehicle_contract_total', 'vehicle_payment_stage'):
+            fields.pop(key, None)
     obj = str(F.get('object') or '').strip()
     auto_obj = ', '.join(str(x) for x in (parsed.get('project_name'), parsed.get('unit_no')) if x)
     if deal.get('autoPayment') is True:
         # OCR недвижимости не должен превращать VIN/модель в юнит или адрес.
         for key in ('project_name', 'unit_no', 'property_address', 'lease_term', 'lease_start_date'):
             fields.pop(key, None)
-        if obj:
-            fields['project_name'] = obj
+        # Автомобиль описывают отдельные поля; проект недвижимости здесь не нужен.
     elif obj and obj != auto_obj:
         # объект поправили руками — в документ идёт он, а не распознанный проект и юнит
         fields['project_name'] = obj
@@ -16190,6 +16219,49 @@ def _stand_doc_request(state, deal, F):
         notes.append('Реквизиты получателя не распознаны — в приложении ссылка на инвойс')
 
     missing = [k for k in ('fio', 'passNo') if not str(F.get(k) or '').strip()]
+    if deal.get('autoPayment') is True:
+        missing += [k for k in ('vehicleModel', 'sellerName', 'sellerId', 'dev', 'contractNo',
+                               'contractDate', 'invNo', 'invDate', 'paymentStage', 'vinState')
+                    if not str(F.get(k) or '').strip()]
+        vin_state = str(F.get('vinState') or '').strip()
+        payment_stage = str(F.get('paymentStage') or '').strip()
+        if payment_stage and payment_stage not in ('advance', 'balance', 'full'):
+            return {'error': 'invalid_payment_stage', 'fields': ['paymentStage'],
+                    'detail': 'Выберите этап оплаты: аванс, остаток или полная оплата'}
+        if vin_state not in ('known', 'pending'):
+            return {'error': 'invalid_vin_state', 'fields': ['vinState'],
+                    'detail': 'Выберите подтверждённый VIN или ожидание VIN по ДКП'}
+        if vin_state == 'known' and not str(F.get('vehicleVin') or '').strip():
+            missing.append('vehicleVin')
+        if vin_state == 'pending':
+            if str(F.get('vehicleVin') or '').strip():
+                return {'error': 'vin_state_conflict', 'fields': ['vehicleVin', 'vinState'],
+                        'detail': 'VIN заполнен при статусе «ещё не присвоен»'}
+            if not str(F.get('vinEvidence') or '').strip():
+                missing.append('vinEvidence')
+            if payment_stage != 'advance':
+                return {'error': 'vin_pending_stage', 'fields': ['paymentStage'],
+                        'detail': 'Ожидание VIN допускается для аванса по ДКП'}
+        conflicts = (deal.get('docParse') or {}).get('conflicts') or {}
+        source_vin = str(parsed.get('vehicle_vin') or '').strip()
+        source_pending_basis = str(parsed.get('vehicle_vin_pending_basis') or '').strip()
+        vin_source_conflict = bool(source_vin and source_pending_basis)
+        seller = str(F.get('sellerName') or '').strip().casefold()
+        payee = str(F.get('dev') or '').strip().casefold()
+        needs_review = bool(conflicts or vin_source_conflict or (seller and payee and seller != payee))
+        if needs_review:
+            values = [item.get('sha256') or ''
+                      for kind in ('vehicle_contract', 'inv')
+                      for item in (deal.get('files') or {}).get(kind) or []]
+            values += [F.get(k) for k in ('sellerName', 'sellerId', 'sellerAddress',
+                                          'dev', 'vehicleVin', 'vinEvidence',
+                                          'vinState', 'contractNo', 'contractDate',
+                                          'paymentStage', 'reviewNote')]
+            values += [source_vin, source_pending_basis]
+            expected = '|'.join(str(value or '').strip() for value in values)
+            if (not str(F.get('reviewNote') or '').strip()
+                    or str(F.get('reviewToken') or '') != expected):
+                missing.append('reviewNote')
     # Назначение платежа указывает менеджер; у рублёвого перевода оно обязательно (у крипты его нет)
     if not crypto and not str(F.get('purpose') or '').strip():
         missing.append('purpose')
@@ -16309,8 +16381,20 @@ def _stand_doc_request(state, deal, F):
         money['fee_note'] = fee
     if deal.get('autoPayment') is True:
         money['object_label'] = 'Автомобиль / Vehicle'
-        money['invoice_description'] = 'Оплата автомобиля по счёту получателя / Vehicle payment under recipient invoice'
-        money['payment_purpose'] = 'Оплата автомобиля по счёту получателя'
+        money['auto_document_schema'] = 'vehicle-v1'
+        vin_text = ('VIN ' + fields['vehicle_vin'] if fields.get('vehicle_vin')
+                    else 'VIN ещё не присвоен / VIN pending')
+        stage_label = {'advance': 'аванс', 'balance': 'остаток', 'full': 'полная оплата'}.get(
+            fields.get('vehicle_payment_stage'), '')
+        money['invoice_description'] = ('Оплата автомобиля ' + fields.get('vehicle_model', '')
+                                        + ', ' + vin_text + ', ' + stage_label
+                                        + ' по ДКП № ' + fields.get('vehicle_contract_no', '')
+                                        + ', продавец ' + fields.get('seller_name', '')
+                                        + ', текущий платёж продавцу USD '
+                                        + str(money.get('transfer_amount') or '')
+                                        + ' / Vehicle payment under sales contract')
+        money['payment_purpose'] = ('Оплата автомобиля по ДКП № '
+                                    + fields.get('vehicle_contract_no', ''))
     if freehold:
         # Инвойс застройщика может быть в THB (Карим, 28.09, поправка к спеке
         # 28.09-freehold-no-baht): сделка всё равно считается от X — суммы,
@@ -16392,12 +16476,33 @@ def stand_docs_issue():
         deal = next((d for d in state.get('deals', []) if d.get('id') == deal_id), None)
         if not deal:
             return jsonify({'success': False, 'error': 'Сделка не найдена'}), 404
+        if deal.get('autoPayment') is True and role not in ('operator', 'admin'):
+            return jsonify({'success': False, 'error': 'forbidden_role',
+                            'detail': 'Пакет документов на этом шаге выпускает операционист'}), 403
         if deal.get('step') not in ('s11', 's11b'):
             return jsonify({'success': False, 'error': 'not_on_step',
                             'detail': 'Пакет выпускает операционист на шаге «Подготовить договор»'}), 409
         F = dict(deal.get('docFields') or {})
         F.update({k: v for k, v in (submitted or {}).items()
                   if v is None or (isinstance(v, (str, int, float)) and not isinstance(v, bool))})
+        if deal.get('autoPayment') is True:
+            valid_contract = False
+            for item in (deal.get('files') or {}).get('vehicle_contract') or []:
+                try:
+                    if item.get('storageId'):
+                        stored = stand_file_storage.resolve(db, StandFile, item, deal['id'], 'vehicle_contract')
+                        valid_contract = bool(stored and stored.content_valid)
+                    elif item.get('data'):
+                        raw = stand_file_storage.decode(item)
+                        stand_file_storage.validate(raw, item.get('mime'), item.get('file'))
+                        valid_contract = True
+                except (ValueError, TypeError, KeyError):
+                    pass
+                if valid_contract:
+                    break
+            if not valid_contract:
+                return jsonify({'success': False, 'error': 'missing_vehicle_contract',
+                                'detail': 'Приложите действительный ДКП автомобиля'}), 400
         # Если счёт был выбран структурно на s11, генератор всегда получает
         # именно этот снимок, даже если браузер пришлёт подменённый payTo при
         # повторном выпуске. Старые файлы при этом не переписываются.
@@ -16506,16 +16611,27 @@ def stand_docs_issue():
         a = None
         if prior.get('agreementId'):
             a = db.query(Agreement).filter(Agreement.id == prior['agreementId']).first()
-        if a is not None and doc_agents.agent_of_route_key(a.route_key) != agent_key:
-            # Платёж теперь идёт на реквизиты другой компании: перевыпускать тот же
-            # договор / допник от другого имени нельзя. Прежние файлы остаются как
-            # есть, документы выпускаются заново от нужной компании.
-            note = '. '.join(filter(None, [
-                f'Реквизиты оплаты сменили компанию-агента на {doc_agents.get_agent(agent_key).name}: '
-                'документы выпущены от неё, ранее выпущенные файлы сохранены', note]))
+        if a is not None and (doc_agents.agent_of_route_key(a.route_key) != agent_key
+                              or a.route_key == 'legacy'
+                              or a.client_key != _docs_client_key(fields)
+                              or json.loads(a.money_json or '{}').get('auto_document_schema')
+                              not in (None, 'vehicle-v1')):
+            # Изменились клиент, агент или версия рамки: прежние файлы остаются,
+            # новое поручение нельзя привязать к несовместимому договору.
+            if doc_agents.agent_of_route_key(a.route_key) != agent_key:
+                reason = (f'Реквизиты оплаты сменили компанию-агента на '
+                          f'{doc_agents.get_agent(agent_key).name}: документы выпущены от неё, '
+                          'ранее выпущенные файлы сохранены')
+            else:
+                reason = ('Прежняя рамка не подходит текущему клиенту или версии; '
+                          'выпущены отдельные документы, ранее выпущенные файлы сохранены')
+            note = '. '.join(filter(None, [reason, note]))
             a = None
             prior = {}
         route_key = doc_agents.route_key(money['pair'], money['payin_method'], agent_key)
+        if a is not None and a.route_key != route_key:
+            a = None
+            prior = {}
         existing = _docs_route_agreement(db, _docs_client_key(fields), deal_type, route_key)
         # Назначение платежа должно называть настоящий номер АГЕНТСКОГО
         # ДОГОВОРА (MF-<паспорт>-<ДДММ>-<N>), а не внутренний код задачи
@@ -16559,6 +16675,23 @@ def stand_docs_issue():
                     note = '. '.join(filter(None, [
                         'Клиент отмечен знакомым, но его договора этого типа и маршрута '
                         'в базе нет — выпущен полный договор', note]))
+        if code == 200 and deal.get('autoPayment') is True:
+            current_agreement = db.get(Agreement, payload['agreement']['id'])
+            current_agreement.status = 'draft'
+            current_agreement.signed_at = None
+            from stand_object_store import read_verified
+            for slot, crm_kind in (('vehicle_contract', 'source_vehicle_contract'),
+                                   ('inv', 'source_invoice')):
+                for item in (deal.get('files') or {}).get(slot) or []:
+                    if item.get('storageId'):
+                        stored = stand_file_storage.resolve(db, StandFile, item, deal['id'], slot)
+                        raw = read_verified(stored.object_key, stored.size, stored.sha256)
+                    else:
+                        raw = stand_file_storage.decode(item)
+                    _docs_save(db, payload['agreement']['id'], crm_kind, None,
+                               payload.get('payment_no') or 1,
+                               item.get('file') or slot + '.pdf', raw,
+                               item.get('mime') or 'application/pdf')
         if code != 200:
             db.rollback()
             db.close()
@@ -16593,6 +16726,8 @@ def stand_docs_issue():
             'wallet': used.get('payin_wallet', ''), 'recipient': used.get('payin_recipient', ''),
             'note': note, 'at': at}
         deal['docVersion'] = version
+        if deal.get('autoPayment') is True:
+            deal.setdefault('docs', {})['signed'] = False
         deal['docFields'] = F
         deal['issuedDocPayTo'] = F.get('payTo')
         # От какой компании выпущены документы: перевыпуск и аудит смотрят сюда,
@@ -30247,9 +30382,11 @@ DOCS_REQUIRED_SLOTS = {
     'leasehold': ['passport', 'invoice'],
     'rental': ['passport'],
     'payment': ['passport'],
+    'auto': ['auto_invoice', 'vehicle_contract'],
 }
 DOCS_SLOT_LABEL = {'passport': 'паспорт', 'invoice': 'инвойс застройщика',
-                   'spa': 'договор с застройщиком'}
+                   'spa': 'договор с застройщиком', 'auto_invoice': 'инвойс автомобиля',
+                   'vehicle_contract': 'ДКП автомобиля'}
 
 
 def _docs_collect_uploads():
@@ -30259,7 +30396,7 @@ def _docs_collect_uploads():
     подсказать его модели. Общее поле `files` оставлено для совместимости.
     """
     uploads = []
-    for slot in ('passport', 'invoice', 'spa'):
+    for slot in ('passport', 'invoice', 'spa', 'auto_invoice', 'vehicle_contract'):
         for f in request.files.getlist(slot):
             if f and f.filename:
                 uploads.append((slot, f))
@@ -30394,6 +30531,8 @@ def _docs_route_agreement(db, client_key, deal_type, route_key, exclude_id=None)
         if candidate.route_key == 'legacy' or candidate.id == exclude_id:
             continue
         old = json.loads(candidate.money_json or '{}')
+        if deal_type == 'payment' and old.get('auto_document_schema') not in (None, 'vehicle-v1'):
+            continue
         try:
             old = doc_routes.normalize(old, deal_type)
             old_key = doc_agents.route_key(old['pair'], old['payin_method'],
@@ -30459,6 +30598,15 @@ def _docs_new_agreement(db, deal_type, fields, money, client_id=None, uploads=()
     money['deal_type'] = deal_type
     client_key = _docs_client_key(fields)
     route_key = doc_agents.route_key(money['pair'], money['payin_method'], agent)
+    occupied = db.query(Agreement).filter(Agreement.client_key == client_key,
+                                          Agreement.deal_type == deal_type,
+                                          Agreement.route_key == route_key).first()
+    if (occupied is not None and occupied.id != (reissue.id if reissue is not None else None)
+            and deal_type == 'payment'
+            and json.loads(occupied.money_json or '{}').get('auto_document_schema')
+            not in (None, 'vehicle-v1')):
+        return {'success': False, 'error': 'incompatible_parent',
+                'detail': 'На этом маршруте есть договор неподдерживаемой версии; проверьте рамку вручную'}, 409
     dup = _docs_route_agreement(db, client_key, deal_type, route_key,
                                 exclude_id=reissue.id if reissue is not None else None)
     if dup:
@@ -30563,8 +30711,30 @@ def _docs_payment(db, a, submitted_fields, submitted_money, payment_no=None,
     submitted_fields = submitted_fields or {}
     submitted_money = submitted_money or {}
     fields = json.loads(a.fields_json or '{}')
+    old_money = json.loads(a.money_json or '{}')
+    if a.deal_type == 'payment' and old_money.get('auto_document_schema') not in (None, 'vehicle-v1'):
+        return {'success': False, 'error': 'incompatible_parent',
+                'detail': 'Версия рамочного договора не поддерживается для нового поручения'}, 409
+    auto_transition = (a.deal_type == 'payment' and
+                       (submitted_money.get('auto_document_schema') == 'vehicle-v1' or
+                        old_money.get('auto_document_schema') == 'vehicle-v1'))
+    # Поля конкретной автомобильной инструкции нельзя наследовать из прежнего
+    # платежа по той же рамке: второй автомобиль может иметь другого продавца.
+    if auto_transition:
+        for key in ('vehicle_model', 'vehicle_vin', 'vehicle_vin_state',
+                    'vehicle_vin_pending_basis', 'vehicle_details', 'seller_name',
+                    'seller_id', 'seller_address', 'vehicle_contract_no', 'vehicle_contract_date',
+                    'vehicle_contract_total', 'vehicle_payment_stage', 'contract_ref'):
+            fields.pop(key, None)
+        for key in ('invoice_no', 'invoice_date', 'invoice_amount', 'invoice_currency',
+                    'recipient_name', 'recipient_bank', 'recipient_account',
+                    'recipient_swift', 'recipient_bik', 'recipient_bank_address'):
+            fields.pop(key, None)
     fields.update(submitted_fields)
-    money = json.loads(a.money_json or '{}')
+    money = old_money
+    if auto_transition:
+        for key in ('auto_document_schema', 'object_label', 'invoice_description', 'payment_purpose'):
+            money.pop(key, None)
     money.update(submitted_money)
     if money.get('pair') == 'USDT_USD' and 'rate' not in submitted_money:
         # Крипто-фрихолд: курса нет. Курс, оставшийся в рамочном договоре от прошлых
@@ -30679,7 +30849,7 @@ def docs_upload_signed(agreement_id):
     if not actor_id or role not in ('manager', 'operator', 'admin'):
         return jsonify(success=False, error='Недостаточно прав для документов'), 403
     kind = request.form.get('kind') or 'signed'
-    if kind not in {'signed', 'receipt', 'source_invoice', 'source_spa',
+    if kind not in {'signed', 'receipt', 'source_invoice', 'source_spa', 'source_vehicle_contract',
                     'source_passport', 'source_other'}:
         return jsonify(success=False, error='Неизвестный тип документа'), 400
     db = get_session()

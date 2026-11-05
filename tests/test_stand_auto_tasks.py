@@ -67,7 +67,11 @@ def _auto_deal(mode='sber'):
 
 def _fields():
     return {'fio': 'Тест Тестов', 'passNo': 'QA123456', 'dev': 'Synthetic seller',
-            'invNo': 'AUTO-QA-1', 'object': 'Toyota Camry VIN QA123',
+            'invNo': 'AUTO-QA-1', 'invDate': '01.11.2026', 'object': 'Toyota Camry VIN QA123',
+            'vehicleModel': 'Toyota Camry', 'vehicleVin': 'QA123', 'vinState': 'known',
+            'vehicleDetails': '2026, серебристый', 'sellerName': 'Synthetic seller',
+            'sellerId': 'TEST-REG-1', 'contractNo': 'TEST-DKP-1',
+            'contractDate': '01.11.2026', 'paymentStage': 'full',
             'amountThb': '45000', 'amountPay': '4000000', 'rate': '88.888889',
             'payTo': 'Реквизиты получателя по агентскому договору',
             'purpose': 'Оплата по агентскому договору', 'validTill': '06.11.2026'}
@@ -83,7 +87,8 @@ def test_auto_uses_payment_docs_with_usd_output_and_correct_agent(mode, agent):
     assert result['money']['transfer_amount'] == '45000'
     assert result['money']['object_label'] == 'Автомобиль / Vehicle'
     assert result['money']['invoice_description'].startswith('Оплата автомобиля')
-    assert result['fields']['project_name'] == 'Toyota Camry VIN QA123'
+    assert result['fields']['vehicle_model'] == 'Toyota Camry'
+    assert 'project_name' not in result['fields']
     assert 'unit_no' not in result['fields']
     assert 'property_address' not in result['fields']
     content, _ = docgen.build_agreement('payment', result['fields'], result['money'],
@@ -91,17 +96,18 @@ def test_auto_uses_payment_docs_with_usd_output_and_correct_agent(mode, agent):
     doc = Document(BytesIO(content))
     text = '\n'.join(cell.text for table in doc.tables for row in table.rows for cell in row.cells)
     assert 'Автомобиль / Vehicle' in text
-    assert 'Toyota Camry VIN QA123' in text
+    assert 'Toyota Camry' in text and 'QA123' in text
     assert 'Неверный проект' not in text
     assert 'Объект / Property' not in text
     invoice = docgen.build_commercial_invoice(result['fields'], result['money'],
-                                              'AUTO-QA-INV', 'payment')
+                                              'AUTO-QA-INV', 'payment', agent=agent)
     inv_doc = Document(BytesIO(invoice))
     inv_text = '\n'.join(p.text for p in inv_doc.paragraphs)
     inv_text += '\n' + '\n'.join(cell.text for table in inv_doc.tables
                                   for row in table.rows for cell in row.cells)
     assert 'апартаменты' not in inv_text.lower()
-    assert 'Toyota Camry VIN QA123' in inv_text
+    assert 'Toyota Camry' in inv_text
+    assert 'Текущий платёж продавцу / Current seller payment: USD 45 000.00' in inv_text
 
 
 def test_auto_flow_is_separate_from_freehold_and_only_verified_for_requisites():

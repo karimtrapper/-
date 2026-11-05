@@ -9,6 +9,22 @@
 import docparse
 
 
+def test_vehicle_contract_and_invoice_keep_roles_and_surface_conflict():
+    contract = {'_kind': 'vehicle_contract', '_file': 'vehicle_contract',
+                'vehicle_model': 'Test Model', 'vehicle_vin': 'QA-VIN-1',
+                'seller_name': 'Seller Ltd.', 'seller_id': 'REG-1',
+                'vehicle_contract_total': '100000 USD'}
+    invoice = {'_kind': 'auto_invoice', '_file': 'auto_invoice',
+               'recipient_name': 'Payment Partner Ltd.', 'seller_name': 'Other Seller Ltd.',
+               'invoice_amount': '20000', 'invoice_currency': 'USD'}
+    merged = docparse.merge([contract, invoice])
+    assert merged['fields']['seller_name'] == 'Seller Ltd.'
+    assert merged['fields']['recipient_name'] == 'Payment Partner Ltd.'
+    assert merged['fields']['vehicle_contract_total'] == '100000 USD'
+    assert merged['fields']['invoice_amount'] == '20000'
+    assert 'seller_name' in merged['conflicts']
+
+
 def _result(file, kind, **fields):
     res = {k: None for k in docparse.FIELD_DEFS}
     res.update(fields)

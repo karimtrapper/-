@@ -15391,7 +15391,8 @@ ${Math.abs(c.debits_delta_rub) < 0.01
         const DOCS_KIND_LABEL = {agreement:'Агентский договор', addendum:'Доп. соглашение',
             invoice:'Инвойс', signed:'Подписанный', source:'Исходник',
             source_passport:'Исходник — паспорт', source_invoice:'Исходник — инвойс',
-            source_spa:'Исходник — СПА', source_other:'Другое', receipt:'Чек'};
+            source_spa:'Исходник — СПА', source_vehicle_contract:'Исходник — ДКП автомобиля',
+            source_other:'Другое', receipt:'Чек'};
 
         // Валютные пары. Слева то, что отдаёт клиент, справа — что получает
         // застройщик. Фрихолд платится в USD, лизхолд и аренда — в батах.
@@ -15950,7 +15951,7 @@ ${Math.abs(c.debits_delta_rub) < 0.01
             <div id="docsExtra" hidden>
                 <label for="docsExtraType">Тип документа</label>
                 <select id="docsExtraType" class="form-input">
-                    ${['receipt','source_invoice','source_spa','source_passport','source_other'].map(k=>
+                    ${['receipt','source_invoice','source_spa','source_vehicle_contract','source_passport','source_other'].map(k=>
                         `<option value="${k}">${DOCS_KIND_LABEL[k]}</option>`).join('')}
                 </select>
                 <label for="docsExtraFile">Файл</label>

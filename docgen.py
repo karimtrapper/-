@@ -617,6 +617,21 @@ def client_line(f: dict, lang: str = 'ru') -> str:
 
 
 def property_line(f: dict, deal_type: str) -> str:
+    if f.get('vehicle_model'):
+        bits = [str(f['vehicle_model'])]
+        if f.get('vehicle_vin_state') == 'pending':
+            bits.append('VIN ещё не присвоен / VIN pending: '
+                        + str(f.get('vehicle_vin_pending_basis') or ''))
+        elif f.get('vehicle_vin'):
+            bits.append('VIN: ' + str(f['vehicle_vin']))
+        for key, label in (('vehicle_details', 'Характеристики / Specification'),
+                           ('vehicle_payment_stage', 'Этап оплаты / Payment stage')):
+            if f.get(key):
+                value = ({'advance': 'аванс / advance', 'balance': 'остаток / balance',
+                          'full': 'полная оплата / full payment'}.get(f[key], f[key])
+                         if key == 'vehicle_payment_stage' else f[key])
+                bits.append(label + ': ' + str(value))
+        return ';\n'.join(bits)
     bits = []
     if f.get('project_name'):
         bits.append(f['project_name'])
@@ -653,6 +668,21 @@ def recipient_details(f: dict) -> str:
 
 
 def payment_basis(f: dict, deal_type: str) -> str:
+    if f.get('vehicle_contract_no'):
+        bits = ['ДКП автомобиля / Vehicle sales contract № '
+                + str(f['vehicle_contract_no']) + ' от / dated '
+                + str(f.get('vehicle_contract_date') or '')]
+        if f.get('seller_name'):
+            bits.append('Продавец / Seller: ' + str(f['seller_name'])
+                        + (', ID ' + str(f['seller_id']) if f.get('seller_id') else '')
+                        + (', адрес / address: ' + str(f['seller_address'])
+                           if f.get('seller_address') else ''))
+        if f.get('vehicle_contract_total'):
+            bits.append('Полная цена ДКП / Contract price: ' + str(f['vehicle_contract_total']))
+        if f.get('invoice_no'):
+            bits.append('Инвойс / Invoice № ' + str(f['invoice_no'])
+                        + (' от / dated ' + str(f['invoice_date']) if f.get('invoice_date') else ''))
+        return ';\n'.join(bits)
     if deal_type == 'payment' and not f.get('invoice_no') and not f.get('contract_ref'):
         return 'Поручение Клиента на перевод средств / Client instruction to transfer funds'
     if deal_type == 'rental' and not f.get('invoice_no'):
@@ -682,6 +712,13 @@ def building_of(unit: str) -> str:
 
 
 def property_description(f: dict, deal_type: str) -> str:
+    if f.get('vehicle_model'):
+        stage = {'advance': 'аванс', 'balance': 'остаток',
+                 'full': 'полная оплата'}.get(f.get('vehicle_payment_stage'), '')
+        return ('Оплата автомобиля ' + str(f['vehicle_model'])
+                + (', VIN ' + str(f['vehicle_vin']) if f.get('vehicle_vin') else ', VIN ещё не присвоен')
+                + (', ' + stage if stage else '')
+                + '.')
     """Строка позиции коммерческого инвойса.
 
     Формат снят с реальных инвойсов MF-180-2808-1 и MF-180-3108-1:
@@ -1213,6 +1250,7 @@ def build_commercial_invoice(fields: dict, money: dict, number: str,
 
 def _route_invoice(fields, money, number, when, agent=None):
     from docx import Document
+    from docx.oxml import OxmlElement
     ag = _agent(agent, money)
     doc = Document(io.BytesIO(build_invoice(fields, money, number,
                    money.get('parent_number') or number, number, when, ag)))
@@ -1221,7 +1259,10 @@ def _route_invoice(fields, money, number, when, agent=None):
                f"Перевод / Transfer {money['pair'].replace('_', ' → ')}")
     _set_field(doc.tables[1], 'Основание',
                f"Договор / Agreement № {money.get('parent_number') or number}; Instruction № {number}\n" +
-               payment_basis(fields, money.get('deal_type', 'payment')))
+               payment_basis(fields, money.get('deal_type', 'payment'))
+               + (('\nТекущий платёж продавцу / Current seller payment: '
+                   + doc_routes.amount(money.get('transfer_amount'), money.get('transfer_currency') or 'USD'))
+                  if money.get('auto_document_schema') == 'vehicle-v1' else ''))
     _set_cell(doc.tables[2].rows[0].cells[-1], 'ИТОГО К ОПЛАТЕ / AMOUNT DUE\n' +
               doc_routes.amount(money.get('total_payin'), money['payin_currency']))
     _set_field(doc.tables[3], 'Получатель платежа', money.get('payin_recipient') or '')
@@ -1246,6 +1287,9 @@ def _route_invoice(fields, money, number, when, agent=None):
     _sign_agent(doc, when, ag)
     if cell.paragraphs[-1]._p.xpath('.//w:drawing'):
         signature_table.cell(0, 1)._tc.append(cell.paragraphs[-1]._p)
+    # Название компании, директор, дата, подпись и печать составляют один блок.
+    # У родного шаблона MF _tidy_layout() намеренно не меняет разметку.
+    signature_table.rows[0]._tr.get_or_add_trPr().append(OxmlElement('w:cantSplit'))
     _tidy_layout(doc, ag)
     buf = io.BytesIO()
     doc.save(buf)

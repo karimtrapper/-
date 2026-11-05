@@ -6,6 +6,7 @@
 import io
 import json
 import re
+import base64
 
 import pytest
 from docx import Document
@@ -35,6 +36,144 @@ def _fields(**over):
             'feeNote': 'Комиссия включена в курс, отдельно не взимается', 'validTill': ''}
     base.update(over)
     return base
+
+
+def _auto_fields(**over):
+    base = _fields(kind='Фрихолд', object='', amountThb='45000',
+                   amountPay='4000000', rate='88.888889',
+                   dev='Synthetic Seller Ltd.', invNo='CAR-INV-1')
+    base.update(vehicleModel='Test Model', vehicleVin='QA-VIN-1', vinState='known',
+                sellerName='Synthetic Seller Ltd.', sellerId='TEST-REG-1',
+                contractNo='CAR-SALE-1', contractDate='01.11.2026',
+                paymentStage='full')
+    base.update(over)
+    return base
+
+
+def _auto_deal(deal_id, with_contract=True, **over):
+    raw = b'%PDF-1.4\n1 0 obj << /Type /Catalog >> endobj\n%%EOF'
+    item = {'data': 'data:application/pdf;base64,' + base64.b64encode(raw).decode(),
+            'file': 'synthetic.pdf', 'mime': 'application/pdf'}
+    files = {'inv': [item]}
+    if with_contract:
+        files['vehicle_contract'] = [item]
+    deal = _deal(deal_id, kind='Фрихолд', autoPayment=True, curBase='fhusd',
+                 invoiceUsd=45000, invoiceCurrency='usd', autoRequestMode='usd',
+                 requestedUsd=45000, amountRub=4000000, rates={'client': '88.888889'},
+                 rubReceivingAccount={'mode': 'sber'}, files=files)
+    deal.update(over)
+    return deal
+
+
+def test_auto_requires_vehicle_contract_on_issue_and_keeps_source(stand):
+    stand.put_board([_auto_deal(971, with_contract=False)])
+    missing = stand.post('/api/stand/docs/issue', json={'dealId': 971, 'docFields': _auto_fields()})
+    assert missing.status_code == 400 and missing.json['error'] == 'missing_vehicle_contract'
+    stand.put_board([_auto_deal(971)])
+    issued = stand.post('/api/stand/docs/issue', json={'dealId': 971, 'docFields': _auto_fields()})
+    assert issued.status_code == 200, issued.json
+    assert issued.json['pack']['version'] == 1
+    text = '\n'.join(_text(stand, entry['docId']) for entry in issued.json['issued'])
+    for value in ('Test Model', 'QA-VIN-1', 'Synthetic Seller Ltd.', 'CAR-SALE-1'):
+        assert value in text
+    db = appmod.get_session()
+    try:
+        kinds = {row.kind for row in db.query(appmod.AgreementDoc).all()}
+        assert {'source_vehicle_contract', 'source_invoice'} <= kinds
+    finally:
+        db.close()
+
+
+def test_auto_pending_vin_requires_advance_and_contract_basis(stand):
+    stand.put_board([_auto_deal(972)])
+    pending = _auto_fields(vehicleVin='', vinState='pending', paymentStage='advance')
+    assert 'vinEvidence' in appmod._stand_doc_request({}, _auto_deal(972), pending)['fields']
+    pending['vinEvidence'] = 'VIN присваивается после изготовления согласно п. 2.1 ДКП'
+    issued = stand.post('/api/stand/docs/issue', json={'dealId': 972, 'docFields': pending})
+    assert issued.status_code == 200, issued.json
+    text = '\n'.join(_text(stand, entry['docId']) for entry in issued.json['issued'])
+    assert 'VIN ещё не присвоен' in text and 'п. 2.1 ДКП' in text
+
+
+def test_auto_contract_conflict_requires_current_review_note(stand):
+    deal = _auto_deal(973, docParse={'fields': {}, 'conflicts': {'seller_name': [
+        {'value': 'Synthetic Seller Ltd.', 'file': 'vehicle_contract'},
+        {'value': 'Other Seller Ltd.', 'file': 'auto_invoice'}]}})
+    stand.put_board([deal])
+    fields = _auto_fields()
+    missing = stand.post('/api/stand/docs/issue', json={'dealId': 973, 'docFields': fields})
+    assert missing.status_code == 400 and 'reviewNote' in missing.json['fields']
+    fields['reviewNote'] = 'По ДКП продавец Synthetic Seller Ltd.; инвойс содержит иное имя.'
+    fields['reviewToken'] = '||' + '|'.join([fields.get(k, '') for k in ('sellerName', 'sellerId',
+        'sellerAddress', 'dev', 'vehicleVin', 'vinEvidence', 'vinState',
+        'contractNo', 'contractDate', 'paymentStage', 'reviewNote')]) + '||'
+    issued = stand.post('/api/stand/docs/issue', json={'dealId': 973, 'docFields': fields})
+    assert issued.status_code == 200, issued.json
+
+
+def test_second_vehicle_uses_same_compatible_frame_without_previous_vehicle(stand):
+    stand.put_board([_auto_deal(974), _auto_deal(975, isOld=True)])
+    first = stand.post('/api/stand/docs/issue', json={'dealId': 974, 'docFields': _auto_fields()})
+    assert first.status_code == 200, first.json
+    second_fields = _auto_fields(vehicleModel='Another Test Model', vehicleVin='QA-VIN-2',
+                                 sellerName='Second Seller Ltd.', sellerId='TEST-REG-2',
+                                 contractNo='CAR-SALE-2', dev='Second Seller Ltd.',
+                                 invNo='CAR-INV-2')
+    second = stand.post('/api/stand/docs/issue', json={'dealId': 975, 'docFields': second_fields})
+    assert second.status_code == 200, second.json
+    assert second.json['pack']['mode'] == 'addendum'
+    assert second.json['pack']['agreementId'] == first.json['pack']['agreementId']
+    text = '\n'.join(_text(stand, entry['docId']) for entry in second.json['issued'])
+    assert all(value in text for value in ('Another Test Model', 'QA-VIN-2', 'Second Seller Ltd.'))
+    assert 'QA-VIN-1' not in text and 'CAR-SALE-1' not in text
+    db = appmod.get_session()
+    try:
+        a = db.get(appmod.Agreement, second.json['pack']['agreementId'])
+        old_money = json.loads(a.money_json)
+        ordinary_money = {k: v for k, v in old_money.items()
+                          if k not in ('auto_document_schema', 'object_label',
+                                       'invoice_description', 'payment_purpose')}
+        ordinary_fields = {'client_name_ru': 'Тестов Иван Петрович',
+                           'client_passport_no': '75 1234567', 'recipient_name': 'Third Payee Ltd.',
+                           'recipient_bank': 'Synthetic Bank, account TEST-3',
+                           'invoice_no': 'ORD-3', 'project_name': 'Unrelated payment'}
+        payload, code = appmod._docs_payment(db, a, ordinary_fields, ordinary_money,
+                                              commit=False)
+        assert code == 200, payload
+        fresh = json.loads(a.fields_json)
+        assert 'vehicle_model' not in fresh and 'seller_name' not in fresh
+        assert fresh['invoice_no'] == 'ORD-3'
+        assert 'auto_document_schema' not in json.loads(a.money_json)
+        db.rollback()
+    finally:
+        db.close()
+
+
+def test_auto_reissue_keeps_old_signed_bytes_and_resets_current_signature(stand):
+    stand.put_board([_auto_deal(976)])
+    first = stand.post('/api/stand/docs/issue', json={'dealId': 976, 'docFields': _auto_fields()})
+    assert first.status_code == 200, first.json
+    signed_bytes = b'%PDF-1.4\nsynthetic signed version one\n%%EOF'
+    uploaded = stand.post('/api/stand/files', data={
+        'dealId': '976', 'kind': 'signed',
+        'file': (io.BytesIO(signed_bytes), 'signed-v1.pdf')})
+    assert uploaded.status_code == 200, uploaded.json
+    saved = uploaded.json['data']['deals'][0]
+    assert saved['files']['signed'][0]['docVersion'] == 1
+    second = stand.post('/api/stand/docs/issue', json={'dealId': 976,
+        'docFields': _auto_fields(vehicleDetails='2026, обновлённая комплектация')})
+    assert second.status_code == 200, second.json
+    deal = second.json['data']['deals'][0]
+    assert deal['docVersion'] == 2 and deal['docs']['signed'] is False
+    assert deal['files']['signed'][0]['docVersion'] == 1
+    downloaded = stand.get('/api/stand/file/976/signed/0')
+    assert downloaded.status_code == 200 and downloaded.data == signed_bytes
+    db = appmod.get_session()
+    try:
+        a = db.get(appmod.Agreement, deal['docPack']['agreementId'])
+        assert a.status == 'draft' and a.signed_at is None
+    finally:
+        db.close()
 
 
 def _deal(deal_id, **over):
@@ -80,19 +219,32 @@ def stand(monkeypatch):
             db.close()
     with appmod.app.test_client() as client:
         db = appmod.get_session()
+        created_user = False
         try:
             user = db.query(appmod.AdminUser).filter_by(username='stand_docs_test').first()
             if not user:
                 user = appmod.AdminUser(username='stand_docs_test', role='operator',
                                         password_hash=appmod.AdminUser.hash_password('test'))
                 db.add(user); db.commit()
+                created_user = True
             uid = user.id
         finally:
             db.close()
         with client.session_transaction() as sess:
             sess['user_id'] = uid
         client.put_board = put
-        yield client
+        try:
+            yield client
+        finally:
+            if created_user:
+                cleanup = appmod.get_session()
+                try:
+                    user = cleanup.get(appmod.AdminUser, uid)
+                    if user and user.username == 'stand_docs_test':
+                        cleanup.delete(user)
+                        cleanup.commit()
+                finally:
+                    cleanup.close()
 
 
 def _text(client, doc_id):

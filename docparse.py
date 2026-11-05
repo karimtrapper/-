@@ -155,6 +155,17 @@ FIELD_DEFS = {
     'rent_amount':         'размер арендной платы за период',
     'deposit_amount':      'размер депозита',
     'contract_ref':        'реквизиты договора-основания: номер и дата',
+    'vehicle_model':       'марка и модель автомобиля, без домысливания комплектации',
+    'vehicle_vin':         'VIN автомобиля, только если указан и присвоен',
+    'vehicle_vin_pending_basis': 'дословное положение ДКП о будущем присвоении VIN',
+    'vehicle_details':     'другие указанные характеристики автомобиля: год, цвет, комплектация, опции',
+    'seller_name':         'юридическое наименование продавца именно из ДКП',
+    'seller_id':           'регистрационный или иной идентификационный номер продавца из ДКП',
+    'seller_address':      'юридический адрес продавца из ДКП, если указан',
+    'vehicle_contract_no': 'номер договора купли-продажи автомобиля',
+    'vehicle_contract_date': 'дата договора купли-продажи автомобиля',
+    'vehicle_contract_total': 'полная цена автомобиля по ДКП, сумма с валютой',
+    'vehicle_payment_stage': 'этап текущей оплаты: аванс, остаток или полная оплата, если указан',
 }
 
 # Менеджер грузит документы по отдельности — мы знаем, что это за файл.
@@ -164,6 +175,10 @@ DOC_KINDS = {
     'passport': 'Это скан загранпаспорта клиента.',
     'invoice':  'Это инвойс застройщика или арендодателя.',
     'spa':      'Это договор с застройщиком (SPA / Reservation / Lease Agreement).',
+    'vehicle_contract': ('Это ДКП автомобиля. Извлекай продавца отдельно от банковского '
+                         'получателя, полную цену отдельно от аванса. Если VIN ещё не присвоен, '
+                         'не выдумывай его: укажи дословное основание.'),
+    'auto_invoice': 'Это инвойс по покупке автомобиля; продавец и банковский получатель могут различаться.',
 }
 # Какой документ — источник истины для какого поля. Значение из «своего»
 # документа побеждает, даже если другой файл распознался раньше.
@@ -178,6 +193,12 @@ FIELD_OWNER = {
                 'property_address'],
     'spa': ['lease_term', 'lease_start_date', 'contract_ref', 'rent_amount',
             'deposit_amount', 'project_name', 'unit_no', 'property_address'],
+    'vehicle_contract': ['vehicle_model', 'vehicle_vin', 'vehicle_vin_pending_basis',
+                         'vehicle_details', 'seller_name', 'seller_id', 'seller_address', 'vehicle_contract_no',
+                         'vehicle_contract_date', 'vehicle_contract_total', 'vehicle_payment_stage'],
+    'auto_invoice': ['invoice_no', 'invoice_date', 'invoice_amount', 'invoice_currency',
+                     'recipient_name', 'recipient_bank', 'recipient_account',
+                     'recipient_swift', 'recipient_bik', 'recipient_bank_address'],
 }
 
 PROMPT = (
@@ -198,7 +219,7 @@ def _schema() -> dict:
     props = {k: {'type': ['string', 'null'], 'description': v} for k, v in FIELD_DEFS.items()}
     props['doc_kind'] = {'type': ['string', 'null'],
                          'description': 'passport | developer_invoice | developer_contract | '
-                                        'lease_agreement | other'}
+                                        'lease_agreement | vehicle_contract | vehicle_invoice | other'}
     props['masked_fields'] = {'type': 'array', 'items': {'type': 'string'},
                               'description': 'поля, значение которых в документе замаскировано'}
     return {
@@ -244,9 +265,10 @@ def pages_to_png(data: bytes, mime: str, max_pages: int = 3, dpi: int = 150,
 
 def _call(model: str, images: list[bytes], api_key: str, timeout: int = 180,
           kind: str | None = None, stand: bool = False) -> dict:
-    prompt = PROMPT
+    prompt = (PROMPT.replace('недвижимости в Таиланде', 'покупки автомобиля')
+              if kind in ('vehicle_contract', 'auto_invoice') else PROMPT)
     if kind in DOC_KINDS:
-        prompt = f'{DOC_KINDS[kind]}\n{PROMPT}'
+        prompt = f'{DOC_KINDS[kind]}\n{prompt}'
     content = [{'type': 'text', 'text': prompt}]
     for img in images:
         b64 = base64.b64encode(img).decode()
@@ -484,13 +506,23 @@ def merge(results: list[dict]) -> dict:
                 continue
             if is_owner and not provenance.get(key + '__owner'):
                 # приехал документ-владелец — он и есть источник истины
+                previous_value, previous_src = fields[key], provenance[key]
                 fields[key], provenance[key] = val, src
                 provenance[key + '__owner'] = True
                 if kind:
                     slots[key] = kind
-                conflicts.pop(key, None)
+                if key in {'seller_name', 'seller_id', 'seller_address',
+                           'vehicle_model', 'vehicle_vin', 'vehicle_contract_total',
+                           'recipient_name', 'invoice_amount'}:
+                    conflicts.setdefault(key, [{'value': previous_value, 'file': previous_src}])
+                    conflicts[key].append({'value': val, 'file': src})
+                else:
+                    conflicts.pop(key, None)
             elif provenance.get(key + '__owner') and not is_owner:
-                pass          # владелец уже дал значение, чужое игнорируем
+                if key in {'seller_name', 'seller_id', 'vehicle_model', 'vehicle_vin',
+                           'vehicle_contract_total', 'recipient_name', 'invoice_amount'}:
+                    conflicts.setdefault(key, [{'value': fields[key], 'file': provenance[key]}])
+                    conflicts[key].append({'value': val, 'file': src})
             else:
                 conflicts.setdefault(key, [{'value': fields[key], 'file': provenance[key]}])
                 conflicts[key].append({'value': val, 'file': src})
