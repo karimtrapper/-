@@ -90,6 +90,104 @@ def get_dash(tc, **params):
     return res
 
 
+def get_site_customers(tc, **params):
+    from urllib.parse import urlencode
+    return tc.get('/api/analytics/site-customers?' + urlencode(params))
+
+
+class TestSiteCustomers:
+
+    def test_explicit_source_family_and_all_time(self, db, tc):
+        old = datetime(2023, 6, 1)
+        first = make_deal(db, created_at=old, profit=100, payin=1000)
+        first.source_channel = 'website_campaign'
+        first.client_name = 'Старый клиент'
+        second = make_deal(db, created_at=old, profit=20, payin=200)
+        second.source_channel = 'site'
+        second.client_name = 'Старый клиент'  # without IDs these are distinct
+        for label in ('rentals', 'rentals_guide', 'rentguidebot', 'rentguidebot_start',
+                      'not_website_campaign', 'other_site', 'sitex', 'websiteish', None):
+            deal = make_deal(db, created_at=old)
+            deal.source_channel = label
+        db.commit()
+        site = get_site_customers(tc, period='all').get_json()
+        assert site['summary'] == {
+            'customers': 0, 'unlinked_deals': 2, 'eligible_deals': 11,
+            'missing_source_deals': 1, 'deals': 2,
+            'volume_usdt': 1200, 'profit_usdt': 120,
+        }
+        assert len(site['rows']) == 2
+        assert get_site_customers(tc, period='all', source='rentals').get_json()['summary']['deals'] == 2
+        assert get_site_customers(tc, period='all', source='rentguidebot').get_json()['summary']['deals'] == 2
+        assert get_site_customers(tc, period='all', source='all').get_json()['summary']['deals'] == 6
+        unknown = get_site_customers(tc, period='all', source='unknown').get_json()
+        assert unknown['summary']['deals'] == 1
+        assert unknown['rows'][0]['sources'] == ['unknown']
+
+    def test_client_identity_profit_status_and_test_exclusions(self, db, tc):
+        real = Client(name='Покупатель')
+        test_client = Client(name='Демо', is_test=True)
+        db.add_all([real, test_client]); db.commit()
+        a = make_deal(db, client_id=real.id, profit=100)
+        a.source_channel = 'site'; a.net_profit_usdt = 70; a.referrer_name = 'Агент'
+        b = make_deal(db, client_id=real.id, profit=50, status=DealStatus.VERIFIED)
+        b.source_channel = 'website'; b.referrer_name = 'Агент'
+        c = make_deal(db, client_id=real.id, profit=999)
+        c.source_channel = 'insta'
+        pending = make_deal(db, client_id=real.id, status=DealStatus.PENDING)
+        pending.source_channel = 'site'
+        demo_deal = make_deal(db, client_id=real.id)
+        demo_deal.source_channel = 'site'; demo_deal.is_test = True
+        demo_client_deal = make_deal(db, client_id=test_client.id)
+        demo_client_deal.source_channel = 'site'
+        db.commit()
+        data = get_site_customers(tc).get_json()
+        assert data['summary']['customers'] == 1
+        assert data['summary']['deals'] == 2
+        assert data['summary']['volume_usdt'] == 2000
+        assert data['summary']['profit_usdt'] == 120
+        assert data['rows'][0]['deal_ids'] == sorted([a.id, b.id])
+        assert data['rows'][0]['referrers'] == ['Агент']
+
+    def test_filters_coverage_search_and_validation(self, db, tc):
+        ref = Referrer(name='Агент', code='SITE-A', token='test-site-a')
+        db.add(ref); db.commit()
+        today = datetime.now()
+        recent = make_deal(db, referrer=ref, created_at=today)
+        recent.source_channel = 'site'; recent.deal_kind = 'mf_realty'; recent.client_name = '<script>x</script>'
+        blank = make_deal(db, referrer=ref, created_at=today)
+        blank.deal_kind = 'mf_realty'
+        other = make_deal(db, created_at=today - timedelta(days=40))
+        other.source_channel = 'site'
+        db.commit()
+        period = get_site_customers(tc, referrer_id=ref.id, deal_kind='realty').get_json()
+        assert period['summary']['deals'] == 1
+        assert period['summary']['missing_source_deals'] == 1
+        assert period['rows'][0]['name'] == '<script>x</script>'
+        assert get_site_customers(tc, referrer_id='none').get_json()['summary']['deals'] == 0
+        assert get_site_customers(tc, search='absent').get_json()['summary']['deals'] == 1
+        assert get_site_customers(tc, search='absent').get_json()['rows'] == []
+        assert get_site_customers(tc, date_from=today.strftime('%Y-%m-%d'), date_to=today.strftime('%Y-%m-%d')).get_json()['summary']['deals'] == 1
+        assert get_site_customers(tc, source='other').status_code == 400
+        assert get_site_customers(tc, referrer_id='x').status_code == 400
+        assert get_site_customers(tc, page=0).status_code == 400
+        assert get_site_customers(tc, date_from='2026-11-09', date_to='2026-11-08').status_code == 400
+
+    def test_pagination_does_not_change_totals(self, db, tc):
+        for number in range(51):
+            deal = make_deal(db, profit=1, payin=10)
+            deal.source_channel = 'site'
+            deal.client_name = f'Клиент {number}'
+        db.commit()
+        first = get_site_customers(tc).get_json()
+        second = get_site_customers(tc, page=2).get_json()
+        assert len(first['rows']) == 50
+        assert len(second['rows']) == 1
+        assert first['summary'] == second['summary']
+        assert first['summary']['deals'] == 51
+        assert first['summary']['volume_usdt'] == 510
+
+
 # ── Кастомный диапазон дат ────────────────────────────────────────────────
 
 class TestCustomDateRange:

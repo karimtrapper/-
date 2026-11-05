@@ -5,13 +5,55 @@
 """
 import json
 import threading
+from datetime import datetime
 from urllib.parse import urlsplit
 
 import pytest
-from playwright.sync_api import sync_playwright, expect
+from playwright.sync_api import sync_playwright, expect, Error as PlaywrightError
 from werkzeug.serving import make_server
 
 import app as A
+
+
+def test_website_customers_dashboard_desktop_and_mobile(ui):
+    page, errors, server_errors, _ = ui
+    db = A.get_session()
+    try:
+        customer = A.Client(name='<img src=x onerror=alert(1)>')
+        db.add(customer); db.flush()
+        deal = A.Deal(deal_type=A.DealType('pay_in'), status=A.DealStatus.COMPLETED,
+                      client_id=customer.id, client_name=customer.name,
+                      source_channel='website_campaign', payin_amount_usdt=1000,
+                      profit_usdt=100, net_profit_usdt=80, created_at=datetime(2023, 6, 1))
+        db.add(deal); db.commit()
+        db.add(A.Deal(deal_type=A.DealType('pay_in'), status=A.DealStatus.COMPLETED,
+                      client_id=customer.id, client_name=customer.name,
+                      payin_amount_usdt=200, profit_usdt=20, created_at=datetime(2023, 6, 2)))
+        db.commit()
+        deal_id = deal.id
+    finally:
+        db.close()
+
+    page.locator('#periodSelector [data-period="all"]').click()
+    expect(page.locator('#siteCustomersSummary')).to_contain_text('1')
+    expect(page.locator('#siteCustomersCoverage')).to_contain_text('Источник не сохранён у 1')
+    expect(page.locator('#siteCustomersRows')).to_contain_text('<img src=x onerror=alert(1)>')
+    assert page.locator('#siteCustomersRows img').count() == 0
+    page.locator('#siteCustomersRows summary').click()
+    page.locator(f'#siteCustomersRows button:has-text("#{deal_id}")').click()
+    expect(page.locator('#dealModal')).to_be_visible()
+    page.locator('#dealModal .modal-close').click()
+
+    page.locator('#siteCustomersSource').select_option('rentals')
+    expect(page.locator('#siteCustomersRows')).to_contain_text('Нет покупок с сохранённой меткой')
+    page.locator('#siteCustomersSource').select_option('unknown')
+    expect(page.locator('#siteCustomersRows')).to_contain_text('Не сохранён')
+    page.locator('#siteCustomersSource').select_option('site')
+    page.set_viewport_size({'width': 390, 'height': 844})
+    expect(page.locator('#siteCustomersRows')).to_contain_text('<img src=x onerror=alert(1)>')
+    assert page.evaluate('document.querySelector("#siteCustomersCard").scrollWidth <= document.querySelector("#siteCustomersCard").clientWidth + 1')
+    assert not errors, errors
+    assert not server_errors, server_errors
 
 pytestmark = pytest.mark.browser
 
@@ -61,7 +103,12 @@ def crm_server(monkeypatch):
 @pytest.fixture(scope='module')
 def chromium():
     with sync_playwright() as p:
-        browser = p.chromium.launch()
+        try:
+            browser = p.chromium.launch()
+        except PlaywrightError as exc:
+            if "Executable doesn't exist" not in str(exc):
+                raise
+            browser = p.chromium.launch(channel='chrome')
         yield browser
         browser.close()
 

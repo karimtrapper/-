@@ -909,6 +909,30 @@ select.period-btn:hover:not(.active) { color: var(--text); }
             <!-- Метрики -->
             <div class="stats-grid" id="statsGrid"></div>
 
+            <div class="card" id="siteCustomersCard" style="padding:20px;margin-bottom:16px">
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:12px">
+                    <div class="card-title" style="margin:0">Покупатели по источникам</div>
+                    <div style="display:flex;gap:8px;flex-wrap:wrap">
+                        <select id="siteCustomersSource" class="period-btn" aria-label="Источник сайта" onchange="siteCustomersPage=1;loadSiteCustomers()">
+                            <option value="site">Основной сайт</option>
+                            <option value="rentals">Гид по аренде</option>
+                            <option value="rentguidebot">Бот → гайд</option>
+                            <option value="all">Все веб-источники</option>
+                            <option value="unknown">Источник не сохранён</option>
+                        </select>
+                        <input id="siteCustomersSearch" class="period-btn" type="search" placeholder="Найти клиента" aria-label="Найти клиента" oninput="siteCustomersPage=1;loadSiteCustomers()" style="max-width:180px">
+                    </div>
+                </div>
+                <div id="siteCustomersSummary" class="stats-grid" style="margin-bottom:12px"></div>
+                <div id="siteCustomersCoverage" style="font-size:12px;color:#92400e;margin-bottom:10px"></div>
+                <div class="table-container" style="overflow-x:auto">
+                    <table><thead><tr><th>Клиент</th><th>Источник</th><th>Сделок</th><th>Объём</th><th>Чистая прибыль</th><th>Первая за период</th><th>Последняя за период</th><th>Реферер</th></tr></thead>
+                        <tbody id="siteCustomersRows"><tr><td colspan="8">Загрузка…</td></tr></tbody></table>
+                </div>
+                <div id="siteCustomersPager" style="display:flex;align-items:center;gap:10px;justify-content:flex-end;margin-top:10px"></div>
+                <div style="font-size:12px;color:#666;margin-top:10px">Покупки выбранного источника и периода. Веб-источник определяется по метке завершённой сделки.</div>
+            </div>
+
             <!-- Маржа в разрезах: закладываем vs забираем, с рефералом и без -->
             <div class="card" style="padding:20px;margin-bottom:16px">
                 <div class="card-title" style="margin-bottom:12px" id="marginsTitle">Маржа</div>
@@ -4102,6 +4126,64 @@ select.period-btn:hover:not(.active) { color: var(--text); }
             }
         }
         let dashReferrersLoaded = false;
+        let siteCustomersPage = 1;
+        let siteCustomersFilters = new URLSearchParams();
+        let siteCustomersRequest = 0;
+        const siteSourceNames = {site:'Основной сайт', rentals:'Гид по аренде', rentguidebot:'Бот → гайд', unknown:'Не сохранён'};
+
+        async function loadSiteCustomers() {
+            const requestId = ++siteCustomersRequest;
+            const params = new URLSearchParams(siteCustomersFilters);
+            params.set('source', document.getElementById('siteCustomersSource').value);
+            params.set('search', document.getElementById('siteCustomersSearch').value);
+            params.set('page', siteCustomersPage);
+            try {
+                const response = await fetch(`${API_URL}/api/analytics/site-customers?${params}`);
+                const data = await response.json();
+                if (requestId !== siteCustomersRequest) return;
+                if (!data.success) throw new Error(data.error || 'Не удалось загрузить данные');
+                const summary = data.summary;
+                document.getElementById('siteCustomersSummary').innerHTML = `
+                    <div class="stat-card"><div class="stat-value">${summary.customers}</div><div class="stat-label">Клиентов с карточкой</div></div>
+                    <div class="stat-card"><div class="stat-value">${summary.deals}</div><div class="stat-label">Покупок</div></div>
+                    <div class="stat-card"><div class="stat-value">$${formatNumber(summary.volume_usdt)}</div><div class="stat-label">Объём</div></div>
+                    <div class="stat-card success"><div class="stat-value">$${formatNumber(summary.profit_usdt)}</div><div class="stat-label">Чистая прибыль</div></div>`;
+                const notes = [];
+                if (summary.missing_source_deals && data.source !== 'unknown') notes.push(`Источник не сохранён у ${summary.missing_source_deals} завершённых сделок. Они не включены в список покупателей с сайта.`);
+                if (data.source === 'unknown') notes.push('По этим сделкам нельзя определить, пришёл ли покупатель с сайта.');
+                if (summary.unlinked_deals) notes.push(`${summary.unlinked_deals} покупок без карточки клиента показаны отдельно.`);
+                if (document.getElementById('siteCustomersSearch').value.trim()) notes.push('Показатели выше — по всем сделкам выбранного периода; поиск меняет только список.');
+                document.getElementById('siteCustomersCoverage').textContent = notes.join(' ');
+                const body = document.getElementById('siteCustomersRows');
+                body.innerHTML = data.rows.length ? data.rows.map(row => {
+                    const sources = row.sources.map(code => siteSourceNames[code] || '').filter(Boolean).join(', ');
+                    const deals = row.deal_ids.map(id => `<button type="button" class="period-btn" onclick="showDealDetails(${Number(id)})">#${Number(id)}</button>`).join(' ');
+                    return `<tr>
+                        <td><details><summary style="cursor:pointer">${escapeHtml(row.name)}</summary><div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:6px">${deals}</div></details>${row.client_id == null ? '<small>Без карточки клиента</small>' : ''}</td>
+                        <td>${escapeHtml(sources)}</td><td>${row.deals_count}</td>
+                        <td>$${formatNumber(row.volume_usdt)}</td><td>$${formatNumber(row.profit_usdt)}</td>
+                        <td>${row.first_purchase ? formatDate(row.first_purchase) : '—'}</td>
+                        <td>${row.last_purchase ? formatDate(row.last_purchase) : '—'}</td>
+                        <td>${row.referrers.length ? escapeHtml(row.referrers.join(', ')) : '—'}</td>
+                    </tr>`;
+                }).join('') : (data.source === 'unknown'
+                    ? '<tr><td colspan="8">Сделок без метки источника за этот период нет.</td></tr>'
+                    : '<tr><td colspan="8">Нет покупок с сохранённой меткой этого источника.</td></tr>');
+                const pages = Math.ceil(data.matching_customers / data.page_size);
+                document.getElementById('siteCustomersPager').innerHTML = pages > 1 ? `
+                    <button class="period-btn" type="button" onclick="siteCustomersPage--;loadSiteCustomers()" ${siteCustomersPage <= 1 ? 'disabled' : ''}>Назад</button>
+                    <span>${siteCustomersPage} из ${pages}</span>
+                    <button class="period-btn" type="button" onclick="siteCustomersPage++;loadSiteCustomers()" ${siteCustomersPage >= pages ? 'disabled' : ''}>Далее</button>` : '';
+            } catch (error) {
+                if (requestId !== siteCustomersRequest) return;
+                document.getElementById('siteCustomersSummary').innerHTML = '';
+                document.getElementById('siteCustomersCoverage').textContent = '';
+                document.getElementById('siteCustomersPager').innerHTML = '';
+                document.getElementById('siteCustomersRows').innerHTML = '<tr><td colspan="8">Не удалось загрузить данные</td></tr>';
+                console.error('Error loading website customers:', error);
+            }
+        }
+
         async function loadDashReferrers() {
             if (dashReferrersLoaded) return;
             try {
@@ -4136,6 +4218,9 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                 if (refSel) params.append('referrer_id', refSel);
                 const kindSel = document.getElementById('dashKind').value;
                 if (kindSel) params.append('deal_kind', kindSel);
+                siteCustomersFilters = new URLSearchParams(params);
+                siteCustomersPage = 1;
+                loadSiteCustomers();
 
                 const response = await fetch(`${API_URL}/api/analytics/dashboard?${params}`);
                 const data = await response.json();

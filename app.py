@@ -12668,6 +12668,154 @@ def _deal_usdt_volume_cost(deal):
     return payin, payout
 
 
+def _website_source_family(value):
+    """Распознать явную метку сделки, не выводя источник из реферера."""
+    channel = (value or '').strip().lower()
+    if channel == 'rentals' or channel.startswith('rentals_'):
+        return 'rentals'
+    if channel == 'rentguidebot' or channel.startswith('rentguidebot_'):
+        return 'rentguidebot'
+    if channel in ('site', 'website') or channel.startswith(('site_', 'website_')):
+        return 'site'
+    return None
+
+
+@app.route('/api/analytics/site-customers', methods=['GET'])
+def get_site_customers():
+    """Клиенты и деньги по завершённым сделкам с явной веб-меткой."""
+    source = request.args.get('source', 'site')
+    if source not in ('site', 'rentals', 'rentguidebot', 'all', 'unknown'):
+        return jsonify({'success': False, 'error': 'Invalid source'}), 400
+    try:
+        page = int(request.args.get('page', '1'))
+    except ValueError:
+        return jsonify({'success': False, 'error': 'Invalid page'}), 400
+    if page < 1:
+        return jsonify({'success': False, 'error': 'Invalid page'}), 400
+
+    today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    date_from, date_to = request.args.get('date_from'), request.args.get('date_to')
+    try:
+        if date_from or date_to:
+            start = datetime.strptime(date_from, '%Y-%m-%d') if date_from else None
+            end = (datetime.strptime(date_to, '%Y-%m-%d') + timedelta(days=1)
+                   if date_to else today + timedelta(days=1))
+        else:
+            period = request.args.get('period', '30d')
+            if period not in ('today', 'week', 'month', '30d', 'all'):
+                return jsonify({'success': False, 'error': 'Invalid period'}), 400
+            start = {'today': today, 'week': today - timedelta(days=7),
+                     'month': today.replace(day=1), '30d': today - timedelta(days=30),
+                     'all': None}[period]
+            end = today + timedelta(days=1)
+    except ValueError:
+        return jsonify({'success': False, 'error': 'Invalid date format, expected YYYY-MM-DD'}), 400
+    if start is not None and start >= end:
+        return jsonify({'success': False, 'error': 'Invalid date range'}), 400
+
+    referrer_filter = request.args.get('referrer_id', '')
+    referrer_id = None
+    if referrer_filter not in ('', 'all', 'none', 'any'):
+        try:
+            referrer_id = int(referrer_filter)
+        except ValueError:
+            return jsonify({'success': False, 'error': 'Invalid referrer_id'}), 400
+    kind_filter = request.args.get('deal_kind', '')
+    if kind_filter not in ('', 'all', 'exchange', 'realty') + REALTY_KINDS:
+        return jsonify({'success': False, 'error': 'Invalid deal_kind'}), 400
+
+    session = get_session()
+    try:
+        from sqlalchemy.orm import joinedload
+        deals_q = session.query(Deal).options(joinedload(Deal.client), joinedload(Deal.referrer_ref)).outerjoin(
+            Client, Deal.client_id == Client.id).filter(
+            Deal.status.in_((DealStatus.COMPLETED, DealStatus.VERIFIED)),
+            Deal.is_test.isnot(True),
+            or_(Client.id.is_(None), Client.is_test.isnot(True)),
+            Deal.created_at < end,
+        )
+        if start is not None:
+            deals_q = deals_q.filter(Deal.created_at >= start)
+        if referrer_filter == 'none':
+            deals_q = deals_q.filter(Deal.referrer_id.is_(None))
+        elif referrer_filter == 'any':
+            deals_q = deals_q.filter(Deal.referrer_id.isnot(None))
+        elif referrer_id is not None:
+            deals_q = deals_q.filter(Deal.referrer_id == referrer_id)
+        if kind_filter == 'exchange':
+            deals_q = deals_q.filter(or_(Deal.deal_kind.is_(None),
+                                         Deal.deal_kind.notin_(REALTY_KINDS)))
+        elif kind_filter == 'realty':
+            deals_q = deals_q.filter(Deal.deal_kind.in_(PROPERTY_KINDS))
+        elif kind_filter in REALTY_KINDS:
+            deals_q = deals_q.filter(Deal.deal_kind == kind_filter)
+
+        eligible_deals = deals_q.all()
+        missing_source_deals = sum(1 for d in eligible_deals if not (d.source_channel or '').strip())
+        selected = []
+        for deal in eligible_deals:
+            family = _website_source_family(deal.source_channel)
+            if source == 'unknown':
+                if not (deal.source_channel or '').strip():
+                    selected.append((deal, 'unknown'))
+            elif family and (source == 'all' or family == source):
+                selected.append((deal, family))
+
+        rows = {}
+        for d, family in selected:
+            name = (d.client_name or (d.client.name if d.client else '') or '').strip()
+            client_id = d.client_id
+            # Одно имя не доказывает идентичность: сделки без карточки раздельно.
+            ident = f'c{client_id}' if client_id else f'd{d.id}'
+            row = rows.setdefault(ident, {
+                'client_id': client_id, 'name': name or f'Сделка #{d.id}',
+                'deals_count': 0, 'volume_usdt': 0.0, 'profit_usdt': 0.0,
+                'first_purchase': None, 'last_purchase': None,
+                'sources': set(), 'referrers': set(), 'deal_ids': [],
+            })
+            row['deals_count'] += 1
+            row['deal_ids'].append(d.id)
+            row['volume_usdt'] += _deal_usdt_volume_cost(d)[0]
+            row['profit_usdt'] += (d.net_profit_usdt if d.net_profit_usdt is not None
+                                   else d.profit_usdt or 0)
+            if d.created_at:
+                row['first_purchase'] = min(row['first_purchase'], d.created_at) if row['first_purchase'] else d.created_at
+                row['last_purchase'] = max(row['last_purchase'], d.created_at) if row['last_purchase'] else d.created_at
+            row['sources'].add(family)
+            referrer_name = d.referrer_name or (d.referrer_ref.name if d.referrer_ref else None)
+            if referrer_name:
+                row['referrers'].add(referrer_name)
+
+        total_volume = round(sum(row['volume_usdt'] for row in rows.values()), 2)
+        total_profit = round(sum(row['profit_usdt'] for row in rows.values()), 2)
+        search = request.args.get('search', '').strip().lower()[:100]
+        visible = [row for row in rows.values() if search in row['name'].lower()]
+        visible.sort(key=lambda row: (row['last_purchase'] or datetime.min, row['name'].lower()), reverse=True)
+        page_size = 50
+        page_rows = visible[(page - 1) * page_size:page * page_size]
+        result_rows = [{
+            **{key: row[key] for key in ('client_id', 'name', 'deals_count')},
+            'volume_usdt': round(row['volume_usdt'], 2),
+            'profit_usdt': round(row['profit_usdt'], 2),
+            'first_purchase': row['first_purchase'].isoformat() if row['first_purchase'] else None,
+            'last_purchase': row['last_purchase'].isoformat() if row['last_purchase'] else None,
+            'sources': sorted(row['sources']), 'referrers': sorted(row['referrers']),
+            'deal_ids': sorted(row['deal_ids']),
+        } for row in page_rows]
+        known_customers = sum(1 for row in rows.values() if row['client_id'] is not None)
+        unlinked_deals = sum(1 for row in rows.values() if row['client_id'] is None)
+        return jsonify({'success': True, 'source': source,
+                        'summary': {'customers': known_customers, 'unlinked_deals': unlinked_deals,
+                                    'eligible_deals': len(eligible_deals),
+                                    'missing_source_deals': missing_source_deals,
+                                    'deals': len(selected),
+                                    'volume_usdt': total_volume, 'profit_usdt': total_profit},
+                        'rows': result_rows, 'matching_customers': len(visible),
+                        'page': page, 'page_size': page_size})
+    finally:
+        session.close()
+
+
 @app.route('/api/analytics/dashboard', methods=['GET'])
 def get_dashboard():
     session = get_session()
