@@ -175,6 +175,67 @@ def test_auto_quote_rejects_amount_outside_matching_js_precision(mode):
     assert deal.get('invoiceUsd') is None
 
 
+@pytest.mark.parametrize('mode', ['usd', 'rub'])
+def test_manual_client_rub_survives_server_requote_and_checks_actual_margin(mode):
+    from decimal import Decimal
+    deal = {'autoPayment': True, 'step': 's6', 'autoRequestMode': mode,
+            'requestedRub': 4000000 if mode == 'rub' else None,
+            'requestedUsd': 45000 if mode == 'usd' else None,
+            'ippsTariff': 'bank', 'rates': {'rubUsdt': '80'}}
+    assert m._stand_auto_quote_calculate(deal)
+    invoice = deal['invoiceUsd']
+    requested = deal['requestedRub' if mode == 'rub' else 'requestedUsd']
+    deal['amountRub'] = round(deal['amountRub'] + 1000, 2)
+    manual_rub = deal['amountRub']
+    deal['autoManualClientRub'] = True
+    assert m._stand_auto_quote_calculate(deal)
+    assert deal['amountRub'] == manual_rub
+    assert deal['invoiceUsd'] == invoice
+    assert deal['requestedRub' if mode == 'rub' else 'requestedUsd'] == requested
+    assert Decimal(deal['rates']['client']) == (Decimal(str(manual_rub)) / Decimal(str(invoice))).quantize(Decimal('.000001'))
+    deal['amountRub'] = round(manual_rub * 1.15, 2)
+    assert m._stand_auto_quote_calculate(deal) is False
+    deal['amountRub'] = manual_rub
+    assert m._stand_auto_quote_calculate(deal)
+
+
+@pytest.mark.parametrize('mode', ['usd', 'rub'])
+def test_manual_client_rub_guard_accepts_valid_and_rejects_invoice_change(mode):
+    import copy
+    deal = {'id': 1, 'autoPayment': True, 'step': 's6',
+            'type': 'Оплата недвижимости', 'kind': 'Фрихолд',
+            'payType': 'По реквизитам', 'invoiceCurrency': 'usd',
+            'autoRequestMode': mode, 'requestedRub': 4000000 if mode == 'rub' else None,
+            'requestedUsd': 45000 if mode == 'usd' else None,
+            'ippsTariff': 'bank', 'rates': {'rubUsdt': '80'}}
+    assert m._stand_auto_quote_calculate(deal)
+    before = {'deals': [deal], 'convs': [], 'wallets': [], 'notes': []}
+    after = copy.deepcopy(before)
+    changed = after['deals'][0]
+    changed['autoManualClientRub'] = True
+    changed['amountRub'] = round(changed['amountRub'] + 1000, 2)
+    assert m._stand_auto_quote_calculate(changed)
+    assert m._stand_guard_transition(before, after, 'manager') is None
+    bad = copy.deepcopy(after)
+    bad['deals'][0]['invoiceUsd'] += 1
+    assert 'выплату продавцу' in m._stand_guard_transition(before, bad, 'manager')
+    accepted = copy.deepcopy(after)
+    accepted['deals'][0]['step'] = 's8'
+    changed_amount = copy.deepcopy(accepted)
+    changed_amount['deals'][0]['amountRub'] += 100000
+    assert 'сумму клиенту' in m._stand_guard_transition(accepted, changed_amount, 'manager')
+    changed_rate = copy.deepcopy(accepted)
+    changed_rate['deals'][0]['rates']['client'] = '99,999999'
+    assert 'курс клиенту' in m._stand_guard_transition(accepted, changed_rate, 'manager')
+    changed_markup = copy.deepcopy(after)
+    changed_markup['deals'][0]['autoMarkupPct'] = 5
+    assert 'При ручной сумме' in m._stand_guard_transition(after, changed_markup, 'manager')
+    rerated = copy.deepcopy(accepted)
+    rerated['deals'][0].update(step='s5', autoManualClientRub=False,
+                               reRequest=1, rates={}, quotes=[], ratePick={})
+    assert m._stand_guard_transition(accepted, rerated, 'manager') is None
+
+
 @pytest.mark.parametrize('mode', ['sber', 'flowsole'])
 def test_auto_atomic_crm_close_on_synthetic_conversion(monkeypatch, mode):
     import json

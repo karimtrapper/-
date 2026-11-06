@@ -8057,6 +8057,18 @@ def _stand_auto_quote_calculate(deal):
             rub = _stand_num(deal.get('requestedUsd')) * rate
         return explicit if explicit is not None and explicit >= 0 else (
             Decimal('5') if rub < 500000 else Decimal('4') if rub < 1000000 else Decimal('3'))
+    if deal.get('autoManualClientRub') is True:
+        rub = _stand_num(deal.get('amountRub'))
+        usd_amount = _stand_num(deal.get('invoiceUsd'))
+        if (safe_cents(rub) is None or safe_cents(usd_amount) is None or
+                rub != rounded(rub) or usd_amount != rounded(usd_amount)):
+            return False
+        actual = (broker_net(rub)/rate/sent(usd_amount)-1)*100
+        if actual < Decimal('1.4999999') or actual > Decimal('5.0000001'):
+            return False
+        deal.setdefault('rates', {})['client'] = str(
+            (rub/usd_amount).quantize(Decimal('0.000001'), rounding=ROUND_HALF_UP))
+        return True
     mode = deal.get('autoRequestMode')
     if mode == 'rub':
         rub = _stand_num(deal.get('requestedRub'))
@@ -12235,6 +12247,8 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
                              deal.get('invoiceCurrency') != 'usd'):
             return 'Оплата авто требует USD и приём по реквизитам'
         if auto_payment:
+            if type(deal.get('autoManualClientRub', False)) is not bool:
+                return 'Некорректный режим ручной суммы оплаты авто'
             mode = deal.get('autoRequestMode')
             requested = _stand_num(deal.get('requestedRub' if mode == 'rub' else 'requestedUsd'))
             if mode not in ('rub', 'usd') or requested is None or not requested.is_finite() or requested <= 0 or int((requested*100).to_integral_value(rounding=ROUND_HALF_UP)) > 90071992547409:
@@ -12267,6 +12281,24 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
         if before and before.get('autoPayment') is True:
             if any(before.get(k) != deal.get(k) for k in ('autoRequestMode', 'requestedRub', 'requestedUsd')):
                 return 'Исходную сумму заявки на оплату авто нельзя менять'
+            rerating = rerate_attempt(before, deal)
+            if (before.get('step') != 's6' and
+                    before.get('autoManualClientRub', False) != deal.get('autoManualClientRub', False) and
+                    not (rerating and before.get('autoManualClientRub') is True and deal.get('autoManualClientRub') is False)):
+                return 'Сумму клиенту меняют только до согласования'
+            if before.get('step') not in ('s5', 's6'):
+                if _stand_num(before.get('amountRub')) != _stand_num(deal.get('amountRub')):
+                    return 'Согласованную сумму клиенту нельзя менять'
+                if (not rerating and _stand_num((before.get('rates') or {}).get('client')) !=
+                        _stand_num((deal.get('rates') or {}).get('client'))):
+                    return 'Согласованный курс клиенту нельзя менять'
+            if deal.get('autoManualClientRub') is True and before.get('step') == 's6':
+                if before.get('autoMarkupPct') != deal.get('autoMarkupPct'):
+                    return 'При ручной сумме процент задаётся суммой клиенту'
+                old_invoice = _stand_num(before.get('invoiceUsd'))
+                new_invoice = _stand_num(deal.get('invoiceUsd'))
+                if old_invoice is None or new_invoice != old_invoice:
+                    return 'Ручная сумма не меняет выплату продавцу авто'
             if before.get('step') not in ('s5', 's6') and any(
                     before.get(k) != deal.get(k) for k in ('invoiceUsd', 'ippsTariff')):
                 return 'Согласованную выплату продавцу и тариф нельзя менять'

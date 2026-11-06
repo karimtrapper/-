@@ -1777,7 +1777,33 @@ function autoMarginSet(id,raw){
   const d=deal(id),v=Number(String(raw).replace(',','.'));
   if(!d||d.autoPayment!==true||d.step!=='s6')return;
   if(!Number.isFinite(v)||v<1.5||v>5){toast('Укажите прибыль от 1,5 до 5 %');render();return;}
-  d.autoMarkupPct=v;autoRecalc(d);save();render();
+  d.autoMarkupPct=v;d.autoManualClientRub=false;autoRecalc(d);save();render();
+}
+function autoActualMarginPct(d){
+  const rate=num(d.rates&&d.rates.rubUsdt),rub=num(d.amountRub);
+  const sent=freeholdSend(d.invoiceUsd||0,ippsTariff(d));
+  return rate>0&&rub>0&&sent>0?(brokerSend(rub).sent/rate/sent-1)*100:null;
+}
+function autoShownMarginPct(d){
+  const actual=d.autoManualClientRub===true?autoActualMarginPct(d):null;
+  return actual==null?autoMarginPct(d,d.amountRub||d.requestedRub||0):actual;
+}
+function autoClientRubSet(id,raw){
+  const d=deal(id);if(!d||d.autoPayment!==true||d.step!=='s6')return;
+  const formatted=fmtAmount(raw),amount=num(cleanNum(formatted));
+  if(autoSafeCents(amount)==null||!/^\d+(?:,\d{1,2})?$/.test(formatted.replace(/\s/g,''))){
+    toast('Укажите сумму клиенту больше нуля, с точностью до копеек');render();return;
+  }
+  const previous=d.amountRub,previousRate=d.rates.client;
+  d.amountRub=amount;
+  d.rates.client=(Math.round(amount/d.invoiceUsd*1e6)/1e6).toFixed(6).replace('.',',');
+  const margin=autoActualMarginPct(d);
+  if(!Number.isFinite(margin)||margin<1.5-1e-7||margin>5+1e-7){
+    d.amountRub=previous;d.rates.client=previousRate;
+    toast('Сумма даёт прибыль вне диапазона 1,5–5 %. Укажите другую сумму');render();return;
+  }
+  d.autoManualClientRub=true;d.freeholdClientInput='sum';
+  delete d.autoQuoteError;save();render();
 }
 /* Запас двух десятичных разрядов нужен для процентов и округления комиссий.
    SafeInteger только для копеек недостаточно: у больших RUB шаг Number уже > 0,01. */
@@ -1811,12 +1837,24 @@ function autoClientRubForUsd(usdAmount,brokerRate,tariff,margin){
 function autoRecalc(d){
   if(d.autoPayment!==true||!['s5','s6'].includes(d.step))return;
   if(!d.rates||typeof d.rates!=='object')d.rates={};
-  const clear=()=>{if(d.autoRequestMode==='rub')d.invoiceUsd=null;else d.amountRub=null;
-    d.rates.client=null;d.autoQuoteError='Не удалось рассчитать платёж. Проверьте сумму и курс';return false;};
+  const clear=()=>{if(d.autoManualClientRub!==true){
+    if(d.autoRequestMode==='rub')d.invoiceUsd=null;else d.amountRub=null;
+    d.rates.client=null;
+  }
+    d.autoQuoteError='Не удалось рассчитать платёж. Проверьте сумму и курс';return false;};
   const rate=num(d.rates.rubUsdt),tariff=ippsTariff(d);
   if(!(rate>0)||!Number.isFinite(rate)||!Number.isFinite(1/rate)||!tariff||
      !Number.isFinite(tariff.percent)||tariff.percent<0||
      !Number.isFinite(tariff.fixed)||tariff.fixed<0)return clear();
+  if(d.autoManualClientRub===true){
+    const margin=autoActualMarginPct(d);
+    if(autoSafeCents(num(d.amountRub))==null||autoSafeCents(num(d.invoiceUsd))==null||
+       !Number.isFinite(margin)||margin<1.5-1e-7||margin>5+1e-7){
+      d.autoQuoteError='Ручная сумма даёт прибыль вне диапазона 1,5–5 %. Укажите другую сумму';return false;
+    }
+    d.rates.client=(Math.round(d.amountRub/d.invoiceUsd*1e6)/1e6).toFixed(6).replace('.',',');
+    delete d.autoQuoteError;return true;
+  }
   if(d.autoRequestMode==='rub'){
     const rub=num(d.requestedRub),margin=autoMarginPct(d,rub);
     if(autoSafeCents(rub)==null||!Number.isFinite(margin)||margin<1.5)return clear();
@@ -5187,6 +5225,7 @@ function newDeal(o){
        не смешаны с amountThb (спека 28.09-freehold-no-baht). */
     invoiceUsd:o.invoiceUsd||null,ippsTariff:o.ippsTariff||null,
     autoRequestMode:o.autoRequestMode||null,requestedRub:o.requestedRub||null,requestedUsd:o.requestedUsd||null,
+    autoManualClientRub:!!o.autoManualClientRub,
     freeholdClientInput:o.freeholdClientInput||null,
     /* Инвойс застройщика может быть в THB (Карим, 28.09) — сумма в ฿ только
        хранится/показывается, сделка считается от invoiceUsd (X) как обычно. */
@@ -10711,6 +10750,7 @@ function fmtAmountEl(el){
    Только несогласованный s6: открытие старых сделок ничего не пересчитывает. */
 function syncFreeholdRate(id,from='rate'){
   const d=deal(id); if(!d||(d.step&&d.step!=='s6'))return;
+  if(d.autoPayment===true){if(from==='sum')autoClientRubSet(id,val('r4'));return;}
   const X=d.invoiceUsd||0;
   if(from==='sum'){
     const sum=num(cleanNum(val('r4')));
@@ -10815,6 +10855,7 @@ function rerate(id,why){
   const r=why||'клиент вернулся';
   if(d.expect?.amount!=null)d.rerateExpectFollowsDeal=true;
   if(d.docVersion)d.rerateDocVersion=d.docVersion;
+  if(d.autoPayment===true)d.autoManualClientRub=false;
   d.ratesPrev={...d.rates};d.rates={};d.ratePick={};d.reRequest=(d.reRequest||0)+1;
   if(d.selfRate){d.self=true;go(d,'s6','Курс пересчитывается заново — '+r);
     toast('Проставьте курс заново');return;}
@@ -11662,10 +11703,10 @@ function stepCard(d){
       const S6=freeholdSend(X,ippsTariff(d));
       const costRate=(brokerRateNow&&X)?Math.round(S6*brokerRateNow/X*10000)/10000:null;
       return `<div class="card"><div class="card-title">Расчёт клиенту<span class="sub">RUB→USDT получен ${ago(d.rates.at)||'—'}</span></div>
-      ${d.autoPayment===true&&d.autoQuoteError?`<div class="alert a-warn"><div>${htmlText(d.autoQuoteError)}. Уточните курс у брокера.</div></div>`:''}
+      ${d.autoPayment===true&&d.autoQuoteError?`<div class="alert a-warn"><div>${htmlText(d.autoQuoteError)}</div></div>`:''}
       ${d.autoPayment===true?`<div class="alert a-info"><div>Исходная заявка: ${d.autoRequestMode==='rub'?moneyKop(d.requestedRub||0,'₽')+' бюджет клиента':usd(d.requestedUsd||0)+' продавцу авто'}. Продавец получает USD; клиент платит RUB.</div></div>
-      <div class="fg"><label class="fl">Прибыль в расчёте</label><div class="chips">${[1.5,2,3,4,5].map(v=>`<span class="chip ${Math.abs(autoMarginPct(d,d.amountRub||d.requestedRub||0)-v)<0.00001?'on':''}" onclick="autoMarginSet(${d.id},'${v}')">${v} %</span>`).join('')}</div>
-      <input class="fc num" style="max-width:130px;margin-top:8px" inputmode="decimal" value="${autoMarginPct(d,d.amountRub||d.requestedRub||0)}" aria-label="Свой процент прибыли, от 1,5 до 5" onchange="autoMarginSet(${d.id},this.value)"><p class="fh">Свой процент: от 1,5 до 5. Ниже 1,5 % только по отдельному согласованию.</p></div>`:''}
+      <div class="fg"><label class="fl">Прибыль в расчёте</label><div class="chips">${[1.5,2,3,4,5].map(v=>`<span class="chip ${Math.abs(autoShownMarginPct(d)-v)<0.00001?'on':''}" onclick="autoMarginSet(${d.id},'${v}')">${v} %</span>`).join('')}</div>
+      <input class="fc num" style="max-width:130px;margin-top:8px" inputmode="decimal" value="${d.autoManualClientRub===true?autoShownMarginPct(d).toFixed(4).replace('.',','):autoShownMarginPct(d)}" aria-label="Свой процент прибыли, от 1,5 до 5" onchange="autoMarginSet(${d.id},this.value)"><p class="fh">Свой процент: от 1,5 до 5. Ниже 1,5 % только по отдельному согласованию.</p></div>`:''}
       ${freeholdInvoiceInputs6(d)}
       <div class="card-title" style="font-size:14px;margin:14px 0 4px">Итог с клиентом</div>
       <div class="fr">
@@ -11674,8 +11715,8 @@ function stepCard(d){
         <div class="fg"><label class="fl">Итоговый курс клиенту<span class="rq">*</span><span class="sub2"> ₽ за 1 $, 4 знака</span></label>
           <input class="fc num" id="r3" value="${k?k.toFixed(4).replace('.',','):''}" placeholder="курс клиенту, ₽ за 1 $"
             ${d.autoPayment===true?'readonly':`onchange="syncFreeholdRate(${d.id},'rate')"`}></div>
-        <div class="fg"><label class="fl">Сумма клиенту<span class="sub2"> ₽ — измените сумму или курс, второе пересчитается</span></label>
-          <input class="fc num" id="r4" value="${rub!=null?fmtAmount(String(rub).replace('.',',')):''}" ${d.autoPayment===true?'readonly':`oninput="fmtAmountEl(this)" onchange="syncFreeholdRate(${d.id},'sum')"`}></div>
+        <div class="fg"><label class="fl">Сумма клиенту<span class="sub2"> ₽ — ${d.autoPayment===true?'измените сумму, курс пересчитается':'измените сумму или курс, второе пересчитается'}</span></label>
+          <input class="fc num" id="r4" value="${rub!=null?fmtAmount(String(rub).replace('.',',')):''}" oninput="fmtAmountEl(this)" onchange="syncFreeholdRate(${d.id},'sum')"></div>
       </div>
       <div class="fr">
         <div class="fg"><label class="fl">Себестоимость<span class="sub2"> ₽ за 1 $ — S × курс брокера / X, для сверки с курсом клиенту</span></label>
@@ -11687,7 +11728,7 @@ function stepCard(d){
       <div class="row mainrow"><button class="btn btn-primary" onclick="act(${d.id},'s6')">Клиент согласен</button>
       <button class="btn btn-secondary" onclick="rerate(${d.id})">Запросить курсы заново</button>
       <button class="btn btn-outline" onclick="askClose(${d.id})">Клиент отказался</button></div>
-      <div class="alert a-info" style="margin-top:14px"><div>${d.autoPayment===true?'Измените прибыль выше, чтобы пересчитать выплату продавцу и сумму клиенту. Исходная сумма заявки остаётся в карточке.':'Измените курс или сумму клиенту — второе поле пересчитается. Введённая сумма сохраняется точно; курс отображается с 4 знаками. Наценка живёт внутри курса — S, себестоимость и прибыль в договор не идут; суммы инвойса и тариф IPPS идут.'}</div></div>
+      <div class="alert a-info" style="margin-top:14px"><div>${d.autoPayment===true?'Укажите сумму клиенту в рублях или выберите процент прибыли — курс пересчитается.':'Измените курс или сумму клиенту — второе поле пересчитается. Введённая сумма сохраняется точно; курс отображается с 4 знаками. Наценка живёт внутри курса — S, себестоимость и прибыль в договор не идут; суммы инвойса и тариф IPPS идут.'}</div></div>
       <p style="font-size:13px;color:var(--navy-600);line-height:1.65">Проговорите правило: при расхождении больше 0,5% к моменту зачисления условия пересчитываются.</p>
       ${quotesSummary(d)}</div>`;
     }

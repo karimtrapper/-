@@ -11,15 +11,18 @@ function fn(name) {
 }
 const tariff = html.match(/^const IPPS_TARIFFS\s*=\s*\{[^]*?^};/m);
 assert.ok(tariff);
+const notices = [];
 const ctx = {
-  save: () => {}, render: () => {},
+  save: () => {}, render: () => {}, toast: message => notices.push(message),
+  deal: () => ctx.activeDeal,
   S: {draft: null}, Math,
 };
 vm.createContext(ctx);
 vm.runInContext(tariff[0].replace(/^const /, 'var ') + '\n' + html.match(/^const BROKER_FEE=.*;$/m)[0] + '\n' + [
   'num','brokerSend','freeholdFee','freeholdSend','autoSafeCents',
   'askModes','draftMode','draftAmounts','ippsTariff','autoMarginPct',
-  'autoClientRubForUsd','autoRecalc',
+  'autoActualMarginPct','autoShownMarginPct','autoClientRubSet','autoMarginSet',
+  'cleanNum','fmtAmount','autoClientRubForUsd','autoRecalc',
 ].map(fn).join('\n'), ctx);
 
 const draft = {type:'Оплата авто', payType:'По реквизитам', invoiceCurrency:'usd',
@@ -66,6 +69,38 @@ assert.equal(tiny.invoiceUsd, .01, 'reverse quote must keep the last payable cen
 assert.equal(ctx.autoMarginPct({autoMarkupPct:.1,autoRequestMode:'rub'}, 4000000), 1.5,
   'hydrated margin cannot bypass the approved floor');
 assert.equal(html.includes('autoDisplayMarkup'), false, 'HTML and log must not rewrite user data');
+
+for(const mode of ['usd','rub']) {
+  const d={autoPayment:true,step:'s6',autoRequestMode:mode,
+    requestedUsd:mode==='usd'?45000:null,requestedRub:mode==='rub'?4000000:null,
+    ippsTariff:'bank',rates:{rubUsdt:80},payins:[{amount:123}],transfers:[{amount:456}]};
+  ctx.activeDeal=d;
+  assert.equal(ctx.autoRecalc(d),true);
+  const invoice=d.invoiceUsd,initialRub=d.amountRub,source=d[mode==='usd'?'requestedUsd':'requestedRub'];
+  const manualRub=Math.round((initialRub+1000)*100)/100;
+  ctx.autoClientRubSet(d.id,String(manualRub).replace('.',','));
+  assert.equal(d.autoManualClientRub,true);
+  assert.equal(d.amountRub,manualRub);
+  assert.equal(d.invoiceUsd,invoice,'seller invoice stays fixed');
+  assert.equal(d[mode==='usd'?'requestedUsd':'requestedRub'],source);
+  assert.ok(ctx.autoShownMarginPct(d)>3);
+  assert.equal(ctx.autoRecalc(d),true,'refresh must preserve manual sum');
+  const reloaded=JSON.parse(JSON.stringify(d));
+  assert.equal(ctx.autoRecalc(reloaded),true,'reload must preserve manual sum');
+  assert.equal(reloaded.amountRub,manualRub);
+  assert.equal(reloaded.invoiceUsd,invoice);
+  ctx.activeDeal=reloaded;
+  ctx.autoClientRubSet(d.id,String(Math.round(initialRub*1.15)));
+  assert.equal(reloaded.amountRub,manualRub,'invalid margin must leave agreed amount');
+  assert.match(notices.at(-1),/1,5–5/);
+  ctx.autoClientRubSet(d.id,'недопустимо');
+  assert.equal(reloaded.amountRub,manualRub);
+  ctx.autoMarginSet(d.id,'4,5');
+  assert.equal(reloaded.autoManualClientRub,false,'margin chip/input returns to auto quote');
+  assert.ok(reloaded.amountRub>0);
+  if(mode==='usd')assert.equal(reloaded.invoiceUsd,invoice,'USD request remains seller invoice');
+  assert.equal(reloaded[mode==='usd'?'requestedUsd':'requestedRub'],source);
+}
 
 
 // Исполняем настоящие функции страницы: мок комиссии скрывал копеечные ошибки.
