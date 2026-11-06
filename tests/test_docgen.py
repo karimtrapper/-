@@ -6,8 +6,12 @@
 появился после того, как модель вернула «CLIENT FULL NAME» как значение поля.
 """
 import io
+import hashlib
+import json
 import os
+import re
 import sys
+import zipfile
 from datetime import datetime
 
 import pytest
@@ -177,6 +181,69 @@ class TestГенерацияДоговоров:
         xml = doc.element.xml
         assert xml.count('Signature: ') >= 1
         assert any(b == stamp for b in blobs)
+
+
+def _agreement_clauses(data):
+    from docx import Document
+    clauses = {}
+    for row in Document(io.BytesIO(data)).tables[0].rows:
+        ru, en = row.cells[-2].text, row.cells[-1].text
+        match = re.match(r'^(\d+\.\d+)\.', ru)
+        if match:
+            clauses[match.group(1)] = {'ru': ru, 'en': en}
+    return clauses
+
+
+@pytest.mark.parametrize('agent', ['mf_corp', 'flow_sole'])
+def test_future_auto_main_agreement_matches_signed_standard_in_both_languages(agent):
+    source = os.path.join(os.path.dirname(__file__), 'fixtures',
+                          'auto_standard_clauses_ru_en.json')
+    with open(source, encoding='utf-8') as fixture:
+        expected = json.load(fixture)
+    money = dict(MONEY, pair='RUB_USD', transfer_amount='USD 1000.00',
+                 agent=agent, auto_document_schema='vehicle-v1')
+    data, _ = docgen.build_agreement('payment', CLIENT, money, when=WHEN)
+    clauses = _agreement_clauses(data)
+    assert set(clauses) == set(expected)
+    profile = docgen._agent(agent)
+    for number, languages in expected.items():
+        for lang in ('ru', 'en'):
+            wanted = languages[lang]
+            if number == '5.10':
+                wanted = wanted.replace('Лаосской Народно-Демократической Республики',
+                                        profile.jurisdiction_ru)
+                wanted = wanted.replace('the Lao People’s Democratic Republic',
+                                        profile.jurisdiction_en)
+            assert ' '.join(clauses[number][lang].split()) == ' '.join(wanted.split()), (number, lang)
+            assert clauses[number][lang].startswith(number + '.')
+    assert docgen.check(data, allow_forms=True, agent=profile) == []
+
+
+@pytest.mark.parametrize('deal_type,agent,expected_sha', [
+    ('payment', 'mf_corp', 'a54a376bf1a7434fe185a06a73ece946660d2c9f69203414e1b8c0cb74da51b6'),
+    ('payment', 'flow_sole', 'abdf3e7a8bee1bd8482651eb6b00eeff27feed66d16a1948e6cfbca9f2d33f82'),
+    ('leasehold', 'mf_corp', 'e703cc28ae3360e712a5994d99c6d89fcfc641d532a4f685cc536ea8bc163616'),
+])
+def test_non_auto_agreement_document_xml_unchanged(deal_type, agent, expected_sha):
+    money = dict(MONEY, agent=agent)
+    if deal_type == 'payment':
+        money.update(pair='RUB_USD', transfer_amount='USD 1000.00')
+    data, _ = docgen.build_agreement(deal_type, CLIENT, money, when=WHEN)
+    with zipfile.ZipFile(io.BytesIO(data)) as document:
+        xml = document.read('word/document.xml')
+    assert hashlib.sha256(xml).hexdigest() == expected_sha
+
+
+def test_auto_standard_is_main_agreement_only():
+    money = dict(MONEY, pair='RUB_USD', transfer_amount='USD 1000.00')
+    auto = dict(money, auto_document_schema='vehicle-v1')
+    plain_addendum = docgen.build_addendum('payment', CLIENT, money, 'MF-1', 'MF-0', 1, when=WHEN)
+    auto_addendum = docgen.build_addendum('payment', CLIENT, auto, 'MF-1', 'MF-0', 1, when=WHEN)
+    with zipfile.ZipFile(io.BytesIO(plain_addendum)) as plain_doc:
+        plain_xml = plain_doc.read('word/document.xml')
+    with zipfile.ZipFile(io.BytesIO(auto_addendum)) as auto_doc:
+        auto_xml = auto_doc.read('word/document.xml')
+    assert plain_xml == auto_xml
 
 
 class TestДопСоглашение:

@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import copy
 import io
+import json
 import os
 import re
 from datetime import datetime
@@ -995,6 +996,40 @@ def _apply_route(doc, money, deal_type):
             cell.add_paragraph(text)
 
 
+def _apply_auto_standard_clauses(doc, agent):
+    """Согласованные условия рамочного AUTO-договора для будущего выпуска.
+
+    Основа общая с payment; здесь хранятся только отличающиеся пункты.
+    Источник: подписанный договор Темури, Telegram #116428, PDF SHA-256
+    56159cd9acf82ed8594f75b4af15ed8d32e939e37a1755733e263040857f5ac2.
+    """
+    path = os.path.join(TEMPLATE_DIR, 'auto_standard_clauses_ru_en.json')
+    with open(path, encoding='utf-8') as source:
+        clauses = json.load(source)
+    rows = {}
+    for row in doc.tables[0].rows:
+        match = re.match(r'^(\d+\.\d+)\.', row.cells[-2].text.strip())
+        if match:
+            rows[match.group(1)] = row
+    if '5.10' in rows:
+        raise ValueError('AUTO clause 5.10 already exists in the shared template')
+    for number, languages in clauses.items():
+        if number == '5.10':
+            # У общего шаблона этого пункта нет: вставляем перед разделом 6.
+            row = copy.deepcopy(rows['5.9']._tr)
+            rows['5.9']._tr.addnext(row)
+            from docx.table import _Row
+            target = _Row(row, doc.tables[0])
+        else:
+            target = rows[number]
+        ru = languages['ru'].replace(
+            'Лаосской Народно-Демократической Республики', agent.jurisdiction_ru)
+        en = languages['en'].replace(
+            'the Lao People’s Democratic Republic', agent.jurisdiction_en)
+        _set_cell(target.cells[-2], ru)
+        _set_cell(target.cells[-1], en)
+
+
 # ─────────────────────────── публичное API ───────────────────────────
 
 def _drop_annexes(doc) -> None:
@@ -1045,6 +1080,8 @@ def build_agreement(deal_type: str, fields: dict, money: dict,
     doc = _open_template(TEMPLATES[deal_type], ag)
     _strip_draft_mark(doc)
     _apply_route(doc, money, deal_type)
+    if deal_type == 'payment' and money.get('auto_document_schema') == 'vehicle-v1':
+        _apply_auto_standard_clauses(doc, ag)
 
     for p in doc.paragraphs:
         if p.text.startswith('АГЕНТСКИЙ ДОГОВОР'):

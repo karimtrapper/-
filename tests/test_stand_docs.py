@@ -73,6 +73,11 @@ def test_auto_requires_vehicle_contract_on_issue_and_keeps_source(stand):
     issued = stand.post('/api/stand/docs/issue', json={'dealId': 971, 'docFields': _auto_fields()})
     assert issued.status_code == 200, issued.json
     assert issued.json['pack']['version'] == 1
+    agreement_doc = next(entry for entry in issued.json['issued'] if entry['kind'] == 'dog')
+    agreement = _text(stand, agreement_doc['docId'])
+    assert '5.10. Агент подтверждает' in agreement
+    assert '4.5. The Agent shall be liable' in agreement
+    assert '6.1. The Agent is liable only' in agreement
     text = '\n'.join(_text(stand, entry['docId']) for entry in issued.json['issued'])
     for value in ('Test Model', 'QA-VIN-1', 'Synthetic Seller Ltd.', 'CAR-SALE-1'):
         assert value in text
