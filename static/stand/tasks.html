@@ -2818,11 +2818,19 @@ function handoffTargets(d){
 }
 /* «Деньги отправлены»: операционист/админ закрывает отправку за исполнителя,
    только с хешем, который сервер проверит в сети. У держателя claim — «Я отправил». */
-async function transferMarkSent(id){
+async function transferMarkSent(id,confirmEarly=false){
   const raw=String(val('ms_hash_'+id)||'');
   const hash=(raw.match(/[a-fA-F0-9]{64}/)||[''])[0];
-  const j=await standAction('/api/stand/transfer/mark-sent',{dealId:id,version:standVer,hash});
-  if(j?.success)toast('Отправка отмечена');
+  const body={dealId:id,version:standVer,hash};
+  const review=S.policyEarlyReviews?.[id];
+  if(confirmEarly){
+    if(!review||review.hash!==hash||document.getElementById('ms_before_'+id)?.checked!==true){toast('Подтвердите ранний перевод');return;}
+    body.confirmBeforeOrder=true;body.earlyReviewToken=review.token;
+  }
+  const j=await standAction('/api/stand/transfer/mark-sent',body);
+  if(j?.earlyReview){S.policyEarlyReviews=S.policyEarlyReviews||{};S.policyEarlyReviews[id]=j.earlyReview;render();}
+  if(j?.success){if(S.policyEarlyReviews)delete S.policyEarlyReviews[id];toast('Отправка отмечена');}
+
 }
 function markSentBlock(d){
   const w=dealWallet(d);
@@ -2831,11 +2839,20 @@ function markSentBlock(d){
   if(!d.transferSentReport&&d.transferClaim&&String(d.transferClaim.byId)===String(standMeId)
       &&!(d.step==='s24'&&d.transferProposal))return '';
   if(!d.transferSentReport&&policyReleasedByMe(d))return '';
-  const found=((d.transferFound||{}).hashes||[])[0]||'';
-  const collapsed=!d.transferSentReport&&!d.transferFound;
+  const review=S.policyEarlyReviews?.[d.id];
+  const found=review?.hash||((d.transferFound||{}).hashes||[])[0]||'';
+  const collapsed=!review&&!d.transferSentReport&&!d.transferFound;
+  const early=review?`<div id="ms_review_${d.id}" class="alert a-info"><div style="min-width:0">
+    <b>Перевод сделан до поручения</b>
+    <div>Сеть подтвердила ${htmlText(review.amount)} USDT · TRC-20</div>
+    <div>Отправитель: <span class="addr">${htmlText(review.from)}</span></div>
+    <div>Получатель: <span class="addr">${htmlText(review.to)}</span></div>
+    <div>Перевод: ${htmlText(new Date(review.timestampMs).toLocaleString("ru-RU",{timeZone:"Asia/Bangkok"}))} · поручение: ${htmlText(new Date(review.orderAtMs).toLocaleString("ru-RU",{timeZone:"Asia/Bangkok"}))} (Бангкок)</div>
+    <label class="check"><input type="checkbox" id="ms_before_${d.id}"> Подтверждаю: этот ранний перевод относится к текущему поручению</label>
+    <button type="button" class="btn btn-outline" onclick="transferMarkSent(${d.id},true)">Засчитать ранний перевод</button></div></div>`:'';
   return `<${collapsed?'details':'div'} class="card" data-mark-sent style="margin-bottom:12px">${collapsed?'<summary>Перевод уже отправлен?</summary>':''}<div class="fg"><label class="fl">Хеш перевода</label>
-    <input class="fc addr" id="ms_hash_${d.id}" value="${htmlText(found)}" placeholder="64 символа или ссылка на транзакцию"></div>
-    <div class="act-row"><button type="button" class="btn btn-outline" data-mark-sent-btn onclick="transferMarkSent(${d.id})">Проверить хеш</button></div></${collapsed?'details':'div'}>`;
+    <input class="fc addr" id="ms_hash_${d.id}" value="${htmlText(found)}" placeholder="64 символа или ссылка на транзакцию" oninput="if(S.policyEarlyReviews)delete S.policyEarlyReviews[${d.id}];document.getElementById('ms_review_${d.id}')?.remove()"></div>
+    <div class="act-row"><button type="button" class="btn btn-outline" data-mark-sent-btn onclick="transferMarkSent(${d.id})">Проверить хеш</button></div>${early}</${collapsed?'details':'div'}>`;
 }
 function policyActions(d){return handoffBlock(d)+markSentBlock(d);}
 function handoffBlock(d){

@@ -7559,7 +7559,8 @@ def stand_transfer_mark_sent():
 
     Единственное исключение из правила «хеш пишет только держатель claim». Закрывает шаг
     только проверенный перевод: кошелёк политики -> получатель и сумма поручения, Success,
-    не раньше начала раунда, хеш не занят другой операцией. Ручного закрытия без перевода нет."""
+    не раньше начала раунда либо с отдельным подтверждением раннего перевода; хеш
+    не занят другой операцией. Ручного закрытия без перевода нет."""
     if not STAND_MODE:
         return jsonify(success=False, error='stand_only'), 404
     payload, actor, actor_id, deal_id, failure = _stand_transfer_request()
@@ -7598,7 +7599,7 @@ def stand_transfer_mark_sent():
         fingerprint, wallet_address = policy['fingerprint'], policy['address']
         orders = [o for o in policy['orders'] if _stand_policy_trc20_order(policy, o)]
         members = {d['id']: d for d in _stand_members(state, main['id'])}
-        used = {str(h).lower() for h in get_used_transaction_hashes(db) if h}
+        used = _stand_policy_used_hashes(db)
         if any(c.get('byId') == actor_id for c in main.get('transferClaimHistory') or []
                if c.get('fingerprint') == fingerprint):
             return jsonify(success=False, error='Перевод передан другому исполнителю'), 409
@@ -7615,33 +7616,44 @@ def stand_transfer_mark_sent():
     finally:
         db.close()
     # Сеть опрашиваем вне блокировки; ниже всё перепроверяется под блокировкой.
-    already_attached = any(str(s.get('hash') or s.get('ref') or '').lower() == tx_hash
-                           for d in members.values() for s in (d.get('transfer') or {}).get('sends') or [])
     chosen, reasons = None, []
     for order in orders:
         send_list = (members[order['dealId']].get('transfer') or {}).get('sends') or []
         if any(s.get('status') == 'confirmed' for s in send_list) and not any(
                 str(s.get('hash') or s.get('ref') or '').lower() == tx_hash for s in send_list):
-            continue            # поручение уже закрыто другим переводом
+            continue
         proof = verify_transfer(tx_hash, 'trc20', wallet_address, order['to'], float(Decimal(order['amount'])))
-        if proof.get('status') == 'confirmed':
-            if not already_attached:
-                problem = _stand_policy_send_problem(state, main, policy, tx_hash,
-                                                     proof.get('timestampMs'), used, order)
-                if problem:
-                    reasons.append(problem)
-                    continue
-            chosen = (order, proof)
-            break
-        reasons.append(proof.get('checkError') or {'pending': 'перевод ещё не подтверждён сетью',
-                                                  'failed': 'перевод завершился с ошибкой'}.get(proof.get('status'), 'перевод не найден'))
+        if proof.get('status') != 'confirmed':
+            reasons.append(proof.get('checkError') or 'Перевод ещё не подтверждён сетью')
+            continue
+        proof_problem = _stand_policy_early_proof_problem(main, policy, order, proof)
+        if proof_problem:
+            reasons.append(proof_problem)
+            continue
+        if payload.get('confirmBeforeOrder') is True:
+            current_binding = _stand_policy_early_binding(main, policy, order, tx_hash, proof.get('timestampMs'))
+            if not hmac.compare_digest(str(payload.get('earlyReviewToken') or ''),
+                                       _stand_policy_early_token(current_binding)):
+                return jsonify(success=False, error='Поручение или перевод изменились — проверьте хеш заново'), 409
+        problem = _stand_policy_send_problem(state, main, policy, tx_hash,
+                                             proof.get('timestampMs'), used, order)
+        if problem and problem != 'Перевод сделан раньше начала отправки':
+            reasons.append(problem)
+            continue
+        early_binding = None
+        if problem:
+            early_binding = _stand_policy_early_binding(main, policy, order, tx_hash, proof['timestampMs'])
+            token = _stand_policy_early_token(early_binding)
+            if payload.get('confirmBeforeOrder') is not True:
+                return jsonify(success=False, warning=True, error=problem,
+                               earlyReview={**early_binding, 'token': token}), 409
+            if not hmac.compare_digest(str(payload.get('earlyReviewToken') or ''), token):
+                return jsonify(success=False, error='Поручение или перевод изменились — проверьте хеш заново'), 409
+        chosen = (order, proof, early_binding)
+        break
     if not chosen:
         return jsonify(success=False, error='Перевод не подходит: ' + (reasons[0] if reasons else 'нет поручения для проверки')), 409
-    order, proof = chosen
-    if not already_attached:
-        problem = _stand_policy_send_problem(state, main, policy, tx_hash, proof.get('timestampMs'), used, order)
-        if problem:
-            return jsonify(success=False, error=problem), 409
+    order, proof, early_binding = chosen
     db = get_session()
     try:
         if engine.dialect.name == 'sqlite':
@@ -7659,24 +7671,45 @@ def stand_transfer_mark_sent():
         if not policy or policy['fingerprint'] != fingerprint:
             return jsonify(success=False, error='Поручение изменилось — обновите доску'), 409
         user = db.query(AdminUser).filter_by(id=actor_id).first()
+        if not user or user.login_disabled or user.role != actor:
+            return jsonify(success=False, error='Нет доступа'), 403
+        if payload.get('version') != row.version:
+            return _stand_stale_response(row, state)
+        if any(c.get('byId') == actor_id for c in main.get('transferClaimHistory') or []
+               if c.get('fingerprint') == fingerprint):
+            return jsonify(success=False, error='Перевод передан другому исполнителю'), 409
         member = next((d for d in _stand_members(state, main['id']) if d['id'] == order['dealId']), None)
         sends = member.setdefault('transfer', {}).setdefault('sends', [])
         present = next((s for s in sends if str(s.get('hash') or s.get('ref') or '').lower() == tx_hash), None)
+        if any(s.get('status') == 'confirmed' and s is not present for s in sends):
+            return jsonify(success=False, error='Поручение уже закрыто другим переводом'), 409
         now_ms = int(time.time() * 1000)
         name = _stand_user_name(user)
+        if early_binding:
+            if early_binding != _stand_policy_early_binding(main, policy, order, tx_hash, proof['timestampMs']):
+                return jsonify(success=False, error='Поручение изменилось — проверьте хеш заново'), 409
+            main.setdefault('transferEarlyReviews', {})[str(order['dealId'])] = {
+                'binding': early_binding, 'byId': user.id, 'byName': name, 'role': actor,
+                'at': now_ms, 'evidence': dict(proof)}
+        used = _stand_policy_used_hashes(db)
+        problem = _stand_policy_send_problem(state, main, policy, tx_hash, proof.get('timestampMs'), used, order)
+        if problem:
+            return jsonify(success=False, error=problem), 409
+        send = dict(ref=tx_hash, hash=tx_hash, net='TRC-20', amount=float(Decimal(order['amount'])),
+                    markedBy={'kind': 'operator', 'byId': user.id, 'byName': name,
+                              'forName': executor})
+        send.update(proof)
         if present is None:
-            used = {str(h).lower() for h in get_used_transaction_hashes(db) if h}
-            problem = _stand_policy_send_problem(state, main, policy, tx_hash, proof.get('timestampMs'), used, order)
-            if problem:
-                return jsonify(success=False, error=problem), 409
-            send = dict(ref=tx_hash, hash=tx_hash, net='TRC-20', amount=float(Decimal(order['amount'])),
-                        markedBy={'kind': 'operator', 'byId': user.id, 'byName': name,
-                                  'forName': executor})
-            send.update(proof)
             sends.append(send)
-            main.setdefault('log', []).append({'at': now_ms, 'role': actor, 'by': user.id,
-                'text': (f'Отправку отметил {name} за {executor}: {tx_hash}' if executor
-                         else f'{name} отметил отправку: {tx_hash}')})
+        else:
+            present.clear()
+            present.update(send)
+        main.setdefault('log', []).append({'at': now_ms, 'role': actor, 'by': user.id,
+            'text': (f'{name} подтвердил ранний перевод: {tx_hash}; перевод '
+                     f'{datetime.utcfromtimestamp(proof["timestampMs"] / 1000).isoformat()}Z, '
+                     f'поручение {datetime.utcfromtimestamp(early_binding["orderAtMs"] / 1000).isoformat()}Z' if early_binding else
+                     (f'Отправку отметил {name} за {executor}: {tx_hash}' if executor
+                      else f'{name} отметил отправку: {tx_hash}'))})
         _stand_settle_verified(state, _stand_members(state, main['id']))
         _stand_state_events(before_state, state, 'отметка отправки', (row.version or 0) + 1)
         old_version = row.version or 0
@@ -9715,6 +9748,50 @@ def _stand_policy_round_start(main, fingerprint, order=None):
     return main.get('stepEnteredAt') or 0
 
 
+def _stand_policy_used_hashes(db):
+    """Приход с ещё свободным остатком нельзя повторно зачесть как исходящий."""
+    used = {str(h).lower() for h in get_used_transaction_hashes(db) if h}
+    used.update(str(h).lower() for (h,) in db.query(PayinTx.tx_hash).all() if h)
+    return used
+
+
+def _stand_policy_early_binding(main, policy, order, tx_hash, timestamp_ms):
+    """Неизменяемое доказательство ранней отправки для одного поручения."""
+    if not order:
+        return None
+    return {'mainId': main['id'], 'dealId': order['dealId'],
+            'fingerprint': policy['fingerprint'], 'hash': str(tx_hash).lower(),
+            'from': policy['address'], 'to': order['to'], 'net': 'TRC-20',
+            'amount': order['amount'], 'timestampMs': timestamp_ms,
+            'orderAtMs': _stand_policy_round_start(main, policy['fingerprint'], order)}
+
+
+def _stand_policy_early_token(binding):
+    message = ('policy-early-review:' + json.dumps(binding, sort_keys=True,
+                                                separators=(',', ':'))).encode()
+    return hmac.new(str(app.secret_key).encode(), message, hashlib.sha256).hexdigest()
+
+
+def _stand_policy_early_proof_problem(main, policy, order, proof):
+    """Ранний перевод всегда требует точного доказательства, даже при сохранённом решении."""
+    if (not proof.get('timestampMs') or proof['timestampMs'] >=
+            _stand_policy_round_start(main, policy['fingerprint'], order)):
+        return None
+    if (not order or not _stand_policy_trc20_order(policy, order)
+            or proof.get('status') != 'confirmed'
+            or proof.get('from') != policy['address'] or proof.get('to') != order['to']
+            or _amount(proof.get('verifiedAmount')) != _amount(order['amount'])):
+        return 'Токен, адреса или сумма не совпали'
+    return None
+
+
+def _stand_policy_early_valid(main, policy, order, tx_hash, timestamp_ms):
+    binding = _stand_policy_early_binding(main, policy, order, tx_hash, timestamp_ms)
+    review = (main.get('transferEarlyReviews') or {}).get(str((order or {}).get('dealId'))) or {}
+    return bool(binding and review.get('binding') == binding and review.get('byId')
+                and review.get('role') in TRANSFER_HANDOFF_ROLES and review.get('at'))
+
+
 def _stand_policy_send_problem(state, main, policy, tx_hash, timestamp_ms, used, order=None):
     """Единая проверка «перевод годится для закрытия раунда политики».
 
@@ -9725,14 +9802,14 @@ def _stand_policy_send_problem(state, main, policy, tx_hash, timestamp_ms, used,
         return None                           # demo-переводы идут отдельным контуром
     if not timestamp_ms:
         return 'Сеть не вернула время перевода — отметить нельзя'
-    if timestamp_ms < _stand_policy_round_start(main, policy['fingerprint'], order):
-        return 'Перевод сделан раньше начала отправки'
-    members = {d['id'] for d in _stand_members(state, main['id'])}
-    elsewhere = {str(s.get('hash') or s.get('ref') or '').lower()
-                 for d in state.get('deals') or [] if d.get('id') not in members
-                 for s in (d.get('transfer') or {}).get('sends') or []}
+    from stand_outgoing_review import claims
+    elsewhere = claims(state, (order or {}).get('dealId'),
+                       exclude_own_payout=bool(main.get('serverTransferComplete')))
     if tx in elsewhere or tx in {str(h).lower() for h in used or ()}:
         return 'Этот хеш уже использован в другой операции'
+    if (timestamp_ms < _stand_policy_round_start(main, policy['fingerprint'], order)
+            and not _stand_policy_early_valid(main, policy, order, tx, timestamp_ms)):
+        return 'Перевод сделан раньше начала отправки'
     return None
 
 
@@ -12057,7 +12134,7 @@ _STAND_TRANSFER_SERVER_FIELDS = (
     'transferClaim', 'transferConfirmation', 'transferOwnerApproval',
     'transferHandoff', 'signHandoff', 'transferClaimHistory',
     'transferFound', 'transferAlarm', 'transferAlarmCleared', 'transferClosedKeys',
-    'transferProposal', 'transferSentReport',
+    'transferProposal', 'transferSentReport', 'transferEarlyReviews',
 )
 
 
@@ -13172,6 +13249,18 @@ def _stand_settle_verified(state, members):
     except ValueError:
         return False
     if policy:
+        for order in policy['orders']:
+            member = next((d for d in members if d['id'] == order['dealId']), None)
+            for send in ((member or {}).get('transfer') or {}).get('sends') or []:
+                if send.get('status') != 'confirmed' or not send.get('timestampMs'):
+                    continue
+                if send['timestampMs'] < _stand_policy_round_start(policy_main, policy['fingerprint'], order):
+                    if (not _stand_policy_early_valid(policy_main, policy, order,
+                            send.get('hash') or send.get('ref'), send['timestampMs'])
+                            or _stand_policy_early_proof_problem(policy_main, policy, order, send)
+                            or normalize_network(send.get('net')) != 'trc20'
+                            or _amount(send.get('amount')) != _amount(order['amount'])):
+                        return False
         # Решение Карима 28.10: мультисиг публикует перевод в сети только после всех
         # нужных подписей, поэтому проверенный перевод (Success, кошелёк политики,
         # получатель и сумма поручения) сам закрывает s23/s24. Ручная отметка второго
@@ -13832,7 +13921,7 @@ def _stand_track_policy_outgoing(deal_id=None, *, cache_ttl=0):
                 continue
             jobs.append((main['id'], policy, _stand_policy_round_start(main, policy['fingerprint']),
                          main, snapshot))
-        used = {str(h).lower() for h in get_used_transaction_hashes(db) if h} if jobs else set()
+        used = _stand_policy_used_hashes(db) if jobs else set()
     finally:
         db.close()
     if not jobs:
@@ -13879,7 +13968,7 @@ def _stand_track_policy_outgoing(deal_id=None, *, cache_ttl=0):
             db.execute(text('BEGIN IMMEDIATE'))
         row = _stand_row(db, lock=True)
         state = json.loads(row.data or '{}')
-        used = {str(h).lower() for h in get_used_transaction_hashes(db) if h}
+        used = _stand_policy_used_hashes(db)
         changed = False
         for main_id, fingerprint, after_ts, groups, proofs, complete in results:
             main = next((d for d in state.get('deals') or [] if d.get('id') == main_id), None)
@@ -14082,7 +14171,9 @@ def _stand_check_transfers(deal_id=None, *, poll=False):
                 continue
             seen.add(deal.get('id'))
             for send in (deal.get('transfer') or {}).get('sends') or []:
+                reviewed = bool((main.get('transferEarlyReviews') or {}).get(str(deal['id'])))
                 if (send.get('status') == 'confirmed' and send.get('from') and send.get('to')
+                        and (poll or not reviewed)
                         or (poll and send.get('status') not in (None, 'pending', 'error', 'confirmed'))):
                     continue
                 key = send_fingerprint(snapshot, deal, send)
@@ -14146,16 +14237,19 @@ def _stand_check_transfers(deal_id=None, *, poll=False):
                 policy_db = get_session()
                 try:
                     policy_by_main[main['id']] = _stand_transfer_policy(policy_db, snapshot, main)
+                    if policy_by_main[main['id']]:
+                        registry_claims.update(_stand_policy_used_hashes(policy_db))
                 except ValueError:
                     policy_by_main[main['id']] = None
                 finally:
                     policy_db.close()
             round_policy = policy_by_main[main['id']]
-            if round_policy and main.get('step') in ('s23', 's24'):
+            if round_policy:
                 round_order = next((o for o in round_policy['orders'] if o['dealId'] == deal['id']), None)
-                problem = _stand_policy_send_problem(snapshot, main, round_policy, key[0],
-                                                     result.get('timestampMs'), registry_claims,
-                                                     round_order)
+                problem = _stand_policy_early_proof_problem(main, round_policy, round_order, result)
+                if main.get('step') in ('s23', 's24'):
+                    problem = problem or _stand_policy_send_problem(snapshot, main, round_policy, key[0],
+                        result.get('timestampMs'), registry_claims, round_order)
                 if problem:
                     result = {'status': 'mismatch', 'checkError': problem}
         result['lastCheckedAt'] = datetime.utcnow().isoformat() + 'Z'
@@ -14186,10 +14280,12 @@ def _stand_check_transfers(deal_id=None, *, poll=False):
                 continue
             if deal.get('outgoingReview') and key[0] in (outgoing_review.claims(state, member_id, exclude_own_payout=bool(deal.get('serverTransferComplete'))) | registry_claims):
                 result = {'status': 'mismatch', 'checkError': 'Хеш уже учтён в другой операции'}
+            reviewed = bool((_stand_batch_main(state, member_id).get('transferEarlyReviews') or {}).get(str(member_id)))
             for send in (deal.get('transfer') or {}).get('sends') or []:
                 if (send_fingerprint(state, deal, send) != key
                         or send.get('demoOutcome') != demo_outcome
-                        or (send.get('status') == 'confirmed' and send.get('from') and send.get('to'))):
+                        or (send.get('status') == 'confirmed' and send.get('from') and send.get('to')
+                            and (poll or not reviewed))):
                     continue
                 if (poll and send.get('status') == result['status']
                         and send.get('checkError') == result.get('checkError')

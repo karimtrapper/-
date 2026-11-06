@@ -926,3 +926,238 @@ def test_former_executor_cannot_mark_sent_after_takeover(chain):
     assert mark(u['operator'], ref(1)).status_code == 409           # прежний исполнитель
     assert board() == before
     assert mark(u['dispatcher'], ref(1)).status_code == 200         # другой операционист — можно
+
+
+def early_review_setup(chain):
+    ordered_at = int(time.time() * 1000) - 60_000
+    order_iso = datetime.fromtimestamp(ordered_at / 1000, timezone.utc).isoformat()
+    board_with(postConv='coins', outgoingOrderAt=order_iso)
+    u = roles()
+    claim_now(u)
+    assert api(u['operator'], 'propose').status_code == 200
+    assert api(u['teodor'], 'report-sent').status_code == 200
+    chain.rows.append(transfer(87, 5000, ts=ordered_at - 120_000))
+    return u, order_iso
+
+
+def early_preview(u):
+    response = api(u['operator'], 'mark-sent', hash=ref(87))
+    assert response.status_code == 409, response.get_json()
+    return response.get_json()['earlyReview']
+
+
+def test_early_policy_requires_explicit_review_preserves_dates_and_survives_recheck(chain):
+    u, order_iso = early_review_setup(chain)
+    before = board()
+    preview = early_preview(u)
+    assert board() == before, 'preview must not write board or evidence'
+    assert api(u['operator'], 'mark-sent', hash=ref(87), confirmBeforeOrder=True).status_code == 409
+    m._stand_track_policy_outgoing(DEAL)
+    assert not main_deal()['transfer']['sends'], 'poller must not attach unreviewed early tx'
+    reply = api(u['operator'], 'mark-sent', hash=ref(87), confirmBeforeOrder=True,
+                earlyReviewToken=preview['token'])
+    assert reply.status_code == 200, reply.get_json()
+    deal = main_deal()
+    review = deal['transferEarlyReviews'][str(DEAL)]
+    assert review['byId'] and review['role'] == 'operator' and review['at']
+    assert review['evidence']['timestampMs'] == preview['timestampMs']
+    assert deal['outgoingOrderAt'] == order_iso
+    assert deal['transfer']['sends'][0]['timestampMs'] == preview['timestampMs']
+    assert deal['serverTransferComplete'] is True
+    settled = board()
+    assert api(u['operator'], 'mark-sent', hash=ref(87), confirmBeforeOrder=True,
+               earlyReviewToken=preview['token']).status_code == 200
+    assert board() == settled, 'retry must not write a second audit or credit'
+    m._stand_check_transfers(DEAL)
+    assert len(main_deal()['transfer']['sends']) == 1
+    assert main_deal()['transferEarlyReviews'] == deal['transferEarlyReviews']
+
+
+@pytest.mark.parametrize('role', ['manager', 'findir', 'teodor'])
+def test_early_policy_review_denies_other_roles(chain, role):
+    u, _ = early_review_setup(chain)
+    preview = early_preview(u)
+    before = board()
+    assert api(u[role], 'mark-sent', hash=ref(87), confirmBeforeOrder=True,
+               earlyReviewToken=preview['token']).status_code == 403
+    assert board() == before
+
+
+@pytest.mark.parametrize('change', ['time', 'hash', 'amount', 'sender', 'recipient', 'order', 'network'])
+def test_early_policy_review_rejects_stale_proof_or_order(chain, change):
+    u, _ = early_review_setup(chain)
+    preview = early_preview(u)
+    tx = chain.rows[0]
+    tx_hash = ref(87)
+    if change == 'time': tx['block_ts'] -= 1000
+    if change == 'hash': tx['transaction_id'] = tx_hash = ref(88)
+    if change == 'amount': tx['quant'] = '5000001000'
+    if change == 'sender': tx['from_address'] = OTHER
+    if change == 'recipient': tx['to_address'] = DEST2
+    if change in ('order', 'network'):
+        state, version = board()
+        if change == 'order': state['deals'][0]['outgoingOrderAt'] = '2020-01-01T00:00:00Z'
+        else: state['deals'][0]['transfer']['net'] = 'ERC-20'
+        put_board(state, version)
+    before = board()
+    reply = api(u['operator'], 'mark-sent', hash=tx_hash, confirmBeforeOrder=True,
+                earlyReviewToken=preview['token'])
+    # Сдвиг поручения в прошлое не превращает старое согласие в обычную отметку.
+    assert reply.status_code == 409, reply.get_json()
+    assert board() == before
+
+
+@pytest.mark.parametrize('location', ['payin', 'conversion', 'sibling', 'registry'])
+def test_early_policy_review_rejects_hash_reuse(chain, monkeypatch, location):
+    u, _ = early_review_setup(chain)
+    preview = early_preview(u)
+    state, version = board()
+    if location == 'payin': state['deals'][0]['payinHashes'] = [{'hash': ref(87)}]
+    if location == 'conversion': state['convs'] = [{'id': 77, 'txs': [{'hash': ref(87)}]}]
+    if location == 'sibling': state['deals'].append({'id': 9999, 'transfer': {'sends': [{'hash': ref(87)}]}})
+    if location == 'registry': monkeypatch.setattr(m, 'get_used_transaction_hashes', lambda db: {ref(87)})
+    put_board(state, version)
+    before = board()
+    reply = api(u['operator'], 'mark-sent', hash=ref(87), confirmBeforeOrder=True,
+                earlyReviewToken=preview['token'])
+    assert reply.status_code == 409 and 'уже использован' in reply.get_json()['error']
+    assert board() == before
+
+
+@pytest.mark.parametrize('change', ['inject', 'edit', 'delete'])
+def test_early_policy_audit_is_server_owned_in_full_board_put(chain, change):
+    from tests.qa_wallet_roles_helpers import checked_put
+    u, _ = early_review_setup(chain)
+    preview = early_preview(u)
+    if change != 'inject':
+        assert api(u['operator'], 'mark-sent', hash=ref(87), confirmBeforeOrder=True,
+                   earlyReviewToken=preview['token']).status_code == 200
+    state, version = board()
+    before = board()
+    if change == 'inject':
+        state['deals'][0]['transferEarlyReviews'] = {str(DEAL): {'binding': preview, 'byId': 1,
+                                                              'role': 'operator', 'at': 1}}
+    elif change == 'edit':
+        state['deals'][0]['transferEarlyReviews'][str(DEAL)]['binding']['hash'] = ref(88)
+    else:
+        state['deals'][0].pop('transferEarlyReviews')
+    reply = checked_put(u['admin'], version, state)
+    assert reply.status_code == 409 and 'только сервер' in reply.get_json()['error']
+    assert board() == before
+
+
+@pytest.mark.browser
+@pytest.mark.parametrize('width', [375, 1280])
+def test_early_policy_browser_operator_confirms_and_reload_keeps_audit(chain, pytestconfig, width):
+    from pathlib import Path
+    from urllib.parse import urlsplit
+    from playwright.sync_api import sync_playwright, expect
+    u, order_iso = early_review_setup(chain)
+    with u['operator'].session_transaction() as session:
+        uid = session['user_id']
+    server, thread, base = serve()
+    out = Path('/tmp/calccrm-early-policy-browser')
+    out.mkdir(parents=True, exist_ok=True)
+    try:
+        with sync_playwright() as pw:
+            browser = pw.chromium.launch(executable_path=pytestconfig.getoption('--chromium-executable'))
+            context = browser.new_context(viewport={'width': width, 'height': 900}, bypass_csp=True)
+            context.add_cookies([{'name': 'session', 'value': cookie_for(uid)['Cookie'].split('=', 1)[1], 'url': base}])
+            def route(r):
+                url = urlsplit(r.request.url)
+                if url.hostname != '127.0.0.1': r.abort()
+                elif url.path.startswith('/api/') and url.path not in (
+                        '/api/auth/me', '/api/stand/state', '/api/wallets', '/api/stand/transfer/mark-sent'):
+                    r.fulfill(json={'success': True, 'wallets': [], 'admins': [], 'data': {}, 'incomes': [], 'txs': []})
+                else: r.continue_()
+            context.route('**/*', route)
+            page = context.new_page()
+            errors = []
+            page.on('pageerror', lambda e: errors.append(str(e)))
+            page.goto(base+'/tasks')
+            page.wait_for_function('() => typeof S!=="undefined" && S.deals.some(d=>d.id===9001) && CRM_WALLETS.length>0', timeout=8000)
+            page.evaluate("S.open=9001;S.view='task';render()")
+            page.screenshot(path=str(out/f'before-{width}.png'), full_page=True)
+            assert page.locator('#ms_hash_9001').count(), (errors, page.locator('body').inner_text())
+            page.locator('#ms_hash_9001').fill(ref(87))
+            page.locator('[data-mark-sent-btn]').click()
+            expect(page.locator('#ms_review_9001')).to_be_visible()
+            page.screenshot(path=str(out/f'preview-{width}.png'), full_page=True)
+            assert main_deal()['step'] == 's24' and not main_deal()['transfer']['sends']
+            page.get_by_role('button', name='Засчитать ранний перевод', exact=True).click()
+            assert not main_deal()['transfer']['sends']
+            page.locator('#ms_before_9001').check()
+            with page.expect_response(lambda r: r.url.endswith('/api/stand/transfer/mark-sent') and r.status == 200):
+                page.get_by_role('button', name='Засчитать ранний перевод', exact=True).click()
+            assert main_deal()['serverTransferComplete'] is True
+            page.reload()
+            page.wait_for_function('() => typeof S!=="undefined" && S.deals.some(d=>d.id===9001 && d.serverTransferComplete)')
+            page.evaluate("S.open=9001;S.view='deal';render()")
+            page.screenshot(path=str(out/f'accepted-{width}.png'), full_page=True)
+            assert main_deal()['outgoingOrderAt'] == order_iso
+            assert len(main_deal()['transfer']['sends']) == 1
+            assert not errors, errors
+            browser.close()
+    finally:
+        server.shutdown()
+        thread.join(timeout=5)
+        server.server_close()
+
+
+@pytest.mark.parametrize('ledger', ['payin', 'wallet'])
+def test_early_policy_sql_ledger_reuse_is_rejected(chain, ledger):
+    u, _ = early_review_setup(chain)
+    preview = early_preview(u)
+    db = m.get_session()
+    try:
+        if ledger == 'payin':
+            db.add(m.PayinTx(tx_hash=ref(87), amount_usdt=5000, source='manual'))
+        else:
+            db.add(m.WalletOperation(wallet_id=registry_id(REALTY), type='expense',
+                                    amount=5000, tx_hash=ref(87)))
+        db.commit()
+    finally:
+        db.close()
+    before = board()
+    reply = api(u['operator'], 'mark-sent', hash=ref(87), confirmBeforeOrder=True,
+                earlyReviewToken=preview['token'])
+    assert reply.status_code == 409 and 'уже использован' in reply.get_json()['error']
+    assert board() == before
+
+
+@pytest.mark.parametrize('action', ['mark', 'recheck'])
+def test_early_policy_cached_review_rejects_changed_proof_in_partial_batch(chain, monkeypatch, action):
+    # Регрессия независимой QA: согласован первый перевод, второе поручение ещё открыто.
+    u, original = early_review_setup(chain)
+    state, version = board()
+    main = state['deals'][0]
+    main.update(cnvId=1, conv=[9002])
+    side, _ = send_deal(9002, REALTY, DEST2, 1000, cnvId=1, conv=[],
+                        outgoingOrderAt=original, postConv='coins')
+    state['deals'].append(side)
+    state['convs'] = [{'id': 1, 'sources': [{'dealId': DEAL}, {'dealId': 9002}]}]
+    for key in ('transferClaim', 'transferProposal', 'transferSentReport', 'transferConfirmation'):
+        main.pop(key, None)
+    main['step'] = 's23'
+    put_board(state, version)
+    claim_now(u)
+    assert api(u['operator'], 'propose').status_code == 200
+    assert api(u['teodor'], 'report-sent').status_code == 200
+    preview = early_preview(u)
+    reply = api(u['operator'], 'mark-sent', hash=ref(87), confirmBeforeOrder=True,
+                earlyReviewToken=preview['token'])
+    assert reply.status_code == 200, reply.get_json()
+    assert not main_deal().get('serverTransferComplete')
+    chain.rows[0]['quant'] = '5000001000'  # Допуск обычного verify не должен ослаблять ранний review.
+    before = board()
+    if action == 'mark':
+        reply = api(u['operator'], 'mark-sent', hash=ref(87))
+        assert reply.status_code == 409, reply.get_json()
+        assert board() == before
+    else:
+        # Синтетическая пачка проверяет исходящий proof, рублёвые приходные документы здесь не моделируются.
+        monkeypatch.setattr(m, '_stand_check_batch_funding', lambda *a, **kw: None)
+        result = m._stand_check_transfers(DEAL)
+        assert result['success'], result
+        assert main_deal()['transfer']['sends'][0]['status'] == 'mismatch'
+        assert not main_deal().get('serverTransferComplete')
