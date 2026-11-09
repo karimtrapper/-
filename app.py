@@ -472,7 +472,7 @@ def referral_links(code, lang='ru'):
     return {
         'referral_link': f'https://grusha.space/?ref={code}',
         'bot_link': f'https://t.me/Grushath_bot?start=ref__{flat}',
-        'wa_link': ('https://api.whatsapp.com/send/?phone=66818429939&text='
+        'wa_link': ('https://api.whatsapp.com/send/?phone=66618187132&text='
                     + _q(wa_text, safe='') + '&type=phone_number&app_absent=0'),
     }
 
