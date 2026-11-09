@@ -104,6 +104,8 @@ function run(names, context) {
     prepayPanel: () => '', docSide: () => '', pathCard: () => '', overview: () => '', quotesCard: () => '',
     dealTaskPath: () => ({steps:[],active:'s11',index:0}),dealTaskPathCard: () => '',htmlText:String,
     needsPayConfirm: () => false, payToConfirmBlock: () => 'CONFIRM_BLOCK', dealWallet: () => null,
+    outgoingStatusSummary: () => '',
+    clientPayinSummarySupported: () => false,
   });
   const manager = ctx.viewDeal(d);
   assert.match(manager, /Сейчас задача Операционист: Подготовить договор/);

@@ -24,6 +24,7 @@ const ctx = {
   approx: () => ({pay: 100, thb: 0}), apMoney: () => '100', isCrypto: () => false,
   rateUnit: () => '₽', money: n => String(n), dur: () => '2 мин', flowOf: () => [],
   dealTaskPathCard: () => '', dealWallet: () => null,
+  outgoingStatusSummary: () => '',
 };
 vm.createContext(ctx);
 vm.runInContext(source, ctx);

@@ -215,11 +215,11 @@ console.log('handoff targets by role/wallet/state: PASS');
     ctx.val = id => 'https://tronscan.org/#/transaction/' + found;
     return ctx.markSentBlock(Object.assign({id: 1, step: 's23'}, d));
   };
-  assert.match(block('operator', {}), /data-mark-sent-btn[^>]*>Проверить хеш<\/button>/);
+  assert.match(block('operator', {}), /data-mark-sent-btn[^>]*>Проверить и отметить отправку<\/button>/);
   assert.match(block('operator', {}), /^<details[^>]*>\s*<summary>Перевод уже отправлен\?<\/summary>/,
     'до отметки отправки ручной хеш свёрнут');
-  assert.match(block('admin', {}), /Проверить хеш/);
-  assert.match(block('operator', {step: 's24', transferClaim: {byId: 3, role: 'operator'}}), /Проверить хеш/);
+  assert.match(block('admin', {}), /Проверить и отметить отправку/);
+  assert.match(block('operator', {step: 's24', transferClaim: {byId: 3, role: 'operator'}}), /Проверить и отметить отправку/);
   assert.match(block('operator', {transferFound: {hashes: [found]}}), new RegExp('value="' + found + '"'), 'найденный хеш подставлен');
   for (const role of ['manager', 'findir', 'teodor'])
     assert.equal(block(role, {}), '', role + ' кнопки не видит');
@@ -227,11 +227,11 @@ console.log('handoff targets by role/wallet/state: PASS');
   const beforeSignerReport = block('operator', {step: 's24', transferClaim: {byId: 7, role: 'operator'},
     transferProposal: {fingerprint: 'f'}});
   assert.match(beforeSignerReport, /^<details[^>]*>/, 'после передачи на подпись инициатору доступен свёрнутый fallback');
-  assert.match(beforeSignerReport, /Проверить хеш/, 'инициатор может проверить уже отправленный перевод');
+  assert.match(beforeSignerReport, /Проверить и отметить отправку/, 'инициатор может проверить уже отправленный перевод');
   const afterReport = block('operator', {step: 's24', transferClaim: {byId: 7, role: 'operator'},
     transferSentReport: {byId: 8}});
   assert.match(afterReport, /^<div[^>]*>/, 'после подписи ручной хеш сразу открыт');
-  assert.match(afterReport, /Проверить хеш/, 'после подписи инициатор проверяет вручную');
+  assert.match(afterReport, /Проверить и отметить отправку/, 'после подписи инициатор проверяет вручную');
   assert.equal(block('operator', {transferAlarm: {hashes: ['a', 'b']}}), '', 'при тревоге кнопки нет');
   assert.equal(block('operator', {serverTransferComplete: true}), '');
   assert.equal(block('operator', {step: 's22'}), '');
@@ -378,7 +378,7 @@ console.log('task ownership (send/sign): PASS');
   const ercCard = makeCtx({jsLiteralAttr: String}).walletSourceLine({addr: ercAddress});
   assert.match(ercCard, /ERC-20/);
   assert.match(ercCard, new RegExp(ercAddress));
-  assert.match(s23('operator', {}), /Проверить хеш/, 'операционист может проверить уже отправленный перевод');
+  assert.match(s23('operator', {}), /Проверить и отметить отправку/, 'операционист может проверить уже отправленный перевод');
   const owner = s23('teodor', {transferClaim: {byId: 7, byName: 'Я', role: 'teodor', fingerprint: 'f'},
     transferConfirmation: {ownerAlone: true}});
   assert.match(owner, /onclick="transferReportSent\(1\)">Деньги отправлены<\/button>/,

@@ -777,6 +777,12 @@ a.hash:hover{background:#BAE6FD}
 .deal-screen .client-payin-summary .payin-title{font-size:var(--ds-caption);font-weight:700;text-transform:uppercase;letter-spacing:.04em}
 .deal-screen .client-payin-summary .payin-total{font-size:var(--ds-emphasis);font-weight:700}
 .deal-screen .client-payin-summary .payin-destination{min-width:0;overflow-wrap:anywhere;font-size:var(--ds-caption)}
+.deal-screen .outgoing-status-summary{margin-bottom:var(--ds-md);padding:14px 16px;border:1px solid var(--ds-border);border-left:4px solid var(--coral);border-radius:var(--ds-card);background:var(--ds-page)}
+.deal-screen .outgoing-status-summary.complete{background:var(--ds-money);border-color:var(--ds-money-border);color:var(--ds-money-ink)}
+.deal-screen .outgoing-status-summary.failed{background:#FEF2F2;border-color:#FECACA;color:#991B1B}
+.deal-screen .outgoing-status-summary h2{font-size:var(--ds-emphasis);margin:0 0 5px}
+.deal-screen .outgoing-status-summary p{margin:0 0 6px}
+.deal-screen .outgoing-status-summary .hashtxt{overflow-wrap:anywhere;word-break:break-all}
 .deal-screen .task-action>.card{border:0;box-shadow:none;padding:0;margin:0 0 var(--ds-lg)}
 .deal-screen .task-action>.card:last-child{margin-bottom:0}
 .deal-screen .task-action .goal{border-left:0}
@@ -2931,7 +2937,7 @@ function markSentBlock(d){
     <button type="button" class="btn btn-outline" onclick="transferMarkSent(${d.id},true)">Засчитать ранний перевод</button></div></div>`:'';
   return `<${collapsed?'details':'div'} class="card" data-mark-sent style="margin-bottom:12px">${collapsed?'<summary>Перевод уже отправлен?</summary>':''}<div class="fg"><label class="fl">Хеш перевода</label>
     <input class="fc addr" id="ms_hash_${d.id}" value="${htmlText(found)}" placeholder="64 символа или ссылка на транзакцию" oninput="if(S.policyEarlyReviews)delete S.policyEarlyReviews[${d.id}];document.getElementById('ms_review_${d.id}')?.remove()"></div>
-    <div class="act-row"><button type="button" class="btn btn-outline" data-mark-sent-btn onclick="transferMarkSent(${d.id})">Проверить хеш</button></div>${early}</${collapsed?'details':'div'}>`;
+    <div class="act-row"><button type="button" class="btn btn-outline" data-mark-sent-btn onclick="transferMarkSent(${d.id})">Проверить и отметить отправку</button></div>${early}</${collapsed?'details':'div'}>`;
 }
 function policyActions(d){return handoffBlock(d)+markSentBlock(d);}
 function handoffBlock(d){
@@ -7475,6 +7481,64 @@ function clientPayinSummary(d){
     <span class="payin-destination">${place}</span>
   </div>`;
 }
+/* Исходящая отправка этой сделки: факт берём только из подтверждённых сетевых
+   записей с проверенной суммой и полным хешем. Отметка сотрудника — ожидание. */
+function outgoingStatusSummaryData(d){
+  const sends=sendList(d).filter(t=>t&&typeof t==='object');
+  const review=S.policyEarlyReviews?.[d.id];
+  const relevant=sends.length||d.transferClaim||d.transferProposal||d.transferSentReport||
+    d.transferFound||d.transferAlarm||d.outgoingReview?.requestedAt||review||d.step==='s24';
+  if(!relevant)return null;
+  const validHash=h=>/^(?:0x)?[a-fA-F0-9]{64}$/.test(String(h||''));
+  const confirmed=sends.filter(t=>t.status==='confirmed'&&validHash(t.hash||t.ref)&&
+    Number.isFinite(Number(t.verifiedAmount))&&Number(t.verifiedAmount)>0&&!t.demo);
+  const amount=Math.round(confirmed.reduce((sum,t)=>sum+Number(t.verifiedAmount),0)*100)/100;
+  const target=Number(d.transfer?.amount);
+  const expected=Number.isFinite(target)&&target>0?target:null;
+  const fullAmount=expected!=null&&amount>=expected-0.005;
+  const complete=fullAmount&&d.serverTransferComplete===true;
+  const invalidConfirmed=sends.some(t=>t.status==='confirmed'&&!confirmed.includes(t));
+  const failed=sends.some(t=>['failed','mismatch','error'].includes(t.status));
+  let kind='waiting',title='Подтверждения отправки в сети ещё нет',detail='';
+  if(d.transferAlarm){kind='failed';title='Отправка требует проверки';detail='Найдены несовпадающие или повторные переводы.';}
+  else if(complete){kind='complete';title='Перевод отправлен';detail=`Подтверждён в сети · ${moneyKop(amount,'USDT')} из ${moneyKop(expected,'USDT')}.`;}
+  else if(fullAmount){kind='partial';title='Перевод подтверждён в сети — проверка отправки продолжается';detail=`Подтверждено ${moneyKop(amount,'USDT')} из ${moneyKop(expected,'USDT')}.`;}
+  else if(amount>0){kind='partial';title='Подтверждена часть перевода';detail=`Подтверждено ${moneyKop(amount,'USDT')}${expected!=null?' из '+moneyKop(expected,'USDT'):''}.`;
+  }
+  else if(invalidConfirmed){kind='failed';title='Проверьте данные подтверждения';detail='Нет полного хеша или проверенной суммы.';}
+  else if(failed){kind='failed';title=sends.some(t=>t.status==='mismatch')?'Реквизиты перевода не совпали':'Проверка перевода не прошла';}
+  else if(review){title='Ранний перевод требует подтверждения поручения';}
+  else if(d.transferFound){title='Перевод найден — проверяем отправку';}
+  else if(d.transferSentReport){title='Отправку отметили — ждём проверки в сети';}
+  else if(d.transferProposal||d.step==='s24'){title='Поручение на подписи — ждём перевод в сети';}
+  else if(sends.length){title='Ждём подтверждения перевода в сети';}
+  return {kind,title,detail,amount,expected,sends,review,validHash};
+}
+function outgoingStatusSummary(d){
+  const p=outgoingStatusSummaryData(d);
+  if(!p)return '';
+  const rows=p.sends.filter(t=>p.validHash(t.hash||t.ref)).map(t=>{
+    const hash=String(t.hash||t.ref),rawNet=String(t.net||t.network||d.transfer?.net||d.transfer?.network||dealWallet(d)?.net||'');
+    const net=/^ERC(?:-?20)?$/i.test(rawNet)?'ERC-20':/^TRC(?:-?20)?$/i.test(rawNet)?'TRC-20':'';
+    const amount=t.status==='confirmed'&&Number(t.verifiedAmount)>0?moneyKop(Number(t.verifiedAmount),'USDT'):'';
+    const label=t.status==='confirmed'?'Подтверждён':t.status==='mismatch'?'Реквизиты не совпали':
+      t.status==='failed'||t.status==='error'?'Проверка не прошла':'Ожидает подтверждения';
+    const timestamp=Number(t.timestampMs||t.timestamp_ms),when=Number.isFinite(timestamp)&&timestamp>0?
+      new Date(timestamp).toLocaleString('ru-RU',{timeZone:'Asia/Bangkok'}):'';
+    return `<div class="hashrow"><span class="hashtxt">${htmlText(hash)}</span><span class="hashops">
+      <span>${htmlText([label,amount,net||'Сеть не указана',when&&when+' Бангкок'].filter(Boolean).join(' · '))}</span>
+      ${net?`<a class="btn btn-outline btn-sm" href="${explorer(hash,net)}" target="_blank" rel="noopener">Открыть в обозревателе</a>`:''}
+      <button type="button" class="btn btn-outline btn-sm" onclick="copyHash('${hash}')">Копировать хеш</button></span></div>`;
+  });
+  if(!rows.length&&p.review&&p.validHash(p.review.hash)){
+    const hash=String(p.review.hash);
+    rows.push(`<div class="hashrow"><span class="hashtxt">${htmlText(hash)}</span><span class="hashops"><span>Требует подтверждения поручения</span>
+      <a class="btn btn-outline btn-sm" href="${explorer(hash,'TRC-20')}" target="_blank" rel="noopener">Открыть в обозревателе</a>
+      <button type="button" class="btn btn-outline btn-sm" onclick="copyHash('${hash}')">Копировать хеш</button></span></div>`);
+  }
+  return `<section class="outgoing-status-summary ${p.kind}" role="status" aria-label="Исходящий перевод">
+    <h2>${htmlText(p.title)}</h2>${p.detail?`<p>${htmlText(p.detail)}</p>`:''}${rows.join('')}</section>`;
+}
 function viewDeal(d){
   if(!d)return '<div class="card">Сделка не найдена. <button class="btn btn-sm btn-outline" onclick="back()">Назад</button></div>';
   if(S.manualCloseDraft&&S.manualCloseDraft[d.id])return manualCloseScreen(d);
@@ -7558,6 +7622,7 @@ function viewDeal(d){
     ${view==='task'&&branchPath?`<div class="deal-progress"><span>${htmlText(branchPath.active==='refund'?'Возместить оплату':STEPS[branchPath.active]?.title||'Конвертация завершена')}</span>
       <b>Шаг ${branchPath.index+1} из ${branchPath.steps.length}</b><i><span style="width:${Math.round((branchPath.index+1)/Math.max(1,branchPath.steps.length)*100)}%"></span></i></div>`:''}</header>
   ${view==='task'&&!d.manual&&clientPayinSummarySupported(d)?clientPayinSummary(d):''}
+  ${(view==='deal'||view==='task'||view==='card')?outgoingStatusSummary(d):''}
   ${(function(){
     /* Вкладка задачника появляется только если по сделке были задачи: у внесённой
        руками смотреть нечего, и лишняя вкладка сбивает (Карим, 23.09). */
