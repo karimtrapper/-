@@ -5332,7 +5332,7 @@ function knownBy(source,ref){
 
 const DOCT={pass:'Загранпаспорт',inv:'Инвойс застройщика',spa:'SPA с застройщиком',vehicle_contract:'ДКП автомобиля',ipds:'Анкета ИПДС',
   dog:'Агентский договор',app:'Приложение с платежом',bill:'Счёт на оплату',
-  signed:'Подписанный пакет от клиента', receipt:'Чек банка об оплате',
+  signed:'Подписанный пакет от клиента', receipt:'Чек банка об оплате', payment_order:'Платёжное поручение IPPS',
   clientPayinReceipt:'Чеки клиента об оплате',bankCreditEvidence:'Выписка / подтверждение зачисления',
   other:'Другое'};
 /* У лизхолда договор с застройщиком — Lease Agreement, SPA бывает только у фрихолда
@@ -8915,6 +8915,11 @@ function docListRows(d,small){
       <span class="t3" style="white-space:nowrap"><button class="btn btn-outline btn-sm" onclick="docOpen(${d.id},'${k}',${i})">Открыть</button>
         <button class="btn btn-outline btn-sm" onclick="docDownload(${d.id},'${k}',${i})">Скачать</button>${deleteButton(k,f)}</span></div>`));
   });
+  ['payment_order','receipt'].forEach(k=>filesOf(d,k).forEach((f,i)=>client.push(`<div class="li" style="cursor:default"><span class="av">${k==='payment_order'?'П':'Ч'}</span>
+    <div><div class="t1"${fs}>${k==='payment_order'?'Платёжное поручение IPPS':d.kind==='Фрихолд'?'SWIFT / MT103':'Чек банка об оплате'}</div>
+      <div class="t2" style="word-break:break-all">${docFileNameHtml(f.file)}</div></div>
+    <span class="t3"><button class="btn btn-outline btn-sm" onclick="docOpen(${d.id},'${k}',${i})">Открыть</button>
+      <button class="btn btn-outline btn-sm" onclick="docDownload(${d.id},'${k}',${i})">Скачать</button>${deleteButton(k,f)}</span></div>`)));
   filesOf(d,'clientPayinReceipt').forEach((f,i)=>client.push(`<div class="li" style="cursor:default"><span class="av">Ч</span>
     <div><div class="t1"${fs}>Чек клиента об оплате${i?' · '+(i+1):''}</div>
       <div class="t2" style="word-break:break-all">${docFileNameHtml(f.file)} · ${htmlText(f.uploadedBy||'сотрудник')}${f.note?' · '+htmlText(f.note):''}</div></div>
@@ -12748,13 +12753,16 @@ function stepCard(d){
         ${line('Номер счёта',pt.acc,1)}
         ${line(d.autoPayment===true?'Дойдёт продавцу':'Дойдёт застройщику',usd(X),0)}
       </div>
-      <div class="card-title" style="font-size:15px;margin:18px 0 8px">MT103 / чек об оплате
-        <span class="sub">уйдёт менеджеру — он отправит его клиенту</span></div>
+      <div class="card-title" style="font-size:15px;margin:18px 0 8px">Платёжное поручение
+        <span class="sub">загрузите сразу после отправки платежа; менеджер получит уведомление</span></div>
+      ${fileBlock(d,'payment_order','Платёжное поручение IPPS','можно приложить несколько файлов')}
+      <div class="card-title" style="font-size:15px;margin:18px 0 8px">Подтверждение SWIFT / MT103
+        <span class="sub">загрузите, когда придёт от банка; менеджер получит отдельное уведомление</span></div>
       <div style="border:1.5px dashed var(--coral);border-radius:var(--r);padding:4px">
-        ${fileBlock(d,'receipt','MT103 / чек IPPS об оплате','обязательно — подтверждение, что '+recipientTitle(d)+' дошло')}
+        ${fileBlock(d,'receipt','SWIFT / MT103 от IPPS','обязательно для завершения оплаты')}
       </div>
       <div class="row" style="margin-top:14px">
-        <button class="btn btn-primary" ${!payToConfirmed(d)?'disabled':''} onclick="act(${d.id},'s26')">MT103 приложен — передать чек менеджеру</button>
+        <button class="btn btn-primary" ${!payToConfirmed(d)||!hasReceipt(d)?'disabled':''} onclick="act(${d.id},'s26')">SWIFT получен — передать менеджеру</button>
         <button class="btn btn-outline" onclick="ret(${d.id})">Вернуть с вопросом</button></div></div>`;
     }
     return `<div class="card"><div class="card-title">Оплатить инвойс получателю
@@ -12814,6 +12822,7 @@ function stepCard(d){
        (CRM-превью, список полей) — ниже и мельче, по иерархии важности (Карим, 25.09) */
     return `<div class="card"><div class="card-title">Чек клиенту и закрытие
       <span class="sub">${ok.length-okMiss} из ${ok.length} полей собрано по дороге</span></div>
+    ${d.kind==='Фрихолд'&&filesOf(d,'payment_order').length?`<div class="card-title" style="font-size:14px;margin:14px 0 6px">Платёжное поручение</div>${filesOf(d,'payment_order').map((f,i)=>`<div class="checkfile"><span class="fname">${safe(f.file)}</span><button class="btn btn-secondary" onclick="docOpen(${d.id},'payment_order',${i})">Открыть</button></div>`).join('')}`:''}
     ${receiptFiles.length?`<div class="checktop">
       <div class="checklab">Чек выплаты</div>
       <div class="checksum">${money(pt.amount||ap.thb,ap.thbSign||'฿')}${pt.dev?`<span class="to">→ ${safe(pt.dev)}</span>`:''}</div>
@@ -13285,7 +13294,7 @@ async function act(id,step){
     if(d.pay.invoicePaid){toast('Оплата инвойса уже учтена');return;}
     /* Назначение для банка застройщика вносит менеджер в реквизитах (Карим, 27.09):
        операционист его не пишет, а без него не платит — возвращает с вопросом */
-    if(!hasReceipt(d)){toast('Приложите чек банка — его отправят клиенту');return;}
+    if(!hasReceipt(d)){toast(d.kind==='Фрихолд'?'Дождитесь SWIFT / MT103 и приложите его':'Приложите чек банка — его отправят клиенту');return;}
     if(d.kind==='Фрихолд'){
       /* IPPS платит из отправленных USDT — на батном счёте SCB для фрихолда денег
          никаких нет, списывать нечего (спека 28.09). */

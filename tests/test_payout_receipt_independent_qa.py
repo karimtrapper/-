@@ -111,6 +111,44 @@ def facts(client):
     return {f['kind']: f for f in status['facts']}, status
 
 
+def test_ipps_payment_order_then_swift_upload_notifies_separately(monkeypatch):
+    client, uid, _ = bank_board(monkeypatch)
+    change_board(lambda d: d.update(kind='Фрихолд', step='s26',
+                                   manager='T24 Manager', managerUserId=uid,
+                                   pay={'invoicePaid': False}, files={}, docs={}))
+    deliveries = []
+    monkeypatch.setattr(m, '_stand_deliver_notes', lambda: deliveries.append('called'))
+
+    def post(kind, raw, *, extra=False):
+        form = {'dealId': '1474', 'kind': 'additional' if extra else kind,
+                'file': (io.BytesIO(raw), kind + '.pdf', 'application/pdf')}
+        if extra:
+            form.update(extra='1', documentType='receipt')
+        return client.post('/api/stand/files', data=form, content_type='multipart/form-data')
+
+    first = post('payment_order', b'%PDF-1.4\norder')
+    assert first.status_code == 200, first.json
+    deal = next(d for d in first.json['data']['deals'] if d['id'] == 1474)
+    assert deal['step'] == 's26' and deal['pay']['invoicePaid'] is False
+    assert not m._stand_valid_receipt(deal)
+    notes = [n for n in first.json['data']['notes'] if 'ipps-document' in n['id']]
+    assert len(notes) == 1 and notes[0]['recipientAdminId'] == uid
+    assert 'Платёжное поручение' in notes[0]['text']
+    assert client.get('/api/stand/file/1474/payment_order/0').data == b'%PDF-1.4\norder'
+    assert m.app.test_client().get('/api/stand/file/1474/payment_order/0').status_code == 401
+    assert post('payment_order', b'%PDF-1.4\norder').json['duplicate'] is True
+    assert len(deliveries) == 1
+
+    second = post('swift', b'%PDF-1.4\nswift', extra=True)
+    assert second.status_code == 200, second.json
+    deal = next(d for d in second.json['data']['deals'] if d['id'] == 1474)
+    assert deal['step'] == 's26' and deal['pay']['invoicePaid'] is False
+    assert m._stand_valid_receipt(deal)
+    notes = [n for n in second.json['data']['notes'] if 'ipps-document' in n['id']]
+    assert len(notes) == 2 and len(deliveries) == 2
+    assert any('SWIFT / MT103' in n['text'] for n in notes)
+
+
 @pytest.mark.parametrize('extra', [False, True], ids=['receipt-slot', 'additional-receipt'])
 def test_ordinary_upload_confirms_payout_with_author_and_date(monkeypatch, extra):
     client, uid, crm = bank_board(monkeypatch)

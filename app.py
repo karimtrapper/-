@@ -6162,7 +6162,7 @@ def stand_file_upload():
         document_type = request.form.get('documentType') if extra else None
         if extra and (kind != 'additional' or document_type not in {'receipt', 'inv', 'spa', 'vehicle_contract', 'pass', 'other'}):
             raise ValueError('Неизвестный тип документа')
-        if kind not in {'pass', 'inv', 'spa', 'vehicle_contract', 'ipds', 'signed', 'receipt',
+        if kind not in {'pass', 'inv', 'spa', 'vehicle_contract', 'ipds', 'signed', 'receipt', 'payment_order',
                         STAND_CLIENT_PAYIN_KIND, STAND_BANK_CREDIT_KIND, 'additional'}:
             raise ValueError('Неизвестный тип вложения')
         if kind == 'additional' and not extra:
@@ -6191,6 +6191,9 @@ def stand_file_upload():
         deal = next((d for d in state.get('deals', []) if d.get('id') == deal_id), None)
         if not deal:
             return jsonify(success=False, error='Сделка не найдена'), 404
+        if kind == 'payment_order' and (deal.get('kind') != 'Фрихолд'
+                 or deal.get('step') != 's26' or deal.get('closed')):
+            return jsonify(success=False, error='Платёжное поручение доступно на шаге подтверждения IPPS'), 409
         if actor == 'manager' and deal.get('manager'):
             manager = db.get(AdminUser, actor_id)
             if deal['manager'].strip().casefold() not in {
@@ -6239,17 +6242,30 @@ def stand_file_upload():
         # An extra attachment is a scoped server mutation of files and log.
         # Step ownership rules apply to workflow actions, not this attachment.
         problem = None if extra else _stand_guard_transition(
-            previous, state, actor, actor_id, db, receipt_upload=(kind == 'receipt' and actor in ('manager', 'operator', 'admin')))
+            previous, state, actor, actor_id, db, receipt_upload=(kind in ('receipt', 'payment_order') and actor in ('manager', 'operator', 'admin')))
         if problem:
             return jsonify(success=False, error=problem), 403
         if duplicate:
             return jsonify(success=True, duplicate=True, message='Файл уже загружен',
                            version=row.version, data=_stand_strip_files(previous))
         _stand_externalize_files(db, row, state, actor=actor_id, previous=previous)
+        notify_kind = 'receipt' if extra and document_type == 'receipt' else kind
+        notify_ipps = (deal.get('kind') == 'Фрихолд' and deal.get('step') == 's26'
+                       and notify_kind in ('payment_order', 'receipt'))
+        if notify_ipps:
+            label = ('Платёжное поручение загружено' if notify_kind == 'payment_order'
+                     else 'SWIFT / MT103 загружен')
+            _stand_note(state, f"stand:ipps-document:{deal_id}:{notify_kind}:{sha}", 'manager', deal,
+                        f"{label} · {name}", recipient_admin_id=deal.get('managerUserId'))
         row.data = json.dumps(state, ensure_ascii=False)
         row.version = (row.version or 0) + 1
         row.updated_by, row.updated_at = author, datetime.utcnow()
         db.commit()
+        if notify_ipps:
+            try:
+                _stand_deliver_notes()
+            except Exception:
+                app.logger.exception('IPPS document notification delivery failed')
         return jsonify(success=True, version=row.version, data=_stand_strip_files(state))
     except ValueError as exc:
         db.rollback()
@@ -11114,15 +11130,15 @@ def _stand_receipt_upload_only(before, deal, changed):
     old, new = before.get('files') or {}, deal.get('files') or {}
     if not isinstance(old, dict) or not isinstance(new, dict):
         return False
-    if any(old.get(k) != new.get(k) for k in set(old) | set(new) if k not in ('receipt', 'additional')):
+    if any(old.get(k) != new.get(k) for k in set(old) | set(new) if k not in ('receipt', 'payment_order', 'additional')):
         return False
-    for field in ('docs', 'docMeta'):  # производные только чека
+    for field in ('docs', 'docMeta'):
         prior_map, new_map = before.get(field) or {}, deal.get(field) or {}
         if (not isinstance(prior_map, dict) or not isinstance(new_map, dict)
                 or any(prior_map.get(k) != new_map.get(k)
-                       for k in set(prior_map) | set(new_map) if k != 'receipt')):
+                       for k in set(prior_map) | set(new_map) if k not in ('receipt', 'payment_order'))):
             return False
-    for slot in ('receipt', 'additional'):
+    for slot in ('receipt', 'payment_order', 'additional'):
         prior, current = old.get(slot) or [], new.get(slot) or []
         if (not isinstance(prior, list) or not isinstance(current, list)
                 or current[:len(prior)] != prior):
