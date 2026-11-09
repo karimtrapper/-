@@ -466,7 +466,7 @@ def test_shared_policy_table_matches_python_functions():
         assert row['initiate_targets_from_start'] == wp.initiate_targets(ini, alone, first)
         for role in ROLES:
             assert row['initiate_targets'][role] == wp.initiate_targets(ini, alone, role)
-            assert row['can_claim'][role] == wp.can_claim(alone, first, role)
+            assert row['can_claim'][role] == wp.can_claim(alone, wp.claim_roles(ini, alone), role)
             default = wp.default_sign_role(conf, role)
             assert row['sign'][role] == {'default': default, 'targets': wp.sign_targets(conf, role, default)}
 

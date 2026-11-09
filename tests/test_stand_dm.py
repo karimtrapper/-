@@ -86,6 +86,19 @@ def log_status(note_id, admin_id):
         db.close()
 
 
+def test_shared_queue_heading_is_neutral_and_legacy_role_heading_stays(dm, monkeypatch):
+    monkeypatch.setenv('STAND_BASE_URL', 'https://stand.example')
+    deal = {'7': {'id': 7, 'code': 'T7', 'client': 'Иван'}}
+    legacy = notify._format_note(note(90, 'operator'), deal, stand_label=True)
+    shared = notify._format_note({**note(91, 'operator'),
+        'recipientRoles': ['operator', 'findir', 'teodor']}, deal, stand_label=True)
+    assert legacy.startswith('🧪 <b>СТЕНД</b> (не прод)\n🔔 <b>' +
+                             appmod.STAND_ROLE_PEOPLE['operator'] + '</b>')
+    assert shared.startswith('🧪 <b>СТЕНД</b> (не прод)\n🔔 <b>Отправка с кошелька</b>')
+    assert 'Задача 91' in shared and 'https://stand.example/tasks?deal=7' in shared
+    assert appmod.STAND_ROLE_PEOPLE['operator'] not in shared
+
+
 def test_roles_admin_and_dedup_after_double_delivery(dm):
     calls, ids, board = dm
     board([note(1), note(2, 'operator')])

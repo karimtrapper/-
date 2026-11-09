@@ -104,8 +104,18 @@ def initiate_targets(initiator_roles, owner_can_alone, current):
 
 
 def can_claim(owner_can_alone, current, role):
-    """Взять перевод может текущая роль; владелец — всегда, если может сам."""
-    return role == current or (role == OWNER and bool(owner_can_alone))
+    """Взять перевод может любая роль свободной очереди или её адресат после передачи."""
+    return role in (current if isinstance(current, (list, tuple)) else (current,)) or (role == OWNER and bool(owner_can_alone))
+
+
+def claim_roles(initiator_roles, owner_can_alone, handoff_role=None):
+    """Роли свободной задачи; явная передача сужает очередь до адресата."""
+    roles = parse_roles(initiator_roles)
+    if handoff_role in initiate_targets(roles, owner_can_alone, None):
+        roles = [handoff_role]
+    if owner_can_alone and OWNER not in roles:
+        roles.append(OWNER)
+    return roles
 
 
 def default_sign_role(confirmer_roles, initiator_role):

@@ -97,7 +97,7 @@
  },
  "TDuDeRiwrLLN3hnnA57G5yM6ibg58A6wZk": {
   "can_claim": {
-   "findir": false,
+   "findir": true,
    "operator": true,
    "teodor": true
   },

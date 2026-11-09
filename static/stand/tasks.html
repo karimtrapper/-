@@ -2690,7 +2690,9 @@ function policySignTargets(d,w){
   return POLICY_ROLE_ORDER.filter(r=>(w?.confirmer_roles||[]).includes(r)&&r!==claimRole&&r!==current);
 }
 function policyCanClaim(d,w,role){
-  return role===policyInitiateRole(d,w)||(role==='teodor'&&!!w?.owner_can_alone);
+  const handoff=d?.transferHandoff?.role;
+  const roles=handoff&&policyInitiateTargets(w,null).includes(handoff)?[handoff]:policyInitiators(w);
+  return roles.includes(role)||(role==='teodor'&&!!w?.owner_can_alone);
 }
 function policyRoleNames(list){
   return [...new Set(list||[])].map(role=>POLICY_ROLE_NAMES[role]||role).join(' / ');
@@ -2700,7 +2702,9 @@ function bkkTime(ms){
 }
 /* Не забирал ли этот сотрудник перевод в текущем раунде: после перехвата ему закрыто всё */
 function policyReleasedByMe(d){
-  return (d?.transferClaimHistory||[]).some(h=>String(h.byId)===String(standMeId));
+  const history=d?.transferClaimHistory||[], latest=history[history.length-1];
+  return (latest?.toRole!==S.role||latest?.role===S.role)&&
+    history.some(h=>String(h.byId)===String(standMeId));
 }
 function policyLastReleased(d){const h=d?.transferClaimHistory||[];return h.length?h[h.length-1]:null;}
 function policyLocked(d){return !!(d?.transferAlarm||d?.transferFound);}
@@ -2829,8 +2833,8 @@ async function takeoverConfirm(){
   if(j?.success)toast('Перевод передан');else render();
 }
 async function transferHandoff(id,toRole){
-  const d=deal(id), claim=d.step==='s23'?d.transferClaim:null;
-  if(claim){S.takeoverAsk={id,toRole,claimAt:claim.at};S.handoffOpen=null;render();return;}
+  const d=deal(id), claim=d.transferClaim;
+  if(claim&&(d.step==='s23'||(d.step==='s24'&&toRole==='teodor'&&dispatchRole()==='teodor'))){S.takeoverAsk={id,toRole,claimAt:claim.at};S.handoffOpen=null;render();return;}
   S.handoffOpen=null;
   const j=await standAction('/api/stand/transfer/handoff',{dealId:id,version:standVer,toRole});
   if(j?.success)toast('Передано: '+(POLICY_ROLE_DATIVE[toRole]||toRole).toLowerCase());
@@ -2847,15 +2851,20 @@ function dispatchRole(){return (typeof standMe==='string'&&standMe)?standMe:S.ro
 function handoffTargets(d){
   const w=dealWallet(d);
   if(!hasPolicy(w)||d.closed||d.outgoingReview?.requestedAt)return [];
-  if(!['operator','admin'].includes(dispatchRole()))return [];
+  if(!['operator','findir','teodor','manager','admin'].includes(dispatchRole()))return [];
   if(d.transferAlarm)return [];
   const myClaim=d.transferClaim&&String(d.transferClaim.byId)===String(standMeId);
   if(d.step==='s23'){
-    if(d.transferFound||d.transferConfirmation||myClaim)return [];
-    return policyInitiateTargets(w,d.transferClaim?null:policyInitiateRole(d,w));
+    if(d.transferFound||d.transferConfirmation)return [];
+    if(dispatchRole()==='teodor')return w.owner_can_alone&&d.transferClaim?['teodor']:[];
+    if(dispatchRole()==='findir'&&!myClaim&&!policyCanClaim(d,w,'findir'))return [];
+    return policyInitiateTargets(w,d.transferClaim||!d.transferHandoff?null:policyInitiateRole(d,w))
+      .filter(r=>!(myClaim&&r===d.transferClaim.role));
   }
   if(d.step==='s24'){
     if(!d.transferClaim||d.transferConfirmation)return [];
+    if(dispatchRole()==='teodor')return w.owner_can_alone?['teodor']:[];
+    if(dispatchRole()==='findir')return [];
     /* заводивший раунд не назначает подпись на себя */
     const wasMine=myClaim||policyReleasedByMe(d);
     return policySignTargets(d,w).filter(r=>!(wasMine&&r===S.role));
@@ -2917,7 +2926,8 @@ function policyStatusLine(d){
   let main='';
   if(d.step==='s23'){
     main=claim?`В работе у ${htmlText(claim.byName||'сотрудника')} с ${bkkTime(claim.at)}`
-      :`Завести: ${nameOf(policyInitiateRole(d,w))}`;
+      :d.transferHandoff?`Завести: ${nameOf(policyInitiateRole(d,w))}`
+      :`Ожидает исполнителя: ${policyRoleNames(policyInitiators(w).concat(w.owner_can_alone?['teodor']:[]))}`;
   }else main=`Подписать: ${nameOf(policySignRole(d,w))}`;
   const ho=d.step==='s23'?d.transferHandoff:d.signHandoff;
   const by=ho&&!claim||d.step==='s24'&&ho?` · Передал ${htmlText(ho.byName||'менеджер')}, ${bkkTime(ho.at)}`:'';
@@ -4766,7 +4776,9 @@ function taskBranchesForRole(d,role){
   const policyConfirm=d.step==='s24'&&hasPolicy(policyWallet);
   const ownsPayment=!!STEPS[d.step]&&((!policySend&&!policyConfirm&&stepWho(d)===role)||
     (policySend&&policyOwnsSend(d,policyWallet,role))||
-    (policyConfirm&&policyOwnsVerification(d,policyWallet,role)));
+    (policyConfirm&&policyOwnsVerification(d,policyWallet,role))||
+    (role==='teodor'&&policyWallet?.owner_can_alone&&
+      (policySend||policyConfirm)&&!!d.transferClaim&&!d.transferSentReport));
   const sidePayment=(role==='manager'&&(reqOpen(d)||needsPayConfirm(d)))||
     (role==='operator'&&d.step==='s27'&&d.type==='Оплата недвижимости')||
     (role==='operator'&&d.step==='s14'&&(d.manualBankReceipt?.status==='pending'||(!d.manualBankReceipt&&!rubApiAccount(d))));
@@ -5201,7 +5213,18 @@ function payToConfirmBlock(d){
       <button class="btn btn-outline" onclick="reqReopen(${d.id},'правка перед оплатой')">Реквизиты изменились — поправить</button>
     </div></div>`;
 }
-function waitingOn(role){return S.deals.filter(d=>!d.closed&&STEPS[d.step]&&stepWho(d)&&stepWho(d)!==role);}
+function waitingOn(role){return S.deals.filter(d=>{
+  if(d.closed||!STEPS[d.step]||!stepWho(d)||stepWho(d)===role)return false;
+  const w=dealWallet(d);
+  return !(d.step==='s23'&&hasPolicy(w)&&policyOwnsSend(d,w,role));
+});}
+function policyStepAssignee(d,step){
+  if(step==='s23'&&!d.transferClaim&&!d.transferHandoff){
+    const w=dealWallet(d);
+    if(hasPolicy(w))return policyRoleNames(policyInitiators(w).concat(w.owner_can_alone?['teodor']:[]));
+  }
+  return (ROLES[stepWho(d,step)]||{}).n||'—';
+}
 function sentToggle(id){
   const d=deal(id);
   d.sentToClient=!d.sentToClient;
@@ -6334,7 +6357,7 @@ function taskDealsHtml(role){
   return `<div class="task-deals-table"><div class="task-deals-heading"><span>Сделка</span><span>Флоу</span><span>Этап</span><span>На ком</span><span>Сумма</span><span>С какого времени</span></div>${deals.map(d=>{
     const a=approx(d),amount=apMoney(a,'pay');
     const path=dealTaskPath(d,null),lastEvent=(d.log||[]).at(-1),sinceAt=lastEvent?.at;
-    return `<button type="button" class="task-deal-row" data-task-id="${d.id}" data-task-view="deal" onclick="openDeal(${d.id})"><span class="task-deal-name"><strong>${htmlText(d.code)} · ${htmlText(d.client)}</strong></span><span class="task-deal-flow">${htmlText(d.autoPayment===true?'Оплата авто':d.kind||d.type||'Сделка')}</span><span class="task-deal-stage">${htmlText(d.closed?d.closeReason||'Завершена':d.prepay?prepayBranchStatus(d,'payment'):stepTitle(d))}<span class="task-deal-progress" aria-label="Шаг ${path.index+1} из ${path.steps.length}">${path.steps.map((_,i)=>`<i class="${i<path.index?'done':i===path.index?'current':''}"></i>`).join('')}</span></span><span class="task-deal-who">${htmlText(d.closed?'—':d.prepay?prepayBranchAssignee(d,'payment'):(ROLES[stepWho(d)]||{}).n||'—')}</span><b class="task-deal-amount num">${amount==='посчитаем после курса'?apMoney(a,'thb'):amount}</b><span class="task-deal-since">${typeof sinceAt==='number'&&Number.isFinite(sinceAt)?since(sinceAt):'—'}</span></button>`;
+    return `<button type="button" class="task-deal-row" data-task-id="${d.id}" data-task-view="deal" onclick="openDeal(${d.id})"><span class="task-deal-name"><strong>${htmlText(d.code)} · ${htmlText(d.client)}</strong></span><span class="task-deal-flow">${htmlText(d.autoPayment===true?'Оплата авто':d.kind||d.type||'Сделка')}</span><span class="task-deal-stage">${htmlText(d.closed?d.closeReason||'Завершена':d.prepay?prepayBranchStatus(d,'payment'):stepTitle(d))}<span class="task-deal-progress" aria-label="Шаг ${path.index+1} из ${path.steps.length}">${path.steps.map((_,i)=>`<i class="${i<path.index?'done':i===path.index?'current':''}"></i>`).join('')}</span></span><span class="task-deal-who">${htmlText(d.closed?'—':d.prepay?prepayBranchAssignee(d,'payment'):policyStepAssignee(d,d.step))}</span><b class="task-deal-amount num">${amount==='посчитаем после курса'?apMoney(a,'thb'):amount}</b><span class="task-deal-since">${typeof sinceAt==='number'&&Number.isFinite(sinceAt)?since(sinceAt):'—'}</span></button>`;
   }).join('')}</div>`;
 }
 function showTaskListSection(section){
@@ -7323,12 +7346,16 @@ function dealTaskPathCard(d,branch){
   const wallet=dealWallet(d);
   return `<div class="card side deal-path"><h4>Путь сделки</h4><ol>${path.steps.map((k,i)=>
     `<li class="${i<path.index||path.done?'done':i===path.index?'current':'next'}"><span class="path-dot"></span>
-      <div><b>${htmlText(k==='refund'?'Возместить оплату':STEPS[k]?.title||k)}</b><small>${i===path.index&&!path.done?'Сейчас · ':''}${htmlText(hasPolicy(wallet)&&k==='s23'?policyRoleNames([stepWho(d,'s23')]):
+      <div><b>${htmlText(k==='refund'?'Возместить оплату':STEPS[k]?.title||k)}</b><small>${i===path.index&&!path.done?'Сейчас · ':''}${htmlText(hasPolicy(wallet)&&k==='s23'?policyStepAssignee(d,'s23'):
         hasPolicy(wallet)&&k==='s24'?policyRoleNames([stepWho(d,'s24')]):
         k==='refund'?(ROLES[prepayRefundRole(d)]||{}).t:(ROLES[stepWho(d,k)]||{}).t||'')}</small></div></li>`).join('')}</ol></div>`;
 }
 function taskBranchSet(branch){S.taskBranch=branch;S.view='task';saveUi();render();}
 function prepayBranchAssignee(d,branch){
+  if(branch==='payment'&&d.step==='s23'&&!d.transferClaim&&!d.transferHandoff){
+    const w=dealWallet(d);
+    if(hasPolicy(w))return policyStepAssignee(d,'s23');
+  }
   const role=branch==='conversion'?(prepayRefundRole(d)||'operator'):stepWho(d);
   const assigned=STAND_EMPLOYEES.find(e=>String(e.id)===String(d.assigneeAdminId)&&
     (e.role===role||(branch==='payment'&&e.role==='admin')));
@@ -7791,7 +7818,7 @@ function pathCard(d){
       const idx=flowOf(d).indexOf(k), cur=flowOf(d).indexOf(d.step);
       const st=d.prepay?(k==='s24'&&!d.prepay.wallet.multisig?'не требуется':prepayStepDone(d,k)?'внесено':([d.step,d.prepay.brokerStep].includes(k)?'сейчас':'ещё нет')):d.closed?'внесено':(cur<0?'—':(idx<cur?'внесено':(idx===cur?'сейчас':'ещё нет')));
       return `<li class="flow-item"${st==='сейчас'&&!d.closed?' style="background:var(--coral-light)"':''}>
-        <div class="flow-item-meta"><span>${STEPS[k].n}. ${k==='s22'&&d.kind==='Фрихолд'?'Согласовать заявку IPPS':(k==='s25'&&d.kind==='Фрихолд'?'Ожидать MT103':STEPS[k].title)}</span><span class="flow-item-who">${stepWho(d,k)?ROLES[stepWho(d,k)].t:'—'}</span>
+        <div class="flow-item-meta"><span>${STEPS[k].n}. ${k==='s22'&&d.kind==='Фрихолд'?'Согласовать заявку IPPS':(k==='s25'&&d.kind==='Фрихолд'?'Ожидать MT103':STEPS[k].title)}</span><span class="flow-item-who">${policyStepAssignee(d,k)}</span>
         <span class="flow-item-status">${st==='внесено'?'<span class="badge b-done">внесено</span>':(st==='сейчас'?'<span class="badge b-new">сейчас</span>':`<span class="badge b-wait">${st}</span>`)}</span></div>
         <div class="flow-item-body"><b>${f.b}</b> — ${d.prepay&&k==='s22'?'согласованная операционистом заявка IPPS для параллельной оплаты':f.w}</div></li>`;}).join('')}
     </ul>
@@ -12526,7 +12553,7 @@ function stepCard(d){
       :`
       ${d.outgoingReview?'<p class="fh">Проверьте найденные переводы и хеши.</p>':''}
       ${!d.outgoingReview?`<div class="row"><button class="btn btn-success" onclick="outgoingReviewAction(${d.id},'sent')">Отправил</button></div>`:''}`;})()}
-    </div>`;},
+    </div>${hasPolicy(policyWallet)?policyActions(d):''}`;},
 
   s24:()=>{
     /* Теодору — суть сделки и ни одной кнопки: подпись ставится в кошельке, дальше

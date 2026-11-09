@@ -102,6 +102,59 @@ def users():
 
 # ------------------------------------------------------------- передача: завести (s23)
 
+def test_free_queue_can_be_claimed_by_either_initiator(clean_board):
+    u = users()
+    for role in ('operator', 'findir'):
+        board_with(REALTY)
+        response = claim(u[role])
+        assert response.status_code == 200, response.get_json()
+        assert main_deal()['transferClaim']['role'] == role
+
+
+def test_manager_can_assign_first_role_from_free_queue(clean_board):
+    board_with(REALTY)
+    u = users()
+    response = handoff(u['manager'], 'operator')
+    assert response.status_code == 200, response.get_json()
+    assert main_deal()['transferHandoff']['role'] == 'operator'
+    assert claim(u['findir']).status_code == 403
+    assert claim(u['operator']).status_code == 200
+
+
+def test_explicit_handoff_roundtrip_allows_original_operator_to_reclaim(clean_board):
+    board_with(REALTY)
+    u = users()
+    assert claim(u['operator']).status_code == 200
+    original = main_deal()['transferClaim']
+    assert takeover(u['manager'], 'findir').status_code == 200
+    assert claim(u['operator']).status_code == 409
+    assert claim(u['findir']).status_code == 200
+    assert takeover(u['manager'], 'operator').status_code == 200
+    response = claim(u['operator'])
+    assert response.status_code == 200, response.get_json()
+    assert main_deal()['transferClaim']['byId'] == original['byId']
+    assert len(main_deal()['transferClaimHistory']) == 2
+
+
+def test_owner_takes_s24_without_recreating_transfer(clean_board):
+    board_with(REALTY)
+    u = users()
+    assert claim(u['operator']).status_code == 200
+    assert post(u['operator'], 'propose').status_code == 200
+    before = main_deal()
+    claim_before = copy.deepcopy(before['transferClaim'])
+    proposal_before = copy.deepcopy(before['transferProposal'])
+    response = takeover(u['teodor'], 'teodor')
+    assert response.status_code == 200, response.get_json()
+    after = main_deal()
+    assert after['step'] == 's24'
+    assert after['transferClaim'] == claim_before
+    assert after['transferProposal'] == proposal_before
+    assert after['transferConfirmation']['ownerAlone'] is True
+    assert after['signHandoff']['role'] == 'teodor'
+    assert len(after.get('transferClaimHistory') or []) == 0
+
+
 def test_operator_hands_over_to_findir_then_owner_and_repeat_is_idempotent(clean_board):
     board_with(REALTY)
     u = users()
@@ -126,19 +179,20 @@ def test_operator_hands_over_to_findir_then_owner_and_repeat_is_idempotent(clean
 
 
 @pytest.mark.parametrize('role', ['manager', 'findir', 'teodor'])
-def test_only_operator_and_admin_can_hand_over(clean_board, role):
+def test_manager_and_eligible_roles_can_route_only_their_tasks(clean_board, role):
     board_with(REALTY)
     before = board()
     r = handoff(users()[role], 'teodor')
-    assert r.status_code == 403
-    assert board() == before
+    assert r.status_code == (403 if role == 'findir' else 200)
+    if role == 'findir':
+        assert board() == before
     u = users()
     assert handoff(u['operator'], 'findir').status_code == 200          # операционист
     assert handoff(u['admin'], 'teodor').status_code == 200             # админ
 
 
 @pytest.mark.parametrize('action', ['handoff', 'takeover', 'sign', 'mark'])
-def test_client_manager_gets_403_for_every_dispatch_action(clean_board, action):
+def test_client_manager_can_route_but_not_mark_sent(clean_board, action):
     board_with(EXCHANGE)
     u = users()
     assert claim(u['operator']).status_code == 200
@@ -154,8 +208,9 @@ def test_client_manager_gets_403_for_every_dispatch_action(clean_board, action):
         r = handoff(manager, 'teodor')
     else:
         r = post(manager, 'mark-sent', hash=HASH)
-    assert r.status_code == 403, r.get_json()
-    assert board() == before
+    assert r.status_code == {'handoff': 409, 'takeover': 200, 'sign': 200, 'mark': 403}[action], r.get_json()
+    if action == 'mark':
+        assert board() == before
 
 
 def test_handoff_rejects_unknown_stale_and_foreign_wallet_cases(clean_board):
@@ -285,7 +340,7 @@ def test_sign_reassignment_to_initiator_or_outsider_is_refused(clean_board):
     before = board()
     assert handoff(u['dispatcher'], 'operator').status_code == 409       # на заводившего — нельзя
     assert board() == before
-    assert handoff(u['manager'], 'teodor').status_code == 403
+    assert handoff(u['manager'], 'teodor').status_code == 200
     board_with(MFSTR)
     assert claim(u['findir']).status_code == 200
     to_s24()
@@ -355,10 +410,11 @@ def test_takeover_requires_flag_and_matching_claim_time(clean_board):
     assert handoff(u['dispatcher'], 'findir', takeover=True).status_code == 409        # нет claimAt
     assert handoff(u['dispatcher'], 'findir', takeover='true', claimAt=main_deal()['transferClaim']['at']).status_code == 409
     assert board() == before
-    for role in ('findir', 'teodor', 'manager'):
+    for role in ('findir', 'teodor'):
         assert takeover(u[role], 'findir').status_code == 403
-    assert takeover(u['operator'], 'findir').status_code == 409      # свой перевод перехватом не передают
-    assert board() == before
+    assert takeover(u['manager'], 'findir').status_code == 200
+    assert takeover(u['operator'], 'findir').status_code == 200      # прежний исполнитель может переназначить
+    assert main_deal()['transferHandoff']['role'] == 'findir'
 
 
 def test_takeover_moves_claim_to_history_with_log_notes_and_assignment(clean_board):

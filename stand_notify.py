@@ -207,7 +207,8 @@ def _format_note(note, deals, stand_label=False):
     """`stand_label` — метка «СТЕНД» перед текстом (T14, профиль lk_send_only):
     тот же бот доставляет и боевые задания, поэтому сообщение со стенда
     обязано быть невозможно спутать с продовым."""
-    who = _app.STAND_ROLE_PEOPLE.get(note.get('role'), note.get('role') or '')
+    who = ('Отправка с кошелька' if isinstance(note.get('recipientRoles'), list)
+           else _app.STAND_ROLE_PEOPLE.get(note.get('role'), note.get('role') or ''))
     deal = deals.get(str(note.get('dealId'))) or {}
     tail = ''
     if deal:
@@ -236,6 +237,38 @@ def deliver():
             row = _app._stand_row(db)
             state = json.loads(row.data or '{}')
             deals = {str(d.get('id')): d for d in state.get('deals') or []}
+            notes = list(state.get('notes') or [])
+            # Уже открытые до исправления свободные задачи получают один
+            # адресный цикл по текущему кошельку, без повторного проигрывания истории.
+            queued = {str(n.get('dealId')) for n in notes if n.get('recipientRoles')}
+            for deal in deals.values():
+                if (str(deal.get('id')) in queued or deal.get('closed') or deal.get('step') != 's23'
+                        or deal.get('transferClaim') or deal.get('transferFound')
+                        or deal.get('transferAlarm') or deal.get('transferSentReport')):
+                    continue
+                try:
+                    main = _app._stand_batch_main(state, deal.get('id')) or deal
+                    wallet_id = int(_app.stand_prepay.wallet_id(state, main))
+                    wallet = db.query(_app.Wallet).filter_by(id=wallet_id).first()
+                    if not wallet or not wallet.active or not _app._wallet_policy_ready(wallet):
+                        continue
+                    roles = _app.wallet_policy.claim_roles(wallet.initiator_roles,
+                        wallet.owner_can_alone, (main.get('transferHandoff') or {}).get('role'))
+                    prior_roles = {n.get('role') for n in notes
+                        if str(n.get('dealId')) == str(deal.get('id'))
+                        and str(n.get('id', '')).startswith('stand:state:')
+                        and ('шаг s23' in str(n.get('text', '')) or
+                             'отправить с кошелька' in str(n.get('text', '')))}
+                    roles = [role for role in roles if role not in prior_roles]
+                    if not roles:
+                        continue
+                    notes.append({'id': f'stand:queue:{deal["id"]}:{deal.get("stepEnteredAt") or 0}:{wallet_id}',
+                        'role': roles[0], 'recipientRoles': roles, 'recipientAdminId': None,
+                        'skipAdmin': bool(prior_roles),
+                        'dealId': deal['id'], 'text': f'{deal.get("code") or deal["id"]}: отправить с кошелька — возьмите задачу в работу',
+                        'at': deal.get('stepEnteredAt') or 0})
+                except (TypeError, ValueError, KeyError, AttributeError):
+                    continue
             users = db.query(_app.AdminUser).all()
             profile = notify_profile()
             channel = {'lk_send_only': 'telegram_lk', 'stand_bot': 'telegram'}.get(profile)
@@ -245,7 +278,7 @@ def deliver():
             # решение Карима: явный выбор профиля важнее доступности канала.
             profile_ready = (channel == 'telegram' or
                              (channel == 'telegram_lk' and stand_egress.lk_preflight_ok()))
-            for note in reversed(state.get('notes') or []):
+            for note in reversed(notes):
                 note_id = str(note.get('id') or '')
                 if not note_id:
                     continue
@@ -262,6 +295,13 @@ def deliver():
                     or _app._stand_payto_confirm_key(deal) != typed_key))
                 specific_target = ('recipientAdminId' in note and
                                    note.get('recipientAdminId') is not None)
+                queue_roles = note.get('recipientRoles') if isinstance(note.get('recipientRoles'), list) else None
+                stale_queue_note = bool(queue_roles is not None and
+                    (deal.get('step') != 's23' or deal.get('transferClaim') or
+                     deal.get('transferFound') or deal.get('transferAlarm') or
+                     deal.get('transferSentReport') or
+                     (deal.get('transferHandoff') and
+                      (deal.get('transferHandoff') or {}).get('at', 0) > note.get('at', 0))))
                 raw_assignee = (note.get('recipientAdminId') if 'recipientAdminId' in note
                                 else deal.get('assigneeAdminId'))
                 has_assignee_field = raw_assignee is not None
@@ -308,13 +348,17 @@ def deliver():
                                                  'status': existing[0]})
                         continue
                     chat_id = user.telegram_user_id
-                    if suppress_only:
+                    if queue_roles is not None:
+                        recipient = (not stale_queue_note and (user.role or 'admin') in queue_roles
+                                     or not stale_queue_note and not note.get('skipAdmin')
+                                     and (user.role or 'admin') == 'admin')
+                    elif suppress_only:
                         recipient = (user.role or 'admin') == 'admin'
                     elif fallback_to_role:
                         recipient = (user.role or 'admin') in ('admin', note.get('role'))
                     else:
                         recipient = user.id == assignee_id or (user.role or 'admin') == 'admin'
-                    allowed = (not stale_payto_note and profile_ready and channel and recipient and _user_allowed(user)
+                    allowed = (not stale_payto_note and not stale_queue_note and profile_ready and channel and recipient and _user_allowed(user)
                                and can_send(channel, chat_id, 'sendMessage'))
                     status = 'suppressed'
                     attempts = (existing[1] if existing else 0)

@@ -7163,12 +7163,15 @@ def stand_transfer_claim():
         wallet = policy['wallet']
         released = [c for c in _stand_policy_round_claims(main, policy['fingerprint'])
                     if c.get('byId') == actor_id]
-        if released:
+        latest_release = (main.get('transferClaimHistory') or [])[-1] if released else {}
+        if released and (latest_release.get('toRole') != actor or
+                         latest_release.get('role') == actor):
             return jsonify(success=False, error='Перевод передан другому исполнителю'), 409
-        current = _stand_initiate_role(wallet, main)
+        current = wallet_policy.claim_roles(wallet.initiator_roles, wallet.owner_can_alone,
+                                           (main.get('transferHandoff') or {}).get('role'))
         if not wallet_policy.can_claim(wallet.owner_can_alone, current, actor):
             return jsonify(success=False, error='Сейчас перевод у роли: ' +
-                           wallet_policy.ROLE_NAME.get(current, str(current))), 403
+                           ', '.join(wallet_policy.ROLE_NAME.get(r, r) for r in current)), 403
         alone = actor == wallet_policy.OWNER and bool(wallet.owner_can_alone)
         if not alone and not wallet_policy.default_sign_role(wallet.confirmer_roles, actor):
             return jsonify(success=False, error='Для этой роли в кошельке не задан подписант'), 409
@@ -7213,8 +7216,8 @@ def stand_transfer_handoff():
     payload, actor, actor_id, deal_id, failure = _stand_transfer_request()
     if failure:
         return failure
-    if actor not in TRANSFER_HANDOFF_ROLES:
-        return jsonify(success=False, error='Передать задачу может операционист или админ'), 403
+    if actor not in ('operator', 'findir', 'teodor', 'manager', 'admin'):
+        return jsonify(success=False, error='Нет доступа к передаче'), 403
     to_role = payload.get('toRole')
     if to_role not in wallet_policy.POLICY_ROLES:
         return jsonify(success=False, error='Выберите роль для передачи'), 400
@@ -7236,11 +7239,19 @@ def stand_transfer_handoff():
             return jsonify(success=False, error='Нет доступа к передаче'), 403
         wallet = policy['wallet']
         claim = main.get('transferClaim')
+        if actor == 'teodor' and (not wallet.owner_can_alone or to_role != 'teodor'):
+            return jsonify(success=False, error='Владелец может принять только свою отправку'), 403
+        if actor == 'findir' and (not claim or claim.get('byId') != actor_id):
+            return jsonify(success=False, error='Передаёт сотрудник, взявший отправку'), 403
+        if actor == 'manager' and main.get('managerUserId') not in (None, actor_id):
+            return jsonify(success=False, error='Задачу передаёт менеджер сделки'), 403
         now_ms = int(time.time() * 1000)
         actor_name = _stand_user_name(user)
         initiators = wallet_policy.parse_roles(wallet.initiator_roles)
         note_events = []   # (роль, текст)
         if step == 's24':
+            if actor == 'findir':
+                return jsonify(success=False, error='Подпись передаёт менеджер или операционист'), 403
             locked = main.get('transferAlarm') and _stand_transfer_locked(main)
             if locked:
                 return jsonify(success=False, error=locked), 409
@@ -7248,6 +7259,30 @@ def stand_transfer_handoff():
                 return jsonify(success=False, error='Отправка не взята или поручение изменилось'), 409
             if main.get('transferConfirmation'):
                 return jsonify(success=False, error='Перевод уже подтверждён — передать подпись нельзя'), 409
+            if actor == 'teodor':
+                if payload.get('takeover') is not True or payload.get('claimAt') != claim.get('at'):
+                    return jsonify(success=False, error='Подтвердите перехват текущего поручения',
+                                   claimAt=claim.get('at')), 409
+                if payload.get('version') != row.version:
+                    return _stand_stale_response(row, state)
+                if main.get('transferSentReport') or main.get('transferFound'):
+                    return jsonify(success=False, error='Перевод уже отмечен или найден в сети'), 409
+                main['signHandoff'] = {'role': 'teodor', 'byId': user.id,
+                    'byName': actor_name, 'byRole': actor, 'at': now_ms,
+                    'claimFingerprint': claim['fingerprint'], 'takeover': True}
+                main['transferConfirmation'] = {'byId': user.id, 'byName': actor_name,
+                    'role': 'teodor', 'at': now_ms, 'claimFingerprint': claim['fingerprint'],
+                    'ownerAlone': True}
+                main['assigneeAdminId'] = user.id
+                main.setdefault('log', []).append({'at': now_ms, 'role': actor, 'by': user.id,
+                    'text': f'{actor_name} принял отправку на себя'})
+                old_version = row.version or 0
+                if not _stand_commit_cas(db, row, state, old_version, actor_name):
+                    db.rollback()
+                    return jsonify(success=False, error='Доска изменилась — обновите её'), 409
+                db.commit()
+                return jsonify(success=True, version=old_version + 1,
+                               data=_stand_strip_files(state), handoff=main.get('transferHandoff'))
             current = _stand_sign_role(wallet, main)
             if to_role == current:
                 return jsonify(success=True, version=row.version, data=_stand_strip_files(state),
@@ -7273,8 +7308,10 @@ def stand_transfer_handoff():
             if claim:
                 if main.get('transferConfirmation'):
                     return jsonify(success=False, error='Перевод уже начат — передать нельзя'), 409
-                if claim.get('byId') == actor_id:
+                if claim.get('byId') == actor_id and to_role == claim.get('role'):
                     return jsonify(success=False, error='Свой перевод не передают перехватом'), 409
+                if actor not in ('operator', 'admin', 'manager', 'teodor') and claim.get('byId') != actor_id:
+                    return jsonify(success=False, error='Чужую отправку передаёт менеджер'), 403
                 if payload.get('takeover') is not True:
                     return jsonify(success=False, error='Перевод уже начат. Для перехвата нужно подтверждение',
                                    claimAt=claim.get('at'), taken_by=claim.get('byName')), 409
@@ -7286,11 +7323,16 @@ def stand_transfer_handoff():
                 if to_role not in targets:
                     return jsonify(success=False, error='Эта роль не заводит перевод с кошелька'), 409
             else:
+                if actor in ('findir', 'teodor') and actor not in wallet_policy.claim_roles(
+                        initiators, wallet.owner_can_alone,
+                        (main.get('transferHandoff') or {}).get('role')):
+                    return jsonify(success=False, error='Задача у другого исполнителя'), 403
                 current = _stand_initiate_role(wallet, main)
-                if to_role == current:
+                if to_role == (main.get('transferHandoff') or {}).get('role'):
                     return jsonify(success=True, version=row.version, data=_stand_strip_files(state),
                                    handoff=main.get('transferHandoff'))
-                if to_role not in wallet_policy.initiate_targets(initiators, wallet.owner_can_alone, current):
+                if to_role not in wallet_policy.initiate_targets(initiators, wallet.owner_can_alone,
+                            current if main.get('transferHandoff') else None):
                     return jsonify(success=False, error='Эта роль не заводит перевод с кошелька'), 409
             if payload.get('version') != row.version:
                 return _stand_stale_response(row, state)
@@ -7471,9 +7513,10 @@ def stand_transfer_report_sent():
         actor = _stand_transfer_policy_role(payload, actor, user)
         if actor is None or claim.get('fingerprint') != policy['fingerprint']:
             return jsonify(success=False, error='Нет доступа к отправке'), 403
-        alone = main['step'] == 's23' and (main.get('transferConfirmation') or {}).get('ownerAlone')
+        alone = (main.get('transferConfirmation') or {}).get('ownerAlone')
         if alone:
-            allowed = claim.get('byId') == actor_id and actor == wallet_policy.OWNER
+            allowed = (actor == wallet_policy.OWNER and
+                       (main.get('transferConfirmation') or {}).get('byId') == actor_id)
         else:
             allowed = (main['step'] == 's24' and
                        ((main.get('transferProposal') or {}).get('fingerprint') == policy['fingerprint']
@@ -7601,7 +7644,7 @@ def stand_transfer_mark_sent():
         members = {d['id']: d for d in _stand_members(state, main['id'])}
         used = _stand_policy_used_hashes(db)
         if any(c.get('byId') == actor_id for c in main.get('transferClaimHistory') or []
-               if c.get('fingerprint') == fingerprint):
+               if c.get('fingerprint') == fingerprint) and (main.get('transferClaim') or {}).get('byId') != actor_id:
             return jsonify(success=False, error='Перевод передан другому исполнителю'), 409
         claim = main.get('transferClaim') or {}
         if claim.get('byId') == actor_id:
@@ -7676,7 +7719,7 @@ def stand_transfer_mark_sent():
         if payload.get('version') != row.version:
             return _stand_stale_response(row, state)
         if any(c.get('byId') == actor_id for c in main.get('transferClaimHistory') or []
-               if c.get('fingerprint') == fingerprint):
+               if c.get('fingerprint') == fingerprint) and (main.get('transferClaim') or {}).get('byId') != actor_id:
             return jsonify(success=False, error='Перевод передан другому исполнителю'), 409
         member = next((d for d in _stand_members(state, main['id']) if d['id'] == order['dealId']), None)
         sends = member.setdefault('transfer', {}).setdefault('sends', [])
@@ -12116,12 +12159,24 @@ def _stand_state_events(previous, state, actor, version):
         elif before.get('step') == deal.get('step'):
             deal.pop('stepEnteredAt', None)
         if before.get('step') != deal.get('step'):
-            role = _stand_current_step_role(state, deal)
-            if role:
+            roles = [_stand_current_step_role(state, deal)]
+            wallet = None
+            if deal.get('step') == 's23' and not deal.get('transferClaim'):
+                try:
+                    main = _stand_batch_main(state, deal.get('id')) or deal
+                    wallet = _stand_policy_wallet_quiet(state, main)
+                except (TypeError, ValueError, KeyError, AttributeError):
+                    wallet = None
+                if wallet:
+                    roles = wallet_policy.claim_roles(wallet.initiator_roles,
+                        wallet.owner_can_alone, (main.get('transferHandoff') or {}).get('role'))
+            if roles and roles[0]:
                 step = deal.get('step')
-                text = (f"{deal.get('code') or deal['id']}: задача на вас — закрытие сделки"
+                text = (f"{deal.get('code') or deal['id']}: отправить с кошелька — возьмите задачу в работу"
+                        if step == 's23' and wallet else
+                        f"{deal.get('code') or deal['id']}: задача на вас — закрытие сделки"
                         if step == 's27' else 'Задача на вас: шаг ' + str(step))
-                events.append((role, text))
+                events.append((roles[0], text))
             # Хронология — для человека: без внутренних кодов шага (s5, s14…),
             # роль — та же actor, что в остальном журнале, не псевдо-«system».
             deal.setdefault('log', []).append({'at': int(time.time()*1000), 'role': actor,
@@ -12137,7 +12192,12 @@ def _stand_state_events(previous, state, actor, version):
         if before.get('rates') != deal.get('rates') and before.get('step') == deal.get('step'):
             events.append(('manager' if actor == 'operator' else 'operator', 'Курсы сделки обновлены'))
         for index, (role, text) in enumerate(events):
-            _stand_note(state, f'stand:state:{version}:{deal["id"]}:{index}', role, deal, text)
+            queue_note = (deal.get('step') == 's23' and not deal.get('transferClaim')
+                          and before.get('step') != deal.get('step'))
+            _stand_note(state, f'stand:state:{version}:{deal["id"]}:{index}', role, deal, text,
+                        recipient_admin_id=None if queue_note else _STAND_NOTE_NO_TARGET)
+            if queue_note and wallet:
+                state['notes'][0]['recipientRoles'] = roles
     _stand_reconcile_payto_confirm_notes(state)
 
 

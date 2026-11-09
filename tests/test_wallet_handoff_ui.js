@@ -117,24 +117,24 @@ function targets(roleOfViewer, row, d) {
   return ctx.handoffTargets(Object.assign({id: 1, step: 's23'}, d));
 }
 for (const viewer of ['operator', 'admin']) {
-  eq(targets(viewer, REALTY, {}), ['findir', 'teodor'], 'Недвижимость: у оператора → фин/владелец');
-  eq(targets(viewer, EXCHANGE, {}), ['teodor'], 'Обменник: заводит только оператор');
-  eq(targets(viewer, MFSTR, {}), ['teodor'], 'Mfstr: у финансиста → владелец');
-  eq(targets(viewer, C99, {}), ['teodor'], '99: только «Владельцу»');
+  eq(targets(viewer, REALTY, {}), ['operator', 'findir', 'teodor'], 'Недвижимость: свободная очередь');
+  eq(targets(viewer, EXCHANGE, {}), ['operator', 'teodor'], 'Обменник: свободная очередь');
+  eq(targets(viewer, MFSTR, {}), ['findir', 'teodor'], 'Mfstr: свободная очередь');
+  eq(targets(viewer, C99, {}), ['operator', 'teodor'], '99: свободная очередь');
   eq(targets(viewer, REALTY, {transferHandoff: {role: 'findir'}}), ['operator', 'teodor']);
 }
 // admin ходит под ролью-маской «manager», но права у него админские (реальная роль — standMe)
 {
   const ctx = makeCtx({S: {role: 'manager'}, standMe: 'admin'});
   ctx.wallet = walletOf(REALTY);
-  eq(ctx.handoffTargets({id: 1, step: 's23'}), ['findir', 'teodor']);
+  eq(ctx.handoffTargets({id: 1, step: 's23'}), ['operator', 'findir', 'teodor']);
   const asManager = makeCtx({S: {role: 'operator'}, standMe: 'manager'});
   asManager.wallet = walletOf(REALTY);
-  eq(asManager.handoffTargets({id: 1, step: 's23'}), [], 'реальная роль manager — кнопок нет, даже если маска operator');
+  eq(asManager.handoffTargets({id: 1, step: 's23'}), ['operator', 'findir', 'teodor']);
 }
-for (const viewer of ['manager', 'findir', 'teodor']) {
-  eq(targets(viewer, REALTY, {}), [], viewer + ' не передаёт');
-}
+eq(targets('manager', REALTY, {}), ['operator', 'findir', 'teodor']);
+eq(targets('findir', REALTY, {}), ['operator', 'findir', 'teodor']);
+eq(targets('teodor', REALTY, {}), []);
 // после claim — это перехват (те же варианты, кроме запрета при подтверждении/находке/тревоге)
 const claimed = {transferClaim: {role: 'operator', byId: 3, byName: 'Настя', at: 1700000000000, fingerprint: 'f'}};
 eq(targets('operator', REALTY, claimed), ['operator', 'findir', 'teodor']);
@@ -143,10 +143,10 @@ eq(targets('operator', REALTY, Object.assign({transferConfirmation: {ownerAlone:
 eq(targets('operator', REALTY, Object.assign({transferFound: {hashes: ['a']}}, claimed)), []);
 eq(targets('operator', REALTY, Object.assign({transferAlarm: {hashes: ['a', 'b']}}, claimed)), []);
 // свой перевод (держатель claim — этот сотрудник, id 7) перехватом не передают: у него «Я отправил»
-eq(targets('operator', REALTY, {transferClaim: {role: 'operator', byId: 7, at: 1, fingerprint: 'f'}}), []);
+eq(targets('operator', REALTY, {transferClaim: {role: 'operator', byId: 7, at: 1, fingerprint: 'f'}}), ['findir', 'teodor']);
 // s24: переназначение подписи, пока нет подтверждения
 eq(targets('operator', EXCHANGE, Object.assign({step: 's24'}, claimed)), ['teodor']);
-eq(targets('manager', EXCHANGE, Object.assign({step: 's24'}, claimed)), [], 'клиентский менеджер не переназначает');
+eq(targets('manager', EXCHANGE, Object.assign({step: 's24'}, claimed)), ['teodor']);
 eq(targets('operator', REALTY, Object.assign({step: 's24'}, claimed)), []);
 eq(targets('operator', EXCHANGE, {step: 's24', transferClaim: claimed.transferClaim,
   transferConfirmation: {byId: 9}}), []);
@@ -176,7 +176,7 @@ console.log('handoff targets by role/wallet/state: PASS');
   ctx.handoffToggle(1);
   block = ctx.handoffBlock(ctx.deals[1]);
   eq([...block.matchAll(/data-handoff-to="(\w+)"[^>]*>([^<]+)</g)].map(x => x[1] + ':' + x[2]),
-    ['findir:Финансисту', 'teodor:Владельцу']);
+    ['operator:Операционисту', 'findir:Финансисту', 'teodor:Владельцу']);
   (async () => {
     await ctx.transferHandoff(1, 'findir');
     eq(ctx.calls[0], {path: '/api/stand/transfer/handoff',
@@ -250,7 +250,7 @@ function owns(kind, role, row, d) {
   return kind === 'send' ? ctx.policyOwnsSend(d, w, role) : ctx.policyOwnsSign(d, w, role);
 }
 assert.equal(owns('send', 'operator', REALTY, {}), true);
-assert.equal(owns('send', 'findir', REALTY, {}), false, 'до передачи финансист задачу не видит');
+assert.equal(owns('send', 'findir', REALTY, {}), true, 'свободную задачу видят обе роли');
 assert.equal(owns('send', 'findir', REALTY, {transferHandoff: {role: 'findir'}}), true);
 assert.equal(owns('send', 'operator', REALTY, {transferHandoff: {role: 'findir'}}), false);
 assert.equal(owns('send', 'teodor', REALTY, {}), true, 'владелец может сам');
@@ -302,7 +302,7 @@ console.log('task ownership (send/sign): PASS');
   ctx.wallet = walletOf(REALTY);
   const at = 1700000000000;
   let out = ctx.policyStatusLine({id: 1, step: 's23'});
-  assert.match(out, /Завести: операционист/);
+  assert.match(out, /Ожидает исполнителя: операционист \/ финансист \/ владелец/);
   out = ctx.policyStatusLine({id: 1, step: 's23', transferHandoff: {role: 'findir', byName: 'Анна', at}});
   assert.match(out, /Завести: финансист · Передал Анна, \d\d:\d\d/);
   out = ctx.policyStatusLine({id: 1, step: 's23', transferClaim: {byName: 'Настя', at, role: 'operator'}});
@@ -343,7 +343,7 @@ console.log('task ownership (send/sign): PASS');
     ctx.val = () => '';
     ctx.wallet = Object.assign(walletOf(REALTY), {addr: 'TDuDeRiwrLLN3hnnA57G5yM6ibg58A6wZk'});
     Object.assign(ctx, {num: () => 0, avgUsdt: () => 30, SOURCES_PAY: {coins: {cur: 'thb'}}, convOf: () => null,
-      policySignerCards: () => '', packTasks: () => 'PACK_BLOCK', transferModeBlock: () => '',
+      policySignerCards: () => '', walletAddressPair: () => 'TRC-20 TDuDeRiwrLLN3hnnA57G5yM6ibg58A6wZk Копировать адрес', packTasks: () => 'PACK_BLOCK', transferModeBlock: () => '',
       outgoingReviewBlock: () => '', personalSend: () => false, isCrypto: () => true, trow: () => '',
       money: String, moneyKop: String, hashSum: () => 0, payinHashRows: () => '', plural: () => '',
       walletSends: () => 'по правилам кошелька', walletSigner: () => 'фин дир',
@@ -382,7 +382,7 @@ console.log('task ownership (send/sign): PASS');
   assert.match(owner, /onclick="transferReportSent\(1\)">Деньги отправлены<\/button>/,
     'владелец отправляет сам и сообщает об отправке без хеша');
   assert.match(s23('teodor', {}), /data-claim[^>]*>Отправить<\/button>/, 'владелец, отправляющий один — «Отправить»');
-  assert.doesNotMatch(s23('findir', {}), /data-claim/, 'до передачи финансисту кнопки нет');
+  assert.match(s23('findir', {}), /data-claim/, 'финансист видит свободную задачу');
   assert.doesNotMatch(s23('operator', {transferClaimHistory: [{byId: 7, byName: 'Я', at: 1}]}), /data-claim/,
     'прежний исполнитель после перехвата');
   assert.doesNotMatch(s23('operator', {transferFound: {hashes: ['a']}}), /data-claim/);
