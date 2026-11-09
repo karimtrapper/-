@@ -7552,7 +7552,6 @@ function viewDeal(d){
     (policySend&&policyOwnsSend(d,policyWallet,S.role))||
     (policyConfirm&&policyOwnsVerification(d,policyWallet,S.role)));
   const p=progress(d), view=S.view||'deal';
-  const extraControl=typeof docExtraControl==='function'?docExtraControl(d):'';
   const branch=d.prepay?(S.taskBranch||((S.role==='operator'&&d.prepay.brokerStep!=='done')||prepayRefundRole(d)===S.role?'conversion':'payment')):null;
   const branchPath=view==='task'?dealTaskPath(d,branch):null;
   let body='';
@@ -7636,10 +7635,9 @@ function viewDeal(d){
   </nav><p class="branch-current" role="status">${htmlText(prepayBranchStatus(d,branch))}</p>`:''}
   ${view==='deal'&&['teodor','findir','admin'].includes(S.role)?ownerSummary(d):''}
   ${view==='deal'?payToCard(d):''}
-  ${extraControl?`<div class="card doc-upload-bar"><div class="card-title">Документы<span class="sub">${docFilesCount(d)} шт.</span></div>${extraControl}</div>`:''}
   <div class="cols"><main>${body}</main>
   <aside>${dealTaskPathCard(d,branch)}
-  ${view==='deal'?'':docSide(d)}
+  ${view==='deal'||view==='card'?'':docSide(d)}
   <div style="margin-top:14px"><button class="btn btn-outline btn-sm" onclick="back()">К списку</button>
   ${d.manual&&!d.closed&&(S.role==='manager'||S.role==='admin')
     ?`<button class="btn btn-primary btn-sm" ${d.manualNew||d.originMode!=='manual'?'disabled':''}
@@ -7846,10 +7844,11 @@ function overview(d,st,mine,p,wh){
       ?'Плановый доход известен из суммы клиента и отправки в IPPS. Фактическую прибыль покажем после подтверждения прихода USDT по хешам и расходов на оплату застройщика.'
       :'Прибыль посчитается, когда будут известны '+(d.type==='Оплата недвижимости'?'курс партнёра USDT→THB и приход':'себестоимость выдачи и приход')+'. '+(isCrypto(d)?'':'Для рублёвой сделки нужен ещё курс обмена у брокера.')}</div></div></div>`}
 
-  ${(docN||(S.role==='manager'&&signedBlock(d)))?`<div class="card" style="margin-bottom:16px"><div class="card-title">Документы<span class="sub">${docN} шт.</span></div>
+  ${(docN||(S.role==='manager'&&signedBlock(d))||docExtraControl(d))?`<div class="card" style="margin-bottom:16px"><div class="card-title">Документы<span class="sub">${docN} шт.</span></div>
     <div class="list doc-list">${docRows.issued.join('')}${docRows.client.join('')}</div>
     ${!docN?'<p class="doc-empty">Файлов пока нет.</p>':''}
-    ${S.role==='manager'?signedBlock(d):''}</div>`:''}
+    ${S.role==='manager'?signedBlock(d):''}
+    ${docExtraControl(d)}</div>`:''}
   ${fixCard(d)}
 
   <div class="row"><button class="btn btn-secondary" onclick="editOpen(${d.id})">Редактировать</button>
@@ -8833,9 +8832,17 @@ function docExtraControl(d){
 }
 function docExtraToggle(id){
   S.docExtraOpen=S.docExtraOpen===id?null:id;
-  if(S.docExtraOpen===id)S.docExtraType='other';
+  if(S.docExtraOpen===id){
+    S.docSideOpen=S.docSideOpen||{};
+    S.docSideOpen[id]=true;
+  }
   render();
   if(S.docExtraOpen===id)document.getElementById('doc-extra-'+id+'-type')?.focus();
+}
+function docSideToggle(event,id){
+  if(!event.currentTarget.isConnected)return;
+  S.docSideOpen=S.docSideOpen||{};
+  S.docSideOpen[id]=event.currentTarget.open;
 }
 function docExtraTypeSet(type){S.docExtraType=type;}
 function docExtraUpload(id,input){
@@ -8957,14 +8964,16 @@ function signedBlock(d,small){
 function docSide(d){
   const {issued,client}=docListRows(d,true);
   const wait=!d.docPack&&!d.closed;
-  if(!issued.length&&!client.length&&!wait)return '';
-  return `<details class="card side doc-side fold-card"><summary>Документы<span class="fold-total">${issued.length+client.length} ${plural(issued.length+client.length,'файл','файла','файлов')}</span></summary>
+  const extraControl=docExtraControl(d);
+  if(!issued.length&&!client.length&&!wait&&!extraControl)return '';
+  return `<details class="card side doc-side fold-card" ${S.docSideOpen?.[d.id]?'open':''} ontoggle="docSideToggle(event,${d.id})"><summary>Документы<span class="fold-total">${issued.length+client.length} ${plural(issued.length+client.length,'файл','файла','файлов')}</span></summary>
     ${issued.length?`<div class="list doc-list">${issued.join('')}</div>`
       :wait?`<p style="font-size:12.5px;color:var(--text-muted);margin:0 0 10px">Договор, приложение и счёт появятся после «Создать договор» у операциониста.</p>`:''}
     ${issued.length&&d.docPack?`<p style="font-size:12px;color:var(--text-muted);margin:8px 0 10px">Пакет версии ${d.docPack.version} · <a href="javascript:void(0)" onclick="docDownloadAll(${d.id})">скачать всё</a></p>`:''}
     ${client.length?`<div class="list doc-list">${client.join('')}</div>`:''}
     ${!issued.length&&!client.length&&!wait?'<p class="doc-empty">Файлов пока нет.</p>':''}
-    ${S.role==='manager'?signedBlock(d,true):''}</details>`;
+    ${S.role==='manager'?signedBlock(d,true):''}
+    ${extraControl}</details>`;
 }
 
 /* Редактирование сделки. Реферал меняется только здесь и на экране создания —
