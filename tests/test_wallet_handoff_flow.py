@@ -155,6 +155,28 @@ def test_owner_takes_s24_without_recreating_transfer(clean_board):
     assert len(after.get('transferClaimHistory') or []) == 0
 
 
+def test_minimal_prepay_snapshot_uses_registry_for_claim_propose_and_owner_takeover(clean_board):
+    wallet_id = str(registry_id(REALTY))
+    snapshot = {'id': wallet_id, 'addr': REALTY, 'name': 'Источник предоплаты',
+                'owner': 'компания', 'role': 'findir', 'multisig': True}
+    board_with(REALTY, kind='Фрихолд', walletId=None, postConv='ipps_swift',
+               prepay={'wallet': snapshot, 'brokerStep': 's18', 'amount': 5000})
+    u = users()
+    assert handoff(u['manager'], 'findir').status_code == 200
+    assert claim(u['findir']).status_code == 200
+    before = main_deal()
+    assert before['prepay']['wallet'] == snapshot
+    assert before['transfer']['sends'] == []
+    response = post(u['findir'], 'propose')
+    assert response.status_code == 200, response.get_json()
+    after = main_deal()
+    assert after['step'] == 's24' and after['transfer']['sends'] == []
+    claim_before = copy.deepcopy(after['transferClaim'])
+    assert takeover(u['teodor'], 'teodor').status_code == 200
+    assert main_deal()['transferClaim'] == claim_before
+    assert main_deal()['transferConfirmation']['ownerAlone'] is True
+
+
 def test_operator_hands_over_to_findir_then_owner_and_repeat_is_idempotent(clean_board):
     board_with(REALTY)
     u = users()

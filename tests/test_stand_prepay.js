@@ -10,7 +10,9 @@ function fn(name) {
 }
 const ctx={demoAllowed:()=>false,walletBlock:()=>'',S:{role:'operator',deals:[]},STAND:false,
   convOf:d=>d.cnvId?ctx.batch:null,isCrypto:d=>d.payType==='Крипта',
-  walletById:id=>ctx.walletList.find(w=>w.id===id),wallets:()=>ctx.walletList,
+  walletById:id=>ctx.walletList.find(w=>String(w.id)===String(id)),wallets:()=>ctx.walletList,
+  CRM_WALLETS:[],crmWalletsLoaded:false,
+  crmWalletById:id=>ctx.CRM_WALLETS.find(w=>String(w.id)===String(id))||null,
   addrValid:()=>true,htmlText:String,usd:x=>'$'+x,moneyKop:(n,s)=>`${n} ${s}`,
   ippsTariff:()=>({label:'Банк 0,8% + 50$',percent:.8,fixed:50}),
   needsPayConfirm:()=>false,expectOf:()=>({}),save:()=>{},render:()=>{},
@@ -27,7 +29,7 @@ for(const name of ['STEPS','FLOW_RUB','FLOW_USDT','FLOW_ALIAS','SOURCES_PAY','PO
   vm.runInContext(html.match(new RegExp(`^const ${name}\\s*=[^]*?;`,'m'))[0].replace(/^const /,'var '),ctx);
 }
 for(const name of ['hasPolicy','policyInitiators','policyInitiateTargets','policyInitiateRole','policySignRole','policySignTargets','policyCanClaim','policyRoleNames','policyReleasedByMe','policyLocked','policyOwnsSend','policyOwnsSign','policyNeedsApproval','policyApprovalActor','walletPolicyLine','uniqueWallets','walletOptionText','prepayCanStart','prepayStepDone','prepayRefundRole','prepayPanel','flowOf','progress',
-  'stepTitle','taskBranchesForRole','myTasks','reqOpen','go','sendList','freeholdFee','freeholdSend','dealWallet','hashSum','econ','act','cnvTxTime','cnvTxHint','cnvTxShareBlock','txShort','jsLiteralAttr','addressDisclosure']){
+  'stepTitle','taskBranchesForRole','myTasks','reqOpen','go','sendList','freeholdFee','freeholdSend','crmWalletToLegacy','dealWallet','prepayWalletUnavailable','prepayWalletUnavailableCard','hashSum','econ','act','cnvTxTime','cnvTxHint','cnvTxShareBlock','txShort','jsLiteralAttr','addressDisclosure']){
   vm.runInContext(fn(name),ctx);
 }
 assert.match(ctx.cnvTxTime(Date.UTC(2026,9,16,9,47)), /16\.10.*12:47/);
@@ -115,12 +117,15 @@ for(const source of ['founder','multisig']){
     cnvMembers:d=>[d],pcOut:d=>Number(d.transfer.amount),pcSends:()=>true,
     sendDone:()=>false,sendTo:()=> 'IPPS',sendBlock:()=>'',pcNet:()=> 'TRC-20',
     sendHead:()=> 'Отправка в IPPS',walletSigner:()=> 'Фин дир',
-    transferModeBlock:()=>'',stepNote:()=>'',
+    transferModeBlock:()=>'',stepNote:()=>'',walletAddressPair:()=>'',
+    plannedDestination:d=>({address:d.transfer?.addr||'',amount:d.transfer?.amount||0,network:'TRC-20',name:'IPPS'}),
+    destinationDisclosure:d=>d.address||'',
   };
   vm.createContext(view);
   for(const name of ['personalSend','outgoingPickState','outgoingPickList','outgoingReviewBlock','sendBlock','sendSum','sendDeclared','sendLeft','pcAmount','prepayFundingText','taskFacts','packTasks','signSummary','canRerate','rerateBalance','stepCard']){
     vm.runInContext(fn(name),view);
   }
+  view.packTasks=()=>'<div>Источник оплаты</div>';
   // Тип кошелька определяет подпись даже без source или при старом неверном source.
   const wallets=[...ctx.walletList,{...ctx.walletList[1],id:'teodor',owner:'Теодор'}];
   for(const wallet of wallets) for(const step of ['s23','s24']) for(const status of ['no_batch','s18w','done']) for(const source of [undefined,'founder','multisig']){

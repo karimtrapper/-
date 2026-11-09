@@ -2336,6 +2336,7 @@ function walletById(id){return wallets().find(w=>String(w.id)===String(id))||nul
    Легаси walletId ('grusha'/'vitaly'/'andrey'/'teodor'/'teodor-erc') резолвится
    по известному адресу — старые сделки продолжают показывать тот же кошелёк. */
 let CRM_WALLETS=[];
+let crmWalletsLoaded=false;
 const LEGACY_PAYIN_ADDR={
   grusha:'TKkeEVf2zySaWTLyX2qPwvi6kcdHRuPxkJ', vitaly:'TKkeEVf2zySaWTLyX2qPwvi6kcdHRuPxkJ',
   andrey:'TWBgeUo74DehAPgw5cKTdYUTXtJELqwwqn', teodor:'TVmgzMQ2zwV2DVPscBf98WRRdhrcpf5x5p',
@@ -2345,7 +2346,7 @@ async function loadCrmWallets(){
   try{
     const r=await fetch('/api/wallets?no_balances=true&all=true',{credentials:'same-origin'});
     const j=await r.json();
-    if(j.success){CRM_WALLETS=j.wallets||[];syncWalletRegistry();render();}
+    if(j.success){CRM_WALLETS=j.wallets||[];crmWalletsLoaded=true;syncWalletRegistry();render();}
   }catch(e){/* реестр недоступен — список приёма пуст, форма сообщит об этом */}
 }
 function crmWalletNet(w){
@@ -2647,7 +2648,28 @@ async function walletAdd(id){
    уходят на s23 — «Указать кошелёк…» без «Запомнить» держит owner/multisig в
    payinCustom, а не в реестре, поэтому резолвим его тут же, как payinWallet(d). */
 function dealWallet(d){
-  if(d&&d.prepay&&!d._prepayBroker)return d.prepay.wallet;
+  if(d&&d.prepay&&!d._prepayBroker){
+    const snapshot=d.prepay.wallet||{};
+    const same=(w)=>w&&String(w.id)===String(snapshot.id)&&w.addr===snapshot.addr;
+    const registry=crmWalletById(snapshot.id);
+    const mirror=walletById(snapshot.id);
+    const selected=registry?crmWalletToLegacy(registry):mirror;
+    const validPolicyMetadata=selected&&Array.isArray(selected.initiator_roles)&&
+      Array.isArray(selected.confirmer_roles)&&
+      (!!selected.initiator_roles.length===!!selected.confirmer_roles.length);
+    if(same(selected)&&validPolicyMetadata&&
+        (!registry||registry.active!==false)){
+      return {...snapshot,purpose:selected.purpose,limit_usd:selected.limit_usd,
+        initiator_roles:selected.initiator_roles,confirmer_roles:selected.confirmer_roles,
+        owner_can_alone:selected.owner_can_alone,signer_weights:selected.signer_weights,
+        threshold:selected.threshold,purpose_note:selected.purpose_note,
+        signer_addresses:selected.signer_addresses,not_for_new_deals:selected.not_for_new_deals};
+    }
+    if(/^\d+$/.test(String(snapshot.id||''))||
+        (crmWalletsLoaded&&CRM_WALLETS.some(w=>w.address===snapshot.addr&&
+          (w.initiator_roles||[]).length)))return {...snapshot,policyUnavailable:true};
+    return snapshot;
+  }
   const c=convOf(d);
   const wid=(c&&c.walletId)||(d&&d.walletId);
   if(wid==='custom'){
@@ -2657,6 +2679,8 @@ function dealWallet(d){
   }
   return walletById(wid)||null;
 }
+function prepayWalletUnavailable(d){return !!(d?.prepay&&!d._prepayBroker&&dealWallet(d)?.policyUnavailable);}
+function prepayWalletUnavailableCard(){return '<div class="card">Не удалось сверить кошелёк отправки с реестром. Обновите страницу или обратитесь к администратору.</div>';}
 function needsSecondSign(d){const w=dealWallet(d);return !w||w.multisig;}
 /* Политика кошелька: «Заводит» / «Подписывает» / «Владелец может отправить сам» —
    явные поля реестра. Те же правила, что в wallet_policy.py (сверяются тестом). */
@@ -12418,6 +12442,7 @@ function stepCard(d){
     <button class="btn btn-outline" onclick="toast('В прототипе не реализовано — в жизни это запрос брокеру')">Брокер задерживает</button></div></div>`;},
 
   s22:()=>{
+    if(prepayWalletUnavailable(d))return prepayWalletUnavailableCard();
     const c=convOf(d), w=dealWallet(d), got=c?hashSum(c.txs):(d.pay.usdt||null);
     const mem=cnvMembers(d), out=pcOut(d);
     const left=(got!=null)?Math.round((got-out)*100)/100:null;
@@ -12482,6 +12507,7 @@ function stepCard(d){
       return `<div class="row"><button class="btn btn-success" onclick="act(${d.id},'s22')">${t}</button></div>`;})()}</div>`;},
 
   s23:()=>{
+    if(prepayWalletUnavailable(d))return prepayWalletUnavailableCard();
     const need=ap.thb||0, rate=num(d.rates.usdtThb)||avgUsdt();
     const src=(d.paySrc&&SOURCES_PAY[d.paySrc])?d.paySrc:'coins', sObj=SOURCES_PAY[src];
     const c=convOf(d);
@@ -12556,6 +12582,7 @@ function stepCard(d){
     </div>${hasPolicy(policyWallet)?policyActions(d):''}`;},
 
   s24:()=>{
+    if(prepayWalletUnavailable(d))return prepayWalletUnavailableCard();
     /* Теодору — суть сделки и ни одной кнопки: подпись ставится в кошельке, дальше
        шаг уводит подтверждение сети (на стенде — демо-вебхук). Инструменты фин дира
        («Добавить хеш», «Убрать», «Проверить») у него убраны: второй подписант мог
@@ -12771,6 +12798,9 @@ function stepCard(d){
 async function act(id,step){
   const d=deal(id);
   if(!d||d.closed||(d.step!==step&&!(d.prepay&&d.prepay.brokerStep===step))){toast('Шаг уже изменился — откройте текущую задачу');return;}
+  if(['s22','s23','s24'].includes(step)&&prepayWalletUnavailable(d)){
+    toast('Не удалось сверить кошелёк отправки с реестром');return;
+  }
   if(STAND&&step==='s22'&&d.kind==='Фрихолд'&&(standBusy||standPush||standSaveScheduled)){
     toast('Предыдущее сохранение ещё завершается — дождитесь ответа сервера');return;
   }

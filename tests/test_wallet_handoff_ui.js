@@ -338,17 +338,19 @@ console.log('task ownership (send/sign): PASS');
 {
   const body = html.slice(html.indexOf('  s23:()=>{'), html.indexOf('  s24:()=>{'));
   const render = 'function renderS23(d,ap){return (' + body.trim().slice('s23:'.length).replace(/,$/, '') + ')();}';
-  function s23(role, d, me = 7) {
+  function s23(role, d, me = 7, configure = () => {}) {
     const ctx = makeCtx({S: {role}, standMeId: me});
     ctx.val = () => '';
     ctx.wallet = Object.assign(walletOf(REALTY), {addr: 'TDuDeRiwrLLN3hnnA57G5yM6ibg58A6wZk'});
     Object.assign(ctx, {num: () => 0, avgUsdt: () => 30, SOURCES_PAY: {coins: {cur: 'thb'}}, convOf: () => null,
-      policySignerCards: () => '', walletAddressPair: () => 'TRC-20 TDuDeRiwrLLN3hnnA57G5yM6ibg58A6wZk Копировать адрес', packTasks: () => 'PACK_BLOCK', transferModeBlock: () => '',
+      policySignerCards: () => '', walletAddressPair: () => 'TRC-20 TDuDeRiwrLLN3hnnA57G5yM6ibg58A6wZk Копировать адрес', packTasks: () => 'PACK_BLOCK', transferModeBlock: () => '', prepayFundingText: () => 'Источник USDT',
       outgoingReviewBlock: () => '', personalSend: () => false, isCrypto: () => true, trow: () => '',
       money: String, moneyKop: String, hashSum: () => 0, payinHashRows: () => '', plural: () => '',
       walletSends: () => 'по правилам кошелька', walletSigner: () => 'фин дир',
       jsLiteralAttr: String, addressDisclosure: String, copyAsk: () => {}, ippsPayoutOrder: null,
-      transferApprove: () => {}, policyApprovalActor: () => false});
+      transferApprove: () => {}, policyApprovalActor: () => false,
+      prepayWalletUnavailable: () => false});
+    configure(ctx);
     vm.runInContext(render, ctx);
     return ctx.renderS23(Object.assign({id: 1, step: 's23', rates: {}, pay: {}, transfer: {amount: 5000}}, d), {thb: 0});
   }
@@ -387,6 +389,72 @@ console.log('task ownership (send/sign): PASS');
     'прежний исполнитель после перехвата');
   assert.doesNotMatch(s23('operator', {transferFound: {hashes: ['a']}}), /data-claim/);
   console.log('s23 claim-only requisites block: PASS');
+}
+
+// Снимок предоплаты хранит только адрес и владельца; политику берём из записи реестра.
+{
+  const address = 'TDuDeRiwrLLN3hnnA57G5yM6ibg58A6wZk';
+  const snapshot = {id: '25', addr: address, name: 'Источник предоплаты',
+    owner: 'компания', role: 'findir', multisig: true};
+  const mirror = {...snapshot, initiator_roles: ['operator', 'findir'],
+    confirmer_roles: ['teodor'], owner_can_alone: true, purpose: 'realty'};
+  const deal = {prepay: {wallet: snapshot, brokerStep: 's18'},
+    kind: 'Фрихолд', postConv: 'ipps_swift', walletId: null};
+  function installResolver(ctx, wallets = [mirror]) {
+    ctx.S.wallets = wallets;
+    ctx.walletById = id => ctx.S.wallets.find(w => String(w.id) === String(id)) || null;
+    ctx.convOf = () => null;
+    vm.runInContext('let CRM_WALLETS=[]; let crmWalletsLoaded=false; '+
+      'function crmWalletById(id){return CRM_WALLETS.find(w=>String(w.id)===String(id))||null}', ctx);
+    vm.runInContext(source('crmWalletToLegacy') + source('dealWallet') +
+      html.match(/^function prepayWalletUnavailable\([^\n]+/m)[0] +
+      html.match(/^function prepayWalletUnavailableCard\([^\n]+/m)[0], ctx);
+  }
+  const ctx = makeCtx({S: {role: 'findir'}});
+  installResolver(ctx);
+  const resolved = ctx.dealWallet(deal);
+  assert.equal(resolved.addr, snapshot.addr);
+  assert.equal(resolved.name, snapshot.name);
+  assert.equal(ctx.hasPolicy(resolved), true);
+  assert.equal(ctx.policyCanClaim(deal, resolved, 'findir'), true);
+  assert.equal(ctx.prepayWalletUnavailable(deal), false);
+  const free = s23('findir', deal, 7, installResolver);
+  assert.match(free, /data-claim[^>]*>Начать работу<\/button>/);
+  assert.doesNotMatch(free, /Подписал — передать Теодору/);
+  const claimed = s23('findir', {...deal, transferClaim: {byId: 7, byName: 'Финансист',
+    role: 'findir', fingerprint: 'f'}}, 7, installResolver);
+  assert.match(claimed, /onclick="transferPropose\(1\)">Передать на подпись<\/button>/);
+  assert.doesNotMatch(claimed, /Подписал — передать Теодору/);
+  const missing = makeCtx();
+  installResolver(missing, []);
+  assert.equal(missing.prepayWalletUnavailable(deal), true);
+  const blocked = s23('findir', deal, 7, ctx => installResolver(ctx, []));
+  assert.match(blocked, /Не удалось сверить кошелёк отправки с реестром/);
+  assert.doesNotMatch(blocked, /data-claim|Подписал — передать Теодору/);
+  const mismatched = makeCtx();
+  installResolver(mismatched, [{...mirror, addr: 'другой адрес'}]);
+  assert.equal(mismatched.prepayWalletUnavailable(deal), true);
+  const malformed = makeCtx();
+  installResolver(malformed, [{...mirror, initiator_roles: 'operator'}]);
+  assert.equal(malformed.prepayWalletUnavailable(deal), true);
+  const halfPolicy = makeCtx();
+  installResolver(halfPolicy, [{...mirror, confirmer_roles: []}]);
+  assert.equal(halfPolicy.prepayWalletUnavailable(deal), true);
+  const legacy = makeCtx();
+  installResolver(legacy, [{...mirror, initiator_roles: [], confirmer_roles: []}]);
+  assert.equal(legacy.prepayWalletUnavailable(deal), false);
+  assert.equal(legacy.hasPolicy(legacy.dealWallet(deal)), false);
+  const inactive = makeCtx();
+  installResolver(inactive);
+  vm.runInContext('CRM_WALLETS=[{id:25,address:' + JSON.stringify(address) +
+    ',active:false,initiator_roles:["operator","findir"],confirmer_roles:["teodor"]}]', inactive);
+  assert.equal(inactive.prepayWalletUnavailable(deal), true);
+  (async () => {
+    await ctx.transferPropose(1501);
+    eq(ctx.calls[0], {path: '/api/stand/transfer/propose',
+      body: {dealId: 1501, version: 11, check: ''}});
+    console.log('minimal prepay snapshot resolves policy and routes claim/propose: PASS');
+  })().catch(e => {console.error(e); process.exitCode = 1;});
 }
 
 // ---- 7. Форма нового кошелька: роли задаёт только админ
