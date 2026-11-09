@@ -771,6 +771,12 @@ a.hash:hover{background:#BAE6FD}
 .analytics-view .stat-label{font-size:var(--ds-body);font-weight:var(--ds-regular);color:var(--navy-600)}
 .analytics-view th{font-size:var(--ds-body);text-transform:none;letter-spacing:normal;color:var(--navy-700)}
 .deal-screen .task-action{background:var(--ds-surface);border:1px solid var(--ds-border);border-radius:var(--ds-card);padding:var(--ds-xl);margin-bottom:var(--ds-md)}
+.deal-screen .client-payin-summary{display:flex;align-items:center;gap:8px 20px;flex-wrap:wrap;padding:12px 16px;margin-bottom:var(--ds-md);background:var(--ds-money);border:1px solid var(--ds-money-border);border-radius:var(--ds-card);color:var(--ds-money-ink)}
+.deal-screen .client-payin-summary.empty{background:var(--ds-page);border-color:var(--ds-border);color:var(--ds-muted)}
+.deal-screen .client-payin-summary.empty .payin-total{color:var(--ds-ink)}
+.deal-screen .client-payin-summary .payin-title{font-size:var(--ds-caption);font-weight:700;text-transform:uppercase;letter-spacing:.04em}
+.deal-screen .client-payin-summary .payin-total{font-size:var(--ds-emphasis);font-weight:700}
+.deal-screen .client-payin-summary .payin-destination{min-width:0;overflow-wrap:anywhere;font-size:var(--ds-caption)}
 .deal-screen .task-action>.card{border:0;box-shadow:none;padding:0;margin:0 0 var(--ds-lg)}
 .deal-screen .task-action>.card:last-child{margin-bottom:0}
 .deal-screen .task-action .goal{border-left:0}
@@ -926,6 +932,8 @@ body.deal-task-mode .top-nav .who{border:0;color:var(--navy-300);font-size:var(-
 .deal-screen *:not(svg):not(path){font-size:var(--ds-body)!important;font-weight:var(--ds-regular)!important}
 .deal-screen b,.deal-screen strong,.deal-screen .fl,.deal-screen .card-title,.deal-screen .deal-path .current b{font-weight:var(--ds-semibold)!important}
 .deal-screen .goalt,.deal-screen .goalnums .v.big{font-size:var(--ds-display)!important;font-weight:var(--ds-bold)!important}
+.deal-screen .client-payin-summary .payin-total{font-size:var(--ds-emphasis)!important;font-weight:var(--ds-bold)!important}
+.deal-screen .client-payin-summary .payin-title,.deal-screen .client-payin-summary .payin-destination{font-size:var(--ds-caption)!important}
 .deal-screen .deal-head h1,.deal-screen .goalnums .v,.deal-screen .card-title,.deal-screen .side h4,.deal-screen .vtab,.deal-screen .branch-tabs button,.deal-screen .btn,.deal-screen .fc{font-size:var(--ds-emphasis)!important;font-weight:var(--ds-semibold)!important}
 .deal-screen .deal-code,.deal-screen .deal-breadcrumb,.deal-screen small,.deal-screen .sub,.deal-screen .goalnums .k{font-size:var(--ds-caption)!important}
 .deal-screen .addr,.deal-screen .addr-value,.deal-screen .tx-hash{font-size:var(--ds-body)!important;font-weight:var(--ds-regular)!important}
@@ -7336,6 +7344,86 @@ function prepayBranchStatus(d,branch){
     step==='done'?'завершена':(STEPS[step]?.title||step).replace(/^./,s=>s.toLowerCase());
   return (branch==='conversion'?'Конвертация':'Оплата')+' — '+title+' · '+prepayBranchAssignee(d,branch);
 }
+/* В этой строке только подтверждённый приход клиента. Брокерские USDT и
+   ожидаемые суммы не становятся фактом, даже когда оплата идёт наперёд. */
+function clientPayinSummarySupported(d){
+  return !d.cashPartnerUsdt&&d.payType!=='Наличные'&&['rub','usdt'].includes(payCur(d));
+}
+function clientPayinSummaryData(d){
+  const crypto=isCrypto(d), expected=crypto?Number(approx(d).pay):Number(expectOf(d).amount);
+  let received=0, credited=0, destination='', pending=false;
+  const places=new Map();
+  if(crypto){
+    const hashes=(d.payinHashes||[]).filter(h=>h.verified===true&&!h.demo&&!payinForeign(d,h)&&Number(h.amount)>0);
+    pending=(d.payinHashes||[]).some(h=>h.verified!==true&&!h.demo&&!payinForeign(d,h)&&Number(h.amount)>0);
+    received=rnd2(hashes.reduce((sum,h)=>sum+Number(h.amount),0));
+    const addresses=[...new Set(hashes.map(h=>h.to).filter(Boolean))];
+    const wallet=d.walletId?payinWallet(d):null;
+    for(const h of hashes){
+      const address=h.to||wallet?.addr||'кошелёк не указан';
+      const place=[h.network||wallet?.net||'',address].filter(Boolean).join(' · ');
+      places.set(place,{label:place,amount:rnd2((places.get(place)?.amount||0)+Number(h.amount))});
+    }
+    destination=addresses.length?addresses.join(', '):(wallet?.addr||'');
+    if(wallet&&destination&&addresses.length<=1&&(!addresses.length||addresses[0]===wallet.addr))
+      destination=[wallet.name,wallet.net,destination].filter(Boolean).join(' · ');
+    else if(destination)destination=[payinNet(d),destination].filter(Boolean).join(' · ');
+  }else{
+    const accounts=[];
+    for(const p of d.payinParts||[]){
+      const income=(S.incomes||[]).find(x=>String(x.id)===String(p.incId));
+      const manual=d.manualBankReceipt;
+      const manualOk=income?.source==='manual_confirmed'&&manual?.status==='confirmed'&&
+        manual.confirmedAt&&manual.confirmedBy&&income.manualReceiptId===manual.id&&
+        Number(p.amountRub)===Number(manual.actualAmount);
+      if(!income||String(income.dealId)!==String(d.id)||income.excluded||income.demo||p.demo||
+        !(income.source==='sber'||manualOk)||!(Number(p.amountRub)>0)||
+        Number(p.amountRub)!==incomeRubBasis(income,partRubBasis(d,p)))continue;
+      received+=Number(p.amountRub);
+      credited+=Number(income.rub??p.amountRub)||0;
+      const account=income.acc||p.acc||(manualOk?manual.bank+' · '+manual.account:'');
+      const key=account||'счёт зачисления не указан', label=account?accountShortLabel(account):key;
+      places.set(key,{label,raw:key,
+        amount:rnd2((places.get(key)?.amount||0)+Number(income.rub??p.amountRub))});
+      if(account)accounts.push(label);
+    }
+    received=rnd2(received);
+    credited=rnd2(credited);
+    destination=[...new Set(accounts)].join(', ');
+  }
+  if(!destination){
+    if(received)destination='счёт зачисления не указан';
+    else if(crypto){const wallet=d.walletId?payinWallet(d):null;
+      destination=wallet?.addr?[wallet.name,wallet.net,wallet.addr].filter(Boolean).join(' · '):'кошелёк не указан';
+    }else destination=expectOf(d).acc||'счёт не указан';
+  }
+  const destinations=[...places.values()];
+  const labelCounts=new Map();
+  destinations.forEach(x=>labelCounts.set(x.label,(labelCounts.get(x.label)||0)+1));
+  destinations.forEach(x=>{if(labelCounts.get(x.label)>1)x.label=x.raw;});
+  return {received,expected:Number.isFinite(expected)&&expected>0?expected:null,
+    currency:crypto?'USDT':'₽',destination,pending,credited,
+    destinations,
+    tolerance:crypto?PAYIN_TOL:Number(expectOf(d).tol)||0};
+}
+function clientPayinSummary(d){
+  const p=clientPayinSummaryData(d), left=p.expected==null?null:rnd2(p.expected-p.received);
+  const amount=moneyKop(p.received,p.currency);
+  const status=p.received===0?(p.pending?'Есть перевод без подтверждения':'Подтверждённого прихода нет'):left==null?'Получено':
+    left>p.tolerance?'Частичный приход · осталось '+moneyKop(left,p.currency):
+    left< -p.tolerance?'Получено сверх ожидания на '+moneyKop(-left,p.currency):'Получено';
+  const place=p.destinations.length>1?
+    (p.currency==='USDT'?'На кошельки: ':'На счета: ')+p.destinations.map(x=>
+      htmlText(x.label)+' — '+htmlText(moneyKop(x.amount,p.currency))).join('; '):
+    (p.received?(p.currency==='USDT'?'На кошелёк: ':'На счёт: '):'Ожидаем на: ')+
+      (p.received&&p.currency==='₽'&&p.credited!==p.received?htmlText(moneyKop(p.credited,'₽'))+' · ':'')+
+      htmlText(p.destination);
+  return `<div class="client-payin-summary${p.received?'':' empty'}" aria-label="Приход клиента">
+    <span class="payin-title">Приход клиента</span><span class="payin-total">${htmlText(amount)}</span>
+    <span>${htmlText(status)}${p.expected!=null?' · ожидали '+htmlText(moneyKop(p.expected,p.currency)):''}</span>
+    <span class="payin-destination">${place}</span>
+  </div>`;
+}
 function viewDeal(d){
   if(!d)return '<div class="card">Сделка не найдена. <button class="btn btn-sm btn-outline" onclick="back()">Назад</button></div>';
   if(S.manualCloseDraft&&S.manualCloseDraft[d.id])return manualCloseScreen(d);
@@ -7418,6 +7506,7 @@ function viewDeal(d){
     ${['manager','admin'].includes(S.role)&&!d.closed&&!d.manual?`<button class="btn btn-outline btn-sm" onclick="manualCloseAsk(${d.id})">Перенести в CRM и закрыть</button>`:''}
     ${view==='task'&&branchPath?`<div class="deal-progress"><span>${htmlText(branchPath.active==='refund'?'Возместить оплату':STEPS[branchPath.active]?.title||'Конвертация завершена')}</span>
       <b>Шаг ${branchPath.index+1} из ${branchPath.steps.length}</b><i><span style="width:${Math.round((branchPath.index+1)/Math.max(1,branchPath.steps.length)*100)}%"></span></i></div>`:''}</header>
+  ${view==='task'&&!d.manual&&clientPayinSummarySupported(d)?clientPayinSummary(d):''}
   ${(function(){
     /* Вкладка задачника появляется только если по сделке были задачи: у внесённой
        руками смотреть нечего, и лишняя вкладка сбивает (Карим, 23.09). */
