@@ -5,7 +5,7 @@ const vm = require('node:vm');
 
 const html = fs.readFileSync('static/stand/tasks.html', 'utf8');
 const names = ['rubApiAccount', 'bankEvidenceCanEdit', 'bankEvidenceBlock',
-  'manualBankReceiptBlock', 'docListRows'];
+  'manualBankReceiptBlock', 'docAdditionalRows', 'docListRows'];
 const source = names.map(name => {
   const match = html.match(new RegExp(`^function ${name}\\([^]*?^}`, 'm'));
   assert.ok(match, name);

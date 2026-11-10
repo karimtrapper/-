@@ -8850,6 +8850,9 @@ function docIssuedTitle(d,k){
   const P=d.docPack||{};
   return {dog:'Агентский договор',app:P.mode==='addendum'?'Допсоглашение к договору '+(P.agreementNumber||''):'Приложение 1 к договору',bill:'Счёт на оплату'}[k];
 }
+function docExtraInline(d){
+  return !!d&&d.step==='s8'&&S.view==='task'&&!d.closed&&!d.manual&&stepWho(d)===S.role;
+}
 function docExtraControl(d){
   if(STAND&&!['manager','operator','admin'].includes(standMe))return '';
   const key='doc-extra-'+d.id;
@@ -8866,7 +8869,7 @@ function docExtraControl(d){
 }
 function docExtraToggle(id){
   S.docExtraOpen=S.docExtraOpen===id?null:id;
-  if(S.docExtraOpen===id){
+  if(S.docExtraOpen===id&&!docExtraInline(deal(id))){
     S.docSideOpen=S.docSideOpen||{};
     S.docSideOpen[id]=true;
   }
@@ -8936,6 +8939,14 @@ async function docFileAction(id,k,fileId,action){
     if(standPush)standSave();
   }catch(e){toast(e.message||'Не удалось изменить документ');}
 }
+function docAdditionalRows(d,small){
+  const fs=small?' style="font-size:12.5px"':'';
+  return filesOf(d,'additional').map((f,i)=>`<div class="li" style="cursor:default"><span class="av">${htmlText((DOCT[f.documentType]||'Д')[0])}</span>
+    <div><div class="t1"${fs}>${htmlText(DOCT[f.documentType]||'Документ')}</div>
+      <div class="t2" style="word-break:break-all">${docFileNameHtml(f.file)}</div></div>
+    <span class="t3"><button class="btn btn-outline btn-sm" onclick="docOpen(${d.id},'additional',${i})">Открыть</button>
+      <button class="btn btn-outline btn-sm" onclick="docDownload(${d.id},'additional',${i})">Скачать</button>${docFileButton(d,'additional',f,'delete')}</span></div>`);
+}
 /* Строки документов сделки: сначала выпущенный пакет, потом файлы клиента */
 function docListRows(d,small){
   const fs=small?' style="font-size:12.5px"':'';
@@ -8971,11 +8982,7 @@ function docListRows(d,small){
       <div class="t2" style="word-break:break-all">${docFileNameHtml(f.file)} · ${htmlText(f.uploadedBy||'операционист')}</div></div>
     <span class="t3" style="white-space:nowrap"><button class="btn btn-outline btn-sm" onclick="docOpen(${d.id},'bankCreditEvidence',${i})">Открыть</button>
       <button class="btn btn-outline btn-sm" onclick="docDownload(${d.id},'bankCreditEvidence',${i})">Скачать</button>${deleteButton('bankCreditEvidence',f)}</span></div>`));
-  filesOf(d,'additional').forEach((f,i)=>client.push(`<div class="li" style="cursor:default"><span class="av">${htmlText((DOCT[f.documentType]||'Д')[0])}</span>
-    <div><div class="t1"${fs}>${htmlText(DOCT[f.documentType]||'Документ')}</div>
-      <div class="t2" style="word-break:break-all">${docFileNameHtml(f.file)}</div></div>
-    <span class="t3"><button class="btn btn-outline btn-sm" onclick="docOpen(${d.id},'additional',${i})">Открыть</button>
-      <button class="btn btn-outline btn-sm" onclick="docDownload(${d.id},'additional',${i})">Скачать</button>${deleteButton('additional',f)}</span></div>`));
+  client.push(...docAdditionalRows(d,small));
   return {issued,client};
 }
 /* Единый счётчик файлов сделки — тот же, что в сайдбаре «Документы N файлов» (docSide).
@@ -8998,7 +9005,7 @@ function signedBlock(d,small){
 function docSide(d){
   const {issued,client}=docListRows(d,true);
   const wait=!d.docPack&&!d.closed;
-  const extraControl=docExtraControl(d);
+  const extraControl=docExtraInline(d)?'':docExtraControl(d);
   if(!issued.length&&!client.length&&!wait&&!extraControl)return '';
   return `<details class="card side doc-side fold-card" ${S.docSideOpen?.[d.id]?'open':''} ontoggle="docSideToggle(event,${d.id})"><summary>Документы<span class="fold-total">${issued.length+client.length} ${plural(issued.length+client.length,'файл','файла','файлов')}</span></summary>
     ${issued.length?`<div class="list doc-list">${issued.join('')}</div>`
@@ -11463,7 +11470,7 @@ function stepGoal(d){
       const required=d.isOld?['inv']:['pass','inv'];
       const ready=required.filter(k=>filesOf(d,k).length).length;
       return {t:d.isOld?'Приложить инвойс':'Приложить паспорт и инвойс',
-        nums:[['Обязательные',ready+'/'+required.length],['Файлы',String(uploaded.reduce((n,k)=>n+filesOf(d,k).length,0))],
+        nums:[['Обязательные',ready+'/'+required.length],['Файлы',String(uploaded.reduce((n,k)=>n+filesOf(d,k).length,filesOf(d,'additional').length))],
               ['Сумма',money2(ap.thb,ap.thbSign||'฿')]],
         sub:ready===required.length?'Передать операционисту — файлы и комментарий сохранятся.':'Загрузите: '+required.filter(k=>!filesOf(d,k).length).map(k=>k==='pass'?'паспорт':'инвойс').join(', ')};}
     case 's11': return {t:'Собрать пакет документов на подпись',
@@ -12081,7 +12088,9 @@ function stepCard(d){
       ${d.autoPayment===true?docRow(d,'vehicle_contract','ДКП автомобиля','обязательно'):''}
       ${d.type==='Оплата недвижимости'&&d.autoPayment!==true?docRow(d,'spa',doctOf(d,'spa'),'если есть'):''}
       ${d.type==='Оплата недвижимости'&&d.autoPayment!==true?docRow(d,'ipds','Анкета ИПДС','если есть'):''}
+      ${docAdditionalRows(d,false).join('')}
     </div>
+    ${docExtraControl(d)}
     ${docParseLine(d)}
     ${fioHint(d)}
     <div class="row"><button class="btn btn-primary" onclick="act(${d.id},'s8')">Передать операционисту</button>

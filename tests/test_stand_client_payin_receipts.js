@@ -6,7 +6,7 @@ const vm = require('node:vm');
 const html = fs.readFileSync('static/stand/tasks.html', 'utf8');
 const names = ['fileValid', 'filesOf', 'fileSync', 'fileAppend', 'fileDel',
   'clientPayinCanAdd', 'clientPayinCanDelete', 'clientPayinNote',
-  'clientPayinBlock', 'docListRows'];
+  'clientPayinBlock', 'docAdditionalRows', 'docListRows'];
 const source = names.map(name => {
   const match = html.match(new RegExp(`^(?:async )?function ${name}\\([^]*?^}`, 'm'));
   assert.ok(match, name);
