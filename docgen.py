@@ -1143,6 +1143,11 @@ def build_addendum(deal_type: str, fields: dict, money: dict, number: str,
     ag = _agent(agent, money)
     when = when or datetime.now()
     money = doc_routes.normalize(money, deal_type)
+    if (deal_type == 'payment' and money.get('auto_document_schema') == 'vehicle-v1'
+            and ag.key == 'flow_sole' and money['payin_method'] == 'bank'
+            and money['payin_currency'] == 'RUB' and money['transfer_currency'] == 'USD'):
+        from doc_auto_flow import build_instruction  # noqa: PLC0415
+        return build_instruction(fields, money, number, parent_number, when, ag)
     doc = _open_template(TEMPLATES[deal_type], ag)
     _strip_draft_mark(doc)
     _apply_route(doc, money, deal_type)
@@ -1181,6 +1186,11 @@ def build_invoice(fields: dict, money: dict, number: str, parent_number: str,
     """Счёт клиенту на pay-in. Всегда ссылается на рамочный договор."""
     ag = _agent(agent, money)
     when = when or datetime.now()
+    if (money.get('auto_document_schema') == 'vehicle-v1' and ag.key == 'flow_sole'
+            and money.get('payin_method') == 'bank' and money.get('payin_currency') == 'RUB'
+            and money.get('transfer_currency') == 'USD'):
+        from doc_auto_flow import build_invoice as build_auto_invoice  # noqa: PLC0415
+        return build_auto_invoice(fields, money, number, parent_number, when, ag)
     doc = _open_template(INVOICE_TEMPLATE, ag)
     _strip_draft_mark(doc)
     method = money.get('payin_method') or 'bank'
@@ -1248,6 +1258,12 @@ def build_commercial_invoice(fields: dict, money: dict, number: str,
     ag = _agent(agent, money)
     when = when or datetime.now()
     money = doc_routes.normalize(money, deal_type)
+    if (deal_type == 'payment' and money.get('auto_document_schema') == 'vehicle-v1'
+            and ag.key == 'flow_sole' and money['payin_method'] == 'bank'
+            and money['payin_currency'] == 'RUB' and money['transfer_currency'] == 'USD'):
+        from doc_auto_flow import build_invoice as build_auto_invoice  # noqa: PLC0415
+        return build_auto_invoice(fields, money, number,
+                                  money.get('parent_number') or number, when, ag)
     # Один платёжный маршрут — один источник реквизитов. Старый банковский
     # шаблон допустим только для legacy-вызовов RUB/bank без новых полей.
     # Старый бланк зашит под MF (логотип, реквизиты ООО) — другим агентам только route invoice.

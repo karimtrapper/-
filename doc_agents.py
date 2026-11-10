@@ -145,7 +145,7 @@ FLOW_SOLE = Agent(
     logo='logo.png',
     signature='signature.png',
     stamp='stamp.png',
-    signature_width_in=1.0,
+    signature_width_in=0.75,
     logo_height_emu=770000,
     footer=None,
 )

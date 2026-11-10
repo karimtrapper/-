@@ -107,7 +107,12 @@ def test_auto_uses_payment_docs_with_usd_output_and_correct_agent(mode, agent):
                                   for row in table.rows for cell in row.cells)
     assert 'апартаменты' not in inv_text.lower()
     assert 'Toyota Camry' in inv_text
-    assert 'Текущий платёж продавцу / Current seller payment: USD 45 000.00' in inv_text
+    if agent == 'flow_sole':
+        assert 'Оплата продавцу по Payment Instruction' in inv_text
+        assert 'USD 45 000.00' in inv_text
+        assert 'RUB 4 000 000.00' in inv_text
+    else:
+        assert 'Текущий платёж продавцу / Current seller payment: USD 45 000.00' in inv_text
 
 
 def test_auto_flow_is_separate_from_freehold_and_only_verified_for_requisites():

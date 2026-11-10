@@ -9,6 +9,7 @@
 - платёж на другую компанию — это новый договор, а не допник к чужому.
 """
 import io
+import hashlib
 import json
 import os
 import re
@@ -148,6 +149,12 @@ class TestРеестр:
             for path in (agent.logo_path, agent.signature_path, agent.stamp_path):
                 assert os.path.exists(path), path
 
+    def test_утверждённая_настоящая_подпись_flow_sole(self):
+        data = open(doc_agents.FLOW_SOLE.signature_path, 'rb').read()
+        assert hashlib.sha256(data).hexdigest() == (
+            'd40d6bfff17f06fa7c120de5bb0429cb5edaf798dae91a2e721eeed35193296e')
+        assert doc_agents.FLOW_SOLE.signature_width_in == 0.75
+
     def test_ключ_маршрута_mf_прежний(self):
         assert doc_agents.route_key('RUB_THB', 'bank', 'mf_corp') == 'RUB_THB:bank'
         assert doc_agents.route_key('RUB_THB', 'bank') == 'RUB_THB:bank'
@@ -212,6 +219,44 @@ CASES = [('leasehold', {}), ('freehold', dict(pair='RUB_USD', transfer_currency=
 
 
 class TestДокументыFlowSole:
+    def test_автоинструкция_и_счёт_ссылаются_на_исходный_договор(self):
+        fields = dict(FIELDS, vehicle_model='Test Car', vehicle_vin='TEST-VIN-1',
+                      vehicle_contract_no='TEST-SALE-1', vehicle_contract_date='01.11.2026',
+                      seller_name='Test Seller Ltd.')
+        m = money(pair='RUB_USD', transfer_currency='USD', transfer_amount='45000',
+                  total_payin='4000000', rate='88.888889', auto_document_schema='vehicle-v1',
+                  parent_number='F-AG-1')
+        instruction = docgen.build_addendum('payment', fields, m, 'F-PI-2', 'F-AG-1', 2,
+                                            WHEN, agent='flow_sole')
+        invoice = docgen.build_commercial_invoice(fields, m, 'F-PI-2', 'payment',
+                                                  WHEN, agent='flow_sole')
+        short = docgen.build_invoice(fields, m, 'F-PI-2', 'F-AG-1', 'F-PI-2',
+                                     WHEN, agent='flow_sole')
+        for data in (instruction, invoice, short):
+            text = all_text(data)
+            assert 'F-AG-1' in text and 'F-PI-2' in text
+            assert 'Test Car' in text and 'TEST-SALE-1' in text
+            assert 'USD 45 000.00' in text and 'RUB 4 000 000.00' in text
+            z = zipfile.ZipFile(io.BytesIO(data))
+            media = [z.read(name) for name in z.namelist() if name.startswith('word/media/')]
+            assert open(doc_agents.FLOW_SOLE.signature_path, 'rb').read() in media
+            assert open(doc_agents.FLOW_SOLE.stamp_path, 'rb').read() in media
+        assert 'Agent’s fee 1%' not in all_text(invoice)
+
+    def test_автоинструкция_без_распознанного_счёта_ссылается_на_инвойс(self):
+        fields = dict(FIELDS, vehicle_model='Test Car',
+                      vehicle_contract_no='TEST-SALE-1',
+                      recipient_bank='по реквизитам инвойса получателя / as per beneficiary invoice')
+        fields.pop('recipient_account')
+        fields.pop('recipient_swift')
+        m = money(pair='RUB_USD', transfer_currency='USD', transfer_amount='45000',
+                  auto_document_schema='vehicle-v1')
+        text = all_text(docgen.build_addendum('payment', fields, m, 'F-PI-2',
+                                              'F-AG-1', 2, WHEN, agent='flow_sole'), raw=False)
+        assert 'в приложенном инвойсе получателя' in text
+        assert 'in the attached beneficiary invoice' in text
+        assert 'Счёт: ' not in text and 'SWIFT: ' not in text
+
     @pytest.mark.parametrize('kind,over', CASES)
     def test_нет_следов_mf(self, kind, over):
         for name, data in build_all('flow_sole', kind, **over).items():

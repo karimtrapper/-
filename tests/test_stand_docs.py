@@ -100,6 +100,24 @@ def test_auto_pending_vin_requires_advance_and_contract_basis(stand):
     assert 'VIN ещё не присвоен' in text and 'п. 2.1 ДКП' in text
 
 
+def test_flowsole_auto_instruction_and_invoice_use_current_deal_without_fee_guess(stand):
+    stand.put_board([_auto_deal(974, rubReceivingAccount={'mode': 'flowsole'})])
+    issued = stand.post('/api/stand/docs/issue', json={'dealId': 974,
+                                                       'docFields': _auto_fields()})
+    assert issued.status_code == 200, issued.json
+    docs = {item['kind']: _text(stand, item['docId']) for item in issued.json['issued']}
+    instruction, invoice = docs['app'], docs['bill']
+    for value in ('Synthetic Seller Ltd.', 'CAR-SALE-1', 'Test Model', 'QA-VIN-1'):
+        assert value in instruction and value in invoice
+    assert 'PAYMENT INSTRUCTION NO.' in instruction
+    assert 'INVOICE NO.' in invoice
+    assert 'RUB 4 000 000.00' in instruction and 'RUB 4 000 000.00' in invoice
+    assert 'USD 45 000.00' in instruction and 'USD 45 000.00' in invoice
+    assert '40807810819000000261' in invoice
+    assert 'Agent’s fee included in total' in invoice
+    assert 'Agent’s fee 1%' not in invoice
+
+
 def test_auto_contract_conflict_requires_current_review_note(stand):
     deal = _auto_deal(973, docParse={'fields': {}, 'conflicts': {'seller_name': [
         {'value': 'Synthetic Seller Ltd.', 'file': 'vehicle_contract'},

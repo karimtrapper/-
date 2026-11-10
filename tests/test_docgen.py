@@ -221,7 +221,8 @@ def test_future_auto_main_agreement_matches_signed_standard_in_both_languages(ag
 
 @pytest.mark.parametrize('deal_type,agent,expected_sha', [
     ('payment', 'mf_corp', 'a54a376bf1a7434fe185a06a73ece946660d2c9f69203414e1b8c0cb74da51b6'),
-    ('payment', 'flow_sole', 'abdf3e7a8bee1bd8482651eb6b00eeff27feed66d16a1948e6cfbca9f2d33f82'),
+    # Настоящая вертикальная подпись Flow Sole меняет только размеры рисунка в XML.
+    ('payment', 'flow_sole', 'fd12f5f33999a253ba368f16e9a7a34b4f04bb09d58fe1528fdae02b688fe7be'),
     ('leasehold', 'mf_corp', 'e703cc28ae3360e712a5994d99c6d89fcfc641d532a4f685cc536ea8bc163616'),
 ])
 def test_non_auto_agreement_document_xml_unchanged(deal_type, agent, expected_sha):
