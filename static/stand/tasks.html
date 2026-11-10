@@ -5981,9 +5981,10 @@ function render(){
   restoreFocus();
   if(S.edit) crmDraftMount(S.edit);
   const active=S.open&&S.view==='task'&&deal(S.open),activeConv=active&&convOf(active);
+  const incomingKey=activeConv&&cnvIncomingKey(activeConv);
   if(STAND&&activeConv?.status==='sent'&&!(demoAllowed()&&active.demoTransfers)
-      &&['operator','admin'].includes(S.role)&&S.incomingLoadFor!==activeConv.id){
-    S.incomingLoadFor=activeConv.id;
+      &&['operator','admin'].includes(S.role)&&S.incomingLoadFor!==incomingKey){
+    S.incomingLoadFor=incomingKey;
     setTimeout(()=>cnvTxLoad(active.id),0);
   }
 }
@@ -9237,30 +9238,76 @@ function cnvTxOptionLabel(t){
   return t.free_usdt>0?`свободно $${t.free_usdt.toFixed(2)} из $${t.amount_usdt.toFixed(2)} · `:'разобран · ';
 }
 function cnvTxTime(ts){return new Date(ts).toLocaleString('ru-RU',{timeZone:'Europe/Moscow',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});}
-async function cnvTxLoad(id){
-  try{
-    const cnvId=convOf(deal(id))?.id, walletAddr=walletById(convOf(deal(id))?.walletId)?.addr;
-    S.incomingLoadFor=cnvId;
+function cnvIncomingKey(c){return String(c.id)+':'+(walletById(c.walletId)?.addr||'');}
+function cnvIncomingChoices(d,c){
+  const key=c?cnvIncomingKey(c):null, addr=walletById(c?.walletId)?.addr;
+  const chain=S.incomingChainRows?.key===key?S.incomingChainRows.rows:[];
+  const ledger=(S.incomingLedgerRows?.key===key?S.incomingLedgerRows.rows:[]).filter(t=>
+    t.free_usdt>0&&(!t.to_address||t.to_address===addr)
+    &&!(c?.txs||[]).some(x=>x.hash===t.tx_hash)
+    &&!chain.some(x=>x.hash===t.tx_hash));
+  const demo=txPool().filter(t=>!txUsed(t.hash)&&!(c?.txs||[]).some(x=>x.hash===t.hash)
+    &&demoAllowed()&&!!d.demoTransfers&&t.demo&&t.cnv===c?.id);
+  return {key,ledger,chain:chain.filter(t=>t.free_usdt>0),demo};
+}
+function cnvIncomingStatus(choices,d){
+  if(!choices.key)return '';
+  const state=S.incomingLoadState?.key===choices.key?S.incomingLoadState:null;
+  const count=choices.ledger.length+choices.chain.length+choices.demo.length;
+  if(state?.status==='loading')return '<p class="fh" role="status">Обновляем входящие переводы…</p>';
+  if(state?.status==='error')return `<p class="fh" role="alert">${htmlText(state.error)}. Нажмите «Повторить загрузку» или проверьте полный хеш вручную.</p>`;
+  if(!state)return !STAND||demoAllowed()&&d?.demoTransfers||!['operator','admin'].includes(S.role)
+    ?'':'<p class="fh" role="status">Загружаем входящие переводы…</p>';
+  if(S.incomingChainRows?.key===choices.key&&S.incomingChainRows.complete===false)
+    return '<p class="fh" role="status">Список TronScan неполный. Обновите список позже или проверьте полный хеш вручную.</p>';
+  if(!count)return '<p class="fh" role="status">За последние 14 дней свободных входящих переводов не найдено. Обновите список позже или проверьте полный хеш вручную.</p>';
+  return '';
+}
+let incomingRequest=null, incomingRequestSeq=0;
+function cnvTxLoad(id){
+  const c=convOf(deal(id));if(!c)return Promise.resolve();
+  const key=cnvIncomingKey(c),cnvId=c.id;
+  if(incomingRequest?.key===key)return incomingRequest.promise;
+  const seq=++incomingRequestSeq;
+  S.incomingLoadFor=key;
+  S.incomingLoadState={key,status:'loading'};
+  render();
+  const current=()=>seq===incomingRequestSeq&&S.open===id&&cnvIncomingKey(convOf(deal(id))||{})===key;
+  const load=async(url,kind)=>{
+    try{
+      const response=await fetch(url,{credentials:'same-origin'}), data=await response.json();
+      if(!response.ok||!data.success)throw new Error(data.error||'Не удалось загрузить '+kind);
+      if(current()){
+        if(kind==='реестр')S.incomingLedgerRows={key,rows:data.txs||[]};
+        else S.incomingChainRows={key,cnvId,rows:data.txs||[],complete:data.complete};
+        render();
+      }
+      return data;
+    }catch(e){return {error:e.message||'Не удалось загрузить '+kind};}
+  };
+  const promise=(async()=>{
     const [ledger,chain]=await Promise.all([
-      fetch('/api/payin-txs?unallocated=1',{credentials:'same-origin'}),
-      fetch('/api/stand/incoming/candidates?dealId='+encodeURIComponent(id),{credentials:'same-origin'})]);
-    const [j,k]=await Promise.all([ledger.json(),chain.json()]);
-    if(!j.success){toast(j.error||'Не удалось загрузить реестр');return;}
-    if(!k.success){toast(k.error||'Не удалось загрузить входящие из сети');return;}
-    if(S.open!==id||convOf(deal(id))?.id!==cnvId||walletById(convOf(deal(id))?.walletId)?.addr!==walletAddr)return;
-    S.incomingLedgerRows=j.txs||[];
-    S.incomingChainRows={cnvId,rows:k.txs||[],complete:k.complete};
-    render();
-    if(!k.complete)toast('TronScan показал часть переводов. Обновите список позже, если нужного нет.');
-  }catch(e){toast('Не удалось загрузить реестр или входящие из сети');}
+      load('/api/payin-txs?unallocated=1','реестр'),
+      load('/api/stand/incoming/candidates?dealId='+encodeURIComponent(id),'входящие из сети')]);
+    if(current()){
+      const error=ledger.error||chain.error;
+      S.incomingLoadState={key,status:error?'error':'ready',error};
+      render();
+      if(!error&&!chain.complete)toast('TronScan показал часть переводов. Обновите список позже, если нужного нет.');
+    }else if(seq===incomingRequestSeq){S.incomingLoadFor=null;S.incomingLoadState=null;}
+    if(incomingRequest?.seq===seq)incomingRequest=null;
+  })();
+  incomingRequest={key,seq,promise};return promise;
 }
 function cnvTxPick(id,txId){
   if(String(txId).startsWith('chain:')){
-    const row=(S.incomingChainRows?.rows||[]).find(t=>t.hash===String(txId).slice(6));
+    const c=convOf(deal(id)), key=c&&cnvIncomingKey(c);
+    const row=(S.incomingChainRows?.key===key?S.incomingChainRows.rows:[]).find(t=>t.hash===String(txId).slice(6));
     if(row)cnvTxManual(id,row.hash,row.network);return;
   }
   if(String(txId).startsWith('ledger:')){
-    const row=(S.incomingLedgerRows||[]).find(t=>String(t.id)===String(txId).slice(7));
+    const c=convOf(deal(id)), key=c&&cnvIncomingKey(c);
+    const row=(S.incomingLedgerRows?.key===key?S.incomingLedgerRows.rows:[]).find(t=>String(t.id)===String(txId).slice(7));
     if(row)cnvTxManual(id,row.tx_hash,row.network);return;
   }
   const d=deal(id),c=convOf(d),t=txPool().find(x=>x.id===Number(txId));
@@ -9287,7 +9334,7 @@ async function cnvWalletFix(id,wid){
   const d=deal(id), c=convOf(d), w=walletById(wid); if(!c||!w)return;
   if((c.txs||[]).some(t=>t.status==='confirmed')){toast('Сначала отвяжите подтверждённый приход');return;}
   const j=await standAction('/api/stand/incoming/wallet',{dealId:id,walletId:wid,version:standVer});
-  if(j){S.incomingLoadFor=null;S.incomingChainRows=null;render();
+  if(j){incomingRequestSeq++;incomingRequest=null;S.incomingLoadFor=null;S.incomingChainRows=null;S.incomingLedgerRows=null;S.incomingLoadState=null;render();
     toast('Ждём USDT на '+(w.owner||w.name)+' · '+w.addr);}
 }
 function txFind(h){return txPool().find(t=>String(t.hash).toLowerCase()===String(h).trim().toLowerCase())||null;}
@@ -9350,8 +9397,8 @@ async function cnvTxAllocate(id){
   if(p.early&&!confirmed){toast('Подтвердите, что ранний перевод брокера относится к этой пачке');return;}
   const j=await standAction('/api/stand/incoming/check',{dealId:id,hash:p.hash,network:p.network,amount,
     confirmBeforeRubSend:confirmed});
-  if(j&&j.tx){S.incomingShare=null;S.incomingChainRows=null;S.incomingLedgerRows=[];
-    S.incomingLoadFor=null;render();toast('Засчитана доля: '+usd(j.tx.amount));}
+  if(j&&j.tx){incomingRequestSeq++;incomingRequest=null;S.incomingShare=null;S.incomingChainRows=null;S.incomingLedgerRows=null;
+    S.incomingLoadState=null;S.incomingLoadFor=null;render();toast('Засчитана доля: '+usd(j.tx.amount));}
 }
 function payinTxPick(id,txId){
   editApply(id); const d=deal(id), t=txPool().find(x=>x.id===Number(txId)); if(!t)return;
@@ -12441,7 +12488,7 @@ function stepCard(d){
     <div class="row"><button id="b_sent_submit" class="btn btn-success" ${sentInvalid?'disabled':''} onclick="act(${d.id},'s18')">Отправил брокеру — ждём USDT</button></div></div>`;},
 
   s18w:()=>{
-    const c=convOf(d), plan=c?c.sources.reduce((s,x)=>s+(x.usdt||0),0):null;
+    const c=convOf(d), choices=cnvIncomingChoices(d,c), plan=c?c.sources.reduce((s,x)=>s+(x.usdt||0),0):null;
     const got=c?hashSum(c.txs):null, gap=(got!=null&&plan!=null)?Math.round((got-plan)*100)/100:null;
     return `<div class="card"><div class="card-title">Ждём USDT от брокера
       <span class="sub">${c?c.name+' · '+c.broker:'пачка не найдена'}</span></div>
@@ -12480,16 +12527,12 @@ function stepCard(d){
       <div class="fg"><label class="fl">Выбрать из входящих</label>
         <select class="fc" onchange="if(this.value)cnvTxPick(${d.id},this.value)">
           <option value="">— входящие переводы —</option>
-          ${(S.incomingLedgerRows||[]).filter(t=>t.free_usdt>0&&(!t.to_address||t.to_address===walletById(c?.walletId)?.addr)
-            &&!(c?.txs||[]).some(x=>x.hash===t.tx_hash)
-            &&!(S.incomingChainRows?.cnvId===c?.id&&S.incomingChainRows.rows.some(x=>x.hash===t.tx_hash))).map(t=>`<option value="ledger:${t.id}">${esc(cnvTxOptionLabel(t))}$${t.amount_usdt.toFixed(2)} · ${esc(t.tx_hash)}</option>`).join('')}
-          ${(S.incomingChainRows?.cnvId===c?.id?S.incomingChainRows.rows:[]).filter(t=>t.free_usdt>0)
-            .map(t=>`<option value="chain:${t.hash}">${esc(cnvTxTime(t.timestamp_ms))} · $${t.amount_usdt.toFixed(2)} · ${esc(t.from_address)} · ${esc(t.hash.slice(0,12))}… · свободно $${t.free_usdt.toFixed(2)} из $${t.amount_usdt.toFixed(2)}${t.early?' · раньше отправки рублей':''}</option>`).join('')}
-          ${txPool().filter(t=>!txUsed(t.hash)&&!(c&&(c.txs||[]).some(x=>x.hash===t.hash))
-            &&demoAllowed()&&!!d.demoTransfers&&t.demo&&t.cnv===c.id).map(t=>
+          ${choices.ledger.map(t=>`<option value="ledger:${t.id}">${esc(cnvTxOptionLabel(t))}$${t.amount_usdt.toFixed(2)} · ${esc(t.tx_hash)}</option>`).join('')}
+          ${choices.chain.map(t=>`<option value="chain:${t.hash}">${esc(cnvTxTime(t.timestamp_ms))} · $${t.amount_usdt.toFixed(2)} · ${esc(t.from_address)} · ${esc(t.hash.slice(0,12))}… · свободно $${t.free_usdt.toFixed(2)} из $${t.amount_usdt.toFixed(2)}${t.early?' · раньше отправки рублей':''}</option>`).join('')}
+          ${choices.demo.map(t=>
             `<option value="${t.id}">${usd(t.amount)} · ${t.net} · ${t.at} · ${t.hash}</option>`).join('')}
-        </select><button class="btn btn-outline btn-sm" onclick="cnvTxLoad(${d.id})">Обновить список</button>
-        ${S.incomingChainRows?.cnvId===c?.id&&S.incomingChainRows.complete===false?'<p class="fh">TronScan показал часть переводов. Если нужного нет, обновите список или проверьте полный хеш вручную.</p>':''}</div>
+        </select><button class="btn btn-outline btn-sm" ${S.incomingLoadState?.key===choices.key&&S.incomingLoadState.status==='loading'?'disabled':''} onclick="cnvTxLoad(${d.id})">${S.incomingLoadState?.key===choices.key&&S.incomingLoadState.status==='error'?'Повторить загрузку':'Обновить список'}</button>
+        ${cnvIncomingStatus(choices,d)}</div>
       <div class="fg"><label class="fl">Или хеш вручную</label>
         <input class="fc" id="w2" value="${S.incomingShare?.dealId===d.id?esc(S.incomingShare.hash):''}" placeholder="полный хеш транзакции">
         <p class="fh">сумма и адрес получения проверяются сервером</p></div>
@@ -12510,7 +12553,7 @@ function stepCard(d){
           <input class="fc" id="txr_${i}" placeholder="почему отвязываем: выбрали не тот перевод, пришло на другой кошелёк…">
           <button class="btn btn-secondary btn-sm" onclick="cnvTxUnlink(${d.id},${i})">Отвязать</button>
           <button class="btn btn-outline btn-sm" onclick="S.txUnlink=null;render()">Отмена</button></div>`:''}`).join('')
-        :`<div class="hempty">Переводов ещё нет. Возьмите из входящих — сумма подставится сама.</div>`}
+        :`<div class="hempty">К пачке ещё не добавлены переводы. Выберите входящий перевод или проверьте полный хеш вручную.</div>`}
       ${got!=null?`<p class="fh" style="margin-top:8px">Пришло по ${c.txs.length} ${c.txs.length===1?'переводу':'переводам'}: <b>${usd(got)}</b>${
         gap!=null&&Math.abs(gap)>=0.01?` · <b class="${gap>0?'pos':'neg'}">${gap>0?'больше на ':'не хватает '}${usd(Math.abs(gap))}</b> против ожидания`:' — сходится с ожиданием'}</p>`:''}
     </div>
