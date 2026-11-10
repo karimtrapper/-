@@ -154,10 +154,15 @@ def test_auto_quote_uses_calculator_ladder_and_preserves_request(mode, source, r
     else:
         assert deal['invoiceUsd'] == source
     rub = Decimal(str(deal['amountRub']))
-    sent_rub = rub - (rub*Decimal('.001')+40).quantize(Decimal('.01')) - (rub*Decimal('.002')).quantize(Decimal('.01'))
-    sent_usd = Decimal(str(deal['invoiceUsd']))
-    sent_usd += (sent_usd*Decimal('.008')+50).quantize(Decimal('.01'))
-    assert sent_rub/Decimal(rate) + Decimal('.0002') >= sent_usd*(1+Decimal(expected_margin)/100)
+    usd_amount = Decimal(str(deal['invoiceUsd']))
+    if mode == 'usd':
+        base = ((usd_amount+1)*rate*(1+Decimal(expected_margin)/100)).quantize(Decimal('.01'))
+        expected_rub = (base*(usd_amount*Decimal('1.008')+50)/usd_amount).quantize(Decimal('.01'))
+        assert rub == expected_rub
+    else:
+        before_fee = (rub/rate/(1+Decimal(expected_margin)/100)-1).quantize(Decimal('.01'))
+        expected_usd = ((before_fee-50)/Decimal('1.008')).quantize(Decimal('.01'))
+        assert usd_amount == expected_usd
     if mode == 'usd':
         assert (Decimal(source)*rate < 500000 and expected_margin == 5 or
                 500000 <= Decimal(source)*rate < 1000000 and expected_margin == 4 or
@@ -183,6 +188,7 @@ def test_manual_client_rub_survives_server_requote_and_checks_actual_margin(mode
             'requestedUsd': 45000 if mode == 'usd' else None,
             'ippsTariff': 'bank', 'rates': {'rubUsdt': '80'}}
     assert m._stand_auto_quote_calculate(deal)
+
     invoice = deal['invoiceUsd']
     requested = deal['requestedRub' if mode == 'rub' else 'requestedUsd']
     deal['amountRub'] = round(deal['amountRub'] + 1000, 2)
@@ -196,6 +202,40 @@ def test_manual_client_rub_survives_server_requote_and_checks_actual_margin(mode
     deal['amountRub'] = round(manual_rub * 1.15, 2)
     assert m._stand_auto_quote_calculate(deal) is False
     deal['amountRub'] = manual_rub
+    assert m._stand_auto_quote_calculate(deal)
+
+def test_historical_auto_quote_allows_unchanged_state_but_checks_edits():
+    import copy
+    deal = {'id': 1, 'autoPayment': True, 'step': 's6', 'type': 'Оплата недвижимости',
+            'kind': 'Фрихолд', 'payType': 'По реквизитам', 'invoiceCurrency': 'usd',
+            'autoRequestMode': 'usd',
+            'requestedUsd': 79800, 'requestedRub': None, 'invoiceUsd': 79800,
+            'amountRub': 6991294.16, 'ippsTariff': 'soft', 'autoMarkupPct': 3,
+            'rates': {'rubUsdt': '83.498', 'client': '87.610203'}}
+    before = {'deals': [deal], 'convs': [], 'wallets': [], 'notes': []}
+    after = copy.deepcopy(before)
+    after['deals'][0]['comment'] = 'Согласовать реквизиты'
+    assert m._stand_guard_transition(before, after, 'manager') is None
+    agreed = copy.deepcopy(before)
+    agreed['deals'][0]['step'] = 's8'
+    assert m._stand_guard_transition(before, agreed, 'manager') is None
+    edited = copy.deepcopy(before)
+    edited['deals'][0]['amountRub'] += 100
+    assert 'совпадать с расчётом' in m._stand_guard_transition(before, edited, 'manager')
+    recalculated = copy.deepcopy(before)
+    assert m._stand_auto_quote_calculate(recalculated['deals'][0])
+    assert recalculated['deals'][0]['amountRub'] == 6970367.62
+    assert m._stand_guard_transition(before, recalculated, 'manager') is None
+
+
+@pytest.mark.parametrize('tariff,usd_amount', [('bank', 1005.11), ('soft', 1005.11),
+                                               ('bank', 45000), ('soft', 45000)])
+def test_old_quote_at_margin_floor_survives_manual_guard(tariff, usd_amount):
+    deal = {'autoPayment': True, 'step': 's6', 'autoRequestMode': 'usd',
+            'requestedUsd': usd_amount, 'ippsTariff': tariff, 'autoMarkupPct': 1.5,
+            'rates': {'rubUsdt': '83.498'}}
+    assert m._stand_auto_quote_calculate(deal)
+    deal['autoManualClientRub'] = True
     assert m._stand_auto_quote_calculate(deal)
 
 

@@ -1745,9 +1745,7 @@ function displayDetailedSteps(result) {
         detailsContent.innerHTML = `<div class="detail-section"><h4>Оплата авто</h4>
             <div class="detail-row"><span class="detail-label">Продавцу:</span><span class="detail-value">${formatNumber(result.invoice_usd)} USD</span></div>
             <div class="detail-row"><span class="detail-label">В IPPS с тарифом:</span><span class="detail-value">${formatNumber(result.ipps_send_usdt)} USDT</span></div>
-            <div class="detail-row"><span class="detail-label">Клиент платит:</span><span class="detail-value">${formatNumber(result.rub_paid)} ₽</span></div>
-            <div class="detail-row"><span class="detail-label">Брокеру после удержаний:</span><span class="detail-value">${formatNumber(result.broker_net_rub)} ₽</span></div>
-            <div class="detail-row"><span class="detail-label">Наша прибыль:</span><span class="detail-value">${formatNumber(result.profit_usdt)} USDT</span></div></div>`;
+            <div class="detail-row"><span class="detail-label">Клиент платит:</span><span class="detail-value">${formatNumber(result.rub_paid)} ₽</span></div></div>`;
         return;
     }
     let html = '';

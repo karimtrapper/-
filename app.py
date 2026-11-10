@@ -8087,7 +8087,7 @@ def stand_state_put():
 
 def _stand_auto_quote_calculate(deal):
     """Quote the USD payout against a RUB client budget, or invert that quote."""
-    from decimal import Decimal, ROUND_HALF_UP, ROUND_FLOOR, ROUND_CEILING
+    from decimal import Decimal, ROUND_HALF_UP
     max_cents = 90071992547409  # JS safe integer with two extra decimal digits for fee rounding
     def safe_cents(value, rounding=ROUND_HALF_UP):
         if value is None or value <= 0:
@@ -8106,10 +8106,10 @@ def _stand_auto_quote_calculate(deal):
     cent = Decimal('0.01')
     def rounded(value):
         return value.quantize(cent, rounding=ROUND_HALF_UP)
-    def broker_net(rub):
-        return rounded(rub - rounded(rub*Decimal('0.001')+40) - rounded(rub*Decimal('0.002')))
     def sent(usd_amount):
-        return usd_amount + rounded(usd_amount*pct+50)
+        return usd_amount*(1+pct)+50
+    def actual_margin(rub, usd_amount):
+        return (rub*usd_amount/sent(usd_amount)/rate/(usd_amount+1)-1)*100
     def margin(rub):
         explicit = _stand_num(deal.get('autoMarkupPct'))
         if deal.get('autoRequestMode') == 'usd':
@@ -8122,8 +8122,9 @@ def _stand_auto_quote_calculate(deal):
         if (safe_cents(rub) is None or safe_cents(usd_amount) is None or
                 rub != rounded(rub) or usd_amount != rounded(usd_amount)):
             return False
-        actual = (broker_net(rub)/rate/sent(usd_amount)-1)*100
-        if actual < Decimal('1.4999999') or actual > Decimal('5.0000001'):
+        actual = actual_margin(rub, usd_amount)
+        tolerance = min(Decimal('.005'), 1/(rate*(usd_amount+1)))
+        if actual < Decimal('1.5')-tolerance or actual > Decimal('5')+tolerance:
             return False
         deal.setdefault('rates', {})['client'] = str(
             (rub/usd_amount).quantize(Decimal('0.000001'), rounding=ROUND_HALF_UP))
@@ -8133,38 +8134,20 @@ def _stand_auto_quote_calculate(deal):
         rub = _stand_num(deal.get('requestedRub'))
         if safe_cents(rub) is None:
             return False
-        capacity = broker_net(rub) / rate / (1 + margin(rub)/100)
-        if safe_cents(capacity, ROUND_FLOOR) is None:
+        before_fee = rounded(rub / rate / (1 + margin(rub)/100) - 1)
+        if safe_cents(before_fee) is None:
             return False
-        usd_cents = int(((capacity-50)/(1+pct)*100).to_integral_value(rounding=ROUND_FLOOR))
-        while usd_cents > 0 and sent(Decimal(usd_cents)/100) > capacity:
-            usd_cents -= 1
-        while sent(Decimal(usd_cents+1)/100) <= capacity:
-            usd_cents += 1
-        if usd_cents <= 0:
+        usd_amount = rounded((before_fee-50)/(1+pct))
+        if safe_cents(usd_amount) is None:
             return False
-        usd_amount = Decimal(usd_cents)/100
     elif mode == 'usd':
         usd_amount = _stand_num(deal.get('requestedUsd'))
         if safe_cents(usd_amount) is None:
             return False
         def find_rub(markup):
-            needed = sent(usd_amount)*(1+markup/100)*rate
-            needed_cents = safe_cents(needed, ROUND_CEILING)
-            if needed_cents is None:
-                return None
-            low, high = 0, needed_cents
-            while broker_net(Decimal(high)/100) < needed:
-                if high == max_cents:
-                    return None
-                high = min(high*2, max_cents)
-            while low < high:
-                mid = (low+high)//2
-                if broker_net(Decimal(mid)/100) >= needed:
-                    high = mid
-                else:
-                    low = mid+1
-            return Decimal(low)/100
+            base = rounded((usd_amount+1)*rate*(1+markup/100))
+            result = rounded(base*sent(usd_amount)/usd_amount)
+            return result if safe_cents(result) is not None else None
         rub = find_rub(margin(Decimal(0)))
         if rub is None:
             return False
@@ -12379,16 +12362,23 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
                     before.get(k) != deal.get(k) for k in ('invoiceUsd', 'ippsTariff')):
                 return 'Согласованную выплату продавцу и тариф нельзя менять'
             if before.get('step') == 's6' and deal.get('step') in ('s6', 's8'):
-                expected = dict(deal, rates=dict(deal.get('rates') or {}), step='s6')
-                if not _stand_auto_quote_calculate(expected):
-                    return 'Нужен действующий курс для оплаты авто'
-                for field in ('invoiceUsd', 'amountRub'):
-                    got, want = _stand_num(deal.get(field)), _stand_num(expected.get(field))
-                    if got is None or want is None or abs(got-want) > Decimal('0.01'):
-                        return 'Суммы оплаты авто должны совпадать с расчётом'
-                got, want = _stand_num((deal.get('rates') or {}).get('client')), _stand_num(expected['rates'].get('client'))
-                if got is None or want is None or abs(got-want) > Decimal('0.000001'):
-                    return 'Курс оплаты авто должен совпадать с расчётом'
+                quote_fields = ('invoiceUsd', 'amountRub', 'ippsTariff', 'autoMarkupPct',
+                                'autoManualClientRub', 'autoRequestMode', 'requestedRub', 'requestedUsd')
+                quote_unchanged = (all(before.get(field) == deal.get(field) for field in quote_fields)
+                                   and all((before.get('rates') or {}).get(field) ==
+                                           (deal.get('rates') or {}).get(field)
+                                           for field in ('rubUsdt', 'client')))
+                if not quote_unchanged:
+                    expected = dict(deal, rates=dict(deal.get('rates') or {}), step='s6')
+                    if not _stand_auto_quote_calculate(expected):
+                        return 'Нужен действующий курс для оплаты авто'
+                    for field in ('invoiceUsd', 'amountRub'):
+                        got, want = _stand_num(deal.get(field)), _stand_num(expected.get(field))
+                        if got is None or want is None or abs(got-want) > Decimal('0.01'):
+                            return 'Суммы оплаты авто должны совпадать с расчётом'
+                    got, want = _stand_num((deal.get('rates') or {}).get('client')), _stand_num(expected['rates'].get('client'))
+                    if got is None or want is None or abs(got-want) > Decimal('0.000001'):
+                        return 'Курс оплаты авто должен совпадать с расчётом'
         if deal.get('type') in ('Обмен валюты', 'Оплата недвижимости'):
             new_kind_canon = canonical_deal_kind_from_stand(deal.get('type'), deal.get('kind'), deal.get('autoPayment'))
             new_payin_canon = canonical_payin_from_stand(deal.get('payType'))
@@ -17562,22 +17552,16 @@ def calculate():
             usd_amount = _stand_num(deal['invoiceUsd'])
             cents = Decimal('0.01')
             rounded = lambda value: value.quantize(cents, rounding=ROUND_HALF_UP)
-            broker_net = rounded(rub - rounded(rub*Decimal('0.001')+40)
-                                 - rounded(rub*Decimal('0.002')))
-            send = usd_amount + rounded(usd_amount *
-                (Decimal('0.008') if tariff == 'bank' else Decimal('0.015')) + 50)
-            incoming = broker_net / rate
-            profit = rounded(incoming - send)
+            send = usd_amount * (Decimal('1.008') if tariff == 'bank' else Decimal('1.015')) + 50
+            quote_margin = (rub*usd_amount/send/rate/(usd_amount+1)-1)*100
             return jsonify({'scenario': 'RUB → USDT', 'direction': direction,
                             'operation_name': 'Оплата продавцу автомобиля',
                             'rub_paid': float(rub), 'rub_to_pay': float(rub),
-                            'rub_usdt_rate': float(rate), 'broker_net_rub': float(broker_net),
+                            'rub_usdt_rate': float(rate),
                             'invoice_usd': float(usd_amount), 'ipps_send_usdt': float(send),
                             'usdt_target': float(usd_amount), 'usdt_received': float(usd_amount),
-                            'incoming_usdt': float(rounded(incoming)),
-                            'outgoing_usdt': float(send), 'profit_usdt': float(profit),
                             'profit_percent': float(margin),
-                            'profit_percent_actual': float(rounded((incoming/send-1)*100)),
+                            'profit_percent_actual': float(rounded(quote_margin)),
                             'final_rate': float(rub/usd_amount),
                             'commission_level': 'Оплата авто'}), 200
         method = data.get('method', 'doverka')

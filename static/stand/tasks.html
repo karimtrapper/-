@@ -1806,12 +1806,18 @@ function autoMarginSet(id,raw){
 }
 function autoActualMarginPct(d){
   const rate=num(d.rates&&d.rates.rubUsdt),rub=num(d.amountRub);
-  const sent=freeholdSend(d.invoiceUsd||0,ippsTariff(d));
-  return rate>0&&rub>0&&sent>0?(brokerSend(rub).sent/rate/sent-1)*100:null;
+  const usdAmount=num(d.invoiceUsd),tariff=ippsTariff(d);
+  const sent=tariff?usdAmount*(1+tariff.percent/100)+tariff.fixed:0;
+  return rate>0&&rub>0&&usdAmount>0&&sent>0?(rub*usdAmount/sent/rate/(usdAmount+1)-1)*100:null;
 }
 function autoShownMarginPct(d){
   const actual=d.autoManualClientRub===true?autoActualMarginPct(d):null;
-  return actual==null?autoMarginPct(d,d.amountRub||d.requestedRub||0):actual;
+  if(actual==null)return autoMarginPct(d,d.amountRub||d.requestedRub||0);
+  const tolerance=autoMarginTolerance(d);
+  return actual>=1.5-tolerance&&actual<=5+tolerance?Math.min(5,Math.max(1.5,actual)):actual;
+}
+function autoMarginTolerance(d){
+  return Math.min(.005,1/(num(d.rates&&d.rates.rubUsdt)*(num(d.invoiceUsd)+1)));
 }
 function autoClientRubSet(id,raw){
   const d=deal(id);if(!d||d.autoPayment!==true||d.step!=='s6')return;
@@ -1823,7 +1829,8 @@ function autoClientRubSet(id,raw){
   d.amountRub=amount;
   d.rates.client=(Math.round(amount/d.invoiceUsd*1e6)/1e6).toFixed(6).replace('.',',');
   const margin=autoActualMarginPct(d);
-  if(!Number.isFinite(margin)||margin<1.5-1e-7||margin>5+1e-7){
+  const tolerance=autoMarginTolerance(d);
+  if(!Number.isFinite(margin)||margin<1.5-tolerance||margin>5+tolerance){
     d.amountRub=previous;d.rates.client=previousRate;
     toast('Сумма даёт прибыль вне диапазона 1,5–5 %. Укажите другую сумму');render();return;
   }
@@ -1842,22 +1849,12 @@ function autoClientRubForUsd(usdAmount,brokerRate,tariff,margin){
      !Number.isFinite(margin)||margin<1.5||!tariff||
      !Number.isFinite(tariff.percent)||tariff.percent<0||
      !Number.isFinite(tariff.fixed)||tariff.fixed<0)return null;
-  const needed=freeholdSend(usdAmount,tariff)*(1+margin/100)*brokerRate;
-  const neededCents=autoSafeCents(needed,Math.ceil);
-  if(neededCents==null)return null;
-  const maxCents=Math.floor(Number.MAX_SAFE_INTEGER/100);
-  let low=0,high=neededCents,iterations=0;
-  while(brokerSend(high/100).sent+0.000001<needed){
-    if(++iterations>64||high===maxCents)return null;
-    high=Math.min(high*2,maxCents);
-  }
-  iterations=0;
-  while(low<high){
-    if(++iterations>64)return null;
-    const mid=low+Math.floor((high-low)/2);
-    if(brokerSend(mid/100).sent+0.000001>=needed)high=mid;else low=mid+1;
-  }
-  return low/100;
+  // Старый калькулятор сначала округляет RUB → USDT с 1 USDT за вывод,
+  // затем масштабирует рублёвую сумму на тариф перевода.
+  const base=Math.round((usdAmount+1)*brokerRate*(1+margin/100)*100)/100;
+  const rub=base*((usdAmount*(1+tariff.percent/100)+tariff.fixed)/usdAmount);
+  const cents=autoSafeCents(rub);
+  return cents==null?null:cents/100;
 }
 function autoRecalc(d){
   if(d.autoPayment!==true||!['s5','s6'].includes(d.step))return;
@@ -1873,8 +1870,9 @@ function autoRecalc(d){
      !Number.isFinite(tariff.fixed)||tariff.fixed<0)return clear();
   if(d.autoManualClientRub===true){
     const margin=autoActualMarginPct(d);
+    const tolerance=autoMarginTolerance(d);
     if(autoSafeCents(num(d.amountRub))==null||autoSafeCents(num(d.invoiceUsd))==null||
-       !Number.isFinite(margin)||margin<1.5-1e-7||margin>5+1e-7){
+       !Number.isFinite(margin)||margin<1.5-tolerance||margin>5+tolerance){
       d.autoQuoteError='Ручная сумма даёт прибыль вне диапазона 1,5–5 %. Укажите другую сумму';return false;
     }
     d.rates.client=(Math.round(d.amountRub/d.invoiceUsd*1e6)/1e6).toFixed(6).replace('.',',');
@@ -1883,20 +1881,10 @@ function autoRecalc(d){
   if(d.autoRequestMode==='rub'){
     const rub=num(d.requestedRub),margin=autoMarginPct(d,rub);
     if(autoSafeCents(rub)==null||!Number.isFinite(margin)||margin<1.5)return clear();
-    const available=brokerSend(rub).sent/rate/(1+margin/100);
-    if(autoSafeCents(available,Math.floor)==null)return clear();
-    const pct=tariff.percent/100, fixed=tariff.fixed;
-    let cents=Math.floor(((available-fixed)/(1+pct))*100+0.0000001),iterations=0;
-    if(!Number.isSafeInteger(cents)||cents<0)return clear();
-    while(cents>0&&freeholdSend(cents/100,tariff)>available+0.0000001){
-      if(++iterations>64)return clear();
-      cents--;
-    }
-    while(cents>=0&&freeholdSend((cents+1)/100,tariff)<=available+0.0000001){
-      if(++iterations>64||autoSafeCents((cents+1)/100)==null)return clear();
-      cents++;
-    }
-    if(cents<=0)return clear();
+    const beforeFee=Math.round((rub/(rate*(1+margin/100))-1)*100)/100;
+    const invoice=(beforeFee-tariff.fixed)/(1+tariff.percent/100);
+    const cents=autoSafeCents(invoice);
+    if(cents==null)return clear();
     d.invoiceUsd=cents/100;d.amountRub=rub;d.freeholdClientInput='sum';
   }else if(d.autoRequestMode==='usd'){
     const usdAmount=num(d.requestedUsd),margin=autoMarginPct(d,0);
@@ -1914,6 +1902,12 @@ function autoRecalc(d){
 function freeholdSummary6(d){
   const X=d.invoiceUsd||0, k=num(d.rates.client);
   const rub=d.freeholdClientInput==='sum'?d.amountRub:((X&&k)?Math.round(X*k*100)/100:null);
+  if(d.autoPayment===true)return `<div class="fr">
+    <div class="fg"><label class="fl">В IPPS уйдёт<span class="sub2"> USD: сумма продавцу + тариф</span></label>
+      <input class="fc num" readonly value="${X?usd(freeholdSend(X,ippsTariff(d))):'—'}"></div>
+    <div class="fg"><label class="fl">Наценка в расчёте</label>
+      <input class="fc num" readonly value="${X&&rub?autoShownMarginPct(d).toFixed(2).replace('.',',')+' %':'—'}"></div>
+  </div>`;
   const {sent,profit,pct}=freeholdEstimate(d,rub,d.rates.rubUsdt);
   return `<div class="fr">
     <div class="fg"><label class="fl">В IPPS уйдёт<span class="sub2"> USD: инвойс + комиссия тарифа</span></label>

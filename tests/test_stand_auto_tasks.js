@@ -15,15 +15,17 @@ const notices = [];
 const ctx = {
   save: () => {}, render: () => {}, toast: message => notices.push(message),
   deal: () => ctx.activeDeal,
-  S: {draft: null}, Math,
+  dealKind: () => 'mf_auto', exchangeSpec: () => null, isCrypto: () => false,
+  URLSearchParams, S: {draft: null}, Math,
 };
 vm.createContext(ctx);
 vm.runInContext(tariff[0].replace(/^const /, 'var ') + '\n' + html.match(/^const BROKER_FEE=.*;$/m)[0] + '\n' + [
   'num','brokerSend','freeholdFee','freeholdSend','autoSafeCents',
   'askModes','draftMode','draftAmounts','ippsTariff','autoMarginPct',
-  'autoActualMarginPct','autoShownMarginPct','autoClientRubSet','autoMarginSet',
+  'autoActualMarginPct','autoShownMarginPct','autoMarginTolerance','autoClientRubSet','autoMarginSet',
   'cleanNum','fmtAmount','autoClientRubForUsd','autoRecalc',
 ].map(fn).join('\n'), ctx);
+vm.runInContext(html.match(/^const CALC_URL=.*;$/m)[0]+'\n'+fn('calcLink'),ctx);
 
 const draft = {type:'Оплата авто', payType:'По реквизитам', invoiceCurrency:'usd',
   ippsTariff:'bank', mode:'need', cur:'fhusd', sum:'45000'};
@@ -48,8 +50,7 @@ const rubDeal = {autoPayment:true, step:'s6', autoRequestMode:'rub', requestedRu
 ctx.autoRecalc(rubDeal);
 assert.equal(rubDeal.amountRub, 4000000);
 assert.ok(rubDeal.invoiceUsd > 0);
-assert.ok(ctx.freeholdSend(rubDeal.invoiceUsd, ctx.IPPS_TARIFFS.bank) * 1.03 <=
-  ctx.brokerSend(4000000).sent / 82 + .001);
+assert.equal(rubDeal.invoiceUsd, Math.round(((Math.round((4000000/82/1.03-1)*100)/100-50)/1.008)*100)/100);
 assert.equal(rubDeal.freeholdClientInput, 'sum');
 
 const usdDeal = {autoPayment:true, step:'s6', autoRequestMode:'usd', requestedUsd:45000,
@@ -57,15 +58,15 @@ const usdDeal = {autoPayment:true, step:'s6', autoRequestMode:'usd', requestedUs
 ctx.autoRecalc(usdDeal);
 assert.equal(usdDeal.invoiceUsd, 45000);
 assert.ok(usdDeal.amountRub > 0);
-assert.ok(ctx.brokerSend(usdDeal.amountRub).sent / 82 + .001 >=
-  ctx.freeholdSend(45000, ctx.IPPS_TARIFFS.soft) * 1.03);
+assert.equal(usdDeal.amountRub, Math.round((Math.round((45000+1)*82*1.03*100)/100)*
+  (45000*1.015+50)/45000*100)/100);
 assert.equal(usdDeal.requestedUsd, 45000);
 assert.equal(ctx.autoClientRubForUsd(1e12, 80, ctx.IPPS_TARIFFS.bank, 3), null,
   'unsafe cent precision must stop instead of looping');
-const tiny = {autoPayment:true, step:'s6', autoRequestMode:'rub', requestedRub:4173.35,
+const tiny = {autoPayment:true, step:'s6', autoRequestMode:'rub', requestedRub:4205.52,
   ippsTariff:'bank', autoMarkupPct:3, rates:{rubUsdt:80}};
 ctx.autoRecalc(tiny);
-assert.equal(tiny.invoiceUsd, .01, 'reverse quote must keep the last payable cent');
+assert.ok(tiny.invoiceUsd>0, 'reverse quote must keep a payable cent');
 assert.equal(ctx.autoMarginPct({autoMarkupPct:.1,autoRequestMode:'rub'}, 4000000), 1.5,
   'hydrated margin cannot bypass the approved floor');
 assert.equal(html.includes('autoDisplayMarkup'), false, 'HTML and log must not rewrite user data');
@@ -170,17 +171,14 @@ for(const key of ['usd','rub']) {
   ctx.autoRecalc(d);
   assert.equal(JSON.stringify(d),legacy,'legacy freehold must not be recalculated');
 }
-// Oracle использует десятичные дроби BigInt независимо от float формул котировки.
-function frac(value) {
-  const [text,exponent='0']=String(value).split('e');
-  const [whole,tail='']=text.split('.');
-  const scale=tail.length-Number(exponent),n=BigInt(whole+tail);
-  return scale>=0?[n,10n**BigInt(scale)]:[n*10n**BigInt(-scale),1n];
+// Эталон старого калькулятора: округление RUB до тарифа и 1 USDT за вывод.
+function legacyTarget(usd,rate,margin,t) {
+  const base=Math.round((usd+1)*rate*(1+margin/100)*100)/100;
+  return Math.round(base*((usd*(1+t.percent/100)+t.fixed)/usd)*100)/100;
 }
-function enough(rub,usd,t,rate,margin) {
-  const [sn,sd]=frac(ctx.freeholdSend(usd,t)),[rn,rd]=frac(rate),[mn,md]=frac(margin);
-  const [net,denom]=frac(ctx.brokerSend(rub).sent);
-  return net*sd*rd*100n*md >= sn*rn*(100n*md+mn)*denom;
+function legacyAmount(rub,rate,margin,t) {
+  const received=Math.round((rub/(rate*(1+margin/100))-1)*100)/100;
+  return Math.round((received-t.fixed)/(1+t.percent/100)*100)/100;
 }
 let seed=1234567;
 const amounts=[.01,.02,.52,3.07,100,1000,6249.99,6250,6250.01,12499.99,12500,12500.01,1e6,1e8];
@@ -195,17 +193,37 @@ for(const margin of [1.5,3,4,5])for(const usd of amounts) {
   d.requestedUsd=usd;d.ippsTariff=tariff;d.rates.rubUsdt=rate;d.autoMarkupPct=margin;
   assert.equal(ctx.autoRecalc(d),true);
   const rub=d.amountRub,t=ctx.IPPS_TARIFFS[tariff];
-  assert.ok(enough(rub,usd,t,rate,margin),'payment must fund invoice, fee and selected margin');
-  assert.ok(!enough(rub-.01,usd,t,rate,margin),'payment must be minimal in RUB cents');
+  assert.equal(rub,legacyTarget(usd,rate,margin,t),'USD target matches old calculator');
   d.autoRequestMode='rub';d.requestedRub=rub;
   assert.equal(ctx.autoRecalc(d),true);
-  assert.ok(d.invoiceUsd>=usd,'roundtrip with fixed margin cannot lose the requested cent');
+  assert.equal(d.invoiceUsd,legacyAmount(rub,rate,margin,t),'RUB budget matches old calculator');
   assert.equal(d.amountRub,rub,'RUB budget cannot be changed');
-  const available=ctx.brokerSend(rub).sent/rate/(1+margin/100);
-  assert.ok(ctx.freeholdSend(d.invoiceUsd,t)<=available+1e-7);
-  assert.ok(ctx.freeholdSend((Math.round(d.invoiceUsd*100)+1)/100,t)>available+1e-7,
-    'invoice must use the maximum affordable whole cents');
   moneyChecks++;
+}
+const exact={autoPayment:true,step:'s6',autoRequestMode:'usd',requestedUsd:79800,
+  ippsTariff:'soft',autoMarkupPct:3,rates:{rubUsdt:83.498}};
+assert.equal(ctx.autoRecalc(exact),true);
+assert.equal(exact.amountRub,6970367.62);
+assert.equal(exact.rates.client,'87,347965');
+for(const tariff of ['bank','soft'])for(const requestedUsd of [1005.11,45000]){
+  const edge={autoPayment:true,step:'s6',autoRequestMode:'usd',requestedUsd,
+    ippsTariff:tariff,autoMarkupPct:1.5,rates:{rubUsdt:83.498}};
+  assert.equal(ctx.autoRecalc(edge),true);
+  edge.autoManualClientRub=true;
+  assert.equal(ctx.autoRecalc(edge),true,'old quote at 1.5% must survive manual quote guard');
+  const handoff=new URL(ctx.calcLink(edge),'https://example.invalid');
+  const profit=Number(handoff.searchParams.get('profit'));
+  assert.ok(profit>=1.5&&profit<=5,'accepted 1.5% quote must hand off an allowed margin');
+  if(requestedUsd===45000&&tariff==='bank')assert.equal(profit,1.5);
+}
+for(const requestedUsd of [1005.11,45000]){
+  const edge={autoPayment:true,step:'s6',autoRequestMode:'usd',requestedUsd,
+    ippsTariff:'soft',autoMarkupPct:5,rates:{rubUsdt:83.498}};
+  assert.equal(ctx.autoRecalc(edge),true);
+  edge.autoManualClientRub=true;
+  assert.equal(ctx.autoRecalc(edge),true);
+  const profit=Number(new URL(ctx.calcLink(edge),'https://example.invalid').searchParams.get('profit'));
+  assert.ok(profit>=1.5&&profit<=5,'accepted 5% quote must hand off an allowed margin');
 }
 for(const [base,want] of [[499999.99,5],[500000,4],[999999.99,4],[1000000,3]]) {
   for(const mode of ['usd','rub'])

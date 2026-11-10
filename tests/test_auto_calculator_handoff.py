@@ -6,7 +6,7 @@ import app as m
 
 @pytest.mark.parametrize('direction,amount,tariff,margin', [
     ('target', 79800, 'soft', 3),
-    ('amount', 6949596.82, 'soft', 3),
+    ('amount', 6928794.86, 'soft', 3),
     ('target', 45000, 'bank', 4.5),
 ])
 def test_auto_calculate_matches_task_quote(monkeypatch, direction, amount, tariff, margin):
@@ -32,8 +32,24 @@ def test_auto_calculate_matches_task_quote(monkeypatch, direction, amount, tarif
     assert body['direction'] == direction
     assert body['profit_percent_actual'] >= 1.5
     if direction == 'target' and amount == 79800:
-        assert body['rub_paid'] == 6949596.82
+        assert body['rub_paid'] == 6928794.86
         assert body['ipps_send_usdt'] == 81047
+    assert 'broker_net_rub' not in body
+    assert 'incoming_usdt' not in body
+    assert 'outgoing_usdt' not in body
+    assert 'profit_usdt' not in body
+
+
+def test_auto_calculate_matches_old_freehold_quote_at_exact_broker_rate():
+    with m.app.test_client() as client:
+        response = client.post('/api/calculate', json={
+            'deal_category': 'property_auto', 'scenario': 'rub-to-usdt',
+            'direction': 'target', 'amount': 79800, 'custom_rub_usdt': 83.498,
+            'tariff': 'soft', 'profit_margin': 3,
+        })
+    assert response.status_code == 200, response.json
+    assert response.json['rub_paid'] == 6970367.62
+    assert response.json['final_rate'] == pytest.approx(87.347965163)
 
 
 @pytest.mark.parametrize('override', [
