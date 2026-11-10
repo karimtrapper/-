@@ -7,6 +7,7 @@ function fn(name){
 }
 const calls=[];
 const ctx={S:{role:'operator',convs:[],deals:[]},DRAFTS:{},STAND:true,SCREEN:false,SNAP:false,
+  STAND_DOC_AGENT_META:{profiles:{mf_corp:{name:'MF'}}},standDocAgent:()=>({key:'mf_corp'}),
   document:{getElementById:()=>null},saveNote:()=>{},toast:()=>{},render:()=>{},
   save:()=>calls.push('save'),
   deal:id=>ctx.S.deals.find(d=>d.id===id),val:()=>'',log:()=>{},

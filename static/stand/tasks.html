@@ -1036,6 +1036,7 @@ let standVer=null, standPush=null, standBusy=false, standSaveScheduled=false, st
     standClosing=false, standMe=null, standMeId=null, STAND_EMPLOYEES=[];
 let standLastSaveResult={ok:true};
 let standDemoEnabled=false;
+let STAND_DOC_AGENT_META=null;
 function demoAllowed(){return standDemoEnabled===true;}
 let sberMirrorStatus=null;
 async function fetchSberMirrorStatus(){
@@ -1162,6 +1163,7 @@ async function standPull(force){
     if(r.status===401){location.href='/login';return;}
     if(r.status>=400)throw new Error('stand_state_unavailable');
     const j=await r.json(); if(!j.success)throw new Error('stand_state_unavailable');
+    STAND_DOC_AGENT_META={profiles:j.docAgentProfiles||{},accounts:j.docAgentAccounts||{}};
     standLoadError=false;
     standDemoEnabled=j.demoEnabled===true;
     if(standBusy||standPush||standSaveScheduled||standClosing)return;
@@ -5397,8 +5399,15 @@ function prevPassport(d){
     .sort((a,b)=>b.id-a.id)[0];
   return p?p.docFields:{};
 }
+function standDocAgent(d){
+  const account=d.rubReceivingAccount||{}, digits=v=>String(v||'').replace(/\D/g,'');
+  const known=account.mode==='custom'&&digits(account.bik).length===9&&digits(account.account).length===20
+    ?STAND_DOC_AGENT_META?.accounts?.['bank:'+digits(account.bik)+':'+digits(account.account)]:null;
+  const key=isCrypto(d)?'mf_corp':account.mode==='flowsole'?'flow_sole':known||'mf_corp';
+  return {key,...(STAND_DOC_AGENT_META?.profiles?.[key]||{})};
+}
 function docFields(d){
-  const F=fake(d), ap=approx(d);
+  const F=fake(d), ap=approx(d), agent=standDocAgent(d);
   const saved=d.docFields||{}, pp=prevPassport(d);
   const cryptoFreehold=isCrypto(d)&&d.kind==='Фрихолд';
   const oldFeeNote='Комиссия включена в курс, отдельно не взимается';
@@ -5428,7 +5437,7 @@ function docFields(d){
     partNo:d.partNo||'', invoiceTotal:d.invoiceTotal||'',
     payoutNetwork:d.transfer?.net||'',payoutWallet:d.transfer?.addr||'',
     /* реквизиты компании */
-    agent:MF.name, agentReg:MF.reg, agentDir:MF.dir,
+    agent:agent.name||'', agentReg:agent.reg||'', agentDir:agent.director||'',
     /* Крипто-клиент платит USDT на кошелёк компании; рублёвые реквизиты ему не нужны —
        в пакете и на шаге отправки клиенту стоял р/с в Сбере (прогон 25.09). */
     payTo:isCrypto(d)
@@ -5453,6 +5462,7 @@ function docFields(d){
     for(const key of ['amountThb','amountPay','rate','rateAt'])out[key]=auto[key];
   }
   if(!isCrypto(d)&&d.rubReceivingAccount)out.payTo=auto.payTo;
+  for(const key of ['agent','agentReg','agentDir'])out[key]=auto[key];
   // Поле показывает текст следующего выпуска; старые выпущенные файлы не меняются.
   if(cryptoFreehold)out.feeNote=cryptoFeeNote;
   if(isCrypto(d)){out.purpose='';out.payTo=payToCrypto(payinWallet(d));}
@@ -5502,8 +5512,8 @@ const DOC_SRC={payoutNetwork:'реквизиты получателя',payoutWal
   dev:'инвойс',invNo:'инвойс',invDate:'инвойс',object:'инвойс / SPA',
   kind:'сделка',amountThb:'расчёт',rate:'расчёт',amountPay:'расчёт',rateAt:'момент фиксации курса',
   partNo:'сделка',invoiceTotal:'инвойс',
-  agent:'реквизиты MF Corp',agentReg:'реквизиты MF Corp',agentDir:'реквизиты MF Corp',
-  payTo:'реквизиты MF Corp',purpose:'пишет операционист',feeNote:'шаблон',validTill:'вручную',
+  agent:'реестр компании',agentReg:'реестр компании',agentDir:'реестр компании',
+  payTo:'реквизиты счёта оплаты',purpose:'пишет операционист',feeNote:'шаблон',validTill:'вручную',
   vehicleModel:'ДКП',vehicleVin:'ДКП',vinState:'ДКП',vinEvidence:'ДКП',vehicleDetails:'ДКП',
   sellerName:'ДКП',sellerId:'ДКП',sellerAddress:'ДКП',contractNo:'ДКП',contractDate:'ДКП',paymentStage:'ДКП',contractTotal:'ДКП',reviewNote:'сверка документов'};
 function docFieldSave(id){
@@ -12108,7 +12118,9 @@ function stepCard(d){
         contractNo:'vehicle_contract_no',contractDate:'vehicle_contract_date',
         contractTotal:'vehicle_contract_total',paymentStage:'vehicle_payment_stage',
         dev:'recipient_name',invNo:'invoice_no',invDate:'invoice_date'}[k];
-      const rawSource=autoParseKey&&d.docParse?.provenance?.[autoParseKey]||DOC_SRC[k]||'';
+      const rawSource=['agent','agentReg','agentDir'].includes(k)
+        ?(standDocAgent(d).shortName||'Компания')+' · реестр'
+        :autoParseKey&&d.docParse?.provenance?.[autoParseKey]||DOC_SRC[k]||'';
       const source=DOC_PARSE_SLOT_LABEL[rawSource]||rawSource;
       /* паспортные ФИО и номер подсвечены сразу, если не распознались: имени из заявки
          там больше нет, пустое поле — сигнал вписать по скану (Карим, 27.09) */
@@ -12123,7 +12135,7 @@ function stepCard(d){
               if(!opts.money||!raw.trim()) return raw.replace(/"/g,'&quot;');
               const n=num(cleanNum(raw));
               return n==null?raw.replace(/"/g,'&quot;'):Number(n).toLocaleString('ru-RU');})()}" ${opts.ph?`placeholder="${opts.ph}"`:''}>`}
-        ${opts.ro?`<p class="fh">зафиксировано до договора (шаги 6, 8) — здесь только чтение</p>`:''}
+        ${opts.ro&&!opts.noRoHint?`<p class="fh">зафиксировано до договора (шаги 6, 8) — здесь только чтение</p>`:''}
         ${flag?`<p class="fh" style="color:var(--red)">Без этого договор не создать</p>`:''}</div>`;
     };
     return `<div class="card"><div class="card-title">Документы клиента
@@ -12215,9 +12227,9 @@ function stepCard(d){
 
     <div class="sec fin" style="margin:18px 0 10px">РЕКВИЗИТЫ И ОГОВОРКИ</div>
     <div class="fr">
-      ${fld('agent','Агент')}
-      ${fld('agentReg','Рег. номер')}
-      ${fld('agentDir','Подписант')}
+      ${fld('agent','Агент',{ro:1,noRoHint:1})}
+      ${fld('agentReg',standDocAgent(d).regLabel||'Рег. номер',{ro:1,noRoHint:1})}
+      ${fld('agentDir','Подписант',{ro:1,noRoHint:1})}
     </div>
     ${payinS11Fields(d,fld)}
     ${(isCrypto(d)&&d.kind==='Фрихолд')?`<p class="fh">Оговорка о комиссии в приложении: ${htmlText(F.feeNote)}</p>`:''}
@@ -12228,7 +12240,7 @@ function stepCard(d){
     <button class="btn btn-secondary" onclick="docReset(${d.id})">Вернуть автозаполнение</button>
     <button class="btn btn-outline" onclick="ret(${d.id})">Вернуть с вопросом</button></div>
     <p style="font-size:12px;color:var(--text-muted);margin-top:11px">«Вернуть автозаполнение» сбросит ручные правки и подставит значения из паспорта, инвойса и расчёта заново.</p>
-    <div class="alert a-info" style="margin-top:12px"><div>Всё, что уходит в договор, приложение и счёт. Подписи под полями говорят, откуда значение подставилось — из паспорта, из инвойса, из расчёта сделки или из реквизитов компании. Любое можно поправить: распознавание ошибается, а подписывать будут это.</div></div>
+    <div class="alert a-info" style="margin-top:12px"><div>Сверьте данные паспорта, инвойса и расчёта перед выпуском. Компания-агент определяется способом оплаты и счётом приёма оплаты.</div></div>
     </div>`;},
 
   s11b:()=>{
@@ -13068,6 +13080,9 @@ async function act(id,step){
     }else toast('Ушло операционисту');
     if(!d.docParse)docParse(d.id,true);return;}
   if(step==='s11'){
+    if(STAND&&!STAND_DOC_AGENT_META?.profiles?.[standDocAgent(d).key]){
+      toast('Не удалось загрузить реквизиты компании. Обновите страницу перед выпуском');return;
+    }
     const ch=docFieldSave(d.id), F=d.docFields;
     if(d.autoPayment===true){
       const vinMiss=F.vinState==='known'&&!F.vehicleVin?'vehicleVin':

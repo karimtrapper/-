@@ -578,7 +578,8 @@ console.log('test_stand_freehold.js: OK');
   const d={kind:'Фрихолд',payType:'Крипта',amountUsdt:98800,code:'SYN',rates:{},docFields:null};
   const ctx=run(['docFields'],[],{fake:()=>({}),approx:()=>({thb:97500,pay:98800}),
     prevPassport:()=>({}),parsed:()=>'',isCrypto:x=>x.payType==='Крипта',
-    MF:{name:'MF',reg:'1',dir:'Director'},payToCrypto:()=>'',payinWallet:()=>null});
+    MF:{name:'MF',reg:'1',dir:'Director'},standDocAgent:()=>({name:'MF',reg:'1',director:'Director'}),
+    payToCrypto:()=>'',payinWallet:()=>null});
   assert.equal(ctx.docFields(d).feeNote,approved);
   d.docFields={feeNote:old};
   assert.equal(ctx.docFields(d).feeNote,approved,'unissued saved old default is replaced');
@@ -598,6 +599,35 @@ console.log('test_stand_freehold.js: OK');
   assert.equal(ctx.docFields(d).feeNote,old,'crypto leasehold keeps previous default');
 }
 
+// The displayed company follows the same exact BIK+account route as the server.
+{
+  const meta={profiles:{
+    mf_corp:{name:'MF Corporation Company Limited',reg:'0835565024547',director:'Miss Katika Sakornnoi'},
+    flow_sole:{name:'Flow Sole Company Limited',reg:'284530232-000',director:'Mr. Souvahn Phanthavong'},
+  },accounts:{'bank:044525094:40807810819000000261':'flow_sole',
+    'bank:044525225:40807810938720000286':'mf_corp'}};
+  const ctx=run(['standDocAgent','docFields'],[],{STAND_DOC_AGENT_META:meta,
+    fake:()=>({}),approx:()=>({thb:45000,pay:4000000}),prevPassport:()=>({}),
+    parsed:()=>'',isCrypto:x=>x.payType==='Крипта',payToCrypto:()=>'',payinWallet:()=>null,
+    MF:{name:'MF',rubName:'MF',inn:'1',kpp:'1',bank:'Sber',acc:'1',ks:'1',bik:'1'},
+    FLOWSOLE:{name:'Flow',inn:'2',kpp:'2',bank:'SGB',acc:'2',ks:'2',bik:'2'}});
+  const d={id:1,payType:'По реквизитам',kind:'Фрихолд',rates:{},
+    rubReceivingAccount:{mode:'flowsole'},docFields:{agent:'MF Corporation Company Limited',
+      agentReg:'0835565024547',agentDir:'Miss Katika Sakornnoi',fio:'Saved client'}};
+  assert.equal(ctx.docFields(d).agent,'Flow Sole Company Limited');
+  assert.equal(ctx.docFields(d).agentReg,'284530232-000');
+  assert.equal(ctx.docFields(d).agentDir,'Mr. Souvahn Phanthavong');
+  assert.equal(ctx.docFields(d).fio,'Saved client');
+  d.rubReceivingAccount={mode:'custom',bank:'Some bank',bik:'044525094',account:'40807810819000000261'};
+  assert.equal(ctx.docFields(d).agent,'Flow Sole Company Limited');
+  d.rubReceivingAccount.bik='044525000';
+  assert.equal(ctx.docFields(d).agent,'MF Corporation Company Limited');
+  d.rubReceivingAccount.bank='SGB';
+  assert.equal(ctx.docFields(d).agent,'MF Corporation Company Limited');
+  d.payType='Крипта';d.rubReceivingAccount={mode:'flowsole'};
+  assert.equal(ctx.docFields(d).agent,'MF Corporation Company Limited');
+}
+
 // Executable s11 template: legacy percent-only deal has no invented loss,
 // and the amount field is editable before the first document package.
 {
@@ -608,6 +638,7 @@ console.log('test_stand_freehold.js: OK');
   const d={id:9101,kind:'Фрихолд',payType:'Крипта',invoiceUsd:97500,
     ippsTariff:'bank',amountUsdt:null,freeholdMarkupPct:100475,docs:{},docMiss:[]};
   const ctx={d,ap:{sign:'USDT'},S:{},DOC_SRC:{},DOC_LABEL:{},DOC_PARSE_SLOT_LABEL:{},
+    standDocAgent:()=>({shortName:'MF',regLabel:'регистрационный и налоговый номер'}),
     docFields:()=>({amountPay:d.amountUsdt==null?'':String(d.amountUsdt),amountThb:'97500',
       feeNote:'Вознаграждение агента включено в сумму платежа, отдельно не взимается / The Agent’s fee is included in the payment amount and is not charged separately'}),
     docParseLine:()=>'',isCrypto:x=>x.payType==='Крипта',ippsTariff:()=>({percent:0.8,fixed:50}),

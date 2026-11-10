@@ -5865,6 +5865,8 @@ def stand_state_get():
     """Состояние задачника целиком: клиент опрашивает его раз в пару секунд."""
     if not STAND_MODE:
         return jsonify({'success': False, 'error': 'stand_only'}), 404
+    import doc_agents
+    from stand_funding import ACCOUNT_ALIASES
     db = get_session()
     payto_note_added = False
     try:
@@ -5889,6 +5891,12 @@ def stand_state_get():
             row.updated_at = datetime.utcnow()
         response = {'success': True, 'version': row.version or 0,
                     'data': _stand_strip_files(state),
+                    'docAgentProfiles': {key: {'name': agent.name, 'reg': agent.reg_no,
+                                               'director': agent.director, 'shortName': agent.short_name,
+                                               'regLabel': agent.reg_ru}
+                                         for key, agent in doc_agents.AGENTS.items()},
+                    'docAgentAccounts': {account: doc_agents.agent_for_account(identity)
+                                         for account, identity in ACCOUNT_ALIASES.items()},
                     'demoEnabled': stand_demo.enabled(), 'demoWarnings': warnings,
                     'updated_by': row.updated_by, 'role': current_role()}
         if repaired:

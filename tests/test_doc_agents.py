@@ -517,6 +517,17 @@ def board_deal(stand, deal_id):
 
 
 class TestСтендАгент:
+    def test_state_exposes_canonical_display_profiles_and_account_pairs(self, stand):
+        response = stand.get('/api/stand/state')
+        assert response.status_code == 200
+        body = response.json
+        for key, agent in doc_agents.AGENTS.items():
+            assert body['docAgentProfiles'][key] == {
+                'name': agent.name, 'reg': agent.reg_no, 'director': agent.director,
+                'shortName': agent.short_name, 'regLabel': agent.reg_ru}
+        for account, identity in stand_funding.ACCOUNT_ALIASES.items():
+            assert body['docAgentAccounts'][account] == doc_agents.agent_for_account(identity)
+
     def test_flowsole_выпускает_flow_sole(self, stand):
         stand.put_board([_deal(1001, rubReceivingAccount={'mode': 'flowsole'})])
         r = issue(stand, 1001)

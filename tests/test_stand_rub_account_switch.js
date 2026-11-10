@@ -19,11 +19,14 @@ const oldState = JSON.parse(JSON.stringify({deals: [{id: 1, code: 'SYN-1', step:
 const deal = oldState.deals[0];
 const fields = {};
 const ctx = vm.createContext({S: oldState, deal: () => deal,
+  STAND_DOC_AGENT_META:{profiles:{mf_corp:{name:'MF Corporation Company Limited',reg:'0835565024547',director:'Miss Katika Sakornnoi'},
+    flow_sole:{name:'Flow Sole Company Limited',reg:'284530232-000',director:'Mr. Souvahn Phanthavong'}},
+    accounts:{'bank:044525094:40807810819000000261':'flow_sole'}},
   document: {getElementById: id => Object.hasOwn(fields, id) ? {value: fields[id]} : null},
   fake: () => ({}), approx: () => ({pay: 100000}), parsed: () => '',
   prevPassport: () => ({}), isCrypto: () => false, payinWallet: () => null,
   save: () => {}, render: () => {}});
-vm.runInContext(constants + ['docFields', 'expectOf', 'rubReceivingAccountSave',
+vm.runInContext(constants + ['standDocAgent', 'docFields', 'expectOf', 'rubReceivingAccountSave',
   'rubReceivingBankLabel', 'manualBankDocsMismatch'].map(fn).join('\n'), ctx);
 const run = source => vm.runInContext(source, ctx);
 

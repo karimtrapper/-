@@ -218,6 +218,7 @@ const round2 = x => Math.round(x * 100) / 100;
   const mk = (d, fields, deals) => run(['docFields', 'prevPassport', 'parsed', 'fioNorm', 'fioHint', 'lat'], {
     S: {deals: deals || [d]}, fake: () => ({}), approx: () => ({}),
     isCrypto: () => false, payinWallet: () => null, payToCrypto: () => '',
+    standDocAgent: () => ({name:'MF',reg:'1',director:'X'}),
     MF: {name: 'MF', reg: '1', dir: 'X', rubName: 'ООО', inn: '1', kpp: '1', bank: 'Сбер', acc: '1', ks: '1', bik: '1'},
     TR: {}, htmlText: String, Object, String,
   });
