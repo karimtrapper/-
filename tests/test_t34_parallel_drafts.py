@@ -88,6 +88,56 @@ def test_full_board_skips_unchanged_foreign_deal_but_rejects_real_edit(board):
     assert _get(client) == current
 
 
+@pytest.mark.parametrize('mode,amount', [('usd', 45000), ('rub', 4000000)])
+def test_new_auto_task_with_rendered_empty_draft_and_notification(board, mode, amount):
+    client, role, seed = board
+    existing = _deal('s5')
+    seed(existing)
+    current = _get(client)
+    data = copy.deepcopy(current['data'])
+    data['deals'][0]['_managerDraft'] = {'files': {}, 'docs': {}, 'docMeta': {}}
+    created = _deal('s5')
+    created.update(id=3402, client='Synthetic Auto', autoPayment=True,
+                   kind='Фрихолд', autoRequestMode=mode, invoiceCurrency='usd',
+                   comment='Synthetic auto note')
+    if mode == 'usd':
+        created.update(invoiceUsd=amount, requestedUsd=amount)
+    else:
+        created.update(amountRub=amount, requestedRub=amount)
+    data['deals'].insert(0, created)
+    data['notes'].append({'id': 'browser-injected', 'role': 'operator',
+                          'text': 'Задача на вас', 'dealId': 3402, 'read': False})
+    result = client.put('/api/stand/state', json={'version': current['version'], 'data': data})
+    assert result.status_code == 200, result.json
+    persisted = _get(client)['data']
+    assert any(d['id'] == 3402 for d in persisted['deals'])
+    assert next(d for d in persisted['deals'] if d['id'] == 3402)['comment'] == 'Synthetic auto note'
+    assert all(n.get('id') != 'browser-injected' for n in persisted['notes'])
+    task_notes = [n for n in persisted['notes'] if n.get('dealId') == 3402
+                  and n.get('role') == 'operator']
+    assert len(task_notes) == 1
+    assert task_notes[0]['text'] == 'Задача на вас: шаг s5'
+    repeated = client.put('/api/stand/state', json={'version': result.json['version'],
+                                                    'data': persisted})
+    assert repeated.status_code == 200, repeated.json
+    assert len([n for n in _get(client)['data']['notes'] if n.get('dealId') == 3402]) == 1
+
+
+def test_draft_save_ignores_forged_notifications(board):
+    client, role, seed = board
+    seed(_deal('s5'))
+    current = _get(client)
+    data = copy.deepcopy(current['data'])
+    data['deals'][0]['_managerDraft'] = {'payTo': {'acc': 'PRIVATE_ACCOUNT'}}
+    data['notes'].append({'id': 'forged', 'role': 'operator',
+                          'text': 'Forged message', 'dealId': 3401, 'read': False})
+    result = client.put('/api/stand/state', json={'version': current['version'], 'data': data})
+    assert result.status_code == 200, result.json
+    persisted = _get(client)['data']
+    assert persisted['deals'][0]['_managerDraft']['payTo']['acc'] == 'PRIVATE_ACCOUNT'
+    assert all(n.get('id') != 'forged' for n in persisted['notes'])
+
+
 @pytest.mark.parametrize('step', ['s5', 's11'])
 def test_early_requisites_are_private_until_native_manager_confirmation(board, step):
     client, role, seed = board

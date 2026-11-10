@@ -559,7 +559,7 @@ console.log('test_stand_freehold.js: OK');
     payType:'Крипта',cur:'fhusd',sum:'97500',ippsTariff:'bank',amountUsdt:'98800'};
   let created;
   const ctx=run(['createGo','draftValid','draftAmounts'],[],{
-    S:{draft:D},ensureClient:()=>{},clientById:()=>({docs:false}),
+    S:{draft:D},STAND:false,ensureClient:()=>{},clientById:()=>({docs:false}),
     newDeal:o=>(created={...o,id:9101}),log:()=>{},save:()=>{},render:()=>{},toast:()=>{},
     num:x=>x==null||x===''?null:Number(String(x).replace(',','.')),
     cleanNum:x=>String(x).replace(/[\s\u00a0]/g,'').replace(',','.'),
@@ -607,7 +607,7 @@ console.log('test_stand_freehold.js: OK');
   const s11='var renderS11='+html.slice(start+'  s11:'.length,end).trim().replace(/,$/,';');
   const d={id:9101,kind:'Фрихолд',payType:'Крипта',invoiceUsd:97500,
     ippsTariff:'bank',amountUsdt:null,freeholdMarkupPct:100475,docs:{},docMiss:[]};
-  const ctx={d,ap:{sign:'USDT'},S:{},DOC_SRC:{},DOC_LABEL:{},
+  const ctx={d,ap:{sign:'USDT'},S:{},DOC_SRC:{},DOC_LABEL:{},DOC_PARSE_SLOT_LABEL:{},
     docFields:()=>({amountPay:d.amountUsdt==null?'':String(d.amountUsdt),amountThb:'97500',
       feeNote:'Вознаграждение агента включено в сумму платежа, отдельно не взимается / The Agent’s fee is included in the payment amount and is not charged separately'}),
     docParseLine:()=>'',isCrypto:x=>x.payType==='Крипта',ippsTariff:()=>({percent:0.8,fixed:50}),
@@ -649,7 +649,7 @@ console.log('test_stand_freehold.js: OK');
     docListRows:()=>({issued:[],client:[]}),isCrypto:x=>x.payType==='Крипта',
     apMoney:(ap,k)=>k==='pay'?ap.pay+' USDT':ap.thb+' $',
     usd:v=>'$'+v,stepTitle:()=>'',refSignal:()=>null,
-    cnvRow:()=>'',fillNote:()=>'',fixCard:()=>'',signedBlock:()=>''});
+    cnvRow:()=>'',fillNote:()=>'',fixCard:()=>'',signedBlock:()=>'',docExtraControl:()=>''});
   const rendered=ctx.overview(d,{},true,{i:1,n:10},'manager').replace(/\u00a0/g,' ');
   assert.match(rendered,/Клиент отправит<\/th><td>98800 USDT/);
   assert.match(rendered,/План клиента<\/th><td>98 800 USDT/);
@@ -689,6 +689,7 @@ console.log('test_stand_freehold.js: OK');
     freeholdSend:()=>10130,ippsTariff:()=>({}),usd:x=>'$'+x,convOf:()=>null,
     dealWallet:()=>null,hashSum:()=>11000,cnvMembers:d=>[d],pcOut:()=>10130,
     payToReady:d=>!!d.payTo?.acc,needsPayConfirm:()=>false,payGateStep:()=> 's22',
+    prepayWalletUnavailable:()=>false,prepayWalletUnavailableCard:()=>'',
     ippsApplicationText:()=> 'Synthetic IPPS application',
   });
   const d={id:1473,kind:'Фрихолд',type:'Оплата недвижимости',step:'s22',
@@ -759,6 +760,7 @@ console.log('test_stand_freehold.js: OK');
   const ctx=run(['standSaveError'],[],{STAND:true,S:{role:'operator',modal:{id:1473}},standBusy:false,
     standPush:false,standSaveScheduled:false,deal:()=>d,document:{getElementById:id=>
       id==='fh_order_ack'?{checked:true}:null},saveNote:()=>{},val:id=>values[id]||'',
+    prepayWalletUnavailable:()=>false,prepayWalletUnavailableCard:()=>'',
     num:Number,cleanNum:x=>String(x).replace(/[^\d.,]/g,''),NETS:['TRC-20'],
     addrValid:()=>true,payToReady:()=>true,payToConfirmed:()=>true,payToFromForm:()=>({...d.payTo}),
     convOf:()=>null,hashSum:()=>11000,freeholdSend:()=>10130,ippsTariff:()=>({}),

@@ -6881,12 +6881,12 @@ function viewCreateBody(D,srcCard){
       <input class="fc" id="d_note" value="${(D.note||'').replace(/"/g,'&quot;')}"
         placeholder="клиент просит курс на сегодня, оплата на этой неделе" oninput="draftSet('note',this.value,true)"></div>
 
-    ${D.createError?`<div class="create-error-alert">${htmlText(D.createError)} Повторите кнопкой «Курс знаю — сам» ниже.</div>`:''}
+    ${D.createError?`<div class="create-error-alert">${htmlText(D.createError)}</div>`:''}
     <div class="card-title" style="font-size:14px;margin:18px 0 10px">Как ведём дальше</div>
     <div class="row">
-      ${D.kind==='Фрихолд'&&D.payType==='Крипта'?`<button class="btn btn-primary" onclick="createGo()">Создать сделку</button>`:`
-      <button class="btn btn-primary" onclick="createGo()">Создать заявку — курс спросит операционист</button>
-      <button class="btn btn-secondary" onclick="createSelf()">Курс знаю — сам</button>
+      ${D.kind==='Фрихолд'&&D.payType==='Крипта'?`<button class="btn btn-primary" onclick="createGo()" ${D.creating?'disabled':''}>${D.creating?'Создаём…':'Создать сделку'}</button>`:`
+      <button class="btn btn-primary" onclick="createGo()" ${D.creating?'disabled':''}>${D.creating?'Создаём…':'Создать заявку — курс спросит операционист'}</button>
+      <button class="btn btn-secondary" onclick="createSelf()" ${D.creating?'disabled':''}>Курс знаю — сам</button>
       ${D.type==='Обмен валюты'?`<button class="btn btn-outline" onclick="createQuick()">Без шагов</button>`:''}
       ${D.type==='Оплата авто'?'':`<button class="btn btn-outline" onclick="createFull()">Внести целиком</button>`}
       ${!STAND?`<button class="btn btn-outline" onclick="createClosed()">Закрыть сразу</button>`:''}`}
@@ -7231,8 +7231,10 @@ function draftAmounts(D){
 }
 /* Заявка сразу уходит операционисту: отдельный шаг «нажми, чтобы отправить запрос»
    ничего не добавлял — менеджер уже всё указал в форме (Карим, 23.09). */
-function createGo(){
-  if(!draftValid())return;const D=S.draft;ensureClient(D);
+async function createGo(){
+  if(!S.draft||S.draft.creating||!draftValid())return;const D=S.draft;ensureClient(D);
+  D.createError=null;D.creating=true;
+  const knownIds=new Set((STAND?(standBase?.deals||[]):[]).map(x=>x.id));
   D.isOld=D.clientId?!!(clientById(D.clientId)||{}).docs:false;
   /* Крипто-фрихолд: сумма клиента задана явно; внешнего курса нет.
      Путь начинается со сбора документов у менеджера. */
@@ -7244,18 +7246,36 @@ function createGo(){
   d.comment=(D.note||'').trim();
   if(cryptoFreehold){
     log(d,'Крипто-фрихолд — курса не спрашиваем, сразу к сбору документов'+(d.comment?' · '+d.comment:''));
-    S.draft=null;S.open=d.id;S.view='task';save();render();
-    toast('Заявка создана — соберите документы');
-    return;
+  }else{
+    log(d,'Запрос курса ушёл операционисту'+(d.comment?' · '+d.comment:''));
+    /* Первую задачу операционисту создаёт сервер после подтверждённого PUT. */
+    if(!STAND)noteAdd('operator','Задача на вас: '+(STEPS['s5']?STEPS['s5'].title:'Ответить курс')+
+      ' · '+(d.client||'')+(d.comment?' · '+d.comment:''),d.id);
   }
-  log(d,'Запрос курса ушёл операционисту'+(d.comment?' · '+d.comment:''));
-  /* Первая задача приходила молча: go() тут не вызывается, сделка сразу рождается
-     на шаге операциониста. Без этого человек узнавал о работе, только открыв доску. */
-  noteAdd('operator','Задача на вас: '+(STEPS['s5']?STEPS['s5'].title:'Ответить курс')+
-    ' · '+(d.client||'')+(d.comment?' · '+d.comment:''),d.id);
+  save();render();
+  if(STAND){
+    let saved;
+    try{saved=await standWaitSaved();}catch(e){saved={ok:false,error:'timeout'};}
+    /* Берём только серверный снимок. При одновременном создании сделок merge
+       переносит нашу на следующий свободный ID, поэтому выбираем последний
+       новый ID с теми же исходными полями. */
+    const confirmed=(standBase?.deals||[]).filter(x=>!knownIds.has(x.id)&&
+      x.createdAt===d.createdAt&&x.client===d.client&&x.autoPayment===d.autoPayment&&
+      x.autoRequestMode===d.autoRequestMode&&x.requestedUsd===d.requestedUsd&&
+      x.requestedRub===d.requestedRub&&x.comment===d.comment)
+      .sort((a,b)=>Number(b.id)-Number(a.id))[0];
+    if(!saved?.ok||!confirmed){
+      S.deals=S.deals.filter(x=>x!==d);
+      D.creating=false;
+      D.createError=standSaveError(saved,'Сервер не подтвердил создание заявки — повторите');
+      render();return;
+    }
+    S.open=confirmed.id;
+  }else S.open=d.id;
   /* менеджеру показываем карточку: задача уже не его, ему важно видеть саму сделку */
-  S.draft=null;S.open=d.id;S.view='deal';save();render();
-  toast('Заявка создана — курс запрашивает операционист');
+  S.draft=null;S.view=cryptoFreehold?'task':'deal';
+  if(STAND)render();else{save();render();}
+  toast(cryptoFreehold?'Заявка создана — соберите документы':'Заявка создана — курс запрашивает операционист');
 }
 /* Менеджер знает курс — сделка сразу на нём, задача операционисту не создаётся */
 async function createSelf(){

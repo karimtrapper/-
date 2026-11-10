@@ -12836,10 +12836,10 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
                          for key in ('files', 'docs', 'docMeta')) or
                      ('comment' in draft and not isinstance(draft['comment'], str)))):
                 return 'Некорректный черновик менеджера'
-            publishing = bool(before and (before.get('step') != deal.get('step') or
-                                          before.get('payTo') != deal.get('payTo')))
-            if previous.get('notes') != new_state.get('notes') and not publishing:
-                return 'Сохранение черновика не отправляет уведомления'
+            # Уведомления очищает accept_notes(): клиент может отметить прочитанным
+            # своё уведомление, но не создать новое. Здесь нельзя сравнивать весь
+            # список notes: в том же PUT может создаваться другая сделка, а её
+            # уведомление формирует сервер после проверки черновика.
         # Подтверждение реквизитов перед оплатой (T34 п.3): пишет только менеджер,
         # снимок — тот же формат payTo. Смысл подтверждения ("совпадает с текущим
         # payTo") сервер выводит сам в _stand_payto_confirmed — подделать нечем.
