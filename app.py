@@ -17537,6 +17537,49 @@ def get_precise_rate():
 def calculate():
     try:
         data = request.get_json()
+        if data.get('deal_category') == 'property_auto':
+            from decimal import Decimal, ROUND_HALF_UP
+            amount = _stand_num(data.get('amount'))
+            rate = _stand_num(data.get('custom_rub_usdt'))
+            margin = _stand_num(data.get('profit_margin'))
+            direction = data.get('direction')
+            tariff = data.get('tariff')
+            if (data.get('scenario') != 'rub-to-usdt' or direction not in ('target', 'amount')
+                    or tariff not in ('bank', 'soft') or amount is None or rate is None
+                    or margin is None or amount <= 0 or amount > 1000000000000
+                    or rate < Decimal('0.000001') or rate > 1000000
+                    or margin < Decimal('1.5') or margin > Decimal('5')
+                    or amount != amount.quantize(Decimal('0.01'))):
+                return jsonify({'error': 'Некорректные параметры оплаты авто'}), 400
+            deal = {'autoPayment': True, 'step': 's6', 'ippsTariff': tariff,
+                    'autoRequestMode': 'usd' if direction == 'target' else 'rub',
+                    'requestedUsd': float(amount) if direction == 'target' else None,
+                    'requestedRub': float(amount) if direction == 'amount' else None,
+                    'autoMarkupPct': float(margin), 'rates': {'rubUsdt': str(rate)}}
+            if not _stand_auto_quote_calculate(deal):
+                return jsonify({'error': 'Не удалось рассчитать оплату авто'}), 400
+            rub = _stand_num(deal['amountRub'])
+            usd_amount = _stand_num(deal['invoiceUsd'])
+            cents = Decimal('0.01')
+            rounded = lambda value: value.quantize(cents, rounding=ROUND_HALF_UP)
+            broker_net = rounded(rub - rounded(rub*Decimal('0.001')+40)
+                                 - rounded(rub*Decimal('0.002')))
+            send = usd_amount + rounded(usd_amount *
+                (Decimal('0.008') if tariff == 'bank' else Decimal('0.015')) + 50)
+            incoming = broker_net / rate
+            profit = rounded(incoming - send)
+            return jsonify({'scenario': 'RUB → USDT', 'direction': direction,
+                            'operation_name': 'Оплата продавцу автомобиля',
+                            'rub_paid': float(rub), 'rub_to_pay': float(rub),
+                            'rub_usdt_rate': float(rate), 'broker_net_rub': float(broker_net),
+                            'invoice_usd': float(usd_amount), 'ipps_send_usdt': float(send),
+                            'usdt_target': float(usd_amount), 'usdt_received': float(usd_amount),
+                            'incoming_usdt': float(rounded(incoming)),
+                            'outgoing_usdt': float(send), 'profit_usdt': float(profit),
+                            'profit_percent': float(margin),
+                            'profit_percent_actual': float(rounded((incoming/send-1)*100)),
+                            'final_rate': float(rub/usd_amount),
+                            'commission_level': 'Оплата авто'}), 200
         method = data.get('method', 'doverka')
         scenario = data.get('scenario', 'rub-to-thb')
         direction = data.get('direction', 'amount')

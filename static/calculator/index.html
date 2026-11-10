@@ -96,6 +96,8 @@
         body.calc-b2 .dealtype-switcher { grid-template-columns: repeat(4, minmax(0, 1fr)); }
         body.calc-b2 .method-switcher { grid-template-columns: repeat(3, minmax(0, 1fr)); }
         body.calc-b2 .scenarios-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        body.calc-auto #ratesCard, body.calc-auto .scenarios-grid,
+        body.calc-auto #methodSwitcher, body.calc-auto #methodCaption { display: none !important; }
         body.calc-b2 .profit-steps { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; background: transparent; border: 0; padding: 0; }
         body.calc-b2 .profit-header { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
         body.calc-b2 .profit-header .input-label { margin: 0; }
@@ -203,7 +205,7 @@
             body.calc-b2 .dealtype-switcher { grid-template-columns: repeat(2, minmax(0, 1fr)); }
         }
         @media (max-width: 700px) {
-            body.calc-b2 .dealtype-switcher { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+            body.calc-b2 .dealtype-switcher { grid-template-columns: repeat(2, minmax(0, 1fr)); }
             body.calc-b2 .container { padding: 16px; }
             body.calc-b2 .header { margin-bottom: 16px; }
             body.calc-b2 .top-nav { position: static; }
@@ -260,7 +262,7 @@
                 <span class="logo-icon"></span>
                 <h1>Калькулятор обмена</h1>
             </div>
-            <div class="subtitle">Рубли · баты · USDT</div>
+            <div class="subtitle" id="calculatorSubtitle">Рубли · баты · USDT</div>
         </header>
 
         <!-- Тип сделки -->
@@ -274,6 +276,9 @@
             </button>
             <button class="dealtype-btn" data-category="property_leasehold" onclick="switchDealCategory('property_leasehold')">
                 Лизхолд
+            </button>
+            <button class="dealtype-btn" data-category="property_auto" onclick="switchDealCategory('property_auto')">
+                Оплата авто
             </button>
             <button class="dealtype-btn" data-category="other" onclick="switchDealCategory('other')">
                 Другое
@@ -406,7 +411,7 @@
 
             <!-- Только фрихолд: инвойс застройщика (USD или ฿) и тариф IPPS -->
             <div id="propertyFeeWrapper">
-                <label class="input-label">Инвойс застройщика</label>
+                <label class="input-label" id="propInvoiceTitle">Инвойс застройщика</label>
                 <div class="prop-chips" id="propInvCurChips">
                     <button type="button" class="commission-btn active" data-cur="usd" onclick="setPropInvoiceCur('usd')">В USD</button>
                     <button type="button" class="commission-btn" data-cur="thb" onclick="setPropInvoiceCur('thb')">В ฿</button>
@@ -656,7 +661,7 @@
         </footer>
     </div>
 
-    <script src="calculator.js?v=28"></script>
+    <script src="calculator.js?v=29"></script>
     <script src="/static/nav-shell.js?v=6"></script>
     <script>NavShell.boot('calc');</script>
     <script>

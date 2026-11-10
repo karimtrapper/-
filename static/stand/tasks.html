@@ -3533,7 +3533,7 @@ function postConvSet(id,k){
    не подставляем (Карим, 27.09). */
 const CALC_URL='/';
 function calcLink(d){
-  const cat=dealKind(d)==='mf_freehold'?'property_freehold'
+  const cat=dealKind(d)==='mf_auto'?'property_auto':dealKind(d)==='mf_freehold'?'property_freehold'
     :(dealKind(d)==='mf_realty'?'property_leasehold':'exchange');
   const spec=exchangeSpec(d), directPair=spec&&spec.output==='usdt';
   const scenario=directPair?spec.input+'-to-usdt':isCrypto(d)?'usdt-to-thb':'rub-to-thb';
@@ -3545,7 +3545,13 @@ function calcLink(d){
   if(amount) q.set('amount',String(amount));
   if(d.rates.rubUsdt) q.set('rub_usdt',String(d.rates.rubUsdt).replace(',','.'));
   if(d.rates.usdtThb) q.set('usdt_thb',String(d.rates.usdtThb).replace(',','.'));
-  if(cat==='property_freehold'){
+  if(cat==='property_auto'){
+    q.set('scenario','rub-to-usdt');
+    q.set('dir',d.autoRequestMode==='rub'?'amount':'target');
+    q.set('amount',String(d.autoRequestMode==='rub'?d.requestedRub:d.requestedUsd));
+    q.set('tariff',d.ippsTariff||'bank');
+    q.set('profit',String(autoShownMarginPct(d)));
+  }else if(cat==='property_freehold'){
     /* Фрихолд: тариф IPPS, валюта инвойса, ฿ и курс ฿/$ — калькулятор предзаполняется.
        Рублёвый: расчёт идёт от $ к отправке застройщику («хочу получить X USDT»). */
     q.set('tariff',d.ippsTariff||'bank');
@@ -3568,7 +3574,9 @@ function calcOpen(id){
   save(); window.open(u,'_blank'); render();
 }
 function calcBtn(d){
-  if(d.autoPayment===true)return '';
+  if(d.autoPayment===true)return `<div class="derived" style="margin:14px 0">
+    <span>Калькулятор откроется с ${d.autoRequestMode==='rub'?'бюджетом клиента в ₽':'суммой продавцу в USD'}, курсом брокера <b>${d.rates.rubUsdt||'—'}</b>, тарифом IPPS и текущим процентом прибыли.</span>
+    <button class="btn btn-secondary btn-sm" style="margin-left:auto;white-space:nowrap" onclick="calcOpen(${d.id})">Открыть в калькуляторе</button></div>`;
   const has=d.rates.rubUsdt||d.rates.usdtThb;
   const fhRub=d.kind==='Фрихолд'&&!isCrypto(d);
   return `<div class="derived" style="margin:14px 0">
@@ -12003,8 +12011,7 @@ function stepCard(d){
       return `<div class="card"><div class="card-title">Расчёт клиенту<span class="sub">RUB→USDT получен ${ago(d.rates.at)||'—'}</span></div>
       ${d.autoPayment===true&&d.autoQuoteError?`<div class="alert a-warn"><div>${htmlText(d.autoQuoteError)}</div></div>`:''}
       ${d.autoPayment===true?`<div class="alert a-info"><div>Исходная заявка: ${d.autoRequestMode==='rub'?moneyKop(d.requestedRub||0,'₽')+' бюджет клиента':usd(d.requestedUsd||0)+' продавцу авто'}. Продавец получает USD; клиент платит RUB.</div></div>
-      <div class="fg"><label class="fl">Прибыль в расчёте</label><div class="chips">${[1.5,2,3,4,5].map(v=>`<span class="chip ${Math.abs(autoShownMarginPct(d)-v)<0.00001?'on':''}" onclick="autoMarginSet(${d.id},'${v}')">${v} %</span>`).join('')}</div>
-      <input class="fc num" style="max-width:130px;margin-top:8px" inputmode="decimal" value="${d.autoManualClientRub===true?autoShownMarginPct(d).toFixed(4).replace('.',','):autoShownMarginPct(d)}" aria-label="Свой процент прибыли, от 1,5 до 5" onchange="autoMarginSet(${d.id},this.value)"><p class="fh">Свой процент: от 1,5 до 5. Ниже 1,5 % только по отдельному согласованию.</p></div>`:''}
+      ${calcBtn(d)}<p class="fh">Рассчитайте в калькуляторе и укажите сумму клиенту в рублях.</p>`:''}
       ${freeholdInvoiceInputs6(d)}
       <div class="card-title" style="font-size:14px;margin:14px 0 4px">Итог с клиентом</div>
       <div class="fr">
@@ -12021,12 +12028,12 @@ function stepCard(d){
           <input class="fc num" readonly value="${costRate!=null?String(costRate).replace('.',','):'—'}"></div>
       </div>
       ${freeholdSummary6(d)}
-      ${calcBtn(d)}
+      ${d.autoPayment===true?'':calcBtn(d)}
       <!--note-->
       <div class="row mainrow"><button class="btn btn-primary" onclick="act(${d.id},'s6')">Клиент согласен</button>
       <button class="btn btn-secondary" onclick="rerate(${d.id})">Запросить курсы заново</button>
       <button class="btn btn-outline" onclick="askClose(${d.id})">Клиент отказался</button></div>
-      <div class="alert a-info" style="margin-top:14px"><div>${d.autoPayment===true?'Укажите сумму клиенту в рублях или выберите процент прибыли — курс пересчитается.':'Измените курс или сумму клиенту — второе поле пересчитается. Введённая сумма сохраняется точно; курс отображается с 4 знаками. Наценка живёт внутри курса — S, себестоимость и прибыль в договор не идут; суммы инвойса и тариф IPPS идут.'}</div></div>
+      <div class="alert a-info" style="margin-top:14px"><div>${d.autoPayment===true?'Укажите сумму клиенту в рублях — курс пересчитается.':'Измените курс или сумму клиенту — второе поле пересчитается. Введённая сумма сохраняется точно; курс отображается с 4 знаками. Наценка живёт внутри курса — S, себестоимость и прибыль в договор не идут; суммы инвойса и тариф IPPS идут.'}</div></div>
       <p style="font-size:13px;color:var(--navy-600);line-height:1.65">Проговорите правило: при расхождении больше 0,5% к моменту зачисления условия пересчитываются.</p>
       ${quotesSummary(d)}</div>`;
     }

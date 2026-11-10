@@ -113,7 +113,8 @@ function rubBase(amount, scenario = state.scenario, direction = state.direction)
     if (scenario === 'thb-to-rub') return amount * 2.8;
     if (scenario === 'rub-to-thb' && direction === 'target') return amount * 2.8;
     if (scenario === 'usdt-from-rub') return amount * rubUsdt;
-    if (scenario === 'rub-to-usdt' && direction === 'target') return amount * rubUsdt;
+    if (scenario === 'rub-to-usdt' && direction === 'target')
+        return amount * (state.dealCategory === 'property_auto' ? (state.customRubUsdt || rubUsdt) : rubUsdt);
     return amount;
 }
 
@@ -224,6 +225,7 @@ function hideResults() {
 
 // Переключение метода
 function switchMethod(method) {
+    if (state.dealCategory === 'property_auto' && method !== 'custom') return;
     state.method = method;
     resetDiscount();
     
@@ -299,6 +301,7 @@ function scenarioNeedsRubRate(scenario) {
 
 // Переключение сценария
 function switchScenario(scenario) {
+    if (state.dealCategory === 'property_auto' && scenario !== 'rub-to-usdt') return;
     state.scenario = scenario;
     updateScenarioUI();
     hideResults();
@@ -445,6 +448,13 @@ function updateScenarioUI() {
             rateCurrency: '₽/฿'
         };
     }
+    if (state.dealCategory === 'property_auto') {
+        config = state.direction === 'target'
+            ? {input: 'Сумма продавцу, USD', currency: 'USD', placeholder: '79800',
+                result: 'Клиент должен внести:', rateCurrency: '₽/$'}
+            : {input: 'Бюджет клиента, ₽', currency: '₽', placeholder: '4000000',
+                result: 'Продавец получит:', rateCurrency: '₽/$'};
+    }
     
     document.getElementById('inputLabel').textContent = config.input;
     document.getElementById('inputCurrency').textContent = config.currency;
@@ -468,6 +478,10 @@ function updateScenarioUI() {
 function setProfitMargin(profit) {
     const value = parseFloat(profit);
     const amount = getAmount();
+    if (state.dealCategory === 'property_auto' && value > 5) {
+        showToast('Для оплаты авто укажите прибыль от 1,5 до 5 %', 'error');
+        return;
+    }
 
     // Пол 1.5 % — ниже менеджер не опускает без согласования (решение Карима 27.08.2026)
     if (value < PROFIT_FLOOR) {
@@ -571,6 +585,11 @@ function onCustomProfitInput(el) {
         state.profitMargin = capped;
         hideResults();
         showToast(`Ниже ${PROFIT_FLOOR}% без согласования нельзя`, 'error');
+        return;
+    }
+    if (state.dealCategory === 'property_auto' && capped > 5) {
+        hideResults();
+        showToast('Для оплаты авто укажите прибыль от 1,5 до 5 %', 'error');
         return;
     }
 
@@ -945,6 +964,21 @@ async function calculate() {
     calculateBtn.disabled = true;
 
     try {
+        if (state.dealCategory === 'property_auto') {
+            const response = await fetch(`${CONFIG.API_URL}/calculate`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({deal_category: 'property_auto', scenario: 'rub-to-usdt',
+                    direction: state.direction, amount, custom_rub_usdt: state.customRubUsdt,
+                    tariff: document.querySelector('#propTariffChips .commission-btn.active')?.dataset.tariff || 'bank',
+                    profit_margin: effectiveProfit(amount)})
+            });
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.error || 'Не удалось рассчитать оплату авто');
+            if (thisCalcVersion !== state._calcVersion) return;
+            displayResult(result);
+            resultsSection.style.display = 'block';
+            return;
+        }
         // Если курсы устарели (более 1 минуты), обновляем их принудительно перед расчетом
         // Но НЕ обновляем, если точный курс зафиксирован
         if (!state.preciseRateLocked) {
@@ -1051,6 +1085,12 @@ async function calculate() {
     } catch (error) {
         console.error('Calculation error:', error);
         if (thisCalcVersion !== state._calcVersion) return;
+        if (state.dealCategory === 'property_auto') {
+            state.lastResult = null;
+            resultsSection.style.display = 'none';
+            showToast(error.message || 'Не удалось рассчитать оплату авто', 'error');
+            return;
+        }
         // Фоллбэк на локальный расчет
         const result = calculateLocal(amount);
         displayResult(result);
@@ -1613,12 +1653,20 @@ function displayResult(result) {
         rateValue = result.final_rate ? result.final_rate.toFixed(4) : '0';
         rateCurrency = '';
     }
+    if (state.dealCategory === 'property_auto') {
+        resultValue = isTarget ? `${formatNumber(result.rub_to_pay)} ₽`
+            : `${formatNumber(result.invoice_usd)} USD`;
+        rateValue = result.final_rate.toFixed(6);
+        rateCurrency = '₽/$';
+    }
     
     // При фрихолде итог — это то, что дойдёт до застройщика, а не «клиент получит»:
     // разница как раз и есть предмет вопроса «а сколько реально уйдёт»
     const resLabel = document.getElementById('resultLabel');
     if (resLabel) {
-        if (result.__prop_fee_applied && result.direction !== 'target') {
+        if (state.dealCategory === 'property_auto') {
+            resLabel.textContent = isTarget ? 'Клиент должен внести:' : 'Продавец получит:';
+        } else if (result.__prop_fee_applied && result.direction !== 'target') {
             resLabel.textContent = 'Дойдёт застройщику:';
         } else if (resLabel.textContent === 'Дойдёт застройщику:') {
             resLabel.textContent = 'Клиент получит:';
@@ -1676,7 +1724,9 @@ function displayResult(result) {
     let inputCurrency = document.getElementById('inputCurrency').textContent;
     let outputAmount = resultValue;
 
-    const clientMsg = buildClientMessage({
+    const clientMsg = state.dealCategory === 'property_auto'
+        ? `Клиент платит: ${formatNumber(result.rub_paid)} ₽\nПродавец получает: ${formatNumber(result.invoice_usd)} USD\nКурс: ${rateValue} ₽/$`
+        : buildClientMessage({
         isTarget, propFeeApplied: result.__prop_fee_applied,
         inputAmount, inputCurrency, outputAmount, rateValue, rateCurrency,
     });
@@ -1691,6 +1741,15 @@ function displayResult(result) {
 // Отображение детальных шагов расчета
 function displayDetailedSteps(result) {
     const detailsContent = document.getElementById('detailsContent');
+    if (state.dealCategory === 'property_auto') {
+        detailsContent.innerHTML = `<div class="detail-section"><h4>Оплата авто</h4>
+            <div class="detail-row"><span class="detail-label">Продавцу:</span><span class="detail-value">${formatNumber(result.invoice_usd)} USD</span></div>
+            <div class="detail-row"><span class="detail-label">В IPPS с тарифом:</span><span class="detail-value">${formatNumber(result.ipps_send_usdt)} USDT</span></div>
+            <div class="detail-row"><span class="detail-label">Клиент платит:</span><span class="detail-value">${formatNumber(result.rub_paid)} ₽</span></div>
+            <div class="detail-row"><span class="detail-label">Брокеру после удержаний:</span><span class="detail-value">${formatNumber(result.broker_net_rub)} ₽</span></div>
+            <div class="detail-row"><span class="detail-label">Наша прибыль:</span><span class="detail-value">${formatNumber(result.profit_usdt)} USDT</span></div></div>`;
+        return;
+    }
     let html = '';
     
     // Индикатор уровня комиссий вверху (для Broker и Doverka)
@@ -2270,7 +2329,7 @@ function createDealFromCalc() {
 // ==========================================
 
 // Расширяем состояние
-state.dealCategory = 'exchange';          // exchange | property_freehold | property_leasehold | other
+state.dealCategory = 'exchange';          // exchange | property_freehold | property_leasehold | property_auto | other
 state.rateSource = 'bitazza';             // bitazza | binance
 state.propProfit = 2.0;                   // прибыль Grusha по недвижимости, %
 
@@ -2291,11 +2350,12 @@ function calcDealKindAndPayin(dealCategory, method) {
     const DEAL_KIND_BY_CATEGORY = {
         property_freehold: 'mf_freehold',
         property_leasehold: 'mf_realty',
+        property_auto: 'mf_auto',
         other: 'custom',
         exchange: 'exchange'
     };
     const deal_kind = DEAL_KIND_BY_CATEGORY[dealCategory] || 'exchange';
-    if (deal_kind === 'mf_freehold' || deal_kind === 'mf_realty') {
+    if (deal_kind === 'mf_freehold' || deal_kind === 'mf_realty' || deal_kind === 'mf_auto') {
         return { deal_kind, payin_method: 'sber_reqs' };
     }
     // Сценарий «doverka» в калькуляторе давно означает просто СБП (провайдер
@@ -2307,6 +2367,9 @@ function calcDealKindAndPayin(dealCategory, method) {
 function switchDealCategory(cat) {
     state.dealCategory = cat;
     try { localStorage.setItem('grusha_deal_category', cat); } catch(e) {}
+    document.body.classList.toggle('calc-auto', cat === 'property_auto');
+    document.getElementById('calculatorSubtitle').textContent = cat === 'property_auto'
+        ? 'Рубли → USD продавцу' : 'Рубли · баты · USDT';
 
     document.querySelectorAll('.dealtype-btn').forEach(btn => {
         btn.classList.toggle('active', btn.dataset.category === cat);
@@ -2318,14 +2381,21 @@ function switchDealCategory(cat) {
     const noteWrap = document.getElementById('propertyNoteWrapper');
     const badge = document.getElementById('propertyBadge');
 
-    if (cat === 'property_freehold') {
+    if (cat === 'property_freehold' || cat === 'property_auto') {
         extra.style.display = 'block';
         feeWrap.style.display = 'block';
         noteWrap.style.display = 'none';
-        badge.textContent = '🏠 Фрихолд — доп-расход на перевод застройщику';
+        badge.textContent = cat === 'property_auto' ? 'Оплата авто · перевод продавцу' : '🏠 Фрихолд — доп-расход на перевод застройщику';
+        document.getElementById('propInvoiceTitle').textContent = cat === 'property_auto' ? 'Счёт продавца' : 'Инвойс застройщика';
+        document.getElementById('propInvUsdHint').textContent = cat === 'property_auto' ? 'Сумма, которую получит продавец в USD.' : 'Сумма, которую должен получить застройщик.';
+        document.getElementById('propInvCurChips').style.display = cat === 'property_auto' ? 'none' : '';
         // Тариф по умолчанию — банк; инвойс — в USD (обычный ввод суммы ниже)
         setPropTariff('bank');
         setPropInvoiceCur('usd');
+        if (cat === 'property_auto') {
+            switchMethod('custom');
+            switchScenario('rub-to-usdt');
+        }
     } else if (cat === 'other') {
         extra.style.display = 'block';
         feeWrap.style.display = 'none';
@@ -2335,6 +2405,8 @@ function switchDealCategory(cat) {
         // exchange / property_leasehold — обычный обмен, без доп-полей
         extra.style.display = 'none';
     }
+    updateScenarioUI();
+    updateProfitDisplay();
     hideResults();
 }
 
@@ -2649,7 +2721,15 @@ function applyPrefill() {
     if (amt && elAmt) elAmt.value = amt;
 
     // Фрихолд: тариф IPPS, инвойс в ฿, банк и курс ฿/$ из сделки
-    if (cat === 'property_freehold') applyPropPrefill(q);
+    if (cat === 'property_freehold' || cat === 'property_auto') applyPropPrefill(q);
+    if (cat === 'property_auto') {
+        const profit = Number(q.get('profit'));
+        if (Number.isFinite(profit) && profit >= 1.5 && profit <= 5) {
+            state.applyDiscount = true;
+            state.profitMargin = profit;
+            updateProfitDisplay();
+        }
+    }
 
     const deal = q.get('deal');
     if (deal) {
@@ -2705,6 +2785,12 @@ function updateB2ExtrasMeta() {
 function updateB2DirectionHint() {
     const hint = document.getElementById('b2DirectionHint');
     if (!hint) return;
+    if (state.dealCategory === 'property_auto') {
+        hint.textContent = state.direction === 'target'
+            ? 'Введите сумму, которую получит продавец в USD.'
+            : 'Введите бюджет клиента в рублях.';
+        return;
+    }
     const sbpHints = {
         'rub-to-thb': 'Считаем от рублей: вводите, сколько рублей вносит клиент.',
         'thb-to-rub': 'Считаем от батов: вводите, сколько батов нужно клиенту, покажем рубли к внесению.',
