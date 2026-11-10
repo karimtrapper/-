@@ -370,7 +370,7 @@ a.hash:hover{background:#BAE6FD}
 .wcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px;margin-top:2px}
 .wcard{position:relative;display:flex;flex-direction:column;gap:6px;min-width:0;border:1.5px solid var(--border);
   border-radius:var(--r-sm);padding:11px 12px 11px 38px;background:var(--bg);cursor:pointer;transition:border-color .15s}
-.wcard input{position:absolute;left:13px;top:13px;width:16px;height:16px;margin:0;cursor:pointer;accent-color:var(--green-dark)}
+.wcard input[type="radio"]{position:absolute;left:13px;top:13px;width:16px;height:16px;margin:0;cursor:pointer;accent-color:var(--green-dark)}
 .wcard:hover{border-color:var(--navy-400)}
 .wcard.on{border-color:var(--green-dark);background:var(--green-light);box-shadow:inset 0 0 0 1px var(--green-dark)}
 .wcard.bad{opacity:.55;background:var(--navy-50);cursor:not-allowed}
@@ -473,7 +473,18 @@ a.hash:hover{background:#BAE6FD}
 .hempty{font-size:12.5px;color:var(--text-muted);margin-bottom:8px}
 .hsum{font-size:12.5px;color:var(--text-sec);margin-left:10px}
 .chk{display:flex;align-items:center;gap:9px;font-size:13.5px;margin:8px 0;cursor:pointer}
-.chk input{width:17px;height:17px;cursor:pointer}
+/* Нативные флажки задачника: крупная цель и целиком кликабельная подпись. */
+input[type="checkbox"]{box-sizing:border-box;width:23px!important;height:23px!important;min-width:23px!important;max-width:23px!important;min-height:23px!important;flex:0 0 23px!important;margin:0;accent-color:var(--navy-700);cursor:pointer}
+input[type="checkbox"]:focus-visible{outline:3px solid var(--coral);outline-offset:3px}
+input[type="checkbox"]:disabled{opacity:.5;cursor:not-allowed}
+.task-check,.chk,.tx-fee-row{display:flex;align-items:center;gap:12px;min-height:44px;line-height:1.45;font-size:14px;color:var(--text);cursor:pointer;overflow-wrap:anywhere}
+.task-check{padding:8px 10px;border-radius:var(--r-sm)}
+.task-check--confirm{border:1px solid var(--border);background:var(--navy-50);margin:8px 0}
+.task-check--confirm:has(input:checked){border-color:var(--navy-400);background:var(--navy-100)}
+.task-check:focus-within,.chk:focus-within,.tx-fee-row:focus-within,.income-check:focus-within{outline:2px solid var(--coral);outline-offset:2px}
+.task-check:has(input:disabled),.chk:has(input:disabled),.tx-fee-row:has(input:disabled){opacity:.6;cursor:not-allowed}
+.income-check{display:flex;align-items:center;justify-content:center;min-width:44px;min-height:44px;cursor:pointer}
+.income-select-cell{padding:0 4px}
 .fh{font-size:12px;color:var(--text-muted);margin-top:6px;line-height:1.45}
 .create-flow-hint{font-size:var(--ds-caption);color:var(--ds-muted);margin-top:var(--ds-xs)}
 .src{display:inline-block;margin-left:6px;font-size:11.5px;font-weight:600;letter-spacing:.03em;
@@ -2488,8 +2499,8 @@ function payinWalletSelect(d,disabled){
         </select>
         <input class="fc" id="pco2_${d.id}" aria-label="Имя владельца" placeholder="имя владельца" value="${customOther?htmlText(customOwner):''}"
           style="min-width:140px;display:${customOther?'inline-block':'none'}">
-        <label style="display:flex;align-items:center;gap:4px;font-size:0.85em"><input type="checkbox" id="pcm_${d.id}"${customMultisig?' checked':''}> Мультисиг (подписывает фин дир, одобряет Теодор)</label>
-        ${payinCanRemember()?`<label style="display:flex;align-items:center;gap:4px;font-size:0.85em"><input type="checkbox" id="pcr_${d.id}"> Запомнить в список кошельков</label>`:''}
+        <label class="task-check"><input type="checkbox" id="pcm_${d.id}"${customMultisig?' checked':''}> Мультисиг (подписывает фин дир, одобряет Теодор)</label>
+        ${payinCanRemember()?`<label class="task-check"><input type="checkbox" id="pcr_${d.id}"> Запомнить в список кошельков</label>`:''}
         <button type="button" class="btn btn-primary btn-sm" onclick="payinCustomSet(${d.id})">Готово</button>
         <button type="button" class="btn btn-outline btn-sm" onclick="payinCustomCancel(${d.id})">Отмена</button></div>`
         :(w.id==='custom'?`<span class="addr">${htmlText(customAddr)}</span><span class="wc-o">${htmlText(customNet)} · ${htmlText(customOwner||'владелец не указан')}${customMultisig?' · мультисиг':''}${locked?'':' · <a href="#" onclick="event.preventDefault();payinCustomEdit('+d.id+')">изменить</a>'}</span>`
@@ -2617,9 +2628,9 @@ function walletFormOn(v,key){S.walletNew=v?key:false;render();}
 function walletRolesFields(){
   if(dispatchRole()!=='admin')return '<p class="fh" data-roles-hint>«Заводит» и «Подписывает» задаёт админ. До этого кошелёк не выбрать в новых сделках.</p>';
   const box=(group,label)=>`<div class="fg"><label class="fl">${label}<span class="rq">*</span> <span class="sub2">1–2 роли</span></label>
-    <div class="row" style="gap:12px;flex-wrap:wrap">${POLICY_ROLE_ORDER.map(r=>`<label style="display:flex;gap:4px;align-items:center"><input type="checkbox" data-nw-roles="${group}" value="${r}"> ${POLICY_ROLE_NAMES[r]}</label>`).join('')}</div></div>`;
+    <div class="row" style="gap:12px;flex-wrap:wrap">${POLICY_ROLE_ORDER.map(r=>`<label class="task-check"><input type="checkbox" data-nw-roles="${group}" value="${r}"> ${POLICY_ROLE_NAMES[r]}</label>`).join('')}</div></div>`;
   return `<div class="fr" data-nw-policy>${box('initiator','Заводит')}${box('confirmer','Подписывает')}</div>
-    <label style="display:flex;gap:6px;align-items:center;margin:6px 0"><input type="checkbox" id="nw_alone"> Владелец может отправить сам</label>`;
+    <label class="task-check"><input type="checkbox" id="nw_alone"> Владелец может отправить сам</label>`;
 }
 function walletRolesRead(group){
   return [...document.querySelectorAll(`input[data-nw-roles="${group}"]:checked`)].map(x=>x.value);
@@ -2933,7 +2944,7 @@ function markSentBlock(d){
     <div>Отправитель: <span class="addr">${htmlText(review.from)}</span></div>
     <div>Получатель: <span class="addr">${htmlText(review.to)}</span></div>
     <div>Перевод: ${htmlText(new Date(review.timestampMs).toLocaleString("ru-RU",{timeZone:"Asia/Bangkok"}))} · поручение: ${htmlText(new Date(review.orderAtMs).toLocaleString("ru-RU",{timeZone:"Asia/Bangkok"}))} (Бангкок)</div>
-    <label class="check"><input type="checkbox" id="ms_before_${d.id}"> Подтверждаю: этот ранний перевод относится к текущему поручению</label>
+    <label class="task-check task-check--confirm"><input type="checkbox" id="ms_before_${d.id}"> Подтверждаю: этот ранний перевод относится к текущему поручению</label>
     <button type="button" class="btn btn-outline" onclick="transferMarkSent(${d.id},true)">Засчитать ранний перевод</button></div></div>`:'';
   return `<${collapsed?'details':'div'} class="card" data-mark-sent style="margin-bottom:12px">${collapsed?'<summary>Перевод уже отправлен?</summary>':''}<div class="fg"><label class="fl">Хеш перевода</label>
     <input class="fc addr" id="ms_hash_${d.id}" value="${htmlText(found)}" placeholder="64 символа или ссылка на транзакцию" oninput="if(S.policyEarlyReviews)delete S.policyEarlyReviews[${d.id}];document.getElementById('ms_review_${d.id}')?.remove()"></div>
@@ -3325,7 +3336,7 @@ function outgoingPickList(d){
       ${fees.filter(f=>f.hash===t.hash).map(f=>`<label class="tx-fee-row"><input type="checkbox" ${p.commissionHashes.includes(f.hash)?'checked':''}
         onchange="outgoingCommissionSet(${d.id},'${htmlText(f.hash)}',this.checked)"> +${usdt(Number(f.amount))} комиссия сети</label>`).join('')}
       <p><b>В IPPS ${usdt(total)} из ${usdt(target)}</b> · себестоимость с комиссиями ${usdt(total+feeTotal)}</p>
-      ${t.beforeOrder?`<label class="check"><input id="pick_before_${d.id}" type="checkbox"> Перевод сделан до поручения — подтверждаю</label>`:''}
+      ${t.beforeOrder?`<label class="task-check task-check--confirm"><input id="pick_before_${d.id}" type="checkbox"> Перевод сделан до поручения — подтверждаю</label>`:''}
       <button class="btn btn-primary" onclick="outgoingPickSubmit(${d.id})">Засчитать этот перевод</button>
       <button class="btn btn-outline" onclick="outgoingExpand(${d.id})">Это не он — показать все переводы</button></div>`;
   }
@@ -3360,9 +3371,9 @@ function outgoingPickList(d){
       <div class="fg"><label class="fl" for="sa_${d.id}">Сумма перевода, USDT</label><input class="fc" id="sa_${d.id}" inputmode="decimal"></div></div>
       <button class="btn btn-outline" onclick="sendAdd(${d.id},false)">Добавить хеш для проверки</button>
     </details>
-    ${selected.some(t=>t.beforeOrder)?`<label class="check"><input id="pick_before_${d.id}" type="checkbox"> Перевод сделан до поручения — подтверждаю</label>`:''}
-    ${selected.some(t=>!t.timestamp_ms)?`<label class="check"><input id="pick_time_${d.id}" type="checkbox"> Время перевода не получено — подтверждаю вручную</label>`:''}
-    ${extra>0.005?`<div class="alert a-warn"><label><input id="pick_over_${d.id}" type="checkbox"> Переплата ${extra.toFixed(6).replace(/0+$/,'').replace(/\.$/,'')} USDT — засчитать</label><br>Переплата увеличит себестоимость сделки.</div>`:''}
+    ${selected.some(t=>t.beforeOrder)?`<label class="task-check task-check--confirm"><input id="pick_before_${d.id}" type="checkbox"> Перевод сделан до поручения — подтверждаю</label>`:''}
+    ${selected.some(t=>!t.timestamp_ms)?`<label class="task-check task-check--confirm"><input id="pick_time_${d.id}" type="checkbox"> Время перевода не получено — подтверждаю вручную</label>`:''}
+    ${extra>0.005?`<div class="alert a-warn"><div style="width:100%"><label class="task-check task-check--confirm"><input id="pick_over_${d.id}" type="checkbox"> Переплата ${extra.toFixed(6).replace(/0+$/,'').replace(/\.$/,'')} USDT — засчитать</label><p class="fh">Переплата увеличит себестоимость сделки.</p></div></div>`:''}
     ${selected.length&&extra<-.005?`<p>Недоплата ${(-extra).toFixed(6).replace(/0+$/,'').replace(/\.$/,'')} USDT — ждём остальные части.</p>`:''}
     <button class="btn btn-primary" ${selected.length?'':'disabled'} onclick="outgoingPickSubmit(${d.id})">Засчитать выбранные</button>
     ${!selected.length?`<button class="btn btn-outline" onclick="outgoingReturn(${d.id})">Перевода нет — вернуть отправителю</button>`:''}
@@ -3381,7 +3392,7 @@ function outgoingReviewBlock(d){
     ${r.legacyTime?'<p>У старого поручения нет точного времени. Автопоиск начат с «Отправил»; более ранний перевод добавьте хешем после проверки.</p>':''}
     ${r.scanStatus!=='complete'&&!r.error?`<div class="alert a-warn">Поиск ещё не завершён: ${htmlText(r.error||'проверяем сеть')}. Можно добавить хеш вручную и проверить.</div>`:''}
     ${!d.demoTransfers?outgoingPickList(d):''}
-    ${early?`<label><input type="checkbox" id="review_before_${d.id}"> Перевод сделан до поручения — подтверждаю</label>`:''}
+    ${early?`<label class="task-check task-check--confirm"><input type="checkbox" id="review_before_${d.id}"> Перевод сделан до поручения — подтверждаю</label>`:''}
     ${d.demoTransfers&&extra>0.005?`<div class="alert a-warn"><b>Переплата ${usd(extra)} — проверьте возврат излишка.</b> Засчитанная переплата увеличит себестоимость сделки.</div>`:''}
     ${d.demoTransfers&&extra<-.005?`<p>Недоплата ${usd(-extra)} — ждём следующие части или добавьте хеш.</p>`:''}
     <button class="btn btn-outline" onclick="checkSends(${d.id})">Проверить переводы сейчас</button>
@@ -5710,7 +5721,7 @@ function docSendBlock(d){
         <button class="btn btn-outline btn-sm" onclick="copyAsk(${esc(P.purpose)})">копировать</button></div>`}
     <div class="row" style="margin-top:10px;align-items:center">
       <button class="btn btn-secondary btn-sm" onclick="docDownloadAll(${d.id})">Скачать всё</button>
-      <label style="display:flex;gap:8px;align-items:center;cursor:pointer;font-weight:600">
+      <label class="task-check">
         <input type="checkbox" id="dsent_${d.id}" ${sent?'checked':''} onchange="docsSentSet(${d.id},this.checked)">
         Отправил клиенту${sent?' <span class="src">'+htmlText(sent.at)+'</span>':''}</label>
     </div></div>`;
@@ -9356,9 +9367,10 @@ function cnvTxShareBlock(d){
     <button class="btn btn-secondary btn-sm" style="min-height:44px;height:44px" ${t.free_usdt>0?'':'disabled'} onclick="cnvTxAllocate(${d.id})">Засчитать долю</button></div>
     <p class="fh">Источник: ${p.sourceKnown?'знакомый (брокер/биржа из списка)':'новый адрес — проверить перед приёмом'} · ${addressDisclosure(p.sourceAddress||'адрес не определён')}</p>
     <p class="fh">Можно уменьшить сумму. Остаток останется доступен другим пачкам.</p>
-    ${p.early?`<div class="alert a-warn"><div>Этот перевод раньше отправки рублей брокеру.
-      <label><input type="checkbox" id="w_confirm_early" ${p.confirmed?'checked':''}
-        onchange="S.incomingShare.confirmed=this.checked"> подтверждаю, это перевод брокера по этой пачке</label></div></div>`:''}</div></div>`;
+    ${p.early?`<div class="alert a-warn"><div style="width:100%">
+      <div>Перевод поступил до отправки рублей брокеру.</div>
+      <label class="task-check task-check--confirm"><input type="checkbox" id="w_confirm_early" ${p.confirmed?'checked':''}
+        onchange="S.incomingShare.confirmed=this.checked"> Подтверждаю, что этот перевод брокера относится к этой пачке</label></div></div>`:''}</div></div>`;
 }
 async function cnvTxManual(id,selectedHash=null,selectedNetwork=null){
   const d=deal(id),c=convOf(d);if(!c)return;
@@ -9616,9 +9628,9 @@ function payoutBySource(d,E,po){
       <div class="fg"><label class="fl">Фаундер (кто оплатил)</label>
         <select class="fc" id="e_founder"><option value="">—</option>${['Андрей','Теодор'].map(x=>`<option${po.founder===x?' selected':''}>${x}</option>`).join('')}</select></div>
       <div class="fg" style="grid-column:span 2">
-        <label class="chk"><input type="checkbox" ${po.ownBaht?'checked':''} onchange="poFlag(${d.id},'ownBaht',this.checked)">
+        <label class="chk task-check"><input type="checkbox" ${po.ownBaht?'checked':''} onchange="poFlag(${d.id},'ownBaht',this.checked)">
           Фаундер выдал свои баты — конвертации не было</label>
-        <label class="chk"><input type="checkbox" ${po.noReimb?'checked':''} onchange="poFlag(${d.id},'noReimb',this.checked)">
+        <label class="chk task-check"><input type="checkbox" ${po.noReimb?'checked':''} onchange="poFlag(${d.id},'noReimb',this.checked)">
           Деньги за эту выдачу уже у нас — возмещать не нужно</label>
         <p class="fh">${po.noReimb?'Возврата не будет: выдачу закрыли деньгами, которые уже пришли.'
           :'Отправлено наперёд: сделка встанет в очередь возмещений, вернём фаундеру позже.'}</p>
@@ -12229,7 +12241,7 @@ function stepCard(d){
       <div class="fg" style="grid-column:1/-1"><label class="fl">На наш кошелёк · сеть ${htmlText(payinNet(d))}</label>${payinWalletSelect(d,true)}</div>
       <div class="fg w2"><label class="fl">С кошелька клиента<span class="rq">*</span></label>
         <input class="fc addr" id="pwc_${d.id}" value="${d.payerWallet||''}" placeholder="адрес кошелька клиента, сеть ${htmlText(payinNet(d))}" onchange="payerWalletSet(${d.id},this.value)" ${d.payerUnknown?'disabled':''}>
-        <label class="fh" style="display:flex;gap:6px;align-items:center;cursor:pointer"><input type="checkbox" id="pwu_${d.id}" ${d.payerUnknown?'checked':''} onchange="payerUnknownSet(${d.id},this.checked)">
+        <label class="task-check" style="color:var(--text-sec)"><input type="checkbox" id="pwu_${d.id}" ${d.payerUnknown?'checked':''} onchange="payerUnknownSet(${d.id},this.checked)">
           Клиент не прислал адрес — привяжу перевод по хешу</label></div>
     </div>`:''}
 
@@ -12584,7 +12596,7 @@ function stepCard(d){
           <div class="fg"><label class="fl">Сеть<span class="rq">*</span></label><select class="fc" id="fh_order_net"><option value="">— выбрать —</option><option>TRC-20</option></select><p class="fh">Сейчас поддерживается только TRC-20 для исходящего IPPS.</p></div>
           <div class="fg w2"><label class="fl">Адрес из подтверждения IPPS<span class="rq">*</span></label><input class="fc addr" id="fh_order_addr" value="${htmlText((d.transfer||{}).addr||IPPS_WALLET)}" placeholder="полный адрес получателя"><p class="fh">Предложен известный адрес IPPS; это не подтверждение. Сверьте в группе или замените по сообщению IPPS.</p></div>
         </div>
-        <label class="fh" style="display:flex;gap:8px;align-items:flex-start"><input type="checkbox" id="fh_order_ack"> Подтверждаю: указал в группе IPPS сумму, сеть и адрес, получил подтверждение и поручаю ${hasPolicy(w)?'участникам отправки':d.prepay&&!d.prepay.wallet.multisig?'владельцу кошелька':'финдиру'} исходящий перевод.</label>
+        <label class="task-check task-check--confirm"><input type="checkbox" id="fh_order_ack"> Подтверждаю: указал в группе IPPS сумму, сеть и адрес, получил подтверждение и поручаю ${hasPolicy(w)?'участникам отправки':d.prepay&&!d.prepay.wallet.multisig?'владельцу кошелька':'финдиру'} исходящий перевод.</label>
         ${payToReady(d)?`<div class="derived" style="margin-top:12px"><b>Предпросмотр заявки для сверки в группе</b><pre style="white-space:pre-wrap;font-size:12px;margin:6px 0 0">${htmlText(ippsApplicationText(d,d.payTo||{}))}</pre>
           <button class="btn btn-outline btn-sm" style="margin-top:8px" onclick="freeholdIpPsCopyGroup(${d.id})">Копировать текст для группы</button>
           <p class="fh">Копирование ничего не отправляет. Перед поручением отдельно подтвердите все детали.</p></div>`:''}
@@ -13475,15 +13487,15 @@ function viewIncome(){
       <button class="btn btn-primary btn-sm" onclick="convertSelected()"${sel.length?'':' disabled'}>Конвертировать выбранное${sel.length?' · '+money(selSum,'₽'):''}</button>
       <button class="btn btn-outline btn-sm" onclick="incExclude()">Исключить выбранное</button>
       <button class="btn btn-outline btn-sm" onclick="incCutoff()">Отсечь историю до даты</button>
-      <label class="chk" style="margin-left:auto"><input type="checkbox" ${S.incShowExcl?'checked':''}
+      <label class="chk task-check" style="margin-left:auto"><input type="checkbox" ${S.incShowExcl?'checked':''}
         onchange="S.incShowExcl=this.checked;save();render()"> показывать исключённые</label>
     </div>
     <table><thead><tr>
-      <th style="width:34px"><input type="checkbox" onclick="incAll(this.checked)"></th>
+      <th class="income-select-cell" style="width:48px"><label class="income-check"><input type="checkbox" aria-label="Выбрать все доступные поступления" onclick="incAll(this.checked)"></label></th>
       <th>Дата</th><th>Плательщик</th><th>Сумма</th><th>Вид</th><th>Сделка</th><th>Конвертация</th>
     </tr></thead><tbody>
     ${list.map(x=>`<tr${x.excluded?' style="opacity:.5"':''}>
-      <td>${(x.excluded||x.cnvId||x.demo)?'':`<input type="checkbox" ${incomeSelected.has(String(x.id))?'checked':''} onclick="incToggle(${sberText(JSON.stringify(x.id))})">`}</td>
+      <td class="income-select-cell">${(x.excluded||x.cnvId||x.demo)?'':`<label class="income-check"><input type="checkbox" aria-label="Выбрать поступление: ${sberText(x.payer)}, ${sberText(x.date)}" ${incomeSelected.has(String(x.id))?'checked':''} onclick="incToggle(${sberText(JSON.stringify(x.id))})"></label>`}</td>
       <td>${sberText(x.date)}${x.source==='sber'?`<div class="sub2">Сбер · ${sberText(x.arrivedAt)}</div>`:''}</td><td>${sberText(x.payer)}</td>
       <td class="num"><b>${money(x.rub,'₽')}</b></td>
       <td>${sberText(x.kind)}</td>

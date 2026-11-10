@@ -11,7 +11,7 @@ function fn(n){return html.match(new RegExp(`^(?:async )?function ${n}\\([^]*?^}
   ]}};
   const sent=[],checks={};
   const ctx={S:{role:'operator'},deal:()=>d,sendList:d=>d.transfer.sends,htmlText:String,usd:String,
-    moneyKop:(n,s)=>`${Number(n)} ${s}`,render:()=>{},toast:()=>{},
+    moneyKop:(n,s)=>`${Number(n)} ${s}`,render:()=>{},toast:()=>{},walletAddressPair:()=>'',dealWallet:()=>null,
     standVer:42,document:{getElementById:id=>({checked:!!checks[id]})},
     standAction:async(path,payload)=>{sent.push({path,payload});return {success:true};}};
   vm.createContext(ctx);

@@ -22,6 +22,13 @@ for(const name of ['cnvTxHint','cnvTxShareBlock','cnvTxManual','cnvTxAllocate','
   // The remaining balance is now the card heading, without a decorative emoji.
   assert.match(block,/<b>Свободно \$100.00 из \$200.00<\/b>/);
   assert.match(block,/по переводу уже разнесено \$100.00 \(#1487\), свободно \$100.00/);
+  ctx.S.incomingShare.early=true;
+  const earlyBlock=ctx.cnvTxShareBlock({id:1});
+  assert.match(earlyBlock,/Перевод поступил до отправки рублей брокеру\./);
+  assert.match(earlyBlock,/<label class="task-check task-check--confirm"><input type="checkbox" id="w_confirm_early"/);
+  assert.match(earlyBlock,/Подтверждаю, что этот перевод брокера относится к этой пачке/);
+  assert.doesNotMatch(earlyBlock,/id="w_confirm_early" checked/,'согласие по умолчанию не отмечено');
+  ctx.S.incomingShare.early=false;
   values.w_share='101';await ctx.cnvTxAllocate(1);assert.equal(calls.length,1);
   values.w_share='50';await ctx.cnvTxAllocate(1);assert.equal(calls[1].amount,50);
   assert.equal(ctx.S.incomingShare,null);
