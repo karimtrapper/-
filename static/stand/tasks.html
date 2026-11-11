@@ -5336,7 +5336,15 @@ function standManagerIdForTransfer(d){
   const ids=['inv','ipds','pass'].flatMap(k=>(Array.isArray(files[k])?files[k]:[]).map(f=>f?.uploadedById))
     .filter(id=>Number.isInteger(Number(id))&&Number(id)>0).map(Number);
   if(!ids.length||new Set(ids).size!==1)return null;
-  return valid(ids[0])?.id||null;
+  const uploader=valid(ids[0]);
+  if(uploader)return uploader.id;
+  /* В старых сделках пакет мог загрузить администратор. Если имя в сделке
+     однозначно совпадает с действующим менеджером, сохраняем его account ID. */
+  const name=String(d.manager||'').trim().replace(/\s+/g,' ').toLocaleLowerCase('ru-RU');
+  if(!name)return null;
+  const matches=staff.filter(e=>e.role==='manager'&&!e.login_disabled&&
+    String(e.display_name||'').trim().replace(/\s+/g,' ').toLocaleLowerCase('ru-RU')===name);
+  return matches.length===1?matches[0].id:null;
 }
 /* клиент узнаётся по источнику: та же карточка Битрикса или тот же чат */
 function knownBy(source,ref){

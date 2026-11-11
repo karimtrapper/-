@@ -26,6 +26,7 @@ const requests = [];
 const S = {edit: null};
 const ctx = {
   STAND: true, STAND_EMPLOYEES: [
+    {id: 10, role: 'admin', display_name: 'Администратор', login_disabled: false},
     {id: 11, role: 'manager', display_name: 'Елизавета', login_disabled: false},
     {id: 22, role: 'manager', display_name: 'Тёзка', login_disabled: false},
   ],
@@ -71,5 +72,16 @@ vm.runInContext(source, ctx);
   assert.equal(requests[0].url, '/api/stand/deals/9034/crm-close');
   assert.equal(requests[0].body.crm.manager_user_id, 22);
   assert.equal(requests[0].body.crm.manager_name, 'Тёзка');
-  console.log('s27 manager account guard: missing/conflicting/explicit choice PASS');
+  card.managerUserId = null;
+  card.manager = 'Елизавета';
+  card._managerDraft.files = {inv: [{uploadedById: 10}], pass: [{uploadedById: 10}]};
+  await vm.runInContext('crmPushClose(9034, 8)', ctx);
+  assert.equal(requests.length, 2,
+    'legacy deal uploaded by an admin closes under its unique active manager');
+  assert.equal(requests[1].body.crm.manager_user_id, 11);
+  assert.equal(requests[1].body.crm.manager_name, 'Елизавета');
+  ctx.STAND_EMPLOYEES.push({id: 33, role: 'manager', display_name: 'Елизавета', login_disabled: false});
+  await vm.runInContext('crmPushClose(9034, 8)', ctx);
+  assert.equal(requests.length, 2, 'same-name managers require explicit selection');
+  console.log('s27 manager account guard: missing/conflicting/explicit/legacy unique/ambiguous PASS');
 })().catch(error => {console.error(error); process.exitCode = 1;});
