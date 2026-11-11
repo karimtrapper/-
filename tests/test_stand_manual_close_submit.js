@@ -33,7 +33,7 @@ const SCRIPT = [
   source('clientRubPaid'), source('payoutHuman'), source('mfList'),
   source('manualCloseFormState'), source('manualCloseMerge'),
   source('manualClosePayload'), constSource('MANUAL_CLOSE_ERRORS'),
-  constSource('CRM_FACTS_MISMATCH'), source('crmFactsMismatchMessage'),
+  constSource('CRM_FACTS_MISMATCH'), source('crmFactsMismatchMessage'),source('crmCloseMessage'),
   source('manualCloseSubmit', true),
 ].join('\n');
 
@@ -67,6 +67,11 @@ function makeCtx(deal, reasonText, extraFields) {
     S, STAND: false, standClosing: false, standVer: 10, standBase: null,
     deal: idArg => S.deals.find(d => d.id === idArg),
     toast: msg => toasts.push(msg),
+    crmCloseRequestId: () => 'manual-request',
+    crmCloseUiSet: (id,kind,msg) => toasts.push(msg),
+    crmClosePendingSet: () => {}, crmClosePendingClear: () => {},
+    crmCloseRecover: async () => false,
+    crmCloseFetch: (...args) => ctx.fetch(...args),
     render: () => {}, standClone: x => x, standApply: () => {},
     confirm: () => true,
     crmPayloadFinal: () => ({deal_kind: 'exchange', mock: true}),
@@ -75,7 +80,9 @@ function makeCtx(deal, reasonText, extraFields) {
       querySelectorAll: () => [],
     },
     AbortController, setTimeout, clearTimeout,
-    fetch: (url, options) => { fetchCalls.push({url, options}); return ctx._fetchImpl(url, options); },
+    fetch: (url, options) => { fetchCalls.push({url, options});
+      if(url.endsWith('/crm-close/check'))return Promise.resolve({status:200,json:async()=>({success:true,ready:true})});
+      return ctx._fetchImpl(url, options); },
     _fetchImpl: () => Promise.reject(new Error('fetch not stubbed for this test')),
   };
   vm.createContext(ctx);

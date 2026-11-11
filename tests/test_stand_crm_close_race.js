@@ -16,12 +16,12 @@ function deferred() {
   return {promise, resolve};
 }
 async function main() {
-  const original = {id: 1474, code: 'СД-1474', sentToClient: false,
+  const original = {id: 1474, code: 'СД-1474', managerUserId: 1, sentToClient: false,
     pay: {}, type: 'Обмен валюты', step: 's27', closed: false, crmDealId: null, log: []};
   const stale = structuredClone(original);
   const S = {deals: [original], open: 1474};
   const pendingPut = deferred(), pendingGet = deferred(), putStarted = deferred();
-  const requests = [], toasts = [];
+  const requests = [], toasts = [], closeStates = [];
   const ctx = {
     S, STAND: true, STAND_SHARED: ['deals', 'open'],
     standBusy: false, standPush: false, standSaveScheduled: false, standClosing: false,
@@ -31,6 +31,11 @@ async function main() {
     deal: id => S.deals.find(d => d.id === id),
     now: () => '28.09', log: (d, msg) => d.log.push(msg),
     render: () => {}, toast: msg => toasts.push(msg),
+    crmCloseRequestId: () => 'race-request',
+    crmCloseUiSet: (...args) => closeStates.push(args),
+    crmClosePendingSet: () => {}, crmClosePendingClear: () => {},
+    crmCloseRecover: async () => false, crmCloseMessage: () => 'Ошибка закрытия',
+    crmCloseFetch: (...args) => ctx.fetch(...args),
     load: () => ({deals: [], open: null}), migrate: x => x,
     standClone: structuredClone, standTyping: () => false,
     crmGaps: () => [], crmPayloadFinal: () => ({deal_kind: 'exchange'}),
@@ -43,6 +48,8 @@ async function main() {
         putStarted.resolve(JSON.parse(options.body).data);
         return pendingPut.promise;
       }
+      if (url.endsWith('/crm-close/check')) return Promise.resolve({status: 200,
+        json: async () => ({success: true, ready: true})});
       assert.equal(url, '/api/stand/deals/1474/crm-close');
       const body = JSON.parse(options.body);
       assert.equal(body.version, 11);
@@ -78,9 +85,9 @@ async function main() {
     version: 11, data: sent})});
   await closing;
   assert.equal(requests.filter(x => x.url.includes('crm-close')).length, 0, 'autosave must not upgrade the version of the reviewed form');
-  assert.ok(toasts.some(x => x.includes('обновите страницу')));
+  assert.ok(closeStates.some(x => x[2].includes('Проверьте итог')));
   await ctx.crmPushClose(1474,11);
-  assert.equal(requests.filter(x => x.url.includes('crm-close')).length, 1);
+  assert.equal(requests.filter(x => x.url.endsWith('/crm-close')).length, 1);
   assert.equal(S.deals[0].crmDealId, 2);
   assert.equal(S.deals[0].closed, true);
   assert.ok(toasts.some(x => x.includes('Сделка закрыта')));

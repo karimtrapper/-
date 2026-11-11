@@ -808,6 +808,12 @@ def test_legacy_closed_freehold_board_put_and_rejection_are_atomic(monkeypatch):
     appmod._stand_migrate()
     db = appmod.get_session()
     try:
+        manager = appmod.AdminUser(username='t11c_manager_' + appmod.secrets.token_hex(4),
+                                   role='manager', display_name='Synthetic Freehold Manager',
+                                   password_hash='unused')
+        db.add(manager)
+        db.flush()
+        deal['managerUserId'] = manager.id
         row = appmod._stand_row(db)
         row.data = json.dumps(state)
         row.version = (row.version or 0) + 1
@@ -827,7 +833,8 @@ def test_legacy_closed_freehold_board_put_and_rejection_are_atomic(monkeypatch):
         before = client.get('/api/stand/state').json
         data = copy.deepcopy(before['data'])
         data['deals'][0]['payout']['hashes'] = []  # tasks.html:migrate()
-        data['deals'].append({'id': 2, 'kind': 'Обмен', 'step': 's4'})
+        data['deals'].append({'id': 2, 'kind': 'Обмен', 'step': 's4',
+                              'managerUserId': deal['managerUserId']})
         data['notes'].append({'id': 3, 'text': 'Несвязанная заметка'})
         ok = client.put('/api/stand/state', json={'version': before['version'], 'data': data})
         assert ok.status_code == 200, ok.json

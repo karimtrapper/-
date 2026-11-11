@@ -6926,6 +6926,11 @@ def _stand_queue_close_card_note(db, deal, stand_deal_id):
     row = _stand_row(db, lock=True)
     state = json.loads(row.data or '{}')
 
+    # Новые закрытия кладут заметку в ту же транзакцию, что CRM и доску.
+    if any(str(n.get('id')) == f'stand:close-card:{deal.id}'
+           for n in state.get('notes') or []):
+        return
+
     def _sender(text, thread_id=None, fallback_without_thread=False):
         _stand_note(state, f'stand:close-card:{deal.id}', 'admin', {'id': stand_deal_id}, text)
         return True
@@ -6934,6 +6939,37 @@ def _stand_queue_close_card_note(db, deal, stand_deal_id):
     row.data = json.dumps(state, ensure_ascii=False)
     row.version = (row.version or 0) + 1
     db.commit()
+
+
+def _stand_queue_close_card_in_state(state, deal, stand_deal_id):
+    """Положить карточку в очередь до основного commit без внешней отправки."""
+    if not STAND_MODE or deal.status != DealStatus.COMPLETED:
+        return
+    if deal.deal_kind not in REALTY_KINDS and deal.profit_usdt is None:
+        return
+    def save_note(text, thread_id=None, fallback_without_thread=False):
+        _stand_note(state, f'stand:close-card:{deal.id}', 'admin',
+                    {'id': stand_deal_id}, text)
+        return True
+    _send_deal_telegram(deal, sender=save_note)
+
+
+def _stand_capture_close_outbox(row, state, crm_id, stand_deal_id):
+    """Сохранить адресные заметки закрытия вне ограниченного списка доски."""
+    try:
+        outbox = json.loads(row.notified or '[]')
+    except (TypeError, ValueError):
+        outbox = []
+    if not isinstance(outbox, list):
+        outbox = []
+    existing = {str(item.get('id')) for item in outbox if isinstance(item, dict)}
+    wanted = {f'stand:completed:{stand_deal_id}', f'stand:close-card:{crm_id}'}
+    for note in state.get('notes') or []:
+        note_id = str(note.get('id')) if isinstance(note, dict) else ''
+        if note_id in wanted and note_id not in existing:
+            outbox.append(dict(note))
+            existing.add(note_id)
+    row.notified = json.dumps(outbox, ensure_ascii=False)
 
 
 def _stand_queue_referrer_notices(db, deal, stand_deal_id):
@@ -7859,6 +7895,8 @@ def stand_state_put():
     payload = request.get_json(silent=True) or {}
     if 'data' not in payload:
         return jsonify({'success': False, 'error': 'no_data'}), 400
+    if not isinstance(payload['data'], dict) or 'notified' in payload['data']:
+        return jsonify(success=False, error='server_outbox_only'), 400
     if type(payload.get('version')) is not int or payload['version'] < 0:
         return jsonify(success=False, error='version_required'), 400
     actor, actor_id = current_role(), flask_session.get('user_id')
@@ -7969,6 +8007,25 @@ def stand_state_put():
         before_by_id = {d.get('id'): d for d in previous.get('deals', [])}
         for deal in payload['data'].get('deals', []):
             before = before_by_id.get(deal.get('id'))
+            if not before:
+                if actor == 'manager' and deal.get('managerUserId') is None:
+                    deal['managerUserId'] = actor_id
+                if deal.get('managerUserId') is None:
+                    return jsonify({'success': False, 'error': 'manager_account_required',
+                                    'version': row.version or 0,
+                                    'data': _stand_strip_files(previous)}), 409
+            if not before or before.get('managerUserId') != deal.get('managerUserId'):
+                manager_id = deal.get('managerUserId')
+                if type(manager_id) is not int or manager_id <= 0:
+                    return jsonify({'success': False, 'error': 'manager_account_invalid',
+                                    'version': row.version or 0,
+                                    'data': _stand_strip_files(previous)}), 409
+                manager = db.query(AdminUser).filter_by(id=manager_id).first()
+                if not manager or manager.role != 'manager' or manager.login_disabled:
+                    return jsonify({'success': False, 'error': 'manager_account_invalid',
+                                    'version': row.version or 0,
+                                    'data': _stand_strip_files(previous)}), 409
+                deal['manager'] = manager.display_name or manager.username
             if not before or before.get('assigneeAdminId') is None:
                 continue
             old_role = _stand_current_step_role(previous, before)
@@ -8963,6 +9020,290 @@ def _stand_close_policy_approval(db, state, stand_deal, crm_data):
     return approval, None
 
 
+_STAND_CLOSE_MESSAGES = {
+    'conflict': 'Данные сделки изменились. Обновите карточку и проверьте итог.',
+    'manager_account_required': 'Выберите действующую учётную запись менеджера.',
+    'manager_account_invalid': 'Выбранная учётная запись менеджера недоступна.',
+    'manager_account_mismatch': 'Менеджер в CRM отличается от менеджера сделки.',
+    'stage_or_receipt_missing': 'Сначала отправьте чек клиенту и сохраните отметку.',
+    'receipt_missing': 'Приложите чек выплаты получателю.',
+    'invoice_not_paid': 'Подтвердите оплату инвойса и приложите чек.',
+    'close_evidence_missing': 'Подтвердите факты закрытия сделки.',
+    'client_name_required': 'Укажите клиента.',
+    'payin_method_required': 'Укажите способ прихода.',
+    'payin_amount_required': 'Укажите сумму прихода в USDT.',
+    'payout_source_required': 'Укажите источник выдачи.',
+    'payout_amount_required': 'Укажите сумму выдачи в USDT.',
+    'custom_required_fields': 'Заполните валюту, сумму и курс для выбранного способа.',
+    'deal_kind_mismatch': 'Тип CRM-сделки не соответствует сделке задачника.',
+    'freehold_route_invalid': 'Для фрихолда нужен маршрут IPPS SWIFT.',
+    'payin_basis_missing': 'Не найден подтверждённый приход для сделки.',
+    'payin_basis_unverified': 'Приход ещё не подтверждён сетью.',
+    'crm_required_fields': 'Заполните обязательные поля CRM.',
+    'close_failed': 'Закрытие не подтверждено. Проверьте статус сделки.',
+    'generation_changed': 'Доска была очищена. Откройте сделку заново.',
+}
+
+
+def _stand_close_request_id():
+    """Один безопасный ID запроса для ответа и журнала без клиентских данных."""
+    if not getattr(g, 'stand_close_request_id', None):
+        incoming = request.headers.get('X-Request-Id', '')
+        g.stand_close_request_id = (incoming if re.fullmatch(r'[A-Za-z0-9_-]{8,64}', incoming)
+                                    else secrets.token_hex(12))
+    return g.stand_close_request_id
+
+
+@app.after_request
+def _stand_close_response_context(response):
+    path = request.path
+    if not re.fullmatch(r'/api/stand/deals/\d+/(?:crm-close(?:/check|-status)?|crm-close-lose)', path):
+        return response
+    request_id = _stand_close_request_id()
+    if response.mimetype == 'application/json':
+        body = response.get_json(silent=True)
+        if isinstance(body, dict):
+            body['request_id'] = request_id
+            if not body.get('success') and body.get('error') and not body.get('message'):
+                body['code'] = (body['error'] if isinstance(body['error'], str)
+                                and re.fullmatch(r'[a-z][a-z0-9_]{0,63}', body['error'])
+                                else 'close_validation_failed')
+                body['message'] = _STAND_CLOSE_MESSAGES.get(body['error'],
+                    'Не удалось закрыть сделку. Проверьте данные и повторите действие.')
+            response.set_data(json.dumps(body, ensure_ascii=False))
+    if request.method == 'POST' and path.endswith(('/crm-close', '/crm-close-lose')) \
+            or response.status_code >= 400:
+        result = response.get_json(silent=True) if response.mimetype == 'application/json' else None
+        raw_error = result.get('error') if isinstance(result, dict) else None
+        error_code = raw_error if isinstance(raw_error, str) and re.fullmatch(
+            r'[a-z][a-z0-9_]{0,63}', raw_error) else 'non_code' if raw_error else '-'
+        sent = request.get_json(silent=True) if request.method == 'POST' else None
+        sent_version = sent.get('version') if isinstance(sent, dict) else None
+        version = sent_version if type(sent_version) is int else '-'
+        app.logger.warning(
+            'stand_close_attempt request_id=%s actor_id=%s role=%s route=%s status=%s deal_id=%s version=%s error_code=%s',
+            request_id, flask_session.get('user_id') or '-', current_role(),
+            path, response.status_code, (request.view_args or {}).get('stand_deal_id'),
+            version, error_code)
+    return response
+
+
+@app.route('/api/stand/deals/<int:stand_deal_id>/crm-close-status', methods=['GET'])
+def stand_crm_close_status(stand_deal_id):
+    """Сверить исход после таймаута по сохранённой связи, не меняя состояние."""
+    if not STAND_MODE:
+        return jsonify(success=False, error='stand_only'), 404
+    if current_role() not in ('manager', 'admin'):
+        return jsonify(success=False, error='forbidden'), 403
+    db = get_session()
+    try:
+        row = db.query(StandState).filter_by(id=1).first()
+        if row is None:
+            return jsonify(success=False, error='not_found'), 404
+        expected_generation = request.args.get('expected_generation')
+        if expected_generation and expected_generation != row.generation:
+            return jsonify(success=False, error='generation_changed',
+                           version=row.version or 0, generation=row.generation), 409
+        state = json.loads(row.data or '{}')
+        deal = next((item for item in state.get('deals') or []
+                     if item.get('id') == stand_deal_id), None)
+        if deal is None:
+            return jsonify(success=False, error='not_found'), 404
+        origin = f'{row.generation}:{stand_deal_id}' if row.generation else None
+        link = db.query(StandCrmLink).filter_by(origin=origin).first() if origin else None
+        if link:
+            crm_row = db.query(Deal).filter_by(id=link.crm_deal_id).first()
+            expected_status = (DealStatus.LOSE if deal.get('closeReason') in STAND_CLOSE_LOSE_REASONS
+                               else DealStatus.COMPLETED)
+            if not crm_row or crm_row.status != expected_status:
+                return jsonify(success=False, error='origin_inconsistent', version=row.version or 0), 409
+        if link and (not deal.get('closed') or deal.get('crmDealId') != link.crm_deal_id):
+            return jsonify(success=False, error='origin_inconsistent', version=row.version or 0), 409
+        if not link and (deal.get('closed') or deal.get('crmDealId')):
+            return jsonify(success=False, error='origin_inconsistent', version=row.version or 0), 409
+        return jsonify(success=True, closed=bool(link),
+                       crmDealId=link.crm_deal_id if link else None,
+                       version=row.version or 0, generation=row.generation,
+                       data=_stand_strip_files(state) if link else None)
+    finally:
+        db.close()
+
+
+def _stand_close_ordinary_problems(db, row, state, deal):
+    """Все локальные условия s27; POST использует первую ошибку."""
+    problems = []
+    if deal.get('manual'):
+        return [{'code': 'legacy_manual_origin'}]
+    if deal.get('step') != 's27':
+        problems.append({'code': 'stage_or_receipt_missing', 'field': 'step'})
+    if not deal.get('sentToClient'):
+        problems.append({'code': 'stage_or_receipt_missing', 'field': 'sentToClient'})
+    if not _stand_valid_receipt(deal):
+        problems.append({'code': 'receipt_missing', 'field': 'files.receipt'})
+    if (deal.get('type') == 'Оплата недвижимости'
+            and not (deal.get('pay') or {}).get('invoicePaid')
+            and not _stand_receipt_attachment_acceptance(db, deal)):
+        problems.append({'code': 'invoice_not_paid', 'field': 'pay.invoicePaid'})
+    missing = _stand_close_evidence_status(db, row, deal)
+    flow_sole = ((deal.get('custom') is True
+                  and (deal.get('customData') or {}).get('payinMethod') == 'flow_sole_reqs')
+                 or (deal.get('payType') == 'По реквизитам'
+                     and (deal.get('rubReceivingAccount') or {}).get('mode') == 'flowsole'))
+    if flow_sole:
+        # Доказательство Flow Sole проверяется провайдером при фактическом закрытии.
+        missing = [kind for kind in missing if kind != 'payin']
+    if missing:
+        details = [dict(f, label={'payin': 'Приход', 'payout': 'Выплата',
+                                  'receipt': 'Оплата инвойса и чек', 'sent': 'Отправка чека'}[f['kind']])
+                   for f in _stand_close_readiness(db, row, state, deal) if not f['ready']]
+        for fact in details:
+            if fact['kind'] in missing and not (fact['kind'] == 'sent' and not deal.get('sentToClient')) \
+                    and not (fact['kind'] == 'receipt' and not _stand_valid_receipt(deal)):
+                problems.append({'code': 'close_evidence_missing', 'field': fact['kind'],
+                                 'details': [fact]})
+    return problems
+
+
+@app.route('/api/stand/deals/<int:stand_deal_id>/crm-close/check', methods=['POST'])
+def stand_crm_close_check(stand_deal_id):
+    """Проверка локальных условий без записи и внешних запросов."""
+    if not STAND_MODE:
+        return jsonify(success=False, error='stand_only'), 404
+    if current_role() not in ('manager', 'admin'):
+        return jsonify(success=False, error='forbidden'), 403
+    payload = request.get_json(silent=True) or {}
+    if (not isinstance(payload, dict) or type(payload.get('version')) is not int
+            or not isinstance(payload.get('crm'), dict)):
+        return jsonify(success=False, error='invalid_payload'), 400
+    db = get_session()
+    try:
+        row = db.query(StandState).filter_by(id=1).first()
+        if row is None:
+            return jsonify(success=False, error='not_found'), 404
+        state = json.loads(row.data or '{}')
+        deal = next((item for item in state.get('deals') or []
+                     if item.get('id') == stand_deal_id), None)
+        if deal is None:
+            return jsonify(success=False, error='not_found'), 404
+        origin = f'{row.generation}:{stand_deal_id}' if row.generation else None
+        link = db.query(StandCrmLink).filter_by(origin=origin).first() if origin else None
+        if link:
+            return jsonify(success=True, ready=False, closed=True,
+                           crmDealId=link.crm_deal_id, version=row.version or 0,
+                           generation=row.generation, blockers=[])
+        crm = dict(payload['crm'])
+        blockers = []
+        def block(code, detail=None):
+            blockers.append({'code': code, 'message': _STAND_CLOSE_MESSAGES.get(
+                code, 'Проверьте данные сделки перед закрытием.')}
+                | ({'details': detail} if detail else {}))
+        if deal.get('closed') or deal.get('crmDealId'):
+            block('origin_inconsistent')
+        if payload['version'] != (row.version or 0):
+            block('conflict')
+        manager_id = deal.get('managerUserId')
+        if manager_id is None:
+            block('manager_account_required')
+        elif crm.get('manager_user_id') not in (None, manager_id):
+            block('manager_account_mismatch')
+        else:
+            crm['manager_user_id'] = manager_id
+            _, manager_problem = _crm_manager_user(db, crm)
+            if manager_problem:
+                block('manager_account_invalid')
+        plan_problem = _stand_freehold_plan_problem(deal)
+        if plan_problem:
+            block(plan_problem)
+        if deal.get('cnvId') is not None:
+            conv = next((item for item in state.get('convs') or []
+                         if item.get('id') == deal['cnvId']), None)
+            if conv is None or _stand_batch_main(state, stand_deal_id) is None:
+                block('batch_owner_missing')
+            else:
+                funding_problem = _stand_check_batch_funding(state, conv, dispatch=True)
+                if funding_problem:
+                    block(funding_problem)
+        prepay_problem = stand_prepay.close_problem(state, deal)
+        if prepay_problem:
+            block(prepay_problem)
+        manual_origin = deal.get('originMode') == 'manual'
+        has_override = 'manualOverride' in payload
+        manual = manual_origin or has_override
+        if manual:
+            if deal.get('originMode') == 'manual' and (not deal.get('manual') or deal.get('step') != 'manual'):
+                block('manual_origin_mismatch')
+            if 'manualOverride' in payload and not isinstance(payload['manualOverride'], dict):
+                block('manual_override_invalid')
+        else:
+            for problem in _stand_close_ordinary_problems(db, row, state, deal):
+                blockers.append({'code': problem['code'],
+                                 'message': _STAND_CLOSE_MESSAGES.get(problem['code'],
+                                     'Проверьте данные сделки перед закрытием.'),
+                                 **{k: v for k, v in problem.items() if k != 'code'}})
+        if deal.get('type') not in ('Обмен валюты', 'Оплата недвижимости'):
+            block('deal_type_invalid')
+        if (deal.get('type') == 'Оплата недвижимости'
+                and deal.get('kind') not in ('Фрихолд', 'Лизхолд', 'Аренда')):
+            block('deal_type_invalid')
+        if not manual and deal.get('kind') == 'Фрихолд' and deal.get('postConv') != 'ipps_swift':
+            block('freehold_route_invalid')
+        kind = ('mf_auto' if deal.get('autoPayment') is True else
+                'mf_freehold' if deal.get('kind') == 'Фрихолд' else
+                'mf_realty' if deal.get('type') == 'Оплата недвижимости' else 'exchange')
+        if crm.get('bitrix_deal_id') is not None:
+            block('foreign_origin_forbidden')
+        elif _stand_bitrix_origin(db, deal) and db.query(Deal).filter_by(
+                bitrix_deal_id=_stand_bitrix_origin(db, deal)).first():
+            block('bitrix_already_linked')
+        if crm.get('deal_kind') is None and kind == 'exchange' and deal.get('custom') is True:
+            crm['deal_kind'] = 'exchange'
+        if crm.get('deal_kind') != kind:
+            block('deal_kind_mismatch')
+        if 'payout_owner_approved' in crm or 'payout_owner_approval' in crm:
+            block('owner_approval_server_only')
+        if not has_override and not blockers:
+            fact_problem = _stand_crm_fact_problem(
+                deal, crm, kind, state=state, preview_unverified=manual_origin)
+            if fact_problem:
+                block(fact_problem)
+        for field, code, value in (
+                ('client_name', 'client_name_required', str(crm.get('client_name') or '').strip()),
+                ('payin_method', 'payin_method_required', crm.get('payin_method')),
+                ('payin_amount_usdt', 'payin_amount_required',
+                 _stand_number(crm.get('payin_amount_usdt')) > 0),
+                ('payout_source', 'payout_source_required',
+                 kind != 'exchange' or crm.get('payout_source')),
+                ('payout_amount_usdt', 'payout_amount_required',
+                 kind != 'exchange' or _stand_number(crm.get('payout_amount_usdt')) > 0)):
+            if not value:
+                blockers.append({'code': code, 'message': _STAND_CLOSE_MESSAGES[code],
+                                 'field': field})
+        if crm.get('is_custom'):
+            for side in ('payin', 'payout'):
+                currency = str(crm.get(f'custom_{side}_currency') or '').upper()
+                if (not currency or _stand_number(crm.get(f'custom_{side}_amount')) <= 0
+                        or (currency not in ('USDT', 'USD')
+                            and _stand_number(crm.get(f'custom_{side}_rate')) <= 0)):
+                    blockers.append({'code': 'custom_required_fields',
+                                     'message': _STAND_CLOSE_MESSAGES['custom_required_fields'],
+                                     'field': f'custom_{side}_amount'})
+        if not has_override and not blockers:
+            try:
+                _, policy_problem = _stand_close_policy_approval(db, state, deal, crm)
+            except ValueError as exc:
+                policy_problem = str(exc)
+            if policy_problem:
+                block(policy_problem)
+        return jsonify(success=True, ready=not blockers, closed=False,
+                       crmDealId=None, version=row.version or 0,
+                       generation=row.generation, blockers=blockers,
+                       network_proof_pending=not blockers,
+                       checks_pending=(['network_verification', 'post_verification_fact_check']
+                                       if has_override else ['network_verification'] if manual_origin else []))
+    finally:
+        db.close()
+
+
 @app.route('/api/stand/deals/<int:stand_deal_id>/crm-close', methods=['POST'])
 def stand_crm_close(stand_deal_id):
     """Create one CRM row and close its stand origin in one database commit."""
@@ -9011,6 +9352,11 @@ def stand_crm_close(stand_deal_id):
                             'version': row.version or 0, 'data': state,
                             'updated_by': row.updated_by,
                             'detail': 'Данные изменились — обновите страницу и проверьте итог сделки'}), 409
+        manager_id = stand_deal.get('managerUserId')
+        if manager_id is None:
+            return jsonify(success=False, error='manager_account_required'), 409
+        if payload['crm'].get('manager_user_id') not in (None, manager_id):
+            return jsonify(success=False, error='manager_account_mismatch'), 409
         plan_problem = _stand_freehold_plan_problem(stand_deal)
         if plan_problem:
             return jsonify({'success': False, 'error': plan_problem,
@@ -9095,35 +9441,17 @@ def stand_crm_close(stand_deal_id):
             # flag in /api/deals or /api/stand/state cannot grant it.
             manual_override = True
         else:
-            if stand_deal.get('manual'):
-                return jsonify({'success': False, 'error': 'legacy_manual_origin'}), 409
-            if stand_deal.get('step') != 's27' or not stand_deal.get('sentToClient'):
-                return jsonify({'success': False, 'error': 'stage_or_receipt_missing'}), 409
-            if not _stand_valid_receipt(stand_deal):
-                return jsonify({'success': False, 'error': 'receipt_missing'}), 409
-            if (stand_deal.get('type') == 'Оплата недвижимости'
-                    and not (stand_deal.get('pay') or {}).get('invoicePaid')
-                    and not _stand_receipt_attachment_acceptance(db, stand_deal)):
-                return jsonify({'success': False, 'error': 'invoice_not_paid'}), 409
-            missing = _stand_close_evidence_status(db, row, stand_deal)
-            custom_flow_sole = (stand_deal.get('custom') is True
-                and (stand_deal.get('customData') or {}).get('payinMethod') == 'flow_sole_reqs')
-            flow_sole_draft = (custom_flow_sole or (stand_deal.get('payType') == 'По реквизитам'
-                and (stand_deal.get('rubReceivingAccount') or {}).get('mode') == 'flowsole'))
-            if flow_sole_draft:
-                # The close transaction performs strict, provider-backed
-                # Flow Sole proof after creating the pending CRM row. The
-                # older board readiness check only understands numeric
-                # conversion allocations and rejects the valid null/full-hash
-                # contract before that proof can run.
-                missing = [item for item in missing if item != 'payin']
-            if missing:
-                return jsonify({'success': False, 'error': 'close_evidence_missing',
-                                'missing': missing, 'version': row.version or 0,
-                                'details': [dict(f, label={'payin': 'Приход', 'payout': 'Выплата',
-                                    'receipt': 'Оплата инвойса и чек', 'sent': 'Отправка чека'}[f['kind']])
-                                    for f in _stand_close_readiness(db, row, state, stand_deal) if not f['ready']],
-                                'data': state}), 409
+            ordinary_problems = _stand_close_ordinary_problems(db, row, state, stand_deal)
+            if ordinary_problems:
+                first_problem = ordinary_problems[0]
+                body = {'success': False, 'error': first_problem['code'],
+                        'version': row.version or 0, 'data': state}
+                evidence = [detail for item in ordinary_problems
+                            for detail in item.get('details', [])]
+                if evidence:
+                    body['missing'] = [item['kind'] for item in evidence]
+                    body['details'] = evidence
+                return jsonify(body), 409
         if stand_deal.get('type') not in ('Обмен валюты', 'Оплата недвижимости'):
             return jsonify({'success': False, 'error': 'deal_type_invalid'}), 409
         if (stand_deal.get('type') == 'Оплата недвижимости'
@@ -9137,6 +9465,8 @@ def stand_crm_close(stand_deal_id):
                 'mf_realty' if stand_deal.get('type') == 'Оплата недвижимости' else
                 'exchange')
         crm_data = dict(payload['crm'])
+        if manager_id is not None:
+            crm_data['manager_user_id'] = manager_id
         if 'payout_owner_approved' in crm_data or 'payout_owner_approval' in crm_data:
             return jsonify(success=False, error='Согласование владельца берётся из подтверждённой задачи'), 403
         if crm_data.get('bitrix_deal_id') is not None:
@@ -9271,6 +9601,8 @@ def stand_crm_close(stand_deal_id):
             _stand_manual_close_resolve_tasks(
                 updated, stand_deal_id,
                 flask_session.get('display_name') or flask_session.get('username') or actor)
+        _stand_queue_close_card_in_state(updated, crm_row, stand_deal_id)
+        _stand_capture_close_outbox(row, updated, crm_id, stand_deal_id)
         row.data = json.dumps(updated, ensure_ascii=False)
         row.version = (row.version or 0) + 1
         row.updated_by = flask_session.get('display_name') or flask_session.get('username')
@@ -9396,6 +9728,12 @@ def stand_crm_close_lose(stand_deal_id):
             return jsonify({'success': False, 'error': 'conflict', 'version': row.version or 0,
                             'data': state, 'updated_by': row.updated_by}), 409
         reason = payload['reason']
+        manager_id = stand_deal.get('managerUserId')
+        if manager_id is None:
+            return jsonify(success=False, error='manager_account_required'), 409
+        manager_user, manager_problem = _crm_manager_user(db, {'manager_user_id': manager_id})
+        if manager_problem:
+            return jsonify(success=False, error='manager_account_invalid'), 409
         bitrix_id = _stand_bitrix_origin(db, stand_deal)
         if bitrix_id and db.query(Deal).filter_by(bitrix_deal_id=bitrix_id).first():
             return jsonify({'success': False, 'error': 'bitrix_already_linked'}), 409
@@ -9404,7 +9742,8 @@ def stand_crm_close_lose(stand_deal_id):
             return jsonify({'success': False, 'error': 'client_name_required'}), 409
         crm_data = {'deal_type': 'pay_in', 'status': 'lose', 'lose_reason': reason,
                     'client_name': client_name,
-                    'manager_name': flask_session.get('display_name') or 'Stand manager',
+                    'manager_name': manager_user.display_name or manager_user.username,
+                    'manager_user_id': manager_id,
                     'skip_sync': True}
         if bitrix_id:
             crm_data['bitrix_deal_id'] = bitrix_id
@@ -9445,6 +9784,7 @@ def stand_crm_close_lose(stand_deal_id):
             db.rollback()
             return jsonify({'success': False, 'error': problem}), 409
         _stand_completion_notes(state, updated)
+        _stand_capture_close_outbox(row, updated, crm_id, stand_deal_id)
         row.data = json.dumps(updated, ensure_ascii=False)
         row.version = (row.version or 0) + 1
         row.updated_by = flask_session.get('display_name') or flask_session.get('username')
@@ -10120,7 +10460,7 @@ def _stand_broker_payin_basis(rub, rate):
     }.items()}
 
 
-def _stand_crm_fact_problem(board, crm, kind, *, state=None):
+def _stand_crm_fact_problem(board, crm, kind, *, state=None, preview_unverified=False):
     """Reject CRM money and transfer facts that contradict the persisted board.
 
     The CRM preview permits editing descriptive fields, but a POST may not
@@ -10295,7 +10635,7 @@ def _stand_crm_fact_problem(board, crm, kind, *, state=None):
         return 'payin_basis_missing'
     if kind in SWIFT_PAYMENT_KINDS and board.get('payType') == 'Крипта':
         payer = board.get('payerWallet')
-        if any(not isinstance(h, dict) or not h.get('verified')
+        if not preview_unverified and any(not isinstance(h, dict) or not h.get('verified')
                or (not h.get('senderOk') and
                    (h.get('unknownSender') or
                     (payer and h.get('from') and h.get('from') != payer)))
@@ -12334,6 +12674,8 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
         if deal.get('type') == 'Оплата авто':
             return 'Некорректный тип сделки задачника'
         manager_id = deal.get('managerUserId')
+        if before and before.get('managerUserId') is not None and manager_id is None:
+            return 'Менеджера сделки нельзя снять без назначения другого'
         if manager_id is not None:
             if type(manager_id) is not int or manager_id <= 0:
                 return 'Некорректный ID менеджера задачника'
@@ -13206,15 +13548,21 @@ def _stand_completion_notes(previous, state):
     old = {d.get('id'): d for d in previous.get('deals', [])}
     for deal in state.get('deals', []):
         before = old.get(deal.get('id')) or {}
-        if (deal.get('postConv') != 'coins' or not deal.get('closed')
-                or before.get('closed') or deal.get('closeReason') != 'Успешно завершена'):
+        if (not deal.get('closed') or before.get('closed')
+                or deal.get('closeReason') not in ('Успешно завершена', *STAND_CLOSE_LOSE_REASONS)):
             continue
-        profit = _stand_main_profit(deal)
-        amount = (f'валовая прибыль {profit[0]:.2f}, чистая {profit[1]:.2f} USDT'
-                  if profit else 'прибыль пока не рассчитана')
+        if deal.get('closeReason') in STAND_CLOSE_LOSE_REASONS:
+            message = f"{deal.get('code') or deal['id']}: сделка закрыта — {deal['closeReason']}"
+        elif deal.get('postConv') == 'coins':
+            profit = _stand_main_profit(deal)
+            amount = (f'валовая прибыль {profit[0]:.2f}, чистая {profit[1]:.2f} USDT'
+                      if profit else 'прибыль пока не рассчитана')
+            message = f"{deal.get('code') or deal['id']}: лизхолд закрыт, {amount}"
+        else:
+            message = f"{deal.get('code') or deal['id']}: сделка закрыта успешно"
         prefix = 'DEMO · ' if deal.get('demoTransfers') else ''
         _stand_note(state, f"stand:completed:{deal['id']}", 'manager', deal,
-                    f"{prefix}{deal.get('code') or deal['id']}: лизхолд закрыт, {amount}")
+                    prefix + message, recipient_admin_id=deal.get('managerUserId'))
 
 
 def _stand_small_profit(deal):
@@ -31295,10 +31643,31 @@ def _stand_transfer_poll_loop():
             app.logger.warning('stand transfer poll: %s', exc)
 
 
+def _stand_close_notify_retry_once():
+    if STAND_MODE:
+        return stand_notify.deliver()
+    return []
+
+
+def _stand_close_notify_retry_loop():
+    """Доставлять сохранённые уведомления закрытия без открытой вкладки."""
+    while True:
+        time.sleep(60)
+        try:
+            _stand_close_notify_retry_once()
+        except Exception:
+            app.logger.warning('stand close notification retry failed')
+
+
 if (STAND_MODE and os.environ.get('STAND_TRANSFER_POLL_ENABLED', '1') == '1'
         and 'pytest' not in sys.modules):
     threading.Thread(target=_stand_transfer_poll_loop, daemon=True,
                      name='stand-transfer-poll').start()
+
+if (STAND_MODE and os.environ.get('STAND_CLOSE_NOTIFY_RETRY_ENABLED', '1') == '1'
+        and 'pytest' not in sys.modules):
+    threading.Thread(target=_stand_close_notify_retry_loop, daemon=True,
+                     name='stand-close-notify-retry').start()
 
 if STAND_MODE and 'pytest' not in sys.modules:
     stand_notify.start_updates()

@@ -294,6 +294,7 @@ VERIFY_CALLS = []  # вызовы verify_transfer (доказательство 
 def rental_board(monkeypatch, **patch):
     uid = _setup(monkeypatch)
     deal = {'id': 1474, 'code': 'СД-1489', 'client': 'Synthetic rental', 'type': 'Оплата недвижимости',
+            'managerUserId': uid,
             'kind': 'Аренда', 'step': 's14', 'payType': 'Наличные', 'amountRub': 1217600,
             'amountThb': 455000, 'rates': {'client': '2,676', 'usdtThb': '33.42'},
             'object': 'Synthetic villa', 'docs': {'inv': True, 'receipt': False},

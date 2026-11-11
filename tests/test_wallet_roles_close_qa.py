@@ -62,6 +62,15 @@ def setup_close(amount, wallet_address, role='manager'):
             row = m.StandState(id=1)
             db.add(row)
         board = board_for(amount, wid)
+        if role == 'manager':
+            manager_id = uid
+        else:
+            manager = m.AdminUser(username='close-manager-' + secrets.token_hex(5),
+                                  role='manager', password_hash='unused')
+            db.add(manager)
+            db.flush()
+            manager_id = manager.id
+        board['deals'][0]['managerUserId'] = manager_id
         row.data, row.version, row.generation = json.dumps(board), 1, secrets.token_hex(16)
         db.commit()
         _seed_evidence(db, row, board=board, actor_id=uid)
@@ -173,6 +182,16 @@ def seed_close(state, role='manager'):
         if row is None:
             row = m.StandState(id=1)
             db.add(row)
+        if role == 'manager':
+            manager_id = user.id
+        else:
+            manager = m.AdminUser(username='closeok-manager-' + secrets.token_hex(5),
+                                  role='manager', password_hash='unused')
+            db.add(manager)
+            db.flush()
+            manager_id = manager.id
+        for deal in state['deals']:
+            deal['managerUserId'] = manager_id
         row.data, row.version, row.generation = json.dumps(state), 1, secrets.token_hex(16)
         db.commit()
         _seed_evidence(db, row, board=state, actor_id=user.id)

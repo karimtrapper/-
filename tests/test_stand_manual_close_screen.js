@@ -38,6 +38,7 @@ function makeCtx(deal) {
   const S = {deals: [deal], incomes: [], role: 'admin', manualCloseForm: {}};
   const ctx = {
     S, SOURCES_PAY,
+    crmClosePanel: () => '', standClosing: false,
     render: () => {}, toast: () => {}, fetch: () => Promise.reject(new Error('not used in render')),
   };
   vm.createContext(ctx);

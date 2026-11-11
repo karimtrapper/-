@@ -744,8 +744,8 @@ def test_size_limits_and_no_total_board_limit(api, monkeypatch):
 
 
 def test_new_base64_put_is_externalized(api):
-    api[1][0] = 'manager';seed(board())
-    state = board();state['deals'][0]['files']['inv'] = [pdf(b'old browser')]
+    api[1][0] = 'manager';state = board();seed(state)
+    state['deals'][0]['files']['inv'] = [pdf(b'old browser')]
     response = api[0].put('/api/stand/state', json={'version':1,'data':state})
     assert response.status_code == 200, response.json
     assert read_db()[1]['deals'][0]['files']['inv'][0]['storageId']
@@ -899,8 +899,8 @@ def test_bad_legacy_receipt_does_not_hide_later_valid_receipt(api):
 
 
 def test_legacy_upload_author_comes_from_session(api):
-    api[1][0]='manager';seed(board())
-    state=board();item=pdf(b'author');item['uploadedById']=999999
+    api[1][0]='manager';state=board();seed(state)
+    item=pdf(b'author');item['uploadedById']=999999
     state['deals'][0]['files']['inv']=[item]
     response=api[0].put('/api/stand/state',json={'version':1,'data':state})
     assert response.status_code==200,response.json

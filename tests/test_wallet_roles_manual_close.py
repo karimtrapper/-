@@ -45,6 +45,7 @@ def setup_case(wallet, step='s23', role='manager', route='client'):
         state['deals'][0]['transfer']['sends'] = []
         # seed_close выдал сетевой приход для обычного s27; ручной перенос вводит свой хеш
         state['deals'][0].update(payType='По реквизитам', payinHashes=[])
+        state['deals'][0]['managerUserId'] = deal['managerUserId']
         state['deals'][0].pop('cnvId', None)
         state['convs'] = []
         put_board(state)

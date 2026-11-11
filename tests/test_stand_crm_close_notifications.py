@@ -115,6 +115,7 @@ def _manual_draft(uid, kind):
     но остаётся прежним для close и проверки уведомлений."""
     deal = copy.deepcopy(EXCHANGE_DEAL)
     deal['unverified_confirmed'] = True
+    deal['managerUserId'] = uid
     PAYIN['hash'] = secrets.token_hex(32)  # свой на каждый черновик: доли PayinTx не копятся
     if kind == 'leasehold':
         deal.update(type='Оплата недвижимости', kind='Лизхолд', amountThb=622370,
@@ -163,9 +164,9 @@ def _note_spy(monkeypatch):
     calls = []
     real = A._stand_note
 
-    def spy(state, event_id, role, deal, text):
+    def spy(state, event_id, role, deal, text, **kwargs):
         calls.append((event_id, text))
-        return real(state, event_id, role, deal, text)
+        return real(state, event_id, role, deal, text, **kwargs)
 
     monkeypatch.setattr(A, '_stand_note', spy)
     return calls
@@ -233,7 +234,8 @@ def test_exchange_close_stand_routes_card_and_referrer_notice(monkeypatch):
     assert resp.status_code == 201, resp.json
     deal_id = resp.json['deal']['id']
     assert resp.json['deal']['profit_usdt'] is not None
-    assert len(notes) == 2, notes
+    assert len(notes) == 3, notes
+    assert sum(e == f'stand:completed:{STAND_DEAL_ID}' for e, _ in notes) == 1
     card = [t for e, t in notes if e == f'stand:close-card:{deal_id}']
     notice = [t for e, t in notes if e.startswith(f'stand:close-ref:{deal_id}:')]
     assert len(card) == 1 and len(notice) == 1
@@ -269,7 +271,8 @@ def test_exchange_close_without_agent_queues_card_only(monkeypatch):
     resp = _close(_client(uid), version, EXCHANGE_CRM)
 
     assert resp.status_code == 201, resp.json
-    assert [e for e, _ in notes] == [f"stand:close-card:{resp.json['deal']['id']}"]
+    assert [e for e, _ in notes] == [f'stand:completed:{STAND_DEAL_ID}',
+                                     f"stand:close-card:{resp.json['deal']['id']}"]
     assert effects['send_telegram_notification'] == []
     assert effects['send_referrer_dm'] == []
 
@@ -325,7 +328,8 @@ def test_leasehold_close_stand_queues_realty_card_only(monkeypatch):
     assert resp.status_code == 201, resp.json
     assert LEASEHOLD_CRM['deal_kind'] in A.REALTY_KINDS
     assert len(effects['sync_realty_deal_to_gsheet']) == 1
-    assert [e for e, _ in notes] == [f"stand:close-card:{resp.json['deal']['id']}"]
+    assert [e for e, _ in notes] == [f'stand:completed:{STAND_DEAL_ID}',
+                                     f"stand:close-card:{resp.json['deal']['id']}"]
     assert effects['send_telegram_notification'] == []
     for name in ('send_deal_completed_webhook', 'sync_deals_to_gsheet', 'sync_referrer_reward_to_gsheet'):
         assert effects[name] == [], name
@@ -397,7 +401,7 @@ def test_route_retry_returns_duplicate_and_fires_nothing_again(monkeypatch):
     assert second.json['duplicate'] is True
     assert second.json['deal']['id'] == first.json['deal']['id']
     assert len(create_calls) == 1, 'второй POST не должен доходить до _create_deal_impl'
-    assert len(notes) == 1
+    assert len(notes) == 2
     assert len(effects['sync_deals_to_gsheet']) == 1
 
 
@@ -431,7 +435,7 @@ def test_inner_effect_failure_keeps_close_and_other_effects(monkeypatch, capsys)
     assert resp.json['success'] is True
     assert resp.json['data']['deals'][0]['crmDealId'] == resp.json['deal']['id']
     assert '[Webhook] stand close error' in capsys.readouterr().out
-    assert len(notes) == 1
+    assert len(notes) == 2
     assert len(effects['sync_deals_to_gsheet']) == 1
     assert len(effects['sync_referrer_reward_to_gsheet']) == 1
 

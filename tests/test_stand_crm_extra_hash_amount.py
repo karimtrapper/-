@@ -83,6 +83,7 @@ def test_manual_crypto_extra_canonical_and_legacy_hash_amounts(monkeypatch, lega
         'hash': EXTRA_HASH, 'amount_usdt': 20}
     board = {'deals': [{
         'id': stand_id, 'code': f'СД-{stand_id}', 'client': 'T24 extra synthetic',
+        'managerUserId': uid,
         'type': 'Обмен валюты', 'manual': True, 'manualNew': False,
         'step': 'manual', 'closed': False, 'crmDealId': None,
         'sentToClient': False, 'isTask': False, 'files': {}, 'log': [],
@@ -247,6 +248,7 @@ def test_manual_extra_raw_hash_reuse(monkeypatch, variant):
         for hash_value, amount in extra_specs]
     board = {'deals': [{
         'id': 1482, 'code': 'СД-1482', 'client': 'T24 duplicate probe',
+        'managerUserId': uid,
         'type': 'Обмен валюты', 'manual': True, 'manualNew': False,
         'step': 'manual', 'closed': False, 'crmDealId': None,
         'sentToClient': False, 'isTask': False, 'files': {}, 'log': [],

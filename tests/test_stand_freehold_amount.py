@@ -41,6 +41,13 @@ def seed(monkeypatch, state):
                            password_hash='unused')
         db.add(user)
         db.flush()
+        manager = m.AdminUser(username='fh-manager-' + secrets.token_hex(4),
+                              role='manager', display_name='Synthetic Manager',
+                              password_hash='unused')
+        db.add(manager)
+        db.flush()
+        for deal in state.get('deals', []):
+            deal['managerUserId'] = manager.id
         row = m._stand_row(db)
         row.data = json.dumps(state)
         row.version = 17

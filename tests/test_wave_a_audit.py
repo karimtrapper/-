@@ -130,6 +130,7 @@ def test_browser_defaults_do_not_edit_other_roles_task(board):
     seed_state = clients('admin').get('/api/stand/state').json
     seeded = copy.deepcopy(seed_state['data'])
     seeded['deals'].append({'id': 1475, 'type': 'Обмен валюты', 'step': 's5',
+                            'managerUserId': seeded['deals'][0]['managerUserId'],
                             'amountRub': 200000, 'unverified_confirmed': True})
     seed_saved = clients('admin').put('/api/stand/state',
         json={'version': seed_state['version'], 'data': seeded})
@@ -155,6 +156,7 @@ def test_fresh_and_reset_board_counterparties_are_server_owned(board, reset):
     import app as m
     install, clients = board
     admin = clients('admin')
+    manager_id = admin.get('/api/stand/state').json['data']['deals'][0]['managerUserId']
     if reset:
         assert admin.post('/api/stand/reset').status_code == 200
     else:
@@ -168,6 +170,7 @@ def test_fresh_and_reset_board_counterparties_are_server_owned(board, reset):
         assert json.loads(db.get(m.StandState, 1).data)['cps'] == catalog
     state = current['data']
     state['deals'] = [{'id': 1474, 'step': 's5', 'type': 'Обмен валюты', 'pair': 'RUB → USDT',
+                       'managerUserId': manager_id,
                        'log': [], 'unverified_confirmed': True}]
     saved = clients('admin').put('/api/stand/state', json={'version': current['version'], 'data': state})
     assert saved.status_code == 200, saved.json
@@ -192,7 +195,8 @@ def test_all_pair_payloads_are_accepted_and_persisted_by_crm(monkeypatch):
     def build(case):
         uid = _setup(monkeypatch)
         deal, crm = copy.deepcopy(case['deal']), copy.deepcopy(case['crm'])
-        deal.update(id=1474, step='s27', client='Wave A pair', sentToClient=True, pay={}, log=[])
+        deal.update(id=1474, step='s27', client='Wave A pair', sentToClient=True,
+                    managerUserId=uid, pay={}, log=[])
         crm.update(client_name='Wave A pair', payout_source='binance')
         # These arithmetic fixtures also need trusted workflow facts now that
         # closing revalidates evidence rather than accepting a seeded signoff.

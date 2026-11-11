@@ -34,6 +34,7 @@ def test_missing_version_cannot_overwrite_newer_money(board_server):
     initial = requests.get(base, headers=manager, timeout=5).json()
     board = {'deals': [{
         'id': 98501, 'client': 'Synthetic', 'type': 'Обмен валюты',
+        'managerUserId': int(board_server['BOARD_RACE_MANAGER_ID']),
         'step': 's4', 'amountRub': 100000, 'log': [], 'unverified_confirmed': True,
     }], 'notes': []}
     created = requests.put(base, headers=_admin_header(), timeout=5,
@@ -78,6 +79,7 @@ def test_operator_cannot_skip_tasks_by_direct_put(board_server):
     initial = requests.get(base, headers=manager, timeout=5).json()
     board = {'deals': [{
         'id': 98502, 'client': 'Synthetic', 'type': 'Обмен валюты',
+        'managerUserId': int(board_server['BOARD_RACE_MANAGER_ID']),
         'step': 's4', 'amountRub': 100000, 'log': [], 'unverified_confirmed': True,
     }], 'notes': []}
     created = requests.put(base, headers=_admin_header(), timeout=5,
@@ -158,6 +160,7 @@ def test_operator_cannot_erase_server_journal_event(board_server):
     ]
     board = {'deals': [{
         'id': 98505, 'client': 'Synthetic', 'type': 'Обмен валюты',
+        'managerUserId': int(board_server['BOARD_RACE_MANAGER_ID']),
         'step': 's14', 'amountRub': 100000, 'payType': 'По реквизитам',
         'log': [],
     }], 'notes': []}
@@ -192,6 +195,7 @@ def test_second_application_with_unchanged_first_s5_is_accepted(board_server):
     base = board_server['BOARD_RACE_URL'] + '/api/stand/state'
     manager = {'Cookie': json.loads(board_server['BOARD_RACE_COOKIES'])[0]}
     first = {'id': 98511, 'code': 'СД-98511', 'client': 'Synthetic A',
+             'managerUserId': int(board_server['BOARD_RACE_MANAGER_ID']),
              'type': 'Обмен валюты', 'pair': 'RUB → USDT', 'step': 's5',
              'amountRub': 100000, 'log': [], 'isTask': True, 'partial': False,
              'unverified_confirmed': True}
@@ -200,6 +204,7 @@ def test_second_application_with_unchanged_first_s5_is_accepted(board_server):
         'version': initial['version'], 'data': {'deals': [first], 'notes': []}})
     assert created.status_code == 200, created.text
     second = {'id': 98512, 'code': 'СД-98512', 'client': 'Synthetic B',
+              'managerUserId': int(board_server['BOARD_RACE_MANAGER_ID']),
               'type': 'Обмен валюты', 'pair': 'THB → USDT', 'step': 's5',
               'amountThb': 50000, 'log': [], 'isTask': True,
               'unverified_confirmed': True}
@@ -219,6 +224,7 @@ def test_second_application_accepted_if_browser_adds_exact_defaults(board_server
     base = board_server['BOARD_RACE_URL'] + '/api/stand/state'
     manager = {'Cookie': json.loads(board_server['BOARD_RACE_COOKIES'])[0]}
     first = {'id': 98513, 'code': 'СД-98513', 'client': 'Synthetic A',
+             'managerUserId': int(board_server['BOARD_RACE_MANAGER_ID']),
              'type': 'Обмен валюты', 'pair': 'RUB → USDT', 'step': 's5',
              'amountRub': 100000, 'log': [], 'isTask': True, 'partial': False,
              'unverified_confirmed': True}
@@ -230,6 +236,7 @@ def test_second_application_accepted_if_browser_adds_exact_defaults(board_server
     # newDeal() does not include compare; migrate() adds it after the GET response.
     board['deals'][0]['compare'] = False
     board['deals'].insert(0, {'id': 98514, 'client': 'Synthetic B',
+        'managerUserId': int(board_server['BOARD_RACE_MANAGER_ID']),
         'type': 'Обмен валюты', 'pair': 'THB → USDT', 'step': 's5',
         'amountThb': 50000, 'log': [], 'isTask': True, 'unverified_confirmed': True})
     added = requests.put(base, headers=_admin_header(), timeout=5, json={

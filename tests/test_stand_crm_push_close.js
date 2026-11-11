@@ -11,14 +11,14 @@ const html = fs.readFileSync(path.join(__dirname, '../static/stand/tasks.html'),
 const found = html.match(/^async function crmPushClose\([^]*?^}/m);
 assert.ok(found, 'нет функции crmPushClose');
 const constSrc = name => { const m = html.match(new RegExp('^const ' + name + '=.*?;', 'ms')); assert.ok(m, name); return m[0]; };
-const source = ['standSaveError','standRequireSaved','crmFactsMismatchMessage'].map(n=>html.match(new RegExp(`^(?:async )?function ${n}\\([^]*?^}`,'m'))[0]).join('\n')
+const source = ['standSaveError','standRequireSaved','crmFactsMismatchMessage','crmCloseMessage'].map(n=>html.match(new RegExp(`^(?:async )?function ${n}\\([^]*?^}`,'m'))[0]).join('\n')
   +'\n'+constSrc('CRM_FACTS_MISMATCH')+'\n'+constSrc('MANUAL_CLOSE_ERRORS')+'\n'+found[0];
 
 function fixture(responses, confirmAnswer) {
-  const d = {id: 1, code: 'СД-1', crmDealId: null, sentToClient: true,
+  const d = {id: 1, code: 'СД-1', crmDealId: null, managerUserId: 1, sentToClient: true,
     type: 'Обмен', pay: {}, log: []};
   const S = {deals: [d]};
-  const toasts = [], logs = [], calls = [];
+  const toasts = [], logs = [], calls = [], closeStates = [];
   let call = 0;
   const ctx = {
     S,
@@ -36,6 +36,11 @@ function fixture(responses, confirmAnswer) {
     save: () => {},
     render: () => {},
     toast: s => toasts.push(s),
+    crmCloseRequestId: () => 'push-request',
+    crmCloseUiSet: (...args) => closeStates.push(args),
+    crmClosePendingSet: () => {}, crmClosePendingClear: () => {},
+    crmCloseRecover: async () => false,
+    crmCloseFetch: (...args) => ctx.fetch(...args),
     now: () => '28.09',
     usd: v => '$' + v,
     confirm: msg => { calls.push({type: 'confirm', msg}); return confirmAnswer; },
@@ -43,6 +48,8 @@ function fixture(responses, confirmAnswer) {
     fetch: (url, opts) => {
       const body = JSON.parse(opts.body);
       calls.push({type: 'fetch', url, method: opts.method, body});
+      if (url.endsWith('/crm-close/check')) return Promise.resolve({status: 200,
+        json: async () => ({success: true, ready: true})});
       const r = responses[call++];
       const json = structuredClone(r.json);
       if (json.success) json.data = {deals: [{...d, closed: true, crmDealId: json.deal.id}]};
@@ -53,7 +60,7 @@ function fixture(responses, confirmAnswer) {
   };
   vm.createContext(ctx);
   vm.runInContext(source, ctx);
-  return {ctx, d, toasts, logs, calls};
+  return {ctx, d, toasts, logs, calls, closeStates};
 }
 
 (async () => {
@@ -64,7 +71,7 @@ function fixture(responses, confirmAnswer) {
       {status: 200, json: {success: true, deal: {id: 42}}},
     ], true);
     await ctx.crmPushClose(1,10);
-    const fetches = calls.filter(c => c.type === 'fetch');
+    const fetches = calls.filter(c => c.type === 'fetch' && c.url.endsWith('/crm-close'));
     assert.equal(fetches.length, 2, 'должно быть два запроса: первый и повтор с подтверждением');
     assert.equal(fetches[0].body.crm.confirm_payout_tx_overage, undefined);
     assert.equal(fetches[1].body.crm.confirm_payout_tx_overage, true);
@@ -88,11 +95,11 @@ function fixture(responses, confirmAnswer) {
   }
   // 409 → человек отказывается → второго запроса нет, сделка не закрыта
   {
-    const {ctx, d, toasts, calls} = fixture([
+    const {ctx, d, toasts, calls, closeStates} = fixture([
       {status: 409, json: {success: false, requires_confirmation: true, warning: 'Расход выше остатка'}},
     ], false);
     await ctx.crmPushClose(1,10);
-    const fetches = calls.filter(c => c.type === 'fetch');
+    const fetches = calls.filter(c => c.type === 'fetch' && c.url.endsWith('/crm-close'));
     assert.equal(fetches.length, 1, 'отказ — второго запроса быть не должно');
     assert.equal(d.crmDealId, null);
     assert.equal(d.closed, undefined);
@@ -104,7 +111,7 @@ function fixture(responses, confirmAnswer) {
       {status: 200, json: {success: true, deal: {id: 7}}},
     ], true);
     await ctx.crmPushClose(1,10);
-    const fetches = calls.filter(c => c.type === 'fetch');
+    const fetches = calls.filter(c => c.type === 'fetch' && c.url.endsWith('/crm-close'));
     assert.equal(fetches.length, 1);
     assert.equal(d.crmDealId, 7);
     assert.equal(d.closed, true);
@@ -124,17 +131,17 @@ function fixture(responses, confirmAnswer) {
                               ['payin_hash_invalid', 'Хеш прихода написан неверно — проверьте сеть и сам хеш'],
                               ['payin_hash_unverified', 'Хеш прихода не подтверждён в сети'],
                               ['payin_hash_already_used', 'Этот хеш прихода уже использован в другой сделке']]) {
-    const {ctx, d, toasts} = fixture([{status: 400, json: {success: false, error: code}}], true);
+    const {ctx, d, toasts, closeStates} = fixture([{status: 400, json: {success: false, error: code}}], true);
     await ctx.crmPushClose(1,10);
-    assert.ok(toasts.includes(text), code + ' → ' + JSON.stringify(toasts));
+    assert.ok(closeStates.some(x => x[2] === text), code + ' → ' + JSON.stringify(closeStates));
     assert.equal(d.crmDealId, null);
-    assert.ok(!toasts.some(t => t.includes(code)), 'сырой код не показываем');
+    assert.ok(!closeStates.some(x => x[2].includes(code)), 'сырой код не показываем');
   }
   for (const code of ['payin_basis_missing', 'payin_basis_unverified']) {
-    const {ctx, toasts} = fixture([{status: 409, json: {success: false, error: code}}], true);
+    const {ctx, closeStates} = fixture([{status: 409, json: {success: false, error: code}}], true);
     await ctx.crmPushClose(1,10);
-    assert.ok(toasts.some(t => t.includes('Проверьте хеш')), code + ' → ' + JSON.stringify(toasts));
-    assert.ok(!toasts.some(t => t.includes(code)), 'сырой код не показываем');
+    assert.ok(closeStates.some(x => x[2].includes('Проверьте хеш')), code + ' → ' + JSON.stringify(closeStates));
+    assert.ok(!closeStates.some(x => x[2].includes(code)), 'сырой код не показываем');
   }
   console.log('stand crmPushClose: 5 сценариев + хеш прихода PASS');
 })();

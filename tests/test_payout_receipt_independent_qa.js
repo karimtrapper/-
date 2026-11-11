@@ -74,6 +74,7 @@ const SCRIPT2=['htmlText','jsLiteralAttr','num','hashSum','txShort','explorer','
   'txUsed','manualCloseFormState','manualCloseScreen','manualCloseMerge','manualClosePayload','val'].map(n=>{try{return source(n);}catch(e){return '';}}).join('\n');
 function screenCtx(deal){
   const c={S:{deals:[deal],incomes:[],role:'manager',manualCloseForm:{}},SOURCES_PAY:{},render(){},toast(){},
+    crmClosePanel:()=>'',standClosing:false,
     fetch:()=>Promise.reject(new Error('x')),crmPreviewFor:()=>({pending:true}),crmPayloadFinal:()=>({deal_kind:'mf_realty'}),
     brokerSend:()=>0,BROKER_FEE:{},MANAGER_DRAFT_DOCS:['pass','inv','spa','ipds'],managerDraft:()=>({}),
     document:{getElementById:()=>null},atob,Number,Math};

@@ -71,7 +71,8 @@ def lk(monkeypatch):
     db.execute(text('DELETE FROM stand_notify_log'))
     db.query(appmod.AdminUser).filter(appmod.AdminUser.username.like('lk_test_%')).delete(synchronize_session=False)
     row = appmod._stand_row(db)
-    original_data, original_version = row.data, row.version
+    original_data, original_version, original_notified = row.data, row.version, row.notified
+    row.notified = '[]'
     db.commit()
     users = {}
     for name, role, tg, disabled in [
@@ -92,9 +93,12 @@ def lk(monkeypatch):
     def board(notes, deals=None):
         db = appmod.SessionLocal()
         row = appmod._stand_row(db)
+        board_deals = deals or [{'id': 7, 'code': 'T7', 'client': 'Иван', 'step': 's4'}]
+        board_deals = [{**deal, 'managerUserId': deal.get('managerUserId', ids['manager'])}
+                       for deal in board_deals]
         row.data = json.dumps({
             'notes': notes,
-            'deals': deals or [{'id': 7, 'code': 'T7', 'client': 'Иван', 'step': 's4'}],
+            'deals': board_deals,
         })
         db.commit()
         db.close()
@@ -104,7 +108,7 @@ def lk(monkeypatch):
     db.execute(text('DELETE FROM stand_notify_log'))
     db.query(appmod.AdminUser).filter(appmod.AdminUser.id.in_(ids.values())).delete(synchronize_session=False)
     row = appmod._stand_row(db)
-    row.data, row.version = original_data, original_version
+    row.data, row.version, row.notified = original_data, original_version, original_notified
     db.commit()
     db.close()
 

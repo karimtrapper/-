@@ -104,8 +104,18 @@ def _setup(monkeypatch, board=None, role='manager'):
         if row is None:
             row = m.StandState(id=1)
             db.add(row)
+        manager_id = uid
+        if role != 'manager':
+            manager = m.AdminUser(username='realty-manager-' + secrets.token_hex(6),
+                                  role='manager', password_hash='unused')
+            db.add(manager)
+            db.flush()
+            manager_id = manager.id
+        saved_board = board or _realty_board()
+        for deal in saved_board['deals']:
+            deal['managerUserId'] = manager_id
         row.generation = secrets.token_hex(16)
-        row.data = json.dumps(board or _realty_board(), ensure_ascii=False)
+        row.data = json.dumps(saved_board, ensure_ascii=False)
         row.version = 1
         db.commit()
         return uid

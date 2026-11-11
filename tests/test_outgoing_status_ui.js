@@ -11,6 +11,7 @@ function source(name) {
 }
 const H = 'ab'.repeat(32), OTHER = 'cd'.repeat(32);
 const ctx = {S: {role: 'admin', view: 'task', deals: []},
+  standClosing: null, crmClosePanel: () => '',
   moneyKop: (n, unit) => `${n} ${unit}`,
   STEPS: {s24: {title: 'Одобрить перевод', n: 24}},
   ROLES: {admin: {t: 'Админ'}, findir: {t: 'Финансист'}, teodor: {t: 'Владелец'}},

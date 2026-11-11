@@ -36,6 +36,7 @@ function makeCtx(deal, preview) {
   const S = {deals: [deal], incomes: [], role: 'admin', manualCloseForm: {}};
   const ctx = {
     S, SOURCES_PAY, atob, FILE_TAIL: {},
+    crmClosePanel: () => '', standClosing: null,
     render: () => {}, toast: () => {}, fetch: () => Promise.reject(new Error('not used in render')),
     // crmPreviewFor's own correctness (the real /api/stand/crm-preview fetch +
     // cache wrapper) is already exercised elsewhere (dealSummaryBlock's s27

@@ -2,7 +2,7 @@
 const assert=require('node:assert/strict'), fs=require('node:fs'), vm=require('node:vm');
 const html=fs.readFileSync('static/stand/tasks.html','utf8');
 function source(name){const m=html.match(new RegExp('^function '+name+'\\([^]*?^}','m'));assert.ok(m,name);return m[0];}
-const ctx={S:{role:'operator',view:'task'},STEPS:{s27:{title:'Закрытие',n:27}},
+const ctx={S:{role:'operator',view:'task'},standClosing:null,crmClosePanel:()=>'',STEPS:{s27:{title:'Закрытие',n:27}},
  ROLES:{manager:{t:'Менеджер'},operator:{t:'Операционист'},admin:{t:'Админ'},teodor:{t:'Теодор'}},
  SOURCES:{none:'Без переписки'},stepWho:()=> 'manager',stepTitle:()=> 'Закрытие',progress:()=>({i:13,n:13}),
  needsPayConfirm:()=>false,prepayPanel:()=>'',docSide:()=>'',assigneeBlock:()=>'',goalCard:()=>'',ctxCard:()=>'',

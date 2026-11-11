@@ -54,6 +54,7 @@ def _flow_board(monkeypatch, *, hash_amount=None, declared_amount=400):
     uid = _setup(monkeypatch)
     board = _board()
     deal = board['deals'][0]
+    deal['managerUserId'] = uid
     h = uuid.uuid4().hex + uuid.uuid4().hex
     deal.update(payType='По реквизитам', rubReceivingAccount={'mode': 'flowsole'},
                 rubIsNet=True, amountRub=40000, amountUsdt=declared_amount,

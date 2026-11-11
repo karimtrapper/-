@@ -39,7 +39,9 @@ def dm(monkeypatch):
     db.execute(text('UPDATE stand_tg_offset SET next_offset=0 WHERE id=1'))
     db.query(appmod.AdminUser).filter(appmod.AdminUser.username.like('dm_test_%')).delete(synchronize_session=False)
     original_board = appmod._stand_row(db)
-    original_data, original_version = original_board.data, original_board.version
+    original_data, original_version, original_notified = (
+        original_board.data, original_board.version, original_board.notified)
+    original_board.notified = '[]'
     db.commit()
     users = {}
     for name, role, tg in [('karim', 'admin', 101), ('manager', 'manager', 102),
@@ -56,7 +58,8 @@ def dm(monkeypatch):
     def board(notes):
         db = appmod.SessionLocal()
         row = appmod._stand_row(db)
-        row.data = json.dumps({'notes': notes, 'deals': [{'id': 7, 'code': 'T7', 'client': 'Иван'}]})
+        row.data = json.dumps({'notes': notes, 'deals': [{'id': 7, 'code': 'T7',
+            'client': 'Иван', 'managerUserId': ids['manager']}]})
         db.commit(); db.close()
 
     yield calls, ids, board
@@ -65,7 +68,7 @@ def dm(monkeypatch):
     db.execute(text('DELETE FROM stand_tg_bind'))
     db.query(appmod.AdminUser).filter(appmod.AdminUser.id.in_(ids.values())).delete(synchronize_session=False)
     row = appmod._stand_row(db)
-    row.data, row.version = original_data, original_version
+    row.data, row.version, row.notified = original_data, original_version, original_notified
     db.commit(); db.close()
 
 

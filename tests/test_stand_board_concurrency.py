@@ -50,6 +50,7 @@ def board_server(monkeypatch):
     serializer = m.app.session_interface.get_signing_serializer(m.app)
     env = dict(os.environ, BOARD_RACE_URL=f'http://127.0.0.1:{port}',
                BOARD_RACE_COOKIES=json.dumps(['session='+serializer.dumps({'user_id': uid}) for uid in users]),
+               BOARD_RACE_MANAGER_ID=str(users[0]),
                BOARD_RACE_ADMIN_COOKIE='session='+serializer.dumps({'user_id': admin_id}))
     yield env
     server.shutdown()
@@ -81,7 +82,8 @@ def test_stale_or_incomplete_board_cannot_delete_persisted_deal(board_server):
     saved = requests.put(base, headers=admin, timeout=5, json={
         'version': initial['version'], 'data': {'deals': [{
             'id': 1472, 'client': 'Synthetic persisted', 'type': 'Обмен валюты',
-            'step': 's5', 'amountRub': 100000, 'unverified_confirmed': True}], 'notes': []}})
+            'step': 's5', 'amountRub': 100000, 'unverified_confirmed': True,
+            'managerUserId': int(board_server['BOARD_RACE_MANAGER_ID'])}], 'notes': []}})
     assert saved.status_code == 200, saved.json()
     stale = requests.put(base, headers=operator, timeout=5,
                          json={'version': initial['version'], 'data': initial['data']})
@@ -98,6 +100,7 @@ def test_late_operator_quote_survives_manager_agreement(board_server):
     manager, operator = [{'Cookie': c} for c in json.loads(board_server['BOARD_RACE_COOKIES'])]
     initial = requests.get(base + '/api/stand/state', headers=manager, timeout=5).json()
     board = {'deals': [{'id': 1484, 'code': 'QA-1484', 'client': 'Иван',
+        'managerUserId': int(board_server['BOARD_RACE_MANAGER_ID']),
         'type': 'Оплата недвижимости', 'kind': 'Фрихолд', 'payType': 'По реквизитам',
         'step': 's6', 'selfRate': True, 'rates': {'client': '90', 'rubUsdt': '85'}, 'quotes': [], 'log': [],
         'invoiceUsd': 1000}], 'notes': [], 'cps': [{'id': 'tradex',
@@ -146,6 +149,7 @@ def test_s23_requisites_reopen_stops_ipps_instruction(board_server):
         payto = {'dev': 'QA Developer', 'bank': 'QA Bank', 'acc': '123456789',
                  'swift': 'QATESTXX', 'purpose': 'Invoice 1484'}
         row.data = json.dumps({'deals': [{'id': 1484, 'code': 'QA-1484',
+            'managerUserId': int(board_server['BOARD_RACE_MANAGER_ID']),
             'type': 'Оплата недвижимости', 'kind': 'Фрихолд', 'step': 's23',
             'postConv': 'ipps_swift', 'payTo': payto, 'reqTask': 'done',
             'payToConfirm': {'payTo': payto, 'at': 1},

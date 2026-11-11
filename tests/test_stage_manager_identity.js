@@ -50,7 +50,7 @@ vm.runInContext('crmDraftLoadLists(active)', ctx).then(() => {
   assert.ok(fetched.some(x => x.url === 'http://localhost:9001/api/managers?include_staff=1'),
     'manager query reached real safe-fetch path');
   assert.ok(fetched.every(x => x.options.credentials === 'same-origin'));
-  assert.equal(manager.value, 'user:22', 'unique upload account resolves renamed legacy deal');
+  assert.equal(manager.value, '', 'upload author cannot assign legacy manager');
   assert.equal(options.length, 3, 'only two active account choices and placeholder');
   assert.equal(options[1].text, 'Общее имя · @first');
   assert.equal(options[2].text, 'Общее имя · @second');

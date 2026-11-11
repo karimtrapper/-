@@ -238,6 +238,19 @@ def deliver():
             state = json.loads(row.data or '{}')
             deals = {str(d.get('id')): d for d in state.get('deals') or []}
             notes = list(state.get('notes') or [])
+            # Закрытия хранятся и в серверной очереди: список заметок доски
+            # ограничен 40 элементами и может вытеснить неотправленную карточку.
+            try:
+                close_outbox = json.loads(row.notified or '[]')
+            except (TypeError, ValueError):
+                close_outbox = []
+            close_outbox_ids = {str(note.get('id')) for note in close_outbox
+                                if isinstance(note, dict) and note.get('id')} if isinstance(close_outbox, list) else set()
+            present = {str(note.get('id')) for note in notes if isinstance(note, dict)}
+            for note in close_outbox if isinstance(close_outbox, list) else []:
+                if isinstance(note, dict) and note.get('id') and str(note['id']) not in present:
+                    notes.append(note)
+                    present.add(str(note['id']))
             # Уже открытые до исправления свободные задачи получают один
             # адресный цикл по текущему кошельку, без повторного проигрывания истории.
             queued = {str(n.get('dealId')) for n in notes if n.get('recipientRoles')}
@@ -339,13 +352,33 @@ def deliver():
                     is_exact_assignee = (not suppress_only and not fallback_to_role
                                          and assignee_id is not None and user.id == assignee_id)
                     row_key = f'{note_id}::assignee:{assignee_id}' if is_exact_assignee else note_id
-                    existing = db.execute(text('SELECT status, attempts FROM stand_notify_log '
+                    existing = db.execute(text('SELECT status, attempts, at FROM stand_notify_log '
                                                'WHERE note_id=:note_id AND admin_id=:admin_id'),
                                           {'note_id': row_key, 'admin_id': user.id}).first()
-                    if existing and (existing[0] != 'failed' or existing[1] >= _MAX_ATTEMPTS):
+                    retry_due = True
+                    if existing and existing[0] == 'failed' and note_id in close_outbox_ids \
+                            and existing[1] >= _MAX_ATTEMPTS:
+                        last_at = existing[2]
+                        if isinstance(last_at, str):
+                            try:
+                                last_at = datetime.fromisoformat(last_at)
+                            except ValueError:
+                                last_at = None
+                        delay = min(3600, 300 * 2 ** min(existing[1] - _MAX_ATTEMPTS, 4))
+                        retry_due = not isinstance(last_at, datetime) or datetime.utcnow() >= last_at + timedelta(seconds=delay)
+                    if existing and (existing[0] != 'failed' or
+                                     (existing[1] >= _MAX_ATTEMPTS and
+                                      (note_id not in close_outbox_ids or not retry_due))):
                         delivery_results.append({'note_id': note_id,
                                                  'role': user.role or 'admin',
                                                  'status': existing[0]})
+                        continue
+                    # Отсутствие готового профиля временно: адресная карточка
+                    # закрытия остаётся в очереди до следующего фонового цикла.
+                    if note_id in close_outbox_ids and (not profile_ready or not channel):
+                        delivery_results.append({'note_id': note_id,
+                                                 'role': user.role or 'admin',
+                                                 'status': 'failed'})
                         continue
                     chat_id = user.telegram_user_id
                     if queue_roles is not None:
@@ -373,9 +406,10 @@ def deliver():
                             else:
                                 result = stand_egress.tg_call('sendMessage', payload)
                             status = 'sent' if isinstance(result, dict) and result.get('ok') else 'failed'
-                        except Exception:
+                        except Exception as exc:
                             status = 'failed'
-                            _app.app.logger.exception('stand notification failed')
+                            _app.app.logger.warning('stand notification failed error_type=%s',
+                                                    type(exc).__name__)
                     db.execute(text('INSERT INTO stand_notify_log (note_id, admin_id, status, attempts, at) '
                                     'VALUES (:note_id, :admin_id, :status, :attempts, :at) '
                                     'ON CONFLICT (note_id, admin_id) DO UPDATE SET '

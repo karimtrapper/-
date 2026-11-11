@@ -15,6 +15,7 @@ const deal = {id: 9500, code: 'SYN-9500', client: 'Клиент', type: 'Опл�
   kind: 'Фрихолд', source: 'tg', step: 's14', docs: {}, rates: {}, pay: {}, log: [entry]};
 const ctx = {
   Date, Number, String, Math, S: {view: 'deal', role: 'operator'},
+  standClosing: null, crmClosePanel: () => '',
   STEPS: {s14: {title: 'Ждём приход', n: 14, who: 'operator'}},
   ROLES: {manager: {n: 'Менеджер', t: 'менеджер'}, operator: {n: 'Операционист', t: 'операционист'}},
   SOURCES: {tg: 'Telegram'},

@@ -86,7 +86,7 @@ def test_verified_facts_close_with_one_snapshot_and_idempotent_retry(monkeypatch
     assert confirmation['actor_id'] == uid
     assert confirmation['confirmed_at']
     snapshot = confirmation['snapshot']
-    assert snapshot['crm'] == crm
+    assert snapshot['crm'] == {**crm, 'manager_user_id': uid}
     assert snapshot['deal']['payinHashes'][0]['hash'] == 'a' * 64
     assert snapshot['deal']['transfer']['sends'][0]['amount'] == 90
     assert hashlib.sha256(json.dumps(snapshot, ensure_ascii=False, sort_keys=True,

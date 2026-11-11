@@ -101,7 +101,17 @@ def _setup(board_factory=_early_board, role='manager'):
         if row is None:
             row = m.StandState(id=1)
             db.add(row)
-        row.data = json.dumps(board_factory())
+        manager_id = uid
+        if role != 'manager':
+            manager = m.AdminUser(username='t3-manager-' + secrets.token_hex(6),
+                                  role='manager', password_hash='unused')
+            db.add(manager)
+            db.flush()
+            manager_id = manager.id
+        board = board_factory()
+        for deal in board['deals']:
+            deal['managerUserId'] = manager_id
+        row.data = json.dumps(board)
         row.version = 1
         row.generation = secrets.token_hex(16)
         db.commit()
@@ -147,7 +157,7 @@ def test_override_rejects_missing_verified_hash(monkeypatch):
     override = _override(payin={'method': 'Крипта', 'amountUsdt': 100})
     response = _post(_client(uid), override=override)
     assert response.status_code == 400
-    assert response.json == {'success': False, 'error': 'payin_hash_required'}
+    assert response.json['success'] is False and response.json['error'] == 'payin_hash_required'
     assert _counts() == baseline
     state = _client(uid).get('/api/stand/state').json
     assert state['data']['deals'][0]['closed'] is False
@@ -162,7 +172,7 @@ def test_override_empty_dict_still_goes_through_override_branch(monkeypatch):
     uid = _setup()
     response = _post(_client(uid), override={})
     assert response.status_code == 400
-    assert response.json == {'success': False, 'error': 'manual_override_reason_required'}
+    assert response.json['success'] is False and response.json['error'] == 'manual_override_reason_required'
 
 
 def test_override_closes_deal_from_early_step_as_manager(monkeypatch):
@@ -279,6 +289,7 @@ def _manual_origin_client(monkeypatch, payin_hashes):
         uid = user.id
         deal = {
             'id': 1490, 'code': 'СД-1490', 'client': 'Synthetic Manual',
+            'managerUserId': uid,
             'type': 'Обмен валюты', 'step': 'manual', 'closed': False, 'crmDealId': None,
             'sentToClient': False, 'pay': {}, 'amountUsdt': 100, 'payout': {'usdt': 90},
             'payType': 'Крипта', 'payinHashes': payin_hashes,

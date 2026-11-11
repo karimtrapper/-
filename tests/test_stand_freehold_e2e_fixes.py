@@ -160,13 +160,31 @@ def chain(monkeypatch):
     return rows
 
 
+def _fixture_manager_id():
+    db = m.get_session()
+    try:
+        manager = db.query(m.AdminUser).filter_by(username='freehold_e2e_manager').first()
+        if manager is None:
+            manager = m.AdminUser(username='freehold_e2e_manager', role='manager',
+                                  password_hash='synthetic')
+            db.add(manager)
+            db.flush()
+        manager_id = manager.id
+        db.commit()
+    finally:
+        db.close()
+    return manager_id
+
+
 def initial_board(api, invoice=10000, rub=900000):
     from tests.test_stand_prepay import board
+    manager_id = _fixture_manager_id()
     state = board('s18')
     d = state['deals'][0]
     d.update(step='s14', payout=None, demoTransfers=False, invoiceUsd=invoice,
              incomeAmount=None, payinParts=[], amountRub=rub, rubReceivingAccount={'mode': 'sber'},
-             source='none', originMode='workflow', originStep='s4', postConv=None)
+             source='none', originMode='workflow', originStep='s4', postConv=None,
+             managerUserId=manager_id)
     d['payTo']['amount'] = invoice
     state['incomes'][0].update(dealId=None, rub=rub)
     seed(state)
@@ -406,6 +424,7 @@ def test_live_1484_snapshot_s23_to_close_via_api_only(api, chain, monkeypatch):
     assert d['prepay']['source'] == 'founder' and d['prepay']['wallet']['multisig'] is False
     assert d['transfer']['amount'] == 5507.16 and d['invoiceUsd'] == 5413.85
     assert d['payout'] is None and not d.get('payToConfirm')
+    d['managerUserId'] = _fixture_manager_id()
     seed(state)
     db = m.get_session()
     try:

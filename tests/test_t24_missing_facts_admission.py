@@ -102,6 +102,7 @@ def test_cash_payin_without_network_hash_never_closes_by_operator_signature(
         with requests.Session() as t:
             deal_id = 8100 + int(claimed_usdt) % 97
             deal = {'id': deal_id, 'code': f'СД-{deal_id}', 'client': 'T24 MF probe',
+                    'managerUserId': mgr_id,
                     'type': 'Обмен валюты', 'step': 's5', 'closed': False,
                     'crmDealId': None, 'sentToClient': False, 'payType': 'Наличные',
                     'unverified_confirmed': True,

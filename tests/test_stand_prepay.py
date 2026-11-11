@@ -2,6 +2,7 @@
 
 import copy
 import json
+import secrets
 
 import pytest
 
@@ -59,6 +60,11 @@ def api(monkeypatch):
         if not user:
             user = m.AdminUser(username='prepay_test', role='admin', password_hash='synthetic')
             db.add(user)
+        manager = db.query(m.AdminUser).filter_by(username='prepay_test_manager').first()
+        if not manager:
+            manager = m.AdminUser(username='prepay_test_manager', role='manager',
+                                  display_name='Synthetic Prepay Manager', password_hash='synthetic')
+            db.add(manager)
         db.flush()
         uid = user.id
         for address, owner, multi in ((COMPANY, 'компания', True), (FOUNDER, 'Андрей', False), (TEODOR, 'Теодор', False)):
@@ -79,6 +85,9 @@ def api(monkeypatch):
 def seed(state):
     db = m.get_session()
     try:
+        manager = db.query(m.AdminUser).filter_by(username='prepay_test_manager').one()
+        for deal in state.get('deals', []):
+            deal['managerUserId'] = manager.id
         row = m._stand_row(db)
         row.data, row.version = json.dumps(state), 1
         db.commit()
@@ -157,6 +166,10 @@ def test_broker_draft_of_unbatched_parallel_deals_is_independent(api):
 def manual_handoff(sent=899000):
     previous = board('s18')
     state = copy.deepcopy(previous)
+    with m.get_session() as db:
+        manager = db.query(m.AdminUser).filter_by(username='prepay_test_manager').one()
+        previous['deals'][0]['managerUserId'] = manager.id
+        state['deals'][0]['managerUserId'] = manager.id
     d = state['deals'][0]
     d.update(step='s18w', cnvId=1, brokerSentOverride=sent)
     state['convs'] = [{'id': 1, 'walletId': 'company', 'broker': 'Брокер',
@@ -738,18 +751,18 @@ def test_second_signature_and_payto_confirmation_are_not_bypassed(api):
     assert 'подтверждения реквизитов' in m._stand_guard_transition(saved['data'], forged, 'operator')
 
 
-def receive(api, saved, amount=11000):
+def receive(api, saved, amount=11000, tx_hash='b' * 64):
     # Синтетическое подтверждение сети; переход и распределение проходят реальный PUT.
     state = saved['data']
-    state['convs'][0]['txs'] = [{'hash': 'b' * 64, 'status': 'confirmed', 'amount': amount, 'net': 'TRC-20'}]
+    state['convs'][0]['txs'] = [{'hash': tx_hash, 'status': 'confirmed', 'amount': amount, 'net': 'TRC-20'}]
     seed(state)
     saved['version'] = 1
     d = state['deals'][0]
     d['prepay']['brokerStep'] = 'done'
     state['convs'][0]['sources'][0]['usdtFact'] = amount
     state['convs'][0]['status'] = 'received'
-    d['pay'].update(usdt=amount, hash='b' * 64)
-    d['payinHashes'] = [{'hash': 'b' * 64, 'amount': amount, 'network': 'TRC-20'}]
+    d['pay'].update(usdt=amount, hash=tx_hash)
+    d['payinHashes'] = [{'hash': tx_hash, 'amount': amount, 'network': 'TRC-20'}]
     return put(api, saved, 'operator')
 
 
@@ -879,7 +892,7 @@ def test_prepayment_does_not_wait_for_another_deal_in_broker_batch(api):
 @pytest.mark.parametrize('source', ['founder', 'company'])
 @pytest.mark.parametrize('received_usdt', [10000, 11000], ids=['partial_loss', 'full_profit'])
 def test_actual_crm_close_requires_all_results_and_preserves_profit(api, source, received_usdt):
-    saved = receive(api, payout(api, source), received_usdt)
+    saved = receive(api, payout(api, source), received_usdt, secrets.token_hex(32))
     if source == 'founder':
         api[1][0] = 'findir'
         saved = api[0].post('/api/stand/prepay/reimburse', json={
@@ -890,6 +903,8 @@ def test_actual_crm_close_requires_all_results_and_preserves_profit(api, source,
     assert d['payout']['usdt'] == 10130
     assert d['payout']['reimbursement']['usdt'] == 10130
     assert d['pay']['usdt'] == received_usdt
+    # Транспорт сети подменён; закрытие проверяет реальный реестр долей прихода.
+    d['demoTransfers'] = False
     d.update(step='s27', sentToClient=True)
     d['pay']['invoicePaid'] = True
     d['files'] = {'receipt': [{'file': 'receipt.pdf', 'mime': 'application/pdf',
@@ -916,7 +931,8 @@ def test_actual_crm_close_requires_all_results_and_preserves_profit(api, source,
            'invoice_amount_usd': 10000, 'transfer_fee_percent': .8,
            'transfer_fee_fixed_usd': 50, 'transfer_sent_usd': 10130,
            'realty_purpose': 'Invoice',
-           'payin_tx_hashes': [{'hash': 'b' * 64, 'network': 'trc20', 'amount_usdt': received_usdt}],
+           'payin_tx_hashes': [{'hash': d['payinHashes'][0]['hash'], 'network': 'trc20',
+                                'amount_usdt': received_usdt}],
            'payout_tx_hashes': [{'hash': 'demo:1484:out', 'network': 'trc20', 'amount_usdt': 10130}]}
     api[1][0] = 'manager'
     for missing in ('receipt', 'invoice', 'sent', 'refund'):

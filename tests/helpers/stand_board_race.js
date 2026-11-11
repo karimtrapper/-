@@ -28,6 +28,7 @@ function tab(role,cookie){
  return ctx;
 }
 const newDeal=()=>({id:1472,code:'СД-1472',client:'Concurrency synthetic',type:'Обмен валюты',
+ managerUserId:Number(process.env.BOARD_RACE_MANAGER_ID),
  payType:'По реквизитам',amountRub:100000,step:'s5',closed:false,log:[],quotes:[{dir:'rub',cpId:'broker',name:'Broker',rate:85}],
  unverified_confirmed:true});
 (async()=>{

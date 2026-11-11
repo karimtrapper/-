@@ -88,11 +88,14 @@ def _setup(monkeypatch):
         if row is None:
             row = m.StandState(id=1)
             db.add(row)
-        row.data = json.dumps(_board())
+        board = _board()
+        board['deals'][0]['managerUserId'] = uid
+        row.data = json.dumps(board)
+        row.notified = '[]'
         row.version = 1
         row.generation = secrets.token_hex(16)
         db.commit()
-        _seed_evidence(db, row, board=_board(), actor_id=uid)
+        _seed_evidence(db, row, board=board, actor_id=uid)
         return uid
     finally:
         db.close()
@@ -210,6 +213,7 @@ def test_manager_manual_close_rental_cash_bypasses_new_flow_gate(monkeypatch):
     ensure_payin_wallet()  # получатель прихода — наш кошелёк из реестра
     board = {'deals': [{
         'id': 1474, 'code': 'СД-1474', 'client': 'Synthetic rental',
+        'managerUserId': uid,
         'type': 'Оплата недвижимости', 'kind': 'Аренда', 'step': 's14',
         'payType': 'Наличные', 'amountRub': 1217600, 'amountThb': 455000,
         'rates': {'client': '2,676', 'usdtThb': '33.42'},
@@ -376,12 +380,15 @@ def test_board_reset_rotates_origin_generation(monkeypatch):
     assert admin_client.post('/api/stand/reset').status_code == 200
     db = m.get_session()
     try:
-        assert db.query(m.StandState).filter_by(id=1).one().generation != prior_generation
+        reset_row = db.query(m.StandState).filter_by(id=1).one()
+        assert reset_row.generation != prior_generation
+        assert reset_row.notified == '[]'
     finally:
         db.close()
     state = admin_client.get('/api/stand/state').json
     fresh = _board()
-    fresh['deals'][0].update(step='s5', sentToClient=False, unverified_confirmed=True)
+    fresh['deals'][0].update(step='s5', sentToClient=False, unverified_confirmed=True,
+                             managerUserId=uid)
     put = admin_client.put('/api/stand/state',
                            json={'version': state['version'], 'data': fresh})
     assert put.status_code == 200, put.json
@@ -1063,6 +1070,7 @@ def _manual_draft(monkeypatch, kind='exchange'):
     deal = copy.deepcopy(_board()['deals'][0])
     deal.update(manual=True, manualNew=False, step='manual', sentToClient=False,
                 files={}, isTask=False, unverified_confirmed=True,
+                managerUserId=uid,
                 docLinks={'invoice': 'https://docs.invalid/invoice',
                           'contract': 'https://docs.invalid/contract',
                           'payment': 'https://docs.invalid/payment'})
@@ -1178,7 +1186,8 @@ def test_workflow_entry_cannot_skip_to_s27_then_close(monkeypatch):
     finally:
         db.close()
     deal = copy.deepcopy(_board()['deals'][0])
-    deal.update(step='s5', sentToClient=False, unverified_confirmed=True)
+    deal.update(step='s5', sentToClient=False, unverified_confirmed=True,
+                managerUserId=uid)
     initial = _client(admin_id).put('/api/stand/state', json={'version': 1,
                          'data': {'deals': [deal], 'notes': []}})
     assert initial.status_code == 200, initial.json
@@ -1230,7 +1239,7 @@ def test_staged_http_workflow_cannot_fabricate_completion(monkeypatch, property_
     admin_headers = {'Cookie': 'session=' + admin_cookie}
     deal = copy.deepcopy(_board()['deals'][0])
     deal.update(step='s8' if property_deal else 's5', sentToClient=False,
-                unverified_confirmed=True)
+                unverified_confirmed=True, managerUserId=uid)
     if property_deal:
         deal.update(type='Оплата недвижимости', kind='Фрихолд',
                     postConv=route, payType='Крипта', invoiceUsd=100,
@@ -2128,11 +2137,13 @@ def test_two_real_http_connections_and_lost_response_retry(monkeypatch):
         db = m.get_session()
         try:
             row = db.query(m.StandState).filter_by(id=1).one()
-            row.data = json.dumps(_board())
+            renewed = _board()
+            renewed['deals'][0]['managerUserId'] = uid
+            row.data = json.dumps(renewed)
             row.generation = secrets.token_hex(16)
             row.version = 1
             db.commit()
-            _seed_evidence(db, row, _board(), uid)
+            _seed_evidence(db, row, renewed, uid)
         finally:
             db.close()
         body['crm'] = _crm()  # новая доска получила свой сетевой приход: хеш в CRM обновляем

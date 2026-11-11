@@ -29,6 +29,7 @@ def board(monkeypatch):
     def install(step, extra=None, state_extra=None):
         state = {'deals': [{'id': 1474, 'code': 'SYNTH-T29', 'client': 'Synthetic',
                             'type': 'Обмен валюты', 'step': step, 'log': [],
+                            'managerUserId': users['manager'],
                             **(extra or {})}],
                  'convs': [], 'wallets': [], 'incomes': [], 'notes': []}
         state.update(state_extra or {})

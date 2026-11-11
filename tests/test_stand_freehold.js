@@ -29,6 +29,8 @@ function consts(names) {
 }
 function run(fnNames, constNames, context) {
   context.SIGN={rub:'₽',thb:'฿',usdt:'USDT'};
+  if (context.STAND === undefined) context.STAND = false;
+  if (context.standMe === undefined) context.standMe = 'manager';
   vm.createContext(context);
   vm.runInContext(consts(constNames) + '\n' + functions(['payCur','exchangeSpec','amountField','exchangeSync','quoteDirs','dealDisplayKind','recipientTitle',...fnNames]), context);
   return context;

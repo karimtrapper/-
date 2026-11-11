@@ -33,6 +33,7 @@ def ledger_counts():
 def legacy_board(monkeypatch, entries, **deal_patch):
     uid = _setup(monkeypatch)
     deal = {'id': 1474, 'code': 'СД-1490', 'client': 'Synthetic Manual', 'type': 'Обмен валюты',
+            'managerUserId': uid,
             'step': 'manual', 'closed': False, 'crmDealId': None, 'sentToClient': False, 'pay': {},
             'amountUsdt': AMOUNT, 'payout': {'usdt': 90}, 'files': {}, 'log': [], 'manual': True,
             'manualNew': False, 'isTask': False, 'originMode': 'manual', 'payType': 'Крипта',
