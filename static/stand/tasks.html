@@ -1035,7 +1035,7 @@ const KEY='grusha_proto_v2';
 const STAND=true;
 const STAND_SHARED=['deals','convs','seq','cseq','notes','incomes','cps','cpChats',
                     'wallets','refs','clients','bal','txpool','avg','avgU','chatClientMap'];
-let standVer=null, standPush=null, standBusy=false, standSaveScheduled=false, standLoadError=false,
+let standVer=null, standGetEtag=null, standPullPending=false, standPush=null, standBusy=false, standSaveScheduled=false, standLoadError=false,
     standClosing=false, standMe=null, standMeId=null, STAND_EMPLOYEES=[];
 let standLastSaveResult={ok:true};
 let standDemoEnabled=false;
@@ -1159,31 +1159,54 @@ function standTyping(){
   return !!a&&(a.tagName==='INPUT'||a.tagName==='TEXTAREA'||a.tagName==='SELECT');
 }
 async function standPull(force){
-  if(standBusy||standPush||standSaveScheduled||standClosing||
+  if(standPullPending||standBusy||standPush||standSaveScheduled||standClosing||
     (S.edit&&deal(S.edit)?.manualNew&&!deal(S.edit)?.managerUserId))return;
   const requestedVersion=standVer;
+  standPullPending=true;
   try{
-    const r=await fetch('/api/stand/state',{credentials:'same-origin'});
+    const r=await fetch('/api/stand/state',{credentials:'same-origin',
+      headers:!force&&standVer!==null&&standGetEtag?{'If-None-Match':standGetEtag}:{}});
     if(r.status===401){location.href='/login';return;}
+    if(r.status===304)return;
     if(r.status>=400)throw new Error('stand_state_unavailable');
     const j=await r.json(); if(!j.success)throw new Error('stand_state_unavailable');
-    STAND_DOC_AGENT_META={profiles:j.docAgentProfiles||{},accounts:j.docAgentAccounts||{}};
-    standLoadError=false;
-    standDemoEnabled=j.demoEnabled===true;
     if(standBusy||standPush||standSaveScheduled||standClosing)return;
     /* GET мог начаться до PUT, а вернуться уже после его завершения. Такой
        ответ не должен откатывать ни доску, ни базу последующего слияния. */
     if(standVer!==requestedVersion||(standVer!==null&&j.version<standVer))return;
-    if(j.role&&j.role!==S.role&&j.role!=='admin'){S.role=j.role;}
-    if(standVer===j.version&&!force)return;
+    const acceptMeta=()=>{
+      standGetEtag=r.headers.get('ETag');
+      STAND_DOC_AGENT_META={profiles:j.docAgentProfiles||{},accounts:j.docAgentAccounts||{}};
+      standLoadError=false;
+      standDemoEnabled=j.demoEnabled===true;
+      if(j.role&&j.role!==S.role&&j.role!=='admin')S.role=j.role;
+    };
+    if(standVer===j.version&&!force&&standGetEtag===r.headers.get('ETag')){
+      acceptMeta();return;
+    }
     /* клик уже начался — перерисовка заменила бы кнопку под пальцем, и нажатие
        терялось бы. Догоним на следующем тике. */
     if(!force&&(Date.now()-lastPointer<1500||brokerSentSubmitPointer))return;
     /* Пока человек печатает, чужое состояние не подставляем — иначе ввод
        затрётся на полуслове. Догоним на следующем тике. */
     if(standTyping()&&!force)return;
+    acceptMeta();
     standVer=j.version; standBase=standClone(j.data); standApply(j.data); render();
   }catch(e){if(standVer===null){standLoadError=true;render();}}
+  finally{standPullPending=false;}
+}
+async function standStateRequestPayload(){
+    const payload=JSON.stringify({version:standVer,fileStorageVersion:1,data:standSnapshot()});
+    let body=payload;
+    const headers={'Content-Type':'application/json'};
+    if(payload.length>16384&&typeof CompressionStream==='function'){
+      try{
+        body=await new Response(new Blob([payload]).stream()
+          .pipeThrough(new CompressionStream('gzip'))).blob();
+        headers['Content-Encoding']='gzip';
+      }catch(e){body=payload;}
+    }
+    return {headers,body};
 }
 async function standSave(){
   standSaveScheduled=false;
@@ -1191,9 +1214,9 @@ async function standSave(){
   standLastSaveResult={ok:false,pending:true};
   standBusy=true; standPush=false;
   try{
+    const {headers,body}=await standStateRequestPayload();
     const r=await fetch('/api/stand/state',{method:'PUT',credentials:'same-origin',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({version:standVer,fileStorageVersion:1,data:standSnapshot()})});
+      headers,body});
     if(r.status===409){
       const j=await r.json();
       if(j.error&&j.error!=='conflict'){
@@ -11545,9 +11568,9 @@ function payinDrop(id,i){
 async function standPayinCommit(message){
   standBusy=true;
   try{
+    const {headers,body}=await standStateRequestPayload();
     const r=await fetch('/api/stand/state',{method:'PUT',credentials:'same-origin',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({version:standVer,fileStorageVersion:1,data:standSnapshot()})});
+      headers,body});
     const j=await r.json();
     if(j.data){standVer=j.version;standBase=standClone(j.data);standApply(j.data);render();}
     if(!r.ok||!j.success){toast((j.error==='conflict'?'Доску изменил коллега — ':'')+

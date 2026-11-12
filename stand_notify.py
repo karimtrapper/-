@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 from html import escape
 from urllib.parse import quote
 
-from sqlalchemy import text
+from sqlalchemy import bindparam, text
 
 import stand_egress
 
@@ -283,6 +283,26 @@ def deliver():
                 except (TypeError, ValueError, KeyError, AttributeError):
                     continue
             users = db.query(_app.AdminUser).all()
+            # One indexed read for this delivery cycle. The advisory lock above
+            # serializes workers, and each changed slot is kept in the map after
+            # its own commit so a later note in this cycle sees the new status.
+            note_ids = {str(note.get('id')) for note in notes if note.get('id')}
+            lookup_ids = set(note_ids)
+            lookup_ids.update(f'{note_id}::assignee:{user.id}'
+                              for note_id in note_ids for user in users)
+            if lookup_ids:
+                lookup = (text('SELECT note_id, admin_id, status, attempts, at '
+                               'FROM stand_notify_log WHERE note_id = ANY(:note_ids)')
+                          if db.bind.dialect.name == 'postgresql' else
+                          text('SELECT note_id, admin_id, status, attempts, at '
+                               'FROM stand_notify_log WHERE note_id IN :note_ids')
+                          .bindparams(bindparam('note_ids', expanding=True)))
+                status_by_slot = {
+                    (item.note_id, item.admin_id): (item.status, item.attempts, item.at)
+                    for item in db.execute(lookup, {'note_ids': list(lookup_ids)})
+                }
+            else:
+                status_by_slot = {}
             profile = notify_profile()
             channel = {'lk_send_only': 'telegram_lk', 'stand_bot': 'telegram'}.get(profile)
             # lk_send_only не переключается на бота стенда сам ни при каком сбое
@@ -352,9 +372,7 @@ def deliver():
                     is_exact_assignee = (not suppress_only and not fallback_to_role
                                          and assignee_id is not None and user.id == assignee_id)
                     row_key = f'{note_id}::assignee:{assignee_id}' if is_exact_assignee else note_id
-                    existing = db.execute(text('SELECT status, attempts, at FROM stand_notify_log '
-                                               'WHERE note_id=:note_id AND admin_id=:admin_id'),
-                                          {'note_id': row_key, 'admin_id': user.id}).first()
+                    existing = status_by_slot.get((row_key, user.id))
                     retry_due = True
                     if existing and existing[0] == 'failed' and note_id in close_outbox_ids \
                             and existing[1] >= _MAX_ATTEMPTS:
@@ -410,13 +428,15 @@ def deliver():
                             status = 'failed'
                             _app.app.logger.warning('stand notification failed error_type=%s',
                                                     type(exc).__name__)
+                    recorded_at = datetime.utcnow()
                     db.execute(text('INSERT INTO stand_notify_log (note_id, admin_id, status, attempts, at) '
                                     'VALUES (:note_id, :admin_id, :status, :attempts, :at) '
                                     'ON CONFLICT (note_id, admin_id) DO UPDATE SET '
                                     'status=EXCLUDED.status, attempts=EXCLUDED.attempts, at=EXCLUDED.at'),
                                {'note_id': row_key, 'admin_id': user.id, 'status': status,
-                                'attempts': attempts, 'at': datetime.utcnow()})
+                                'attempts': attempts, 'at': recorded_at})
                     db.commit()
+                    status_by_slot[(row_key, user.id)] = (status, attempts, recorded_at)
                     delivery_results.append({'note_id': note_id,
                                              'role': user.role or 'admin',
                                              'status': status})

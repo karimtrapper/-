@@ -12,19 +12,19 @@ function source(name,async=false){const m=html.match(new RegExp('^'+(async?'asyn
 function barrier(){let resolve;const promise=new Promise(r=>resolve=r);return {promise,resolve};}
 function tab(role,cookie){
  const ctx={S:{role,deals:[],notes:[],seq:1471},STAND_SHARED:['deals','notes','seq'],
-  standBusy:false,standPush:false,standSaveScheduled:false,standClosing:false,standLastSaveResult:{ok:true},
+  standBusy:false,standPullPending:false,standGetEtag:null,standPush:false,standSaveScheduled:false,standClosing:false,standLastSaveResult:{ok:true},
   standVer:null,standBase:null,lastPointer:0,brokerSentSubmitPointer:false,location:{},Date,setTimeout,clearTimeout,
   load:()=>({deals:[],notes:[],seq:1471}),migrate:s=>s,standTyping:()=>false,render:()=>{},
   toast:message=>trace(role+':toast',{message}),hold:null,
   fetch:async(url,options={})=>{
    const response=await fetch(base+url,{...options,headers:{...options.headers,Cookie:cookie}});
-   const data=await response.json();
+   const data=response.status===304?{}:await response.json();
    trace(role+':'+(options.method||'GET'),{status:response.status,version:data.version,ids:(data.data?.deals||[]).map(d=>d.id),error:data.error});
    if(ctx.hold&&(!options.method||options.method==='GET')){ctx.hold.ready.resolve();await ctx.hold.release.promise;}
-   return {status:response.status,json:async()=>data};
+   return {status:response.status,headers:response.headers,json:async()=>data};
   }};
  vm.createContext(ctx);
- vm.runInContext(['standClone','jeq','standMerge','standSnapshot','standApply'].map(n=>source(n)).concat(['standPull','standSave','standWaitSaved'].map(n=>source(n,true))).join('\n'),ctx);
+ vm.runInContext(['standClone','jeq','standMerge','standSnapshot','standApply'].map(n=>source(n)).concat(['standPull','standStateRequestPayload','standSave','standWaitSaved'].map(n=>source(n,true))).join('\n'),ctx);
  return ctx;
 }
 const newDeal=()=>({id:1472,code:'СД-1472',client:'Concurrency synthetic',type:'Обмен валюты',

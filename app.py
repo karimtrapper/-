@@ -3,7 +3,7 @@ Unified Service: Calculator + CRM
 Объединённый сервис калькулятора и CRM для Railway
 """
 
-from flask import Flask, jsonify, request, send_from_directory, send_file, redirect, session as flask_session, g
+from flask import Flask, jsonify, make_response, request, send_from_directory, send_file, redirect, session as flask_session, g
 from flask_cors import CORS
 from datetime import datetime, timedelta, date
 import os
@@ -5869,6 +5869,7 @@ def stand_state_get():
     from stand_funding import ACCOUNT_ALIASES
     db = get_session()
     payto_note_added = False
+    unchanged = False
     try:
         # Миграция под тем же замком, что и PUT: параллельное сохранение не
         # должно вернуть снятый флаг или затереть чужие изменения.
@@ -5890,7 +5891,6 @@ def stand_state_get():
                               'Система: исправление тестового режима')
             row.updated_at = datetime.utcnow()
         response = {'success': True, 'version': row.version or 0,
-                    'data': _stand_strip_files(state),
                     'docAgentProfiles': {key: {'name': agent.name, 'reg': agent.reg_no,
                                                'director': agent.director, 'shortName': agent.short_name,
                                                'regLabel': agent.reg_ru}
@@ -5899,13 +5899,28 @@ def stand_state_get():
                                          for account, identity in ACCOUNT_ALIASES.items()},
                     'demoEnabled': stand_demo.enabled(), 'demoWarnings': warnings,
                     'updated_by': row.updated_by, 'role': current_role()}
+        # The state may repair itself on GET, so compute the validator only
+        # after reconciliation. Include the reset generation, role and all
+        # response metadata: a version alone is not a safe cache validator.
+        validator = hashlib.sha256(json.dumps({
+            'generation': row.generation, 'version': row.version or 0,
+            'data': row.data if not repaired else json.dumps(state, ensure_ascii=False),
+            'metadata': response,
+        }, sort_keys=True, ensure_ascii=False, default=str).encode()).hexdigest()
+        unchanged = not repaired and request.if_none_match.contains(validator)
+        if not unchanged:
+            response['data'] = _stand_strip_files(state)
         if repaired:
             db.commit()
     finally:
         db.close()
     if payto_note_added:
         _stand_deliver_notes()
-    return jsonify(response)
+    result = make_response('', 304) if unchanged else jsonify(response)
+    result.set_etag(validator)
+    result.headers['Cache-Control'] = 'private, no-cache'
+    result.vary.add('Accept-Encoding')
+    return result
 
 
 @app.route('/api/stand/nav-count')
@@ -7892,7 +7907,26 @@ def stand_state_put():
     """
     if not STAND_MODE:
         return jsonify({'success': False, 'error': 'stand_only'}), 404
-    payload = request.get_json(silent=True) or {}
+    encoding = request.headers.get('Content-Encoding', 'identity').strip().lower()
+    if encoding == 'gzip':
+        import gzip
+        import zlib
+        from io import BytesIO
+        limit = app.config.get('MAX_CONTENT_LENGTH') or 30 * 1024 * 1024
+        try:
+            with gzip.GzipFile(fileobj=BytesIO(request.get_data(cache=False))) as source:
+                decoded = source.read(limit + 1)
+            if len(decoded) > limit:
+                return jsonify(success=False, error='state_too_large'), 413
+            payload = json.loads(decoded)
+        except (OSError, EOFError, UnicodeError, ValueError, zlib.error):
+            return jsonify(success=False, error='invalid_compressed_json'), 400
+    elif encoding in ('identity', ''):
+        payload = request.get_json(silent=True) or {}
+    else:
+        return jsonify(success=False, error='unsupported_content_encoding'), 400
+    if not isinstance(payload, dict):
+        return jsonify(success=False, error='invalid_json'), 400
     if 'data' not in payload:
         return jsonify({'success': False, 'error': 'no_data'}), 400
     if not isinstance(payload['data'], dict) or 'notified' in payload['data']:
