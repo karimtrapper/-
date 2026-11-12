@@ -15443,36 +15443,6 @@ def stand_incoming_check():
         db.close()
 
 
-PROD_CRM_URL = 'https://grusha.up.railway.app'
-
-
-def _stand_prod_agents():
-    """Агенты (рефереры) из прод-CRM по ключу только на чтение.
-
-    На стенде своих агентов нет — пустой справочник не даёт пройти сделку с
-    партнёром (Карим, 25.09). Токены кабинетов из прода не копируем."""
-    key = os.environ.get('STAND_PROD_RO_KEY', '')
-    if not key:
-        raise RuntimeError('На стенде не задан STAND_PROD_RO_KEY')
-    resp = requests.get(f'{PROD_CRM_URL}/api/referrers', headers={'X-Api-Key': key}, timeout=15)
-    if resp.status_code != 200:
-        raise RuntimeError(f'Прод-CRM ответила {resp.status_code}')
-    out = []
-    for r in (resp.json() or {}).get('referrers') or []:
-        name = (r.get('name') or '').strip()
-        if not name or name.upper().startswith('TEST'):
-            continue
-        comp = r.get('comp_model') or 'revshare'
-        out.append({'prodId': r.get('id'), 'name': name, 'code': r.get('code') or '',
-                    'lang': r.get('lang') or 'ru', 'comp': comp,
-                    'percent': float((r.get('markup_percent') if comp == 'markup' else r.get('default_percent')) or 0),
-                    'markupPercent': float(r.get('markup_percent') or 0),
-                    'revsharePercent': float(r.get('default_percent') or 0),
-                    'cur': r.get('payout_currency') or 'USDT', 'tg': r.get('telegram') or '',
-                    'active': bool(r.get('active', True))})
-    return out
-
-
 @app.route('/api/stand/prod-agents', methods=['POST'])
 def stand_prod_agents_sync():
     """Подтянуть агентов из прода в справочник стенда и в его CRM (по коду)."""

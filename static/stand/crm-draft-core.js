@@ -2438,16 +2438,6 @@ window.createCrmDraftCore = function createCrmDraftCore(root, adapters) {
             }
         }
 
-        function payoutTxFree(hash, currentDealId) {
-            /* Свободный остаток перевода с точки зрения ЭТОЙ сделки: её
-               собственная доля не считается занятой — иначе при повторном
-               сохранении сделка сама себе перекрывала бы остаток. */
-            const t = payoutTxLedger[hash];
-            if (!t) return null;
-            const mine = (t.deal_ids || []).includes(currentDealId) ? 0 : 0;
-            return t.free_usdt + mine;
-        }
-
         function payoutTxOptionLabel(hash) {
             /* Что видно прямо в списке: разобран перевод или из него ещё можно
                выдать. Раньше строка показывала только сумму и кошельки, и было

@@ -25,6 +25,7 @@ async function main() {
   const ctx = {
     S, STAND: true, STAND_SHARED: ['deals', 'open'],
     standBusy: false, standPush: false, standSaveScheduled: false, standClosing: false,
+    standPullPending: false, standGetEtag: null, STAND_DOC_AGENT_META: {},
     standVer: 10, standBase: {deals: [structuredClone(original)], open: 1474},
     // standSave reads this page-level flag; the isolated VM must define it too.
     lastPointer: 0, brokerSentSubmitPointer: false, location: {href: ''}, Date, setTimeout, clearTimeout, AbortController,
@@ -40,11 +41,11 @@ async function main() {
     standClone: structuredClone, standTyping: () => false,
     crmGaps: () => [], crmPayloadFinal: () => ({deal_kind: 'exchange'}),
     standManagerIdForTransfer: () => 1,
-    crmEditDiff: () => [], usd: n => '$' + n,
+    usd: n => '$' + n,
     fetch: (url, options) => {
       requests.push({url, options});
-      if (url === '/api/stand/state' && !options) return pendingGet.promise;
-      if (url === '/api/stand/state') {
+      if (url === '/api/stand/state' && options?.method !== 'PUT') return pendingGet.promise;
+      if (url === '/api/stand/state' && options?.method === 'PUT') {
         putStarted.resolve(JSON.parse(options.body).data);
         return pendingPut.promise;
       }
@@ -64,6 +65,7 @@ async function main() {
   vm.createContext(ctx);
   vm.runInContext([
     source('standSnapshot'), source('standApply'), source('standPull', true),
+    source('standStateRequestPayload', true),
     source('standSave', true), source('standWaitSaved', true),
     source('standSaveError'), source('standRequireSaved', true),
     source('sentToggle'), source('crmPushClose', true),
@@ -75,7 +77,7 @@ async function main() {
   const sent = await putStarted.promise;
   assert.equal(sent.deals[0].sentToClient, true);
   const closing = ctx.crmPushClose(1474,10);
-  pendingGet.resolve({status: 200, json: async () => ({success: true,
+  pendingGet.resolve({status: 200, headers: {get: () => null}, json: async () => ({success: true,
     version: 10, data: {deals: [stale]}})});
   await pulling;
   assert.equal(S.deals[0].sentToClient, true, 'stale GET must not overwrite pending sent toggle');

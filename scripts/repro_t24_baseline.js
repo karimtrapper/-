@@ -36,7 +36,7 @@ async function main() {
     load: () => ({deals: [], open: null}), migrate: x => x,
     standClone: structuredClone, standTyping: () => false,
     crmGaps: () => [], crmPayloadFinal: () => ({payin_amount_usdt: 3257.52}),
-    crmEditDiff: () => [], usd: n => '$' + n,
+    usd: n => '$' + n,
     setTimeout: () => {}, Date,
     fetch: (url, options) => {
       requests.push({url, options});

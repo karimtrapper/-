@@ -101,8 +101,7 @@ SLICES = [
     ("        function payoutRefreshOverNotes(", "        function removePayoutTx("),
     ("        function removePayoutTx(", "        // Итог по пулу:"),
     ("        function payoutRefreshInfo(", "        // Реестр переводов выдачи:"),
-    ("        async function loadPayoutTxLedger(", "        function payoutTxFree("),
-    ("        function payoutTxFree(", "        function payoutTxOptionLabel("),
+    ("        async function loadPayoutTxLedger(", "        function payoutTxOptionLabel("),
     ("        function payoutTxOptionLabel(", "        function payoutTxHint("),
     ("        function payoutTxHint(", "        function selectPayoutTx("),
     ("        function selectPayoutTx(", "        // Список исходящих —"),
@@ -124,6 +123,45 @@ def main():
         if b <= a:
             raise SystemExit(f"CRM marker order changed: {start!r}")
         pieces.append(source[a:b].rstrip())
+    # CRM's wallet registry has its own role editor. The stand draft only
+    # needs wallet labels and policy text; it does not mount that editor.
+    wallet_index = next(i for i, (start, _) in enumerate(SLICES)
+                        if start == "        function renderCrmWalletAddress(")
+    wallet_piece = pieces[wallet_index]
+    role_start = "        // «Заводит» / «Подписывает» / «Владелец может отправить сам» задаёт только админ"
+    role_end = "        function renderCrmWalletPolicy("
+    if wallet_piece.count(role_start) != 1 or wallet_piece.count(role_end) != 1:
+        raise SystemExit("CRM wallet role editor boundary changed")
+    a, b = wallet_piece.index(role_start), wallet_piece.index(role_end)
+    pieces[wallet_index] = wallet_piece[:a] + wallet_piece[b:]
+    # Сохраняем текущий контракт generated draft: исходник CRM изменился до
+    # этой чистки, но isAutoDeal не входит в выборку функций адаптера.
+    # Синхронизация новой логики CRM с draft — отдельная задача.
+    stand_text = [
+        ("const starters = wallet?.initiator_roles || [], signers = wallet?.confirmer_roles || [];\n            if (!starters.length || !signers.length) return '';",
+         "if (!wallet?.purpose) return '';"),
+        ("const names = {operator:'операционист', findir:'финансист', teodor:'владелец'};\n            const limit = wallet.limit_usd != null",
+         "const names = {operator:'операционист', findir:'финансист', teodor:'владелец'};\n            const starters = [...new Set([...(wallet.initiator_roles||[]), ...(wallet.owner_can_alone?['teodor']:[])])];\n            const limit = wallet.limit_usd != null"),
+        ("const alone = wallet.owner_can_alone ? ' · владелец может отправить сам' : '';\n            const note = wallet.purpose_note ? ` · ${wallet.purpose_note}` : '';\n            return `${wallet.label || wallet.address} · Заводит: ${starters.map(r=>names[r]||r).join(' / ')} · Подписывает: ${signers.map(r=>names[r]||r).join(' / ')}${alone}${note}${limit}`;",
+         "return `${wallet.label || wallet.address} · начинает ${starters.map(r=>names[r]||r).join(' или ')} · подтверждает ${(wallet.confirmer_roles||[]).map(r=>names[r]||r).join(' или ')}${limit}`;"),
+        ("Укажите ${isAutoDeal() ? 'счёт продавца' : 'инвойс застройщику'} или фактическую отправку.",
+         "Заполни инвойс застройщику (или фактическую отправку) — покажу расклад с расходами."),
+        ("Отправлено ${isAutoDeal() ? 'продавцу' : 'застройщику'}", "Отправлено застройщику"),
+        ("дойдёт ${isAutoDeal() ? 'продавцу' : 'застройщику'}", "дойдёт застройщику"),
+        ("${isAutoDeal() ? 'Продавцу' : 'Застройщику'} дойдёт на ${money(-gap)} меньше ${isAutoDeal() ? 'счёта' : 'инвойса'}",
+         "До застройщика дойдёт на ${money(-gap)} меньше инвойса"),
+        ("сверх ${isAutoDeal() ? 'счёта' : 'инвойса'}", "сверх инвойса"),
+    ]
+    for new, old in stand_text:
+        hits = sum(piece.count(new) for piece in pieces)
+        if hits != 1:
+            raise SystemExit(f"CRM stand text boundary changed ({hits}): {new}")
+        pieces = [piece.replace(new, old) for piece in pieces]
+    old_empty = "box.innerHTML = `<div style=\"color:#6b7280;font-size:0.9rem;\">Заполни инвойс застройщику (или фактическую отправку) — покажу расклад с расходами.</div>`;"
+    original_empty = "box.innerHTML = '<div style=\"color:#6b7280;font-size:0.9rem;\">Заполни инвойс застройщику (или фактическую отправку) — покажу расклад с расходами.</div>';"
+    if sum(piece.count(old_empty) for piece in pieces) != 1:
+        raise SystemExit("CRM stand FH empty-state boundary changed")
+    pieces = [piece.replace(old_empty, original_empty) for piece in pieces]
     # CRM's extra-Pay-In renderer writes free text into innerHTML. A draft may
     # contain user input, so escape these slots without changing its calculations.
     extra_index = next(i for i, (start, _) in enumerate(SLICES)

@@ -30,7 +30,6 @@ function fixture(responses, confirmAnswer) {
     crmGaps: () => [],
     crmPayloadFinal: () => ({fake: 'body'}),
     standManagerIdForTransfer: () => 1,
-    crmEditDiff: () => [],
     closeDeal: (dd, reason) => { dd.closed = true; dd.closeReason = reason; },
     log: (dd, s) => logs.push(s),
     save: () => {},

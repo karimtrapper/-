@@ -1496,25 +1496,6 @@ async function fetchMarket(){
 }
 function avgRate(){return MARKET.rubThb||(S.avg&&S.avg.v)||2.85;}      // ₽ за 1 ฿
 function avgUsdt(){return MARKET.usdt||(S.avgU&&S.avgU.v)||31.2;}    // ฿ за 1 USDT
-/* Курс дня для шага, где рынок недоступен: /api/rates на стенде выключен, а тихий
-   откат на числа 2,85 / 31,2 раньше подавался как настоящий курс, хотя это просто
-   заглушка. Здесь честно показываем источник и даём вписать курс руками — он живёт
-   в общей доске (S.avg/S.avgU), а не только в браузере (Карим, 27.09). */
-function rateSource(){return MARKET.rubThb?'рынок':((S.avg&&S.avg.v)?'вручную':'оценка по умолчанию — не курс дня');}
-function setManualRate(kind,raw){
-  const n=num(String(raw||'').replace(',','.'));
-  if(!n){toast('Введите число');return;}
-  if(kind==='rub')S.avg={v:n,at:now()};else S.avgU={v:n,at:now()};
-  save();render();toast('Курс сохранён вручную');
-}
-function marketWidget(){
-  if(MARKET.rubThb)return `<span class="chip" title="Обновлено ${new Date(MARKET.at).toLocaleTimeString('ru-RU')}">курс дня: рынок ${avgRate()} / ${avgUsdt()}</span>`;
-  return `<span class="chip" style="gap:6px" title="На стенде /api/rates выключено — впишите курс дня руками, иначе используется оценка по умолчанию, а не настоящий курс">
-    курс дня: ${rateSource()}
-    <input class="fc num" style="width:70px;display:inline-block" placeholder="₽/฿" value="${(S.avg&&S.avg.v)||''}" onchange="setManualRate('rub',this.value)">
-    <input class="fc num" style="width:70px;display:inline-block" placeholder="฿/USDT" value="${(S.avgU&&S.avgU.v)||''}" onchange="setManualRate('usdt',this.value)">
-  </span>`;
-}
 /* Валюта, в которой платит клиент. Крипта — это USDT, рублей в такой сделке нет
    вообще: ни курса RUB→USDT, ни поступления на Сбер, ни конвертации. */
 const SIGN={rub:'₽',usdt:'USDT',thb:'฿'};  // клиенту — USDT, а не «$»: для людей это разные деньги
@@ -1560,7 +1541,6 @@ function payCur(d){return d.type==='Обмен валюты'?exchangeSpec(d).inp
 /* Сравнение вариантов оплаты временно убрано: оно было сделано неверно и ломало шаг
    курса (Карим, 22.09 — «вернёмся к нему отдельно, это часть задач»). Пока вместо него
    — комментарий на каждом шаге: он честнее фиксирует, что клиент на самом деле просил. */
-function mainKey(o){return o.payType==='Крипта'?'usdt':(o.payType==='Наличные'?'cash':'rub');}
 function isCrypto(d){return payCur(d)==='usdt';}
 function rubReceivingBankLabel(d){
   const a=d&&d.rubReceivingAccount;
@@ -3230,11 +3210,6 @@ function transferMode(id,mode){
 }
 /* DEMO доступен только автотестам при явном разрешении сервера. */
 function transferModeBlock(d){return '';}
-function transferModeBlockOld(d){if(!demoAllowed())return '';return `<div class="fg"><label class="fl">Проверка переводов</label>
-  <select class="fc" onchange="transferMode(${d.id},this.value)" ${sendList(d).length?'disabled':''}>
-  <option value="network" ${!d.demoTransfers?'selected':''}>Настоящие хеши — проверка в сети</option>
-  <option value="demo" ${d.demoTransfers?'selected':''}>Тестовый сценарий — без движения денег</option></select>
-  <p class="fh">${d.demoTransfers?'Тестовые события помечены DEMO. Они проверяют процесс, деньги не переводятся.':'Успешность, сумма и адреса читаются из сети. Запись хеша сама по себе не подтверждает перевод.'}</p></div>`;}
 async function standAction(path,payload){
   if(standBusy||standPush){toast('Дождитесь сохранения и повторите');return null;}
   standBusy=true;
@@ -3462,23 +3437,14 @@ function sendPurpose(x){
   if(x.postConv==='ipps_swift') return 'Переводим '+a+' в IPPS — SWIFT '+usd(x.invoiceUsd||0)+' застройщику';
   return 'Переводим '+a;
 }
-function sendHead(d){
-  const l=cnvMembers(d).filter(pcSends);
-  if(!l.length) return 'Отправлять с кошелька нечего';
-  const m=l.find(x=>x.id===d.id)||l[0];
-  return sendPurpose(m)+(l.length>1?' · и ещё '+(l.length-1)+' '+plural(l.length-1,'перевод','перевода','переводов')+' по пачке':'');
-}
 function sendActionHead(d){
   const target=d.postConv==='ipps_swift'?'в IPPS':d.postConv==='coins'?'в Coins':d.postConv==='client'?'клиенту':'по адресу';
   return 'Отправьте USDT '+target;
 }
-/* Кому принадлежит адрес получателя: «Coins.co.th · TRC-20» */
-function sendTo(x){return ((x.transfer||{}).to||pcDefaultTo(x.postConv,x)||'получатель')+' · '+pcNet(x);}
 /* «Передать Теодору / Андрею / Виталию» — имя владельца в дательном падеже */
 function toWhom(n){n=String(n||'').trim();if(!n)return 'владельцу';
   if(/й$/.test(n))return n.slice(0,-1)+'ю';if(/[ая]$/.test(n))return n.slice(0,-1)+'е';
   if(/[бвгджзклмнпрстфхцчшщ]$/i.test(n))return n+'у';return n;}
-function multiFor(x){const w=dealWallet(x);return !w||w.multisig;}
 /* Откуда сумма батов в Coins: получателю + комиссия компании, которая остаётся на SCB
    (Карим, 25.09 — «нужно показывать, почему эта сумма, чтобы было видно процент»).
    Если на компанию уходит меньше 1 % — только предупреждение, без запрета. */
@@ -3679,19 +3645,11 @@ function cpNorm(v){
   if(!/^https?:\/\//i.test(u)) u='https://'+u.replace(/^\/*/,'');
   return u;
 }
-/* Публичный чат открывается с уже вписанным вопросом: t.me/name?text=…
-   В приватной группе (t.me/c/…) и по ссылке-приглашению Telegram текст не принимает —
-   там вопрос кладём в буфер, и он вставляется одним Cmd+V. */
-function cpPrefill(c){
-  const u=cpChat(c); if(!u) return false;
-  return /^https?:\/\/t\.me\/(?!c\/|\+|joinchat)[A-Za-z0-9_]{4,}\/?$/i.test(u);
-}
 /* На стенде переход в чат контрагента выключен целиком, даже если чат привязан
    вручную через cpChatSave: страница не должна открывать боевой Telegram
    ни при каких обстоятельствах (Карим, 27.09). Вопрос всегда уходит в буфер. */
 function cpLink(c,q){ return null; }
 function cpChat(c){ return (S.cpChats&&S.cpChats[c.id])||c.chat||null; }
-function cpFind(id){ return cpById(id); }
 function cpAsk(dealId,id,q){
   const d=deal(dealId), c=cpById(id); if(!c)return;
   copyAsk(q);
@@ -4208,7 +4166,6 @@ function dAgentSet(i,k,v){
   else {a[k]=(k==='comp')?v:Number(String(v).replace(',','.'))||0;a.touched=true;}
   syncRef(S.draft);save();render();
 }
-function agentsCtx(ctx,id){ return deal(id); }
 function agentAdd(ctx,id){const d=deal(id);d.agents=d.agents||[];
   const flat=(d.agentsMode==='flat');
   d.agents.push({refId:null,name:'',tier:flat?1:(d.agents.length?d.agents.reduce((m,a)=>Math.max(m,a.tier||1),0)+1:1),
@@ -8319,14 +8276,6 @@ function crmSet(id,k,v){
   if(String(base==null?'':base)===String(nv==null?'':nv)) delete d.crmEdit[k]; else d.crmEdit[k]=nv;
   save();render();
 }
-function crmHashSet(id,k,i,f,v){
-  const d=deal(id); if(!d)return;
-  d.crmEdit=d.crmEdit||{};
-  const l=(d.crmEdit[k]||crmPayload(d)[k]||[]).map(h=>Object.assign({},h));
-  if(!l[i])return;
-  l[i][f]=f==='amount_usdt'?(String(v).trim()===''?null:num(cleanNum(v))):String(v).trim();
-  d.crmEdit[k]=l; save();render();
-}
 function crmAgentSet(id,i,f,v){
   const d=deal(id); if(!d)return;
   d.crmEdit=d.crmEdit||{}; d.crmEdit.agents=d.crmEdit.agents||{};
@@ -8335,15 +8284,6 @@ function crmAgentSet(id,i,f,v){
   save();render();
 }
 function crmEditReset(id){const d=deal(id);if(!d)return;d.crmEdit=null;save();render();toast('Вернули значения из сделки');}
-/* что поменяли руками поверх сделки — в журнал при внесении */
-function crmEditDiff(d){
-  const p=crmPayload(d), f=crmPayloadFinal(d), out=[];
-  Object.keys(d.crmEdit||{}).forEach(k=>{
-    if(k==='agents'||Array.isArray(p[k])) { if(JSON.stringify(p[k])!==JSON.stringify(f[k])) out.push(k); return; }
-    if(String(p[k]??'')!==String(f[k]??'')) out.push(k+': «'+(p[k]??'—')+'» → «'+(f[k]??'—')+'»');
-  });
-  return out;
-}
 /* Readiness comes from the same server rules used by the atomic close. Cache by
    board version; rendering never writes acknowledgements or verification dates. */
 const CRM_CLOSE_STATUS=new Map();
@@ -9880,15 +9820,6 @@ function payoutBySource(d,E,po){
    что реально ушло, а не по расчёту. */
 function mfList(d){return (d.mfPayout||[]);}
 function mfSum(d){return Math.round(mfList(d).reduce((s,t)=>s+(t.amount||0),0)*100)/100;}
-function mfAdd(id){
-  const d=deal(id); editApply(id);
-  const h=String(val('mf_hash')||'').trim();
-  if(!h){toast('Вставьте хэш перевода');return;}
-  const a=num(cleanNum(val('mf_amt')||''));
-  d.mfPayout=mfList(d).concat([{hash:h,net:val('mf_net')||'TRC-20',amount:a||null}]);
-  save();render();toast(a?('Добавлено '+usd(a)):'Перевод добавлен — сумму уточните');
-}
-function mfDel(id,i){const d=deal(id);editApply(id);const l=mfList(d).slice();l.splice(i,1);d.mfPayout=l;save();render();}
 /* Подобрать процент: максимум, при котором батов хватает на инвойс по курсу покупки */
 function mfSuggestPct(id){
   const d=deal(id); editApply(id);
@@ -9900,27 +9831,6 @@ function mfSuggestPct(id){
   const pct=Math.max(0,Math.round((1-sell/buy)*10000)/100);
   d.companyPct=pct; save();render();
   toast('Предложено '+String(pct).replace('.',',')+' % — максимум, чтобы хватило на выплаты');
-}
-function mfPayoutBlock(d){
-  const l=mfList(d);
-  return `<div class="hashbox" style="margin-top:6px">
-    ${l.length?l.map((t,i)=>`<div class="hrow">
-        <b class="pos" style="min-width:104px">${t.amount?usd(t.amount):'сумма из сети'}</b>
-        <span class="net">${t.net||'TRC-20'}</span>
-        <span style="flex:1;min-width:0;font-size:12.5px;color:var(--text-sec);word-break:break-all">${t.hash}</span>
-        <button class="btn btn-outline btn-sm" onclick="mfDel(${d.id},${i})">убрать</button></div>`).join('')
-      :`<div class="hempty">Переводов пока нет — себестоимость посчитается по курсу покупки</div>`}
-    <div class="fr" style="margin-top:8px">
-      <div class="fg"><label class="fl">Сеть<span class="rq">*</span></label>
-        <select class="fc" id="mf_net">${NETS.map(n=>`<option>${n}</option>`).join('')}</select></div>
-      <div class="fg w2"><label class="fl">Хэш транзакции<span class="rq">*</span></label>
-        <input class="fc addr" id="mf_hash" placeholder="Вставьте полный хэш"></div>
-      <div class="fg"><label class="fl">Сумма USDT</label>
-        <div class="hrow"><input class="fc num" id="mf_amt" placeholder="подставится из сети">
-          <button class="btn btn-outline btn-sm" onclick="mfAdd(${d.id})">Добавить</button></div></div>
-    </div>
-    ${l.length?`<p class="fh" style="margin-top:6px">Отправлено по переводам: <b>${usd(mfSum(d))}</b></p>`:''}
-  </div>`;
 }
 function viewEditLegacy(){
   const d=deal(S.edit); if(!d)return '';
@@ -11107,7 +11017,6 @@ function toggleConv(id,xid){const d=deal(id),x=deal(xid);d.conv=d.conv||[];
   if(!s18AccountKey(d)||s18AccountKey(d)!==s18AccountKey(x)){toast('Поступления с разных счетов нельзя отправить одной пачкой');return;}
   if(!d.conv.includes(xid)&&!rubBatchReady(x)){toast('Нужен положительный RUB приход, привязанный к этой сделке и подтверждённый в поступлениях');return;}
   d.conv.includes(xid)?d.conv=d.conv.filter(v=>v!==xid):d.conv.push(xid);save();render();}
-function setSrc(id,k){const d=deal(id);d.paySrc=k;save();render();}
 /* Комментарий на каждом шаге — вместо сравнения вариантов. Пишется в журнал, поэтому
    по нему потом видно, что на самом деле просил клиент и почему шаг занял столько. */
 /* Ожидание прихода — не константа. Клиент может написать своё назначение, прислать
