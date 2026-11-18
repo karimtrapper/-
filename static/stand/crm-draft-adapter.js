@@ -42,6 +42,42 @@ function crmDraftValue(root,key,value) {
 function crmDraftRead(root,key) {
   return crmDraftField(root,key)?.value ?? '';
 }
+const CRM_DRAFT_PAY_TYPES={sber_reqs:'По реквизитам',flow_sole_reqs:'По реквизитам',
+  sber_wl:'СБП',spp_doverka:'СБП',crypto_direct:'Крипта',partners_cash:'Наличные'};
+function crmDraftFlow(active,d){
+  const {root}=active;
+  const selectedKind=crmDraftRead(root,'dealKindSelect');
+  const kind=selectedKind==='mf_freehold'||selectedKind==='mf_auto'?'Фрихолд':
+    selectedKind==='rental'?'Аренда':selectedKind==='mf_realty'
+      ?(document.getElementById('crmDraftRealtySubtype')?.value||'Лизхолд'):'';
+  const payinField=selectedKind==='custom'?'customPayinMethod':'payinMethod';
+  return {type:kind?'Оплата недвижимости':'Обмен валюты',kind,autoPayment:d.autoPayment===true,
+    pair:d.pair,payType:CRM_DRAFT_PAY_TYPES[crmDraftRead(root,payinField)]||d.payType};
+}
+function crmDraftAuthorizeFlow(active,d,flow){
+  if(!STAND)return true;
+  const stored=standBase?.deals?.find(x=>x.id===d.id);
+  const flowType=flow.autoPayment?'Оплата авто':flow.type;
+  if(flow.autoPayment&&(flow.kind!=='Фрихолд'||flow.payType!=='По реквизитам')){
+    toast('Для оплаты авто доступны только реквизиты');
+    return false;
+  }
+  const old=stored||d;
+  const combo=standFlowCombo(flowType,flow.kind,flow.payType);
+  const oldCombo=standFlowCombo(old.autoPayment?'Оплата авто':old.type,old.kind,old.payType);
+  const changed=!jeq(combo,oldCombo);
+  if(changed&&d.isTask&&flow.type==='Обмен валюты'&&!payWays(flow).includes(flow.payType)){
+    toast('Выберите способ оплаты для этой валютной пары');
+    return false;
+  }
+  if((!changed&&(stored||!d.manualNew))||draftComboVerified(flowType,flow.kind,flow.payType)){
+    active.flowConfirmation=null;
+    return true;
+  }
+  if(!jeq(active.flowConfirmation,combo)&&!confirmStandFlow({...flow,type:flowType}))return false;
+  active.flowConfirmation=combo;
+  return true;
+}
 function crmDraftFreeholdLocked(d) {
   return d.kind==='Фрихолд' && (
     ['s11','s11b','s12','s14','s14m','s15','s18','s18w','s22','s23','s24',
@@ -97,7 +133,8 @@ function crmDraftSanitize(form) {
 }
 function crmDraftLayout(active) {
   const {root}=active,kind=crmDraftRead(root,'dealKindSelect');
-  const custom=kind==='custom', mf=kind==='mf_realty', fh=kind==='mf_freehold';
+  const custom=kind==='custom', mf=kind==='mf_realty'||kind==='rental',
+    fh=kind==='mf_freehold'||kind==='mf_auto';
   for(const [id,on] of [['customDealSection',custom],['standardDealSection',!custom],
       ['mfDealSection',mf],['mfDealHint',mf],['fhDealSection',fh],['fhDealHint',fh],
       ['payoutSectionStd',!mf&&!fh],['profitCalcHr',!mf&&!fh],
@@ -132,7 +169,7 @@ function crmDraftLayout(active) {
   const transfers=root.getElementById('payoutTransfersBox');
   if(transfers)transfers.style.display=root.getElementById('payoutNoConversion')?.checked?'none':'block';
   const subtype=document.getElementById('crmDraftRealtySubtypeBox');
-  if(subtype)subtype.style.display=mf?'block':'none';
+  if(subtype)subtype.style.display=kind==='mf_realty'?'block':'none';
   const tariffBox=document.getElementById('crmDraftTariffBox');
   if(tariffBox)tariffBox.style.display=fh?'block':'none';
   const invoiceBox=document.getElementById('crmDraftInvoiceCurrencyBox');
@@ -241,7 +278,7 @@ function crmDraftSnapshot(active) {
     tariff:document.getElementById('crmDraftTariff')?.value,
     invoiceCurrency:document.getElementById('crmDraftInvoiceCurrency')?.value,
     invoiceThb:document.getElementById('crmDraftInvoiceThb')?.value,
-    manualTx:active.manualTx||null};
+    manualTx:active.manualTx||null,flowConfirmation:active.flowConfirmation||null};
 }
 function crmDraftCapture() {
   if(crmDraftActive)crmDraftLive.set(crmDraftActive.id,crmDraftSnapshot(crmDraftActive));
@@ -253,6 +290,7 @@ function crmDraftRestore(active,snapshot) {
     if(v!==undefined){if(el.type==='checkbox')el.checked=!!v;else el.value=v;}
   });
   active.manualTx=snapshot.manualTx||null;
+  active.flowConfirmation=snapshot.flowConfirmation||null;
   if(active.manualTx){
     const hint=active.root.getElementById('payinTxWarn');
     if(hint){
@@ -748,7 +786,7 @@ function crmDraftAction(active,action,target) {
   else if(action==='payout-remove')core.removePayoutTx(i);
   crmDraftCapture();
 }
-function crmDraftCommitCustom(a,d,before) {
+function crmDraftCommitCustom(a,d,before,flow) {
   const r=a.root,num=key=>crmDraftNum(crmDraftRead(r,key));
   const payinAmount=num('customPayinAmount'),payoutAmount=num('customPayoutAmount');
   const payinCurrency=crmDraftRead(r,'customPayinCurrency');
@@ -793,8 +831,9 @@ function crmDraftCommitCustom(a,d,before) {
     payinNetwork:crmDraftRead(r,'customPayinNetwork')||'trc20',
     date:crmDraftRead(r,'customDealDate'),notes:crmDraftRead(r,'customNotes')};
   d.customData=c;
-  const methods={sber_reqs:'По реквизитам',flow_sole_reqs:'По реквизитам',sber_wl:'СБП',crypto_direct:'Крипта',partners_cash:'Наличные'};
-  d.payType=methods[c.payinMethod]||d.payType;
+  d.payType=flow.payType;
+  if(a.flowConfirmation)d.unverified_flow_confirmation=a.flowConfirmation;
+  else delete d.unverified_flow_confirmation;
   d.amountRub=payinCurrency==='RUB'?payinAmount:null;
   d.amountUsdt=payinUsdt;
   d.amountThb=payoutCurrency==='THB'?payoutAmount:null;
@@ -828,8 +867,14 @@ function crmDraftCommit(id) {
   const d=deal(id),r=a.root;
   if(a.core.reportInvalidField(a.form))return false;
   const before=JSON.stringify(d);
-  const kind=crmDraftRead(r,'dealKindSelect');
-  if(kind==='custom')return crmDraftCommitCustom(a,d,before);
+  const rawKind=crmDraftRead(r,'dealKindSelect');
+  if((rawKind==='mf_auto')!==(d.autoPayment===true)){
+    toast('Тип оплаты авто нельзя менять после создания заявки');return false;
+  }
+  const kind=rawKind==='rental'?'mf_realty':rawKind;
+  const flow=crmDraftFlow(a,d);
+  if(!crmDraftAuthorizeFlow(a,d,flow))return false;
+  if(kind==='custom')return crmDraftCommitCustom(a,d,before,flow);
   const manualHash=crmDraftRead(r,'payinManualHash').trim();
   const manualNetwork=crmDraftRead(r,'payinManualNetwork')||'trc20';
   // Выбор из реестра копирует первый хэш пула в ручное поле для карточки сделки.
@@ -863,9 +908,8 @@ function crmDraftCommit(id) {
   d.source=document.getElementById('crmDraftSource')?.value||d.source;
   d.sourceRef=document.getElementById('crmDraftSourceRef')?.value||'';
   d.custom=kind==='custom';
-  d.type=(kind==='mf_realty'||kind==='mf_freehold')?'Оплата недвижимости':'Обмен валюты';
-  d.kind=kind==='mf_freehold'?'Фрихолд':kind==='mf_realty'
-    ?(document.getElementById('crmDraftRealtySubtype')?.value|| (d.kind==='Аренда'?'Аренда':'Лизхолд')):'';
+  d.type=flow.type;
+  d.kind=flow.kind;
   if(!crmDraftManagerCommit(a,d))return false;
   const name=crmDraftRead(r,'clientSearchInput').trim();
   if(name){
@@ -879,8 +923,9 @@ function crmDraftCommit(id) {
     }
     d.clientId=local.id;
   }
-  const methods={sber_reqs:'По реквизитам',flow_sole_reqs:'По реквизитам',sber_wl:'СБП',crypto_direct:'Крипта',partners_cash:'Наличные'};
-  d.payType=methods[crmDraftRead(r,'payinMethod')]||d.payType;
+  d.payType=flow.payType;
+  if(a.flowConfirmation)d.unverified_flow_confirmation=a.flowConfirmation;
+  else delete d.unverified_flow_confirmation;
   d.amountRub=crmDraftNum(crmDraftRead(r,'payin_amount_rub'));
   if(kind==='mf_freehold'&&d.payType==='Крипта'){
     if(!crmDraftFreeholdLocked(d)) d.amountUsdt=crmDraftNum(document.getElementById('crmDraftPlanUsdt')?.value);

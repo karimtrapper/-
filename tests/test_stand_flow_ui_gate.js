@@ -1,8 +1,3 @@
-// Гейт непроверенных флоу (тип сделки + способ Pay-In) в форме создания
-// заявки на стенде: visible-but-disabled для менеджера, confirm-дialog для
-// admin. Логика проверяется напрямую на извлечённых функциях (как в
-// test_stand_freehold.js); визуальное состояние чипов — через design-gate
-// на живом стенде (см. docs/superpowers/plans/2026-10-18-gate-unverified-flows.md Task 9).
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -25,9 +20,19 @@ function cst(name) {
 }
 
 function ctx() {
-  const context = { STAND_VERIFIED_FLOWS: [['freehold', 'requisites'], ['leasehold', 'requisites']] };
+  const context = {
+    STAND_VERIFIED_FLOWS: [['freehold','requisites'],['leasehold','requisites'],['auto','requisites']],
+    standMe: 'manager', confirms: [], save: () => {}, render: () => {}, toast: () => {},
+    confirm(text) { context.confirms.push(text); return context.accept; },
+    jeq: (a,b) => JSON.stringify(a) === JSON.stringify(b),
+    htmlText: value => value.replaceAll('"', '&quot;'), SIGN:{rub:'RUB',thb:'THB',usdt:'USDT'},
+    S: {draft: {type:'Оплата недвижимости',kind:'Лизхолд',payType:'По реквизитам',mode:'need',cur:'thb'}},
+  };
   vm.createContext(context);
-  vm.runInContext(cst('STAND_KIND_CANON') + '\n' + cst('STAND_PAYTYPE_CANON') + '\n' + fn('draftComboVerified'), context);
+  const constants = ['STAND_KIND_CANON','STAND_PAYTYPE_CANON','PAIRS','PAIR_CFG','PAIR_PAYCUR'];
+  const functions = ['standFlowCombo','draftComboVerified','canConfirmStandFlow','confirmStandFlow',
+    'draftFlowOption','draftFlowChip','draftSetGated','draftSet','pairOf','payWays','askModes','draftPair','exchangeSpec'];
+  vm.runInContext([...constants.map(cst), ...functions.map(fn)].join('\n'), context);
   return context;
 }
 
@@ -51,20 +56,51 @@ function ctx() {
 }
 console.log('draftComboVerified: OK');
 
-// ── draftTypeVerified: «Тип запроса» — Обмен валюты никогда не проверен,
-// независимо от kind/payType; Оплата недвижимости сама по себе нейтральна ──
-
 {
-  const context = {};
-  vm.createContext(context);
-  vm.runInContext(fn('draftTypeVerified'), context);
-  assert.equal(context.draftTypeVerified('Оплата недвижимости'), true);
-  assert.equal(context.draftTypeVerified('Обмен валюты'), false,
-    'Обычный обмен — непроверенный тип сам по себе, как Аренда для kind');
-}
-console.log('draftTypeVerified: OK');
+  const c = ctx();
+  const draft=c.S.draft;
+  assert.match(c.draftFlowChip(draft,'payType','Наличные'),/unchecked-flow/);
+  assert.doesNotMatch(c.draftFlowChip(draft,'payType','Наличные'),/disabled/);
+  c.draftSetGated('payType','Наличные');
+  assert.match(c.confirms[0], /Наличные.*Лизхолд/);
+  assert.equal(draft.payType,'По реквизитам');
+  assert.equal(draft.unverified_flow_confirmation,undefined);
 
-// ── newDeal переносит unverified_confirmed из драфта в сделку ────────────
+  c.accept=true;
+  c.draftSetGated('payType','Наличные');
+  assert.equal(draft.payType,'Наличные');
+  assert.equal(JSON.stringify(draft.unverified_flow_confirmation),'["leasehold","cash"]');
+  c.draftSetGated('kind','Аренда');
+  assert.equal(JSON.stringify(draft.unverified_flow_confirmation),'["rental","cash"]');
+  c.draftSetGated('type','Обмен валюты');
+  assert.equal(JSON.stringify(draft.unverified_flow_confirmation),'["exchange","cash"]');
+  c.accept=false;
+  c.draftPair('USDT → THB');
+  assert.equal(draft.pair,'RUB → THB');
+  assert.equal(draft.payType,'Наличные');
+  assert.equal(JSON.stringify(draft.unverified_flow_confirmation),'["exchange","cash"]');
+  c.accept=true;
+  c.draftPair('USDT → THB');
+  assert.equal(draft.payType,'Крипта');
+  assert.equal(JSON.stringify(draft.unverified_flow_confirmation),'["exchange","crypto"]');
+  c.draftSetGated('type','Оплата недвижимости');
+  assert.equal(draft.pair,null);
+  assert.equal(draft.cur,'thb');
+  assert.equal(JSON.stringify(draft.unverified_flow_confirmation),'["rental","crypto"]');
+  const warningCount=c.confirms.length;
+  c.draftSetGated('type','Оплата авто');
+  assert.equal(draft.payType,'По реквизитам');
+  assert.equal(draft.unverified_flow_confirmation,null);
+  assert.equal(c.confirms.length,warningCount);
+}
+{
+  const c=ctx();
+  c.standMe='operator';
+  assert.match(c.draftFlowChip(c.S.draft,'payType','СБП'),/disabled/);
+  c.draftSetGated('payType','СБП');
+  assert.equal(c.S.draft.payType,'По реквизитам');
+  assert.equal(c.confirms.length,0);
+}
 
 function newDealCtx() {
   const context = { now: () => 0, SOURCES: { tg: 'Telegram' }, log: () => {} };
@@ -77,17 +113,14 @@ function newDealCtx() {
 {
   const context = newDealCtx();
   const deal = context.newDeal({ type: 'Оплата недвижимости', kind: 'Аренда', payType: 'Наличные',
-    source: 'tg', step: 's5', unverified_confirmed: true, noSave: true });
-  assert.equal(deal.unverified_confirmed, true,
-    'newDeal должен сохранить unverified_confirmed, иначе admin-подтверждение не дойдёт до сервера');
+    source: 'tg', step: 's5', unverified_flow_confirmation: ['rental','cash'], noSave: true });
+  assert.equal(JSON.stringify(deal.unverified_flow_confirmation),'["rental","cash"]');
 }
 {
   const context = newDealCtx();
   const deal = context.newDeal({ type: 'Оплата недвижимости', kind: 'Фрихолд', payType: 'По реквизитам',
     source: 'tg', step: 's5', noSave: true });
-  assert.equal(deal.unverified_confirmed, false,
-    'без явного подтверждения поле должно быть ложным, а не undefined (чтобы сервер видел явный false)');
+  assert.equal(deal.unverified_flow_confirmation, undefined);
 }
-console.log('newDeal unverified_confirmed passthrough: OK');
 
 console.log('ALL OK');

@@ -38,16 +38,13 @@ def test_stand_create_unverified_combo_rejected_for_manager():
     previous = empty_board()
     new_state = {'wallets': [], 'convs': [], 'deals': [rental_cash_deal()]}
     problem = appmod._stand_guard_transition(previous, new_state, 'manager')
-    assert problem == ('Этот флоу (тип сделки + способ оплаты) ещё не проверен. '
-                        'Проведите сделку через Карима.')
+    assert problem == 'Подтвердите выбор непроверенного способа оплаты.'
 
 
 def test_stand_create_unverified_combo_rejected_for_admin_without_confirm():
-    previous = empty_board()
-    new_state = {'wallets': [], 'convs': [], 'deals': [rental_cash_deal()]}
-    problem = appmod._stand_guard_transition(previous, new_state, 'admin')
-    assert problem == ('Непроверенный флоу. Требуется подтверждение '
-                        '(unverified_confirmed=true).')
+    new_state = dict(empty_board(), deals=[rental_cash_deal()])
+    assert appmod._stand_guard_transition(empty_board(), new_state, 'admin') == (
+        'Подтвердите выбор непроверенного способа оплаты.')
 
 
 def test_stand_create_unverified_combo_allowed_for_admin_with_confirm():
@@ -69,19 +66,46 @@ def test_stand_existing_unverified_deal_progresses_untouched():
     assert appmod._stand_guard_transition(previous, new_state, 'manager') is None
 
 
-def test_stand_manager_cannot_bypass_with_confirm_flag():
-    previous = empty_board()
-    new_state = {'wallets': [], 'convs': [],
-                 'deals': [rental_cash_deal(unverified_confirmed=True)]}
-    problem = appmod._stand_guard_transition(previous, new_state, 'manager')
-    assert problem == ('Этот флоу (тип сделки + способ оплаты) ещё не проверен. '
-                        'Проведите сделку через Карима.')
+@pytest.mark.parametrize('kind,method,confirmation', [
+    ('Аренда', 'Наличные', ['rental', 'cash']),
+    ('Лизхолд', 'СБП', ['leasehold', 'sbp']),
+    ('Фрихолд', 'Крипта', ['freehold', 'crypto']),
+])
+def test_stand_manager_can_create_with_exact_confirmation(kind, method, confirmation):
+    new_state = dict(empty_board(), deals=[rental_cash_deal(
+        kind=kind, payType=method, unverified_flow_confirmation=confirmation)])
+    assert appmod._stand_guard_transition(empty_board(), new_state, 'manager') is None
 
 
-def test_stand_change_to_unverified_combo_rejected_for_manager():
-    previous = {'wallets': [], 'convs': [], 'deals': [freehold_requisites_deal(step='s4')]}
-    new_state = {'wallets': [], 'convs': [],
-                 'deals': [freehold_requisites_deal(step='s4', payType='Наличные')]}
-    problem = appmod._stand_guard_transition(previous, new_state, 'manager')
-    assert problem == ('Этот флоу (тип сделки + способ оплаты) ещё не проверен. '
-                        'Проведите сделку через Карима.')
+@pytest.mark.parametrize('confirmation', [True, ['rental', 'crypto'], ['freehold', 'cash'], [None, None]])
+def test_stand_manager_rejects_legacy_or_mismatched_confirmation(confirmation):
+    new_state = dict(empty_board(), deals=[rental_cash_deal(
+        unverified_confirmed=True, unverified_flow_confirmation=confirmation)])
+    assert appmod._stand_guard_transition(empty_board(), new_state, 'manager') == (
+        'Подтвердите выбор непроверенного способа оплаты.')
+
+
+def test_stand_manager_cannot_confirm_unknown_combo():
+    new_state = dict(empty_board(), deals=[rental_cash_deal(
+        kind='unknown', payType='unknown', unverified_flow_confirmation=[None, None])])
+    assert appmod._stand_guard_transition(empty_board(), new_state, 'manager') == (
+        'Подтвердите выбор непроверенного способа оплаты.')
+
+
+@pytest.mark.parametrize('actor', ['manager', 'admin'])
+def test_stand_change_to_unverified_combo_requires_fresh_confirmation(actor):
+    before = freehold_requisites_deal(unverified_confirmed=True)
+    previous = dict(empty_board(), deals=[before])
+    deal = dict(before, payType='Наличные')
+    new_state = dict(empty_board(), deals=[deal])
+    assert appmod._stand_guard_transition(previous, new_state, actor) == (
+        'Подтвердите выбор непроверенного способа оплаты.')
+    deal['unverified_flow_confirmation'] = ['freehold', 'cash']
+    assert appmod._stand_guard_transition(previous, new_state, actor) is None
+
+
+def test_stand_operator_cannot_confirm_unverified_combo():
+    new_state = dict(empty_board(), deals=[rental_cash_deal(
+        unverified_flow_confirmation=['rental', 'cash'])])
+    assert appmod._stand_guard_transition(empty_board(), new_state, 'operator') == (
+        'Этот флоу (тип сделки + способ оплаты) ещё не проверен. Проведите сделку через Карима.')

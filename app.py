@@ -540,8 +540,7 @@ class PayInCanon(str, Enum):
 
 
 # Единственный источник истины: какие комбинации (тип сделки, способ Pay-In)
-# проверены вживую на стенде. Всё остальное — видимо, но неактивно при
-# создании/смене, пока Карим не проверит флоу лично.
+# проверены вживую на стенде. Остальные комбинации требуют подтверждения.
 VERIFIED_FLOWS = {
     (DealKindCanon.FREEHOLD.value, PayInCanon.REQUISITES.value),
     (DealKindCanon.LEASEHOLD.value, PayInCanon.REQUISITES.value),
@@ -8097,6 +8096,13 @@ def stand_state_put():
         prior_for_rerate = {d.get('id'): d for d in previous.get('deals') or []}
         for deal in clean.get('deals') or []:
             before = prior_for_rerate.get(deal.get('id'))
+            # Consent belongs to this PUT, including a retry after a version
+            # conflict, and is never returned as part of the saved deal.
+            deal.pop('unverified_flow_confirmation', None)
+            if before and 'unverified_confirmed' in before:
+                deal['unverified_confirmed'] = before['unverified_confirmed']
+            else:
+                deal.pop('unverified_confirmed', None)
             if before and rerate_attempt(before, deal):
                 # A browser cannot choose the version that counts as stale.
                 deal['rerateDocVersion'] = int(before.get('docVersion') or 0)
@@ -12591,6 +12597,13 @@ _STAND_TRANSFER_SERVER_FIELDS = (
 )
 
 
+def _stand_flow_combo(deal):
+    return (
+        canonical_deal_kind_from_stand(deal.get('type'), deal.get('kind'), deal.get('autoPayment')),
+        canonical_payin_from_stand(deal.get('payType')),
+    )
+
+
 def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=None,
                             allow_crm_close=False, manual_close_deal_id=None,
                             receipt_upload=False):
@@ -12778,22 +12791,19 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
                     if got is None or want is None or abs(got-want) > Decimal('0.000001'):
                         return 'Курс оплаты авто должен совпадать с расчётом'
         if deal.get('type') in ('Обмен валюты', 'Оплата недвижимости'):
-            new_kind_canon = canonical_deal_kind_from_stand(deal.get('type'), deal.get('kind'), deal.get('autoPayment'))
-            new_payin_canon = canonical_payin_from_stand(deal.get('payType'))
-            if before is not None:
-                old_kind_canon = canonical_deal_kind_from_stand(before.get('type'), before.get('kind'), before.get('autoPayment'))
-                old_payin_canon = canonical_payin_from_stand(before.get('payType'))
-                combo_changed = (new_kind_canon, new_payin_canon) != (old_kind_canon, old_payin_canon)
-            else:
-                combo_changed = True
-            if combo_changed and not is_verified_flow(new_kind_canon, new_payin_canon):
-                if actor == 'admin':
-                    if deal.get('unverified_confirmed') is not True:
-                        return ('Непроверенный флоу. Требуется подтверждение '
-                                '(unverified_confirmed=true).')
-                else:
+            combo = _stand_flow_combo(deal)
+            if (before is None or combo != _stand_flow_combo(before)) and not is_verified_flow(*combo):
+                if actor not in ('admin', 'manager'):
                     return ('Этот флоу (тип сделки + способ оплаты) ещё не проверен. '
                             'Проведите сделку через Карима.')
+                confirmed = deal.get('unverified_flow_confirmation')
+                # Older admin clients can send the original flag. A flag already
+                # on the stored deal cannot authorize a different combination.
+                legacy_confirmed = (actor == 'admin' and confirmed is None
+                                    and deal.get('unverified_confirmed') is True
+                                    and (before or {}).get('unverified_confirmed') is not True)
+                if (None in combo or confirmed != list(combo)) and not legacy_confirmed:
+                    return 'Подтвердите выбор непроверенного способа оплаты.'
     for deal in new_state.get('deals') or []:
         before = old.get(deal.get('id')) or {}
         if any(before.get(field) != deal.get(field) for field in _STAND_TRANSFER_SERVER_FIELDS):
@@ -13329,7 +13339,7 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
                 and not step_changed and _stand_client_docs_changed(before, deal)):
             return 'Документы клиента публикуются после подтверждения шага s8'
         if before and actor not in (None, 'admin'):
-            changed = {key for key in set(before) | set(deal)
+            changed = {key for key in (set(before) | set(deal)) - {'unverified_flow_confirmation'}
                        if before.get(key) != deal.get(key)
                        and not (key in ('files', 'docs', 'docMeta')
                                 and not before.get(key) and not deal.get(key))}

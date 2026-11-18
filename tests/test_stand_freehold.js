@@ -306,6 +306,7 @@ const approxEq = (a, b, eps = 0.005) => assert.ok(Math.abs(a - b) < eps, `${a} !
     toast: t => toasts.push(t),
     num: x => (x == null || x === '' ? null : parseFloat(String(x).replace(',', '.'))),
     cleanNum: x => String(x).replace(/[^\d.,]/g, ''),
+    payWays: () => ['Крипта','По реквизитам'],
   });
   const D = { clientId: 1, type: 'Оплата недвижимости', kind: 'Фрихолд', payType: 'Крипта',
     sum: '45000', cur: 'fhusd', ippsTariff: 'bank', amountUsdt: null };
@@ -365,6 +366,7 @@ const approxEq = (a, b, eps = 0.005) => assert.ok(Math.abs(a - b) < eps, `${a} !
     toast: t => toasts.push(t),
     num: x => (x == null || x === '' ? null : parseFloat(String(x).replace(',', '.'))),
     cleanNum: x => String(x).replace(/[^\d.,]/g, ''),
+    payWays: () => ['Крипта','По реквизитам'],
   });
   const D = { clientId: 1, type: 'Оплата недвижимости', kind: 'Фрихолд', payType: 'По реквизитам',
     sum: '45000', cur: 'fhusd', ippsTariff: 'bank', invoiceCurrency: 'thb', invoiceThbAmount: '' };
@@ -475,12 +477,12 @@ console.log('test_stand_freehold.js: OK');
     invoiceCurrency:'usd',amountUsdt:'98800',agents:[],rq:'',note:''};
   let rendered='';
   const ctx=run(['viewCreateBody','draftSet','draftFreeholdPreview','draftValid','draftAmounts',
-    'freeholdSend','freeholdFee','askModes','ippsTariff','pairOf','draftComboVerified','draftTypeVerified'],
+    'freeholdSend','freeholdFee','askModes','ippsTariff','pairOf','draftComboVerified','standFlowCombo','draftFlowOption','draftFlowChip','canConfirmStandFlow'],
     ['IPPS_TARIFFS','PAIRS','PAIR_PAYCUR','STAND_KIND_CANON','STAND_PAYTYPE_CANON'],{
     STAND:true,S:{draft:D},SOURCES:{none:'Без переписки'},clientFind:()=>[],clientById:()=>null,
     STAND_VERIFIED_FLOWS:[['freehold','requisites'],['leasehold','requisites']],
     payWays:()=>['Крипта','По реквизитам'],draftAgentsBlock:()=>'',refFind:()=>[],
-    htmlText:s=>String(s||''),
+    htmlText:s=>String(s||''),confirmStandFlow:()=>true,jeq:(a,b)=>JSON.stringify(a)===JSON.stringify(b),
     save:()=>{},render:()=>{rendered=ctx.viewCreateBody(D,'');},toast:()=>{},
     usd:x=>Number(x).toFixed(2),num:x=>x==null||x===''?null:Number(String(x).replace(',','.')),
     money:(x,c)=>`${Number(x).toFixed(2)} ${c}`,
@@ -561,7 +563,7 @@ console.log('test_stand_freehold.js: OK');
     payType:'Крипта',cur:'fhusd',sum:'97500',ippsTariff:'bank',amountUsdt:'98800'};
   let created;
   const ctx=run(['createGo','draftValid','draftAmounts'],[],{
-    S:{draft:D},STAND:false,ensureClient:()=>{},clientById:()=>({docs:false}),
+    S:{draft:D},STAND:false,ensureClient:()=>{},clientById:()=>({docs:false}),payWays:()=>['Крипта'],
     newDeal:o=>(created={...o,id:9101}),log:()=>{},save:()=>{},render:()=>{},toast:()=>{},
     num:x=>x==null||x===''?null:Number(String(x).replace(',','.')),
     cleanNum:x=>String(x).replace(/[\s\u00a0]/g,'').replace(',','.'),

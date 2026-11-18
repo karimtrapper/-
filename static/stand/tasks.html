@@ -200,6 +200,8 @@ tr:last-child td{border-bottom:none}
 .chip:hover{border-color:var(--navy-400)}
 .chip.on{background:var(--navy-800);color:#fff;border-color:var(--navy-800)}
 .chip.disabled{opacity:.45;cursor:not-allowed}
+button.chip{font-family:inherit}
+.chip.unchecked-flow{color:var(--text-muted)}
 .chip.pending{background:var(--ds-decision);border-color:var(--ds-decision-border);color:var(--ds-decision-ink)}
 
 .derived{display:flex;align-items:center;gap:9px;flex-wrap:wrap;padding:11px 14px;background:var(--navy-50);border:1px solid var(--border);border-radius:var(--r-sm);font-size:13.5px;color:var(--navy-600)}
@@ -1024,7 +1026,7 @@ body.deal-task-mode .top-nav .who{border:0;color:var(--navy-300);font-size:var(-
 
 <script src="/tasks/screens-data.js?v=2609241212"></script>
 <script src="/tasks/crm-draft-core.js?v=2"></script>
-<script src="/tasks/crm-draft-adapter.js?v=3"></script>
+<script src="/tasks/crm-draft-adapter.js?v=4"></script>
 <script src="/static/nav-shell.js?v=6"></script>
 <script>
 const KEY='grusha_proto_v2';
@@ -5309,7 +5311,7 @@ function newDeal(o){
     payout:o.payout||null,notes:o.notes||'',
     spread:(o.spread!==undefined?o.spread:(o.type==='Обмен валюты'?0.3:null)),
     readyAt:(o.step==='ready'?Date.now():null),
-    unverified_confirmed:!!o.unverified_confirmed};
+    ...(o.unverified_flow_confirmation?{unverified_flow_confirmation:o.unverified_flow_confirmation}:{})};
   log(d,'Сделка создана · '+SOURCES[o.source]+(o.sourceRef?' · '+sourceRefLabel(o.source,o.sourceRef):'')+' · клиент '+(o.isOld?'узнан по источнику':'новый'));
   /* noSave: создающий сам сохранит сделку вместе с логом и уведомлением одним PUT */
   S.deals.unshift(d);if(!o.noSave)save();return d;
@@ -6789,11 +6791,7 @@ function viewCreateBody(D,srcCard){
           `<option value="${e.id}"${String(D.managerUserId)===String(e.id)?' selected':''}>${htmlText(e.display_name||e.account||e.username||'ID '+e.id)}</option>`).join('')}
       </select></div>`:''}
     <div class="fg"><label class="fl">Тип запроса<span class="rq">*</span></label>
-      <div class="chips">${['Оплата недвижимости','Оплата авто','Обмен валюты'].map(x=>{
-        const verified=draftTypeVerified(x),selected=D.type===x;
-        const cls=selected?(verified?'on':'pending'):(verified?'':'disabled');
-        return `<span class="chip ${cls}" ${verified?'':'title="Флоу в проверке — пока проводите через Карима"'} onclick="draftSetGated('type',${JSON.stringify(x).replace(/"/g,'&quot;')})">${x}</span>`;
-      }).join('')}</div></div>
+      <div class="chips">${['Оплата недвижимости','Оплата авто','Обмен валюты'].map(x=>draftFlowChip(D,'type',x)).join('')}</div></div>
 
     ${D.type==='Обмен валюты'?`<div class="fg"><label class="fl">Валютная пара<span class="rq">*</span></label>
       <div class="chips">${PAIRS.map(x=>
@@ -6801,11 +6799,7 @@ function viewCreateBody(D,srcCard){
       <p style="font-size:12px;color:var(--text-muted);margin-top:8px">От пары зависит, чем клиент платит и что получает.</p></div>`:''}
 
     ${D.type==='Оплата недвижимости'?`<div class="fg"><label class="fl">Тип сделки<span class="rq">*</span></label>
-      <div class="chips">${['Лизхолд','Фрихолд','Аренда'].map(x=>{
-        const verified=draftComboVerified(D.type,x,D.payType),selected=D.kind===x;
-        const cls=selected?(verified?'on':'pending'):(verified?'':'disabled');
-        return `<span class="chip ${cls}" ${verified?'':'title="Флоу в проверке — пока проводите через Карима"'} onclick="draftSetGated('kind',${JSON.stringify(x).replace(/"/g,'&quot;')})">${x}</span>`;
-      }).join('')}</div></div>`:''}
+      <div class="chips">${['Лизхолд','Фрихолд','Аренда'].map(x=>draftFlowChip(D,'kind',x)).join('')}</div></div>`:''}
 
     ${(D.type==='Оплата недвижимости'&&D.kind==='Фрихолд'||D.type==='Оплата авто')?`<div class="fg"><label class="fl">Тариф IPPS<span class="rq">*</span></label>
       <div class="chips">${Object.keys(IPPS_TARIFFS).map(k=>
@@ -6823,12 +6817,8 @@ function viewCreateBody(D,srcCard){
       <input class="fc" value="${htmlText(D.object||'')}" placeholder="Модель и VIN, если известны" oninput="draftSet('object',this.value,true)">
       <p class="fh">Клиент перечисляет рубли по реквизитам. Продавец получает USD.</p></div>`:''}
     <div class="fg"><label class="fl">Как клиент платит<span class="rq">*</span></label>
-      <div class="chips">${payWays(D).map(x=>{
-        const verified=draftComboVerified(D.type,D.kind,x),selected=D.payType===x;
-        const cls=selected?(verified?'on':'pending'):(verified?'':'disabled');
-        return `<span class="chip ${cls}" ${verified?'':'title="Флоу в проверке — пока проводите через Карима"'} onclick="draftSetGated('payType',${JSON.stringify(x).replace(/"/g,'&quot;')})">${x}</span>`;
-      }).join('')}</div>
-      <p class="fh create-flow-hint">Серые варианты ещё не проверены — проводите через Карима</p></div>
+      <div class="chips">${payWays(D).map(x=>draftFlowChip(D,'payType',x)).join('')}</div>
+      <p class="fh create-flow-hint">${canConfirmStandFlow()?'Серые варианты ещё не проверены. При выборе потребуется подтверждение.':'Серые варианты ещё не проверены — проводите через Карима'}</p></div>
 
 
     <div class="fg"><label class="fl">Что просит клиент<span class="rq">*</span></label>
@@ -6984,35 +6974,62 @@ const STAND_PAYTYPE_CANON={'По реквизитам':'requisites','СБП':'sb
    через /api/deal-flow-config и закэшированный в STAND_VERIFIED_FLOWS при
    загрузке (standBoot). Эти две карты — только перевод локальных ярлыков
    стенда в канонические ключи, сам список проверенных пар здесь не дублируется. */
+function standFlowCombo(type,kind,payType){
+  const kindKey=type==='Оплата авто'?'auto':type==='Обмен валюты'?'exchange':STAND_KIND_CANON[kind];
+  return [kindKey,STAND_PAYTYPE_CANON[payType]];
+}
 function draftComboVerified(type,kind,payType){
-  if(type!=='Оплата недвижимости'&&type!=='Оплата авто')return false;
-  const kc=type==='Оплата авто'?'auto':STAND_KIND_CANON[kind],pc=STAND_PAYTYPE_CANON[payType];
-  if(!kc||!pc)return false;
+  const [kc,pc]=standFlowCombo(type,kind,payType);
   return (STAND_VERIFIED_FLOWS||[]).some(p=>p[0]===kc&&p[1]===pc);
 }
-/* «Тип запроса» — Обмен валюты сам по себе никогда не входит в VERIFIED_FLOWS
-   (там только недвижимость), поэтому проверяется отдельно от kind/payType:
-   иначе выбор «Оплата недвижимости» без ещё выбранного kind тоже считался бы
-   непроверенным и блокировался бы преждевременно. */
-function draftTypeVerified(type){
-  return type==='Оплата недвижимости'||type==='Оплата авто';
+function canConfirmStandFlow(){return standMe==='admin'||standMe==='manager';}
+function confirmStandFlow(flow){
+  if(!canConfirmStandFlow()){
+    toast('Этот способ оплаты ещё не проверен. Проведите сделку через Карима.');
+    return false;
+  }
+  const label=flow.type==='Оплата недвижимости'?flow.kind:flow.type;
+  return confirm(`Способ оплаты «${flow.payType}» для сделки «${label}» ещё не проверен. Продолжить?`);
 }
-/* Чип всегда идёт через этот сеттер вместо draftSet напрямую: непроверенную
-   комбинацию менеджер выбрать не может (чип и так visible-but-disabled),
-   admin может — но только после явного confirm(), который проставляет
-   unverified_confirmed на драфте для сервера. */
+function draftFlowOption(D,k,v){
+  const next={type:D.type,kind:D.kind,payType:D.payType,pair:D.pair,[k]:v};
+  if(k==='type'&&v==='Оплата авто')next.kind='Фрихолд';
+  if(k==='type'&&v!=='Оплата авто'&&D.type==='Оплата авто')next.kind='Лизхолд';
+  if(next.type==='Обмен валюты')next.pair=pairOf(next);
+  const ways=payWays(next);
+  if(!ways.includes(next.payType))next.payType=ways[0];
+  return next;
+}
+function draftFlowChip(D,k,v){
+  const next=draftFlowOption(D,k,v);
+  const verified=draftComboVerified(next.type,next.kind,next.payType);
+  const selected=D[k]===v, disabled=!verified&&!canConfirmStandFlow()&&!selected;
+  const cls=selected?(verified?'on':'pending'):(verified?'':(disabled?'disabled':'unchecked-flow'));
+  return `<button type="button" class="chip ${cls}" aria-pressed="${selected}" ${disabled?'disabled':''}
+    ${verified?'':'title="Способ оплаты для этой сделки ещё не проверен"'}
+    onclick="draftSetGated('${k}',${htmlText(JSON.stringify(v))})">${v}</button>`;
+}
 function draftSetGated(k,v){
   const D=S.draft;
-  const nextType=k==='type'?v:D.type, nextKind=k==='kind'?v:D.kind, nextPayType=k==='payType'?v:D.payType;
-  const verified=k==='type'?draftTypeVerified(nextType):draftComboVerified(nextType,nextKind,nextPayType);
-  if(verified){draftSet(k,v);return;}
-  if(standMe==='admin'){
-    if(!confirm('Непроверенный флоу, продолжить?'))return;
-    D.unverified_confirmed=true;
-    draftSet(k,v);
-    return;
+  if(k==='pair'?pairOf(D)===v:D[k]===v)return;
+  const next=draftFlowOption(D,k,v);
+  const combo=standFlowCombo(next.type,next.kind,next.payType);
+  const changed=!jeq(combo,standFlowCombo(D.type,D.kind,D.payType));
+  if(changed){
+    const verified=draftComboVerified(next.type,next.kind,next.payType);
+    if(!verified&&!confirmStandFlow(next))return;
+    D.unverified_flow_confirmation=verified?null:combo;
   }
-  toast('Флоу в проверке — пока проводите через Карима');
+  if(k==='pair'||(k==='type'&&v==='Обмен валюты')){
+    D.pair=next.pair;D.payType=next.payType;
+    if(D.type==='Оплата авто'){D.mode='need';D.sum='';}
+    D.cur=askModes(next).find(m=>m.k===D.mode)?.cur||PAIR_CFG[next.pair].cur;
+  }else if(k==='type'&&D.type==='Обмен валюты'&&v==='Оплата недвижимости'){
+    D.pair=null;
+    const mode=askModes(next).find(m=>m.k===D.mode)||askModes(next)[0];
+    D.mode=mode.k;D.cur=mode.cur;
+  }
+  draftSet(k,v);
 }
 function payWays(D){
   /* Клиент может заплатить криптой по любой недвижимости, включая лизхолд: USDT
@@ -7020,7 +7037,7 @@ function payWays(D){
      ограничения «лизхолд только рубли или баты»). */
   if(D.type==='Оплата авто') return ['По реквизитам'];
   if(D.type!=='Обмен валюты') return ['По реквизитам','СБП','Крипта','Наличные'];
-  return PAIR_CFG[pairOf(D)].ways;
+  return PAIR_CFG[pairOf(D)]?.ways||[];
 }
 /* Две разные задачи клиента: «мне нужно заплатить N бат» и «у меня есть N рублей».
    От того, какая сумма задана, зависит, что мы считаем, — поэтому спрашиваем прямо. */
@@ -7050,13 +7067,7 @@ function draftMode(k){
   if(D.type==='Оплата авто'&&D.mode!==k)D.sum='';
   D.mode=k; D.cur=m.cur; save(); render();
 }
-function draftPair(v){
-  const D=S.draft,c=PAIR_CFG[v];
-  D.pair=v;
-  if(c.ways.indexOf(D.payType)<0) D.payType=c.ways[0];
-  D.cur=(D.mode==='have')?(PAIR_PAYCUR[v]||c.cur):c.cur;
-  save();render();
-}
+function draftPair(v){draftSetGated('pair',v);}
 /* Реферер и агенты разъезжаются: реферера оставили, агентов убрали — платить некому.
    Кнопка возвращает состав из справочника, чтобы это чинилось, а не висело. */
 function draftAgentsBack(){const D=S.draft;D.agents=agentsDefault(D.refId);save();render();toast('Агенты взяты из справочника');}
@@ -7080,11 +7091,14 @@ function draftSet(k,v,silent){
   }
   /* валюта суммы следует за режимом: «нужно оплатить» — всегда баты, «есть сумма» —
      то, чем клиент платит. Крипта считается в USDT, остальное в рублях. */
-  if(k==='payType'&&S.draft.mode!=='need'&&S.draft.cur!=='thb') S.draft.cur=(v==='Крипта')?'usd':'rub';
+  if(k==='payType'&&S.draft.type!=='Обмен валюты'&&S.draft.mode!=='need'&&S.draft.cur!=='thb') S.draft.cur=(v==='Крипта')?'usd':'rub';
   /* Смена типа сделки на фрихолд/с фрихолда переключает валюту суммы: у фрихолда
      единственный вход — инвойс в USD, у остального — снова баты (Карим, 28.09). */
   if(k==='type'&&v==='Оплата авто'){S.draft.kind='Фрихолд';S.draft.mode='need';S.draft.cur='fhusd';S.draft.payType='По реквизитам';S.draft.ippsTariff=S.draft.ippsTariff||'bank';S.draft.invoiceCurrency='usd';S.draft.sum='';}
-  if(k==='type'&&v!=='Оплата авто'&&S.draft.type==='Оплата авто'){S.draft.kind='Лизхолд';S.draft.mode='need';S.draft.cur='thb';S.draft.sum='';}
+  if(k==='type'&&v!=='Оплата авто'&&S.draft.type==='Оплата авто'){
+    S.draft.kind='Лизхолд';
+    if(v==='Оплата недвижимости'){S.draft.mode='need';S.draft.cur='thb';S.draft.sum='';}
+  }
   if(k==='kind'){
     if(v==='Фрихолд'){S.draft.mode='need';S.draft.cur='fhusd';S.draft.ippsTariff=S.draft.ippsTariff||'bank';}
     else if(S.draft.cur==='fhusd'){S.draft.cur='thb';S.draft.mode='need';}
@@ -7215,6 +7229,14 @@ function draftValid(){
     const amount=num(cleanNum(String(D.amountUsdt??'')));
     if(!Number.isFinite(amount)||amount<=0){toast('Укажите положительную сумму «Клиент отправит, USDT»');return false;}
   }
+  if(!payWays(D).includes(D.payType)){toast('Выберите способ оплаты для этой валютной пары');return false;}
+  if(STAND&&!draftComboVerified(D.type,D.kind,D.payType)){
+    const combo=standFlowCombo(D.type,D.kind,D.payType);
+    if(!jeq(D.unverified_flow_confirmation,combo)){
+      if(!confirmStandFlow(D))return false;
+      D.unverified_flow_confirmation=combo;
+    }
+  }
   return true;
 }
 function draftAmounts(D){
@@ -7270,7 +7292,8 @@ async function createGo(){
        переносит нашу на следующий свободный ID, поэтому выбираем последний
        новый ID с теми же исходными полями. */
     const confirmed=(standBase?.deals||[]).filter(x=>!knownIds.has(x.id)&&
-      x.createdAt===d.createdAt&&x.client===d.client&&x.autoPayment===d.autoPayment&&
+      x.createdAt===d.createdAt&&x.client===d.client&&x.type===d.type&&x.kind===d.kind&&
+      x.payType===d.payType&&x.pair===d.pair&&x.autoPayment===d.autoPayment&&
       x.autoRequestMode===d.autoRequestMode&&x.requestedUsd===d.requestedUsd&&
       x.requestedRub===d.requestedRub&&x.comment===d.comment)
       .sort((a,b)=>Number(b.id)-Number(a.id))[0];
