@@ -175,6 +175,7 @@ textarea.fc{min-height:74px;resize:vertical;line-height:1.5}
   padding:var(--ds-sm) var(--ds-md);margin:var(--ds-md) 0;overflow-wrap:anywhere}
 .s27-fact-pending{color:var(--ds-decision-ink);white-space:normal;overflow-wrap:anywhere}
 .s27-close-actions{margin-top:var(--ds-lg)}
+.s27-review-anchor{scroll-margin-top:120px}
 .crm-close-state{margin:var(--ds-md) 0;padding:var(--ds-sm) var(--ds-md);border:1px solid var(--ds-decision-border);border-radius:var(--ds-control);background:var(--ds-decision);color:var(--ds-decision-ink);overflow-wrap:anywhere}
 .crm-close-state[data-kind="success"]{background:#D1FAE5;border-color:var(--green);color:var(--green-darker)}
 .crm-close-state p{margin:4px 0}.crm-close-state ul{margin:6px 0 0;padding-left:20px}
@@ -7593,6 +7594,7 @@ function viewDeal(d){
     (policySend&&policyOwnsSend(d,policyWallet,S.role))||
     (policyConfirm&&policyOwnsVerification(d,policyWallet,S.role)));
   const p=progress(d), view=S.view||'deal';
+  const reviewTask=view==='task'&&d.step==='s27'&&d.type==='Оплата недвижимости'&&d.kind==='Фрихолд'&&['manager','admin'].includes(S.role);
   const branch=d.prepay?(S.taskBranch||((S.role==='operator'&&d.prepay.brokerStep!=='done')||prepayRefundRole(d)===S.role?'conversion':'payment')):null;
   const branchPath=view==='task'?dealTaskPath(d,branch):null;
   let body='';
@@ -7658,7 +7660,7 @@ function viewDeal(d){
   return `<div class="deal-screen"><div class="task-card-nav"><button type="button" onclick="closeTaskToList()">‹ Все задачи</button><button type="button" onclick="nextTask()" ${typeof taskListCursor==='undefined'||typeof taskListEntries==='undefined'||taskListCursor<0||taskListCursor+1>=taskListEntries.length?'disabled':''}>Следующая задача ›</button></div><div class="deal-breadcrumb">Задачник / ${htmlText(d.code)}</div>
   <header class="deal-head"><div><p class="deal-code">${htmlText(d.code)} · ${htmlText(d.autoPayment===true?'Оплата авто':d.kind||d.type)}${d.prepay?' · оплата наперёд':''}</p>
     <h1>${htmlText(d.client)}</h1><p>${htmlText([d.object,d.dev,d.manager?'менеджер '+d.manager:''].filter(Boolean).join(' · '))}</p></div>
-    ${['manager','admin'].includes(S.role)&&!d.closed&&!d.manual?`<button class="btn btn-outline btn-sm" onclick="manualCloseAsk(${d.id})">Перенести в CRM и закрыть</button>`:''}
+    ${['manager','admin'].includes(S.role)&&!d.closed&&!d.manual&&!reviewTask?`<button class="btn btn-outline btn-sm" onclick="manualCloseAsk(${d.id})">Перенести в CRM и закрыть</button>`:''}
     ${view==='task'&&branchPath?`<div class="deal-progress"><span>${htmlText(branchPath.active==='refund'?'Возместить оплату':STEPS[branchPath.active]?.title||'Конвертация завершена')}</span>
       <b>Шаг ${branchPath.index+1} из ${branchPath.steps.length}</b><i><span style="width:${Math.round((branchPath.index+1)/Math.max(1,branchPath.steps.length)*100)}%"></span></i></div>`:''}</header>
   ${view==='task'&&!d.manual&&clientPayinSummarySupported(d)?clientPayinSummary(d):''}
@@ -7685,7 +7687,7 @@ function viewDeal(d){
         title="${d.originMode==='manual'?'Финальное сохранение в CRM':'Для старой ручной сделки нет подтверждённого сервером происхождения'}"
         onclick="crmPushClose(${d.id})">Сохранить в CRM</button>
       ${!d.manualNew&&d.originMode!=='manual'?'<span class="fh">Не подтверждено сервером происхождение ручного черновика; финальное сохранение недоступно.</span>':''}${crmClosePanel(d.id)}`:''}
-  ${!d.closed&&!d.manual?`<button class="btn btn-outline btn-sm" ${prepayCloseReason(d)||standClosing?'disabled':''} onclick="askClose(${d.id})">Закрыть сделку</button>${prepayCloseReason(d)?`<p class="fh" role="status">${htmlText(prepayCloseReason(d))}</p>`:''}${view==='task'&&d.step==='s27'?'':crmClosePanel(d.id)}`:''}</div>
+  ${!d.closed&&!d.manual&&!reviewTask?`<button class="btn btn-outline btn-sm" ${prepayCloseReason(d)||standClosing?'disabled':''} onclick="askClose(${d.id})">Закрыть сделку</button>${prepayCloseReason(d)?`<p class="fh" role="status">${htmlText(prepayCloseReason(d))}</p>`:''}${view==='task'&&d.step==='s27'?'':crmClosePanel(d.id)}`:''}</div>
   </aside></div></div>`;
 }
 
@@ -10757,6 +10759,49 @@ function receiptDocs(d){
   filesOf(d,'additional').forEach((f,i)=>{if(f.documentType==='receipt')out.push({f,kind:'additional',i});});
   return out;
 }
+/* Local navigation only; an attachment change returns the manager to the files. */
+const S27_DOCUMENT_REVIEW=new Map();
+function s27ReviewState(d){
+  const orders=filesOf(d,'payment_order').map((f,i)=>({f,kind:'payment_order',i}));
+  const receipts=receiptDocs(d), pt=d.payTo||{};
+  const key=JSON.stringify([d.invoiceUsd??pt.amount,pt.dev||d.dev,pt.bank,pt.acc,
+    orders.concat(receipts).map(({f,kind,i})=>[kind,i,f.id,f.storageId,f.sha256,f.data,f.file,f.mime,f.bytes])]);
+  if(S27_DOCUMENT_REVIEW.has(d.id)&&S27_DOCUMENT_REVIEW.get(d.id)!==key)S27_DOCUMENT_REVIEW.delete(d.id);
+  return {key,orders,receipts,closing:S27_DOCUMENT_REVIEW.get(d.id)===key};
+}
+function s27ReviewNavigate(id,closing){
+  const d=deal(id);
+  if(!d||d.closed||d.manual||d.step!=='s27'||d.type!=='Оплата недвижимости'||d.kind!=='Фрихолд'||!['manager','admin'].includes(S.role))return;
+  // Pointer navigation keeps focus until click so onchange cannot remove its button.
+  const active=document.activeElement;
+  if(active?.closest?.('.crmform')&&!active.readOnly&&typeof active.onchange==='function'){
+    const initial=active.tagName==='SELECT'
+      ?([...active.options].find(o=>o.defaultSelected)||active.options[0])?.value:active.defaultValue;
+    if(active.value!==initial)active.blur();
+  }
+  if(closing)S27_DOCUMENT_REVIEW.set(id,s27ReviewState(d).key);
+  else S27_DOCUMENT_REVIEW.delete(id);
+  render();
+  const target=document.getElementById((closing?'s27-close-':'s27-documents-')+id);
+  target?.focus();target?.scrollIntoView({block:'start'});
+}
+function s27ReviewDocuments(d,review){
+  const pt=d.payTo||{}, recipient=pt.dev||d.dev;
+  const group=(title,refs)=>`<div class="card-title" style="font-size:14px;margin:18px 0 6px">${title}</div>${refs.length?refs.map(({f,kind,i})=>`<div class="checkfile">
+    <div><div class="fname">${htmlText(f.file)}${f.demo?' · DEMO':''}</div><div class="fmeta">${htmlText(f.size||'')}</div></div>
+    <div class="fops"><button class="btn btn-primary" onclick="docOpen(${d.id},'${kind}',${i})">Открыть</button>
+      <button class="btn btn-secondary" onclick="docDownload(${d.id},'${kind}',${i})">Скачать</button></div></div>`).join('')
+    :'<p class="fh">Файл не приложен</p>'}`;
+  return `<div class="checktop s27-review-anchor" id="s27-documents-${d.id}" tabindex="-1">
+    <div class="checklab">Оплата инвойса</div>
+    <div class="checksum">${usd(d.invoiceUsd??pt.amount)}${recipient?`<span class="to">→ ${htmlText(recipient)}</span>`:''}</div>
+    ${group('Платёжное поручение / чек',review.orders)}
+    ${group('SWIFT / MT103',review.receipts)}
+    ${review.receipts.length?(d.sentToClient?`<p class="fh s27-sent-note">✓ Чек отправлен клиенту${d.sentAt?' · '+htmlText(d.sentAt):''}</p>`
+      :`<button class="btn btn-primary btn-lg s27-sent-action" onclick="sentToggle(${d.id})">Отметить — чек отправлен клиенту</button>
+        <p class="fh s27-sent-hint">Отправьте подтверждение в чат клиента, затем отметьте здесь</p>`):''}
+  </div>`;
+}
 /* Без побочных эффектов: настоящий файл чека в слоте «Чек» или в «+ Загрузить ещё»
    с типом «чек», флаг docs.receipt не считается. Автора и дату проверяет сервер. */
 function hasReceipt(d){
@@ -11679,7 +11724,7 @@ function stepGoal(d){
       const pvTile=crmPreviewFor(d);
       const profitTile=pvTile&&pvTile.data&&pvTile.data.net_profit_usdt!=null?moneyKop(pvTile.data.net_profit_usdt,'USDT'):'—';
       return {t:'Отписаться клиенту и закрыть сделку',
-        nums:[['Выдано',money2(ap.thb,ap.thbSign||'฿')],['Прибыль',profitTile],['Документов',String(docFilesCount(d))]]};
+        nums:[[d.kind==='Фрихолд'?'Оплачено по инвойсу':'Выдано',d.kind==='Фрихолд'?usd(E.invoiceUsd??d.invoiceUsd):money2(ap.thb,ap.thbSign||'฿')],['Прибыль',profitTile],['Документов',String(docFilesCount(d))]]};
     }
     default: return null;
   }
@@ -12994,6 +13039,12 @@ function stepCard(d){
     const pt=d.payTo||{};
     const receiptFiles=receiptDocs(d).map(x=>x.f), receiptRefs=receiptDocs(d);
     const safe=s=>String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    const review=d.type==='Оплата недвижимости'&&d.kind==='Фрихолд'&&['manager','admin'].includes(S.role)?s27ReviewState(d):null;
+    const documents=review?s27ReviewDocuments(d,review):'';
+    if(review&&!review.closing)return `<div class="card"><div class="card-title">Документы выплаты
+      <span class="sub">Проверьте документы и отправьте подтверждение клиенту</span></div>
+      ${documents}${crmClosePanel(d.id)}
+      <div class="row"><button class="btn btn-primary" onpointerdown="event.preventDefault()" onclick="s27ReviewNavigate(${d.id},true)">Документы проверены — к закрытию</button></div></div>`;
     /* У крипты нет обмена у брокера: курс RUB→USDT и «хеш обмена» ей не нужны. Раньше
        список был общий, и у крипто-сделки кнопка закрытия не разблокировалась никогда
        (прогон 25.09). Блокирует закрытие теперь проверка карточки CRM (crmGaps). */
@@ -13019,9 +13070,9 @@ function stepCard(d){
     /* Чек — главное на этом шаге: сумма, получатель и файл крупно в самом верху,
        «Чек отправлен клиенту» — явная главная кнопка сразу под ним. Служебное
        (CRM-превью, список полей) — ниже и мельче, по иерархии важности (Карим, 25.09) */
-    return `<div class="card"><div class="card-title">Чек клиенту и закрытие
+    return `<div class="card"><div class="card-title">${review?'Документы выплаты':'Чек клиенту и закрытие'}
       <span class="sub">${ok.length-okMiss} из ${ok.length} полей собрано по дороге</span></div>
-    ${d.kind==='Фрихолд'&&filesOf(d,'payment_order').length?`<div class="card-title" style="font-size:14px;margin:14px 0 6px">Платёжное поручение</div>${filesOf(d,'payment_order').map((f,i)=>`<div class="checkfile"><span class="fname">${safe(f.file)}</span><button class="btn btn-secondary" onclick="docOpen(${d.id},'payment_order',${i})">Открыть</button></div>`).join('')}`:''}
+    ${review?documents:`${d.kind==='Фрихолд'&&filesOf(d,'payment_order').length?`<div class="card-title" style="font-size:14px;margin:14px 0 6px">Платёжное поручение</div>${filesOf(d,'payment_order').map((f,i)=>`<div class="checkfile"><span class="fname">${safe(f.file)}</span><button class="btn btn-secondary" onclick="docOpen(${d.id},'payment_order',${i})">Открыть</button></div>`).join('')}`:''}
     ${receiptFiles.length?`<div class="checktop">
       <div class="checklab">Чек выплаты</div>
       <div class="checksum">${money(pt.amount||ap.thb,ap.thbSign||'฿')}${pt.dev?`<span class="to">→ ${safe(pt.dev)}</span>`:''}</div>
@@ -13035,8 +13086,9 @@ function stepCard(d){
         `<button class="btn btn-primary btn-lg s27-sent-action" onclick="sentToggle(${d.id})">Отметить — чек отправлен клиенту</button>
         <p class="fh s27-sent-hint">Отправьте чек в чат клиента, затем отметьте здесь</p>`}
     </div>`
-    :`<div class="alert a-warn"><div>Чека нет — приложите чек выплаты получателю (менеджер или операционист).</div></div>`}
+    :`<div class="alert a-warn"><div>Чека нет — приложите чек выплаты получателю (менеджер или операционист).</div></div>`}`}
 
+    ${review?`<section class="s27-review-anchor" id="s27-close-${d.id}" tabindex="-1"><button class="btn btn-outline btn-sm" onpointerdown="event.preventDefault()" onclick="s27ReviewNavigate(${d.id},false)">К документам выплаты</button>`:''}
     <div class="card-title" style="font-size:14px;margin:18px 0 6px">Итог сделки
       <span class="sub">проверьте каждую строку · «Поправить» открывает поле</span></div>
     ${dealSummaryBlock(d)}
@@ -13050,7 +13102,7 @@ function stepCard(d){
     <div class="row s27-close-actions${(readiness.ready&&!standClosing)?' mainrow':''}">
       <button class="btn btn-primary" ${(!readiness.ready||standClosing||standBusy||standSaveScheduled||!!crmClosePendingGet(d.id))?'disabled':''} onclick="crmPushClose(${d.id},${reviewedVersion})">${standClosing?'Закрываем…':'Сохранить в CRM и закрыть'}</button>
       <button class="btn btn-outline" onclick="editOpen(${d.id})">Поправить данные сделки</button></div>
-    </div>`;},
+    ${review?'</section>':''}</div>`;},
   }[d.step];
   if(!f) return `<div class="card">Шаг «${d.step}» в прототипе не реализован.</div>`;
   /* Комментарий одинаково нужен на каждом шаге, поэтому вставляем его централизованно —

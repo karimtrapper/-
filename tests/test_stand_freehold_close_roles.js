@@ -19,6 +19,8 @@ for(const role of ['operator','admin','manager']){
  ctx.S.role=role;const out=ctx.viewDeal(d);
  assert.match(out,/crmEvidence\(1484,'receipt'\)/,role+' получает подтверждения');
  if(role==='operator')assert.doesNotMatch(out,/Сохранить в CRM/,'оператору не открывается закрытие за менеджера');
+ if(role==='manager'||role==='admin')assert.doesNotMatch(out,/manualCloseAsk|askClose\(/,
+   'freehold task has one closing sequence after document review');
 }
 ctx.S.role='teodor';assert.doesNotMatch(ctx.viewDeal(d),/crmEvidence/);
 console.log('freehold close role visibility OK');
