@@ -12636,7 +12636,21 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
         old_deals_by_id = {item.get('id'): item for item in previous.get('deals') or []}
         for incoming in new_state.get('deals') or []:
             before = old_deals_by_id.get(incoming.get('id'))
-            if not before or before.get('step') != 's23':
+            if not before:
+                continue
+            # IPPS order amounts are part of the claim fingerprint, including
+            # their JSON representation. Browsers serialize 10000.0 as 10000
+            # on later steps too; retain the stored number for an exact no-op.
+            old_order = before.get('ippsPayoutOrder')
+            new_order = incoming.get('ippsPayoutOrder')
+            old_order = old_order if isinstance(old_order, dict) else {}
+            new_order = new_order if isinstance(new_order, dict) else {}
+            old_amount, new_amount = old_order.get('amount'), new_order.get('amount')
+            if (type(old_amount) in (int, float) and type(new_amount) in (int, float)
+                    and _amount(old_amount) is not None
+                    and _amount(old_amount) == _amount(new_amount)):
+                new_order['amount'] = old_amount
+            if before.get('step') != 's23':
                 continue
             try:
                 main = _stand_batch_main(previous, before.get('id'))
