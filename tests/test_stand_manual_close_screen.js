@@ -24,8 +24,8 @@ const SCRIPT = [
   source('hashShareOf'), source('hashCell'),
   source('payoutHuman'), source('clientRubPaid'), source('mfList'),
   source('txPoolInit'), source('txPool'), source('txUsed'),
-  source('manualCloseFormState'), source('manualCloseScreen'),
-  source('brokerSend'), html.match(/^const BROKER_FEE=.*?;/m)[0],
+  source('crmNet'), source('manualCloseFormState'), source('manualCloseSbpChoice'), source('manualCloseScreen'),
+  source('brokerSend'), html.match(/^const BROKER_FEE=.*?;/m)[0], html.match(/^const PAYIN_CRM=.*?;/m)[0],
 ].join('\n');
 
 const SOURCES_PAY = {
@@ -74,7 +74,7 @@ function main() {
   {
     const ctx = makeCtx(earlyDeal());
     const out = ctx.manualCloseScreen(ctx.S.deals[0]);
-    assert.ok(/onchange="mcHashSet\(1,'payin',0,'hash'/.test(out),
+    assert.ok(/oninput="mcHashSet\(1,'payin',0,'hash'/.test(out),
       'ожидали редактируемый input хеша прихода (mcHashSet), когда d.payinHashes пуст');
     assert.ok(!/class="sumhash"/.test(out),
       'не должно быть готовой read-only строки хеша, когда прихода ещё нет');
@@ -86,22 +86,35 @@ function main() {
     const cash = {...earlyDeal(), pair: 'RUB → USDT', payType: 'Наличные', amountRub: 1217600};
     const ctx = makeCtx(cash);
     const out = ctx.manualCloseScreen(ctx.S.deals[0]);
-    assert.ok(/onchange="mcHashSet\(1,'payin',0,'hash'/.test(out),
+    assert.ok(/oninput="mcHashSet\(1,'payin',0,'hash'/.test(out),
       'у наличной сделки тоже должен быть ввод хеша прихода');
     assert.ok(!out.includes('mc_payin_manual_bank_confirmed'), 'отметка «подтверждено вручную» убрана');
     console.log('T1b payin hash editor shown for non-crypto methods PASS');
   }
 
-  // T2: сделка на s27 с d.payinHashes — хеш показан read-only строкой (hashCell), без
-  // полей ввода хеша прихода.
+  // Подтверждённая доля сохраняется, при этом можно добавить следующий приход.
   {
-    const ctx = makeCtx(lateDeal());
+    const d = lateDeal();
+    d.payinHashes[0].verified = true;
+    const ctx = makeCtx(d);
     const out = ctx.manualCloseScreen(ctx.S.deals[0]);
     assert.ok(/class="sumhash"/.test(out),
       'ожидали read-only отображение хеша прихода (hashCell), когда d.payinHashes уже есть');
     assert.ok(!/mcHashSet\(2,'payin'/.test(out),
       'не должно быть редактируемых полей хеша прихода, когда он уже известен');
-    console.log('T2 read-only payin hash rows when payinHashes present PASS');
+    assert.ok(out.includes('Добавить хеш прихода'));
+    console.log('T2 confirmed allocation remains read-only and can be supplemented PASS');
+  }
+
+  // Историческая запись содержит полный вывод, а карточка знает долю сделки.
+  {
+    const d = {...lateDeal(), payType: 'СБП', pair: 'RUB → THB', amountRub: 45000, amountUsdt: 505,
+      payinHashes: [{hash: 'a'.repeat(64), amount: 1941}]};
+    const ctx = makeCtx(d);
+    const out = ctx.manualCloseScreen(d);
+    assert.match(out, /value="505" inputmode="decimal"/);
+    assert.ok(out.includes('Доля сделки, USDT'));
+    assert.equal(d.payinHashes[0].amount, 1941, 'preview must leave the saved board untouched');
   }
 
   // T3: обязательное поле причины закрытия есть всегда — и на раннем, и на почти готовом шаге.

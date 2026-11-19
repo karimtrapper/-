@@ -43,7 +43,7 @@ function crmDraftRead(root,key) {
   return crmDraftField(root,key)?.value ?? '';
 }
 const CRM_DRAFT_PAY_TYPES={sber_reqs:'По реквизитам',flow_sole_reqs:'По реквизитам',
-  sber_wl:'СБП',spp_doverka:'СБП',crypto_direct:'Крипта',partners_cash:'Наличные'};
+  sber_wl:'СБП',spp_doverka:'СБП (Доверка)',crypto_direct:'Крипта',partners_cash:'Наличные'};
 function crmDraftFlow(active,d){
   const {root}=active;
   const selectedKind=crmDraftRead(root,'dealKindSelect');
@@ -66,7 +66,8 @@ function crmDraftAuthorizeFlow(active,d,flow){
   const combo=standFlowCombo(flowType,flow.kind,flow.payType);
   const oldCombo=standFlowCombo(old.autoPayment?'Оплата авто':old.type,old.kind,old.payType);
   const changed=!jeq(combo,oldCombo);
-  if(changed&&d.isTask&&flow.type==='Обмен валюты'&&!payWays(flow).includes(flow.payType)){
+  const allowedMethod=flow.payType==='СБП (Доверка)'?'СБП':flow.payType;
+  if(changed&&d.isTask&&flow.type==='Обмен валюты'&&!payWays(flow).includes(allowedMethod)){
     toast('Выберите способ оплаты для этой валютной пары');
     return false;
   }
@@ -97,6 +98,7 @@ function crmDraftParts(d) {
 }
 function crmDraftSafeFetch(url,options) {
   const u=new URL(url,location.origin);
+  const verifyManualHash=u.pathname==='/api/stand/manual-close/verify-hash'&&!u.search;
   const allowed=['/api/sber-incomes','/api/transactions/outgoing','/api/tx/lookup',
     '/api/transactions/incoming','/api/wl-transactions',
     '/api/payout-tx','/api/tron/payout-tx',
@@ -104,12 +106,12 @@ function crmDraftSafeFetch(url,options) {
     '/api/rates',
     '/api/deals/mf-realty/preview','/api/deals/mf-freehold/preview',
     '/api/managers','/api/clients','/api/referrers','/api/payin-txs'];
-  if(u.origin!==location.origin || !(allowed.includes(u.pathname)||u.pathname.startsWith('/api/payin-txs/')))
+  if(u.origin!==location.origin || !(verifyManualHash||allowed.includes(u.pathname)||u.pathname.startsWith('/api/payin-txs/')))
     return Promise.reject(new Error('CRM draft request blocked'));
   if(u.pathname==='/api/managers' && u.search!=='?include_staff=1')
     return Promise.reject(new Error('CRM draft manager request blocked'));
   const method=(options?.method||'GET').toUpperCase();
-  if(method!=='GET' && !(method==='POST' && u.pathname.endsWith('/preview')))
+  if(method!=='GET' && !(method==='POST' && (verifyManualHash||u.pathname.endsWith('/preview'))))
     return Promise.reject(new Error('CRM draft mutation blocked'));
   return window.fetch(u.href,{...options,credentials:'same-origin'});
 }
@@ -483,6 +485,7 @@ async function crmDraftLoadPayinTx(active) {
       ...(data.txs||[]).map(tx=>{
         const option=new Option(`+$${Number(tx.free_usdt||0).toFixed(2)} | ${String(tx.tx_hash||'').slice(0,16)}…`,tx.tx_hash);
         option.dataset.amount=tx.free_usdt;
+        option.dataset.network=tx.network||'trc20';
         option.dataset.date=(tx.created_at||'').slice(0,10);
         return option;
       }));
@@ -680,7 +683,18 @@ function crmDraftWire(active) {
     }catch(error){/* Keep the already loaded local list. */}
     if(crmDraftActive===active)crmDraftClientSearch(active,e.target.value);
   });
-  root.getElementById('payinManualHash')?.addEventListener('change',()=>crmDraftLookupPayin(active));
+  const hashInput=root.getElementById('payinManualHash');
+  if(hashInput&&deal(active.id)?.manual){
+    const add=document.createElement('button');
+    add.type='button';
+    add.className='btn btn-secondary';
+    add.textContent='Добавить хеш';
+    hashInput.parentNode.append(add);
+    add.addEventListener('click',()=>crmDraftLookupPayin(active));
+    hashInput.addEventListener('keydown',event=>{
+      if(event.key==='Enter'){event.preventDefault();crmDraftLookupPayin(active);}
+    });
+  }else hashInput?.addEventListener('change',()=>crmDraftLookupPayin(active));
   document.getElementById('crmDraftTariff')?.addEventListener('change',e=>{
     const t=IPPS_TARIFFS[e.target.value];
     crmDraftValue(root,'fhFeePercent',t?.percent);
@@ -693,6 +707,40 @@ async function crmDraftLookupPayin(active) {
   active.manualTx=null;
   if(!hash)return;
   const network=crmDraftRead(root,'payinManualNetwork')||'trc20';
+  if(deal(active.id)?.manual&&crmDraftRead(root,'payinMethod')!=='flow_sole_reqs'){
+    if(active.pendingPayin)return;
+    const hint=root.getElementById('payinTxWarn');
+    active.pendingPayin=true;
+    try{
+      if(hint){hint.textContent='Проверяем хеш прихода…';hint.style.display='block';}
+      const response=await crmDraftSafeFetch('/api/stand/manual-close/verify-hash',{
+        method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+          dealId:active.id,newDraft:deal(active.id).manualNew===true,
+          direction:'payin',network,hash,checkShare:true}),
+      });
+      const data=await response.json();
+      if(crmDraftActive!==active||crmDraftRead(root,'payinManualHash').trim()!==hash||
+         crmDraftRead(root,'payinManualNetwork')!==network)return;
+      if(!response.ok||!data.success)throw new Error(MANUAL_CLOSE_ERRORS[data.error]||data.error||'Хеш не подтверждён сетью');
+      const pool=active.core.payinTxPool;
+      if(crmDraftManualHashFromPool(active,data.hash,network))throw new Error('Этот хеш уже добавлен');
+      const free=Number(data.freeAmount);
+      if(!(free>0))throw new Error('По этому хешу нет свободного остатка');
+      const expected=(crmDraftNum(crmDraftRead(root,'payin_amount_usdt'))||0)-active.core.payinTxPoolTotal();
+      const share=expected>0?Math.min(free,expected):free;
+      pool.push({hash:data.hash,network,isShare:true});
+      active.core.payinTxShareChanged(pool.length-1,share);
+      active.core.renderPayinTxPool();
+      crmDraftValue(root,'payinManualHash','');
+      if(hint)hint.textContent='В сети '+data.verifiedAmount+' USDT · свободно '+free+' USDT';
+      crmDraftCapture();
+    }catch(error){
+      if(hint)hint.textContent=error.message;
+    }finally{
+      active.pendingPayin=false;
+    }
+    return;
+  }
   try{
     const response=await crmDraftSafeFetch('/api/tx/lookup?network='+encodeURIComponent(network)+'&hash='+encodeURIComponent(hash));
     const data=await response.json();
@@ -711,8 +759,9 @@ async function crmDraftLookupPayin(active) {
 }
 function crmDraftManualHashFromPool(active,hash,network) {
   const normalizedNetwork=String(network||'trc20').toLowerCase().replace('-','');
+  const key=value=>String(value||'').trim().toLowerCase().replace(/^0x/,'');
   return !!hash&&active.core.payinTxPool.some(tx=>
-    tx.hash===hash&&String(tx.network||'trc20').toLowerCase().replace('-','')===normalizedNetwork);
+    key(tx.hash)===key(hash)&&String(tx.network||'trc20').toLowerCase().replace('-','')===normalizedNetwork);
 }
 function crmDraftSavedFlowShare(deal,hash,network,declared) {
   const normalizedNetwork=String(network||'trc20').toLowerCase().replace('-','');
@@ -877,10 +926,11 @@ function crmDraftCommit(id) {
   if(kind==='custom')return crmDraftCommitCustom(a,d,before,flow);
   const manualHash=crmDraftRead(r,'payinManualHash').trim();
   const manualNetwork=crmDraftRead(r,'payinManualNetwork')||'trc20';
+  if(a.pendingPayin){toast('Дождитесь проверки хеша прихода');return false;}
   // Выбор из реестра копирует первый хэш пула в ручное поле для карточки сделки.
   const fromPool=crmDraftManualHashFromPool(a,manualHash,manualNetwork);
   if(manualHash&&!fromPool&&(a.manualTx?.hash!==manualHash||a.manualTx?.network!==manualNetwork)){
-    toast('Сначала подтвердите сумму ручного хэша в сети');return false;
+    toast(d.manual?'Добавьте введённый хеш в приход':'Сначала подтвердите сумму ручного хэша в сети');return false;
   }
   let tariff=null;
   if(kind==='mf_freehold'){
@@ -924,6 +974,10 @@ function crmDraftCommit(id) {
     d.clientId=local.id;
   }
   d.payType=flow.payType;
+  if(d.manualNew&&kind==='exchange'){
+    d.pair=flow.payType==='Крипта'?'USDT → THB':'RUB → THB';
+    d.direction=d.pair;
+  }
   if(a.flowConfirmation)d.unverified_flow_confirmation=a.flowConfirmation;
   else delete d.unverified_flow_confirmation;
   d.amountRub=crmDraftNum(crmDraftRead(r,'payin_amount_rub'));
@@ -933,9 +987,13 @@ function crmDraftCommit(id) {
   d.rates=d.rates||{};
   d.rates.broker=crmDraftNum(crmDraftRead(r,'payin_rate_rub_usdt'));
   d.payinPartner=crmDraftRead(r,'payin_partner_name');
-  d.payinHashes=a.core.payinTxPool.map(x=>({hash:x.hash,network:x.network||'trc20',
-    amount:d.payType==='По реквизитам'&&d.rubReceivingAccount?.mode==='flowsole'&&x._auto
-      ?null:crmDraftNum(x.amount_usdt)}));
+  const savedPayin=d.payinHashes||[];
+  const flowSole=crmDraftRead(r,'payinMethod')==='flow_sole_reqs';
+  d.payinHashes=a.core.payinTxPool.map(x=>({
+    ...savedPayin.find(h=>h.hash===x.hash),hash:x.hash,network:x.network||'trc20',
+    amount:flowSole&&x._auto?null:crmDraftNum(x.amount_usdt),
+    ...(d.manual&&!flowSole&&(x.isShare||x._auto!==undefined)?{isShare:true}:{})
+  }));
   d.payinExtra=a.core.payinExtraSerialize();
   if(manualHash&&!fromPool&&a.manualTx?.hash===manualHash&&a.manualTx.network===manualNetwork&&
      !d.payinHashes.some(x=>x.hash===manualHash))d.payinHashes.push({

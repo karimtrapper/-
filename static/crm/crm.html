@@ -1399,10 +1399,10 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
                                     <option value="">— не выбрано —</option>
                                     <option value="crypto_direct">Крипта напрямую</option>
                                     <option value="sber_wl">СБП</option>
+                                    <option value="spp_doverka">СБП (Доверка)</option>
                                     <option value="sber_reqs">Сбер (реквизиты)</option>
                                     <option value="flow_sole_reqs">Flow Sole (СГБ, реквизиты)</option>
                                     <option value="partners_cash">Партнёры (наличные)</option>
-                                    <option value="spp_doverka" data-legacy="1" hidden>СБП (Доверка, архив)</option>
                                 </select>
                                 <small id="flowAccountHintC" class="form-hint" style="display:none">СГБ · р/с …0261</small>
                             </div>
@@ -1461,13 +1461,11 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
                                 <select class="form-control" name="payin_method" id="payinMethod" required>
                                     <option value="">— не выбрано —</option>
                                     <option value="sber_wl">СБП</option>
+                                    <option value="spp_doverka">СБП (Доверка)</option>
                                     <option value="sber_reqs">Сбер (реквизиты)</option>
                                     <option value="flow_sole_reqs">Flow Sole (СГБ, реквизиты)</option>
                                     <option value="crypto_direct">Крипта напрямую</option>
                                     <option value="partners_cash">Партнеры (наличные)</option>
-                                    <!-- Архив: тот же СБП, но через умершую Доверку. Скрыт из выбора,
-                                         показывается только когда открыта старая сделка с этим методом -->
-                                    <option value="spp_doverka" data-legacy="1" hidden>СБП (Доверка, архив)</option>
                                 </select>
                                 <small id="flowAccountHint" class="form-hint" style="display:none">СГБ · р/с …0261</small>
                                 <div id="flowGateHint" style="display:none;margin-top:8px;font-size:12px;color:#92400E">Флоу в проверке — пока проводите через Карима</div>
@@ -6787,7 +6785,7 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
             if (share != null && expected > 0 && expected < share) share = expected;
             payinTxPool.push({
                 hash: txHash,
-                network: 'trc20',
+                network: opt?.dataset?.network || 'trc20',
                 amount_usdt: share,
                 date: opt?.dataset?.date || '',
                 // Подставлено из сети, руками не трогали: когда приедет реестр,
@@ -6810,10 +6808,11 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
 
         function resetPayinTxPool(parts) {
             payinTxPool = (parts || []).map(p => ({
+                ...p,
                 hash: p.hash,
                 network: p.network || 'trc20',
                 amount_usdt: p.amount_usdt != null ? Number(p.amount_usdt) : null,
-                date: '',
+                date: p.date || '',
             }));
             renderPayinTxPool();
         }
@@ -7034,9 +7033,6 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
             }
         }
 
-        // Архивные методы (spp_doverka) убраны из выпадашки, но у старых сделок они
-        // в базе: если просто присвоить value, селект останется пустым и сохранение
-        // молча сменит метод. Поэтому опцию для такого значения раскрываем обратно.
         function setPayinMethodValue(selectId, value) {
             const sel = document.getElementById(selectId);
             if (!sel || !value) return;
@@ -7140,8 +7136,7 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
             payinExtraSummary();
         }
 
-        // Лейблы для селекта части. spp_doverka не показываем — провайдер умер,
-        // опция оставлена только для открытия старых сделок
+        // Лейблы для селекта дополнительного прихода.
         const PAYIN_EXTRA_METHODS = [
             ['sber_wl', 'СБП'],
             ['sber_reqs', 'Сбер (реквизиты)'],

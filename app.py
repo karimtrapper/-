@@ -489,8 +489,7 @@ class PayInMethod(str, Enum):
 
 PAYIN_METHOD_LABELS = {
     # sber_wl — живой СБП-рельс: ссылка WL-бота → QR НСПК → эквайринг Сбера.
-    # spp_doverka — тот же СБП, но через умершего провайдера Доверку; значение
-    # оставлено ради истории (68 сделок янв–апр) и помечено, чтобы не путать.
+    # Доверка учитывается отдельно от эквайринга Сбера.
     'spp_doverka': 'СБП (Доверка)',
     'crypto_direct': 'крипта',
     'partners_cash': 'наличные',
@@ -553,9 +552,19 @@ _STAND_KIND_CANON = {
     'Аренда': DealKindCanon.RENTAL.value,
 }
 
+_STAND_DOVERKA_PAY_TYPE = 'СБП (Доверка)'
+_STAND_PAYIN_METHOD = {
+    'По реквизитам': PayInMethod.SBER_REQS.value,
+    'СБП': PayInMethod.SBER_WL.value,
+    _STAND_DOVERKA_PAY_TYPE: PayInMethod.SPP_DOVERKA.value,
+    'Крипта': PayInMethod.CRYPTO_DIRECT.value,
+    'Наличные': PayInMethod.PARTNERS_CASH.value,
+}
+
 _STAND_PAYTYPE_CANON = {
     'По реквизитам': PayInCanon.REQUISITES.value,
     'СБП': PayInCanon.SBP.value,
+    _STAND_DOVERKA_PAY_TYPE: PayInCanon.SBP.value,
     'Крипта': PayInCanon.CRYPTO.value,
     'Наличные': PayInCanon.CASH.value,
 }
@@ -9072,6 +9081,7 @@ _STAND_CLOSE_MESSAGES = {
     'client_name_required': 'Укажите клиента.',
     'payin_method_required': 'Укажите способ прихода.',
     'payin_amount_required': 'Укажите сумму прихода в USDT.',
+    'payin_share_unavailable': 'Указанная доля превышает свободный остаток по хешу.',
     'payout_source_required': 'Укажите источник выдачи.',
     'payout_amount_required': 'Укажите сумму выдачи в USDT.',
     'custom_required_fields': 'Заполните валюту, сумму и курс для выбранного способа.',
@@ -9414,6 +9424,7 @@ def stand_crm_close(stand_deal_id):
             return jsonify(success=False, error=prepay_problem), 409
         manual = stand_deal.get('originMode') == 'manual'
         manual_override = False
+        verified_payin = []
         # Хеши, что были на доске до ручного ввода: только у них может быть резерв.
         pre_override_payin_keys = {_payin_hash_key(h.get('hash'))
                                    for h in stand_deal.get('payinHashes') or []
@@ -9426,7 +9437,8 @@ def stand_crm_close(stand_deal_id):
                 {'hash': h.get('hash'), 'network': h.get('network') or h.get('net') or 'TRC20',
                  'sender': h.get('from') or h.get('from_address') or h.get('sender'),
                  'receiver': h.get('to') or h.get('to_address') or h.get('receiver'),
-                 'amount': h.get('amount')}
+                 'amount': h.get('amount'),
+                 **({'shareAmount': h.get('amount')} if h.get('isShare') is True else {})}
                 for h in stand_deal.get('payinHashes') or [] if isinstance(h, dict)]
             # Сумма CRM сверяется с доской позже (_stand_crm_fact_problem); здесь — сами хеши.
             declared = (sum(_stand_number(h['amount']) for h in payin_hashes)
@@ -9434,14 +9446,17 @@ def stand_crm_close(stand_deal_id):
                         else _stand_number((payload.get('crm') or {}).get('payin_amount_usdt')))
             checked_entries, hash_error = _stand_manual_close_verify_hashes(
                 state, payin_hashes, declared, _stand_override_payin_verify(verify_transfer),
-                set(), 'payin', exclude_deal_id=stand_deal_id)
+                set(), 'payin', exclude_deal_id=stand_deal_id,
+                share_available=lambda net, h, total: _stand_manual_payin_available(
+                    db, row, state, stand_deal, net, h, total, lock=True))
             if hash_error:
                 return jsonify({'success': False, 'error': hash_error}), (
                     422 if hash_error in ('payin_hash_unverified', 'payin_hash_already_used',
-                                          'payin_amount_mismatch') else 400)
+                                          'payin_share_unavailable', 'payin_amount_mismatch') else 400)
             wallet_problem = _stand_payin_wallet_problem(db, stand_deal, checked_entries)
             if wallet_problem:  # получатель — наш активный кошелёк реестра (и выбранный в сделке)
                 return jsonify({'success': False, 'error': wallet_problem}), 422
+            verified_payin.extend(checked_entries)
             # Результат сетевой проверки становится серверным фактом приходa: фрихолд и
             # прочие правила требуют verified у хеша. Метаданные и payerWallet не трогаем.
             verified_by_hash = {(normalize_network(entry.get('network')), entry['hash']): entry
@@ -9454,6 +9469,7 @@ def stand_crm_close(stand_deal_id):
                 if entry:
                     item['verified'] = True
                     item['verifiedAt'] = entry.get('verifiedAt')
+                    item['verifiedAmount'] = entry.get('verifiedAmount')
                     if _stand_number(item.get('amount')) <= 0:  # сумму hash-only читает сеть
                         item['amount'] = entry.get('amount')
                     # Адрес отправителя — результат сети, а не ввод менеджера. Если сеть его
@@ -9467,11 +9483,12 @@ def stand_crm_close(stand_deal_id):
         elif 'manualOverride' in payload:
             override_error = _stand_manual_close_apply_override(
                 state, stand_deal, payload.get('manualOverride'), actor,
-                verify=verify_transfer, db=db)
+                verify=verify_transfer, db=db, row=row, verified_payin=verified_payin)
             if override_error:
                 status = (409 if override_error in ('manual_override_not_applicable', 'already_closed')
                           else 422 if override_error in (
                               'payin_hash_unverified', 'payin_hash_already_used', 'payin_amount_mismatch',
+                              'payin_share_unavailable',
                               'payout_hash_unverified', 'payout_hash_already_used', 'payout_amount_mismatch',
                               'payin_wallet_not_registered', 'payin_wallet_mismatch', 'payin_receiver_unknown',
                               'payin_selected_wallet_invalid')
@@ -9556,6 +9573,10 @@ def stand_crm_close(stand_deal_id):
             # Never trust an ID supplied by the browser: derive it from the signed
             # selected StandChannel card and bind it to this CRM row transactionally.
             crm_data['bitrix_deal_id'] = bitrix_id
+        try:
+            _stand_store_verified_payins(db, verified_payin)
+        except ValueError:
+            return jsonify(success=False, error='payin_hash_already_used'), 409
         if (stand_deal.get('cnvId') is not None
                 and not (stand_demo.enabled() and stand_deal.get('demoTransfers'))):
             _stand_import_legacy_payins(db, row, state)
@@ -10653,20 +10674,22 @@ def _stand_crm_fact_problem(board, crm, kind, *, state=None, preview_unverified=
     if ((crm.get('payout_wallet_id') or None) != (payout_board.get('walletId') or None)
             or (crm.get('bank_card_id') or None) != (payout_board.get('bankCardId') or None)):
         return 'recipient_mismatch'
-    payin_method = {'По реквизитам': 'sber_reqs', 'СБП': 'sber_wl',
-                    'Крипта': 'crypto_direct', 'Наличные': 'partners_cash'}
     custom_flow_sole = (board.get('custom') is True
                         and custom.get('payinMethod') == 'flow_sole_reqs')
-    expected_payin_method = ('flow_sole_reqs' if custom_flow_sole or
-        (board.get('payType') == 'По реквизитам'
-         and (board.get('rubReceivingAccount') or {}).get('mode') == 'flowsole')
-        else payin_method.get(board.get('payType')))
-    if board.get('payType') and crm.get('payin_method') != expected_payin_method:
+    pay_type = board.get('payType')
+    expected_payin_method = _STAND_PAYIN_METHOD.get(pay_type)
+    if custom_flow_sole or (pay_type == 'По реквизитам' and
+                            (board.get('rubReceivingAccount') or {}).get('mode') == 'flowsole'):
+        expected_payin_method = PayInMethod.FLOW_SOLE_REQS.value
+    elif (pay_type == 'СБП' and board.get('custom') is True and
+          custom.get('payinMethod') == PayInMethod.SPP_DOVERKA.value):
+        expected_payin_method = PayInMethod.SPP_DOVERKA.value
+    if pay_type and crm.get('payin_method') != expected_payin_method:
         return 'payin_method_mismatch'
     broker_rate = (board.get('rates') or {}).get('broker')
     if board.get('custom') is not True:
-        expected_broker = (broker_rate if board.get('payType') in
-                           ('По реквизитам', 'СБП') and (not pair or pair[0] == 'rub') else None)
+        expected_broker = (broker_rate if pay_type in ('По реквизитам', 'СБП', _STAND_DOVERKA_PAY_TYPE)
+                           and (not pair or pair[0] == 'rub') else None)
         if _amount(crm.get('payin_rate_rub_usdt')) != _amount(expected_broker):
             return 'payin_rate_mismatch'
     main_hashes = board.get('payinHashes') or []
@@ -10704,10 +10727,15 @@ def _stand_crm_fact_problem(board, crm, kind, *, state=None, preview_unverified=
         incoming = positive(board.get('incomeAmount') or board.get('amountThb'))
         main_usdt = money(incoming / rate) if incoming and rate else None
     else:
-        broker_basis = _stand_broker_payin_basis(
-            board.get('incomeAmount') or board.get('amountRub'), broker_rate)
+        amount_rub = board.get('incomeAmount') or board.get('amountRub')
+        if pay_type == _STAND_DOVERKA_PAY_TYPE:
+            rub, rate = positive(amount_rub), positive(broker_rate)
+            estimated_usdt = money(rub / rate) if rub and rate else None
+        else:
+            broker_basis = _stand_broker_payin_basis(amount_rub, broker_rate)
+            estimated_usdt = (broker_basis or {}).get('usdt')
         main_usdt = ((None if pair_custom and pair_custom[1] == 'usdt' else money(board.get('amountUsdt'))) or
-                     (broker_basis or {}).get('usdt'))
+                     estimated_usdt)
     if main_usdt is None or main_usdt <= 0:
         return 'payin_basis_missing'
     if not matches('payin_amount_usdt', main_usdt):
@@ -10983,8 +11011,111 @@ def _stand_payin_wallet_problem(db, stand_deal, entries):
     return None
 
 
+def _stand_manual_payin_available(db, row, state, deal, network, tx_hash, total, *, lock=False):
+    """Available amount from the CRM ledger and any historical board reservations."""
+    from decimal import Decimal
+    from sqlalchemy import func
+    try:
+        tx = _payin_find(db, tx_hash, lock=lock)
+    except ValueError:
+        return None, 'payin_hash_already_used'
+    if tx and (tx.network or 'trc20') != network:
+        return None, 'payin_hash_already_used'
+    uses = db.query(PayinTxUse).filter_by(tx_id=tx.id).all() if tx else []
+    origin = (f"cash:{deal['id']}" if deal.get('cashPartnerUsdt') else
+              str(deal['cnvId']) if deal.get('cnvId') is not None else None)
+    own_reserved = Decimal(0)
+    if origin:
+        own_reserved = sum((Decimal(str(u.amount_usdt or 0)) for u in uses
+                            if u.deal_id is None and u.stand_generation == row.generation
+                            and u.stand_cnv_id == origin), Decimal(0))
+    used = sum((Decimal(str(u.amount_usdt or 0)) for u in uses), Decimal(0))
+    represented_crm = {u.deal_id for u in uses if u.deal_id is not None}
+    canonical = _payin_hash_key(tx_hash)
+    legacy = db.query(Deal.id).filter(
+        Deal.doverka_status == DoverkaStatus.CONFIRMED,
+        func.lower(Deal.doverka_payout_hash).in_((canonical, '0x' + canonical)),
+    )
+    if represented_crm:
+        legacy = legacy.filter(Deal.id.notin_(represented_crm))
+    if legacy.first():
+        return None, 'payin_hash_already_used'
+    represented_convs = {u.stand_cnv_id for u in uses if u.stand_generation == row.generation}
+    confirmed_convs = set()
+    deals = state.get('deals') or []
+    deals_by_id = {d.get('id'): d for d in deals}
+    for conv in state.get('convs') or []:
+        conv_id = str(conv['id'])
+        for part in conv.get('txs') or []:
+            if normalize_network(part.get('net') or 'trc20') != network or normalize_ref(
+                    part.get('hash'), network) != tx_hash:
+                continue
+            if part.get('status') != 'confirmed':
+                return None, 'payin_hash_already_used'
+            confirmed_convs.add(conv_id)
+            if conv_id in represented_convs or part.get('ledgerUseId'):
+                continue
+            known_ids = {deals_by_id.get(src.get('dealId'), {}).get('crmDealId')
+                         for src in conv.get('sources') or []}
+            if conv.get('crmConversionId'):
+                crm = db.get(Conversion, conv['crmConversionId'])
+                if crm:
+                    known_ids.update(_conversion_deal_ids(db, crm))
+            already = sum((Decimal(str(u.amount_usdt or 0)) for u in uses
+                           if u.deal_id is not None and u.deal_id in known_ids), Decimal(0))
+            reserve = _amount(part.get('amount'))
+            if reserve is None or reserve <= 0:
+                return None, 'payin_hash_already_used'
+            reserve = max(Decimal(0), reserve - already)
+            used += reserve
+            if origin == conv_id:
+                own_reserved += reserve
+    for other in deals:
+        if (other.get('id') == deal['id'] or other.get('crmDealId') in represented_crm
+                or str(other.get('cnvId')) in confirmed_convs
+                or f"cash:{other['id']}" in represented_convs):
+            continue
+        matches = [h for h in other.get('payinHashes') or [] if isinstance(h, dict)
+                   and normalize_network(h.get('network') or h.get('net') or 'trc20') == network
+                   and normalize_ref(h.get('hash'), network) == tx_hash]
+        if not matches:
+            continue
+        share = _amount(matches[0].get('amount'))
+        if (len(matches) != 1 or other.get('closed') or other.get('originMode') != 'manual'
+                or not other.get('manual') or matches[0].get('isShare') is not True
+                or not share or share > total or share != share.quantize(Decimal('0.000001'))):
+            return None, 'payin_hash_already_used'
+        used += share
+    if used > total:
+        return Decimal(0), None
+    return own_reserved or max(Decimal(0), total - used), None
+
+
+def _stand_store_verified_payins(db, entries):
+    for entry in entries:
+        tx_hash, network = entry['hash'], normalize_network(entry['network'])
+        total = _amount(entry.get('verifiedAmount'))
+        if not entry.get('isShare') or not total or tx_hash.startswith('demo:'):
+            continue
+        tx = _payin_find(db, tx_hash)
+        if tx is None:
+            tx = PayinTx(tx_hash=tx_hash, network=network)
+            db.add(tx)
+        elif (tx.network or 'trc20') != network:
+            raise ValueError('Хеш уже записан в другой сети')
+        tx.amount_usdt = float(total)
+        tx.source = 'etherscan' if network == 'erc20' else 'tronscan'
+        tx.to_address = entry.get('to')
+        tx.verified_at = datetime.utcnow()
+        if entry.get('timestampMs'):
+            tx.tx_time = datetime.utcfromtimestamp(entry['timestampMs'] / 1000)
+        if tx.notes == 'сумма из CRM, с сетью не сверена':
+            tx.notes = None
+    db.flush()
+
+
 def _stand_manual_close_verify_hashes(state, hashes, declared_amount, verify, used_in_submit,
-                                       side, exclude_deal_id=None):
+                                       side, exclude_deal_id=None, share_available=None):
     """Проверить список вручную введённых хешей (приход или расход): каждый —
     через сеть (`verify`), без повторов (на доске и внутри самой заявки), и
     сумма подтверждённых переводов должна совпасть с заявленной суммой.
@@ -10999,6 +11130,7 @@ def _stand_manual_close_verify_hashes(state, hashes, declared_amount, verify, us
     from decimal import Decimal
     entries = []
     verified_sum = Decimal('0')
+    explicit_shares = False
     for item in hashes:
         if not isinstance(item, dict):
             return None, f'{side}_hash_required'
@@ -11010,26 +11142,44 @@ def _stand_manual_close_verify_hashes(state, hashes, declared_amount, verify, us
             return None, 'payin_hash_invalid'  # формат проверяет тот же normalize_ref, что и сеть
         sender = item.get('sender') or None
         receiver = item.get('receiver') or None  # пустая строка из UI = адрес не задан
+        has_share = side == 'payin' and 'shareAmount' in item
+        if has_share and (not share_available or tx_hash.startswith('demo:')):
+            return None, 'payin_hash_invalid'
         amount = item.get('amount')
-        checked = verify(tx_hash, network, sender, receiver, amount) or {}
+        checked = verify(tx_hash, network, sender, receiver, None if has_share else amount) or {}
         if checked.get('amountMismatch'):
             return None, f'{side}_amount_mismatch'
         if checked.get('status') != 'confirmed':
             return None, f'{side}_hash_unverified'
         key = (network, tx_hash)
-        if key in used_in_submit or _stand_hash_used_elsewhere(
-                state, network, tx_hash, exclude_deal_id=exclude_deal_id):
+        if key in used_in_submit or (not has_share and _stand_hash_used_elsewhere(
+                state, network, tx_hash, exclude_deal_id=exclude_deal_id)):
             return None, f'{side}_hash_already_used'
         used_in_submit.add(key)
         verified_amount = checked.get('verifiedAmount')
-        verified_sum += Decimal(str(verified_amount if verified_amount is not None else 0))
+        allocated = verified_amount
+        if has_share:
+            total, allocated = _amount(verified_amount), _amount(item['shareAmount'])
+            if (total is None or not total or allocated is None or not allocated
+                    or allocated > total or allocated != allocated.quantize(Decimal('0.000001'))):
+                return None, 'payin_amount_mismatch'
+            free, problem = share_available(network, tx_hash, total)
+            if problem or allocated > free:
+                return None, problem or 'payin_share_unavailable'
+            explicit_shares = True
+            allocated = float(allocated)
+        verified_sum += Decimal(str(allocated if allocated is not None else 0))
         entries.append({
             'hash': tx_hash, 'network': (network or '').upper(),
-            'amount': verified_amount, 'from': checked.get('from'),
+            'amount': allocated, 'from': checked.get('from'),
             'to': checked.get('to') or receiver,
             'verified': True, 'verifiedAt': checked.get('verifiedAt'),
+            **({'verifiedAmount': verified_amount, 'timestampMs': checked.get('timestampMs'),
+                'isShare': has_share}
+               if side == 'payin' else {}),
         })
-    if abs(verified_sum - Decimal(str(declared_amount))) > Decimal('5'):
+    tolerance = Decimal('0.005') if explicit_shares else Decimal('5')
+    if abs(verified_sum - Decimal(str(declared_amount))) > tolerance:
         return None, f'{side}_amount_mismatch'
     return entries, None
 
@@ -11108,7 +11258,7 @@ def _stand_manual_close_resolve_tasks(state, stand_deal_id, author):
 
 
 def _stand_manual_close_apply_override(state, stand_deal, override, actor, *, verify=verify_transfer,
-                                        db=None):
+                                        db=None, row=None, verified_payin=None):
     """Ручной перенос сделки в CRM минуя штатный шаг s27 (СД-1489): менеджер/
     админ вручную вводит факты, которые степпер не собрал (способ и сумма
     прихода/расхода, хеши, агенты, обязательная причина). Это единственный
@@ -11145,19 +11295,34 @@ def _stand_manual_close_apply_override(state, stand_deal, override, actor, *, ve
 
     deal_id = stand_deal.get('id')
     used_hashes = set()
-    payin_entries = []
     # Хеш прихода USDT обязателен всегда (наличные через партнёра, рубли через брокера,
     # крипта клиента) и проверяется сетью автоматически. Файл и подтверждения других
     # людей не нужны (в том числе зависшая сверка manualBankReceipt).
     payin_entries, problem = _stand_manual_close_verify_hashes(
         state, payin.get('hashes'), payin_amount, _stand_override_payin_verify(verify),
-        used_hashes, 'payin', exclude_deal_id=deal_id)
+        used_hashes, 'payin', exclude_deal_id=deal_id,
+        share_available=(lambda net, h, total: _stand_manual_payin_available(
+            db, row, state, stand_deal, net, h, total, lock=True)) if row is not None else None)
     if problem:
         return problem
     if db is not None:  # чистые юнит-вызовы без БД реестр не видят; роут всегда передаёт db
         problem = _stand_payin_wallet_problem(db, stand_deal, payin_entries)
         if problem:
             return problem
+    explicit_shares = any('shareAmount' in h for h in payin['hashes'])
+    def payin_key(h):
+        network = normalize_network(h.get('network') or h.get('net') or 'trc20')
+        return network, normalize_ref(h.get('hash'), network)
+    if explicit_shares:
+        by_key = {payin_key(h): h for h in payin_entries}
+        saved_payin = {payin_key(h): h for h in stand_deal.get('payinHashes') or []
+                       if isinstance(h, dict)}
+        for key, saved in saved_payin.items():
+            entry = by_key.get(key)
+            if saved.get('verified') and (not entry or _amount(saved.get('amount')) != _amount(entry['amount'])):
+                return 'payin_facts_mismatch'
+            if entry:
+                by_key[key] = {**saved, **entry, 'hash': saved['hash']}
 
     kind = ('mf_freehold' if stand_deal.get('kind') == 'Фрихолд' else
             'mf_realty' if stand_deal.get('type') == 'Оплата недвижимости' else
@@ -11248,6 +11413,11 @@ def _stand_manual_close_apply_override(state, stand_deal, override, actor, *, ve
         return 'agents_invalid'
 
     # Все проверки пройдены — записываем факты на доску сделки.
+    planned_amount = _stand_number(stand_deal.get('amountUsdt'))
+    if (stand_deal.get('custom') is True and isinstance(stand_deal.get('customData'), dict)
+            and stand_deal.get('payType') in ('СБП', _STAND_DOVERKA_PAY_TYPE)
+            and payin['method'] in ('СБП', _STAND_DOVERKA_PAY_TYPE)):
+        stand_deal['customData']['payinMethod'] = _STAND_PAYIN_METHOD[payin['method']]
     stand_deal['payType'] = payin['method']
     if payin.get('amountUsdt') is not None:
         stand_deal['amountUsdt'] = payin_amount
@@ -11263,11 +11433,16 @@ def _stand_manual_close_apply_override(state, stand_deal, override, actor, *, ve
     # Переподтверждение уже записанного на эту сделку хеша (exclude_deal_id
     # выше) не должно задвоить запись — тот же (network, hash) пропускаем,
     # факт остаётся как был, а не дублируется.
-    existing_payin_keys = {(h.get('network'), h.get('hash'))
-                            for h in stand_deal.get('payinHashes') or [] if isinstance(h, dict)}
-    for entry in payin_entries:
-        if (entry.get('network'), entry.get('hash')) not in existing_payin_keys:
-            stand_deal.setdefault('payinHashes', []).append(entry)
+    if explicit_shares:
+        stand_deal['payinHashes'] = list(by_key.values())
+    else:
+        existing_payin_keys = {payin_key(h) for h in stand_deal.get('payinHashes') or []
+                               if isinstance(h, dict)}
+        for entry in payin_entries:
+            if payin_key(entry) not in existing_payin_keys:
+                stand_deal.setdefault('payinHashes', []).append(entry)
+    if verified_payin is not None:
+        verified_payin.extend(payin_entries)
 
     if kind == 'exchange' and payout.get('source'):
         stand_deal['paySrc'] = payout['source']
@@ -11298,6 +11473,8 @@ def _stand_manual_close_apply_override(state, stand_deal, override, actor, *, ve
     if kind == 'exchange':
         summary += ' и расхода'
     summary += f' ({payin["method"]}), шаг {stand_deal.get("step")} минуя s27.'
+    if explicit_shares and _stand_is_crypto(stand_deal) and planned_amount and planned_amount != payin_amount:
+        summary += f' План прихода: {planned_amount:.2f} USDT, сверено по хешам: {payin_amount:.2f} USDT.'
     stand_deal.setdefault('log', []).append({'ts': ts, 'at': at, 'role': actor, 'text': summary})
     stand_deal['log'].append({'ts': ts, 'at': at, 'role': actor, 'text': reason})
     return None
@@ -16174,32 +16351,53 @@ def stand_manual_close_verify_hash():
     network = normalize_network(data.get('network'))
     if not network:
         return jsonify({'success': False, 'error': 'Некорректная сеть'}), 400
+    new_draft = (data.get('newDraft') is True and data.get('direction') == 'payin'
+                 and data.get('checkShare') is True)
     db = get_session()
     try:
         state = json.loads(_stand_row(db).data or '{}')
         deal = next((d for d in state.get('deals', []) if d.get('id') == deal_id), None)
-        if not deal or deal.get('closed'):
+        if (not deal and not new_draft) or (deal and deal.get('closed')):
             return jsonify({'success': False, 'error': 'deal_not_found'}), 404
     finally:
         db.close()
     tx_hash = normalize_ref(data.get('hash'), network)
     if not tx_hash:
         return jsonify({'success': False, 'error': 'Хеш не соответствует сети'}), 400
+    free = None
     if data['direction'] == 'payin':
-        # Тот же контракт, что у закрытия: hash-only, адреса наблюдает сеть, получатель — наш кошелёк.
-        # Явный amount=0 не превращаем в «сумма не задана»: submit его отвергнет, и preview тоже.
+        check_share = data.get('checkShare') is True
+        if check_share and tx_hash.startswith('demo:'):
+            return jsonify(success=False, error='payin_hash_invalid'), 400
         raw_amount = data.get('amount')
         checked = _stand_override_payin_verify(verify_transfer)(
             tx_hash, network, data.get('sender') or None,
-            data.get('receiver') or None, None if raw_amount in (None, '') else raw_amount)
+            data.get('receiver') or None, None if check_share or raw_amount in (None, '') else raw_amount)
         if checked.get('amountMismatch'):
             return jsonify({'success': False, 'status': 'mismatch',
                             'error': 'payin_amount_mismatch'}), 422
         if checked.get('status') == 'confirmed':
             db = get_session()
             try:
+                row = _stand_row(db)
+                state = json.loads(row.data or '{}')
+                deal = next((d for d in state.get('deals', []) if d.get('id') == deal_id), None)
+                if (not deal and not new_draft) or (deal and deal.get('closed')):
+                    return jsonify(success=False, error='deal_not_found'), 404
+                deal = deal or {'id': None}
                 problem = _stand_payin_wallet_problem(db, deal, [{
                     'to': checked.get('to') or data.get('receiver'), 'network': network}])
+                if check_share and not problem:
+                    total = _amount(checked.get('verifiedAmount'))
+                    if not total:
+                        return jsonify(success=False, error='payin_amount_mismatch'), 422
+                    free, problem = _stand_manual_payin_available(db, row, state, deal, network, tx_hash, total)
+                    if free is not None and raw_amount not in (None, ''):
+                        share = _amount(raw_amount)
+                        if not share or share > total or share != share.quantize(Decimal('0.000001')):
+                            problem = 'payin_amount_mismatch'
+                        elif share > free:
+                            problem = 'payin_share_unavailable'
             finally:
                 db.close()
             if problem:
@@ -16212,6 +16410,7 @@ def stand_manual_close_verify_hash():
                         'error': checked.get('checkError') or
                                  f'Перевод не найден или не подтверждён в выбранной сети {network.upper()}'}), 422
     return jsonify({'success': True, 'status': 'confirmed',
+                    **({'hash': tx_hash, 'freeAmount': float(free)} if free is not None else {}),
                     'verifiedAmount': checked['verifiedAmount'],
                     'verifiedAt': checked['verifiedAt'], 'from': checked.get('from'),
                     'to': checked.get('to')})

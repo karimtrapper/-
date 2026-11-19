@@ -1025,8 +1025,8 @@ body.deal-task-mode .top-nav .who{border:0;color:var(--navy-300);font-size:var(-
 <div class="toast" id="toast"></div>
 
 <script src="/tasks/screens-data.js?v=2609241212"></script>
-<script src="/tasks/crm-draft-core.js?v=2"></script>
-<script src="/tasks/crm-draft-adapter.js?v=4"></script>
+<script src="/tasks/crm-draft-core.js?v=3"></script>
+<script src="/tasks/crm-draft-adapter.js?v=5"></script>
 <script src="/static/nav-shell.js?v=6"></script>
 <script>
 const KEY='grusha_proto_v2';
@@ -1144,6 +1144,8 @@ function standMerge(base,mine,theirs){
 
 function standSnapshot(){
   const o={}; STAND_SHARED.forEach(k=>{ if(S[k]!==undefined)o[k]=S[k]; });
+  if(S.edit&&Array.isArray(o.deals))
+    o.deals=o.deals.filter(d=>d.id!==S.edit||!d.manualNew||d.originMode==='manual');
   if(Array.isArray(o.incomes))o.incomes=o.incomes.map(({sel,...income})=>income);
   return o;
 }
@@ -1163,7 +1165,7 @@ function standTyping(){
 }
 async function standPull(force){
   if(standPullPending||standBusy||standPush||standSaveScheduled||standClosing||
-    (S.edit&&deal(S.edit)?.manualNew&&!deal(S.edit)?.managerUserId))return;
+    (S.edit&&deal(S.edit)?.manualNew))return;
   const requestedVersion=standVer;
   standPullPending=true;
   try{
@@ -1173,7 +1175,7 @@ async function standPull(force){
     if(r.status===304)return;
     if(r.status>=400)throw new Error('stand_state_unavailable');
     const j=await r.json(); if(!j.success)throw new Error('stand_state_unavailable');
-    if(standBusy||standPush||standSaveScheduled||standClosing)return;
+    if(standBusy||standPush||standSaveScheduled||standClosing||(S.edit&&deal(S.edit)?.manualNew))return;
     /* GET мог начаться до PUT, а вернуться уже после его завершения. Такой
        ответ не должен откатывать ни доску, ни базу последующего слияния. */
     if(standVer!==requestedVersion||(standVer!==null&&j.version<standVer))return;
@@ -1444,7 +1446,7 @@ function migrate(st){
   return st;
 }
 function save(){ if(SCREEN||SNAP)return; if(STAND){
-  if(S.edit&&deal(S.edit)?.manualNew&&!deal(S.edit)?.managerUserId)return;
+  if(S.edit&&deal(S.edit)?.manualNew)return;
   standSave();return;} localStorage.setItem(KEY,JSON.stringify(S)); }
 function resetAll(){
   if(!confirm('Стереть доску у всех, кто сейчас в стенде?'))return;
@@ -2188,11 +2190,13 @@ function payinParts(d){
   }
   const broker=num(d.rates.broker);
   const rubIn=d.incomeAmount||d.amountRub||null;
-  const bs=(!isCrypto(d)&&rubIn)?brokerSend(rubIn):null;
+  const doverka=d.payType==='СБП (Доверка)';
+  const bs=(!isCrypto(d)&&!doverka&&rubIn)?brokerSend(rubIn):null;
   /* Ожидание: к брокеру уходит не вся сумма — 0,1 % + 40 ₽ съедает валютный контроль,
      0,2 % остаётся на рублёвом счёте. Но как только пришёл хеш, считаем по нему:
      сколько USDT реально легло на кошелёк, столько и есть приход (Карим, 22.09). */
-  const mainCalc=isCrypto(d)?(d.amountUsdt||null):(broker&&bs?(bs.sent/broker):null);
+  const conversionRub=doverka?rubIn:bs?.sent;
+  const mainCalc=isCrypto(d)?(d.amountUsdt||null):(broker&&conversionRub?conversionRub/broker:null);
   /* «Введи, сколько USDT реально пришло» — это тоже факт, просто со слов, а не с хэша.
      Порядок: хэши → введённая сумма → расчёт по курсу (как в форме CRM). */
   const mainManual=(!isCrypto(d)&&d.amountUsdt&&!(d.type==='Обмен валюты'&&exchangeSpec(d).output==='usdt'))?d.amountUsdt:null;
@@ -6969,7 +6973,7 @@ function pairOf(D){
   return D.payType==='Крипта'?'USDT → THB':'RUB → THB';
 }
 const STAND_KIND_CANON={'Фрихолд':'freehold','Лизхолд':'leasehold','Аренда':'rental'};
-const STAND_PAYTYPE_CANON={'По реквизитам':'requisites','СБП':'sbp','Крипта':'crypto','Наличные':'cash'};
+const STAND_PAYTYPE_CANON={'По реквизитам':'requisites','СБП':'sbp','СБП (Доверка)':'sbp','Крипта':'crypto','Наличные':'cash'};
 /* Единственный источник истины — VERIFIED_FLOWS на сервере (app.py), отданный
    через /api/deal-flow-config и закэшированный в STAND_VERIFIED_FLOWS при
    загрузке (standBoot). Эти две карты — только перевод локальных ярлыков
@@ -8082,7 +8086,7 @@ function crmGaps(d){
    смотрит, что уйдёт в CRM, при нужде правит и одной кнопкой вносит сделку в CRM
    стенда со статусом «завершена». Поля — формат POST /api/deals, как их шлёт форма
    CRM; прибыль сервер считает сам по тем же правилам (_apply_mf_realty и т.д.). */
-const PAYIN_CRM={'По реквизитам':'sber_reqs','СБП':'sber_wl','Крипта':'crypto_direct','Наличные':'partners_cash'};
+const PAYIN_CRM={'По реквизитам':'sber_reqs','СБП':'sber_wl','СБП (Доверка)':'spp_doverka','Крипта':'crypto_direct','Наличные':'partners_cash'};
 const PAYOUT_CRM={cash:'cash_batch',ipps:'cash_batch',scb:'bank_card',coins:'binance',client:'binance',founder:'founder_personal'};
 function crmNet(n){return String(n||'TRC20').toLowerCase().replace('-','');}
 function crmPayload(d){
@@ -8256,7 +8260,7 @@ function crmPayload(d){
    поправить и сохранить»). Значения — из crmPayload(); правка поля кладётся в
    d.crmEdit и накрывает payload поверх, формулы сделки не трогает. Прибыль CRM всё
    равно считает сама по тем же правилам. */
-const PAYIN_LABEL={sber_reqs:'Сбер (реквизиты)',flow_sole_reqs:'Flow Sole (СГБ, реквизиты)',sber_wl:'СБП',crypto_direct:'Крипта',partners_cash:'Партнеры (наличные)'};
+const PAYIN_LABEL={sber_reqs:'Сбер (реквизиты)',flow_sole_reqs:'Flow Sole (СГБ, реквизиты)',sber_wl:'СБП',spp_doverka:'СБП (Доверка)',crypto_direct:'Крипта',partners_cash:'Партнеры (наличные)'};
 const PAYOUT_LABEL={cash_batch:'Касса',bank_card:'Карта банка',binance:'Binance',founder_personal:'Личные фаундера'};
 const CRM_NUM=['payin_amount_rub','payin_amount_usdt','payin_rate_rub_usdt','invoice_amount_thb','buy_rate_thb_usdt',
   'company_percent','company_sent_thb','invoice_amount_usd','transfer_sent_usd','transfer_fee_percent','transfer_fee_fixed_usd',
@@ -8695,7 +8699,12 @@ async function crmPushClose(id,reviewedVersion){
 function manualCloseMerge(d,payin,payout,realty){
   const key=h=>(h.network||'')+'|'+(h.hash||'');
   const m={...d,rates:{...d.rates}};
-  if(payin.method)m.payType=payin.method;
+  if(payin.method){
+    m.payType=payin.method;
+    if(d.custom&&d.customData&&manualCloseSbpChoice(d)&&
+      (payin.method==='СБП'||payin.method==='СБП (Доверка)'))
+      m.customData={...d.customData,payinMethod:PAYIN_CRM[payin.method]};
+  }
   if(payin.amountUsdt!=null)m.amountUsdt=payin.amountUsdt;
   if(payin.amountRub!=null)m.amountRub=payin.amountRub;
   if(payin.rate!=null)m.rates.broker=payin.rate;
@@ -8707,8 +8716,15 @@ function manualCloseMerge(d,payin,payout,realty){
     if(!m.mfPayout?.length&&payout.hashes?.length)
       m.mfPayout=payout.hashes.map(h=>({hash:h.hash,net:h.network,amount:h.amount}));
   }
-  const existingPayin=new Set((d.payinHashes||[]).map(key));
-  m.payinHashes=(d.payinHashes||[]).concat((payin.hashes||[]).filter(h=>!existingPayin.has(key(h))));
+  if (payin.hashes.some(h=>h.shareAmount!=null)) {
+    m.payinHashes=payin.hashes.map(h=>{
+      const saved=(d.payinHashes||[]).find(previous=>previous.hash===h.hash);
+      return {...saved,...h,verified:true,amount:h.shareAmount??h.amount};
+    });
+  }else{
+    const existingPayin=new Set((d.payinHashes||[]).map(key));
+    m.payinHashes=(d.payinHashes||[]).concat((payin.hashes||[]).filter(h=>!existingPayin.has(key(h))));
+  }
   if(!realty&&payout.source){
     m.paySrc=payout.source;
     const existingPayout=new Set(((d.payout||{}).hashes||[]).map(key));
@@ -8721,21 +8737,21 @@ function manualCloseMerge(d,payin,payout,realty){
    manualCloseScreen (задача 5) решает, рисовать факт read-only строкой или открытым
    полем. Известное берём из d, открытое — из DOM (val()) либо из черновика хешей
    S.manualCloseForm (manualCloseFormState). amountUsdt сервер требует всегда, даже для
-   рублёвой сделки — если его ещё нет на d, считаем так же, как остальной приход
-   (payinParts: курс минус удержание брокера на отправке брокеру). */
+   рублёвой сделки — если его ещё нет на d, считаем через payinParts. */
 function manualClosePayload(d){
   const crypto=isCrypto(d), paid=clientRubPaid(d), po=d.payout||{};
   const fh=d.kind==='Фрихолд', realty=d.type==='Оплата недвижимости';
   const f=manualCloseFormState(d.id);
-  const cleanHash=h=>({hash:h.hash,network:h.network,receiver:h.receiver||null,
-    sender:h.sender||null,amount:h.amount});
+  const cleanHash=h=>({hash:h.hash,network:h.network||h.net||'TRC20',receiver:h.receiver||h.to||null,
+    sender:h.sender||h.from||null,amount:h.amount});
 
   const knownAmount=crypto?d.amountUsdt!=null:(paid.rub!=null||d.amountRub!=null||d.incomeAmount!=null);
   const knownHashes=(d.payinHashes||[]).length>0;
-  const knownBankConfirm=paid.rub!=null||d.manualBankReceipt?.status==='confirmed';
 
-  const payin={method:val('mc_payin_method')||d.payType||null};
-  payin.hashes=(knownHashes?d.payinHashes:f.payin.hashes).filter(h=>h&&h.hash).map(cleanHash);
+  const payin={method:val('mc_payin_method')||f.payin.method||manualCloseSbpChoice(d)||d.payType||null};
+  payin.hashes=(f.payin.loaded||!knownHashes?f.payin.hashes:d.payinHashes).filter(h=>h&&h.hash).map(h=>({
+    ...cleanHash(h),...(f.payin.loaded&&h.amount!=null?{shareAmount:h.amount}:{})
+  }));
   if(crypto){
     payin.amountUsdt=knownAmount?d.amountUsdt:num(val('mc_payin_amount_usdt'));
   }else{
@@ -8744,8 +8760,11 @@ function manualClosePayload(d){
     payin.manualBankConfirmed=true; /* факты прихода вносит менеджер, подтверждать их другому человеку не нужно */
     payin.amountUsdt=d.amountUsdt!=null?d.amountUsdt:((realty&&!fh)
       ?num(val('mc_payin_amount_usdt')):(num(val('mc_payin_amount_usdt'))??payinParts({...d,
-      incomeAmount:payin.amountRub,amountRub:payin.amountRub,
+      payType:payin.method,incomeAmount:payin.amountRub,amountRub:payin.amountRub,
       rates:{...d.rates,broker:payin.rate}})[0]?.usdt??null));
+  }
+  if(payin.hashes.length&&payin.hashes.every(h=>h.shareAmount>0)){
+    payin.amountUsdt=hashSum(payin.hashes);
   }
 
   const knownSource=payoutHuman(d)!=='не выбран';
@@ -8799,6 +8818,7 @@ const MANUAL_CLOSE_ERRORS={
   payin_selected_wallet_invalid:'Кошелёк, выбранный в сделке, не найден в реестре или не принимает приход',
   payin_hash_already_used:'Этот хеш прихода уже использован в другой сделке',
   payin_amount_mismatch:'Сумма прихода не совпадает с подтверждённой в сети',
+  payin_share_unavailable:'Доля сделки превышает свободный остаток по хешу',
   payout_source_required:'Укажите источник выдачи',
   payout_amount_required:'Укажите сумму выдачи',
   payout_hash_required:'Добавьте хотя бы один хеш выдачи',
@@ -9183,11 +9203,21 @@ function editClose(){
   /* Отмена на только что заведённой вручную сделке = её вообще не было */
   if(d&&d.manualNew){S.deals=S.deals.filter(x=>x.id!==d.id);toast('Черновик удалён');}
   crmDraftLive.delete(S.edit);
-  S.edit=null;save();render();
+  S.edit=null;
+  if(!STAND||!d?.manualNew||d.originMode==='manual')save();
+  render();
 }
 /* Завести сделку целиком, минуя задачник: короткие обмены и то, что прошло давно,
    вести по шагам незачем — нужен один экран со всеми полями и расчётами. */
-function startManual(){
+async function startManual(){
+  if(STAND){
+    if(standVer===null){toast('Дождитесь загрузки списка сделок');return;}
+    if(standBusy||standPush||standSaveScheduled){
+      try{await standWaitSaved();}
+      catch(e){toast('Дождитесь завершения сохранения и повторите');return;}
+    }
+    if(S.edit&&deal(S.edit)?.manualNew)return;
+  }
   /* Черновик ручной сделки создаётся сразу, и брошенный на полпути он оставался
      в общем списке как «Без имени». На стенде это мусор у всех на виду —
      подчищаем прошлые пустышки, прежде чем завести новую. */
@@ -9198,7 +9228,7 @@ function startManual(){
   S.deals=(S.deals||[]).filter(x=>!isReallyEmpty(x));
   const d=newDeal({source:'tg',sourceRef:'',client:'',type:'Обмен валюты',
     payType:'По реквизитам',curBase:'rub',step:'manual',manual:true,manualNew:true,noSave:true});
-  S.edit=d.id;save();render();
+  S.edit=d.id;saveUi();render();
 }
 
 /* Редакторы состава: меняют сделку сразу, поэтому перед перерисовкой снимаем
@@ -9933,7 +9963,7 @@ function viewEditLegacy(){
       <div class="chtitle">Приход 1</div>
       <div class="fr">
         <div class="fg"><label class="fl">Метод Pay-In</label>
-          <select class="fc" id="e_pay" onchange="editRecalc(${d.id})">${opt(['По реквизитам','СБП','Крипта','Наличные'],d.payType)}</select>
+          <select class="fc" id="e_pay" onchange="editRecalc(${d.id})">${opt(Object.keys(PAYIN_CRM),d.payType)}</select>
           ${d.type==='Оплата недвижимости'?'<p class="fh">чем платит клиент — получателю в любом случае уходят баты</p>':''}</div>
         ${crypto?'<div class="fg"></div>':`<div class="fg"><label class="fl">Сумма RUB</label>
           <input class="fc num" id="e_pay_amt" name="payin_amount_rub" value="${d.amountRub||''}" placeholder="сумма в рублях">
@@ -10280,16 +10310,32 @@ function manualCloseOpen(id){
 }
 function manualCloseCancel(id){
   delete S.manualCloseDraft[id];
+  delete S.manualCloseForm[id];
   render();
 }
 /* Черновик хешей для ручного переноса: отдельно от d.payinHashes/d.payout, пока сделку
    не отправили (задача 6) — предпросмотр через verify-hash не должен портить сам факт
    на доске до подтверждения менеджером. */
-function manualCloseFormState(id){
+function manualCloseFormState(id, d){
   const f=S.manualCloseForm[id]=S.manualCloseForm[id]||{};
   f.payin=f.payin||{};f.payin.hashes=f.payin.hashes||[];
+  if(d&&!f.payin.loaded){
+    f.payin.loaded=true;
+    f.payin.hashes=(d.payinHashes||[]).map(h=>({...h,saved:true,
+      network:crmNet(h.network||h.net).toUpperCase(),sender:h.from||h.sender||h.from_address||'',
+      receiver:h.to||h.receiver||h.to_address||''}));
+    const [only]=f.payin.hashes;
+    if(f.payin.hashes.length===1&&!only.verified&&!isCrypto(d)&&d.amountUsdt>0&&only.amount>d.amountUsdt){
+      only.amount=d.amountUsdt;
+    }
+  }
   f.payout=f.payout||{};f.payout.hashes=f.payout.hashes||[];
   return f;
+}
+function manualCloseSbpChoice(d){
+  if(d.payType==='СБП (Доверка)'||d.payType==='СБП'&&d.custom&&d.customData?.payinMethod==='spp_doverka')
+    return 'СБП (Доверка)';
+  return d.payType==='СБП'?'СБП':null;
 }
 const MC_PREVIEW={};
 function mcRealtySet(id,key,value){
@@ -10333,8 +10379,15 @@ function mcHashAdd(id,which){
 function mcHashDel(id,which,i){ manualCloseFormState(id)[which].hashes.splice(i,1); render(); }
 function mcHashSet(id,which,i,k,v){
   const h=manualCloseFormState(id)[which].hashes[i]; if(!h)return;
-  h[k]=(k==='amount')?(v===''?null:Number(String(v).replace(/\s/g,'').replace(',','.'))):v;
-  render();
+  const value=k==='amount'?(v===''?null:Number(String(v).replace(/\s/g,'').replace(',','.'))):v.trim();
+  if(h[k]===value)return;
+  h[k]=value;
+  delete h._check;
+  const status=document.getElementById('mc_hash_status_'+which+'_'+i);
+  if(status)status.textContent='';
+  const total=document.getElementById('mc_payin_hash_total');
+  if(which==='payin'&&total)total.textContent=moneyKop(hashSum(
+    manualCloseFormState(id).payin.hashes.filter(h=>h.hash)),'USDT');
 }
 function mcPayinTxPick(id,txId){
   const t=txPool().find(x=>x.id===Number(txId)); if(!t)return;
@@ -10349,21 +10402,24 @@ function mcHashCheck(id,which,i){
   const h=manualCloseFormState(id)[which].hashes[i]; if(!h||!h.hash)return;
   /* ответ применяем только к той же строке с тем же хешем и сетью: пока шёл запрос, строку
      могли убрать или переписать — адреса старого перевода в неё попасть не должны */
-  const snap={hash:h.hash,network:h.network};
-  const current=()=>manualCloseFormState(id)[which].hashes.includes(h)&&h.hash===snap.hash&&h.network===snap.network;
+  const snap={hash:h.hash,network:h.network,sender:h.sender,receiver:h.receiver,amount:h.amount};
+  const current=()=>manualCloseFormState(id)[which].hashes.includes(h)&&
+    Object.entries(snap).every(([k,value])=>h[k]===value);
   h._check={pending:true};render();
   fetch('/api/stand/manual-close/verify-hash',{method:'POST',credentials:'same-origin',
     headers:{'Content-Type':'application/json'},body:JSON.stringify({dealId:id,direction:which,
-      network:h.network,hash:h.hash,sender:h.sender||null,receiver:h.receiver||null,amount:h.amount})})
+      network:h.network,hash:h.hash,sender:h.sender||null,receiver:h.receiver||null,amount:h.amount,
+      ...(which==='payin'?{checkShare:true}:{})})})
     .then(r=>r.json()).then(j=>{
       if(!current())return;
       if(j.success){
-        h._check={ok:true,amount:j.verifiedAmount,at:j.verifiedAt};
+        h._check={ok:true,amount:j.verifiedAmount,free:j.freeAmount,at:j.verifiedAt};
         /* адреса и сумму прочитала сеть: заполняем только пустое, введённое не затираем */
         if(which==='payin'){
+          if(!h.saved&&j.hash)h.hash=j.hash;
           if(!h.sender&&j.from)h.sender=j.from;
           if(!h.receiver&&j.to)h.receiver=j.to;
-          if(h.amount==null&&j.verifiedAmount!=null)h.amount=j.verifiedAmount;
+          if(h.amount==null)h.amount=j.freeAmount??j.verifiedAmount??null;
         }
       }else h._check={ok:false,error:MANUAL_CLOSE_ERRORS[j.error]||j.error||'не подтверждён'};})
     .catch(()=>{if(current())h._check={ok:false,error:'сервер недоступен'};})
@@ -10375,7 +10431,7 @@ function mcHashCheck(id,which,i){
    задача 6; здесь только рендер и id/название полей, которые она будет читать. */
 function manualCloseScreen(d){
   const crypto=isCrypto(d), fh=d.kind==='Фрихолд', realty=d.type==='Оплата недвижимости';
-  const paid=clientRubPaid(d), po=d.payout||{}, f=manualCloseFormState(d.id);
+  const paid=clientRubPaid(d), po=d.payout||{}, f=manualCloseFormState(d.id,d);
   const payHashes=(fh||realty)?mfList(d):(po.hashes||[]);
   const row=(label,value,hint)=>`<div class="sumrow"><div class="sumlab">${label}</div><div class="sumval">${value}</div>
     <div class="sumsrc">${htmlText(hint||'известно')}</div><button class="btn btn-outline btn-sm" onclick="editOpen(${d.id})">Поправить</button></div>`;
@@ -10387,27 +10443,34 @@ function manualCloseScreen(d){
       ${txPool().filter(t=>!txUsed(t.hash)||(d.payinHashes||[]).some(h=>h.hash===t.hash)).map(t=>
         `<option value="${t.id}">${usd(t.amount)} · ${htmlText(t.net)} · ${htmlText(t.at)} · ${htmlText(t.hash)}</option>`).join('')}
       </select>`:''}
-    <div class="hashbox" style="margin-top:8px">${list.map((h,i)=>`<div class="hrow" style="flex-wrap:wrap">
-      <input class="fc num" style="max-width:110px" value="${h.amount==null?'':h.amount}" placeholder="USDT"
-        onchange="mcHashSet(${d.id},'${which}',${i},'amount',this.value)">
+    <div class="hashbox" style="margin-top:8px">${list.map((h,i)=>which==='payin'&&h.saved&&h.verified
+      ?hashCell(d,h):`<div class="hrow" style="flex-wrap:wrap">
+      <input class="fc num" style="max-width:130px" value="${h.amount==null?'':h.amount}" inputmode="decimal"
+        aria-label="${which==='payin'?'Доля сделки, USDT':'Сумма выдачи, USDT'}" placeholder="${which==='payin'?'Доля, USDT':'USDT'}"
+        oninput="mcHashSet(${d.id},'${which}',${i},'amount',this.value)">
       <select class="fc" style="max-width:104px" onchange="mcHashSet(${d.id},'${which}',${i},'network',this.value)">${netOpts(h.network)}</select>
       <input class="fc" style="flex:1;min-width:160px" value="${htmlText(h.hash)}" placeholder="хеш транзакции"
-        onchange="mcHashSet(${d.id},'${which}',${i},'hash',this.value)">
+        oninput="mcHashSet(${d.id},'${which}',${i},'hash',this.value)">
       <input class="fc" style="flex:1;min-width:140px" value="${htmlText(h.receiver||'')}" placeholder="получатель"
-        onchange="mcHashSet(${d.id},'${which}',${i},'receiver',this.value)">
+        oninput="mcHashSet(${d.id},'${which}',${i},'receiver',this.value)">
       <input class="fc" style="flex:1;min-width:140px" value="${htmlText(h.sender||'')}" placeholder="отправитель"
-        onchange="mcHashSet(${d.id},'${which}',${i},'sender',this.value)">
+        oninput="mcHashSet(${d.id},'${which}',${i},'sender',this.value)">
       <button class="btn btn-outline btn-sm" onclick="mcHashCheck(${d.id},'${which}',${i})">Проверить</button>
       <button class="btn btn-outline btn-sm" onclick="mcHashDel(${d.id},'${which}',${i})">Убрать</button>
-      ${h._check?(h._check.pending?'<span class="fh">проверяем…</span>'
-        :h._check.ok?'<span class="fh">подтверждён в сети</span>'
-        :`<span class="sumred">${htmlText(h._check.error||'не подтверждён')}</span>`):''}
+      <span id="mc_hash_status_${which}_${i}" aria-live="polite">${h._check?(h._check.pending?'<span class="fh">проверяем…</span>'
+        :h._check.ok?(which==='payin'&&h._check.free!=null
+          ?`<span class="fh">В сети ${moneyKop(h._check.amount,'USDT')} · свободно ${moneyKop(h._check.free,'USDT')}</span>`
+          :'<span class="fh">подтверждён в сети</span>')
+        :`<span class="sumred">${htmlText(h._check.error||'не подтверждён')}</span>`):''}</span>
       </div>`).join('')}</div>
-    <button class="btn btn-outline btn-sm" style="margin-top:6px" onclick="mcHashAdd(${d.id},'${which}')">+ хеш вручную</button>
+    <button class="btn btn-outline btn-sm" style="margin-top:6px" onclick="mcHashAdd(${d.id},'${which}')">${which==='payin'?'+ Добавить хеш прихода':'+ хеш вручную'}</button>
+    ${which==='payin'?`<p class="fh">Приход по хешам <strong id="mc_payin_hash_total">${moneyKop(hashSum(list.filter(h=>h.hash)),'USDT')}</strong></p>`:''}
   </div>`;
 
   /* Pay-In (получение) */
-  const knownMethod=!!d.payType;
+  const sbpMethod=manualCloseSbpChoice(d);
+  const selectedMethod=f.payin.method||sbpMethod;
+  const methods=sbpMethod?['СБП','СБП (Доверка)']:Object.keys(PAYIN_CRM);
   const knownAmount=crypto?d.amountUsdt!=null:(paid.rub!=null||d.amountRub!=null||d.incomeAmount!=null);
   const knownHashes=(d.payinHashes||[]).length>0;
   const knownBankConfirm=paid.rub!=null||d.manualBankReceipt?.status==='confirmed';
@@ -10417,10 +10480,11 @@ function manualCloseScreen(d){
   if(!knownHashes&&!f.payin.hashes.length)  /* хеш прихода USDT нужен при любом способе */
     f.payin.hashes.push({amount:null,network:'TRC20',hash:'',receiver:'',sender:''});
   const payinSection=[
-    knownMethod?row('Способ оплаты',htmlText(d.payType))
-      :`<div class="fg"><label class="fl">Способ оплаты<span class="rq">*</span></label>
-          <select class="fc" id="mc_payin_method"><option value="">— выбрать —</option>
-          ${['По реквизитам','СБП','Крипта','Наличные'].map(x=>`<option>${x}</option>`).join('')}</select></div>`,
+    d.payType&&!sbpMethod?row('Способ оплаты',htmlText(d.payType))
+      :`<div class="fg"><label class="fl" for="mc_payin_method">Способ оплаты<span class="rq">*</span></label>
+          <select class="fc" id="mc_payin_method" onchange="manualCloseFormState(${d.id}).payin.method=this.value;mcPreviewUpdate(${d.id})">
+          ${sbpMethod?'':'<option value="">— выбрать —</option>'}
+          ${methods.map(x=>`<option${x===selectedMethod?' selected':''}>${x}</option>`).join('')}</select></div>`,
     knownAmount?row('Клиент заплатил',crypto?moneyKop(d.amountUsdt,'USDT'):moneyKop(paid.rub??d.amountRub??d.incomeAmount,'₽'),
         paid.date?('приход '+paid.date):null)
       :`<div class="fg"><label class="fl">Сумма ${crypto?'USDT':'₽'}<span class="rq">*</span></label>
@@ -10432,8 +10496,7 @@ function manualCloseScreen(d){
           <input class="fc num" id="mc_payin_amount_usdt" value="${htmlText(f.payin.amountUsdt||'')}"
             oninput="manualCloseFormState(${d.id}).payin.amountUsdt=this.value;mcPreviewUpdate(${d.id})"
             placeholder="сумма после конвертации"></div>`):'',
-    (knownHashes?row('Хеш прихода',d.payinHashes.map(h=>hashCell(d,h)).join(''))
-      :hashEditor('payin',f.payin.hashes,true)),
+    hashEditor('payin',f.payin.hashes,true),
     crypto?'':`<p class="fh">Хеш получения USDT обязателен при любом способе: сеть проверит его сама, подтверждение другого человека не нужно.</p>`
   ].join('');
 

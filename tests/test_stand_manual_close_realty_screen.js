@@ -23,7 +23,8 @@ const SCRIPT = [
   source('hashShareOf'), source('hashCell'),
   source('payoutHuman'), source('clientRubPaid'), source('mfList'),
   source('txPoolInit'), source('txPool'), source('txUsed'),
-  source('manualCloseFormState'), source('manualCloseScreen'),
+  source('crmNet'), source('manualCloseFormState'), source('manualCloseSbpChoice'), source('manualCloseScreen'),
+  html.match(/^const PAYIN_CRM=.*?;/m)[0],
 ].join('\n');
 
 const SOURCES_PAY = {

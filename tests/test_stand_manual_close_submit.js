@@ -31,8 +31,8 @@ const SCRIPT = [
   source('isCrypto'), source('payCur'), source('exchangeSpec'),
   source('hashSum'), constSource('BROKER_FEE'), source('brokerSend'), source('payinParts'),
   source('clientRubPaid'), source('payoutHuman'), source('mfList'),
-  source('manualCloseFormState'), source('manualCloseMerge'),
-  source('manualClosePayload'), constSource('MANUAL_CLOSE_ERRORS'),
+  source('crmNet'), source('manualCloseFormState'), source('manualCloseSbpChoice'), source('manualCloseMerge'),
+  source('manualClosePayload'), constSource('MANUAL_CLOSE_ERRORS'), constSource('PAYIN_CRM'),
   constSource('CRM_FACTS_MISMATCH'), source('crmFactsMismatchMessage'),source('crmCloseMessage'),
   source('manualCloseSubmit', true),
 ].join('\n');

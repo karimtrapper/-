@@ -35,8 +35,8 @@ const server = http.createServer((req,res) => {
     const errors = [];
     const historical = {...card,id:1483,code:'СД-1483',step:'s27',payType:'По реквизитам',
       rubIsNet:true,rubReceivingAccount:{mode:'flowsole'},amountRub:98500,
-      amountUsdt:1231.25,manager:'Старое имя',managerUserId:null,
-      _managerDraft:{files:{inv:[{uploadedById:11}],ipds:[{uploadedById:11}]}}};
+      amountUsdt:1231.25,manager:'Елизавета',managerUserId:null,
+      _managerDraft:{files:{inv:[{uploadedById:1}],ipds:[{uploadedById:1}]}}};
     page.on('pageerror', error => errors.push(error.message));
     await page.route('**/*', route => new URL(route.request().url()).origin===origin
       ? route.continue() : route.abort());
@@ -135,7 +135,32 @@ const server = http.createServer((req,res) => {
     const newPolicy=await page.evaluate(() =>
       document.getElementById('crmDraftHost').shadowRoot.getElementById('payinWalletPolicy').textContent);
     assert.match(newPolicy,/Обменный.*операционист.*финансист.*10/);
+    page.on('dialog', dialog => dialog.accept());
+    const doverka=await page.evaluate(() => {
+      const active=crmDraftActive;
+      const standard=active.root.getElementById('payinMethod');
+      const custom=active.root.getElementById('customPayinMethod');
+      const d=deal(1484);
+      d.pair='RUB → THB';
+      const options=[standard,custom].map(select =>
+        [...select.options].find(option=>option.value==='spp_doverka'));
+      standard.value='spp_doverka';
+      standard.dispatchEvent(new Event('change',{bubbles:true}));
+      const rub=active.form.payin_amount_rub, rate=active.form.payin_rate_rub_usdt;
+      rub.value='87040';
+      rate.value='85';
+      rate.dispatchEvent(new Event('input',{bubbles:true}));
+      const changes=crmDraftCommit(1484);
+      return {selectable:options.map(option=>option&&!option.hidden&&!option.disabled),
+        changes,payType:d.payType,method:crmPayloadFinal(d).payin_method,
+        usdt:crmPayloadFinal(d).payin_amount_usdt};
+    });
+    assert.deepEqual(doverka.selectable,[true,true]);
+    assert.ok(Array.isArray(doverka.changes),JSON.stringify(doverka));
+    assert.equal(doverka.payType,'СБП (Доверка)');
+    assert.equal(doverka.method,'spp_doverka');
+    assert.equal(doverka.usdt,1024);
     assert.ok(!errors.some(x => /refreshPayinWalletPolicy|syncNewPayinWalletDefault/.test(x)),errors.join('\n'));
-    console.log('stand CRM draft mount: Flow Sole, manager account, existing/new wallet policy PASS');
+    console.log('stand CRM draft mount: Flow Sole, Doverka, manager account, existing/new wallet policy PASS');
   } finally {await browser.close();server.close();}
 })().catch(error => {console.error(error);process.exitCode=1;server.close();});

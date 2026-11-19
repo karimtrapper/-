@@ -10,7 +10,7 @@ const ctx={S:{role:'manager',deals:[],manualCloseForm:{}},htmlText:s=>String(s).
 vm.createContext(ctx);
 for(const n of ['managerDraftDocTarget','fileValid','filesOf','receiptDocs','hasReceipt','mfList','noncryptoPayout','num',
   'crmCloseReason','crmCloseBlockers','crmEvidenceParts','val','isCrypto','payCur','hashSum','payinParts','clientRubPaid',
-  'payoutHuman','manualCloseFormState','manualCloseMerge','manualClosePayload'])
+  'payoutHuman','manualCloseFormState','manualCloseSbpChoice','manualCloseMerge','manualClosePayload'])
   try{vm.runInContext(source(n),ctx);}catch(e){console.log('skip dep',n,e.message);}
 const base=()=>({id:1489,type:'Оплата недвижимости',kind:'Аренда',amountThb:455000,docs:{},files:{},mfPayout:[],
   payTo:{bank:'BBL',acc:'123'},transfer:{sends:[]},payinHashes:[],payout:{}});
@@ -71,14 +71,14 @@ try{
 const SCRIPT2=['htmlText','jsLiteralAttr','num','hashSum','txShort','explorer','moneyKop','usd','money','isCrypto','payCur',
   'exchangeSpec','payinParts','refAgents','econ','refSignal','agentsBlock','managerDraftDocTarget','fileValid','filesOf',
   'receiptDocs','hasReceipt','fileBlock','hashShareOf','hashCell','payoutHuman','clientRubPaid','mfList','txPoolInit','txPool',
-  'txUsed','manualCloseFormState','manualCloseScreen','manualCloseMerge','manualClosePayload','val'].map(n=>{try{return source(n);}catch(e){return '';}}).join('\n');
+  'txUsed','crmNet','manualCloseFormState','manualCloseSbpChoice','manualCloseScreen','manualCloseMerge','manualClosePayload','val'].map(n=>{try{return source(n);}catch(e){return '';}}).join('\n');
 function screenCtx(deal){
   const c={S:{deals:[deal],incomes:[],role:'manager',manualCloseForm:{}},SOURCES_PAY:{},render(){},toast(){},
     crmClosePanel:()=>'',standClosing:false,
     fetch:()=>Promise.reject(new Error('x')),crmPreviewFor:()=>({pending:true}),crmPayloadFinal:()=>({deal_kind:'mf_realty'}),
     brokerSend:()=>0,BROKER_FEE:{},MANAGER_DRAFT_DOCS:['pass','inv','spa','ipds'],managerDraft:()=>({}),
     document:{getElementById:()=>null},atob,Number,Math};
-  c.deal=()=>deal;vm.createContext(c);vm.runInContext(SCRIPT2,c);return c;
+  c.deal=()=>deal;vm.createContext(c);vm.runInContext(constSource('PAYIN_CRM')+'\n'+SCRIPT2,c);return c;
 }
 function rental(payType,extra={}){return {id:1489,code:'СД-1489',client:'C',type:'Оплата недвижимости',kind:'Аренда',step:'s14',
   payType,amountUsdt:null,amountRub:1217600,incomeAmount:null,payinHashes:[],payout:{},agents:[],amountThb:455000,companyPct:2,

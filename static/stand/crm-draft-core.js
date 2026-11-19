@@ -940,8 +940,7 @@ window.createCrmDraftCore = function createCrmDraftCore(root, adapters) {
             payinExtraSummary();
         }
 
-        // Лейблы для селекта части. spp_doverka не показываем — провайдер умер,
-        // опция оставлена только для открытия старых сделок
+        // Лейблы для селекта дополнительного прихода.
         const PAYIN_EXTRA_METHODS = [
             ['sber_wl', 'СБП'],
             ['sber_reqs', 'Сбер (реквизиты)'],
@@ -1630,7 +1629,7 @@ window.createCrmDraftCore = function createCrmDraftCore(root, adapters) {
             if (share != null && expected > 0 && expected < share) share = expected;
             payinTxPool.push({
                 hash: txHash,
-                network: 'trc20',
+                network: opt?.dataset?.network || 'trc20',
                 amount_usdt: share,
                 date: opt?.dataset?.date || '',
                 // Подставлено из сети, руками не трогали: когда приедет реестр,
@@ -1653,10 +1652,11 @@ window.createCrmDraftCore = function createCrmDraftCore(root, adapters) {
 
         function resetPayinTxPool(parts) {
             payinTxPool = (parts || []).map(p => ({
+                ...p,
                 hash: p.hash,
                 network: p.network || 'trc20',
                 amount_usdt: p.amount_usdt != null ? Number(p.amount_usdt) : null,
-                date: '',
+                date: p.date || '',
             }));
             renderPayinTxPool();
         }

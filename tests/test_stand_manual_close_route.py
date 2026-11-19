@@ -192,6 +192,34 @@ def test_override_closes_deal_from_early_step_as_manager(monkeypatch):
     assert any(e.get('role') == 'manager' and REASON in e.get('text', '') for e in log_entries)
 
 
+@pytest.mark.parametrize(('selected', 'crm_method'), [
+    ('СБП', 'sber_wl'),
+    ('СБП (Доверка)', 'spp_doverka'),
+])
+def test_sbp_manual_transfer_stores_explicit_provider(monkeypatch, selected, crm_method):
+    monkeypatch.setattr(m, 'STAND_MODE', True)
+    monkeypatch.setattr(m, 'verify_transfer', confirmed_echo)
+    uid = _setup(board_factory=lambda: _early_board(
+        payType='СБП', pair='RUB → THB', amountRub=8500, rates={'broker': 85}, rubIsNet=True))
+    client = _client(uid)
+    override = _override()
+    override['payin'].update(method=selected, amountRub=8500, rate=85)
+    crm = _crm(payin_method=crm_method, payin_amount_rub=8500,
+               payin_rate_rub_usdt=85, payin_rub_is_net=True)
+
+    check = client.post('/api/stand/deals/1489/crm-close/check', json={
+        'version': 1, 'crm': crm, 'manualOverride': override})
+    assert check.json['ready'] is True, check.json
+    assert client.get('/api/stand/state').json['data']['deals'][0]['payType'] == 'СБП'
+
+    response = _post(client, crm=crm, override=override)
+    assert response.status_code == 201, response.json
+    assert response.json['deal']['payin_method'] == crm_method
+    assert response.json['deal']['payin_amount_usdt'] == 100
+    deal = client.get('/api/stand/state').json['data']['deals'][0]
+    assert deal['payType'] == selected and deal['step'] == 'done'
+
+
 def test_override_closes_deal_from_early_step_as_admin(monkeypatch):
     monkeypatch.setattr(m, 'STAND_MODE', True)
     monkeypatch.setattr(m, 'verify_transfer', confirmed_echo)
