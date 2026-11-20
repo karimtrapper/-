@@ -717,3 +717,147 @@ def test_deal_details_show_unique_proofs_and_keep_channel_amounts(ui, width):
     expect(content).not_to_contain_text('Хэш прихода')
     assert not errors, errors
     assert not server_errors, server_errors
+
+@pytest.mark.parametrize('width', [1440, 390])
+def test_saved_shared_payin_hydration_preserves_editor_values(ui, monkeypatch, width):
+    from tests.test_leasehold_reclassification import seed_direct, snapshot
+
+    page, errors, server_errors, _ = ui
+    monkeypatch.setattr(A, '_sync_reclassified_deal_gsheet', lambda deal: {'ok': True})
+    page.set_viewport_size({'width': width, 'height': 900})
+    with A.get_session() as db:
+        deal = seed_direct(db)
+        deal.manager_name = 'QA Manager'
+        deal.payin_method = A.PayInMethod.SPP_DOVERKA
+        deal.payin_amount_rub = 280188.11
+        deal.payin_amount_usdt = 3137.64
+        deal.payin_rate_rub_usdt = 89.31
+        deal.payout_amount_thb = 100000
+        deal.payout_amount_usdt = 2997.15
+        db.flush()
+        outgoing = db.query(A.PayoutTxUse).filter_by(deal_id=deal.id).one()
+        outgoing.amount_usdt = 2997.15
+        deal.payout_tx_hashes = json.dumps([
+            {'hash': outgoing.tx.tx_hash, 'network': 'erc20', 'amount_usdt': 2997.15},
+        ])
+        incoming = db.query(A.PayinTxUse).filter_by(deal_id=deal.id).order_by(A.PayinTxUse.id).all()
+        first_use, second_use = incoming
+        payin_hash = first_use.tx.tx_hash
+        first_use.amount_usdt = 3137.64
+        first_use.tx.amount_usdt = 4200
+        first_use.tx.source = 'tronscan'
+        db.delete(second_use)
+        deal.payin_tx_hashes = json.dumps([
+            {'hash': payin_hash, 'network': 'trc20', 'amount_usdt': 3137.64},
+        ])
+        other = A.Deal(deal_type=A.DealType.PAY_IN, deal_kind='exchange',
+                       payin_method=A.PayInMethod.SPP_DOVERKA, payin_amount_usdt=712.36,
+                       payin_tx_hash=payin_hash, payin_tx_hashes=json.dumps([
+                           {'hash': payin_hash, 'network': 'trc20', 'amount_usdt': 712.36},
+                       ]), manager_name='QA Manager')
+        db.add(other)
+        db.flush()
+        db.add(A.PayinTxUse(tx=first_use.tx, deal_id=other.id, amount_usdt=712.36))
+        deal_id, other_id = deal.id, other.id
+        db.commit()
+        before = snapshot(db, deal_id)
+
+    payin_path = '/api/payin-txs/' + payin_hash
+    held = []
+    page.route('**' + payin_path, lambda intercept: held.append(intercept))
+    writes = []
+    page.on('request', lambda request: writes.append(request.post_data_json)
+            if request.method == 'PUT' and request.url.endswith(f'/api/deals/{deal_id}') else None)
+    rate = page.locator('#createDealForm [name=payin_rate_rub_usdt]')
+    rub = page.locator('#createDealForm [name=payin_amount_rub]')
+    usdt = page.locator('#createDealForm [name=payin_amount_usdt]')
+    pool = page.locator('#payinTxPoolBox')
+    share = pool.locator('input')
+    change_type = page.locator('#leaseholdReclassificationButton')
+    dialog = page.get_by_role('dialog')
+
+    def open_editor(record_id=deal_id):
+        with page.expect_request(lambda r: r.url.endswith(payin_path)):
+            page.evaluate('id => openDealEditor(id)', record_id)
+
+    def finish_ledger_request(intercept):
+        with page.expect_event('requestfinished', lambda r: r.url.endswith(payin_path)):
+            intercept.continue_()
+
+    open_editor()
+    expect(rate).to_have_value('89.31')
+    finish_ledger_request(held.pop(0))
+    expect(pool).to_contain_text(re.compile(r'остаток \$350[.,]00'))
+    expect(pool).to_contain_text(f'сделки #{other_id}')
+    expect(rate).to_have_value('89.31')
+    expect(rub).to_have_value('280188.11')
+    expect(usdt).to_have_value('3137.64')
+    expect(share).to_have_value('3137.64')
+    change_type.click()
+    expect(dialog).to_contain_text('Недвижимость лизхолд через личный счёт')
+    dialog.get_by_role('button', name='Отмена', exact=True).click()
+    assert not writes
+
+    open_editor()
+    rate.fill('90.91')
+    expect(rate).to_have_value('90.91')
+    edited_amount = usdt.input_value()
+    finish_ledger_request(held.pop(0))
+    expect(pool).to_contain_text(re.compile(r'остаток \$350[.,]00'))
+    expect(rate).to_have_value('90.91')
+    expect(usdt).to_have_value(edited_amount)
+    change_type.click()
+    expect(page.get_by_text('Сначала сохраните изменения в полях сделки.', exact=True)).to_be_visible()
+    expect(dialog).to_have_count(0)
+
+    open_editor()
+    share.fill('3120,50')
+    finish_ledger_request(held.pop(0))
+    page.wait_for_function('hash => Boolean(payinTxLedger[hash])', arg=payin_hash)
+    expect(share).to_be_focused()
+    expect(share).to_have_value('3120,50')
+    expect(usdt).to_have_value('3120.50')
+    rate.focus()
+    expect(pool).to_contain_text(re.compile(r'остаток \$350[.,]00'))
+    expect(usdt).to_have_value('3120.50')
+
+    open_editor()
+    share.focus()
+    finish_ledger_request(held.pop(0))
+    page.wait_for_function('hash => Boolean(payinTxLedger[hash])', arg=payin_hash)
+    pool.get_by_role('button', name='✕', exact=True).click()
+    expect(share).to_have_count(0)
+
+    open_editor()
+    open_editor(other_id)
+    finish_ledger_request(held.pop(0))
+    expect(pool).not_to_contain_text(re.compile(r'остаток \$350[.,]00'))
+    expect(usdt).to_have_value('712.36')
+    finish_ledger_request(held.pop(0))
+    expect(pool).to_contain_text(re.compile(r'остаток \$350[.,]00'))
+
+    open_editor()
+    page.locator('#create .card-title').get_by_role('button', name='Отмена', exact=True).click()
+    page.evaluate("showSection('create')")
+    finish_ledger_request(held.pop(0))
+    expect(share).to_have_count(0)
+    expect(usdt).to_have_value('')
+    assert not writes
+
+    open_editor()
+    finish_ledger_request(held.pop(0))
+    expect(pool).to_contain_text(re.compile(r'остаток \$350[.,]00'))
+    product = page.locator('#dealProductSelect').locator('..')
+    product.locator('.custom-select-btn').click()
+    product.locator('.custom-select-opt').get_by_text('Недвижимость лизхолд', exact=True).click()
+    expect(dialog).to_contain_text('Недвижимость лизхолд через личный счёт')
+    with page.expect_response(lambda r: r.request.method == 'PUT'
+                              and r.url.endswith(f'/api/deals/{deal_id}')) as reply:
+        dialog.get_by_role('button', name='Изменить тип', exact=True).click()
+    assert reply.value.status == 200
+    assert writes == [{'deal_kind': 'personal_realty', 'reclassify': True}]
+    with A.get_session() as db:
+        assert db.get(A.Deal, deal_id).deal_kind == 'personal_realty'
+        assert snapshot(db, deal_id) == before
+    assert not errors, errors
+    assert not server_errors, server_errors
