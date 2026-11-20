@@ -369,7 +369,7 @@ PAYOUT_SOURCE_LABELS = {
 DEAL_KIND_LABELS = {
     'exchange': 'обычный обмен',
     'mf_realty': 'недвижимость: лизхолд (через MF Corp)',
-    'ipps_realty': 'Недвижимость через ИППС',
+    'ipps_realty': 'Недвижимость лизхолд через ИППС',
     'mf_freehold': 'недвижимость: фрихолд (SWIFT застройщику)',
     'mf_auto': 'Оплата авто',
 }
@@ -4317,7 +4317,7 @@ def _send_deal_telegram(deal):
         return
     if deal.deal_kind == IPPS_REALTY_KIND:
         return send_telegram_notification(
-            f"🏠 Недвижимость через ИППС · CRM #{deal.id}\n"
+            f"🏠 Недвижимость лизхолд через ИППС · CRM #{deal.id}\n"
             f"Сумма выплаты: {deal.payout_amount_thb or 0:,.2f} THB\n"
             f"Себестоимость: {deal.payout_amount_usdt or 0:,.2f} USDT\n"
             f"Чистая прибыль: {deal.net_profit_usdt or 0:,.2f} USDT")
@@ -8388,7 +8388,7 @@ def preview_ipps_realty():
         if 'deal_id' in data:
             existing = session.get(Deal, data['deal_id'])
             if not existing or existing.deal_kind != IPPS_REALTY_KIND:
-                return jsonify(success=False, error='Сделка ИППС не найдена'), 404
+                return jsonify(success=False, error='Сделка «Недвижимость лизхолд через ИППС» не найдена'), 404
         problem = _prepare_ipps_payout(session, data, existing, lock_card=False)
         if problem:
             return jsonify(success=False, error=problem), 400
@@ -8835,7 +8835,7 @@ def update_deal(deal_id):
         data = request.get_json()
         next_kind = data.get('deal_kind', deal.deal_kind)
         if next_kind != deal.deal_kind and IPPS_REALTY_KIND in (deal.deal_kind, next_kind):
-            return jsonify(success=False, error='Тип ИППС выбирается при создании сделки'), 409
+            return jsonify(success=False, error='Тип «Недвижимость лизхолд через ИППС» выбирается при создании сделки'), 409
         ipps_problem = _prepare_ipps_payout(session, data, deal)
         if ipps_problem:
             return jsonify(success=False, error=ipps_problem), 400
@@ -9899,7 +9899,7 @@ FINANCE_ARTICLES = {
 FINANCE_PRODUCTS = {
     'exchange': 'Обмен',
     'mf_realty': 'Недвижимость: лизхолд',
-    'ipps_realty': 'Недвижимость через ИППС',
+    'ipps_realty': 'Недвижимость лизхолд через ИППС',
     'mf_freehold': 'Недвижимость: фрихолд',
     'mf_auto': 'Оплата авто',
     'unassigned': 'Без привязки к сделке',

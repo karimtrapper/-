@@ -896,7 +896,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                     <option value="exchange">Обычные обмены</option>
                     <option value="realty">Недвижимость — вся</option>
                     <option value="mf_realty">Недвижимость — лизхолд</option>
-                    <option value="ipps_realty">Недвижимость через ИППС</option>
+                    <option value="ipps_realty">Недвижимость лизхолд через ИППС</option>
                     <option value="mf_freehold">Недвижимость — фрихолд</option>
                     <option value="mf_auto">Оплата авто</option>
                 </select>
@@ -1125,7 +1125,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                             <option value="exchange">Обмен</option>
                             <option value="realty">Недвижимость — вся</option>
                             <option value="mf_realty">Недвижимость — лизхолд</option>
-                            <option value="ipps_realty">Недвижимость через ИППС</option>
+                            <option value="ipps_realty">Недвижимость лизхолд через ИППС</option>
                             <option value="mf_freehold">Недвижимость — фрихолд</option>
                             <option value="mf_auto">Оплата авто</option>
                         </select>
@@ -1217,7 +1217,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                                 <option value="exchange">Обычная (обмен)</option>
                                 <option value="custom">Кастомная — нестандартные валюты</option>
                                 <option value="mf_realty">Недвижимость через MF Corp</option>
-                                <option value="ipps_realty">Недвижимость через ИППС</option>
+                                <option value="ipps_realty">Недвижимость лизхолд через ИППС</option>
                                 <option value="mf_freehold">Недвижимость фрихолд</option>
                                 <option value="mf_auto">Оплата авто</option>
                             </select>
@@ -5181,7 +5181,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                         ` : ''}
 
                         ${deal.deal_kind === 'ipps_realty' ? `
-                            <h4>Недвижимость через ИППС</h4>
+                            <h4>Недвижимость лизхолд через ИППС</h4>
                             ${deal.realty_purpose ? `<p><strong>Назначение:</strong> ${escapeHtml(deal.realty_purpose)}</p>` : ''}
                             <p><strong>Источник:</strong> ${escapeHtml(deal.bank_card_name || 'Счёт ИППС')}</p>
                             <p><strong>Выплачено:</strong> ${dealPayoutThbText(deal)}</p>
@@ -11907,7 +11907,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                         ${i.wl.usdt ? '<br>' + cnvNum(i.wl.usdt) + ' USDT' : ''}</div>`;
             }
             if (i.deal?.deal_kind === 'mf_realty') return 'недвижка (лизхолд)';
-            if (i.deal?.deal_kind === 'ipps_realty') return 'недвижимость через ИППС';
+            if (i.deal?.deal_kind === 'ipps_realty') return 'недвижимость лизхолд через ИППС';
             if (i.deal?.deal_kind === 'mf_freehold') return 'недвижка (фрихолд)';
             if (i.deal?.deal_kind === 'mf_auto') return 'оплата авто';
             if (i.deal) return 'обмен';
@@ -13853,7 +13853,7 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                 mf_auto: 'Оплата авто',
                 mf_freehold: 'Фрихолд',
                 mf_realty: 'Лизхолд',
-                ipps_realty: 'Недвижимость через ИППС',
+                ipps_realty: 'Недвижимость лизхолд через ИППС',
             };
             return labels[kind] || 'Обмен';
         }
