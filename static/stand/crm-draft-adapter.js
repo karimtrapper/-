@@ -957,7 +957,7 @@ function crmDraftCommit(id) {
   }
   const kind=rawKind==='rental'?'mf_realty':rawKind;
   if(kind==='ipps_realty'&&(!d.manual||d.isTask||d.closed&&d.kind!=='ИППС')){
-    toast('Недвижимость через ИППС доступна в ручной сделке');return false;
+    toast('Недвижимость лизхолд через ИППС доступна в ручной сделке');return false;
   }
   const ippsCardId=kind==='ipps_realty'?Number(crmDraftRead(r,'ippsCardSelect')):null;
   if(kind==='ipps_realty'&&!ippsCardId){toast('Выберите счёт ИППС');return false;}

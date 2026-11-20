@@ -5182,7 +5182,7 @@ function ownerSummary(d){
   const receiptLine=line('Деньги клиента',receiptValue,receiptHint,
     (receiptDetails||item('Ожидаем',expected)+(!crypto?item('Ожидаемый счёт',expectOf(d).acc):''))+receiptProof+checksDetail);
   const invoice=d.kind==='Фрихолд'?(d.invoiceCurrency==='thb'&&d.invoiceThb?money(d.invoiceThb,'฿')+(d.invoiceUsd?' · '+usdMark(d,d.invoiceUsd):''):d.invoiceUsd?usd(d.invoiceUsd):null):d.amountThb?money(d.amountThb,'฿'):null;
-  const dealLine=line('Сделка',d.autoPayment===true?'Оплата авто':d.kind||d.type||'ещё нет',d.object||'объект ещё нет',
+  const dealLine=line('Сделка',d.kind==='ИППС'?dealDisplayKind(d):d.autoPayment===true?'Оплата авто':d.kind||d.type||'ещё нет',d.object||'объект ещё нет',
     item('Объект',d.object)+item('Застройщик',d.dev)+item('Получатель',d.payTo?.dev)+
     item('Инвойс',[(d.payTo||{}).inv,invoice].filter(Boolean).join(' · '))+item('Курс клиенту',d.rates?.client?d.rates.client+' '+rateUnit(d):null));
   const route=d.kind==='Фрихолд'||d.postConv==='ipps_swift'?'IPPS':d.postConv==='coins'?'Coins':d.postConv==='client'?'кошелёк клиента':'ещё нет';
@@ -6187,7 +6187,7 @@ function tgLines(d,step){
       break;
     case 's11':
       L.push({t:d.isOld?`Клиент старый — допник к договору`:`Клиент новый — полный договор`,b:true});
-      L.push({t:`${d.autoPayment===true?'Оплата авто':d.kind||d.type} · платит ${d.payType||'не указано'} · ${both}`});
+      L.push({t:`${d.kind==='ИППС'?dealDisplayKind(d):d.autoPayment===true?'Оплата авто':d.kind||d.type} · платит ${d.payType||'не указано'} · ${both}`});
       L.push({t:d.partial?`Часть ${d.partNo||''} из инвойса на ${money(d.invoiceTotal,d.kind==='Фрихолд'?'$':'฿')}`:`Платёж целиком`});
       break;
     case 's12':
@@ -6195,7 +6195,7 @@ function tgLines(d,step){
       L.push({t:`К оплате ${money(ap.pay,ap.sign)} · курс ${d.rates.client||'—'} ${rateUnit(d)}`});break;
     case 's11b':
       L.push({t:`Договор собран — проверьте перед отправкой`,b:true});
-      L.push({t:`${d.autoPayment===true?'Оплата авто':d.kind||d.type} · ${both}`});break;
+      L.push({t:`${d.kind==='ИППС'?dealDisplayKind(d):d.autoPayment===true?'Оплата авто':d.kind||d.type} · ${both}`});break;
     case 's18':
       L.push({t:`Деньги получены: ${money(d.incomeAmount||ap.pay,ap.sign)}`,b:true});
       L.push({t:`К оплате получателю ${money(ap.thb,ap.thbSign||'฿')} · курс сделки ${d.rates.client||'—'} ${rateUnit(d)}`});break;
@@ -6417,7 +6417,7 @@ function taskDealsHtml(role){
   return `<div class="task-deals-table"><div class="task-deals-heading"><span>Сделка</span><span>Флоу</span><span>Этап</span><span>На ком</span><span>Сумма</span><span>С какого времени</span></div>${deals.map(d=>{
     const a=approx(d),amount=apMoney(a,'pay');
     const path=dealTaskPath(d,null),lastEvent=(d.log||[]).at(-1),sinceAt=lastEvent?.at;
-    return `<button type="button" class="task-deal-row" data-task-id="${d.id}" data-task-view="deal" onclick="openDeal(${d.id})"><span class="task-deal-name"><strong>${htmlText(d.code)} · ${htmlText(d.client)}</strong></span><span class="task-deal-flow">${htmlText(d.autoPayment===true?'Оплата авто':d.kind||d.type||'Сделка')}</span><span class="task-deal-stage">${htmlText(d.closed?d.closeReason||'Завершена':d.prepay?prepayBranchStatus(d,'payment'):stepTitle(d))}<span class="task-deal-progress" aria-label="Шаг ${path.index+1} из ${path.steps.length}">${path.steps.map((_,i)=>`<i class="${i<path.index?'done':i===path.index?'current':''}"></i>`).join('')}</span></span><span class="task-deal-who">${htmlText(d.closed?'—':d.prepay?prepayBranchAssignee(d,'payment'):policyStepAssignee(d,d.step))}</span><b class="task-deal-amount num">${amount==='посчитаем после курса'?apMoney(a,'thb'):amount}</b><span class="task-deal-since">${typeof sinceAt==='number'&&Number.isFinite(sinceAt)?since(sinceAt):'—'}</span></button>`;
+    return `<button type="button" class="task-deal-row" data-task-id="${d.id}" data-task-view="deal" onclick="openDeal(${d.id})"><span class="task-deal-name"><strong>${htmlText(d.code)} · ${htmlText(d.client)}</strong></span><span class="task-deal-flow">${htmlText(d.kind==='ИППС'?dealDisplayKind(d):d.autoPayment===true?'Оплата авто':d.kind||d.type||'Сделка')}</span><span class="task-deal-stage">${htmlText(d.closed?d.closeReason||'Завершена':d.prepay?prepayBranchStatus(d,'payment'):stepTitle(d))}<span class="task-deal-progress" aria-label="Шаг ${path.index+1} из ${path.steps.length}">${path.steps.map((_,i)=>`<i class="${i<path.index?'done':i===path.index?'current':''}"></i>`).join('')}</span></span><span class="task-deal-who">${htmlText(d.closed?'—':d.prepay?prepayBranchAssignee(d,'payment'):policyStepAssignee(d,d.step))}</span><b class="task-deal-amount num">${amount==='посчитаем после курса'?apMoney(a,'thb'):amount}</b><span class="task-deal-since">${typeof sinceAt==='number'&&Number.isFinite(sinceAt)?since(sinceAt):'—'}</span></button>`;
   }).join('')}</div>`;
 }
 function showTaskListSection(section){
@@ -6490,7 +6490,7 @@ function viewTasks(){
         return `<button type="button" class="task-list-row" data-task-id="${d.id}" data-task-branch="${branch||''}" title="шаг ${path.index+1} из ${path.steps.length}"
           onclick="openTask(${d.id},${branch?`'${branch}'`:'null'})">
           <span class="task-list-row-main"><strong>${role==='admin'?htmlText((ROLES[stepWho(d)]||{}).n||'Сотрудник')+' · ':''}${htmlText(title)}</strong>
-            <span class="task-list-meta">${htmlText(d.code)} · ${htmlText(d.client)} · ${d.prepay?'Оплата наперёд · ':''}${htmlText(d.autoPayment===true?'Оплата авто':d.kind||d.type)}</span>
+            <span class="task-list-meta">${htmlText(d.code)} · ${htmlText(d.client)} · ${d.prepay?'Оплата наперёд · ':''}${htmlText(d.kind==='ИППС'?dealDisplayKind(d):d.autoPayment===true?'Оплата авто':d.kind||d.type)}</span>
             ${side&&!branch?`<span class="task-list-meta">Параллельно: ${stepTitle(d)} · ${(ROLES[stepWho(d)]||{}).t||'—'}</span>`:''}</span>
           <span class="task-list-amount num">${amount==='посчитаем после курса'?apMoney(a,'thb'):amount}</span>
           <span class="task-list-arrow" aria-hidden="true">›</span></button>`;
@@ -7696,7 +7696,7 @@ function viewDeal(d){
   if(d.demoTransfers&&!demoAllowed())body='<div class="alert a-warn">В истории есть DEMO-приходы или переводы. Автоматически снять флаг и продолжить нельзя: требуется сверка реальных платежей операционистом.</div>'+body;
   const tab=(v,label)=>`<span class="vtab ${view===v?'on':''}" onclick="setView('${v}')">${label}</span>`;
   return `<div class="deal-screen"><div class="task-card-nav"><button type="button" onclick="closeTaskToList()">‹ Все задачи</button><button type="button" onclick="nextTask()" ${typeof taskListCursor==='undefined'||typeof taskListEntries==='undefined'||taskListCursor<0||taskListCursor+1>=taskListEntries.length?'disabled':''}>Следующая задача ›</button></div><div class="deal-breadcrumb">Задачник / ${htmlText(d.code)}</div>
-  <header class="deal-head"><div><p class="deal-code">${htmlText(d.code)} · ${htmlText(d.autoPayment===true?'Оплата авто':d.kind||d.type)}${d.prepay?' · оплата наперёд':''}</p>
+  <header class="deal-head"><div><p class="deal-code">${htmlText(d.code)} · ${htmlText(d.kind==='ИППС'?dealDisplayKind(d):d.autoPayment===true?'Оплата авто':d.kind||d.type)}${d.prepay?' · оплата наперёд':''}</p>
     <h1>${htmlText(d.client)}</h1><p>${htmlText([d.object,d.dev,d.manager?'менеджер '+d.manager:''].filter(Boolean).join(' · '))}</p></div>
     ${['manager','admin'].includes(S.role)&&!d.closed&&!d.manual&&!reviewTask?`<button class="btn btn-outline btn-sm" onclick="manualCloseAsk(${d.id})">Перенести в CRM и закрыть</button>`:''}
     ${view==='task'&&branchPath?`<div class="deal-progress"><span>${htmlText(branchPath.active==='refund'?'Возместить оплату':STEPS[branchPath.active]?.title||'Конвертация завершена')}</span>
@@ -7783,7 +7783,7 @@ function overview(d,st,mine,p,wh){
     <table class="tbl">
       ${row('Клиент',d.client,d.isOld?'знакомый, договор есть':'новый')}
       ${row('Откуда пришёл',SOURCES[d.source],sourceRefLabel(d.source,d.sourceRef))}
-      ${row('Что делаем',d.autoPayment===true?'Оплата авто':d.type+(d.kind?' · '+d.kind:''))}
+      ${row('Что делаем',d.kind==='ИППС'?dealDisplayKind(d):d.autoPayment===true?'Оплата авто':d.type+(d.kind?' · '+d.kind:''))}
       ${row('Как платит',d.payType,isCrypto(d)?'сделка считается в USDT':'')}
       ${row(d.autoPayment===true?'Автомобиль / VIN':'Объект',d.object||'не указан')}
       ${d.autoPayment===true?row('Исходная сумма заявки',d.autoRequestMode==='rub'?moneyKop(d.requestedRub,'₽'):usd(d.requestedUsd)):''}
@@ -7958,7 +7958,7 @@ function fixCard(d){
     paid?'<span class="fh" style="margin:0">инвойс оплачен — не меняются</span>'
       :reqOpen(d)?`<button class="btn btn-secondary btn-sm" onclick="openTask(${d.id})">Заполнить</button>`
       :`<button class="btn btn-secondary btn-sm" onclick="reqReopen(${d.id},'правка менеджера')">Поправить</button>`]);
-  rows.push(['Клиент и данные сделки',htmlText(d.client+' · '+(d.autoPayment===true?'Оплата авто':d.type+(d.kind?' · '+d.kind:''))+(d.object?' · '+d.object:'')),
+  rows.push(['Клиент и данные сделки',htmlText(d.client+' · '+(d.kind==='ИППС'?dealDisplayKind(d):d.autoPayment===true?'Оплата авто':d.type+(d.kind?' · '+d.kind:''))+(d.object?' · '+d.object:'')),
     `<button class="btn btn-outline btn-sm" onclick="editOpen(${d.id})">Поправить</button>`]);
   if(d.type==='Оплата недвижимости') rows.push(['Документы клиента',
     ['pass','inv','spa','vehicle_contract','ipds'].filter(k=>d.docs[k]).map(k=>doctOf(d,k)).join(', ')||'не приложены',
@@ -9024,14 +9024,14 @@ function ctxCard(d){
   const rate=isCrypto(d)&&d.kind==='Фрихолд'
     ?'Клиент отправит: '+(d.amountUsdt==null?'—':money(d.amountUsdt,'USDT'))
     :(d.rates.client?d.rates.client+' '+rateUnit(d):'курса ещё нет');
-  const line=[d.client,d.autoPayment===true?'Оплата авто':d.type+(d.kind?' · '+d.kind:''),ap.thb?apMoney(ap,'thb'):null,rate].filter(Boolean).map(htmlText).join(' · ');
+  const line=[d.client,d.kind==='ИППС'?dealDisplayKind(d):d.autoPayment===true?'Оплата авто':d.type+(d.kind?' · '+d.kind:''),ap.thb?apMoney(ap,'thb'):null,rate].filter(Boolean).map(htmlText).join(' · ');
   /* раскрытое состояние помним локально: доска перерисовывается при каждом обновлении */
   return `<details class="card ctx" style="margin-top:16px"${S.ctxOpen?' open':''} ontoggle="S.ctxOpen=this.open">
   <summary><span class="ctxh">Что это за сделка</span><span class="ctxl">${line}</span></summary>
   <div class="facts" style="margin-top:14px">
     ${fact('Клиент',d.client,d.isOld?'знакомый — договор уже есть':'новый — нужен полный пакет')}
     ${fact('Откуда пришёл',SOURCES[d.source],sourceRefLabel(d.source,d.sourceRef)||'без переписки')}
-    ${fact('Что делаем',d.autoPayment===true?'Оплата авто':d.type+(d.kind?' · '+d.kind:''),'платит: '+(d.payType||'не указано'))}
+    ${fact('Что делаем',d.kind==='ИППС'?dealDisplayKind(d):d.autoPayment===true?'Оплата авто':d.type+(d.kind?' · '+d.kind:''),'платит: '+(d.payType||'не указано'))}
     ${fact('Объект',d.object||'не указан',d.partial?'часть оплаты '+(d.partNo||'')+' по инвойсу на '+money(d.invoiceTotal,d.kind==='Фрихолд'?'$':'฿'):'оплата целиком')}
     ${fact('Получатель получает',apMoney(ap,'thb'),'клиент отдаёт '+apMoney(ap,'pay'))}
     ${isCrypto(d)&&d.kind==='Фрихолд'
@@ -9310,7 +9310,7 @@ const DEAL_KINDS=[['exchange','Обычная (обмен)'],['custom','Каст
   ['mf_realty','Недвижимость через MF Corp'],['mf_freehold','Недвижимость фрихолд'],['mf_auto','Оплата авто']];
 function dealDisplayKind(d){
   if(d.autoPayment===true)return 'Оплата авто';
-  if(d.kind==='ИППС')return 'Недвижимость через ИППС';
+  if(d.kind==='ИППС')return 'Недвижимость лизхолд через ИППС';
   return d.type+(d.kind?' · '+d.kind:'');
 }
 function recipientTitle(d){return d.autoPayment===true?'продавцу авто':'застройщику';}
@@ -10605,7 +10605,7 @@ function manualCloseScreen(d){
   return `<div class="deal-screen manual-close-screen">
     <div class="deal-breadcrumb">Задачник / ${htmlText(d.code)} / Ручной перенос в CRM</div>
     <header class="deal-head"><div>
-      <p class="deal-code">${htmlText(d.code)} · ${htmlText(d.autoPayment===true?'Оплата авто':d.kind||d.type)}</p>
+      <p class="deal-code">${htmlText(d.code)} · ${htmlText(d.kind==='ИППС'?dealDisplayKind(d):d.autoPayment===true?'Оплата авто':d.kind||d.type)}</p>
       <h1>Закрыть вручную: ${htmlText(d.client||'без имени')}</h1>
       <p>Перенос минуя задачник — заполните то, чего не хватает, остальное уже известно.</p>
     </div>
@@ -11709,7 +11709,7 @@ function stepGoal(d){
   switch(d.step){
     case 's4': return {t:'Получить курсы контрагентов, чтобы посчитать клиенту',
       nums:[['Получателю',ap.thb?apMoney(ap,'thb'):'—'],['Клиент отдаёт',ap.pay?apMoney(ap,'pay'):'—'],
-            ['Тип',d.type+(d.kind?' · '+d.kind:'')]]};
+            ['Тип',d.kind==='ИППС'?dealDisplayKind(d):d.type+(d.kind?' · '+d.kind:'')]]};
     case 's5': if(d.kind==='Фрихолд'&&!isCrypto(d)){
       const t5=ippsTariff(d), S5=freeholdSend(d.invoiceUsd||0,t5);
       if(d.autoPayment===true&&d.autoRequestMode==='rub')return {t:'Вернуть курс RUB → USDT для расчёта выплаты продавцу',
@@ -12163,7 +12163,7 @@ function stepCard(d){
     ${d.partial?`<div class="alert a-warn"><div>Это <b>часть оплаты</b>${d.partNo?' ('+d.partNo+')':''} по инвойсу на <b>${money(d.invoiceTotal,d.kind==='Фрихолд'?'$':'฿')}</b> — договор должен это отразить.</div></div>`:''}
     <div class="fr">
       <div class="fg"><label class="fl">Направление</label><input class="fc" readonly value="${(isCrypto(d)?'USDT':'RUB')} → THB"></div>
-      <div class="fg"><label class="fl">Тип сделки</label><input class="fc" readonly value="${d.type}${d.kind?' · '+d.kind:''}"></div>
+      <div class="fg"><label class="fl">Тип сделки</label><input class="fc" readonly value="${d.kind==='ИППС'?dealDisplayKind(d):d.type+(d.kind?' · '+d.kind:'')}"></div>
       <div class="fg"><label class="fl">Как платит клиент</label><input class="fc" readonly value="${d.payType||'—'}"></div>
     </div>
     <div class="fr">
@@ -12219,7 +12219,7 @@ function stepCard(d){
     }
     return `<div class="card"><div class="card-title">Что ответили контрагенты</div>
     ${d.reRequest?`<div class="alert a-info"><div><b>Повторный запрос №${d.reRequest}.</b> Клиент вернулся после паузы${d.ratesPrev&&d.ratesPrev.rubUsdt?' — в прошлый раз давали RUB→USDT '+d.ratesPrev.rubUsdt+' и USDT→THB '+d.ratesPrev.usdtThb+', '+ago(d.ratesPrev.at):''}.</div></div>`:''}
-    <div class="alert a-warn"><div><b>${d.type}${d.kind?' · '+d.kind:''} · платит ${d.payType||'не указано'}.</b> Получателю нужно ${apMoney(ap,'thb')}, клиент отдаёт ${apMoney(ap,'pay')}.</div></div>
+    <div class="alert a-warn"><div><b>${d.kind==='ИППС'?dealDisplayKind(d):d.type+(d.kind?' · '+d.kind:'')} · платит ${d.payType||'не указано'}.</b> Получателю нужно ${apMoney(ap,'thb')}, клиент отдаёт ${apMoney(ap,'pay')}.</div></div>
     ${isCrypto(d)?`<div class="alert a-info"><div>Рублёвой ноги в сделке нет — курс у брокера не спрашиваем, нужен только <b>USDT→THB</b>.</div></div>`:''}
     ${(function(){const r=quoteBest(d,'rub'), t=quoteBest(d,'thb');
       /* Не поле ввода: операционист принимал его за то, что надо заполнить (Карим, 25.09).

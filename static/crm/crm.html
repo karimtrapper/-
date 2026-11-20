@@ -947,7 +947,7 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
                     <option value="exchange">Обычные обмены</option>
                     <option value="realty">Недвижимость — вся</option>
                     <option value="mf_realty">Недвижимость — лизхолд</option>
-                    <option value="ipps_realty">Недвижимость через ИППС</option>
+                    <option value="ipps_realty">Недвижимость лизхолд через ИППС</option>
                     <option value="mf_freehold">Недвижимость — фрихолд</option>
                     <option value="mf_auto">Оплата авто</option>
                 </select>
@@ -1154,7 +1154,7 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
                             <option value="exchange">Обмен</option>
                             <option value="realty">Недвижимость — вся</option>
                             <option value="mf_realty">Недвижимость — лизхолд</option>
-                    <option value="ipps_realty">Недвижимость через ИППС</option>
+                    <option value="ipps_realty">Недвижимость лизхолд через ИППС</option>
                             <option value="mf_freehold">Недвижимость — фрихолд</option>
                             <option value="mf_auto">Оплата авто</option>
                         </select>
@@ -1246,7 +1246,7 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
                                 <option value="exchange">Обычная (обмен)</option>
                                 <option value="custom">Кастомная — нестандартные валюты</option>
                                 <option value="mf_realty">Недвижимость через MF Corp</option>
-                                <option value="ipps_realty">Недвижимость через ИППС</option>
+                                <option value="ipps_realty">Недвижимость лизхолд через ИППС</option>
                                 <option value="mf_freehold">Недвижимость фрихолд</option>
                                 <option value="rental">Аренда</option>
                                 <option value="mf_auto">Оплата авто</option>
@@ -4927,7 +4927,7 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
                             <td>${formatDate(deal.created_at)}</td>
                             <td>${escapeHtml(deal.manager_name) || '—'}</td>
                             <td>${escapeHtml(deal.client_name) || '—'}</td>
-                            <td>${deal.deal_kind === 'mf_auto' ? 'Оплата авто' : deal.deal_kind === 'mf_freehold' ? 'Фрихолд' : deal.deal_kind === 'mf_realty' ? 'Лизхолд' : deal.deal_kind === 'ipps_realty' ? 'Недвижимость через ИППС' : deal.deal_kind === 'rental' ? 'Аренда' : 'Обмен'}</td>
+                            <td>${deal.deal_kind === 'mf_auto' ? 'Оплата авто' : deal.deal_kind === 'mf_freehold' ? 'Фрихолд' : deal.deal_kind === 'mf_realty' ? 'Лизхолд' : deal.deal_kind === 'ipps_realty' ? 'Недвижимость лизхолд через ИППС' : deal.deal_kind === 'rental' ? 'Аренда' : 'Обмен'}</td>
                             <td>${escapeHtml(deal.referrer_name) || '—'}</td>
                             <td>${deal.is_custom ? 'Кастомная' : getPayinMethodLabel(deal.payin_method)}</td>
                             <td>${payinUsdtCell(deal)}</td>
@@ -5234,7 +5234,7 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
                         ` : ''}
 
                         ${deal.deal_kind === 'ipps_realty' ? `
-                            <h4>Недвижимость через ИППС</h4>
+                            <h4>Недвижимость лизхолд через ИППС</h4>
                             ${deal.realty_purpose ? `<p><strong>Назначение:</strong> ${escapeHtml(deal.realty_purpose)}</p>` : ''}
                             <p><strong>Источник:</strong> IPPS счет компании</p>
                             <p><strong>Выплачено:</strong> ${formatNumber(deal.payout_amount_thb)} ฿</p>
@@ -12335,7 +12335,7 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
                         ${i.wl.usdt ? '<br>' + cnvNum(i.wl.usdt) + ' USDT' : ''}</div>`;
             }
             if (i.deal?.deal_kind === 'mf_realty') return 'недвижка (лизхолд)';
-            if (i.deal?.deal_kind === 'ipps_realty') return 'недвижимость через ИППС';
+            if (i.deal?.deal_kind === 'ipps_realty') return 'недвижимость лизхолд через ИППС';
             if (i.deal?.deal_kind === 'mf_freehold') return 'недвижка (фрихолд)';
             if (i.deal?.deal_kind === 'mf_auto') return 'оплата авто';
             if (i.deal) return 'обмен';

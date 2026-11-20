@@ -517,7 +517,7 @@ PAYOUT_SOURCE_LABELS = {
 DEAL_KIND_LABELS = {
     'exchange': 'обычный обмен',
     'mf_realty': 'недвижимость: лизхолд (через MF Corp)',
-    'ipps_realty': 'Недвижимость через ИППС',
+    'ipps_realty': 'Недвижимость лизхолд через ИППС',
     'mf_freehold': 'недвижимость: фрихолд (SWIFT застройщику)',
     'rental': 'Аренда',
     'mf_auto': 'Оплата авто',
@@ -5160,7 +5160,7 @@ def _send_deal_telegram(deal, sender=None):
         return
     if deal.deal_kind == IPPS_REALTY_KIND:
         return sender(
-            f"🏠 Недвижимость через ИППС · CRM #{deal.id}\n"
+            f"🏠 Недвижимость лизхолд через ИППС · CRM #{deal.id}\n"
             f"Сумма выплаты: {deal.payout_amount_thb or 0:,.2f} THB\n"
             f"Себестоимость: {deal.payout_amount_usdt or 0:,.2f} USDT\n"
             f"Чистая прибыль: {deal.net_profit_usdt or 0:,.2f} USDT")
@@ -13578,7 +13578,7 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
                 deal.get('type') != 'Оплата недвижимости' or deal.get('autoPayment')
                 or not deal.get('manual') or deal.get('isTask')
                 or deal.get('step') not in ('manual', 'done')):
-            return 'Недвижимость через ИППС доступна в ручной сделке'
+            return 'Недвижимость лизхолд через ИППС доступна в ручной сделке'
         step_changed = bool(before and before.get('step') != deal.get('step'))
         if (before and actor not in ('manager', 'admin')
                 and _stand_client_docs_changed(before, deal)):
@@ -23345,7 +23345,7 @@ FINANCE_ARTICLES = {
 FINANCE_PRODUCTS = {
     'exchange': 'Обмен',
     'mf_realty': 'Недвижимость: лизхолд',
-    'ipps_realty': 'Недвижимость через ИППС',
+    'ipps_realty': 'Недвижимость лизхолд через ИППС',
     'mf_freehold': 'Недвижимость: фрихолд',
     'mf_auto': 'Оплата авто',
     'unassigned': 'Без привязки к сделке',
@@ -25288,10 +25288,10 @@ def _prepare_ipps_payout(session, data, deal=None, *, lock_card=True):
     kind = data.get('deal_kind', deal.deal_kind if deal else None)
     if kind != IPPS_REALTY_KIND:
         if deal and deal.deal_kind == IPPS_REALTY_KIND:
-            return 'Тип сделки ИППС закреплён за её выплатой'
+            return 'Тип «Недвижимость лизхолд через ИППС» закреплён за выплатой'
         return None
     if deal and deal.deal_kind != IPPS_REALTY_KIND:
-        return 'Выберите тип ИППС при создании сделки'
+        return 'Выберите тип «Недвижимость лизхолд через ИППС» при создании сделки'
     if data.get('payout_source', PayOutSource.BANK_CARD) != PayOutSource.BANK_CARD:
         return 'Для недвижимости через ИППС выберите счёт ИППС'
     if any(data.get(field) for field in (

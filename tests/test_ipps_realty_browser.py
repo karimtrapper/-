@@ -50,7 +50,7 @@ def test_manual_ipps_form_save_reload_close_and_open_crm(width, chromium, crm_se
         page.get_by_role('button', name='+ Создать сделку', exact=True).click()
         shadow = page.locator('#crmDraftHost')
         kind = shadow.locator('#dealKindSelect')
-        expect(kind.locator('option[value="ipps_realty"]')).to_have_text('Недвижимость через ИППС')
+        expect(kind.locator('option[value="ipps_realty"]')).to_have_text('Недвижимость лизхолд через ИППС')
         expect(kind.locator('option[value="mf_realty"]')).to_have_text('Недвижимость через MF Corp')
         expect(shadow.locator('#managerSelect option').filter(has_text='IPPS QA')).to_have_count(1)
         shadow.locator('#managerSelect').select_option(f'user:{manager_id}', force=True)
