@@ -518,6 +518,7 @@ DEAL_KIND_LABELS = {
     'exchange': 'обычный обмен',
     'mf_realty': 'недвижимость: лизхолд (через MF Corp)',
     'ipps_realty': 'Недвижимость лизхолд через ИППС',
+    'personal_realty': 'Недвижимость лизхолд через личный счёт',
     'mf_freehold': 'недвижимость: фрихолд (SWIFT застройщику)',
     'rental': 'Аренда',
     'mf_auto': 'Оплата авто',
@@ -528,6 +529,7 @@ class DealKindCanon(str, Enum):
     FREEHOLD = 'freehold'
     LEASEHOLD = 'leasehold'
     IPPS_REALTY = 'ipps_realty'
+    PERSONAL_REALTY = 'personal_realty'
     RENTAL = 'rental'
     AUTO = 'auto'
     EXCHANGE = 'exchange'
@@ -552,6 +554,7 @@ _STAND_KIND_CANON = {
     'Фрихолд': DealKindCanon.FREEHOLD.value,
     'Лизхолд': DealKindCanon.LEASEHOLD.value,
     'ИППС': DealKindCanon.IPPS_REALTY.value,
+    'Личный счёт': DealKindCanon.PERSONAL_REALTY.value,
     'Аренда': DealKindCanon.RENTAL.value,
 }
 
@@ -577,6 +580,7 @@ _LEGACY_KIND_CANON = {
     'mf_auto': DealKindCanon.AUTO.value,
     'mf_realty': DealKindCanon.LEASEHOLD.value,
     'ipps_realty': DealKindCanon.IPPS_REALTY.value,
+    'personal_realty': DealKindCanon.PERSONAL_REALTY.value,
     'rental': DealKindCanon.RENTAL.value,
     'exchange': DealKindCanon.EXCHANGE.value,
     'custom': DealKindCanon.EXCHANGE.value,
@@ -1015,6 +1019,7 @@ class BankCard(Base):
     bank_name = Column(String(100), nullable=False)
     card_name = Column(String(100))
     holder_name = Column(String(100))
+    personal_owner = Column(String(10), nullable=True)
     balance_thb = Column(Float, default=0)
     notes = Column(Text)
     status = Column(SQLEnum(CashBatchStatus), default=CashBatchStatus.ACTIVE)
@@ -1029,7 +1034,7 @@ class BankCard(Base):
             'bank_name': self.bank_name, 'card_name': self.card_name, 'holder_name': self.holder_name,
             'balance_thb': self.balance_thb, 'avg_rate': round(avg_rate, 4) if avg_rate else 0,
             'latest_purchase_rate': round(latest_purchase_rate, 4) if latest_purchase_rate else 0,
-            'is_ipps': _is_ipps_card(self.card_name),
+            'is_ipps': _is_ipps_card(self.card_name), 'personal_owner': self.personal_owner,
             'status': self.status.value if self.status else None,
             'topups': [t.to_dict() for t in self.topups] if self.topups else []
         }
@@ -2060,6 +2065,11 @@ def compute_agent_cascade(profit_usdt, volume_usdt, agents, crypto_base_usdt=Non
 
 
 IPPS_REALTY_KIND = DealKindCanon.IPPS_REALTY.value
+PERSONAL_REALTY_KIND = DealKindCanon.PERSONAL_REALTY.value
+PERSONAL_REALTY_LABEL = 'Недвижимость лизхолд через личный счёт'
+PERSONAL_CARD_OWNERS = {'andrey': 'Андрей', 'theodor': 'Теодор'}
+BALANCE_REALTY_KINDS = (IPPS_REALTY_KIND, PERSONAL_REALTY_KIND)
+STAND_PERSONAL_KIND = 'Личный счёт'
 IPPS_CARD_NAME = 'IPPS счет компании'
 IPPS_CASH_OUT = 'card_transfer_cash_out'
 IPPS_CASH_CANCELLED = 'card_transfer_cash_cancelled'
@@ -2072,9 +2082,9 @@ MF_FREEHOLD_KIND = 'mf_freehold'  # недвижимость фрихолд: о�
 MF_AUTO_KIND = 'mf_auto'          # оплата автомобиля: те же расчёты перевода
 # Оба типа недвижимости: своя математика, возмещение не нужно, выгрузка в
 # «Cделки недвижимость», свой шаблон Telegram. Общая ветка кода — по этому кортежу.
-REALTY_KINDS = (MF_REALTY_KIND, MF_FREEHOLD_KIND, MF_AUTO_KIND, IPPS_REALTY_KIND)
+REALTY_KINDS = (MF_REALTY_KIND, MF_FREEHOLD_KIND, MF_AUTO_KIND, IPPS_REALTY_KIND, PERSONAL_REALTY_KIND)
 SWIFT_PAYMENT_KINDS = (MF_FREEHOLD_KIND, MF_AUTO_KIND)
-PROPERTY_KINDS = (MF_REALTY_KIND, MF_FREEHOLD_KIND, IPPS_REALTY_KIND)
+PROPERTY_KINDS = (MF_REALTY_KIND, MF_FREEHOLD_KIND, IPPS_REALTY_KIND, PERSONAL_REALTY_KIND)
 
 
 def compute_mf_realty(invoice_thb, buy_rate, payin_usdt, sell_rate=None,
@@ -2742,6 +2752,18 @@ Base.metadata.create_all(
     tables=[table for table in Base.metadata.sorted_tables
             if table.name not in STAND_ONLY_TABLES],
 )
+
+
+def _migrate_personal_card_owner():
+    from sqlalchemy import inspect, text
+    with engine.begin() as conn:
+        if conn.dialect.name == 'postgresql':
+            conn.execute(text('ALTER TABLE bank_cards ADD COLUMN IF NOT EXISTS personal_owner VARCHAR(10)'))
+        elif 'personal_owner' not in {column['name'] for column in inspect(conn).get_columns('bank_cards')}:
+            conn.execute(text('ALTER TABLE bank_cards ADD COLUMN personal_owner VARCHAR(10)'))
+
+
+_migrate_personal_card_owner()
 
 
 def _migrate_agreement_doc_soft_delete():
@@ -4242,7 +4264,10 @@ def build_realty_rows(deal):
     читается как «данные не подставились», прочерк — как «намеренно пусто».
     """
     d = deal
-    is_ipps = getattr(d, 'deal_kind', None) == IPPS_REALTY_KIND
+    kind = getattr(d, 'deal_kind', None)
+    is_ipps = kind == IPPS_REALTY_KIND
+    is_personal = kind == PERSONAL_REALTY_KIND
+    uses_payout_amount = is_ipps or is_personal
     parts = _payin_all_parts(d)
     amounts = [p['amount_usdt'] for p in parts]
     n = len(parts)
@@ -4257,7 +4282,7 @@ def build_realty_rows(deal):
     income = (round((d.payin_amount_usdt or 0) - invoice_cost, 2)
               if d.buy_rate_thb_usdt else 0)
 
-    if is_ipps:
+    if uses_payout_amount:
         invoice_cost = d.payout_amount_usdt or 0
         income = d.profit_usdt or 0
 
@@ -4281,14 +4306,18 @@ def build_realty_rows(deal):
     for i, p in enumerate(parts):
         first = (i == 0)
         direction = 'usdt-thb' if p['method'] == 'crypto_direct' else 'rub-thb'
+        if is_ipps:
+            direction += ' · ИППС'
+        elif is_personal:
+            direction += ' · Личный счёт'
         rows.append([
             d.realty_purpose or '',                                       # 0 Назначение
             date_str,                                                     # 1 дата
-            f'{direction} · ИППС' if is_ipps else direction,            # 2 направление
+            direction,                                                   # 2 направление
             p['amount_rub'] or '',                                        # 3 сумма руб части
             p['rate_rub_usdt'] or '',                                     # 4 курс ЧАСТИ
             agent_names,                                                  # 5 от кого
-            ((d.payout_amount_thb if is_ipps else d.invoice_amount_thb) or '')
+            ((d.payout_amount_thb if uses_payout_amount else d.invoice_amount_thb) or '')
             if first else '—',                                           # 6 сумма thb
             (d.sell_rate_thb_usdt or '') if first else '—',               # 7 курс продажи
             (d.buy_rate_thb_usdt or '') if first else '—',                # 8 курс покупкт
@@ -5158,9 +5187,11 @@ def _send_deal_telegram(deal, sender=None):
     if getattr(deal, 'is_test', False):
         print(f'[TG] Skip notify: deal #{deal.id} is test')
         return
-    if deal.deal_kind == IPPS_REALTY_KIND:
+    if deal.deal_kind in BALANCE_REALTY_KINDS:
+        name = ('Недвижимость лизхолд через ИППС' if deal.deal_kind == IPPS_REALTY_KIND
+                else PERSONAL_REALTY_LABEL)
         return sender(
-            f"🏠 Недвижимость лизхолд через ИППС · CRM #{deal.id}\n"
+            f"🏠 {name} · CRM #{deal.id}\n"
             f"Сумма выплаты: {deal.payout_amount_thb or 0:,.2f} THB\n"
             f"Себестоимость: {deal.payout_amount_usdt or 0:,.2f} USDT\n"
             f"Чистая прибыль: {deal.net_profit_usdt or 0:,.2f} USDT")
@@ -8458,6 +8489,7 @@ def _stand_crm_kind(deal):
     return {
         'Фрихолд': MF_FREEHOLD_KIND,
         STAND_IPPS_KIND: IPPS_REALTY_KIND,
+        STAND_PERSONAL_KIND: PERSONAL_REALTY_KIND,
     }.get(deal.get('kind'), MF_REALTY_KIND)
 
 
@@ -9128,6 +9160,7 @@ _STAND_CLOSE_MESSAGES = {
     'deal_kind_mismatch': 'Тип CRM-сделки не соответствует сделке задачника.',
     'freehold_route_invalid': 'Для фрихолда нужен маршрут IPPS SWIFT.',
     'ipps_account_invalid': 'Выберите действующий счёт ИППС в карточке сделки.',
+    'personal_payout_invalid': 'Проверьте источник и сумму выплаты по личному счёту.',
     'payin_basis_missing': 'Не найден подтверждённый приход для сделки.',
     'payin_basis_unverified': 'Приход ещё не подтверждён сетью.',
     'crm_required_fields': 'Заполните обязательные поля CRM.',
@@ -9334,7 +9367,7 @@ def stand_crm_close_check(stand_deal_id):
         if deal.get('type') not in ('Обмен валюты', 'Оплата недвижимости'):
             block('deal_type_invalid')
         if (deal.get('type') == 'Оплата недвижимости'
-                and deal.get('kind') not in ('Фрихолд', 'Лизхолд', 'Аренда', STAND_IPPS_KIND)):
+                and deal.get('kind') not in ('Фрихолд', 'Лизхолд', 'Аренда', STAND_IPPS_KIND, STAND_PERSONAL_KIND)):
             block('deal_type_invalid')
         if not manual and deal.get('kind') == 'Фрихолд' and deal.get('postConv') != 'ipps_swift':
             block('freehold_route_invalid')
@@ -9344,6 +9377,11 @@ def stand_crm_close_check(stand_deal_id):
                 block('deal_type_invalid')
             elif _prepare_ipps_payout(db, crm, lock_card=False):
                 block('ipps_account_invalid')
+        if kind == PERSONAL_REALTY_KIND:
+            if not manual_origin or has_override:
+                block('deal_type_invalid')
+            elif _prepare_personal_payout(db, dict(crm), lock_card=False):
+                block('personal_payout_invalid')
         if crm.get('bitrix_deal_id') is not None:
             block('foreign_origin_forbidden')
         elif _stand_bitrix_origin(db, deal) and db.query(Deal).filter_by(
@@ -9556,16 +9594,16 @@ def stand_crm_close(stand_deal_id):
         if stand_deal.get('type') not in ('Обмен валюты', 'Оплата недвижимости'):
             return jsonify({'success': False, 'error': 'deal_type_invalid'}), 409
         if (stand_deal.get('type') == 'Оплата недвижимости'
-                and stand_deal.get('kind') not in ('Фрихолд', 'Лизхолд', 'Аренда', STAND_IPPS_KIND)):
+                and stand_deal.get('kind') not in ('Фрихолд', 'Лизхолд', 'Аренда', STAND_IPPS_KIND, STAND_PERSONAL_KIND)):
             return jsonify({'success': False, 'error': 'deal_type_invalid'}), 409
         if (not manual and stand_deal.get('kind') == 'Фрихолд'
                 and stand_deal.get('postConv') != 'ipps_swift'):
             return jsonify({'success': False, 'error': 'freehold_route_invalid'}), 409
         kind = _stand_crm_kind(stand_deal)
-        if kind == IPPS_REALTY_KIND and (not manual or manual_override):
+        if kind in BALANCE_REALTY_KINDS and (not manual or manual_override):
             return jsonify(success=False, error='deal_type_invalid'), 409
         crm_data = dict(payload['crm'])
-        if kind == IPPS_REALTY_KIND:
+        if kind in BALANCE_REALTY_KINDS:
             crm_data['status'] = DealStatus.COMPLETED.value
         if manager_id is not None:
             crm_data['manager_user_id'] = manager_id
@@ -9662,9 +9700,10 @@ def stand_crm_close(stand_deal_id):
         closed.update(crmDealId=crm_id, crmAt=datetime.utcnow().isoformat(),
                       closed=True, closeReason='Успешно завершена',
                       closedAt=datetime.utcnow().isoformat(), step='done')
-        if kind == IPPS_REALTY_KIND:
-            closed['payout'] = dict(closed['payout'], usdt=crm_row.payout_amount_usdt,
-                                    rate=crm_row.cash_batch_rate)
+        if kind in BALANCE_REALTY_KINDS:
+            rate = (_stand_number(crm_row.payout_amount_thb) / crm_row.payout_amount_usdt
+                    if _personal_direct(crm_row) and crm_row.payout_amount_usdt else crm_row.cash_batch_rate)
+            closed['payout'] = dict(closed['payout'], usdt=crm_row.payout_amount_usdt, rate=rate)
         if bitrix_id:
             closed['bitrixSync'] = {
                 'status': 'pending', 'bitrix_deal_id': bitrix_id,
@@ -9755,7 +9794,7 @@ def stand_crm_preview():
     if not isinstance(crm, dict):
         return jsonify({'success': False, 'error': 'invalid_payload'}), 400
     kind = crm.get('deal_kind') or 'exchange'
-    if kind not in (MF_REALTY_KIND, MF_FREEHOLD_KIND, IPPS_REALTY_KIND, 'exchange'):
+    if kind not in (MF_REALTY_KIND, MF_FREEHOLD_KIND, IPPS_REALTY_KIND, PERSONAL_REALTY_KIND, 'exchange'):
         return jsonify({'success': False, 'error': 'deal_kind_invalid'}), 400
     session = get_session()
     try:
@@ -9774,6 +9813,20 @@ def stand_crm_preview():
             rate = _card_avg_rate(card)
             deal.payout_amount_usdt = round(crm['payout_amount_thb'] / rate, 2) if rate else None
             _apply_ipps_realty(deal, crm)
+        elif kind == PERSONAL_REALTY_KIND:
+            problem = _prepare_personal_payout(session, crm, lock_card=False)
+            if problem:
+                return jsonify(success=False, error=problem), 400
+            deal.payout_source = PayOutSource(crm['payout_source'])
+            deal.payout_amount_thb = crm['payout_amount_thb']
+            if _personal_direct(deal):
+                deal.payout_no_conversion = crm.get('payout_no_conversion') is True
+                deal.payout_amount_usdt = _stand_number(crm.get('payout_amount_usdt')) or None
+                _apply_payout_transfers(deal, crm)
+            else:
+                card = session.get(BankCard, crm['bank_card_id'])
+                deal.payout_amount_usdt = _ipps_card_cost(card, crm['payout_amount_thb'], None)
+            _apply_personal_realty(deal, crm)
         else:
             deal.payout_amount_usdt = _stand_number(crm.get('payout_amount_usdt')) or None
             _recalculate_deal_financials(deal, crm)
@@ -10895,6 +10948,16 @@ def _stand_crm_fact_problem(board, crm, kind, *, state=None, preview_unverified=
             sent = (invoice * (Decimal(1) + tariff[0] / 100) + tariff[1]).quantize(Decimal('0.01'))
         if not matches('transfer_sent_usd', sent):
             return 'transfer_sent_mismatch'
+    elif kind == PERSONAL_REALTY_KIND and board.get('paySrc') == 'scb':
+        payout = board.get('payout') or {}
+        if (crm.get('payout_source') != PayOutSource.BANK_CARD.value
+                or not payout.get('bankCardId') or crm.get('bank_card_id') != payout['bankCardId']):
+            return 'payout_source_mismatch'
+        amount = _ipps_amount(payout.get('thb'))
+        if amount is None:
+            return 'payout_basis_missing'
+        if _ipps_amount(crm.get('payout_amount_thb')) != amount:
+            return 'payout_amount_mismatch'
     elif kind == IPPS_REALTY_KIND:
         payout = board.get('payout') or {}
         if (board.get('paySrc') != 'ipps' or crm.get('payout_source') != PayOutSource.BANK_CARD.value
@@ -10944,6 +11007,12 @@ def _stand_crm_fact_problem(board, crm, kind, *, state=None, preview_unverified=
         if board.get('paySrc') and crm.get('payout_source') != source.get(board['paySrc']):
             return 'payout_source_mismatch'
         payout = payout_board
+        if kind == PERSONAL_REALTY_KIND and (
+                board.get('paySrc') != 'founder'
+                or bool(crm.get('payout_no_conversion')) != bool(payout.get('ownBaht'))
+                or crm.get('needs_reimbursement', True) == bool(payout.get('settledByPayin'))
+                or (payout.get('walletId') and crm.get('payout_wallet_id') != payout['walletId'])):
+            return 'payout_source_mismatch'
         if (hashes(crm.get('payout_tx_hashes'), False) != hashes(payout.get('hashes'), True)
                 or not recipients_match(payout.get('hashes'), crm.get('payout_tx_hashes'))):
             return 'payout_facts_mismatch'
@@ -13560,7 +13629,7 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
                         or (deal.get('transfer') or {}).get('sends')
                         or deal.get('type') not in ('Обмен валюты', 'Оплата недвижимости')
                         or (deal.get('type') == 'Оплата недвижимости'
-                            and deal.get('kind') not in ('Фрихолд', 'Лизхолд', 'Аренда', STAND_IPPS_KIND))):
+                            and deal.get('kind') not in ('Фрихолд', 'Лизхолд', 'Аренда', STAND_IPPS_KIND, STAND_PERSONAL_KIND))):
                     return 'Недопустимый новый ручной черновик'
                 deal['originMode'] = 'manual'
         elif (deal.get('originMode') != before.get('originMode')
@@ -13574,11 +13643,13 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
                 return 'Ручной черновик закрывается только через CRM'
         if not before and (deal.get('crmDealId') is not None or deal.get('closed')):
             return 'Новую сделку нельзя создать уже закрытой или с привязкой CRM'
-        if deal.get('kind') == STAND_IPPS_KIND and (
+        if deal.get('kind') in (STAND_IPPS_KIND, STAND_PERSONAL_KIND) and (
                 deal.get('type') != 'Оплата недвижимости' or deal.get('autoPayment')
                 or not deal.get('manual') or deal.get('isTask')
                 or deal.get('step') not in ('manual', 'done')):
-            return 'Недвижимость лизхолд через ИППС доступна в ручной сделке'
+            name = ('Недвижимость лизхолд через ИППС' if deal.get('kind') == STAND_IPPS_KIND
+                    else PERSONAL_REALTY_LABEL)
+            return f'{name} доступна в ручной сделке'
         step_changed = bool(before and before.get('step') != deal.get('step'))
         if (before and actor not in ('manager', 'admin')
                 and _stand_client_docs_changed(before, deal)):
@@ -18437,6 +18508,10 @@ def get_deal(deal_id):
         if not deal:
             return jsonify({'success': False, 'error': 'Сделка не найдена'}), 404
         row = deal.to_dict()
+        if deal.deal_kind == PERSONAL_REALTY_KIND and deal.bank_card:
+            card = deal.bank_card
+            row['bank_card_name'] = ' · '.join(
+                part for part in (card.bank_name, card.card_name, card.holder_name) if part)
         if not row.get('payin_amount_usdt'):
             conv = _converted_payin_usdt(session, [deal.id]).get(deal.id)
             if conv:
@@ -18572,8 +18647,8 @@ def _clear_profit_if_payin_unknown(deal):
     в USDT позже. Держим пусто, пока приход не проставят — тогда
     _recalculate_deal_financials посчитает по-настоящему.
     """
-    ipps_unknown = deal.deal_kind == IPPS_REALTY_KIND and not deal.payout_amount_usdt
-    if (deal.payin_allocation_status == 'needs_input' or ipps_unknown
+    cost_unknown = deal.deal_kind in BALANCE_REALTY_KINDS and not deal.payout_amount_usdt
+    if (deal.payin_allocation_status == 'needs_input' or cost_unknown
             or (deal.payout_amount_usdt and not deal.payin_amount_usdt)):
         deal.profit_usdt = None
         deal.profit_percent = None
@@ -21030,6 +21105,7 @@ def _payout_tx_get_or_create(session, tx_hash, claim_usdt, part=None):
     network = _normalize_payout_network(part.get('network'))
     if network == 'unknown':
         raise ValueError('Выберите сеть перевода: TRC-20 или ERC-20')
+    proof = session.info.get('personal_payout_proofs', {}).get((tx_hash, network))
     tx = session.query(PayoutTx).filter(PayoutTx.tx_hash == tx_hash).first()
     if tx:
         existing_network = tx.network or 'trc20'
@@ -21037,11 +21113,17 @@ def _payout_tx_get_or_create(session, tx_hash, claim_usdt, part=None):
             raise ValueError(
                 f'Хэш {tx_hash[:12]}… уже записан как {existing_network.upper()}, '
                 f'нельзя сохранить его как {network.upper()}')
+        if proof:
+            tx.amount_usdt = proof['total_out_usdt']
+            tx.source = _tx_network_source(network)
+            tx.from_address = proof['from_address']
+            tx.to_address = proof.get('to_address')
+            tx.notes = None
         return tx
     amount, source = None, 'manual'
     info = {}
     try:
-        info = _tx_info_by_network(tx_hash, network) or {}
+        info = proof or _tx_info_by_network(tx_hash, network) or {}
         if info.get('amount_usdt'):
             # Потолок реестра — сколько ушло с кошелька этой транзакцией, а не
             # один перевод из батча: иначе вторая выдача тем же хешем не влезет.
@@ -21233,7 +21315,7 @@ def _apply_payout_cost_from_transfers(deal):
         return False
     if deal.payout_source != PayOutSource.FOUNDER_PERSONAL:
         return False
-    if deal.deal_kind in REALTY_KINDS:
+    if deal.deal_kind in REALTY_KINDS and deal.deal_kind != PERSONAL_REALTY_KIND:
         return False
     if deal.payout_no_conversion:
         return False        # выдал свои баты: сумму поставил менеджер, переводов нет
@@ -21770,9 +21852,9 @@ def _create_deal_impl(session=None, *, data=None, defer_commit=False, skip_flow_
         session = get_session()
     try:
         data = dict(request.get_json() if data is None else data)
-        ipps_problem = _prepare_ipps_payout(session, data)
-        if ipps_problem:
-            return jsonify(success=False, error=ipps_problem), 400
+        payout_problem = _prepare_ipps_payout(session, data) or _prepare_personal_payout(session, data)
+        if payout_problem:
+            return jsonify(success=False, error=payout_problem), 400
         if ('payin_rub_is_net' in data and data['payin_rub_is_net'] is not None
                 and type(data['payin_rub_is_net']) is not bool):
             return jsonify(success=False, error='payin_rub_is_net должен быть boolean'), 400
@@ -22012,7 +22094,8 @@ def _create_deal_impl(session=None, *, data=None, defer_commit=False, skip_flow_
         # Фактические переводы выдачи с кошелька оунера. Недвижимость разбирает
         # свои переводы внутри _apply_mf_* — здесь только обмен.
         tx_warnings = []
-        if 'payout_tx_hashes' in data and deal.deal_kind not in REALTY_KINDS:
+        if ('payout_tx_hashes' in data and
+                (deal.deal_kind not in REALTY_KINDS or _personal_direct(deal))):
             _apply_payout_transfers(deal, data)
             _enrich_payout_transfers(session, deal)
             # Доли сделки в переводах выдачи: один перевод оплачивает выдачи
@@ -22076,6 +22159,8 @@ def _create_deal_impl(session=None, *, data=None, defer_commit=False, skip_flow_
                 _apply_mf_freehold(deal, data)
             elif deal.deal_kind == IPPS_REALTY_KIND:
                 _apply_ipps_realty(deal, data)
+            elif deal.deal_kind == PERSONAL_REALTY_KIND:
+                _apply_personal_realty(deal, data)
             else:
                 # Себестоимость выдачи — из отмеченных переводов, до пересчёта
                 # прибыли: иначе она была бы известна только после возврата оунеру
@@ -22085,7 +22170,8 @@ def _create_deal_impl(session=None, *, data=None, defer_commit=False, skip_flow_
             # Перевод в Coins на лизхолде и перевод застройщику на фрихолде —
             # такие же исходящие транзакции, как выдача в обычной сделке. Раньше
             # они жили только JSON-ом в сделке и не создавались в общем реестре.
-            if deal.deal_kind in REALTY_KINDS and 'payout_tx_hashes' in data:
+            if (deal.deal_kind in REALTY_KINDS and deal.deal_kind != PERSONAL_REALTY_KIND
+                    and 'payout_tx_hashes' in data):
                 try:
                     tx_warnings += _sync_payout_tx_uses(session, deal, _payout_transfer_parts(deal))
                 except ValueError as e:
@@ -22125,7 +22211,7 @@ def _create_deal_impl(session=None, *, data=None, defer_commit=False, skip_flow_
         # известны — держать сделку в pending нечего: прибыль посчитана.
         if (deal.status == DealStatus.PENDING
                 and deal.needs_reimbursement is False
-                and deal.deal_kind not in REALTY_KINDS   # у недвижимости свой «Завершить»
+                and (deal.deal_kind not in REALTY_KINDS or _personal_direct(deal))
                 and deal.payout_amount_usdt
                 and deal.payin_amount_usdt
                 and (not flow_proof_required or deal.payin_tx_verified)):
@@ -22228,6 +22314,7 @@ def _create_deal_impl(session=None, *, data=None, defer_commit=False, skip_flow_
         print(f'[create_deal] error: {e}\n{tb}', flush=True)
         return jsonify({'success': False, 'error': f'Ошибка обработки запроса: {type(e).__name__}: {e}'}), 400
     finally:
+        session.info.pop('personal_payout_proofs', None)
         if own_session:
             session.close()
 
@@ -22247,9 +22334,10 @@ def update_deal(deal_id):
         # allocations or timestamps (including SQLAlchemy onupdate defaults).
         if data == {}:
             return jsonify({'success': True, 'deal': deal.to_dict()})
-        ipps_problem = _prepare_ipps_payout(session, data, deal)
-        if ipps_problem:
-            return jsonify(success=False, error=ipps_problem), 400
+        payout_problem = (_prepare_ipps_payout(session, data, deal)
+                          or _prepare_personal_payout(session, data, deal))
+        if payout_problem:
+            return jsonify(success=False, error=payout_problem), 400
         if 'payin_rub_is_net' in data:
             if type(data['payin_rub_is_net']) is not bool:
                 return jsonify(success=False, error='payin_rub_is_net должен быть boolean'), 400
@@ -22521,6 +22609,11 @@ def update_deal(deal_id):
                 _apply_mf_realty(deal, data)
             elif deal.deal_kind in SWIFT_PAYMENT_KINDS:
                 _apply_mf_freehold(deal, data)
+            elif deal.deal_kind == PERSONAL_REALTY_KIND:
+                if _personal_direct(deal) and 'payout_tx_hashes' in data:
+                    _apply_payout_transfers(deal, data)
+                    _enrich_payout_transfers(session, deal)
+                _apply_personal_realty(deal, data)
             else:
                 _apply_ipps_realty(deal, data)
             if 'payout_tx_hashes' in data:
@@ -22640,7 +22733,7 @@ def update_deal(deal_id):
         if ('status' not in data
                 and deal.needs_reimbursement is False
                 and deal.reimbursement_id is None
-                and deal.deal_kind not in REALTY_KINDS
+                and (deal.deal_kind not in REALTY_KINDS or _personal_direct(deal))
                 and deal.status == DealStatus.PENDING
                 and deal.payin_amount_usdt
                 and deal.payout_amount_usdt
@@ -22720,6 +22813,7 @@ def update_deal(deal_id):
         print(f'[update_deal] error: {e}\n{tb}', flush=True)
         return jsonify({'success': False, 'error': f'Ошибка обработки запроса: {type(e).__name__}: {e}'}), 400
     finally:
+        session.info.pop('personal_payout_proofs', None)
         session.close()
 
 @app.route('/api/deals/<int:deal_id>', methods=['DELETE'])
@@ -23005,7 +23099,7 @@ def _ledger_realty(deal):
             'katika_fee_usdt': deal.katika_fee_usdt,
             'crypto_remainder_usdt': deal.crypto_remainder_usdt,
         }
-    if deal.deal_kind == IPPS_REALTY_KIND:
+    if deal.deal_kind in BALANCE_REALTY_KINDS:
         return {'purpose': deal.realty_purpose}
     if deal.deal_kind in SWIFT_PAYMENT_KINDS:
         # Фрихолд и оплата авто: карман один, комиссию банка съедает сама отправка
@@ -23346,6 +23440,7 @@ FINANCE_PRODUCTS = {
     'exchange': 'Обмен',
     'mf_realty': 'Недвижимость: лизхолд',
     'ipps_realty': 'Недвижимость лизхолд через ИППС',
+    'personal_realty': 'Недвижимость лизхолд через личный счёт',
     'mf_freehold': 'Недвижимость: фрихолд',
     'mf_auto': 'Оплата авто',
     'unassigned': 'Без привязки к сделке',
@@ -23550,10 +23645,14 @@ def _finance_events(session, date_from=None, date_to=None):
             if not in_range(day):
                 continue
             d = deal_of(a.deal_id)
-            events.append(_fin_event(
-                day, 'payout_client_thb', a.amount_thb, 'THB', account,
-                counterparty=(d.client_name if d else None), deal_id=a.deal_id,
-                product=_fin_deal_product(d), ref=f'{alloc.__tablename__}:{a.id}'))
+            personal_card = alloc is CardAllocation and d and d.deal_kind == PERSONAL_REALTY_KIND
+            event = _fin_event(
+                day, 'payout_developer' if personal_card else 'payout_client_thb', a.amount_thb, 'THB', account,
+                counterparty=(d.realty_purpose if personal_card else d.client_name if d else None),
+                deal_id=a.deal_id, product=_fin_deal_product(d), ref=f'{alloc.__tablename__}:{a.id}')
+            if personal_card:
+                event['bank_card_id'] = a.card_id
+            events.append(event)
     for d in deals.values():
         if d.id in covered or d.status in NON_DEAL_STATUSES:
             continue
@@ -23582,6 +23681,16 @@ def _finance_events(session, date_from=None, date_to=None):
         if d.deal_kind not in REALTY_KINDS or d.status in NON_DEAL_STATUSES:
             continue
         product = _fin_deal_product(d)
+        if d.deal_kind == PERSONAL_REALTY_KIND:
+            day = _fin_day(d.created_at)
+            if (_personal_direct(d) and d.status != DealStatus.CANCELLED
+                    and d.payout_amount_thb and in_range(day)):
+                events.append(_fin_event(
+                    day, 'payout_developer', d.payout_amount_thb, 'THB', 'founder',
+                    counterparty=d.realty_purpose, deal_id=d.id, product=product,
+                    ref=f'deal:{d.id}', date_estimated=True, flow='external',
+                    note=d.payout_founder_name))
+            continue
         try:
             transfers = json.loads(d.payout_tx_hashes) if d.payout_tx_hashes else []
         except (ValueError, TypeError):
@@ -25330,6 +25439,283 @@ def _prepare_ipps_payout(session, data, deal=None, *, lock_card=True):
     return None
 
 
+def _personal_direct(deal):
+    return (deal.deal_kind == PERSONAL_REALTY_KIND
+            and deal.payout_source == PayOutSource.FOUNDER_PERSONAL)
+
+
+def _personal_reimbursement_blocked(deal, founder_name):
+    return deal.deal_kind == PERSONAL_REALTY_KIND and (
+        not _personal_direct(deal)
+        or deal.status in NON_DEAL_STATUSES + (DealStatus.CANCELLED,)
+        or deal.needs_reimbursement is False
+        or not deal.payout_amount_usdt
+        or deal.payout_founder_name != founder_name
+    )
+
+
+def _personal_payout_claims(data):
+    return sorted((part['hash'], part['network'], part.get('amount_usdt'))
+                  for part in _normalize_payout_transfers(data))
+
+
+def _personal_transfer_hash(hash_value):
+    value = str(hash_value or '').strip().lower().removeprefix('0x')
+    return value if re.fullmatch(r'[0-9a-f]{64}', value) else None
+
+
+def _personal_wallet_address(value, network):
+    return value.lower() if value and network == 'erc20' else value
+
+
+def _personal_payin_hashes(data, deal):
+    payin_hashes = set(_payin_hash_list(deal) if deal else ())
+    payin_hashes.update(p['hash'] for p in _normalize_tx_hashes(data.get('payin_tx_hashes')))
+    payin_hashes.add(data.get('payin_tx_hash'))
+    for extra in data.get('payin_extra') or []:
+        payin_hashes.update(p['hash'] for p in _normalize_tx_hashes(extra.get('tx_hashes')))
+    return {_personal_transfer_hash(value) for value in payin_hashes}
+
+
+def _verify_personal_payout_parts(session, data, parts, deal):
+    from decimal import Decimal, InvalidOperation, ROUND_DOWN
+    from sqlalchemy import func
+
+    wallet_id = data.get('payout_wallet_id', getattr(deal, 'payout_wallet_id', None))
+    if wallet_id is not None and (type(wallet_id) is not int or wallet_id <= 0):
+        return 'Выберите кошелёк отправителя'
+    wallet = session.get(Wallet, wallet_id) if wallet_id else None
+    if wallet_id and (not wallet or not wallet.active):
+        return 'Выберите действующий кошелёк отправителя'
+    verified = {}
+    seen = set()
+    for part in parts:
+        key = _personal_transfer_hash(part['hash'])
+        network = part['network']
+        if not key:
+            return 'Укажите корректный хэш перевода USDT'
+        if key in seen:
+            return 'Добавьте каждый исходящий перевод один раз'
+        seen.add(key)
+        aliases = (key, '0x' + key)
+        if session.query(PayinTx.id).filter(
+                PayinTx.network == network, func.lower(PayinTx.tx_hash).in_(aliases)).first():
+            return 'Хэш входящего USDT нельзя использовать для выплаты'
+        rows = session.query(PayoutTx).filter(func.lower(PayoutTx.tx_hash).in_(aliases)).all()
+        if len(rows) > 1 or (rows and rows[0].network != network):
+            return 'Хэш неоднозначен в реестре исходящих переводов'
+        registry = rows[0] if rows else None
+        canonical = ('0x' + key) if network == 'erc20' else key
+        try:
+            proof = _tx_info_by_network(canonical, network)
+        except TransactionVerificationError as error:
+            return str(error)
+        if not proof or not proof.get('from_address'):
+            return 'Не удалось подтвердить исходящий перевод USDT. Проверьте хэш и повторите попытку'
+        actual_sender = _personal_wallet_address(proof['from_address'], network)
+        if not wallet:
+            addresses = func.lower(Wallet.address) if network == 'erc20' else Wallet.address
+            wallet = session.query(Wallet).filter(addresses == actual_sender, Wallet.active.is_(True)).first()
+        if not wallet or _personal_wallet_address(wallet.address, network) != actual_sender:
+            return 'Хэш относится к другому кошельку отправителя'
+        try:
+            ceiling = Decimal(str(proof.get('total_out_usdt') or proof.get('amount_usdt') or 0))
+            if not ceiling.is_finite() or not 0 < ceiling < Decimal('1e12'):
+                return 'Не удалось подтвердить сумму исходящего перевода'
+            ceiling = float(ceiling.quantize(Decimal('0.01'), rounding=ROUND_DOWN))
+        except (InvalidOperation, TypeError, ValueError):
+            return 'Не удалось подтвердить сумму исходящего перевода'
+        if part['amount_usdt'] is None:
+            original = session.query(PayoutTxUse).filter_by(
+                tx_id=registry.id, deal_id=deal.id).first() if registry and deal else None
+            part['amount_usdt'] = round(
+                ceiling - (registry.used_usdt() if registry else 0) + (original.amount_usdt if original else 0), 2)
+        if not 0 < part['amount_usdt'] <= ceiling:
+            return 'Доля выплаты превышает сумму исходящего перевода'
+        part.update(hash=registry.tx_hash if registry else canonical,
+                    from_address=proof['from_address'], to_address=proof.get('to_address') or '')
+        verified[(part['hash'], network)] = {**proof, 'total_out_usdt': ceiling}
+    data['payout_wallet_id'] = wallet.id
+    data['payout_tx_hashes'] = parts
+    session.info['personal_payout_proofs'] = verified
+    return None
+
+
+def _prepare_personal_payout(session, data, deal=None, *, lock_card=True):
+    kind = data.get('deal_kind', deal.deal_kind if deal else None)
+    if deal and kind != deal.deal_kind and PERSONAL_REALTY_KIND in (kind, deal.deal_kind):
+        return 'Маршрут этой сделки лизхолда выбирается при создании'
+    if kind != PERSONAL_REALTY_KIND:
+        return None
+
+    source = data.get('payout_source', deal.payout_source if deal else PayOutSource.FOUNDER_PERSONAL)
+    if source not in (PayOutSource.BANK_CARD, PayOutSource.FOUNDER_PERSONAL):
+        return 'Выберите источник выплаты'
+    if deal and source != deal.payout_source:
+        return 'Источник выплаты выбирается при создании сделки'
+    if data.get('payout_method', PayOutMethod.TRANSFER) != PayOutMethod.TRANSFER:
+        return 'Для выплаты застройщику укажите банковский перевод'
+    if any(data.get(field) for field in ('cash_batch_id', 'is_custom', 'company_sent_thb', 'company_percent',
+                                         'payout_owner_approved', 'payout_owner_approval')):
+        return 'Выплата с личного счёта учитывается отдельно от кассы и MF Corporation'
+    amount = _ipps_amount(data.get('payout_amount_thb', getattr(deal, 'payout_amount_thb', None)))
+    if amount is None:
+        return 'Укажите сумму выплаты THB больше нуля с точностью до двух знаков'
+    amount = float(amount)
+    data.update(payout_amount_thb=amount, payout_method=PayOutMethod.TRANSFER.value,
+                payout_source=PayOutSource(source).value)
+
+    if source == PayOutSource.FOUNDER_PERSONAL:
+        if data.get('bank_card_id'):
+            return 'Для выплаты по хэшу не выбирайте карту'
+        founder = data.get('payout_founder_name', getattr(deal, 'payout_founder_name', None))
+        if founder not in PERSONAL_CARD_OWNERS.values():
+            return 'Укажите, кто оплатил выплату'
+        old_parts = _payout_transfer_parts(deal) if deal else []
+        parts = _normalize_payout_transfers(data.get('payout_tx_hashes', old_parts))
+        no_conversion = data.get('payout_no_conversion', getattr(deal, 'payout_no_conversion', False))
+        if type(no_conversion) is not bool:
+            return 'Некорректное значение режима конвертации'
+        if 'needs_reimbursement' in data and type(data['needs_reimbursement']) is not bool:
+            return 'Некорректное значение возмещения'
+        if deal and deal.needs_reimbursement is not None:
+            data.setdefault('needs_reimbursement', deal.needs_reimbursement)
+        if no_conversion:
+            if ('payout_tx_hashes' in data and parts) or data.get('payout_tx_hash'):
+                return 'Уберите хэши перевода, если конвертации не было'
+            data['payout_tx_hashes'] = []
+        else:
+            if not parts:
+                return 'Добавьте исходящий перевод USDT для выплаты'
+            outgoing_keys = {_personal_transfer_hash(part['hash']) for part in parts}
+            if (outgoing_keys - {None}) & _personal_payin_hashes(data, deal):
+                return 'Один хэш нельзя использовать для прихода и выплаты'
+            if data.get('payout_tx_hash') and data['payout_tx_hash'] != parts[0]['hash']:
+                return 'Хэш выплаты должен совпадать с выбранным переводом'
+            for part in parts:
+                if part['network'] not in ('trc20', 'erc20'):
+                    return 'Укажите сеть исходящего перевода'
+                if part['amount_usdt'] is not None and _ipps_amount(part['amount_usdt']) is None:
+                    return 'Укажите положительную долю USDT с точностью до двух знаков'
+            if 'payout_tx_hashes' in data or not deal:
+                data['payout_tx_hashes'] = parts
+            data.pop('payout_amount_usdt', None)
+        if deal and deal.reimbursement_id is not None:
+            if (amount != deal.payout_amount_thb or founder != deal.payout_founder_name
+                    or no_conversion != (deal.payout_no_conversion is True)
+                    or data.get('needs_reimbursement', deal.needs_reimbursement) != deal.needs_reimbursement
+                    or data.get('payout_wallet_id', deal.payout_wallet_id) != deal.payout_wallet_id
+                    or (no_conversion and data.get('payout_amount_usdt', deal.payout_amount_usdt)
+                        != deal.payout_amount_usdt)
+                    or _personal_payout_claims(parts) != _personal_payout_claims(old_parts)):
+                return 'Сначала отмените возмещение, чтобы изменить данные выплаты'
+        current_status = deal.status if deal else None
+        status = data.get('status', current_status or DealStatus.PENDING)
+        inactive = NON_DEAL_STATUSES + (DealStatus.CANCELLED,)
+        financial_change = (deal is None or amount != deal.payout_amount_thb
+                            or founder != deal.payout_founder_name
+                            or deal.payout_no_conversion is True
+                            or data.get('payout_wallet_id', deal.payout_wallet_id) != deal.payout_wallet_id
+                            or _personal_payout_claims(parts) != _personal_payout_claims(old_parts)
+                            or (current_status in inactive and status not in inactive))
+        if not no_conversion and lock_card:
+            if financial_change:
+                problem = _verify_personal_payout_parts(session, data, parts, deal)
+                if problem:
+                    return problem
+            elif deal:
+                # Preserve the saved proof on edits to notes, labels or status.
+                data.pop('payout_tx_hashes', None)
+                data.pop('payout_tx_hash', None)
+                data.pop('payout_wallet_id', None)
+        data['payout_founder_name'] = founder
+        return None
+
+    if any(data.get(field) for field in ('payout_wallet_id', 'payout_tx_hash', 'payout_tx_hashes',
+                                         'payout_founder_name', 'payout_no_conversion', 'needs_reimbursement')):
+        return 'Для выплаты из остатка выберите личную карту'
+    if data.get('payout_amount_usdt') is not None:
+        return 'Себестоимость рассчитывается по остатку карты'
+    data.pop('payout_amount_usdt', None)
+    card_id = data.get('bank_card_id', deal.bank_card_id if deal else None)
+    if type(card_id) is not int or card_id <= 0:
+        return 'Выберите личную карту'
+    if deal and card_id != deal.bank_card_id:
+        return 'Карта выплаты выбирается при создании сделки'
+    card_query = session.query(BankCard).filter_by(id=card_id)
+    if lock_card:
+        card_query = card_query.populate_existing().with_for_update()
+    card = card_query.first()
+    if card is None or _is_ipps_card(card.card_name):
+        return 'Выберите личную карту'
+    eligible = card.status == CashBatchStatus.ACTIVE and card.personal_owner in PERSONAL_CARD_OWNERS
+    if not deal and not eligible:
+        return 'Выберите действующую личную карту'
+    data.update(bank_card_id=card.id, needs_reimbursement=False)
+    status = data.get('status', deal.status if deal else DealStatus.PENDING)
+    if status in NON_DEAL_STATUSES + (DealStatus.CANCELLED,):
+        return None
+    existing = sum(row.amount_thb for row in deal.card_allocations if row.card_id == card.id) if deal else 0
+    if not eligible and amount > round(existing, 2):
+        return 'Выберите действующую личную карту'
+    if amount > round((card.balance_thb or 0) + existing, 2):
+        return 'Сумма выплаты больше остатка личной карты'
+    if not _ipps_card_cost(card, amount, deal):
+        return 'Укажите себестоимость при пополнении личной карты'
+    return None
+
+
+def _apply_personal_realty(deal, data):
+    if not _personal_direct(deal):
+        _apply_ipps_realty(deal, data)
+        return
+    if 'realty_purpose' in data:
+        deal.realty_purpose = data['realty_purpose'] or None
+    if deal.reimbursement_id is None and not deal.payout_no_conversion:
+        deal.payout_amount_usdt = _payout_cost_from_transfers(deal)
+    _recalculate_deal_financials(deal, data)
+
+
+@app.route('/api/deals/personal-preview', methods=['POST'])
+def preview_personal_realty():
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify(success=False, error='Передайте данные выплаты'), 400
+    session = get_session()
+    try:
+        existing = session.get(Deal, data['deal_id']) if data.get('deal_id') else None
+        if data.get('deal_id') and (not existing or existing.deal_kind != PERSONAL_REALTY_KIND
+                                    or _personal_direct(existing)):
+            return jsonify(success=False, error='Сделка с оплатой из остатка карты не найдена'), 404
+        data['deal_kind'] = PERSONAL_REALTY_KIND
+        data['payout_source'] = PayOutSource.BANK_CARD.value
+        problem = _prepare_personal_payout(session, data, existing, lock_card=False)
+        if problem:
+            return jsonify(success=False, error=problem), 400
+        card = session.get(BankCard, data['bank_card_id'])
+        amount = data['payout_amount_thb']
+        cost = _ipps_card_cost(card, amount, existing)
+        return jsonify(success=True, result={
+            'bank_card_id': card.id, 'payout_amount_thb': amount, 'payout_amount_usdt': cost,
+        })
+    finally:
+        session.close()
+
+
+def _ipps_card_cost(card, amount, deal):
+    """Показывает стоимость по тем же историческим данным, что и списание."""
+    if deal:
+        allocations = deal.card_allocations
+        if len(allocations) == 1:
+            allocation = allocations[0]
+            if round(allocation.amount_thb, 2) == amount:
+                return allocation.cost_usdt
+            if allocation.card_rate:
+                return round(amount / allocation.card_rate, 2)
+    rate = _card_avg_rate(card)
+    return round(amount / rate, 2) if rate else None
+
+
 def _apply_ipps_realty(deal, data):
     if 'realty_purpose' in data:
         deal.realty_purpose = data['realty_purpose'] or None
@@ -25407,6 +25793,8 @@ def realty_payload_error(deal):
         if not (deal.invoice_amount_thb and deal.buy_rate_thb_usdt):
             return ('Лизхолд без суммы инвойса в батах и курса покупки. '
                     'Проверь тип сделки — похоже, форма сохранила не то.')
+    if _personal_direct(deal) and not deal.payout_amount_usdt:
+        return 'Проверьте сумму перевода USDT и курс выплаты застройщику'
     if deal.deal_kind in SWIFT_PAYMENT_KINDS:
         if not (deal.invoice_amount_usd or deal.transfer_sent_usd
                 or _payout_transfers_total(deal)):
@@ -26011,8 +26399,15 @@ def create_card():
             bank_name=data['bank_name'],
             card_name=data.get('card_name'),
             holder_name=data.get('holder_name'),
+            personal_owner=data.get('personal_owner'),
             balance_thb=0
         )
+        if card.personal_owner is not None and STAND_MODE and current_role() != 'admin':
+            return jsonify(success=False, error='Владельца карты назначает администратор'), 403
+        if card.personal_owner is not None and (not isinstance(card.personal_owner, str)
+                                                 or card.personal_owner not in PERSONAL_CARD_OWNERS
+                                                 or _is_ipps_card(card.card_name)):
+            return jsonify(success=False, error='Выберите владельца личной карты'), 400
         session.add(card)
         session.commit()
         return jsonify({'success': True, 'card': card.to_dict()})
@@ -26022,6 +26417,30 @@ def create_card():
         return jsonify({'success': False, 'error': 'Ошибка обработки запроса'}), 400
     finally:
         session.close()
+
+@app.route('/api/cards/<int:card_id>/personal-owner', methods=['PATCH'])
+def set_personal_card_owner(card_id):
+    if STAND_MODE and current_role() != 'admin':
+        return jsonify(success=False, error='Владельца карты назначает администратор'), 403
+    session = get_session()
+    try:
+        data = request.get_json(silent=True)
+        if not isinstance(data, dict) or 'personal_owner' not in data:
+            return jsonify(success=False, error='Выберите владельца личной карты'), 400
+        owner = data['personal_owner']
+        if owner is not None and (not isinstance(owner, str) or owner not in PERSONAL_CARD_OWNERS):
+            return jsonify(success=False, error='Выберите владельца личной карты'), 400
+        card = session.query(BankCard).filter_by(id=card_id).with_for_update().first()
+        if not card:
+            return jsonify(success=False, error='Карта не найдена'), 404
+        if card.status != CashBatchStatus.ACTIVE or _is_ipps_card(card.card_name):
+            return jsonify(success=False, error='Выберите действующую личную карту'), 409
+        card.personal_owner = owner
+        session.commit()
+        return jsonify(success=True, card=card.to_dict())
+    finally:
+        session.close()
+
 
 @app.route('/api/cards/<int:card_id>', methods=['DELETE'])
 def delete_card(card_id):
@@ -26069,7 +26488,7 @@ def get_cards_balance():
                 'card_name': c.card_name,
                 'holder_name': c.holder_name,
                 'balance_thb': c.balance_thb,
-                'is_ipps': _is_ipps_card(c.card_name),
+                'is_ipps': _is_ipps_card(c.card_name), 'personal_owner': c.personal_owner,
                 'card_name': c.card_name,
                 'avg_rate': round(avg_rate, 4) if avg_rate else 0,
                 'latest_purchase_rate': round(latest_purchase_rate, 4) if latest_purchase_rate else 0
@@ -26198,7 +26617,7 @@ def get_card_history(card_id):
                 'balance_thb': card.balance_thb,
                 'avg_rate': round(avg_rate, 4) if avg_rate else 0,
                 'latest_purchase_rate': round(latest_purchase_rate, 4) if latest_purchase_rate else 0,
-                'is_ipps': _is_ipps_card(card.card_name),
+                'is_ipps': _is_ipps_card(card.card_name), 'personal_owner': card.personal_owner,
             },
             'topups': result,
             'total_topups': len(result),
@@ -26773,6 +27192,8 @@ def get_dashboard():
             Deal.reimbursement_id == None,
             Deal.payout_founder_name != None,
             Deal.needs_reimbursement != False,
+            or_(Deal.deal_kind.is_(None), Deal.deal_kind != PERSONAL_REALTY_KIND,
+                Deal.status.notin_(NON_DEAL_STATUSES + (DealStatus.CANCELLED,))),
             Deal.is_test.isnot(True)
         ).all()
 
@@ -27678,6 +28099,8 @@ def _settle_reimbursement(session, reimbursement, deals, alloc_req=None):
         raise ValueError('Распределение содержит неизвестные сделки')
     if any(d.deal_kind == IPPS_REALTY_KIND for d in deals):
         raise ValueError(IPPS_REIMBURSEMENT_ERROR)
+    if any(_personal_reimbursement_blocked(d, reimbursement.founder_name) for d in deals):
+        raise ValueError('Для этой сделки лизхолда нет долга указанному фаундеру')
     if any(d.reimbursement_id is not None for d in deals):
         raise ValueError('Сделка уже возмещена')
     # Целые центы исключают накопление округления. Явные доли сначала
@@ -27685,6 +28108,12 @@ def _settle_reimbursement(session, reimbursement, deals, alloc_req=None):
     cents = _reimbursement_cents(reimbursement.amount_usdt)
     shares = {deal_id: _reimbursement_cents(value, allow_zero=True)
               for deal_id, value in alloc_req.items()}
+    for deal in deals:
+        if _personal_direct(deal):
+            cost = _reimbursement_cents(deal.payout_amount_usdt)
+            if deal.id in shares and shares[deal.id] != cost:
+                raise ValueError('Возмещение лизхолда должно покрывать всю себестоимость выплаты')
+            shares[deal.id] = cost
     remaining = cents - sum(shares.values())
     automatic = [d for d in deals if d.id not in shares]
     if remaining < 0 or (not automatic and remaining):
@@ -27710,7 +28139,8 @@ def _settle_reimbursement(session, reimbursement, deals, alloc_req=None):
     for deal in deals:
         deal.reimbursement_id = reimbursement.id
         deal_payout = deal.payout_amount_thb or deal.custom_payout_amount or 0
-        deal.payout_amount_usdt = shares[deal.id] / 100
+        if not _personal_direct(deal):
+            deal.payout_amount_usdt = shares[deal.id] / 100
         total_thb += deal_payout
 
         # Прибыль считается только сейчас — себестоимость выдачи стала известна.
@@ -27811,6 +28241,8 @@ def get_pending_reimbursements():
             Deal.reimbursement_id == None,
             Deal.payout_founder_name != None,
             Deal.needs_reimbursement != False,
+            or_(Deal.deal_kind.is_(None), Deal.deal_kind != PERSONAL_REALTY_KIND,
+                Deal.status.notin_(NON_DEAL_STATUSES + (DealStatus.CANCELLED,))),
             Deal.is_test.isnot(True)
         ).order_by(Deal.payout_founder_name, Deal.created_at.desc()).all()
         
@@ -27884,6 +28316,10 @@ def create_reimbursement():
         ipps_deal_ids = [d.id for d in deals if d.deal_kind == IPPS_REALTY_KIND]
         if ipps_deal_ids:
             return jsonify(success=False, error=IPPS_REIMBURSEMENT_ERROR, deal_ids=ipps_deal_ids), 409
+        invalid_personal = [d.id for d in deals if _personal_reimbursement_blocked(d, founder_name)]
+        if invalid_personal:
+            return jsonify(success=False, error='Для этой сделки лизхолда нет долга указанному фаундеру',
+                           deal_ids=invalid_personal), 409
         already_settled = [d.id for d in deals if d.reimbursement_id is not None]
         if already_settled:
             return jsonify({'success': False, 'error': 'Сделки уже возмещены — обнови страницу',
@@ -28017,6 +28453,8 @@ def create_reimbursement():
                 'error': (f'Распределено по сделкам ${sum(alloc_req.values()):.2f}, '
                           f'а возмещение на ${amount_usdt:.2f} — поправь суммы'),
             }), 400
+        if any(_personal_direct(d) for d in deals) and taken_cents != amount_cents:
+            return jsonify(success=False, error='Подтвердите возмещение исходящими переводами на всю сумму'), 400
         if taken_cents > amount_cents:
             return jsonify({
                 'success': False,

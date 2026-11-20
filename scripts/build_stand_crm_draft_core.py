@@ -27,6 +27,9 @@ SLICES = [
     ("        function _agentsCascade(", "        function customAgentsPreset("),
     ("        function _stdProfitVolume(", "        function stdAgentsPreset("),
     ("        function _stdApplyAgents(", "        // Что считаем производным"),
+    ("        function isLeaseholdKind(", "        function changeDealProduct("),
+    ("        function isPersonalDirect(", "        function changePersonalPayoutMode("),
+    ("        const personalOwners =", "        function closePersonalOwnerModal("),
     ("        function calculateProfit(", "        /**\n         * Приход по СБП"),
     ("        function markProfitPending(", "        // Auto-calculate on input change"),
     ("        function payoutTxPoolTotal(", "        function renderPayoutTxPool("),
@@ -277,6 +280,12 @@ def main():
         if hits != 1:
             raise SystemExit(f"CRM dynamic handler changed ({hits}): {old}")
         pieces = [piece.replace(old, new) for piece in pieces]
+    personal_preview = "if (editingDealId !== null) data.deal_id = editingDealId;"
+    if sum(piece.count(personal_preview) for piece in pieces) != 1:
+        raise SystemExit("CRM personal preview ID boundary changed")
+    pieces = [piece.replace(personal_preview,
+                            "if (adapters.personalPreviewDealId) data.deal_id = adapters.personalPreviewDealId;")
+              for piece in pieces]
     if any('onclick=' in piece or 'onchange=' in piece or 'oninput=' in piece for piece in pieces):
         raise SystemExit('CRM draft extraction contains an unscoped inline handler')
     output = """// Generated from static/crm/crm.html by scripts/build_stand_crm_draft_core.py.
@@ -295,6 +304,7 @@ window.createCrmDraftCore = function createCrmDraftCore(root, adapters) {
     const showToast = adapters.toast;
     const escapeHtml = adapters.escapeHtml;
     const formatNumber = adapters.formatNumber;
+    const formatThbAmount = adapters.formatNumber;
     const loadCurrentRate = adapters.loadCurrentRate || (() => {});
     const realtyPayinRecalc = adapters.realtyPayinRecalc || (() => {});
     const realtyPayoutRecalc = adapters.realtyPayoutRecalc;
@@ -371,7 +381,7 @@ window.createCrmDraftCore = function createCrmDraftCore(root, adapters) {
         sberKindChanged, sberLoadIncomes, sberAddIncome, sberAddManual,
         loadCashBatchesForSelect, loadBankCardsForSelect,
         get cashBatchesData() { return cashBatchesData; },
-        calculateProfit,
+        calculateProfit, renderPersonalCards, requestPersonalCostPreview, updatePersonalSourceBalance,
         set currentUsdtThbRate(v) { currentUsdtThbRate = v; currentUsdtThbRateAt = Date.now(); },
         sberRemovePart, sberRender, sberIncomeLine, sberPartsSum,
         autoCalcUsdt, setPayinMode(mode) { payinMode = mode; },

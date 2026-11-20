@@ -39,7 +39,7 @@ function ctx() {
     applyFlowGateOptions: () => {},
   };
   vm.createContext(context);
-  vm.runInContext(fn('syncDealKindSelect'), context);
+  vm.runInContext(fn('isCardLeasehold') + '\n' + fn('syncDealKindSelect'), context);
   return { context, select };
 }
 
@@ -61,7 +61,7 @@ function ctx() {
   };
   const context = { document: { getElementById: (id) => elements[id] || null }, applyFlowGateOptions: () => {} };
   vm.createContext(context);
-  vm.runInContext(fn('syncDealKindSelect'), context);
+  vm.runInContext(fn('isCardLeasehold') + '\n' + fn('syncDealKindSelect'), context);
   context.syncDealKindSelect();
   assert.equal(select.value, 'exchange');
 }
@@ -76,7 +76,7 @@ function ctx() {
   };
   const context = { document: { getElementById: (id) => elements[id] || null }, applyFlowGateOptions: () => {} };
   vm.createContext(context);
-  vm.runInContext(fn('syncDealKindSelect'), context);
+  vm.runInContext(fn('isCardLeasehold') + '\n' + fn('syncDealKindSelect'), context);
   context.syncDealKindSelect();
   assert.equal(select.value, 'mf_realty');
 }

@@ -48,7 +48,7 @@ function crmDraftFlow(active,d){
   const {root}=active;
   const selectedKind=crmDraftRead(root,'dealKindSelect');
   const kind=selectedKind==='mf_freehold'||selectedKind==='mf_auto'?'Фрихолд':
-    selectedKind==='ipps_realty'?'ИППС':selectedKind==='rental'?'Аренда':selectedKind==='mf_realty'
+    selectedKind==='ipps_realty'?'ИППС':selectedKind==='personal_realty'?'Личный счёт':selectedKind==='rental'?'Аренда':selectedKind==='mf_realty'
       ?(document.getElementById('crmDraftRealtySubtype')?.value||'Лизхолд'):'';
   const payinField=selectedKind==='custom'?'customPayinMethod':'payinMethod';
   return {type:kind?'Оплата недвижимости':'Обмен валюты',kind,autoPayment:d.autoPayment===true,
@@ -99,6 +99,7 @@ function crmDraftParts(d) {
 function crmDraftSafeFetch(url,options) {
   const u=new URL(url,location.origin);
   const verifyManualHash=u.pathname==='/api/stand/manual-close/verify-hash'&&!u.search;
+  const personalPreview=u.pathname==='/api/deals/personal-preview'&&!u.search;
   const allowed=['/api/sber-incomes','/api/transactions/outgoing','/api/tx/lookup',
     '/api/transactions/incoming','/api/wl-transactions',
     '/api/payout-tx','/api/tron/payout-tx',
@@ -106,12 +107,12 @@ function crmDraftSafeFetch(url,options) {
     '/api/rates',
     '/api/deals/mf-realty/preview','/api/deals/mf-freehold/preview',
     '/api/managers','/api/clients','/api/referrers','/api/payin-txs'];
-  if(u.origin!==location.origin || !(verifyManualHash||allowed.includes(u.pathname)||u.pathname.startsWith('/api/payin-txs/')))
+  if(u.origin!==location.origin || !(verifyManualHash||personalPreview||allowed.includes(u.pathname)||u.pathname.startsWith('/api/payin-txs/')))
     return Promise.reject(new Error('CRM draft request blocked'));
   if(u.pathname==='/api/managers' && u.search!=='?include_staff=1')
     return Promise.reject(new Error('CRM draft manager request blocked'));
   const method=(options?.method||'GET').toUpperCase();
-  if(method!=='GET' && !(method==='POST' && (verifyManualHash||u.pathname.endsWith('/preview'))))
+  if(method!=='GET' && !(method==='POST' && (verifyManualHash||personalPreview||u.pathname.endsWith('/preview'))))
     return Promise.reject(new Error('CRM draft mutation blocked'));
   return window.fetch(u.href,{...options,credentials:'same-origin'});
 }
@@ -136,12 +137,54 @@ function crmDraftSanitize(form) {
 function crmDraftLayout(active) {
   const {root}=active,kind=crmDraftRead(root,'dealKindSelect');
   const custom=kind==='custom', mf=kind==='mf_realty'||kind==='rental',
-    fh=kind==='mf_freehold'||kind==='mf_auto', ipps=kind==='ipps_realty';
+    fh=kind==='mf_freehold'||kind==='mf_auto', ipps=kind==='ipps_realty', personal=kind==='personal_realty';
   const draft=deal(active.id);
   const kindSelect=root.getElementById('dealKindSelect');
   const ippsOption=kindSelect?.querySelector('option[value="ipps_realty"]');
   if(ippsOption)ippsOption.disabled=!draft?.manual||!!draft.isTask||!!draft.closed&&draft.kind!=='ИППС';
-  if(kindSelect)kindSelect.disabled=draft?.kind==='ИППС'&&!!draft.closed;
+  const manual=!!draft?.manual&&!draft.isTask;
+  const linked=!!draft?.closed||!!draft?.crmDealId;
+  const personalOption=kindSelect?.querySelector('option[value="personal_realty"]');
+  if(personalOption)personalOption.disabled=!manual||linked&&draft?.kind!=='Личный счёт';
+  const lockKind=linked&&['ИППС','Личный счёт'].includes(draft?.kind);
+  if(kindSelect)kindSelect.disabled=lockKind;
+  const product=root.getElementById('dealProductSelect');
+  const route=root.getElementById('leaseholdPayoutRoute');
+  const isLeasehold=mf&&kind!=='rental'||ipps||personal;
+  if(product&&route){
+    product.value=isLeasehold?'leasehold':kind;
+    product.disabled=lockKind;
+    root.getElementById('leaseholdPayoutRouteGroup').hidden=!isLeasehold;
+    route.disabled=lockKind;
+    route.querySelector('option[value="ipps_realty"]').disabled=ippsOption?.disabled===true;
+    route.querySelector('option[value="personal_realty"]').disabled=personalOption?.disabled===true;
+    if(isLeasehold)route.value=kind;
+  }
+  const personalMode=root.getElementById('personalPayoutMode');
+  if(personalMode)personalMode.disabled=personal&&linked;
+  const direct=personal&&personalMode?.value==='direct_conversion';
+  const personalField=root.getElementById('personalDealSection');
+  if(personalField)personalField.hidden=!personal;
+  const personalThb=root.getElementById('personalPayoutThb');
+  if(personalThb){personalThb.disabled=!personal;personalThb.required=personal;personalThb.readOnly=linked;}
+  const personalCard=root.getElementById('personalPayoutSource');
+  if(personalCard){
+    personalCard.closest('.form-group').hidden=direct;
+    personalCard.disabled=!personal||direct||linked||personalCard.options.length<2;
+    personalCard.required=personal&&!direct;
+  }
+  const group=root.getElementById('founderGroup');
+  const founderSlot=root.getElementById('personalFounderSlot');
+  if(group&&founderSlot){
+    if(direct){
+      if(group.parentElement!==founderSlot)founderSlot.append(group);
+      crmDraftValue(root,'payoutSource','founder_personal');
+    }else if(group.parentElement===founderSlot){
+      root.getElementById('founderGroupHome').after(group);
+      crmDraftValue(root,'payoutSource',personal?'bank_card':'cash_batch');
+    }
+  }
+  if(personal&&!direct)crmDraftValue(root,'payoutSource','bank_card');
   const ippsThb=root.getElementById('ippsPayoutThb');
   if(ippsThb){ippsThb.required=ipps;ippsThb.disabled=!ipps;ippsThb.readOnly=ipps&&!!draft?.closed;}
   const ippsCard=root.getElementById('ippsCardSelect');
@@ -151,8 +194,8 @@ function crmDraftLayout(active) {
   }
   for(const [id,on] of [['customDealSection',custom],['standardDealSection',!custom],
       ['mfDealSection',mf],['mfDealHint',mf],['fhDealSection',fh],['fhDealHint',fh],
-      ['ippsDealSection',ipps],['payoutSectionStd',!mf&&!fh&&!ipps],['profitCalcHr',!mf&&!fh&&!ipps],
-      ['profitCalcTitle',!mf&&!fh&&!ipps],['profitCalcRows',!mf&&!fh&&!ipps]]) {
+      ['ippsDealSection',ipps],['payoutSectionStd',!mf&&!fh&&!ipps&&!personal],['profitCalcHr',!mf&&!fh&&!ipps&&!personal],
+      ['profitCalcTitle',!mf&&!fh&&!ipps&&!personal],['profitCalcRows',!mf&&!fh&&!ipps&&!personal]]) {
     const el=root.getElementById(id);if(el)el.style.display=on?'block':'none';
   }
   for(const [id,on] of [['customDealToggle',custom],['mfDealToggle',mf],['fhDealToggle',fh]]) {
@@ -162,7 +205,7 @@ function crmDraftLayout(active) {
   // is outside the cloned form, so commit calls CRM reportInvalidField itself.
   for(const name of ['payout_method','payout_source']){
     const el=root.querySelector(`#standardDealSection [name="${name}"]`);
-    if(el)el.required=!custom&&!mf&&!fh&&!ipps;
+    if(el)el.required=!custom&&!mf&&!fh&&!ipps&&!personal;
   }
   const payin=root.querySelector('#standardDealSection [name="payin_method"]');
   if(payin)payin.required=!custom;
@@ -225,6 +268,13 @@ function crmDraftFill(active,d) {
   crmDraftValue(root,'payin_partner_name',d.payinPartner);
   crmDraftValue(root,'ippsPurpose',d.realtyPurpose||d.object);
   crmDraftValue(root,'ippsPayoutThb',kind==='ipps_realty'?d.payout?.thb:null);
+  crmDraftValue(root,'personalPayoutMode',kind==='personal_realty'&&d.paySrc==='scb'?'bank_card':'direct_conversion');
+  crmDraftValue(root,'personalPurpose',d.realtyPurpose||d.object);
+  crmDraftValue(root,'personalPayoutThb',kind==='personal_realty'?d.payout?.thb:null);
+  if(kind==='personal_realty'&&d.paySrc==='scb'){
+    active.core.renderPersonalCards(d.closed||d.crmDealId?d.payout?.bankCardId:null,d.payout?.source);
+    root.getElementById('personalPayoutSource').dataset.want=String(d.payout?.bankCardId||'');
+  }
   if(kind==='ipps_realty'){
     const card=root.getElementById('ippsCardSelect');
     if(card&&d.payout?.bankCardId)card.dataset.want=String(d.payout.bankCardId);
@@ -353,6 +403,10 @@ function crmDraftRestore(active,snapshot) {
 async function crmDraftPreview(active) {
   const {root}=active,kind=crmDraftRead(root,'dealKindSelect');
   if(kind==='ipps_realty')return active.core.calculateProfit();
+  if(kind==='personal_realty'){
+    if(crmDraftRead(root,'personalPayoutMode')==='direct_conversion')return active.core.calculateProfit();
+    return active.core.requestPersonalCostPreview();
+  }
   if(kind!=='mf_realty'&&kind!=='mf_freehold')return;
   if(kind==='mf_realty')return active.core.mfRecalcNow();
   if(kind==='mf_freehold'&&!IPPS_TARIFFS[document.getElementById('crmDraftTariff')?.value]){
@@ -389,7 +443,7 @@ async function crmDraftMount(id) {
       payout_source:crmDraftField(shadow,'payout_source'),
     };
     active.core=createCrmDraftCore(shadow,{
-      form:formFields,editingDealId:d.manualNew?null:id,
+      form:formFields,editingDealId:d.manualNew?null:id,personalPreviewDealId:d.crmDealId||null,
       payinRubIsNet:d.rubIsNet===true,
       flowReceipt:d.manualBankReceipt||null,
       loadWallets:selected=>crmDraftLoadWallets(active,selected),
@@ -407,7 +461,8 @@ async function crmDraftMount(id) {
       payoutTxPool:(d.payout?.hashes||[]).map(x=>({hash:x.hash,
         amount_usdt:x.amount??x.amount_usdt??null,
         from_address:x.from_address||'',to_address:x.to_address||'',
-        wallet_label:x.wallet_label||'',wallet_id:x.wallet_id||null})),
+        wallet_label:x.wallet_label||'',wallet_id:x.wallet_id||null,
+        network:x.network||'trc20',date:x.date||''})),
     });
     crmDraftFill(active,d);
     active.core.stdAgentsLoad((d.agents||[]).map(x=>({
@@ -438,6 +493,9 @@ async function crmDraftMount(id) {
     if(crmDraftActive!==active)return;
     if(d.payout?.bankCardId != null)
       crmDraftValue(shadow,'bankCardSelect',d.payout.bankCardId);
+    const personalCard=shadow.getElementById('personalPayoutSource');
+    if(personalCard?.dataset.want)personalCard.value=personalCard.dataset.want;
+    active.core.updatePersonalSourceBalance();
     crmDraftLayout(active);
     active.core.upgradeAllSelects();
     if(crmDraftRead(shadow,'payoutSource')==='binance')active.core.loadOutgoingTxForBinance();
@@ -613,9 +671,23 @@ function crmDraftWire(active) {
   root.addEventListener('change',e=>{
     const el=e.target;
     if(el.dataset.crmEvent==='change')crmDraftAction(active,el.dataset.crmAction,el);
-    if(el.id==='dealKindSelect'){
+    if(el.id==='dealProductSelect'||el.id==='leaseholdPayoutRoute'){
+      const route=root.getElementById('leaseholdPayoutRoute');
+      if(crmDraftRead(root,'dealProductSelect')==='leasehold'&&route.selectedOptions[0]?.disabled)
+        route.value=[...route.options].find(o=>!o.disabled)?.value||'mf_realty';
+      crmDraftValue(root,'dealKindSelect',crmDraftRead(root,'dealProductSelect')==='leasehold'?route.value:el.value);
+      root.getElementById('dealKindSelect').dispatchEvent(new Event('change',{bubbles:true}));
+    }
+    if(el.id==='dealKindSelect'||el.id==='personalPayoutMode'){
       crmDraftLayout(active);crmDraftPreview(active);
       if(el.value==='custom')active.core.onCustomPayinMethodChange();
+      if(crmDraftRead(root,'dealKindSelect')==='personal_realty'&&crmDraftRead(root,'personalPayoutMode')==='direct_conversion'){
+        active.core.loadOutgoingTxForSelect(false);active.core.loadFounderWallets();
+      }
+    }
+    if(el.id==='personalPayoutSource'){
+      delete el.dataset.want;
+      active.core.updatePersonalSourceBalance();crmDraftPreview(active);
     }
     if(el.id==='customPayinMethod')active.core.onCustomPayinMethodChange();
     if(el.id==='customPayinTxSelect')active.core.selectCustomPayinTx(el);
@@ -657,7 +729,7 @@ function crmDraftWire(active) {
     if(el.id==='customPayinUsdt')active.core.onCustomUsdtInput('payin');
     if(el.id==='customPayoutUsdt')active.core.onCustomUsdtInput('payout');
     if(el.id==='binanceUsdt')active.core.calcBinanceRate();
-    if(el.id==='ippsPayoutThb')crmDraftPreview(active);
+    if(el.id==='ippsPayoutThb'||el.id==='personalPayoutThb')crmDraftPreview(active);
     if(el.id==='payoutAmountThb'){
       active.core.calcBinanceRate();active.core.calcNoConvRate();
     }
@@ -961,6 +1033,24 @@ function crmDraftCommit(id) {
   }
   const ippsCardId=kind==='ipps_realty'?Number(crmDraftRead(r,'ippsCardSelect')):null;
   if(kind==='ipps_realty'&&!ippsCardId){toast('Выберите счёт ИППС');return false;}
+  const personalMode=crmDraftRead(r,'personalPayoutMode');
+  const personalCardId=Number(crmDraftRead(r,'personalPayoutSource'));
+  const founderHash=crmDraftRead(r,'payoutFounderHash').trim();
+  const personalNoConversion=!!r.getElementById('payoutNoConversion')?.checked;
+  if(kind==='personal_realty'){
+    if(!d.manual||d.isTask||(d.closed||d.crmDealId)&&d.kind!=='Личный счёт'){
+      toast('Личный счёт доступен в ручной сделке');return false;
+    }
+    if(personalMode==='bank_card'&&(!personalCardId||!(crmDraftNum(crmDraftRead(r,'personalCostUsdt'))>0))){
+      toast(r.getElementById('personalPreviewError').textContent||'Выберите карту и дождитесь расчёта себестоимости');return false;
+    }
+    if(personalMode==='direct_conversion'&&(!crmDraftRead(r,'payout_founder_name')
+        ||(personalNoConversion
+          ?!(crmDraftNum(crmDraftRead(r,'noConvUsdt'))>0)||!crmDraftRead(r,'noConvWallet')
+          :!(a.core.payoutTxPoolTotal()>0)||!!founderHash))){
+      toast('Укажите фаундера и данные оплаты');return false;
+    }
+  }
   const flow=crmDraftFlow(a,d);
   if(!crmDraftAuthorizeFlow(a,d,flow))return false;
   if(kind==='custom')return crmDraftCommitCustom(a,d,before,flow);
@@ -1054,9 +1144,9 @@ function crmDraftCommit(id) {
   d.incomeAmount=d.payinParts.length?Math.round(d.payinParts.reduce((s,p)=>s+(p.amountRub||0),0)*100)/100:null;
   d.mfPayout=a.core.mfPayoutTxPool.map(p=>({hash:p.hash,net:p.network||'trc20',
     amount:crmDraftNum(p.amount_usdt),to_address:p.to_address||'',date:p.date||''}));
-  const purposeField=kind==='ipps_realty'?'ippsPurpose':kind==='mf_freehold'?'fhPurpose':'mfPurpose';
+  const purposeField=kind==='ipps_realty'?'ippsPurpose':kind==='personal_realty'?'personalPurpose':kind==='mf_freehold'?'fhPurpose':'mfPurpose';
   d.realtyPurpose=crmDraftRead(r,purposeField);
-  if(kind==='ipps_realty'||d.realtyPurpose){d.payTo=d.payTo||{};d.payTo.purpose=d.realtyPurpose;}
+  if(kind==='ipps_realty'||kind==='personal_realty'||d.realtyPurpose){d.payTo=d.payTo||{};d.payTo.purpose=d.realtyPurpose;}
   if(kind==='mf_realty'||kind==='mf_freehold'){
     d.docLinks=d.docLinks||{};
     const prefix=kind==='mf_freehold'?'fh':'mf';
@@ -1069,6 +1159,31 @@ function crmDraftCommit(id) {
     d.amountThb=thb;
     d.paySrc='ipps';
     d.payout={thb,usdt,bankCardId:ippsCardId,method:'перевод',source:'IPPS счет компании'};
+    d.postConv=null;
+    d.mfPayout=[];
+  }
+  if(kind==='personal_realty'){
+    const thb=crmDraftNum(crmDraftRead(r,'personalPayoutThb'));
+    const usdt=crmDraftNum(crmDraftRead(r,'personalCostUsdt'));
+    const direct=personalMode==='direct_conversion';
+    d.amountThb=thb;
+    d.paySrc=direct?'founder':'scb';
+    if(direct){
+      const hashes=personalNoConversion?[]:a.core.payoutTxPool.map(x=>({
+        hash:x.hash,amount:crmDraftNum(x.amount_usdt),network:x.network||'trc20',
+        from_address:x.from_address||'',to_address:x.to_address||'',date:x.date||'',
+        wallet_label:x.wallet_label||'',wallet_id:x.wallet_id||null,
+      }));
+      const founder=crmDraftRead(r,'payout_founder_name');
+      d.payout={thb,usdt,hashes,founder,method:'перевод',source:founder,ownBaht:personalNoConversion,
+        walletId:personalNoConversion?crmDraftNum(crmDraftRead(r,'noConvWallet')):
+          crmDraftNum(hashes.find(x=>x.wallet_id)?.wallet_id),
+        settledByPayin:!!r.getElementById('payoutSettledByPayin')?.checked};
+    }else{
+      const account=r.getElementById('personalPayoutSource');
+      d.payout={thb,usdt,bankCardId:personalCardId,method:'перевод',
+        source:account.selectedOptions[0]?.textContent||'Личная карта'};
+    }
     d.postConv=null;
     d.mfPayout=[];
   }

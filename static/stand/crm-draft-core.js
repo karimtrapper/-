@@ -14,6 +14,7 @@ window.createCrmDraftCore = function createCrmDraftCore(root, adapters) {
     const showToast = adapters.toast;
     const escapeHtml = adapters.escapeHtml;
     const formatNumber = adapters.formatNumber;
+    const formatThbAmount = adapters.formatNumber;
     const loadCurrentRate = adapters.loadCurrentRate || (() => {});
     const realtyPayinRecalc = adapters.realtyPayinRecalc || (() => {});
     const realtyPayoutRecalc = adapters.realtyPayoutRecalc;
@@ -634,25 +635,39 @@ window.createCrmDraftCore = function createCrmDraftCore(root, adapters) {
             document.getElementById('netProfit').style.color = net>=0?'#10b981':'#ef4444';
         }
 
+        function isLeaseholdKind(kind) {
+            return kind === 'mf_realty' || isCardLeasehold(kind);
+        }
+
+        function isCardLeasehold(kind) {
+            return kind === 'ipps_realty' || kind === 'personal_realty';
+        }
+
+        function isPersonalDirect(kind = document.getElementById('dealKindSelect').value) {
+            return kind === 'personal_realty' && document.getElementById('personalPayoutMode').value === 'direct_conversion';
+        }
+
+        const personalOwners = { andrey: 'Андрей', theodor: 'Теодор' };
+
+        function personalOwnerLabel(owner) {
+            return Object.hasOwn(personalOwners, owner) ? personalOwners[owner] : '';
+        }
+
         function calculateProfit() {
             const form = document.getElementById('createDealForm');
             const payinUsdt = parseFloat(form.payin_amount_usdt.value) || 0;
-            if (document.getElementById('dealKindSelect')?.value === 'ipps_realty') {
-                const account = document.getElementById('ippsCardSelect');
-                const thb = Number(document.getElementById('ippsPayoutThb').value);
-                const input = document.getElementById('ippsCostUsdt');
-                const sameCard = account.value && account.value === input.dataset.savedCard;
-                const rate = Number((sameCard && input.dataset.savedRate) || account.selectedOptions[0]?.dataset.rate);
-                const sameAmount = sameCard && thb === Number(input.dataset.savedAmount);
-                const cost = sameAmount && input.dataset.savedCost
-                    ? Number(input.dataset.savedCost)
-                    : rate > 0 && thb > 0 ? Math.round(thb / rate * 100) / 100 : 0;
-                input.value = cost > 0 ? cost.toFixed(2) : '';
+            const kind = document.getElementById('dealKindSelect')?.value;
+            if (isCardLeasehold(kind)) {
+                const prefix = kind === 'ipps_realty' ? 'ipps' : 'personal';
+                const input = document.getElementById(prefix + 'CostUsdt');
+                const cost = kind === 'ipps_realty' ? recalcStageIppsCost(input)
+                    : isPersonalDirect(kind) ? noConversionCost() || payoutTxPoolTotal() : Number(input.value);
+                if (isPersonalDirect(kind)) input.value = cost > 0 ? cost.toFixed(2) : '';
                 const payin = payinUsdt + payinExtraSerialize().reduce((sum, part) => sum + (part.amount_usdt || 0), 0);
                 const gross = payin > 0 && cost > 0 ? Math.round((payin - cost) * 100) / 100 : 0;
                 _stdGross = { profit: gross, volume: payin > 0 && cost > 0 ? Math.max(payin, cost) : 0 };
                 stdAgentsRecalc();
-                document.getElementById('ippsProfitSummary').textContent =
+                document.getElementById(prefix + 'ProfitSummary').textContent =
                     payin > 0 && cost > 0 ? 'Валовая прибыль ' + gross.toFixed(2) + ' USDT' : '';
                 return;
             }
@@ -840,12 +855,87 @@ window.createCrmDraftCore = function createCrmDraftCore(root, adapters) {
             }
         }
 
+        let personalCards = [];
+        let personalPreviewTimer;
+        let personalPreviewVersion = 0;
+
+        function renderPersonalCards(savedId, savedName) {
+            const source = document.getElementById('personalPayoutSource');
+            if (!source) return;
+            const current = source.value;
+            if (savedId !== undefined) {
+                source.dataset.savedId = savedId || '';
+                source.dataset.savedName = savedName || '';
+            }
+            const retained = source.dataset.savedId;
+            const options = personalCards.map(card => new Option(
+                [card.bank_name, card.card_name, personalOwnerLabel(card.personal_owner)].filter(Boolean).join(' · '),
+                card.id
+            ));
+            if (retained && !options.some(option => option.value === retained)) {
+                options.push(new Option(source.dataset.savedName || 'Личный счёт', retained));
+            }
+            source.replaceChildren(new Option(personalCards.length ? 'Выберите личный счёт' : 'Личные счета не настроены', ''), ...options);
+            source.value = retained || (savedId === null ? '' : current);
+            if (source.selectedIndex < 0) source.value = '';
+            if (!source.value && personalCards.length === 1) source.value = personalCards[0].id;
+            source.disabled = Boolean(retained) || !personalCards.length;
+            updatePersonalSourceBalance();
+        }
+
+        function updatePersonalSourceBalance() {
+            const id = Number(document.getElementById('personalPayoutSource')?.value);
+            const card = personalCards.find(card => card.id === id);
+            const text = document.getElementById('personalSourceBalance');
+            if (text) text.textContent = card ? 'Остаток ' + formatThbAmount(card.balance_thb) + ' THB' : '';
+        }
+
+        function requestPersonalCostPreview() {
+            const version = ++personalPreviewVersion;
+            clearTimeout(personalPreviewTimer);
+            if (document.getElementById('dealKindSelect').value !== 'personal_realty' || isPersonalDirect()) return;
+            const cost = document.getElementById('personalCostUsdt');
+            const payout = document.getElementById('personalPayoutThb');
+            const cardId = Number(document.getElementById('personalPayoutSource').value);
+            const status = document.getElementById('personalPreviewError');
+            status.textContent = '';
+            cost.value = '';
+            calculateProfit();
+            if (!cardId || !payout.value || !payout.validity.valid) return;
+            const data = { bank_card_id: cardId, payout_amount_thb: payout.valueAsNumber };
+            if (adapters.personalPreviewDealId) data.deal_id = adapters.personalPreviewDealId;
+            const isLatest = () => version === personalPreviewVersion &&
+                document.getElementById('dealKindSelect').value === 'personal_realty' && !isPersonalDirect();
+            personalPreviewTimer = setTimeout(async () => {
+                try {
+                    const response = await fetch(`${API_URL}/api/deals/personal-preview`, {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(data),
+                    });
+                    const result = await response.json();
+                    if (!isLatest()) return;
+                    if (!result.success) {
+                        status.textContent = result.error || 'Не удалось рассчитать себестоимость';
+                        return;
+                    }
+                    const amount = (result.result || result).payout_amount_usdt;
+                    cost.value = amount == null ? '' : Number(amount).toFixed(2);
+                    calculateProfit();
+                } catch (error) {
+                    if (isLatest()) status.textContent = 'Не удалось рассчитать себестоимость';
+                }
+            }, 150);
+        }
+
         async function loadBankCardsForSelect() {
             try {
                 const response = await fetch(`${API_URL}/api/cards/balance`);
                 const data = await response.json();
 
                 if (data.success) {
+                    personalCards = data.cards.filter(card => personalOwnerLabel(card.personal_owner) && !card.is_ipps);
+                    renderPersonalCards();
+                    requestPersonalCostPreview();
                     const select = document.getElementById('bankCardSelect');
                     if (select) {
                         select.innerHTML = data.cards.length > 0
@@ -1716,6 +1806,19 @@ window.createCrmDraftCore = function createCrmDraftCore(root, adapters) {
             payinExtraSummary();
         }
 
+        function recalcStageIppsCost(input) {
+            const account = document.getElementById('ippsCardSelect');
+            const thb = Number(document.getElementById('ippsPayoutThb').value);
+            const sameCard = account.value && account.value === input.dataset.savedCard;
+            const rate = Number((sameCard && input.dataset.savedRate) || account.selectedOptions[0]?.dataset.rate);
+            const sameAmount = sameCard && thb === Number(input.dataset.savedAmount);
+            const cost = sameAmount && input.dataset.savedCost
+                ? Number(input.dataset.savedCost)
+                : rate > 0 && thb > 0 ? Math.round(thb / rate * 100) / 100 : 0;
+            input.value = cost > 0 ? cost.toFixed(2) : '';
+            return cost;
+        }
+
         function mfInputs() {
             const num = id => {
                 const v = parseFloat(document.getElementById(id)?.value);
@@ -2254,7 +2357,12 @@ window.createCrmDraftCore = function createCrmDraftCore(root, adapters) {
         function renderPayoutTxPool() {
             const box = document.getElementById('payoutTxPoolBox');
             if (!box) return;
-            if (!payoutTxPool.length) { box.innerHTML = ''; payoutRefreshInfo(); return; }
+            if (!payoutTxPool.length) {
+                box.innerHTML = '';
+                payoutRefreshInfo();
+                if (isPersonalDirect()) calculateProfit();
+                return;
+            }
             box.innerHTML = payoutTxPool.map((t, i) => `
                 <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:4px 8px;margin-bottom:4px;font-size:0.85rem;">
                     <div style="display:flex;align-items:center;gap:0.5rem;">
@@ -2287,7 +2395,8 @@ window.createCrmDraftCore = function createCrmDraftCore(root, adapters) {
             const hint = document.getElementById('payoutSettledHint');
             if (!hint) return;
             hint.textContent = payoutSettledOn()
-                ? 'Сделка закроется сразу, в очередь возмещений не попадёт.'
+                ? (isPersonalDirect() ? 'Приход покрывает выплату. Возмещение не требуется.'
+                    : 'Сделка закроется сразу, в очередь возмещений не попадёт.')
                 : 'Отправлено наперёд: сделка встанет в очередь возмещений, вернём фаундеру позже.';
             if (typeof calculateProfit === 'function') calculateProfit();
         }
@@ -2377,7 +2486,7 @@ window.createCrmDraftCore = function createCrmDraftCore(root, adapters) {
             const base = 'С кошельков ничего не уходило, поэтому хеша выдачи нет. ' +
                          'Сумму ставит менеджер — именно её вернём фаундеру, когда придёт конвертация.';
             const usdt = noConversionCost();
-            const thb = parseFloat(document.getElementById('payoutAmountThb')?.value) || 0;
+            const thb = parseFloat(document.getElementById(isPersonalDirect() ? 'personalPayoutThb' : 'payoutAmountThb')?.value) || 0;
             if (!usdt || !thb) {
                 info.style.background = '#eff6ff'; info.style.color = '#1e40af';
                 info.textContent = base;
@@ -2419,6 +2528,7 @@ window.createCrmDraftCore = function createCrmDraftCore(root, adapters) {
             if (total) total.innerHTML = `Переводов: ${payoutTxPool.length} · итого $${payoutTxPoolTotal().toFixed(2)}`;
             payoutRefreshInfo();
             payoutRefreshOverNotes();
+            if (isPersonalDirect()) calculateProfit();
         }
 
         function payoutRefreshOverNotes() {
@@ -2443,11 +2553,13 @@ window.createCrmDraftCore = function createCrmDraftCore(root, adapters) {
             if (!box) return;
             if (!payoutTxPool.length) {
                 box.style.background = '#fef3c7'; box.style.color = '#92400e';
-                box.innerHTML = 'Выберите перевод, которым выдали клиенту — по нему подтянутся кошелёк и сумма.';
+                box.textContent = isPersonalDirect()
+                    ? 'Выберите перевод за конвертацию для выплаты застройщику.'
+                    : 'Выберите перевод, которым выдали клиенту — по нему подтянутся кошелёк и сумма.';
                 return;
             }
             const total = payoutTxPoolTotal();
-            const thb = parseFloat(document.querySelector('[name=payout_amount_thb]')?.value) || 0;
+            const thb = parseFloat(document.getElementById(isPersonalDirect() ? 'personalPayoutThb' : 'payoutAmountThb')?.value) || 0;
             const rate = (thb && total) ? (thb / total) : null;
             const wallets = [...new Set(payoutTxPool.map(t => t.wallet_label || t.from_address).filter(Boolean))];
             // Курс выдачи — главная проверка «тот ли перевод». Мимо коридора —
@@ -2648,6 +2760,7 @@ window.createCrmDraftCore = function createCrmDraftCore(root, adapters) {
                     }
                     el.value = '';
                     renderPayoutTxPool();
+                    if (isPersonalDirect()) syncPayoutSettledDefault();
                 } catch (e) {
                     box.style.background = '#fef2f2'; box.style.color = '#b91c1c';
                     box.innerHTML = 'Не удалось прочитать перевод';
@@ -2682,7 +2795,7 @@ window.createCrmDraftCore = function createCrmDraftCore(root, adapters) {
         sberKindChanged, sberLoadIncomes, sberAddIncome, sberAddManual,
         loadCashBatchesForSelect, loadBankCardsForSelect,
         get cashBatchesData() { return cashBatchesData; },
-        calculateProfit,
+        calculateProfit, renderPersonalCards, requestPersonalCostPreview, updatePersonalSourceBalance,
         set currentUsdtThbRate(v) { currentUsdtThbRate = v; currentUsdtThbRateAt = Date.now(); },
         sberRemovePart, sberRender, sberIncomeLine, sberPartsSum,
         autoCalcUsdt, setPayinMode(mode) { payinMode = mode; },

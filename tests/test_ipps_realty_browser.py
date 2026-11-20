@@ -7,7 +7,7 @@ from playwright.sync_api import expect
 
 import app as m
 from tests.payin_registry import ensure_payin_wallet
-from tests.test_browser_crm import chromium, crm_server  # noqa: F401
+from tests.test_browser_crm import choose, chromium, crm_server  # noqa: F401
 from tests.test_ipps_realty import COST, OPENING_THB, THB, _accounts, _network_payin
 
 
@@ -54,7 +54,8 @@ def test_manual_ipps_form_save_reload_close_and_open_crm(width, chromium, crm_se
         expect(kind.locator('option[value="mf_realty"]')).to_have_text('Недвижимость через MF Corp')
         expect(shadow.locator('#managerSelect option').filter(has_text='IPPS QA')).to_have_count(1)
         shadow.locator('#managerSelect').select_option(f'user:{manager_id}', force=True)
-        kind.select_option('ipps_realty', force=True)
+        choose(shadow, '#dealProductSelect', 'Недвижимость лизхолд')
+        choose(shadow, '#leaseholdPayoutRoute', 'ИППС')
         expect(shadow.locator('#ippsCardSelect')).to_have_value(str(card_id))
         expect(shadow.locator('#ippsCardSelect option:checked')).to_contain_text('IPPS счет компании')
         expect(shadow.locator('#ippsCostUsdt')).to_have_attribute('readonly', '')

@@ -240,7 +240,7 @@ def test_cancel_and_submit_reset_all_toggles(html):
     for toggle in DEAL_KIND_TOGGLES:
         assert toggle in cancel, f'cancelEditMode не сбрасывает {toggle}'
     # после успешного сохранения форма возвращается в режим создания
-    submit = html[html.find('showToast(isEditMode ?'):][:1500]
+    submit = html[html.find('showToast(isEditMode ?'):].split('loadDashboard()', 1)[0]
     for toggle in DEAL_KIND_TOGGLES:
         assert toggle in submit, f'после сохранения не сброшен {toggle}'
 
@@ -249,15 +249,19 @@ def test_kind_select_options_match_toggles(html):
     """Каждый пункт «Тип сделки» имеет обработку в onDealKindChange."""
     select = extract_subtree(html, 'dealKindSelect')
     values = set(re.findall(r'<option value="([\w_]+)"', select))
-    assert values == {'exchange', 'custom', 'mf_realty', 'ipps_realty', 'mf_freehold', 'mf_auto', 'rental'}, values
-    toggle_values = values - {'exchange', 'rental', 'ipps_realty'}
+    assert values == {'exchange', 'custom', 'mf_realty', 'ipps_realty', 'personal_realty', 'mf_freehold', 'mf_auto', 'rental'}, values
+    toggle_values = values - {'exchange', 'rental', 'ipps_realty', 'personal_realty'}
     body = _function_body(html, 'onDealKindChange')
     for value in toggle_values:
         assert f"'{value}'" in body, f'onDealKindChange не обрабатывает тип {value}'
     sync = _function_body(html, 'syncDealKindSelect')
-    for value in values - {'exchange', 'mf_auto', 'mf_freehold', 'rental'}:
+    for value in values - {'exchange', 'mf_auto', 'mf_freehold', 'rental', 'ipps_realty', 'personal_realty'}:
         assert f"'{value}'" in sync, f'syncDealKindSelect не знает про тип {value}'
     assert 'swiftDealKind' in sync
+    assert 'isCardLeasehold(sel.value)' in sync
+    assert "'ipps_realty'" in _function_body(html, 'isCardLeasehold')
+    assert "'personal_realty'" in _function_body(html, 'isCardLeasehold')
+    assert 'requestPersonalCostPreview()' in body
     ipps_layout = _function_body(html, 'applyRealtyLayout')
     assert "'ipps_realty'" in ipps_layout and "'ippsDealSection'" in ipps_layout
 

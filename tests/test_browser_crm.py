@@ -274,7 +274,7 @@ def test_custom_deal_create_edit_reload_preserves_money(ui):
     expect(page.locator('#create')).to_be_visible()
     page.wait_for_load_state('networkidle')
     page.locator('#clientSearchInput').fill('QA Browser Client')
-    choose(page, '#dealKindSelect', 'Кастомная — нестандартные валюты')
+    choose(page, '#dealProductSelect', 'Кастомная — нестандартные валюты')
     expect(page.locator('#customDealSection')).to_be_visible()
     page.locator('#customPayinAmount').fill('1000')
     choose(page, '#customPayoutCurrency', 'USDT')
