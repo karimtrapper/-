@@ -251,16 +251,20 @@ def test_kind_select_options_match_toggles(html):
     """Каждый пункт «Тип сделки» имеет обработку в onDealKindChange."""
     select = extract_subtree(html, 'dealKindSelect')
     values = set(re.findall(r'<option value="([\w_]+)"', select))
-    assert values == {'exchange', 'custom', 'mf_realty', 'mf_freehold', 'mf_auto', 'ipps_realty'}, values
+    assert values == {'exchange', 'custom', 'mf_realty', 'mf_freehold', 'mf_auto', 'ipps_realty', 'personal_realty'}, values
     body = _function_body(html, 'onDealKindChange')
-    for value in values - {'exchange', 'ipps_realty'}:
+    for value in values - {'exchange', 'ipps_realty', 'personal_realty'}:
         assert f"'{value}'" in body, f'onDealKindChange не обрабатывает тип {value}'
     assert 'requestIppsCostPreview()' in body
     assert "'ipps_realty'" in _function_body(html, 'requestIppsCostPreview')
     sync = _function_body(html, 'syncDealKindSelect')
-    for value in values - {'exchange', 'mf_auto', 'mf_freehold'}:
+    for value in values - {'exchange', 'mf_auto', 'mf_freehold', 'ipps_realty', 'personal_realty'}:
         assert f"'{value}'" in sync, f'syncDealKindSelect не знает про тип {value}'
     assert 'swiftDealKind' in sync
+    assert 'isCardLeasehold(sel.value)' in sync
+    assert "'ipps_realty'" in _function_body(html, 'isCardLeasehold')
+    assert "'personal_realty'" in _function_body(html, 'isCardLeasehold')
+    assert 'requestPersonalCostPreview()' in body
 
 
 def test_agent_model_rerenders_on_referrer_pick(html):

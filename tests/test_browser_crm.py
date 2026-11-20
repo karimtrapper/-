@@ -280,7 +280,7 @@ def test_flow_sole_custom_keeps_incoming_picker_and_manual_hash(ui):
     standard_tx.locator('..').locator('.custom-select-opt').filter(has_text='synthetic').click()
     expect(page.locator('[name="payin_amount_usdt"]')).to_have_value('1000')
     assert page.evaluate('document.documentElement.scrollWidth') <= standard_width
-    choose(page, '#dealKindSelect', 'Кастомная — нестандартные валюты')
+    choose(page, '#dealProductSelect', 'Кастомная — нестандартные валюты')
     custom_width = page.evaluate('document.documentElement.scrollWidth')
     assert custom_width <= 436, custom_width
     choose(page, '#customPayinMethod', 'Flow Sole')
@@ -368,7 +368,7 @@ def test_custom_deal_create_edit_reload_preserves_money(ui):
     expect(page.locator('#create')).to_be_visible()
     page.wait_for_load_state('networkidle')
     page.locator('#clientSearchInput').fill('QA Browser Client')
-    choose(page, '#dealKindSelect', 'Кастомная — нестандартные валюты')
+    choose(page, '#dealProductSelect', 'Кастомная — нестандартные валюты')
     expect(page.locator('#customDealSection')).to_be_visible()
     page.locator('#customPayinAmount').fill('1000')
     choose(page, '#customPayoutCurrency', 'USDT')

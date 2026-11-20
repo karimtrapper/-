@@ -895,8 +895,9 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                     <option value="">Все направления</option>
                     <option value="exchange">Обычные обмены</option>
                     <option value="realty">Недвижимость — вся</option>
-                    <option value="mf_realty">Недвижимость — лизхолд</option>
+                    <option value="mf_realty">Лизхолд через MF Corporation</option>
                     <option value="ipps_realty">Недвижимость лизхолд через ИППС</option>
+                    <option value="personal_realty">Недвижимость лизхолд через личный счёт</option>
                     <option value="mf_freehold">Недвижимость — фрихолд</option>
                     <option value="mf_auto">Оплата авто</option>
                 </select>
@@ -1124,8 +1125,9 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                             <option value="">Все</option>
                             <option value="exchange">Обмен</option>
                             <option value="realty">Недвижимость — вся</option>
-                            <option value="mf_realty">Недвижимость — лизхолд</option>
+                            <option value="mf_realty">Лизхолд через MF Corporation</option>
                             <option value="ipps_realty">Недвижимость лизхолд через ИППС</option>
+                            <option value="personal_realty">Недвижимость лизхолд через личный счёт</option>
                             <option value="mf_freehold">Недвижимость — фрихолд</option>
                             <option value="mf_auto">Оплата авто</option>
                         </select>
@@ -1212,14 +1214,30 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                             </select>
                         </div>
                         <div class="form-group">
-                            <label class="form-label">Тип сделки</label>
-                            <select class="form-control" id="dealKindSelect" onchange="onDealKindChange()">
+                            <label class="form-label" for="dealProductSelect">Тип сделки</label>
+                            <select class="form-control" id="dealProductSelect" onchange="changeDealProduct()">
+                                <option value="exchange">Обычная (обмен)</option>
+                                <option value="custom">Кастомная — нестандартные валюты</option>
+                                <option value="leasehold">Недвижимость лизхолд</option>
+                                <option value="mf_freehold">Недвижимость фрихолд</option>
+                                <option value="mf_auto">Оплата авто</option>
+                            </select>
+                            <select id="dealKindSelect" onchange="onDealKindChange()" hidden>
                                 <option value="exchange">Обычная (обмен)</option>
                                 <option value="custom">Кастомная — нестандартные валюты</option>
                                 <option value="mf_realty">Недвижимость через MF Corp</option>
                                 <option value="ipps_realty">Недвижимость лизхолд через ИППС</option>
+                                <option value="personal_realty">Недвижимость лизхолд через личный счёт</option>
                                 <option value="mf_freehold">Недвижимость фрихолд</option>
                                 <option value="mf_auto">Оплата авто</option>
+                            </select>
+                        </div>
+                        <div class="form-group" id="leaseholdPayoutRouteGroup" hidden>
+                            <label class="form-label" for="leaseholdPayoutRoute">Маршрут выплаты</label>
+                            <select class="form-control" id="leaseholdPayoutRoute" onchange="changeDealProduct()">
+                                <option value="mf_realty">MF Corporation</option>
+                                <option value="ipps_realty">ИППС</option>
+                                <option value="personal_realty">Личный счёт</option>
                             </select>
                         </div>
                     </div>
@@ -1706,6 +1724,42 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                             </div>
                             <p id="ippsProfitSummary" class="form-hint" aria-live="polite"></p>
                         </div>
+                        <div id="personalDealSection" hidden>
+                            <h3 class="section-title">Выплата застройщику</h3>
+                            <div class="form-group">
+                                <label class="form-label" for="personalPayoutMode">Способ оплаты</label>
+                                <select class="form-control" id="personalPayoutMode" onchange="changePersonalPayoutMode()">
+                                    <option value="direct_conversion">Оплата по хэшу</option>
+                                    <option value="bank_card">Из остатка карты</option>
+                                </select>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label class="form-label" for="personalPurpose">Назначение</label>
+                                    <input class="form-control" id="personalPurpose" maxlength="200">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label" for="personalPayoutSource">Личный счёт</label>
+                                    <select class="form-control" id="personalPayoutSource" disabled>
+                                        <option value="">Выберите личный счёт</option>
+                                    </select>
+                                    <small id="personalSourceBalance" class="form-hint"></small>
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label class="form-label" for="personalPayoutThb">Фактическая выплата, THB</label>
+                                    <input type="number" class="form-control" id="personalPayoutThb" min="0.01" max="999999999999.99" step="0.01" disabled>
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label" for="personalCostUsdt">Себестоимость, USDT</label>
+                                    <input class="form-control" id="personalCostUsdt" placeholder="По курсу счёта" readonly>
+                                </div>
+                            </div>
+                            <div id="personalFounderSlot"></div>
+                            <p id="personalPreviewError" class="form-hint" role="status"></p>
+                            <p id="personalProfitSummary" class="form-hint" aria-live="polite"></p>
+                        </div>
                         <!-- Недвижимость фрихолд: оплата застройщику SWIFT-ом -->
                         <div id="fhDealSection" style="display:none;">
                             <h3 id="swiftPaymentTitle" style="margin-bottom: 1rem; color: #0e7490;">Оплата застройщику (фрихолд)</h3>
@@ -1859,6 +1913,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                             </div>
                         </div>
 
+                        <div id="founderGroupHome" hidden></div>
                         <div class="form-row" id="founderGroup" style="display:none;">
                             <div class="form-group">
                                 <label class="form-label">Фаундер (кто оплатил)</label>
@@ -1871,7 +1926,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                                 <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:0.75rem;
                                               padding:8px 10px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;">
                                     <input type="checkbox" id="payoutNoConversion" onchange="toggleNoConversion()">
-                                    <span style="font-weight:600;color:#334155;">Фаундер выдал свои баты — конвертации не было</span>
+                                    <span id="payoutNoConversionLabel" style="font-weight:600;color:#334155;">Фаундер выдал свои баты — конвертации не было</span>
                                 </label>
 
                                 <!-- Своими батами: переводов нет, сумму возврата ставит менеджер -->
@@ -1909,7 +1964,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                                 <div id="payoutSettledHint" style="font-size:0.82rem;color:#64748b;margin:-4px 0 10px 10px;"></div>
 
                                 <div id="payoutTransfersBox">
-                                <label class="form-label">Переводы выдачи с кошелька фаундера
+                                <label class="form-label"><span id="payoutTransfersLabel">Переводы выдачи с кошелька фаундера</span>
                                     <span style="font-weight:400;color:#64748b;">— можно несколько, суммируются</span></label>
                                 <div style="display:flex; gap:6px; margin-bottom:0.5rem;">
                                     <select class="form-control" id="payoutTxSelect" onchange="selectPayoutTx(this)"
@@ -3470,6 +3525,14 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                         <option value="Теодор">Теодор</option>
                     </select>
                 </div>
+                <div class="form-group">
+                    <label class="form-label" for="newCardPersonalOwner">Личный счёт для выплат застройщикам</label>
+                    <select class="form-control" id="newCardPersonalOwner" name="personal_owner">
+                        <option value="">Обычная карта</option>
+                        <option value="andrey">Андрей</option>
+                        <option value="theodor">Теодор</option>
+                    </select>
+                </div>
                 <button type="submit" class="btn btn-success" style="width: 100%;">Создать карту</button>
             </form>
         </div>
@@ -3522,6 +3585,27 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                         maxlength="120" placeholder="Хэш TRON или банковский референс">
                 </div>
                 <button type="submit" class="btn btn-primary" style="width: 100%;">Пополнить карту</button>
+            </form>
+        </div>
+    </div>
+
+    <div id="personalOwnerModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">Назначить личный счёт</h3>
+                <button type="button" class="modal-close" onclick="closePersonalOwnerModal()" aria-label="Закрыть">&times;</button>
+            </div>
+            <form id="personalOwnerForm">
+                <div class="form-group">
+                    <label class="form-label" for="personalOwnerSelect">Личный счёт для выплат застройщикам</label>
+                    <select class="form-control" id="personalOwnerSelect">
+                        <option value="">Обычная карта</option>
+                        <option value="andrey">Андрей</option>
+                        <option value="theodor">Теодор</option>
+                    </select>
+                </div>
+                <p class="form-hint" role="status"></p>
+                <button type="submit" class="btn btn-primary" style="width:100%;">Сохранить</button>
             </form>
         </div>
     </div>
@@ -5180,15 +5264,24 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                             <hr style="margin: 1rem 0;">
                         ` : ''}
 
-                        ${deal.deal_kind === 'ipps_realty' ? `
-                            <h4>Недвижимость лизхолд через ИППС</h4>
+                        ${isCardLeasehold(deal.deal_kind) ? `
+                            <h4>${getDealKindLabel(deal.deal_kind)}</h4>
                             ${deal.realty_purpose ? `<p><strong>Назначение:</strong> ${escapeHtml(deal.realty_purpose)}</p>` : ''}
-                            <p><strong>Источник:</strong> ${escapeHtml(deal.bank_card_name || 'Счёт ИППС')}</p>
+                            <p><strong>Источник:</strong> ${escapeHtml(deal.bank_card_name ||
+                                (deal.deal_kind === 'ipps_realty' ? 'Счёт ИППС' : deal.payout_founder_name || 'Личный счёт'))}</p>
                             <p><strong>Выплачено:</strong> ${dealPayoutThbText(deal)}</p>
                             <p><strong>Себестоимость:</strong> ${deal.payout_amount_usdt ? deal.payout_amount_usdt.toFixed(2) + ' USDT' : '—'}</p>
+                            ${deal.payout_source === 'founder_personal' ? `
+                                ${deal.payout_no_conversion ? '<p>Фаундер оплатил своими батами</p>' : ''}
+                                ${(deal.payout_tx_hashes || []).map(tx => `<p><a href="${txExplorerUrl(tx.hash, tx.network)}"
+                                    target="_blank" rel="noopener noreferrer">${escapeHtml(tx.hash)}</a>
+                                    ${tx.amount_usdt != null ? ' · ' + Number(tx.amount_usdt).toFixed(2) + ' USDT' : ''}</p>`).join('')}
+                                ${deal.reimbursement_id ? `<p><strong>Возмещение:</strong> #${Number(deal.reimbursement_id)}</p>`
+                                    : (deal.needs_reimbursement ? '<p>Ожидает возмещения</p>' : '')}
+                            ` : ''}
                             <hr style="margin: 1rem 0;">
                         ` : ''}
-                        ${['mf_realty', 'mf_freehold', 'mf_auto', 'ipps_realty'].includes(deal.deal_kind) ? '' : `
+                        ${['mf_realty', 'mf_freehold', 'mf_auto', 'ipps_realty', 'personal_realty'].includes(deal.deal_kind) ? '' : `
                         <h4 style="color: #ef4444; margin-bottom: 0.5rem;">Pay-Out</h4>
                         ${deal.is_custom ? `
                             <p><strong>Валюта:</strong> ${deal.custom_payout_currency}</p>
@@ -5290,7 +5383,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                         <p><strong>Чистая прибыль:</strong>
                             ${profitUnknown
                             ? '<span style="color: #f59e0b; font-weight: 600;">Ожидает возмещения</span>'
-                            : `<span style="color: #10b981; font-weight: 600; font-size: 1.15rem;">$${(deal.net_profit_usdt != null && (deal.referrer_name || ['mf_realty', 'mf_freehold', 'mf_auto', 'ipps_realty'].includes(deal.deal_kind)) ? deal.net_profit_usdt : (deal.profit_usdt || 0)).toFixed(2)}</span>`
+                            : `<span style="color: #10b981; font-weight: 600; font-size: 1.15rem;">$${(deal.net_profit_usdt != null && (deal.referrer_name || ['mf_realty', 'mf_freehold', 'mf_auto', 'ipps_realty', 'personal_realty'].includes(deal.deal_kind)) ? deal.net_profit_usdt : (deal.profit_usdt || 0)).toFixed(2)}</span>`
                             // Лизхолд: доход в двух карманах — комиссия лежит батами
                             // на MF Corp, в USDT остаётся только остаток кошелька
                             + (deal.deal_kind === 'mf_realty'
@@ -5550,7 +5643,9 @@ select.period-btn:hover:not(.active) { color: var(--text); }
 
                     flowSoleProofVerified = !!deal.payin_tx_verified;
                     const kindSelect = document.getElementById('dealKindSelect');
+                    kindSelect.disabled = isLeaseholdKind(deal.deal_kind);
                     kindSelect.querySelector('[value="ipps_realty"]').disabled = deal.deal_kind !== 'ipps_realty';
+                    kindSelect.querySelector('[value="personal_realty"]').disabled = deal.deal_kind !== 'personal_realty';
 
                     // Обновляем заголовок
                     document.querySelector('#create .card-title').innerHTML =
@@ -5629,7 +5724,18 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                             document.getElementById('ippsPayoutThb').value = deal.payout_amount_thb ?? '';
                             renderIppsCards(deal.bank_card_id, deal.bank_card_name);
                             requestIppsCostPreview();
+                        } else if (deal.deal_kind === 'personal_realty') {
+                            kindSelect.value = 'personal_realty';
+                            const mode = document.getElementById('personalPayoutMode');
+                            mode.value = deal.payout_source === 'bank_card' ? 'bank_card' : 'direct_conversion';
+                            mode.disabled = true;
+                            onDealKindChange();
+                            document.getElementById('personalPurpose').value = deal.realty_purpose || '';
+                            document.getElementById('personalPayoutThb').value = deal.payout_amount_thb ?? '';
+                            if (mode.value === 'bank_card') renderPersonalCards(deal.bank_card_id, deal.bank_card_name);
+                            requestPersonalCostPreview();
                         }
+                        syncVisibleDealKind();
 
                         // Заполняем обычную форму
                         if (deal.payin_method) {
@@ -5689,7 +5795,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                         }
                         payinExtraRender();
                         if (deal.payout_method) form.payout_method.value = deal.payout_method;
-                        if (deal.payout_source && deal.deal_kind !== 'ipps_realty') {
+                        if (deal.payout_source && !isCardLeasehold(deal.deal_kind)) {
                             document.getElementById('payoutSource').value = deal.payout_source;
                             document.getElementById('payoutSource').dispatchEvent(new Event('change'));
                         }
@@ -5706,7 +5812,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
 
                         // Для карты: возвращаем ту же карту, с которой выдавали, иначе
                         // сохранение отвязало бы сделку от неё и вернуло списанные баты
-                        if (deal.payout_source === 'bank_card' && deal.bank_card_id && deal.deal_kind !== 'ipps_realty') {
+                        if (deal.payout_source === 'bank_card' && deal.bank_card_id && !isCardLeasehold(deal.deal_kind)) {
                             const cardSel = document.getElementById('bankCardSelect');
                             if (cardSel) {
                                 cardSel.value = deal.bank_card_id;
@@ -5717,9 +5823,13 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                         // Для личных фаундера
                         if (deal.payout_source === 'founder_personal' && deal.payout_founder_name) {
                             form.payout_founder_name.value = deal.payout_founder_name;
-                            payoutTxPool = (deal.payout_tx_hashes || []).map(t => ({
+                            payoutTxPool = (deal.payout_tx_hashes || []).map((t, index) => ({
                                 hash: t.hash, amount_usdt: t.amount_usdt,
                                 from_address: t.from_address || '', to_address: t.to_address || '',
+                                ...(isPersonalDirect(deal.deal_kind) ? {
+                                    network: t.network || 'trc20', date: t.date || '',
+                                    wallet_id: index === 0 ? deal.payout_wallet_id : null,
+                                } : {}),
                                 wallet_label: deal.payout_wallet_label || '',
                             }));
                             const hashInput = document.getElementById('payoutFounderHash');
@@ -5786,7 +5896,10 @@ select.period-btn:hover:not(.active) { color: var(--text); }
             const kindSelect = document.getElementById('dealKindSelect');
             kindSelect.disabled = false;
             kindSelect.querySelector('[value="ipps_realty"]').disabled = false;
+            kindSelect.querySelector('[value="personal_realty"]').disabled = false;
             renderIppsCards();
+            renderPersonalCards(null);
+            document.getElementById('personalPayoutMode').disabled = false;
             // Сбрасываем агентов обеих форм
             stdAgents = []; renderStdAgents();
             customAgents = []; renderCustomAgents();
@@ -5796,6 +5909,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
             // form.reset() снял бы галку, но блоки остались бы в прежнем виде
             const noConvBox = document.getElementById('payoutNoConversion');
             if (noConvBox) { noConvBox.checked = false; toggleNoConversion(); }
+            delete document.getElementById('payoutSettledByPayin').dataset.touched;
             const noConvUsdt = document.getElementById('noConvUsdt');
             if (noConvUsdt) noConvUsdt.value = '';
             const noConvWallet = document.getElementById('noConvWallet');
@@ -6911,6 +7025,77 @@ select.period-btn:hover:not(.active) { color: var(--text); }
             }, 150);
         }
 
+        let personalCards = [];
+        let personalPreviewTimer;
+        let personalPreviewVersion = 0;
+
+        function renderPersonalCards(savedId, savedName) {
+            const source = document.getElementById('personalPayoutSource');
+            const current = source.value;
+            if (savedId !== undefined) {
+                source.dataset.savedId = savedId || '';
+                source.dataset.savedName = savedName || '';
+            }
+            const retained = source.dataset.savedId;
+            const options = personalCards.map(card => new Option(
+                [card.bank_name, card.card_name, personalOwnerLabel(card.personal_owner)].filter(Boolean).join(' · '),
+                card.id
+            ));
+            if (retained && !options.some(option => option.value === retained)) {
+                options.push(new Option(source.dataset.savedName || 'Личный счёт', retained));
+            }
+            source.replaceChildren(new Option(personalCards.length ? 'Выберите личный счёт' : 'Личные счета не настроены', ''), ...options);
+            source.value = retained || (savedId === null ? '' : current);
+            if (source.selectedIndex < 0) source.value = '';
+            if (!source.value && personalCards.length === 1) source.value = personalCards[0].id;
+            source.disabled = Boolean(retained) || !personalCards.length;
+            updatePersonalSourceBalance();
+        }
+
+        function updatePersonalSourceBalance() {
+            const id = Number(document.getElementById('personalPayoutSource').value);
+            const card = personalCards.find(card => card.id === id);
+            document.getElementById('personalSourceBalance').textContent =
+                card ? 'Остаток ' + formatThbAmount(card.balance_thb) + ' THB' : '';
+        }
+
+        function requestPersonalCostPreview() {
+            const version = ++personalPreviewVersion;
+            clearTimeout(personalPreviewTimer);
+            if (document.getElementById('dealKindSelect').value !== 'personal_realty' || isPersonalDirect()) return;
+            const cost = document.getElementById('personalCostUsdt');
+            const payout = document.getElementById('personalPayoutThb');
+            const cardId = Number(document.getElementById('personalPayoutSource').value);
+            const status = document.getElementById('personalPreviewError');
+            status.textContent = '';
+            cost.value = '';
+            calculateProfit();
+            if (!cardId || !payout.value || !payout.validity.valid) return;
+            const data = { bank_card_id: cardId, payout_amount_thb: payout.valueAsNumber };
+            if (editingDealId !== null) data.deal_id = editingDealId;
+            const isLatest = () => version === personalPreviewVersion &&
+                document.getElementById('dealKindSelect').value === 'personal_realty' && !isPersonalDirect();
+            personalPreviewTimer = setTimeout(async () => {
+                try {
+                    const response = await fetch(`${API_URL}/api/deals/personal-preview`, {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(data),
+                    });
+                    const result = await response.json();
+                    if (!isLatest()) return;
+                    if (!result.success) {
+                        status.textContent = result.error || 'Не удалось рассчитать себестоимость';
+                        return;
+                    }
+                    const amount = (result.result || result).payout_amount_usdt;
+                    cost.value = amount == null ? '' : Number(amount).toFixed(2);
+                    calculateProfit();
+                } catch (error) {
+                    if (isLatest()) status.textContent = 'Не удалось рассчитать себестоимость';
+                }
+            }, 150);
+        }
+
         async function loadBankCardsForSelect() {
             try {
                 const response = await fetch(`${API_URL}/api/cards/balance`);
@@ -6918,6 +7103,9 @@ select.period-btn:hover:not(.active) { color: var(--text); }
 
                 if (data.success) {
                     ippsCards = data.cards.filter(card => card.is_ipps);
+                    personalCards = data.cards.filter(card => personalOwnerLabel(card.personal_owner) && !card.is_ipps);
+                    renderPersonalCards();
+                    requestPersonalCostPreview();
                     if (editingDealId === null) {
                         renderIppsCards();
                         requestIppsCostPreview();
@@ -7669,6 +7857,69 @@ select.period-btn:hover:not(.active) { color: var(--text); }
         let swiftDealKind = 'mf_freehold';
         function isAutoDeal() { return swiftDealKind === 'mf_auto'; }
 
+        function isLeaseholdKind(kind) {
+            return kind === 'mf_realty' || isCardLeasehold(kind);
+        }
+
+        function isCardLeasehold(kind) {
+            return kind === 'ipps_realty' || kind === 'personal_realty';
+        }
+
+        function changeDealProduct() {
+            const product = document.getElementById('dealProductSelect').value;
+            const kind = document.getElementById('dealKindSelect');
+            kind.value = product === 'leasehold' ? document.getElementById('leaseholdPayoutRoute').value : product;
+            onDealKindChange();
+        }
+
+        function syncVisibleDealKind() {
+            const kind = document.getElementById('dealKindSelect');
+            const product = document.getElementById('dealProductSelect');
+            if (!product) return;
+            const leasehold = isLeaseholdKind(kind.value);
+            product.value = leasehold ? 'leasehold' : kind.value;
+            product.disabled = kind.disabled;
+            document.getElementById('leaseholdPayoutRouteGroup').hidden = !leasehold;
+            const route = document.getElementById('leaseholdPayoutRoute');
+            route.disabled = kind.disabled;
+            if (leasehold) route.value = kind.value;
+        }
+
+        function isPersonalDirect(kind = document.getElementById('dealKindSelect').value) {
+            return kind === 'personal_realty' && document.getElementById('personalPayoutMode').value === 'direct_conversion';
+        }
+
+        function changePersonalPayoutMode() {
+            applyRealtyLayout();
+            requestPersonalCostPreview();
+            calculateProfit();
+        }
+
+        function applyPersonalPayoutLayout(personal) {
+            const direct = personal && isPersonalDirect();
+            const group = document.getElementById('founderGroup');
+            const slot = document.getElementById('personalFounderSlot');
+            const source = document.getElementById('payoutSource');
+            const wasDirect = group.parentElement === slot;
+            document.getElementById('personalPayoutSource').closest('.form-group').hidden = direct;
+            if (direct !== wasDirect) {
+                document.getElementById('payoutNoConversionLabel').textContent = direct
+                    ? 'Фаундер оплатил своими батами — конвертации не было'
+                    : 'Фаундер выдал свои баты — конвертации не было';
+                document.getElementById('payoutTransfersLabel').textContent = direct
+                    ? 'Переводы USDT для выплаты застройщику' : 'Переводы выдачи с кошелька фаундера';
+            }
+            if (direct && !wasDirect) {
+                slot.append(group);
+                source.value = 'founder_personal';
+                source.dispatchEvent(new Event('change'));
+            } else if (!direct && wasDirect) {
+                document.getElementById('founderGroupHome').after(group);
+                source.value = 'cash_batch';
+                source.dispatchEvent(new Event('change'));
+            }
+        }
+
         function onDealKindChange() {
             const kind = document.getElementById('dealKindSelect').value;
             const custom = document.getElementById('customDealToggle');
@@ -7682,6 +7933,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
             toggleMfDeal();
             toggleFhDeal();
             requestIppsCostPreview();
+            requestPersonalCostPreview();
         }
 
         function syncDealKindSelect() {
@@ -7690,19 +7942,27 @@ select.period-btn:hover:not(.active) { color: var(--text); }
             sel.value = document.getElementById('mfDealToggle')?.checked ? 'mf_realty'
                 : document.getElementById('fhDealToggle')?.checked ? swiftDealKind
                 : (document.getElementById('customDealToggle')?.checked ? 'custom'
-                    : (sel.value === 'ipps_realty' ? sel.value : 'exchange'));
+                    : (isCardLeasehold(sel.value) ? sel.value : 'exchange'));
+            syncVisibleDealKind();
         }
 
         // Для специальных типов сделки обычная выдача и её расчёт скрыты.
         function applyRealtyLayout() {
             const ipps = document.getElementById('dealKindSelect')?.value === 'ipps_realty';
-            const realty = ipps || document.getElementById('mfDealToggle')?.checked
+            const personal = document.getElementById('dealKindSelect')?.value === 'personal_realty';
+            const realty = ipps || personal || document.getElementById('mfDealToggle')?.checked
                 || document.getElementById('fhDealToggle')?.checked;
             const ippsSection = document.getElementById('ippsDealSection');
             if (ippsSection) ippsSection.style.display = ipps ? 'block' : 'none';
             const amount = document.getElementById('ippsPayoutThb');
             amount.disabled = !ipps;
             amount.required = ipps;
+            const personalSection = document.getElementById('personalDealSection');
+            personalSection.hidden = !personal;
+            const personalAmount = document.getElementById('personalPayoutThb');
+            personalAmount.disabled = !personal;
+            personalAmount.required = personal;
+            applyPersonalPayoutLayout(personal);
             const payout = document.getElementById('payoutSectionStd');
             if (payout) payout.style.display = realty ? 'none' : 'block';
             ['payout_method', 'payout_source'].forEach(name => {
@@ -9004,7 +9264,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
         function realtyPayinRecalc() {
             if (document.getElementById('mfDealToggle')?.checked) mfRecalc();
             if (document.getElementById('fhDealToggle')?.checked) fhRecalc();
-            if (document.getElementById('dealKindSelect')?.value === 'ipps_realty') calculateProfit();
+            if (isCardLeasehold(document.getElementById('dealKindSelect')?.value)) calculateProfit();
         }
 
         function autoCalcUsdt() {
@@ -9022,20 +9282,25 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                 form.payin_amount_usdt.value = (rub / rate).toFixed(2);
             }
             realtyPayinRecalc();
-            if (document.getElementById('dealKindSelect')?.value !== 'ipps_realty') calculateProfit();
+            if (!isCardLeasehold(document.getElementById('dealKindSelect')?.value)) calculateProfit();
             payinExtraSummary();
         }
 
         function calculateProfit() {
             const form = document.getElementById('createDealForm');
             const payinUsdt = parseFloat(form.payin_amount_usdt.value) || 0;
-            if (document.getElementById('dealKindSelect')?.value === 'ipps_realty') {
-                const cost = Number(document.getElementById('ippsCostUsdt').value);
+            const kind = document.getElementById('dealKindSelect')?.value;
+            if (isCardLeasehold(kind)) {
+                const prefix = kind === 'ipps_realty' ? 'ipps' : 'personal';
+                const costField = document.getElementById(prefix + 'CostUsdt');
+                const direct = isPersonalDirect(kind);
+                const cost = direct ? noConversionCost() || payoutTxPoolTotal() : Number(costField.value);
+                if (direct) costField.value = cost > 0 ? cost.toFixed(2) : '';
                 const payin = payinUsdt + payinExtraSerialize().reduce((sum, part) => sum + (part.amount_usdt || 0), 0);
                 const gross = payin > 0 && cost > 0 ? Math.round((payin - cost) * 100) / 100 : 0;
                 _stdGross = { profit: gross, volume: payin > 0 && cost > 0 ? Math.max(payin, cost) : 0 };
                 stdAgentsRecalc();
-                document.getElementById('ippsProfitSummary').textContent =
+                document.getElementById(prefix + 'ProfitSummary').textContent =
                     payin > 0 && cost > 0 ? 'Валовая прибыль ' + gross.toFixed(2) + ' USDT' : '';
                 return;
             }
@@ -9189,6 +9454,18 @@ select.period-btn:hover:not(.active) { color: var(--text); }
         });
         document.getElementById('payoutSource')?.addEventListener('change', calculateProfit);
         document.getElementById('bankCardSelect')?.addEventListener('change', calculateProfit);
+        document.getElementById('personalPayoutThb').addEventListener('input', () => {
+            if (isPersonalDirect()) {
+                if (noConversionOn()) calcNoConvRate();
+                else payoutRefreshInfo();
+            } else {
+                requestPersonalCostPreview();
+            }
+        });
+        document.getElementById('personalPayoutSource').addEventListener('change', () => {
+            updatePersonalSourceBalance();
+            requestPersonalCostPreview();
+        });
         document.getElementById('ippsPayoutThb').addEventListener('input', requestIppsCostPreview);
         document.getElementById('ippsPayoutSource').addEventListener('change', () => {
             updateIppsSourceBalance();
@@ -9297,6 +9574,20 @@ select.period-btn:hover:not(.active) { color: var(--text); }
             // сделка #502 показывала −$6304, вычитая всю отправку из одной части
             data.payin_extra = payinExtraSerialize();
 
+            const kind = document.getElementById('dealKindSelect')?.value;
+            const direct = isPersonalDirect(kind);
+            if (direct) {
+                data.deal_kind = kind;
+                data.realty_purpose = document.getElementById('personalPurpose').value.trim() || null;
+                data.payout_method = 'transfer';
+                data.payout_source = 'founder_personal';
+                data.payout_amount_thb = document.getElementById('personalPayoutThb').valueAsNumber;
+                delete data.bank_card_id;
+                delete data.cash_batch_id;
+                delete data.payout_tx_hash;
+                delete data.payout_amount_usdt;
+            }
+
             // Выдача с кошелька фаундера: из хеша вытащим сумму возврата и кошелёк.
             // Сумму сеть подставит сама, поэтому в payload уходит хотя бы хеш.
             if (data.payout_source === 'founder_personal') {
@@ -9320,9 +9611,12 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                     const parts = payoutTxPool.map(t => ({
                         hash: t.hash, amount_usdt: t.amount_usdt,
                         from_address: t.from_address || '', to_address: t.to_address || '',
+                        ...(direct ? { network: t.network || 'trc20', date: t.date || '' } : {}),
                     }));
                     // Хеш вбили, но разбор из сети не успел вернуться — не теряем его
-                    if (manual && !parts.some(x => x.hash === manual)) parts.push({ hash: manual });
+                    if (manual && !parts.some(x => x.hash === manual)) {
+                        parts.push(direct ? { hash: manual, network: 'trc20' } : { hash: manual });
+                    }
                     if (parts.length) {
                         data.payout_tx_hashes = parts;
                         // Кошелёк возврата = кошелёк выдачи. wallet_id есть только
@@ -9337,10 +9631,16 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                 }
             }
 
-            if (document.getElementById('dealKindSelect')?.value === 'ipps_realty') {
-                const cardId = Number(document.getElementById('ippsPayoutSource').value);
+            if (direct) {
+                if (!data.payout_no_conversion && !data.payout_tx_hashes?.length) {
+                    showToast('Добавьте хэш исходящего перевода', 'error');
+                    return;
+                }
+            } else if (isCardLeasehold(kind)) {
+                const prefix = kind === 'ipps_realty' ? 'ipps' : 'personal';
+                const cardId = Number(document.getElementById(prefix + 'PayoutSource').value);
                 if (!cardId) {
-                    showToast('Выберите активный счёт ИППС', 'error');
+                    showToast(kind === 'ipps_realty' ? 'Выберите активный счёт ИППС' : 'Выберите личный счёт', 'error');
                     return;
                 }
                 for (const field of ['cash_batch_id', 'payout_wallet_id',
@@ -9349,12 +9649,12 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                     delete data[field];
                 }
                 Object.assign(data, {
-                    deal_kind: 'ipps_realty',
-                    realty_purpose: document.getElementById('ippsPurpose').value.trim() || null,
+                    deal_kind: kind,
+                    realty_purpose: document.getElementById(prefix + 'Purpose').value.trim() || null,
                     payout_method: 'transfer',
                     payout_source: 'bank_card',
                     bank_card_id: cardId,
-                    payout_amount_thb: document.getElementById('ippsPayoutThb').valueAsNumber,
+                    payout_amount_thb: document.getElementById(prefix + 'PayoutThb').valueAsNumber,
                 });
             } else if (document.getElementById('mfDealToggle')?.checked) {
                 Object.assign(data, mfFormData());
@@ -9414,6 +9714,12 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                     // сделку сохранили, но цифру надо перепроверить
                     if (result.warning) showToast(result.warning, 'error', 10000);
                     this.reset();
+                    if (kind === 'personal_realty') {
+                        delete document.getElementById('payoutSettledByPayin').dataset.touched;
+                        payoutTxPool = [];
+                        renderPayoutTxPool();
+                        renderPersonalCards(null);
+                    }
                     stdAgents = []; renderStdAgents();
                     sberReset();
                     resetPayinTxPool([]);
@@ -10839,7 +11145,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                                         <br>
                                         <small style="color: #888;">${formatDate(row.at)}</small>
                                         ${note ? `<br><small style="color:#888;">${escapeHtml(note)}</small>` : ''}
-                                        ${it.reference ? `<br><small style="color:#888;word-break:break-all;">${it.reference}</small>` : ''}
+                                        ${it.reference ? `<br><small style="color:#888;word-break:break-all;">${escapeHtml(it.reference)}</small>` : ''}
                                     </div>
                                     <div style="text-align: right; white-space: nowrap;">
                                         <div style="color: ${color}; font-weight: bold;">
@@ -10956,7 +11262,12 @@ select.period-btn:hover:not(.active) { color: var(--text); }
         function renderPayoutTxPool() {
             const box = document.getElementById('payoutTxPoolBox');
             if (!box) return;
-            if (!payoutTxPool.length) { box.innerHTML = ''; payoutRefreshInfo(); return; }
+            if (!payoutTxPool.length) {
+                box.innerHTML = '';
+                payoutRefreshInfo();
+                if (isPersonalDirect()) calculateProfit();
+                return;
+            }
             box.innerHTML = payoutTxPool.map((t, i) => `
                 <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:4px 8px;margin-bottom:4px;font-size:0.85rem;">
                     <div style="display:flex;align-items:center;gap:0.5rem;">
@@ -11007,7 +11318,8 @@ select.period-btn:hover:not(.active) { color: var(--text); }
             const hint = document.getElementById('payoutSettledHint');
             if (!hint) return;
             hint.textContent = payoutSettledOn()
-                ? 'Сделка закроется сразу, в очередь возмещений не попадёт.'
+                ? (isPersonalDirect() ? 'Приход покрывает выплату. Возмещение не требуется.'
+                    : 'Сделка закроется сразу, в очередь возмещений не попадёт.')
                 : 'Отправлено наперёд: сделка встанет в очередь возмещений, вернём фаундеру позже.';
             if (typeof calculateProfit === 'function') calculateProfit();
         }
@@ -11101,7 +11413,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
             const base = 'С кошельков ничего не уходило, поэтому хеша выдачи нет. ' +
                          'Сумму ставит менеджер — именно её вернём фаундеру, когда придёт конвертация.';
             const usdt = noConversionCost();
-            const thb = parseFloat(document.getElementById('payoutAmountThb')?.value) || 0;
+            const thb = parseFloat(document.getElementById(isPersonalDirect() ? 'personalPayoutThb' : 'payoutAmountThb')?.value) || 0;
             if (!usdt || !thb) {
                 info.style.background = '#eff6ff'; info.style.color = '#1e40af';
                 info.textContent = base;
@@ -11143,6 +11455,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
             if (total) total.innerHTML = `Переводов: ${payoutTxPool.length} · итого $${payoutTxPoolTotal().toFixed(2)}`;
             payoutRefreshInfo();
             payoutRefreshOverNotes();
+            if (isPersonalDirect()) calculateProfit();
         }
 
         function payoutRefreshOverNotes() {
@@ -11169,11 +11482,13 @@ select.period-btn:hover:not(.active) { color: var(--text); }
             if (!box) return;
             if (!payoutTxPool.length) {
                 box.style.background = '#fef3c7'; box.style.color = '#92400e';
-                box.innerHTML = 'Выберите перевод, которым выдали клиенту — по нему подтянутся кошелёк и сумма.';
+                box.textContent = isPersonalDirect()
+                    ? 'Выберите перевод за конвертацию для выплаты застройщику.'
+                    : 'Выберите перевод, которым выдали клиенту — по нему подтянутся кошелёк и сумма.';
                 return;
             }
             const total = payoutTxPoolTotal();
-            const thb = parseFloat(document.querySelector('[name=payout_amount_thb]')?.value) || 0;
+            const thb = parseFloat(document.getElementById(isPersonalDirect() ? 'personalPayoutThb' : 'payoutAmountThb')?.value) || 0;
             const rate = (thb && total) ? (thb / total) : null;
             const wallets = [...new Set(payoutTxPool.map(t => t.wallet_label || t.from_address).filter(Boolean))];
             // Курс выдачи — главная проверка «тот ли перевод». Мимо коридора —
@@ -11391,6 +11706,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                     }
                     el.value = '';
                     renderPayoutTxPool();
+                    if (isPersonalDirect()) syncPayoutSettledDefault();
                 } catch (e) {
                     box.style.background = '#fef2f2'; box.style.color = '#b91c1c';
                     box.innerHTML = 'Не удалось прочитать перевод';
@@ -11432,6 +11748,54 @@ select.period-btn:hover:not(.active) { color: var(--text); }
         });
 
         // ==================== Bank Cards ====================
+        const personalOwners = { andrey: 'Андрей', theodor: 'Теодор' };
+
+        function personalOwnerLabel(owner) {
+            return Object.hasOwn(personalOwners, owner) ? personalOwners[owner] : '';
+        }
+
+        function closePersonalOwnerModal() {
+            const modal = document.getElementById('personalOwnerModal');
+            if (modal.querySelector('button[type="submit"]').disabled) return;
+            modal.classList.remove('active');
+        }
+
+        function openPersonalOwnerModal(cardId, personalOwner) {
+            const form = document.getElementById('personalOwnerForm');
+            form.dataset.cardId = cardId;
+            form.querySelector('[role="status"]').textContent = '';
+            document.getElementById('personalOwnerSelect').value = personalOwner || '';
+            document.getElementById('personalOwnerModal').classList.add('active');
+        }
+
+        document.getElementById('personalOwnerForm').addEventListener('submit', async function (event) {
+            event.preventDefault();
+            const button = this.querySelector('button[type="submit"]');
+            const status = this.querySelector('[role="status"]');
+            button.disabled = true;
+            status.textContent = '';
+            try {
+                const response = await fetch(`${API_URL}/api/cards/${this.dataset.cardId}/personal-owner`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ personal_owner: document.getElementById('personalOwnerSelect').value || null }),
+                });
+                const result = await response.json();
+                if (!response.ok || !result.success) {
+                    status.textContent = typeof result.error === 'string' ? result.error : 'Не удалось сохранить настройки счёта';
+                    return;
+                }
+                button.disabled = false;
+                closePersonalOwnerModal();
+                showToast('Настройки счёта сохранены');
+                await Promise.all([loadBankCards(), loadBankCardsForSelect()]);
+            } catch (error) {
+                status.textContent = 'Не удалось сохранить настройки счёта';
+            } finally {
+                button.disabled = false;
+            }
+        });
+
         function renderBalanceCard(card) {
             const recentTopups = (card.topups || []).filter(t => t.source_type !== 'card_transfer_cash_cancelled').slice(0, 3);
             return `
@@ -11440,6 +11804,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                     <div>
                         <h4 style="margin-bottom: 0.5rem; color: #1a1a2e; font-weight: 600;">${escapeHtml(card.bank_name)} - ${escapeHtml(card.card_name || 'Без названия')}</h4>
                         <p style="color: #666; font-size: 0.9rem;">${escapeHtml(card.holder_name || 'Неизвестно')} | ${formatDate(card.created_at)}</p>
+                        ${card.personal_owner ? `<p style="font-size:0.85rem;">Личный счёт · ${personalOwnerLabel(card.personal_owner)}</p>` : ''}
                     </div>
                     <div style="text-align: right;">
                         <div style="font-size: 1.25rem; font-weight: 600; color: ${card.balance_thb < 0 ? '#ef4444' : '#10b981'};">${formatThbAmount(card.balance_thb)} ฿</div>
@@ -11472,6 +11837,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                         : `transferCard(${card.id}, ${card.balance_thb}, false, ${card.latest_purchase_rate || 0})`}">Перевести</button>
                     <button class="btn btn-sm btn-warning" onclick="adjustCard(${card.id}, ${card.balance_thb}, false, ${card.latest_purchase_rate || 0})">Списать</button>
                     <button class="btn btn-sm btn-info" onclick="showCardHistory(${card.id})">История</button>
+                    ${!card.is_ipps ? `<button class="btn btn-sm btn-secondary" onclick="openPersonalOwnerModal(${card.id}, '${personalOwnerLabel(card.personal_owner) ? card.personal_owner : ''}')">Назначить личный счёт</button>` : ''}
                     ${!card.topups?.length ? `
                         <button class="btn btn-sm btn-danger" onclick="deleteCard(${card.id})">Удалить</button>
                     ` : ''}
@@ -11638,6 +12004,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                     this.reset();
                     closeAddCardModal();
                     loadBankCards();
+                    loadBankCardsForSelect();
                 } else {
                     showToast('Ошибка при создании карты: ' + (result.error || 'Неизвестная ошибка', 'error'));
                 }
@@ -11908,6 +12275,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
             }
             if (i.deal?.deal_kind === 'mf_realty') return 'недвижка (лизхолд)';
             if (i.deal?.deal_kind === 'ipps_realty') return 'недвижимость лизхолд через ИППС';
+            if (i.deal?.deal_kind === 'personal_realty') return 'недвижимость лизхолд через личный счёт';
             if (i.deal?.deal_kind === 'mf_freehold') return 'недвижка (фрихолд)';
             if (i.deal?.deal_kind === 'mf_auto') return 'оплата авто';
             if (i.deal) return 'обмен';
@@ -12697,6 +13065,8 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                                         ? `<span style="color:#6b7280;"> → вернуть <strong>${formatNumber(deal.payout_amount_usdt || 0)} USDT</strong></span>
                                            <div style="font-size:0.8rem;color:#92400e;padding-left:1.5rem;">свои баты, конвертации не было</div>`
                                         : '';
+                                    const fixedCents = deal.deal_kind === 'personal_realty' && deal.payout_source === 'founder_personal'
+                                        ? Math.round(Number(deal.payout_amount_usdt) * 100) : 0;
                                     const payoutCost = !deal.payout_no_conversion && deal.payout_amount_usdt
                                         ? `<span style="color:#92400e;"> → к возмещению <strong>${formatNumber(deal.payout_amount_usdt)} USDT</strong></span>`
                                         : '';
@@ -12705,7 +13075,8 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                                         <input type="checkbox" class="reimburse-deal" data-founder="${founder.founder_name}" data-deal-id="${deal.id}" data-thb="${thbForCheckbox}" checked onchange="updateReimbursementTotal('${founder.founder_name}')">
                                         <span style="flex:1;">Сделка #${deal.id} · <span style="color:#6b7280">${formatDate(deal.created_at)}</span> · ${escapeHtml(deal.client_name)}: <strong>${label}</strong>${noConv}${payoutCost}</span>
                                         <input type="number" step="0.01" class="reimburse-alloc" data-founder="${founder.founder_name}" data-deal-id="${deal.id}"
-                                               placeholder="доля $" title="Сколько из перевода уходит на эту сделку"
+                                               ${fixedCents > 0 ? `data-fixed-cents="${fixedCents}" value="${(fixedCents / 100).toFixed(2)}" readonly title="Фактическая себестоимость"`
+                                                   : 'placeholder="доля $" title="Сколько из перевода уходит на эту сделку"'}
                                                style="width:120px;padding:4px 8px;border:1px solid #e2e8f0;border-radius:6px;"
                                                oninput="onAllocInput('${founder.founder_name}')" onclick="event.preventDefault();event.stopPropagation();">
                                     </label>`;
@@ -12983,23 +13354,36 @@ ${Math.abs(c.debits_delta_rub) < 0.01
         }
 
         function prefillAllocations(founderName) {
-            if (allocManual[founderName]) return;   // руками правили — не трогаем
             const amountInput = document.querySelector(`.reimburse-amount[data-founder="${founderName}"]`);
             const total = parseFloat(amountInput?.value) || 0;
             const boxes = checkedDeals(founderName);
-            const thbTotal = boxes.reduce((s, b) => s + (parseFloat(b.dataset.thb) || 0), 0);
-            const cents = Math.round(total * 100);
-            const parts = boxes.map(box => {
+            const selected = new Set(boxes.map(box => box.dataset.dealId));
+            const inputs = allocInputs(founderName);
+            const fixedShares = new Map(inputs.filter(el => el.dataset.fixedCents)
+                .map(el => [el.dataset.dealId, Number(el.dataset.fixedCents)]));
+            const ordinary = boxes.filter(box => !fixedShares.has(box.dataset.dealId));
+            const reserved = [...fixedShares].reduce((sum, [id, cents]) => sum + (selected.has(id) ? cents : 0), 0);
+            inputs.filter(el => fixedShares.has(el.dataset.dealId)).forEach(el => {
+                el.value = (fixedShares.get(el.dataset.dealId) / 100).toFixed(2);
+            });
+            if (allocManual[founderName]) {
+                renderAllocSummary(founderName);
+                return;
+            }
+            const thbTotal = ordinary.reduce((sum, box) => sum + (parseFloat(box.dataset.thb) || 0), 0);
+            const cents = Math.max(0, Math.round(total * 100) - reserved);
+            const parts = ordinary.map(box => {
                 const exact = thbTotal ? cents * (parseFloat(box.dataset.thb) || 0) / thbTotal : 0;
-                return {id: box.dataset.dealId, cents: Math.floor(exact), fraction: exact - Math.floor(exact)};
+                const floor = Math.floor(exact);
+                return { id: box.dataset.dealId, cents: floor, fraction: exact - floor };
             });
             if (thbTotal && parts.length) {
-                let spare = cents - parts.reduce((sum, part) => sum + part.cents, 0);
+                const spare = cents - parts.reduce((sum, part) => sum + part.cents, 0);
                 const ranked = [...parts].sort((a, b) => b.fraction - a.fraction || Number(a.id) - Number(b.id));
                 for (let i = 0; i < spare; i++) ranked[i % ranked.length].cents++;
             }
             const shares = new Map(parts.map(part => [part.id, part.cents]));
-            allocInputs(founderName).forEach(el => {
+            inputs.filter(el => !fixedShares.has(el.dataset.dealId)).forEach(el => {
                 el.value = total && thbTotal && shares.has(el.dataset.dealId)
                     ? (shares.get(el.dataset.dealId) / 100).toFixed(2) : '';
             });
@@ -13154,8 +13538,9 @@ ${Math.abs(c.debits_delta_rub) < 0.01
             });
             // Доли по сделкам — только по отмеченным и только заполненные
             const dealAllocations = allocInputs(founderName)
-                .filter(el => dealIds.includes(parseInt(el.dataset.dealId)) && el.value !== '')
-                .map(el => ({ deal_id: parseInt(el.dataset.dealId), amount_usdt: parseFloat(el.value) || 0 }));
+                .filter(el => dealIds.includes(parseInt(el.dataset.dealId)) && (el.dataset.fixedCents || el.value !== ''))
+                .map(el => ({ deal_id: parseInt(el.dataset.dealId),
+                    amount_usdt: el.dataset.fixedCents ? Number(el.dataset.fixedCents) / 100 : parseFloat(el.value) || 0 }));
 
             try {
                 const response = await fetch(`${API_URL}/api/reimbursements`, {
@@ -13854,12 +14239,13 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                 mf_freehold: 'Фрихолд',
                 mf_realty: 'Лизхолд',
                 ipps_realty: 'Недвижимость лизхолд через ИППС',
+                personal_realty: 'Недвижимость лизхолд через личный счёт',
             };
             return labels[kind] || 'Обмен';
         }
 
         function dealPayoutThbText(deal) {
-            const format = deal.deal_kind === 'ipps_realty' ? formatThbAmount : formatNumber;
+            const format = isCardLeasehold(deal.deal_kind) ? formatThbAmount : formatNumber;
             return format(deal.payout_amount_thb) + ' ฿';
         }
 
