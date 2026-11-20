@@ -2021,13 +2021,15 @@ select.period-btn:hover:not(.active) { color: var(--text); }
             <div class="card">
                 <div class="card-title">Финансовый баланс</div>
                 <div
-                    style="display: flex; gap: 0.5rem; margin-bottom: 1.5rem; background: #f1f5f9; padding: 0.5rem; border-radius: 10px;">
+                    style="display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1.5rem; background: #f1f5f9; padding: 0.5rem; border-radius: 10px;">
                     <button class="btn btn-sm btn-light balance-subtab-btn active"
                         onclick="switchBalanceSubTab('binance')" id="btnSubBinance">Binance (USDT)</button>
                     <button class="btn btn-sm btn-light balance-subtab-btn" onclick="switchBalanceSubTab('cash')"
                         id="btnSubCash">Наличные (THB)</button>
                     <button class="btn btn-sm btn-light balance-subtab-btn" onclick="switchBalanceSubTab('cards')"
                         id="btnSubCards">Карты (THB)</button>
+                    <button class="btn btn-sm btn-light balance-subtab-btn" onclick="switchBalanceSubTab('ipps')"
+                        id="btnSubIpps">ИППС (THB)</button>
                 </div>
 
                 <!-- Binance Sub-tab -->
@@ -2156,9 +2158,20 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                         <button class="btn btn-primary" onclick="openAddCardModal()">+ Добавить карту</button>
                     </div>
 
-                    <div id="bankCardsGrid"
+                    <div id="bankCardsGrid" class="bank-cards-grid"
                         style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1rem;">
                         <!-- Bank cards loaded here -->
+                    </div>
+                </div>
+                <div id="subtabIpps" class="balance-subtab-content" style="display: none;">
+                    <div class="stats-grid" style="margin-bottom: 1.5rem;">
+                        <div class="stat-card success">
+                            <div class="stat-value" id="totalIppsThb">0</div>
+                            <div class="stat-label">Баланс ИППС THB</div>
+                        </div>
+                    </div>
+                    <div id="ippsCardsGrid" class="bank-cards-grid"
+                        style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1rem;">
                     </div>
                 </div>
             </div>
@@ -3509,6 +3522,42 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                         maxlength="120" placeholder="Хэш TRON или банковский референс">
                 </div>
                 <button type="submit" class="btn btn-primary" style="width: 100%;">Пополнить карту</button>
+            </form>
+        </div>
+    </div>
+
+    <div id="ippsTransferModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">Перевод со счёта ИППС</h3>
+                <button type="button" class="modal-close" onclick="closeIppsTransferModal()" aria-label="Закрыть">&times;</button>
+            </div>
+            <form id="ippsTransferForm">
+                <p id="ippsTransferAvailable" class="form-hint"></p>
+                <div class="form-group">
+                    <label class="form-label" for="ippsTransferTarget">Куда перевести</label>
+                    <select class="form-control" id="ippsTransferTarget" required></select>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label" for="ippsTransferAmount">Сумма, THB</label>
+                        <input type="number" id="ippsTransferAmount" class="form-control" min="0.01" step="0.01" required>
+                    </div>
+                    <div class="form-group" id="ippsTransferRateGroup">
+                        <label class="form-label" for="ippsTransferRate">Курс, THB/USDT</label>
+                        <input type="number" id="ippsTransferRate" class="form-control" min="20" max="60" step="any">
+                    </div>
+                    <div class="form-group" id="ippsTransferFounderGroup">
+                        <label class="form-label" for="ippsTransferFounder">Ответственный за кассу</label>
+                        <select class="form-control" id="ippsTransferFounder"></select>
+                    </div>
+                </div>
+                <p id="ippsTransferCostHint" class="form-hint">Себестоимость партии сохранится по курсу остатка ИППС.</p>
+                <div class="form-group">
+                    <label class="form-label" for="ippsTransferReason">Комментарий</label>
+                    <input id="ippsTransferReason" class="form-control" maxlength="200">
+                </div>
+                <button type="submit" class="btn btn-primary">Перевести</button>
             </form>
         </div>
     </div>
@@ -9829,6 +9878,151 @@ select.period-btn:hover:not(.active) { color: var(--text); }
             }
         }
 
+        let ippsTransferSource = null;
+        const ippsCashRetries = new Map();
+
+        async function ippsCashRetryKey(cardId, body) {
+            const signature = new TextEncoder().encode(JSON.stringify([cardId, body]));
+            const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', signature));
+            return 'crm.ipps.cash.' + Array.from(digest, b => b.toString(16).padStart(2, '0')).join('');
+        }
+
+        function ippsCashRetryId(key, allowNew) {
+            let id = ippsCashRetries.get(key);
+            try {
+                id = sessionStorage.getItem(key) || id;
+            } catch (error) { /* browser storage unavailable */ }
+            if (!id && !allowNew) return null;
+            id ||= crypto.randomUUID();
+            ippsCashRetries.set(key, id);
+            try {
+                sessionStorage.setItem(key, id);
+            } catch (error) { /* keep the key in this tab */ }
+            return id;
+        }
+
+        function clearIppsCashRetry(key) {
+            ippsCashRetries.delete(key);
+            try {
+                sessionStorage.removeItem(key);
+            } catch (error) { /* browser storage unavailable */ }
+        }
+
+        async function openIppsTransferModal(cardId, fromHistory = false) {
+            try {
+                const response = await fetch(`${API_URL}/api/cards`);
+                const data = await response.json();
+                const active = (data.cards || []).filter(card => card.status === 'active');
+                const source = active.find(card => card.id === cardId && card.is_ipps);
+                if (!source) {
+                    showToast('Действующий счёт ИППС не найден', 'error');
+                    return;
+                }
+                if (fromHistory) closeHistoryModal();
+                ippsTransferSource = { cardId, fromHistory, balanceThb: source.balance_thb };
+                const form = document.getElementById('ippsTransferForm');
+                form.reset();
+                const target = document.getElementById('ippsTransferTarget');
+                target.replaceChildren(
+                    new Option('Выберите получателя', ''),
+                    new Option('В кассу наличных THB', 'cash'),
+                    ...active.filter(card => card.id !== cardId).map(card => new Option(
+                        [card.bank_name, card.card_name, card.holder_name].filter(Boolean).join(' · '), card.id
+                    ))
+                );
+                const founder = document.getElementById('ippsTransferFounder');
+                const names = Array.from(document.querySelectorAll('#addCashBatchForm [name="founder_name"] option'),
+                    option => option.value);
+                founder.replaceChildren(...Array.from(new Set([source.holder_name, ...names].filter(Boolean)),
+                    name => new Option(name, name)));
+                document.getElementById('ippsTransferAvailable').textContent =
+                    'Остаток ' + formatThbAmount(source.balance_thb) + ' THB';
+                document.getElementById('ippsTransferRate').value = source.latest_purchase_rate || '';
+                updateIppsTransferFields();
+                document.getElementById('ippsTransferModal').classList.add('active');
+            } catch (error) {
+                showToast('Не удалось загрузить счета для перевода', 'error');
+            }
+        }
+
+        function updateIppsTransferFields() {
+            const target = document.getElementById('ippsTransferTarget').value;
+            const cash = target === 'cash';
+            const card = Boolean(target) && !cash;
+            document.getElementById('ippsTransferFounderGroup').hidden = !cash;
+            document.getElementById('ippsTransferCostHint').hidden = !cash;
+            document.getElementById('ippsTransferRateGroup').hidden = !card;
+            const rate = document.getElementById('ippsTransferRate');
+            rate.disabled = !card;
+            rate.required = card;
+            // A retry can exceed the balance after its first request was committed.
+            // The server resolves its key before checking the funds for a new transfer.
+            const amount = document.getElementById('ippsTransferAmount');
+            if (card) amount.max = Math.max(ippsTransferSource?.balanceThb || 0, 0);
+            else amount.removeAttribute('max');
+        }
+
+        function closeIppsTransferModal() {
+            if (document.querySelector('#ippsTransferForm [type="submit"]').disabled) return;
+            document.getElementById('ippsTransferModal').classList.remove('active');
+            ippsTransferSource = null;
+        }
+
+        document.getElementById('ippsTransferTarget').addEventListener('change', updateIppsTransferFields);
+        document.getElementById('ippsTransferForm').addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const submit = event.currentTarget.querySelector('[type="submit"]');
+            if (!ippsTransferSource || submit.disabled || reportInvalidField(event.currentTarget)) return;
+            const { cardId, fromHistory, balanceThb } = ippsTransferSource;
+            const target = document.getElementById('ippsTransferTarget').value;
+            const cash = target === 'cash';
+            const body = {
+                amount_thb: document.getElementById('ippsTransferAmount').valueAsNumber,
+                reason: document.getElementById('ippsTransferReason').value.trim(),
+            };
+            submit.disabled = true;
+            try {
+                let retryKey;
+                if (cash) {
+                    body.founder_name = document.getElementById('ippsTransferFounder').value;
+                    retryKey = await ippsCashRetryKey(cardId, body);
+                    body.request_id = ippsCashRetryId(retryKey, body.amount_thb <= balanceThb);
+                    if (!body.request_id) {
+                        showToast('Сумма перевода больше остатка ИППС', 'error');
+                        return;
+                    }
+                } else {
+                    body.target_card_id = Number(target);
+                    body.purchase_rate = document.getElementById('ippsTransferRate').valueAsNumber;
+                }
+                const response = await fetch(`${API_URL}/api/cards/${cardId}/${cash ? 'transfer-to-cash' : 'transfer'}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body),
+                });
+                const result = await response.json();
+                if (retryKey && ((response.ok && result.success) || result.transfer_cancelled === true)) {
+                    clearIppsCashRetry(retryKey);
+                }
+                if (!result.success) {
+                    showToast(result.error || 'Не удалось провести перевод', 'error');
+                    return;
+                }
+                showToast(cash
+                    ? `В кассу переведено ${formatThbAmount(body.amount_thb)} THB · ${result.batch.cost_usdt.toFixed(2)} USDT`
+                    : `Переведено ${formatThbAmount(body.amount_thb)} THB`, 'success');
+                submit.disabled = false;
+                closeIppsTransferModal();
+                await loadBankCards();
+                if (cash) await loadCashBatches();
+                if (fromHistory) await showCardHistory(cardId);
+            } catch (error) {
+                showToast('Не удалось получить результат перевода. Повторите попытку.', 'error');
+            } finally {
+                submit.disabled = false;
+            }
+        });
+
         async function editCardWriteoffRate(cardId, topupId, currentRate) {
             const rawRate = prompt(
                 'Новый курс списания THB/USD:',
@@ -10062,6 +10256,10 @@ select.period-btn:hover:not(.active) { color: var(--text); }
             } else if (tabName === 'cards') {
                 document.getElementById('subtabCards').style.display = 'block';
                 document.getElementById('btnSubCards').classList.add('active');
+                loadBankCards();
+            } else if (tabName === 'ipps') {
+                document.getElementById('subtabIpps').style.display = 'block';
+                document.getElementById('btnSubIpps').classList.add('active');
                 loadBankCards();
             }
         }
@@ -10324,8 +10522,8 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                 const data = await response.json();
 
                 if (data.success) {
-                    document.getElementById('totalCashThb').textContent = formatNumber(data.summary.total_remaining_thb) + ' ฿';
-                    document.getElementById('totalCashUsdt').textContent = '$' + formatNumber(data.summary.total_cost_usdt);
+                    document.getElementById('totalCashThb').textContent = formatThbAmount(data.summary.total_remaining_thb) + ' ฿';
+                    document.getElementById('totalCashUsdt').textContent = '$' + formatThbAmount(data.summary.total_cost_usdt);
                     document.getElementById('avgCashRate').textContent = data.summary.weighted_avg_rate;
 
                     document.getElementById('cashBatchesList').innerHTML = data.batches
@@ -10333,23 +10531,23 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                         .map(batch => `
                             <div class="batch-card">
                                 <div class="batch-info">
-                                    <h4>Партия #${batch.id} - ${batch.founder_name || 'Неизвестно'}</h4>
-                                    <p>${batch.purchase_method || 'Без метода'} | ${formatDate(batch.created_at)}</p>
+                                    <h4>Партия #${batch.id} - ${escapeHtml(batch.founder_name || 'Неизвестно')}</h4>
+                                    <p>${batch.is_ipps_transfer ? 'Перевод со счёта ИППС' : escapeHtml(batch.purchase_method || 'Без метода')} | ${formatDate(batch.created_at)}</p>
                                     ${batch.tx_hash ? `<p style="font-size: 0.8rem;"><strong>Хэш:</strong> <code style="cursor: pointer; background: #e0f2fe; padding: 2px 4px; border-radius: 3px; font-size: 0.75rem;" onclick="copyHash('${batch.tx_hash}')" title="Скопировать">${batch.tx_hash.substring(0, 20)}...</code></p>` : ''}
                                     <div class="progress">
                                         <div class="progress-bar" style="width: ${batch.used_percent}%"></div>
                                     </div>
                                     <p style="font-size: 0.8rem; color: #888; margin-top: 0.25rem;">
-                                        Использовано: ${formatNumber(batch.used_thb)} из ${formatNumber(batch.amount_thb)} THB (${batch.used_percent}%)
+                                        Использовано: ${formatThbAmount(batch.used_thb)} из ${formatThbAmount(batch.amount_thb)} THB (${batch.used_percent}%)
                                     </p>
                                 </div>
                                 <div class="batch-amount" style="text-align: right;">
-                                    <div class="thb">${formatNumber(batch.remaining_thb)} ฿</div>
-                                    <div class="rate">Курс: ${batch.purchase_rate}</div>
+                                    <div class="thb">${formatThbAmount(batch.remaining_thb)} ฿</div>
+                                    <div class="rate">Курс: ${formatThbUsdRate(batch.purchase_rate)}</div>
                                     <div style="margin-top: 0.5rem; display: flex; gap: 0.25rem; justify-content: flex-end; flex-wrap: wrap;">
-                                        <button class="btn btn-sm btn-info" onclick="showBatchHistory(${batch.id})">История</button>
+                                        <button class="btn btn-sm btn-info" onclick="${batch.is_ipps_transfer ? 'showIppsCashHistory' : 'showBatchHistory'}(${batch.id})">История</button>
                                         <button class="btn btn-sm btn-secondary" onclick="editCashBatch(${batch.id}, ${batch.remaining_thb})">Изменить</button>
-                                        ${batch.used_thb === 0 ? `
+                                        ${batch.used_thb === 0 && !batch.is_ipps_transfer ? `
                                             <button class="btn btn-sm btn-danger" onclick="deleteCashBatch(${batch.id})">Удалить</button>
                                         ` : ''}
                                     </div>
@@ -10375,6 +10573,55 @@ select.period-btn:hover:not(.active) { color: var(--text); }
 
         function closeHistoryModal() {
             document.getElementById('historyModal').classList.remove('active');
+        }
+
+        async function showIppsCashHistory(batchId) {
+            try {
+                const response = await fetch(`${API_URL}/api/cash/batches/${batchId}/ipps-transfer`);
+                const data = await response.json();
+                if (!data.success) {
+                    showToast(data.error || 'Не удалось загрузить историю перевода', 'error');
+                    return;
+                }
+                const batch = data.batch;
+                const movement = data.transfer_out;
+                document.getElementById('historyModalTitle').textContent = `Партия #${batch.id} · Перевод из ИППС`;
+                document.getElementById('historyModalContent').innerHTML = `
+                    <div style="padding: 0.75rem 0;">
+                        <p><strong>${data.transfer_cancelled ? 'Перевод отменён' : 'Приход в кассу'}</strong> · ${formatDate(batch.created_at)}</p>
+                        <p>Источник: ${escapeHtml(data.source_name)}</p>
+                        <p>Сумма перевода: ${formatThbAmount(batch.amount_thb)} THB</p>
+                        <p>Себестоимость: ${batch.cost_usdt.toFixed(2)} USDT</p>
+                        <p>Остаток: ${formatThbAmount(batch.remaining_thb)} THB</p>
+                        ${movement.notes ? `<p>${escapeHtml(movement.notes)}</p>` : ''}
+                    </div>
+                    <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
+                        <button class="btn btn-sm btn-info" onclick="showCardHistory(${data.source_card_id})">История счёта ИППС</button>
+                        ${!data.transfer_cancelled && batch.status === 'active' && batch.used_thb === 0 && !batch.notes ? `
+                            <button class="btn btn-sm btn-danger" onclick="cancelIppsCashTransfer(${batch.id})">Отменить перевод</button>` : ''}
+                    </div>`;
+                document.getElementById('historyModal').classList.add('active');
+            } catch (error) {
+                showToast('Не удалось загрузить историю перевода', 'error');
+            }
+        }
+
+        async function cancelIppsCashTransfer(batchId, cardId = null) {
+            if (!(await showConfirm('Отменить перевод и вернуть баты на счёт ИППС?', 'Отменить перевод', true))) return;
+            try {
+                const response = await fetch(`${API_URL}/api/cash/batches/${batchId}/ipps-transfer`, { method: 'DELETE' });
+                const data = await response.json();
+                if (!data.success) {
+                    showToast(data.error || 'Не удалось отменить перевод', 'error');
+                    return;
+                }
+                showToast('Перевод отменён, баты возвращены на счёт ИППС', 'success');
+                await Promise.all([loadBankCards(), loadCashBatches()]);
+                if (cardId) await showCardHistory(cardId);
+                else await showIppsCashHistory(batchId);
+            } catch (error) {
+                showToast('Не удалось отменить перевод', 'error');
+            }
         }
 
         async function showBatchHistory(batchId) {
@@ -10464,10 +10711,10 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                     // с минусом (source_type='adjustment'). Разводим их по знаку, иначе
                     // ручная корректировка попадает в «закупки» и занижает объём закупок.
                     const purchases = topups.filter(t =>
-                        (t.amount_thb || 0) >= 0 && t.source_type !== 'card_transfer_in'
+                        (t.amount_thb || 0) >= 0 && !['card_transfer_in', 'card_transfer_cash_cancelled'].includes(t.source_type)
                     );
                     const writeoffs = topups.filter(t => t.source_type === 'adjustment');
-                    const transfersOut = topups.filter(t => t.source_type === 'card_transfer_out');
+                    const transfersOut = topups.filter(t => ['card_transfer_out', 'card_transfer_cash_out'].includes(t.source_type));
                     const transfersIn = topups.filter(t => t.source_type === 'card_transfer_in');
                     const totalPurchases = purchases.reduce((s, t) => s + (t.amount_thb || 0), 0);
                     const totalWriteoffs = writeoffs.reduce((s, t) => s + Math.abs(t.amount_thb || 0), 0);
@@ -10480,6 +10727,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                         ...topups.map(t => ({
                             kind: t.source_type === 'card_transfer_out' ? 'transfer_out'
                                 : t.source_type === 'card_transfer_in' ? 'transfer_in'
+                                : t.cash_transfer ? 'transfer_cash'
                                 : (t.amount_thb || 0) < 0 ? 'writeoff' : 'topup',
                             at: t.created_at,
                             item: t
@@ -10509,7 +10757,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                             </div>
                             <div style="margin-top: 0.75rem; display: flex; gap: 0.5rem; flex-wrap: wrap;">
                                 <button class="btn btn-sm btn-success" onclick="closeHistoryModal(); openTopupCardModal(${cardId})">Пополнить</button>
-                                <button class="btn btn-sm btn-info" onclick="transferCard(${cardId}, ${info.balance_thb}, true, ${info.latest_purchase_rate || 0})">Перевести</button>
+                                <button class="btn btn-sm btn-info" onclick="${info.is_ipps ? `openIppsTransferModal(${cardId}, true)` : `transferCard(${cardId}, ${info.balance_thb}, true, ${info.latest_purchase_rate || 0})`}">Перевести</button>
                                 <button class="btn btn-sm btn-warning" onclick="adjustCard(${cardId}, ${info.balance_thb}, true, ${info.latest_purchase_rate || 0})">Списать</button>
                             </div>
                         </div>
@@ -10541,6 +10789,21 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                                 rateLine = `~$${Math.abs(it.cost_usdt || 0).toFixed(2)} @ ${formatThbUsdRate(it.purchase_rate)}`;
                                 note = it.notes || '';
                                 actions = `<button class="btn btn-sm btn-danger" onclick="deleteCardTopup(${cardId}, ${it.id}, true, true)">Отменить перевод</button>`;
+                            } else if (row.kind === 'transfer_cash') {
+                                const batch = it.cash_transfer;
+                                const cancelled = it.source_type === 'card_transfer_cash_cancelled';
+                                icon = '🔁';
+                                title = cancelled ? `Перевод в кассу отменён · Партия #${batch.id}` : `Перевод в кассу · Партия #${batch.id}`;
+                                amount = batch.amount_thb;
+                                sign = cancelled ? '' : '−';
+                                color = cancelled ? '#6b7280' : '#2563eb';
+                                rateLine = `~$${batch.cost_usdt.toFixed(2)} @ ${formatThbUsdRate(batch.purchase_rate)}`;
+                                note = it.notes;
+                                actions = `<div style="display:flex;gap:0.4rem;flex-wrap:wrap;justify-content:flex-end;">
+                                    <button class="btn btn-sm btn-info" onclick="showIppsCashHistory(${batch.id})">История партии</button>
+                                    ${!cancelled && batch.status === 'active' && batch.used_thb === 0 && !batch.notes ? `
+                                        <button class="btn btn-sm btn-danger" onclick="cancelIppsCashTransfer(${batch.id}, ${cardId})">Отменить перевод</button>` : ''}
+                                </div>`;
                             } else if (row.kind === 'writeoff') {
                                 icon = '📤';
                                 title = 'Списание';
@@ -10575,7 +10838,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                                         <strong>${title}</strong>
                                         <br>
                                         <small style="color: #888;">${formatDate(row.at)}</small>
-                                        ${note ? `<br><small style="color:#888;">${note}</small>` : ''}
+                                        ${note ? `<br><small style="color:#888;">${escapeHtml(note)}</small>` : ''}
                                         ${it.reference ? `<br><small style="color:#888;word-break:break-all;">${it.reference}</small>` : ''}
                                     </div>
                                     <div style="text-align: right; white-space: nowrap;">
@@ -11169,59 +11432,73 @@ select.period-btn:hover:not(.active) { color: var(--text); }
         });
 
         // ==================== Bank Cards ====================
+        function renderBalanceCard(card) {
+            const recentTopups = (card.topups || []).filter(t => t.source_type !== 'card_transfer_cash_cancelled').slice(0, 3);
+            return `
+            <div class="card" style="background: #f8f9fa; padding: 1rem; margin-bottom: 1rem; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                    <div>
+                        <h4 style="margin-bottom: 0.5rem; color: #1a1a2e; font-weight: 600;">${escapeHtml(card.bank_name)} - ${escapeHtml(card.card_name || 'Без названия')}</h4>
+                        <p style="color: #666; font-size: 0.9rem;">${escapeHtml(card.holder_name || 'Неизвестно')} | ${formatDate(card.created_at)}</p>
+                    </div>
+                    <div style="text-align: right;">
+                        <div style="font-size: 1.25rem; font-weight: 600; color: ${card.balance_thb < 0 ? '#ef4444' : '#10b981'};">${formatThbAmount(card.balance_thb)} ฿</div>
+                        <div style="font-size: 0.85rem; color: #666;">Ср. курс: ${card.avg_rate || '-'}</div>
+                    </div>
+                </div>
+
+                ${recentTopups.length > 0 ? `
+                    <div style="margin-top: 1rem; border-top: 1px solid #e5e7eb; padding-top: 0.75rem;">
+                        <p style="font-size: 0.85rem; font-weight: 500; margin-bottom: 0.5rem; color: #4a5568;">Последние операции:</p>
+                        ${recentTopups.map(t => `
+                            <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.5rem; background: white; border-radius: 6px; margin-bottom: 0.25rem; border: 1px solid #edf2f7;">
+                                <div style="font-size: 0.85rem;">
+                                    <span style="font-weight: 600; color: ${(t.amount_thb || 0) < 0 ? '#f59e0b' : '#2d3748'};">${(t.amount_thb || 0) < 0 ? '−' : '+'}${formatThbAmount(Math.abs(t.amount_thb || 0))} ฿</span>
+                                    <span style="color: #718096; margin-left: 0.25rem;">
+                                        ($${Math.abs(t.cost_usdt || 0).toFixed(2)} @ ${formatThbUsdRate(t.purchase_rate)})
+                                    </span>
+                                </div>
+                                ${t.source_type === 'card_transfer_cash_out'
+                                    ? `<button class="btn btn-sm btn-info" onclick="showIppsCashHistory(${t.source_batch_id})">В кассу</button>`
+                                    : `<button class="btn btn-sm btn-danger" style="padding: 0.1rem 0.4rem;" onclick="deleteCardTopup(${card.id}, ${t.id}, false, ${t.source_type === 'card_transfer_out' || t.source_type === 'card_transfer_in'})">×</button>`}
+                            </div>`).join('')}
+                    </div>
+                ` : '<p style="color: #666; margin-top: 0.75rem;">Нет операций</p>'}
+
+                <div style="margin-top: 1rem; display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                    <button class="btn btn-sm btn-success" onclick="openTopupCardModal(${card.id})">Пополнить</button>
+                    <button class="btn btn-sm btn-info" onclick="${card.is_ipps
+                        ? `openIppsTransferModal(${card.id})`
+                        : `transferCard(${card.id}, ${card.balance_thb}, false, ${card.latest_purchase_rate || 0})`}">Перевести</button>
+                    <button class="btn btn-sm btn-warning" onclick="adjustCard(${card.id}, ${card.balance_thb}, false, ${card.latest_purchase_rate || 0})">Списать</button>
+                    <button class="btn btn-sm btn-info" onclick="showCardHistory(${card.id})">История</button>
+                    ${!card.topups?.length ? `
+                        <button class="btn btn-sm btn-danger" onclick="deleteCard(${card.id})">Удалить</button>
+                    ` : ''}
+                </div>
+            </div>`;
+        }
+
         async function loadBankCards() {
             try {
                 const response = await fetch(`${API_URL}/api/cards`);
                 const data = await response.json();
 
                 if (data.success) {
-                    document.getElementById('totalCardsThb').textContent = formatThbAmount(data.total_remaining_thb) + ' ฿';
-
-                    const activeCards = data.cards.filter(c => c.status === 'active');
-
-                    document.getElementById('bankCardsGrid').innerHTML = activeCards.length > 0
-                        ? activeCards.map(card => `
-                            <div class="card" style="background: #f8f9fa; padding: 1rem; margin-bottom: 1rem; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
-                                <div style="display: flex; justify-content: space-between; align-items: flex-start;">
-                                    <div>
-                                        <h4 style="margin-bottom: 0.5rem; color: #1a1a2e; font-weight: 600;">${card.bank_name} - ${card.card_name || 'Без названия'}</h4>
-                                        <p style="color: #666; font-size: 0.9rem;">${card.holder_name || 'Неизвестно'} | ${formatDate(card.created_at)}</p>
-                                    </div>
-                                    <div style="text-align: right;">
-                                        <div style="font-size: 1.25rem; font-weight: 600; color: ${card.balance_thb < 0 ? '#ef4444' : '#10b981'};">${formatThbAmount(card.balance_thb)} ฿</div>
-                                        <div style="font-size: 0.85rem; color: #666;">Ср. курс: ${card.avg_rate || '-'}</div>
-                                    </div>
-                                </div>
-                                
-                                ${card.topups && card.topups.length > 0 ? `
-                                    <div style="margin-top: 1rem; border-top: 1px solid #e5e7eb; padding-top: 0.75rem;">
-                                        <p style="font-size: 0.85rem; font-weight: 500; margin-bottom: 0.5rem; color: #4a5568;">Последние операции:</p>
-                                        ${card.topups.slice(0, 3).map(t => `
-                                            <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.5rem; background: white; border-radius: 6px; margin-bottom: 0.25rem; border: 1px solid #edf2f7;">
-                                                <div style="font-size: 0.85rem;">
-                                                    <span style="font-weight: 600; color: ${(t.amount_thb || 0) < 0 ? '#f59e0b' : '#2d3748'};">${(t.amount_thb || 0) < 0 ? '−' : '+'}${formatThbAmount(Math.abs(t.amount_thb || 0))} ฿</span>
-                                                    <span style="color: #718096; margin-left: 0.25rem;">
-                                                        ($${Math.abs(t.cost_usdt || 0).toFixed(2)} @ ${t.purchase_rate})
-                                                    </span>
-                                                </div>
-                                                <button class="btn btn-sm btn-danger" style="padding: 0.1rem 0.4rem;" onclick="deleteCardTopup(${card.id}, ${t.id}, false, ${t.source_type === 'card_transfer_out' || t.source_type === 'card_transfer_in'})">×</button>
-                                            </div>
-                                        `).join('')}
-                                    </div>
-                                ` : '<p style="font-size: 0.85rem; color: #f59e0b; margin-top: 0.5rem; font-style: italic;">Нет пополнений</p>'}
-                                
-                                <div style="margin-top: 1rem; display: flex; gap: 0.5rem; flex-wrap: wrap;">
-                                    <button class="btn btn-sm btn-success" onclick="openTopupCardModal(${card.id})">Пополнить</button>
-                                    <button class="btn btn-sm btn-info" onclick="transferCard(${card.id}, ${card.balance_thb}, false, ${card.latest_purchase_rate || 0})">Перевести</button>
-                                    <button class="btn btn-sm btn-warning" onclick="adjustCard(${card.id}, ${card.balance_thb}, false, ${card.latest_purchase_rate || 0})">Списать</button>
-                                    <button class="btn btn-sm btn-info" onclick="showCardHistory(${card.id})">История</button>
-                                    ${!card.topups || card.topups.length === 0 ? `
-                                        <button class="btn btn-sm btn-danger" onclick="deleteCard(${card.id})">Удалить</button>
-                                    ` : ''}
-                                </div>
-                            </div>
-                        `).join('')
-                        : '<p style="color: #666; padding: 1rem; text-align: center; grid-column: 1/-1;">Нет активных карт. Добавьте первую карту!</p>';
+                    const activeCards = data.cards.filter(card => card.status === 'active');
+                    const ordinary = activeCards.filter(card => !card.is_ipps);
+                    const ipps = activeCards.filter(card => card.is_ipps);
+                    for (const [grid, total, cards, empty] of [
+                        ['bankCardsGrid', 'totalCardsThb', ordinary, 'Нет активных карт.'],
+                        ['ippsCardsGrid', 'totalIppsThb', ipps, 'Нет активных счетов ИППС.'],
+                    ]) {
+                        document.getElementById(total).textContent = formatThbAmount(
+                            cards.reduce((sum, card) => sum + (card.balance_thb || 0), 0)
+                        ) + ' ฿';
+                        document.getElementById(grid).innerHTML = cards.length
+                            ? cards.map(renderBalanceCard).join('')
+                            : `<p style="color: #666; padding: 1rem;">${empty}</p>`;
+                    }
 
                     // Load cards for topup select
                     const topupSelect = document.getElementById('topupCardSelect');
