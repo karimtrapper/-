@@ -947,6 +947,7 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
                     <option value="exchange">Обычные обмены</option>
                     <option value="realty">Недвижимость — вся</option>
                     <option value="mf_realty">Недвижимость — лизхолд</option>
+                    <option value="ipps_realty">Недвижимость через ИППС</option>
                     <option value="mf_freehold">Недвижимость — фрихолд</option>
                     <option value="mf_auto">Оплата авто</option>
                 </select>
@@ -1153,6 +1154,7 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
                             <option value="exchange">Обмен</option>
                             <option value="realty">Недвижимость — вся</option>
                             <option value="mf_realty">Недвижимость — лизхолд</option>
+                    <option value="ipps_realty">Недвижимость через ИППС</option>
                             <option value="mf_freehold">Недвижимость — фрихолд</option>
                             <option value="mf_auto">Оплата авто</option>
                         </select>
@@ -1244,6 +1246,7 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
                                 <option value="exchange">Обычная (обмен)</option>
                                 <option value="custom">Кастомная — нестандартные валюты</option>
                                 <option value="mf_realty">Недвижимость через MF Corp</option>
+                                <option value="ipps_realty">Недвижимость через ИППС</option>
                                 <option value="mf_freehold">Недвижимость фрихолд</option>
                                 <option value="rental">Аренда</option>
                                 <option value="mf_auto">Оплата авто</option>
@@ -1713,6 +1716,32 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
                         </div>
 
                         <!-- Недвижимость фрихолд: оплата застройщику SWIFT-ом -->
+                        <div id="ippsDealSection" style="display:none;">
+                            <h3 class="section-title">Выплата застройщику</h3>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label class="form-label" for="ippsPurpose">Назначение</label>
+                                    <input class="form-control" id="ippsPurpose" maxlength="200">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label" for="ippsCardSelect">Счёт ИППС</label>
+                                    <select class="form-control" id="ippsCardSelect" disabled>
+                                        <option value="">Выберите счёт</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label class="form-label" for="ippsPayoutThb">Фактическая выплата, THB</label>
+                                    <input type="number" class="form-control" id="ippsPayoutThb" min="0.01" max="999999999999.99" step="0.01" disabled>
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label" for="ippsCostUsdt">Себестоимость по курсу счёта, USDT</label>
+                                    <input type="number" class="form-control" id="ippsCostUsdt" readonly>
+                                </div>
+                            </div>
+                            <p id="ippsProfitSummary" class="form-hint" aria-live="polite"></p>
+                        </div>
                         <div id="fhDealSection" style="display:none;">
                             <h3 id="swiftPaymentTitle" style="margin-bottom: 1rem; color: #0e7490;">Оплата застройщику (фрихолд)</h3>
 
@@ -3930,6 +3959,7 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
 
             btn.addEventListener('click', (e) => {
                 e.stopPropagation();
+                if (select.disabled) return;
                 // Закрыть другие
                 document.querySelectorAll('.custom-select-wrap.open').forEach(w => { if (w !== wrap) w.classList.remove('open'); });
                 wrap.classList.toggle('open');
@@ -3941,7 +3971,7 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
                 // disabled — тот же непроверенный флоу, что и в задачнике (TKS-7):
                 // видимый, но невыбираемый пункт не должен применяться по клику
                 // (независимый QA, 19.10 — без этой проверки клик применялся всегда).
-                if (!opt || opt.classList.contains('disabled')) return;
+                if (select.disabled || !opt || opt.classList.contains('disabled')) return;
                 select.selectedIndex = parseInt(opt.dataset.index);
                 select.dispatchEvent(new Event('change', { bubbles: true }));
                 btn.textContent = opt.textContent;
@@ -4848,7 +4878,7 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
                             <td>${formatDate(deal.created_at)}</td>
                             <td>${escapeHtml(deal.manager_name) || '—'}</td>
                             <td>${escapeHtml(deal.client_name) || '—'}</td>
-                            <td>${deal.deal_kind === 'mf_auto' ? 'Оплата авто' : deal.deal_kind === 'mf_freehold' ? 'Фрихолд' : deal.deal_kind === 'mf_realty' ? 'Лизхолд' : deal.deal_kind === 'rental' ? 'Аренда' : 'Обмен'}</td>
+                            <td>${deal.deal_kind === 'mf_auto' ? 'Оплата авто' : deal.deal_kind === 'mf_freehold' ? 'Фрихолд' : deal.deal_kind === 'mf_realty' ? 'Лизхолд' : deal.deal_kind === 'ipps_realty' ? 'Недвижимость через ИППС' : deal.deal_kind === 'rental' ? 'Аренда' : 'Обмен'}</td>
                             <td>${escapeHtml(deal.referrer_name) || '—'}</td>
                             <td>${deal.is_custom ? 'Кастомная' : getPayinMethodLabel(deal.payin_method)}</td>
                             <td>${payinUsdtCell(deal)}</td>
@@ -5154,7 +5184,15 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
                             <hr style="margin: 1rem 0;">
                         ` : ''}
 
-                        ${(deal.deal_kind === 'mf_realty' || deal.deal_kind === 'mf_freehold' || deal.deal_kind === 'mf_auto') ? '' : `
+                        ${deal.deal_kind === 'ipps_realty' ? `
+                            <h4>Недвижимость через ИППС</h4>
+                            ${deal.realty_purpose ? `<p><strong>Назначение:</strong> ${escapeHtml(deal.realty_purpose)}</p>` : ''}
+                            <p><strong>Источник:</strong> IPPS счет компании</p>
+                            <p><strong>Выплачено:</strong> ${formatNumber(deal.payout_amount_thb)} ฿</p>
+                            <p><strong>Себестоимость:</strong> ${(deal.payout_amount_usdt || 0).toFixed(2)} USDT</p>
+                            <hr style="margin: 1rem 0;">
+                        ` : ''}
+                        ${['mf_realty', 'mf_freehold', 'mf_auto', 'ipps_realty'].includes(deal.deal_kind) ? '' : `
                         <h4 style="color: #ef4444; margin-bottom: 0.5rem;">Pay-Out</h4>
                         ${deal.is_custom ? `
                             <p><strong>Валюта:</strong> ${deal.custom_payout_currency}</p>
@@ -5256,7 +5294,7 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
                         <p><strong>Чистая прибыль:</strong>
                             ${profitUnknown
                             ? '<span style="color: #f59e0b; font-weight: 600;">Ожидает возмещения</span>'
-                            : `<span style="color: #10b981; font-weight: 600; font-size: 1.15rem;">$${(deal.net_profit_usdt != null && (deal.referrer_name || deal.deal_kind === 'mf_realty' || (deal.deal_kind === 'mf_freehold' || deal.deal_kind === 'mf_auto')) ? deal.net_profit_usdt : (deal.profit_usdt || 0)).toFixed(2)}</span>`
+                            : `<span style="color: #10b981; font-weight: 600; font-size: 1.15rem;">$${(deal.net_profit_usdt != null && (deal.referrer_name || ['mf_realty', 'mf_freehold', 'mf_auto', 'ipps_realty'].includes(deal.deal_kind)) ? deal.net_profit_usdt : (deal.profit_usdt || 0)).toFixed(2)}</span>`
                             // Лизхолд: доход в двух карманах — комиссия лежит батами
                             // на MF Corp, в USDT остаётся только остаток кошелька
                             + (deal.deal_kind === 'mf_realty'
@@ -5590,6 +5628,24 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
                         toggleFhDeal();
                         if (isMf) mfFillForm(deal);
                         if (isFh) fhFillForm(deal);
+                        if (deal.deal_kind === 'ipps_realty') {
+                            const kindSelect = document.getElementById('dealKindSelect');
+                            kindSelect.value = 'ipps_realty';
+                            kindSelect.disabled = true;
+                            onDealKindChange();
+                            document.getElementById('ippsPurpose').value = deal.realty_purpose || '';
+                            const account = document.getElementById('ippsCardSelect');
+                            setDealSelectValue(account, deal.bank_card_id, 'IPPS счет компании');
+                            account.dataset.saved = String(deal.bank_card_id || '');
+                            account.disabled = true;
+                            const thb = document.getElementById('ippsPayoutThb');
+                            thb.value = deal.payout_amount_thb ?? '';
+                            const cost = document.getElementById('ippsCostUsdt');
+                            cost.dataset.savedCard = deal.bank_card_id;
+                            cost.dataset.savedAmount = deal.payout_amount_thb ?? '';
+                            cost.dataset.savedCost = deal.payout_amount_usdt ?? '';
+                            cost.dataset.savedRate = deal.cash_batch_rate ?? '';
+                        }
 
                         // Заполняем обычную форму
                         {
@@ -5755,6 +5811,14 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
             dealFormBaseline = null;
             document.querySelector('#create .card-title').textContent = 'Создать новую сделку';
             document.getElementById('createDealForm').reset();
+            document.getElementById('dealKindSelect').disabled = false;
+            const ippsAccount = document.getElementById('ippsCardSelect');
+            if (ippsAccount) {
+                delete ippsAccount.dataset.saved;
+                if (ippsAccount.dataset.single === '1') ippsAccount.selectedIndex = 1;
+            }
+            const ippsCost = document.getElementById('ippsCostUsdt');
+            for (const key of ['savedCard', 'savedAmount', 'savedCost', 'savedRate']) delete ippsCost.dataset[key];
             // Сбрасываем агентов обеих форм
             stdAgents = []; renderStdAgents();
             customAgents = []; renderCustomAgents();
@@ -6966,6 +7030,23 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
                             ).join('')
                             : '<option value="">Нет доступных карт</option>';
 
+                        const ipps = document.getElementById('ippsCardSelect');
+                    if (ipps) {
+                        const current = ipps.dataset.want || ipps.value;
+                        const cards = data.cards.filter(c => c.is_ipps);
+                        const options = cards.map(card => {
+                            const option = new Option(`${card.card_name} · ${card.holder_name || '—'} · ${formatNumber(card.balance_thb)} THB`, card.id);
+                            option.dataset.rate = card.avg_rate;
+                            return option;
+                        });
+                        ipps.replaceChildren(new Option('Выберите счёт ИППС', ''), ...options);
+                        ipps.dataset.single = cards.length === 1 ? '1' : '0';
+                        ipps.value = current || (cards.length === 1 ? String(cards[0].id) : '');
+                        const active = document.getElementById('dealKindSelect')?.value === 'ipps_realty';
+                        ipps.disabled = !active || !!ipps.dataset.saved || cards.length === 1;
+                        if (active) calculateProfit();
+                    }
+
                         // Update info for first card
                         if (data.cards.length > 0) {
                             const first = data.cards[0];
@@ -7712,7 +7793,7 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
         // Единственный источник истины — VERIFIED_FLOWS на сервере (app.py),
         // отданный через /api/deal-flow-config; эти две карты — только перевод
         // локальных значений select'ов в канонические ключи сервера.
-        const CRM_KIND_CANON = {'mf_freehold':'freehold','mf_auto':'auto','mf_realty':'leasehold','rental':'rental',
+        const CRM_KIND_CANON = {'mf_freehold':'freehold','mf_auto':'auto','mf_realty':'leasehold','ipps_realty':'ipps_realty','rental':'rental',
             'exchange':'exchange','custom':'exchange'};
         const CRM_PAYIN_CANON = {'flow_sole_reqs':'requisites','sber_reqs':'requisites','sber_wl':'sbp',
             'spp_doverka':'sbp','crypto_direct':'crypto','partners_cash':'cash'};
@@ -7744,7 +7825,8 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
                 const otherSet = !!payinSel.value;
                 const verified = crmComboVerified(opt.value, payinSel.value);
                 const blocked = otherSet && !verified && !isAdmin;
-                opt.disabled = blocked;
+                opt.disabled = blocked || (editingDealId !== null && opt.value === 'ipps_realty'
+                    && kindSel.value !== 'ipps_realty');
                 opt.title = (otherSet && !verified) ? 'Флоу в проверке — пока проводите через Карима' : '';
             });
             Array.from(payinSel.options).forEach(opt => {
@@ -7790,7 +7872,7 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
             sel.value = document.getElementById('mfDealToggle')?.checked ? 'mf_realty'
                 : document.getElementById('fhDealToggle')?.checked ? swiftDealKind
                 : (document.getElementById('customDealToggle')?.checked ? 'custom'
-                    : (sel.value === 'rental' ? 'rental' : 'exchange'));
+                    : (['rental', 'ipps_realty'].includes(sel.value) ? sel.value : 'exchange'));
             applyFlowGateOptions();
         }
 
@@ -7798,8 +7880,21 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
         // Решение общее и считается от ОБОИХ переключателей: иначе выключение
         // одного возвращало бы блоки на экран, пока включён другой.
         function applyRealtyLayout() {
-            const realty = document.getElementById('mfDealToggle')?.checked
+            const ipps = document.getElementById('dealKindSelect')?.value === 'ipps_realty';
+            const realty = ipps || document.getElementById('mfDealToggle')?.checked
                 || document.getElementById('fhDealToggle')?.checked;
+            const ippsSection = document.getElementById('ippsDealSection');
+            if (ippsSection) ippsSection.style.display = ipps ? 'block' : 'none';
+            const ippsAmount = document.getElementById('ippsPayoutThb');
+            if (ippsAmount) {
+                ippsAmount.disabled = !ipps;
+                ippsAmount.required = ipps;
+            }
+            const ippsAccount = document.getElementById('ippsCardSelect');
+            if (ippsAccount) {
+                ippsAccount.disabled = !ipps || !!ippsAccount.dataset.saved || ippsAccount.dataset.single === '1';
+                ippsAccount.required = ipps;
+            }
             const payout = document.getElementById('payoutSectionStd');
             if (payout) payout.style.display = realty ? 'none' : 'block';
             ['payout_method', 'payout_source'].forEach(name => {
@@ -9082,6 +9177,7 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
         function realtyPayinRecalc() {
             if (document.getElementById('mfDealToggle')?.checked) mfRecalc();
             if (document.getElementById('fhDealToggle')?.checked) fhRecalc();
+            if (document.getElementById('dealKindSelect')?.value === 'ipps_realty') calculateProfit();
         }
 
         function autoCalcUsdt() {
@@ -9105,6 +9201,25 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
         function calculateProfit() {
             const form = document.getElementById('createDealForm');
             const payinUsdt = parseFloat(form.payin_amount_usdt.value) || 0;
+            if (document.getElementById('dealKindSelect')?.value === 'ipps_realty') {
+                const account = document.getElementById('ippsCardSelect');
+                const thb = Number(document.getElementById('ippsPayoutThb').value);
+                const input = document.getElementById('ippsCostUsdt');
+                const sameCard = account.value && account.value === input.dataset.savedCard;
+                const rate = Number((sameCard && input.dataset.savedRate) || account.selectedOptions[0]?.dataset.rate);
+                const sameAmount = sameCard && thb === Number(input.dataset.savedAmount);
+                const cost = sameAmount && input.dataset.savedCost
+                    ? Number(input.dataset.savedCost)
+                    : rate > 0 && thb > 0 ? Math.round(thb / rate * 100) / 100 : 0;
+                input.value = cost > 0 ? cost.toFixed(2) : '';
+                const payin = payinUsdt + payinExtraSerialize().reduce((sum, part) => sum + (part.amount_usdt || 0), 0);
+                const gross = payin > 0 && cost > 0 ? Math.round((payin - cost) * 100) / 100 : 0;
+                _stdGross = { profit: gross, volume: payin > 0 && cost > 0 ? Math.max(payin, cost) : 0 };
+                stdAgentsRecalc();
+                document.getElementById('ippsProfitSummary').textContent =
+                    payin > 0 && cost > 0 ? 'Валовая прибыль ' + gross.toFixed(2) + ' USDT' : '';
+                return;
+            }
             const payoutThb = parseFloat(form.payout_amount_thb.value) || 0;
             const payoutSource = form.payout_source.value;
 
@@ -9255,6 +9370,8 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
         });
         document.getElementById('payoutSource')?.addEventListener('change', calculateProfit);
         document.getElementById('bankCardSelect')?.addEventListener('change', calculateProfit);
+        document.getElementById('ippsPayoutThb')?.addEventListener('input', calculateProfit);
+        document.getElementById('ippsCardSelect')?.addEventListener('change', calculateProfit);
 
         function serializeStandardDeal(form) {
             const formData = new FormData(form);
@@ -9374,8 +9491,21 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
                 }
             }
 
-            // Недвижимость: свои поля вместо обычной выдачи (у обоих типов её нет)
-            if (document.getElementById('mfDealToggle')?.checked) {
+            if (document.getElementById('dealKindSelect')?.value === 'ipps_realty') {
+                for (const field of ['cash_batch_id', 'bank_card_id', 'payout_wallet_id',
+                    'payout_founder_name', 'payout_tx_hash', 'payout_tx_hashes',
+                    'payout_owner_approved', 'payout_no_conversion', 'needs_reimbursement', 'payout_amount_usdt']) {
+                    delete data[field];
+                }
+                Object.assign(data, {
+                    deal_kind: 'ipps_realty',
+                    realty_purpose: document.getElementById('ippsPurpose').value.trim() || null,
+                    payout_method: 'transfer',
+                    payout_source: 'bank_card',
+                    bank_card_id: Number(document.getElementById('ippsCardSelect').value) || null,
+                    payout_amount_thb: document.getElementById('ippsPayoutThb').valueAsNumber,
+                });
+            } else if (document.getElementById('mfDealToggle')?.checked) {
                 Object.assign(data, mfFormData());
                 delete data.payout_amount_thb;
                 delete data.payout_source;
@@ -11928,6 +12058,7 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
                         ${i.wl.usdt ? '<br>' + cnvNum(i.wl.usdt) + ' USDT' : ''}</div>`;
             }
             if (i.deal?.deal_kind === 'mf_realty') return 'недвижка (лизхолд)';
+            if (i.deal?.deal_kind === 'ipps_realty') return 'недвижимость через ИППС';
             if (i.deal?.deal_kind === 'mf_freehold') return 'недвижка (фрихолд)';
             if (i.deal?.deal_kind === 'mf_auto') return 'оплата авто';
             if (i.deal) return 'обмен';

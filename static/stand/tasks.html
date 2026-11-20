@@ -2259,6 +2259,17 @@ function econ(d){
       r.cost=r.sentUsd+networkFees;
     }
   }
+  if(d.kind==='ИППС'){
+    r.cost=Number(d.payout?.usdt)||null;
+    r.payoutThb=Number(d.payout?.thb)||null;
+    if(!payin||!r.cost||!r.payoutThb)return r;
+    r.gross=r.crypto=payin-r.cost;
+    r.pct=r.gross/r.cost*100;
+    r.agents=refAgents(d,r.gross,Math.max(payin,r.cost),r.gross);
+    r.agentsTotal=r.agents.reduce((s,a)=>s+(a.payout||0),0);
+    r.net=r.gross-r.agentsTotal;r.ready=true;
+    return r;
+  }
   if(!payin) return r;
   if(d.type!=='Оплата недвижимости'){
     /* Обмен: себестоимость — то, во сколько обошлись выданные баты */
@@ -6972,7 +6983,7 @@ function pairOf(D){
   if(D.pair) return D.pair;
   return D.payType==='Крипта'?'USDT → THB':'RUB → THB';
 }
-const STAND_KIND_CANON={'Фрихолд':'freehold','Лизхолд':'leasehold','Аренда':'rental'};
+const STAND_KIND_CANON={'Фрихолд':'freehold','Лизхолд':'leasehold','Аренда':'rental','ИППС':'ipps_realty'};
 const STAND_PAYTYPE_CANON={'По реквизитам':'requisites','СБП':'sbp','СБП (Доверка)':'sbp','Крипта':'crypto','Наличные':'cash'};
 /* Единственный источник истины — VERIFIED_FLOWS на сервере (app.py), отданный
    через /api/deal-flow-config и закэшированный в STAND_VERIFIED_FLOWS при
@@ -7829,7 +7840,16 @@ function overview(d,st,mine,p,wh){
     ${E.payin==null?fillNote(d,'Pay-In'):''}
   </div>
 
-  ${E.ready&&d.type==='Оплата недвижимости'?`<div class="card" style="margin-bottom:16px">
+  ${d.kind==='ИППС'?`<div class="card" style="margin-bottom:16px">
+    <div class="sec snd">Выплата застройщику</div>
+    <table class="tbl">
+      ${row('Назначение',htmlText(d.realtyPurpose||'—'))}
+      ${row('Источник выплаты','IPPS счет компании')}
+      ${row('Фактическая выплата',moneyKop(d.payout?.thb,'฿'))}
+      ${row('Себестоимость по курсу счёта',usd(d.payout?.usdt))}
+    </table>
+  </div>`:''}
+  ${E.ready&&d.type==='Оплата недвижимости'&&d.kind!=='ИППС'?`<div class="card" style="margin-bottom:16px">
     <div class="sec snd">${d.kind==='Фрихолд'?'ОПЛАТА ЗАСТРОЙЩИКУ (ФРИХОЛД)':'ОТПРАВКА ЧЕРЕЗ MF CORPORATION'}</div>
     <table class="tbl">
       ${/* было «Назначение: объект, клиент» — третье значение слова «назначение»
@@ -7859,7 +7879,7 @@ function overview(d,st,mine,p,wh){
     <p style="font-size:13.5px;margin-top:10px">Осталось в крипте: <b class="pos">${usd(E.crypto)}</b>${E.feeThb?` · в компании: <b class="pos">${money(E.feeThb,'฿')}</b> <span style="color:var(--text-muted)">(${usd(E.feeUsd)})</span>`:''}</p>
   </div>`:''}
 
-  ${(d.type==='Оплата недвижимости'&&E.ready)?'':`<div class="card" style="margin-bottom:16px">
+  ${(d.kind==='ИППС'||d.type==='Оплата недвижимости'&&E.ready)?'':`<div class="card" style="margin-bottom:16px">
     <div class="sec po">Оплата</div>
     ${(!d.payout||!(d.payout.method||d.payout.source||d.payout.usdt||d.payout.thb))?fillNote(d,'Pay-Out'):`
     <table class="tbl">
@@ -8203,7 +8223,11 @@ function crmPayload(d){
     })};
   const mf=hx(mfList(d).map(t=>({hash:t.hash,network:t.net,amount:t.amount})));
   const buy=num(d.rates.usdtThb);
-  if(prop&&d.kind!=='Фрихолд'){
+  if(d.kind==='ИППС'){
+    Object.assign(p,{deal_kind:'ipps_realty',realty_purpose:d.realtyPurpose||'',
+      payout_method:'transfer',payout_source:'bank_card',bank_card_id:po.bankCardId??null,
+      payout_amount_thb:r2(po.thb),needs_reimbursement:false});
+  }else if(prop&&d.kind!=='Фрихолд'){
     /* После Coins в CRM уходит факт, а не процент: сколько батов реально пришло на SCB
        (company_sent_thb) и по какому курсу Coins их выдал. Иначе CRM считала комиссию
        от номинала и прибыль в CRM расходилась с карточкой (QA 27.09: $343,23 против
@@ -8281,7 +8305,9 @@ function crmLockedKeys(d){
   if(d.incomeAmount||d.amountRub)locked.add('payin_amount_rub');
   if(!isCrypto(d)&&num((d.rates||{}).broker))locked.add('payin_rate_rub_usdt');
   if((d.payTo||{}).purpose)locked.add('realty_purpose');
-  if(d.type==='Оплата недвижимости'&&d.kind==='Фрихолд'){
+  if(d.kind==='ИППС'){
+    ['payout_source','payout_amount_thb','bank_card_id'].forEach(k=>locked.add(k));
+  }else if(d.type==='Оплата недвижимости'&&d.kind==='Фрихолд'){
     ['invoice_amount_usd','transfer_fee_percent','transfer_fee_fixed_usd','transfer_sent_usd'].forEach(k=>locked.add(k));
   }else if(d.type==='Оплата недвижимости'){
     if(d.amountThb)locked.add('invoice_amount_thb');
@@ -9282,11 +9308,16 @@ const MANAGERS=['Елизавета'];
    фрихолд. В прототипе это раскладывается на type+kind, но человеку показываем одно поле. */
 const DEAL_KINDS=[['exchange','Обычная (обмен)'],['custom','Кастомная — нестандартные валюты'],
   ['mf_realty','Недвижимость через MF Corp'],['mf_freehold','Недвижимость фрихолд'],['mf_auto','Оплата авто']];
-function dealDisplayKind(d){return d.autoPayment===true?'Оплата авто':d.type+(d.kind?' · '+d.kind:'');}
+function dealDisplayKind(d){
+  if(d.autoPayment===true)return 'Оплата авто';
+  if(d.kind==='ИППС')return 'Недвижимость через ИППС';
+  return d.type+(d.kind?' · '+d.kind:'');
+}
 function recipientTitle(d){return d.autoPayment===true?'продавцу авто':'застройщику';}
 function dealKind(d){
   if(d.custom) return 'custom';
   if(d.autoPayment===true) return 'mf_auto';
+  if(d.kind==='ИППС') return 'ipps_realty';
   if(d.type==='Оплата недвижимости') return d.kind==='Фрихолд'?'mf_freehold':'mf_realty';
   return 'exchange';
 }

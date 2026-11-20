@@ -48,7 +48,7 @@ function crmDraftFlow(active,d){
   const {root}=active;
   const selectedKind=crmDraftRead(root,'dealKindSelect');
   const kind=selectedKind==='mf_freehold'||selectedKind==='mf_auto'?'Фрихолд':
-    selectedKind==='rental'?'Аренда':selectedKind==='mf_realty'
+    selectedKind==='ipps_realty'?'ИППС':selectedKind==='rental'?'Аренда':selectedKind==='mf_realty'
       ?(document.getElementById('crmDraftRealtySubtype')?.value||'Лизхолд'):'';
   const payinField=selectedKind==='custom'?'customPayinMethod':'payinMethod';
   return {type:kind?'Оплата недвижимости':'Обмен валюты',kind,autoPayment:d.autoPayment===true,
@@ -136,11 +136,23 @@ function crmDraftSanitize(form) {
 function crmDraftLayout(active) {
   const {root}=active,kind=crmDraftRead(root,'dealKindSelect');
   const custom=kind==='custom', mf=kind==='mf_realty'||kind==='rental',
-    fh=kind==='mf_freehold'||kind==='mf_auto';
+    fh=kind==='mf_freehold'||kind==='mf_auto', ipps=kind==='ipps_realty';
+  const draft=deal(active.id);
+  const kindSelect=root.getElementById('dealKindSelect');
+  const ippsOption=kindSelect?.querySelector('option[value="ipps_realty"]');
+  if(ippsOption)ippsOption.disabled=!draft?.manual||!!draft.isTask||!!draft.closed&&draft.kind!=='ИППС';
+  if(kindSelect)kindSelect.disabled=draft?.kind==='ИППС'&&!!draft.closed;
+  const ippsThb=root.getElementById('ippsPayoutThb');
+  if(ippsThb){ippsThb.required=ipps;ippsThb.disabled=!ipps;ippsThb.readOnly=ipps&&!!draft?.closed;}
+  const ippsCard=root.getElementById('ippsCardSelect');
+  if(ippsCard){
+    ippsCard.required=ipps;
+    ippsCard.disabled=!ipps||!!draft?.closed||ippsCard.dataset.single==='1';
+  }
   for(const [id,on] of [['customDealSection',custom],['standardDealSection',!custom],
       ['mfDealSection',mf],['mfDealHint',mf],['fhDealSection',fh],['fhDealHint',fh],
-      ['payoutSectionStd',!mf&&!fh],['profitCalcHr',!mf&&!fh],
-      ['profitCalcTitle',!mf&&!fh],['profitCalcRows',!mf&&!fh]]) {
+      ['ippsDealSection',ipps],['payoutSectionStd',!mf&&!fh&&!ipps],['profitCalcHr',!mf&&!fh&&!ipps],
+      ['profitCalcTitle',!mf&&!fh&&!ipps],['profitCalcRows',!mf&&!fh&&!ipps]]) {
     const el=root.getElementById(id);if(el)el.style.display=on?'block':'none';
   }
   for(const [id,on] of [['customDealToggle',custom],['mfDealToggle',mf],['fhDealToggle',fh]]) {
@@ -150,7 +162,7 @@ function crmDraftLayout(active) {
   // is outside the cloned form, so commit calls CRM reportInvalidField itself.
   for(const name of ['payout_method','payout_source']){
     const el=root.querySelector(`#standardDealSection [name="${name}"]`);
-    if(el)el.required=!custom&&!mf&&!fh;
+    if(el)el.required=!custom&&!mf&&!fh&&!ipps;
   }
   const payin=root.querySelector('#standardDealSection [name="payin_method"]');
   if(payin)payin.required=!custom;
@@ -211,6 +223,18 @@ function crmDraftFill(active,d) {
     amountField.dataset.flowDraftTyped='1';
   crmDraftValue(root,'payin_rate_rub_usdt',d.rates?.broker);
   crmDraftValue(root,'payin_partner_name',d.payinPartner);
+  crmDraftValue(root,'ippsPurpose',d.realtyPurpose||d.object);
+  crmDraftValue(root,'ippsPayoutThb',kind==='ipps_realty'?d.payout?.thb:null);
+  if(kind==='ipps_realty'){
+    const card=root.getElementById('ippsCardSelect');
+    if(card&&d.payout?.bankCardId)card.dataset.want=String(d.payout.bankCardId);
+    const cost=root.getElementById('ippsCostUsdt');
+    if(cost&&d.closed){
+      cost.dataset.savedCard=String(d.payout?.bankCardId||'');
+      cost.dataset.savedAmount=String(d.payout?.thb||'');
+      cost.dataset.savedCost=String(d.payout?.usdt||'');
+    }
+  }
   crmDraftValue(root,'mfPurpose',d.realtyPurpose||d.object);
   crmDraftValue(root,'mfInvoiceThb',d.amountThb);
   crmDraftValue(root,'mfBuyRate',d.rates?.usdtThb);
@@ -289,7 +313,13 @@ function crmDraftRestore(active,snapshot) {
   if(!snapshot)return;
   active.form.querySelectorAll('input,select,textarea').forEach((el,i)=>{
     const v=snapshot.values[el.id||el.name||`#${i}`];
-    if(v!==undefined){if(el.type==='checkbox')el.checked=!!v;else el.value=v;}
+    if(v!==undefined){
+      if(el.type==='checkbox')el.checked=!!v;
+      else{
+        if(el.id==='ippsCardSelect'&&v)el.dataset.want=v;
+        el.value=v;
+      }
+    }
   });
   active.manualTx=snapshot.manualTx||null;
   active.flowConfirmation=snapshot.flowConfirmation||null;
@@ -322,6 +352,7 @@ function crmDraftRestore(active,snapshot) {
 }
 async function crmDraftPreview(active) {
   const {root}=active,kind=crmDraftRead(root,'dealKindSelect');
+  if(kind==='ipps_realty')return active.core.calculateProfit();
   if(kind!=='mf_realty'&&kind!=='mf_freehold')return;
   if(kind==='mf_realty')return active.core.mfRecalcNow();
   if(kind==='mf_freehold'&&!IPPS_TARIFFS[document.getElementById('crmDraftTariff')?.value]){
@@ -407,6 +438,7 @@ async function crmDraftMount(id) {
     if(crmDraftActive!==active)return;
     if(d.payout?.bankCardId != null)
       crmDraftValue(shadow,'bankCardSelect',d.payout.bankCardId);
+    crmDraftLayout(active);
     active.core.upgradeAllSelects();
     if(crmDraftRead(shadow,'payoutSource')==='binance')active.core.loadOutgoingTxForBinance();
     if(crmDraftRead(shadow,'payoutSource')==='founder_personal'){
@@ -592,6 +624,7 @@ function crmDraftWire(active) {
     if(el.id==='sberKindSelectC')active.core.sberKindChanged(el.value);
     if(['customPayinCurrency','customPayoutCurrency'].includes(el.id))active.core.calcCustomProfit();
     if(el.id==='payinMethod')crmDraftLayout(active);
+    if(el.id==='ippsCardSelect'){el.dataset.want=el.value;crmDraftPreview(active);}
     if(el.id==='payinWalletSelect'){
       el.dataset.userSelected='true';active.core.refreshPayinWalletPolicy();
     }
@@ -624,6 +657,7 @@ function crmDraftWire(active) {
     if(el.id==='customPayinUsdt')active.core.onCustomUsdtInput('payin');
     if(el.id==='customPayoutUsdt')active.core.onCustomUsdtInput('payout');
     if(el.id==='binanceUsdt')active.core.calcBinanceRate();
+    if(el.id==='ippsPayoutThb')crmDraftPreview(active);
     if(el.id==='payoutAmountThb'){
       active.core.calcBinanceRate();active.core.calcNoConvRate();
     }
@@ -676,12 +710,13 @@ function crmDraftWire(active) {
     if(target)crmDraftAction(active,target.dataset.crmAction,target);
   });
   root.getElementById('clientSearchInput')?.addEventListener('focus',async e=>{
+    const input=e.currentTarget;
     try{
       const response=await crmDraftSafeFetch('/api/clients');
       const data=await response.json();
       if(crmDraftActive===active)active.clients=data.clients||data.data||[];
     }catch(error){/* Keep the already loaded local list. */}
-    if(crmDraftActive===active)crmDraftClientSearch(active,e.target.value);
+    if(crmDraftActive===active&&typeof input?.value==='string')crmDraftClientSearch(active,input.value);
   });
   const hashInput=root.getElementById('payinManualHash');
   if(hashInput&&deal(active.id)?.manual){
@@ -921,6 +956,11 @@ function crmDraftCommit(id) {
     toast('Тип оплаты авто нельзя менять после создания заявки');return false;
   }
   const kind=rawKind==='rental'?'mf_realty':rawKind;
+  if(kind==='ipps_realty'&&(!d.manual||d.isTask||d.closed&&d.kind!=='ИППС')){
+    toast('Недвижимость через ИППС доступна в ручной сделке');return false;
+  }
+  const ippsCardId=kind==='ipps_realty'?Number(crmDraftRead(r,'ippsCardSelect')):null;
+  if(kind==='ipps_realty'&&!ippsCardId){toast('Выберите счёт ИППС');return false;}
   const flow=crmDraftFlow(a,d);
   if(!crmDraftAuthorizeFlow(a,d,flow))return false;
   if(kind==='custom')return crmDraftCommitCustom(a,d,before,flow);
@@ -1014,13 +1054,23 @@ function crmDraftCommit(id) {
   d.incomeAmount=d.payinParts.length?Math.round(d.payinParts.reduce((s,p)=>s+(p.amountRub||0),0)*100)/100:null;
   d.mfPayout=a.core.mfPayoutTxPool.map(p=>({hash:p.hash,net:p.network||'trc20',
     amount:crmDraftNum(p.amount_usdt),to_address:p.to_address||'',date:p.date||''}));
-  d.realtyPurpose=kind==='mf_freehold'?crmDraftRead(r,'fhPurpose'):crmDraftRead(r,'mfPurpose');
-  if(d.realtyPurpose){d.payTo=d.payTo||{};d.payTo.purpose=d.realtyPurpose;}
+  const purposeField=kind==='ipps_realty'?'ippsPurpose':kind==='mf_freehold'?'fhPurpose':'mfPurpose';
+  d.realtyPurpose=crmDraftRead(r,purposeField);
+  if(kind==='ipps_realty'||d.realtyPurpose){d.payTo=d.payTo||{};d.payTo.purpose=d.realtyPurpose;}
   if(kind==='mf_realty'||kind==='mf_freehold'){
     d.docLinks=d.docLinks||{};
     const prefix=kind==='mf_freehold'?'fh':'mf';
     for(const [field,key] of [['DocInvoice','invoice'],['DocContract','contract'],['DocPayment','payment']])
       d.docLinks[key]=crmDraftRead(r,prefix+field);
+  }
+  if(kind==='ipps_realty'){
+    const thb=crmDraftNum(crmDraftRead(r,'ippsPayoutThb'));
+    const usdt=crmDraftNum(crmDraftRead(r,'ippsCostUsdt'));
+    d.amountThb=thb;
+    d.paySrc='ipps';
+    d.payout={thb,usdt,bankCardId:ippsCardId,method:'перевод',source:'IPPS счет компании'};
+    d.postConv=null;
+    d.mfPayout=[];
   }
   if(kind==='mf_realty'){
     d.amountThb=crmDraftNum(crmDraftRead(r,'mfInvoiceThb'));

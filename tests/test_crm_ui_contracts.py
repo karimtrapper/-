@@ -249,8 +249,8 @@ def test_kind_select_options_match_toggles(html):
     """Каждый пункт «Тип сделки» имеет обработку в onDealKindChange."""
     select = extract_subtree(html, 'dealKindSelect')
     values = set(re.findall(r'<option value="([\w_]+)"', select))
-    assert values == {'exchange', 'custom', 'mf_realty', 'mf_freehold', 'mf_auto', 'rental'}, values
-    toggle_values = values - {'exchange', 'rental'}
+    assert values == {'exchange', 'custom', 'mf_realty', 'ipps_realty', 'mf_freehold', 'mf_auto', 'rental'}, values
+    toggle_values = values - {'exchange', 'rental', 'ipps_realty'}
     body = _function_body(html, 'onDealKindChange')
     for value in toggle_values:
         assert f"'{value}'" in body, f'onDealKindChange не обрабатывает тип {value}'
@@ -258,6 +258,8 @@ def test_kind_select_options_match_toggles(html):
     for value in values - {'exchange', 'mf_auto', 'mf_freehold', 'rental'}:
         assert f"'{value}'" in sync, f'syncDealKindSelect не знает про тип {value}'
     assert 'swiftDealKind' in sync
+    ipps_layout = _function_body(html, 'applyRealtyLayout')
+    assert "'ipps_realty'" in ipps_layout and "'ippsDealSection'" in ipps_layout
 
 
 def test_agent_model_rerenders_on_referrer_pick(html):

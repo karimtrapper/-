@@ -521,6 +521,7 @@ window.createCrmDraftCore = function createCrmDraftCore(root, adapters) {
 
             btn.addEventListener('click', (e) => {
                 e.stopPropagation();
+                if (select.disabled) return;
                 // Закрыть другие
                 document.querySelectorAll('.custom-select-wrap.open').forEach(w => { if (w !== wrap) w.classList.remove('open'); });
                 wrap.classList.toggle('open');
@@ -532,7 +533,7 @@ window.createCrmDraftCore = function createCrmDraftCore(root, adapters) {
                 // disabled — тот же непроверенный флоу, что и в задачнике (TKS-7):
                 // видимый, но невыбираемый пункт не должен применяться по клику
                 // (независимый QA, 19.10 — без этой проверки клик применялся всегда).
-                if (!opt || opt.classList.contains('disabled')) return;
+                if (select.disabled || !opt || opt.classList.contains('disabled')) return;
                 select.selectedIndex = parseInt(opt.dataset.index);
                 select.dispatchEvent(new Event('change', { bubbles: true }));
                 btn.textContent = opt.textContent;
@@ -636,6 +637,25 @@ window.createCrmDraftCore = function createCrmDraftCore(root, adapters) {
         function calculateProfit() {
             const form = document.getElementById('createDealForm');
             const payinUsdt = parseFloat(form.payin_amount_usdt.value) || 0;
+            if (document.getElementById('dealKindSelect')?.value === 'ipps_realty') {
+                const account = document.getElementById('ippsCardSelect');
+                const thb = Number(document.getElementById('ippsPayoutThb').value);
+                const input = document.getElementById('ippsCostUsdt');
+                const sameCard = account.value && account.value === input.dataset.savedCard;
+                const rate = Number((sameCard && input.dataset.savedRate) || account.selectedOptions[0]?.dataset.rate);
+                const sameAmount = sameCard && thb === Number(input.dataset.savedAmount);
+                const cost = sameAmount && input.dataset.savedCost
+                    ? Number(input.dataset.savedCost)
+                    : rate > 0 && thb > 0 ? Math.round(thb / rate * 100) / 100 : 0;
+                input.value = cost > 0 ? cost.toFixed(2) : '';
+                const payin = payinUsdt + payinExtraSerialize().reduce((sum, part) => sum + (part.amount_usdt || 0), 0);
+                const gross = payin > 0 && cost > 0 ? Math.round((payin - cost) * 100) / 100 : 0;
+                _stdGross = { profit: gross, volume: payin > 0 && cost > 0 ? Math.max(payin, cost) : 0 };
+                stdAgentsRecalc();
+                document.getElementById('ippsProfitSummary').textContent =
+                    payin > 0 && cost > 0 ? 'Валовая прибыль ' + gross.toFixed(2) + ' USDT' : '';
+                return;
+            }
             const payoutThb = parseFloat(form.payout_amount_thb.value) || 0;
             const payoutSource = form.payout_source.value;
 
@@ -835,6 +855,23 @@ window.createCrmDraftCore = function createCrmDraftCore(root, adapters) {
                                 </option>`
                             ).join('')
                             : '<option value="">Нет доступных карт</option>';
+
+                        const ipps = document.getElementById('ippsCardSelect');
+                    if (ipps) {
+                        const current = ipps.dataset.want || ipps.value;
+                        const cards = data.cards.filter(c => c.is_ipps);
+                        const options = cards.map(card => {
+                            const option = new Option(`${card.card_name} · ${card.holder_name || '—'} · ${formatNumber(card.balance_thb)} THB`, card.id);
+                            option.dataset.rate = card.avg_rate;
+                            return option;
+                        });
+                        ipps.replaceChildren(new Option('Выберите счёт ИППС', ''), ...options);
+                        ipps.dataset.single = cards.length === 1 ? '1' : '0';
+                        ipps.value = current || (cards.length === 1 ? String(cards[0].id) : '');
+                        const active = document.getElementById('dealKindSelect')?.value === 'ipps_realty';
+                        ipps.disabled = !active || !!ipps.dataset.saved || cards.length === 1;
+                        if (active) calculateProfit();
+                    }
 
                         // Update info for first card
                         if (data.cards.length > 0) {
