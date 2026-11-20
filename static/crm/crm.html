@@ -5730,6 +5730,35 @@ select.period-btn:hover:not(.active) { color: var(--text); }
             document.querySelector('#create .card-title').append(button);
         }
 
+        async function loadSavedPayinTxLedger(hash, dealId, editorRequestId) {
+            const pool = payinTxPool;
+            const ledger = payinTxLedger;
+            const isCurrent = () => _editorRequestId === editorRequestId && editingDealId === dealId
+                && payinTxPool === pool && payinTxLedger === ledger && pool.some(tx => tx.hash === hash);
+            try {
+                const response = await fetch(`${API_URL}/api/payin-txs/${encodeURIComponent(hash)}`);
+                if (!response.ok) return;
+                const data = await response.json();
+                if (!data.success || !data.tx || !isCurrent()) return;
+                ledger[hash] = data.tx;
+                // Updating hints rebuilds the pool. Wait for focus to leave its controls.
+                const box = document.getElementById('payinTxPoolBox');
+                const refreshWhenUnfocused = focused => {
+                    if (!isCurrent() || !box) return;
+                    if (!box.contains(focused)) {
+                        renderPayinTxPool();
+                        return;
+                    }
+                    focused.addEventListener('blur', event => queueMicrotask(() => {
+                        refreshWhenUnfocused(event.relatedTarget || document.activeElement);
+                    }), {once: true});
+                };
+                refreshWhenUnfocused(document.activeElement);
+            } catch (error) {
+                console.warn('Не удалось загрузить подсказку реестра Pay-In', error);
+            }
+        }
+
         async function openDealEditor(dealId) {
             const reqId = ++_editorRequestId;
             try {
@@ -5893,7 +5922,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                         document.getElementById('payinManualShareExplicit').checked =
                             deal.payin_tx_hashes?.[0]?.amount_usdt != null;
                         payinTxLedger = {};
-                        payinTxPool.forEach(t => loadPayinTxLedger(t.hash));
+                        payinTxPool.forEach(t => loadSavedPayinTxLedger(t.hash, dealId, reqId));
                         if (deal.payin_rate_rub_usdt) form.payin_rate_rub_usdt.value = deal.payin_rate_rub_usdt;
                         if (deal.doverka_transaction_id) form.doverka_transaction_id.value = deal.doverka_transaction_id;
                         if (deal.payin_partner_name) form.payin_partner_name.value = deal.payin_partner_name;
