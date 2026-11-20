@@ -369,6 +369,7 @@ PAYOUT_SOURCE_LABELS = {
 DEAL_KIND_LABELS = {
     'exchange': 'обычный обмен',
     'mf_realty': 'недвижимость: лизхолд (через MF Corp)',
+    'ipps_realty': 'Недвижимость через ИППС',
     'mf_freehold': 'недвижимость: фрихолд (SWIFT застройщику)',
     'mf_auto': 'Оплата авто',
 }
@@ -1705,11 +1706,12 @@ def compute_agent_cascade(profit_usdt, volume_usdt, agents, crypto_base_usdt=Non
 MF_REALTY_KIND = 'mf_realty'      # недвижимость через тайскую компанию (лизхолд)
 MF_FREEHOLD_KIND = 'mf_freehold'  # недвижимость фрихолд: оплата SWIFT-ом из-за рубежа
 MF_AUTO_KIND = 'mf_auto'          # оплата автомобиля: те же расчёты перевода
-# Оба типа недвижимости: своя математика, возмещение не нужно, выгрузка в
-# «Cделки недвижимость», свой шаблон Telegram. Общая ветка кода — по этому кортежу.
-REALTY_KINDS = (MF_REALTY_KIND, MF_FREEHOLD_KIND, MF_AUTO_KIND)
+IPPS_REALTY_KIND = 'ipps_realty'
+IPPS_CARD_NAME = 'IPPS счет компании'
+# Сделки с отдельным расчётом, выгрузкой в «Сделки недвижимость» и без возмещения.
+REALTY_KINDS = (MF_REALTY_KIND, MF_FREEHOLD_KIND, MF_AUTO_KIND, IPPS_REALTY_KIND)
 SWIFT_PAYMENT_KINDS = (MF_FREEHOLD_KIND, MF_AUTO_KIND)
-PROPERTY_KINDS = (MF_REALTY_KIND, MF_FREEHOLD_KIND)
+PROPERTY_KINDS = (MF_REALTY_KIND, MF_FREEHOLD_KIND, IPPS_REALTY_KIND)
 
 
 def compute_mf_realty(invoice_thb, buy_rate, payin_usdt, sell_rate=None,
@@ -3397,6 +3399,7 @@ def build_realty_rows(deal):
     читается как «данные не подставились», прочерк — как «намеренно пусто».
     """
     d = deal
+    is_ipps = getattr(d, 'deal_kind', None) == IPPS_REALTY_KIND
     parts = _payin_all_parts(d)
     amounts = [p['amount_usdt'] for p in parts]
     n = len(parts)
@@ -3411,10 +3414,14 @@ def build_realty_rows(deal):
     income = (round((d.payin_amount_usdt or 0) - invoice_cost, 2)
               if d.buy_rate_thb_usdt else 0)
 
+    if is_ipps:
+        invoice_cost = d.payout_amount_usdt or 0
+        income = d.profit_usdt or 0
+
     # Колонка хэша сверяет ОТПРАВКУ: если переводы в компанию отмечены — их хэши.
     # Отправка одна на сделку, поэтому они стоят в первой строке; остальные части
     # показывают свои хэши прихода.
-    payout_hashes = _payout_hash_list(d)
+    payout_hashes = [] if is_ipps else _payout_hash_list(d)
 
     cost_split = split_by_payin_share(invoice_cost, amounts)
     fee_usdt_split = split_by_payin_share(d.company_fee_usdt or 0, amounts)
@@ -3430,14 +3437,16 @@ def build_realty_rows(deal):
     rows = []
     for i, p in enumerate(parts):
         first = (i == 0)
+        direction = 'usdt-thb' if p['method'] == 'crypto_direct' else 'rub-thb'
         rows.append([
             d.realty_purpose or '',                                       # 0 Назначение
             date_str,                                                     # 1 дата
-            'usdt-thb' if p['method'] == 'crypto_direct' else 'rub-thb',  # 2 направление
+            f'{direction} · ИППС' if is_ipps else direction,            # 2 направление
             p['amount_rub'] or '',                                        # 3 сумма руб части
             p['rate_rub_usdt'] or '',                                     # 4 курс ЧАСТИ
             agent_names,                                                  # 5 от кого
-            (d.invoice_amount_thb or '') if first else '—',               # 6 сумма thb
+            ((d.payout_amount_thb if is_ipps else d.invoice_amount_thb) or '')
+            if first else '—',                                           # 6 сумма thb
             (d.sell_rate_thb_usdt or '') if first else '—',               # 7 курс продажи
             (d.buy_rate_thb_usdt or '') if first else '—',                # 8 курс покупкт
             p['amount_usdt'] or '',                                       # 9 приход usdt части
@@ -3460,6 +3469,9 @@ def build_realty_rows(deal):
             d.id,                                                         # 25 CRM ID
             f'{i + 1}/{n}',                                               # 26 часть
         ])
+        if is_ipps:
+            for column in (7, 8, 11, 12, 13, 14, 15, 16, 19):
+                rows[-1][column] = ''
     return rows
 
 
@@ -4298,6 +4310,12 @@ def _send_deal_telegram(deal):
     if getattr(deal, 'is_test', False):
         print(f'[TG] Skip notify: deal #{deal.id} is test')
         return
+    if deal.deal_kind == IPPS_REALTY_KIND:
+        return send_telegram_notification(
+            f"🏠 Недвижимость через ИППС · CRM #{deal.id}\n"
+            f"Сумма выплаты: {deal.payout_amount_thb or 0:,.2f} THB\n"
+            f"Себестоимость: {deal.payout_amount_usdt or 0:,.2f} USDT\n"
+            f"Чистая прибыль: {deal.net_profit_usdt or 0:,.2f} USDT")
     if deal.deal_kind == MF_REALTY_KIND:
         return send_telegram_notification(_mf_realty_telegram_text(deal))
     if deal.deal_kind in SWIFT_PAYMENT_KINDS:
@@ -5259,6 +5277,10 @@ def get_deal(deal_id):
         if not deal:
             return jsonify({'success': False, 'error': 'Сделка не найдена'}), 404
         row = deal.to_dict()
+        if deal.deal_kind == IPPS_REALTY_KIND and deal.bank_card:
+            card = deal.bank_card
+            row['bank_card_name'] = ' · '.join(
+                part for part in (card.bank_name, card.card_name, card.holder_name) if part)
         if not row.get('payin_amount_usdt'):
             conv = _converted_payin_usdt(session, [deal.id]).get(deal.id)
             if conv:
@@ -5394,7 +5416,8 @@ def _clear_profit_if_payin_unknown(deal):
     в USDT позже. Держим пусто, пока приход не проставят — тогда
     _recalculate_deal_financials посчитает по-настоящему.
     """
-    if deal.payout_amount_usdt and not deal.payin_amount_usdt:
+    ipps_unknown = deal.deal_kind == IPPS_REALTY_KIND and not deal.payout_amount_usdt
+    if ipps_unknown or (deal.payout_amount_usdt and not deal.payin_amount_usdt):
         deal.profit_usdt = None
         deal.profit_percent = None
         deal.net_profit_usdt = None
@@ -8347,12 +8370,55 @@ def preview_mf_freehold():
     return jsonify({'success': True, 'result': result})
 
 
+@app.route('/api/deals/ipps-realty/preview', methods=['POST'])
+def preview_ipps_realty():
+    """Рассчитывает прибыль и выплаты агентам по общей сумме прихода."""
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify(success=False, error='Передайте данные сделки'), 400
+    session = get_session()
+    try:
+        data['deal_kind'] = IPPS_REALTY_KIND
+        existing = None
+        if 'deal_id' in data:
+            existing = session.get(Deal, data['deal_id'])
+            if not existing or existing.deal_kind != IPPS_REALTY_KIND:
+                return jsonify(success=False, error='Сделка ИППС не найдена'), 404
+        problem = _prepare_ipps_payout(session, data, existing, lock_card=False)
+        if problem:
+            return jsonify(success=False, error=problem), 400
+        amount = data.get('payout_amount_thb', existing.payout_amount_thb if existing else None)
+        card = session.get(BankCard, data['bank_card_id'])
+        cost = _ipps_card_cost(card, amount, existing)
+        payin = _ipps_amount(data.get('payin_amount_usdt'))
+        if data.get('payin_amount_usdt') not in (None, '') and payin is None:
+            return jsonify(success=False, error='Приход, USDT — введите сумму больше нуля, до двух знаков после запятой'), 400
+        deal = Deal(payin_amount_usdt=payin, payout_amount_usdt=cost)
+        _apply_ipps_realty(deal, data)
+        agents, net = (compute_agent_cascade(
+            deal.profit_usdt, max(payin, cost),
+            [dict(agent) for agent in (data.get('agents') or [])])
+            if deal.profit_usdt is not None else ([], None))
+        return jsonify(success=True, result={
+            'bank_card_id': card.id, 'payout_amount_thb': amount, 'payout_amount_usdt': cost,
+            'profit_usdt': deal.profit_usdt, 'profit_percent': deal.profit_percent,
+            'net_profit_usdt': net, 'agents': agents,
+        })
+    except (TypeError, ValueError) as e:
+        return jsonify(success=False, error=f'Некорректные данные: {e}'), 400
+    finally:
+        session.close()
+
+
 @app.route('/api/deals', methods=['POST'])
 def create_deal():
     session = get_session()
     try:
         _lock_bank_conversion_mutations(session)
         data = request.get_json()
+        ipps_problem = _prepare_ipps_payout(session, data)
+        if ipps_problem:
+            return jsonify(success=False, error=ipps_problem), 400
         if ('payin_rub_is_net' in data and
                 type(data['payin_rub_is_net']) is not bool):
             return jsonify({'success': False, 'error': 'payin_rub_is_net должен быть boolean'}), 400
@@ -8475,7 +8541,9 @@ def create_deal():
         # Умный дефолт needs_reimbursement:
         # если payout не в THB (USDT/RUB/USD) — возмещение не нужно
         # (фаундер не тратил наличные THB из кармана)
-        if 'needs_reimbursement' in data:
+        if data.get('deal_kind') == IPPS_REALTY_KIND:
+            needs_reimb = False
+        elif 'needs_reimbursement' in data:
             needs_reimb = bool(data.get('needs_reimbursement'))
         elif data.get('payout_source') == PayOutSource.BANK_CARD.value:
             # Баты с карты откуплены заранее, при её пополнении — возмещать нечего
@@ -8619,6 +8687,8 @@ def create_deal():
                 _apply_mf_realty(deal, data)
             elif deal.deal_kind in SWIFT_PAYMENT_KINDS:
                 _apply_mf_freehold(deal, data)
+            elif deal.deal_kind == IPPS_REALTY_KIND:
+                _apply_ipps_realty(deal, data)
             else:
                 # Себестоимость выдачи — из отмеченных переводов, до пересчёта
                 # прибыли: иначе она была бы известна только после возврата оунеру
@@ -8758,6 +8828,12 @@ def update_deal(deal_id):
             return jsonify({'success': False, 'error': 'Сделка не найдена'}), 404
         
         data = request.get_json()
+        next_kind = data.get('deal_kind', deal.deal_kind)
+        if next_kind != deal.deal_kind and IPPS_REALTY_KIND in (deal.deal_kind, next_kind):
+            return jsonify(success=False, error='Тип ИППС выбирается при создании сделки'), 409
+        ipps_problem = _prepare_ipps_payout(session, data, deal)
+        if ipps_problem:
+            return jsonify(success=False, error=ipps_problem), 400
         if 'payin_rub_is_net' in data:
             if type(data['payin_rub_is_net']) is not bool:
                 return jsonify({'success': False, 'error': 'payin_rub_is_net должен быть boolean'}), 400
@@ -9002,8 +9078,10 @@ def update_deal(deal_id):
         if deal.deal_kind in REALTY_KINDS:
             if deal.deal_kind == MF_REALTY_KIND:
                 _apply_mf_realty(deal, data)
-            else:
+            elif deal.deal_kind in SWIFT_PAYMENT_KINDS:
                 _apply_mf_freehold(deal, data)
+            else:
+                _apply_ipps_realty(deal, data)
             if 'payout_tx_hashes' in data:
                 try:
                     tx_warnings += _sync_payout_tx_uses(session, deal, _payout_transfer_parts(deal))
@@ -9476,6 +9554,8 @@ def _ledger_realty(deal):
             'katika_fee_usdt': deal.katika_fee_usdt,
             'crypto_remainder_usdt': deal.crypto_remainder_usdt,
         }
+    if deal.deal_kind == IPPS_REALTY_KIND:
+        return {'purpose': deal.realty_purpose}
     if deal.deal_kind in SWIFT_PAYMENT_KINDS:
         # Фрихолд и оплата авто: карман один, комиссию банка съедает сама отправка
         return {
@@ -9813,6 +9893,7 @@ FINANCE_ARTICLES = {
 FINANCE_PRODUCTS = {
     'exchange': 'Обмен',
     'mf_realty': 'Недвижимость: лизхолд',
+    'ipps_realty': 'Недвижимость через ИППС',
     'mf_freehold': 'Недвижимость: фрихолд',
     'mf_auto': 'Оплата авто',
     'unassigned': 'Без привязки к сделке',
@@ -10003,10 +10084,16 @@ def _finance_events(session, date_from=None, date_to=None):
             if not in_range(day):
                 continue
             d = deal_of(a.deal_id)
-            events.append(_fin_event(
-                day, 'payout_client_thb', a.amount_thb, 'THB', account,
-                counterparty=(d.client_name if d else None), deal_id=a.deal_id,
-                product=_fin_deal_product(d), ref=f'{alloc.__tablename__}:{a.id}'))
+            is_ipps = alloc is CardAllocation and d and d.deal_kind == IPPS_REALTY_KIND
+            event = _fin_event(
+                day, 'payout_developer' if is_ipps else 'payout_client_thb',
+                a.amount_thb, 'THB', account,
+                counterparty=(d.realty_purpose if is_ipps else d.client_name if d else None),
+                deal_id=a.deal_id,
+                product=_fin_deal_product(d), ref=f'{alloc.__tablename__}:{a.id}')
+            if is_ipps:
+                event['bank_card_id'] = a.card_id
+            events.append(event)
     for d in deals.values():
         if d.id in covered or d.status in NON_DEAL_STATUSES:
             continue
@@ -11543,6 +11630,103 @@ def realty_payload_error(deal):
     return None
 
 
+def _ipps_amount(value):
+    """Точная положительная сумма в пределах двух десятичных знаков."""
+    from decimal import Decimal, InvalidOperation
+    if isinstance(value, bool) or not isinstance(value, (str, int, float)):
+        return None
+    try:
+        amount = Decimal(str(value))
+    except InvalidOperation:
+        return None
+    # Колонки выплат хранят Float. Ограничение сохраняет точность в центах.
+    if not amount.is_finite() or not 0 < amount < Decimal('1e12'):
+        return None
+    return float(amount) if amount == amount.quantize(Decimal('0.01')) else None
+
+
+def _is_ipps_card(card):
+    return bool(card.card_name and card.card_name.strip().casefold() == IPPS_CARD_NAME.casefold())
+
+
+def _ipps_cards(session):
+    active = session.query(BankCard.id, BankCard.card_name).filter(
+        BankCard.status == CashBatchStatus.ACTIVE).order_by(BankCard.id)
+    return [card for card in active if _is_ipps_card(card)]
+
+
+def _prepare_ipps_payout(session, data, deal=None, *, lock_card=True):
+    kind = data.get('deal_kind', deal.deal_kind if deal else None)
+    if kind != IPPS_REALTY_KIND:
+        return None
+    if data.get('payout_source', PayOutSource.BANK_CARD) != PayOutSource.BANK_CARD:
+        return 'Выберите счёт ИППС'
+    if any(data.get(field) for field in (
+            'cash_batch_id', 'payout_wallet_id', 'payout_tx_hash',
+            'payout_tx_hashes', 'payout_founder_name', 'payout_no_conversion',
+            'needs_reimbursement', 'payout_owner_approved', 'payout_owner_approval', 'is_custom')):
+        return 'Для выплаты со счёта ИППС уберите другой источник, переводы и возмещение'
+    if data.get('payout_method', PayOutMethod.TRANSFER) != PayOutMethod.TRANSFER:
+        return 'Для выплаты со счёта ИППС укажите банковский перевод'
+    if data.get('payout_amount_usdt') is not None:
+        return 'Себестоимость рассчитывается по счёту ИППС'
+    data.pop('payout_amount_usdt', None)
+    amount = _ipps_amount(data.get('payout_amount_thb', getattr(deal, 'payout_amount_thb', None)))
+    if amount is None:
+        return 'Выплата, THB — введите сумму больше нуля, до двух знаков после запятой'
+    card_id = data.get('bank_card_id')
+    if card_id is not None and (type(card_id) is not int or card_id <= 0):
+        return 'Выберите счёт ИППС'
+    if deal is not None:
+        if card_id is not None and card_id != deal.bank_card_id:
+            return 'Счёт выплаты ИППС выбран при создании сделки'
+        card_id = deal.bank_card_id
+    else:
+        cards = _ipps_cards(session)
+        if not cards:
+            return 'Активный счёт ИППС не найден'
+        if card_id is None and len(cards) == 1:
+            card_id = cards[0].id
+        if card_id not in {card.id for card in cards}:
+            return 'Выберите активный счёт ИППС'
+    card_query = session.query(BankCard).filter_by(id=card_id)
+    if lock_card:
+        card_query = card_query.populate_existing().with_for_update()
+    card = card_query.first()
+    if card is None:
+        return 'Счёт выплаты ИППС не найден'
+    if deal is None and (card.status != CashBatchStatus.ACTIVE or not _is_ipps_card(card)):
+        return 'Выберите активный счёт ИППС'
+    data.update(payout_amount_thb=amount, payout_method=PayOutMethod.TRANSFER.value,
+                payout_source=PayOutSource.BANK_CARD.value, bank_card_id=card_id)
+    return None
+
+
+def _ipps_card_cost(card, amount, deal):
+    """Показывает стоимость по тем же историческим данным, что и списание."""
+    if deal:
+        allocations = deal.card_allocations
+        if len(allocations) == 1:
+            allocation = allocations[0]
+            if round(allocation.amount_thb, 2) == amount:
+                return allocation.cost_usdt
+            if allocation.card_rate:
+                return round(amount / allocation.card_rate, 2)
+    rate = _card_avg_rate(card)
+    return round(amount / rate, 2) if rate else None
+
+
+def _apply_ipps_realty(deal, data):
+    if 'realty_purpose' in data:
+        deal.realty_purpose = data['realty_purpose'] or None
+    deal.needs_reimbursement = False
+    if (deal.payin_amount_usdt or 0) > 0 and (deal.payout_amount_usdt or 0) > 0:
+        deal.profit_usdt = round(deal.payin_amount_usdt - deal.payout_amount_usdt, 2)
+        deal.profit_percent = round(deal.profit_usdt / deal.payout_amount_usdt * 100, 2)
+    else:
+        deal.profit_usdt = deal.profit_percent = None
+
+
 MF_FREEHOLD_INPUT_FIELDS = (
     'realty_purpose', 'invoice_amount_usd', 'transfer_sent_usd',
     'transfer_fee_percent', 'transfer_fee_fixed_usd',
@@ -12181,7 +12365,8 @@ def get_cards_balance():
                 'holder_name': c.holder_name,
                 'balance_thb': c.balance_thb,
                 'avg_rate': round(avg_rate, 4) if avg_rate else 0,
-                'latest_purchase_rate': round(latest_purchase_rate, 4) if latest_purchase_rate else 0
+                'latest_purchase_rate': round(latest_purchase_rate, 4) if latest_purchase_rate else 0,
+                'is_ipps': _is_ipps_card(c),
             })
 
         return jsonify({
@@ -13773,6 +13958,8 @@ def _settle_reimbursement(session, reimbursement, deals, alloc_req=None):
     deals = sorted(deals, key=lambda d: d.id)
     if not deals or set(alloc_req) - {d.id for d in deals}:
         raise ValueError('Распределение содержит неизвестные сделки')
+    if any(d.deal_kind == IPPS_REALTY_KIND for d in deals):
+        raise ValueError('Выплата с баланса ИППС не возмещается')
     if any(d.reimbursement_id is not None for d in deals):
         raise ValueError('Сделка уже возмещена')
     # Целые центы исключают накопление округления. Явные доли сначала
@@ -13933,6 +14120,10 @@ def create_reimbursement():
         if missing:
             return jsonify({'success': False, 'error': 'Некоторые сделки не найдены',
                             'missing_deal_ids': missing}), 404
+        ipps_deal_ids = [d.id for d in deals if d.deal_kind == IPPS_REALTY_KIND]
+        if ipps_deal_ids:
+            return jsonify(success=False, error='Выплата с баланса ИППС не возмещается',
+                           deal_ids=ipps_deal_ids), 409
         already_settled = [d.id for d in deals if d.reimbursement_id is not None]
         if already_settled:
             return jsonify({'success': False, 'error': 'Сделки уже возмещены — обнови страницу',
