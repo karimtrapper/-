@@ -1252,6 +1252,11 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
                                 <option value="rental">Аренда</option>
                                 <option value="mf_auto">Оплата авто</option>
                             </select>
+                            <small id="leaseholdTypeHint" class="form-hint" hidden>Доступны типы, которые сохраняют учтённую выплату.</small>
+                            <div id="leaseholdExportNotice" hidden>
+                                <small class="form-hint">Тип сохранён. Таблицы не обновились.</small>
+                                <button type="button" class="btn btn-secondary btn-sm" onclick="retryLeaseholdExport()">Повторить выгрузку</button>
+                            </div>
                             <select id="dealKindSelect" onchange="onDealKindChange()" hidden>
                                 <option value="exchange">Обычная (обмен)</option>
                                 <option value="custom">Кастомная — нестандартные валюты</option>
@@ -5727,57 +5732,97 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
             personal_realty: 'Недвижимость лизхолд через личный счёт',
         };
 
+        let leaseholdReclassification = null;
+        const pendingLeaseholdExports = new Map();
+        const leaseholdChangesInFlight = new Set();
+
         function activeLeaseholdReclassification() {
-            const button = document.getElementById('leaseholdReclassificationButton');
-            return button?.dataset.dealId === String(editingDealId) ? button : null;
+            const change = leaseholdReclassification;
+            return change?.dealId === editingDealId && change.requestId === _editorRequestId
+                && document.getElementById('create').classList.contains('active') ? change : null;
         }
 
-        function addLeaseholdReclassificationButton(dealId, target) {
-            const label = leaseholdReclassificationLabels[target];
-            if (!label) return;
-            const button = document.createElement('button');
-            button.type = 'button';
-            button.id = 'leaseholdReclassificationButton';
-            button.dataset.dealId = dealId;
-            button.dataset.targetProduct = target === 'exchange' ? 'exchange' : 'leasehold';
-            button.className = 'btn btn-secondary btn-sm';
-            button.style.marginLeft = '0.5rem';
-            button.textContent = 'Изменить тип сделки';
-            button.addEventListener('click', async () => {
-                button.disabled = true;
-                try {
-                    if (Object.keys(dealFormDiff(serializeDealEditor())).length) {
-                        showToast('Сначала сохраните изменения в полях сделки.', 'warning');
+        function updateLeaseholdExportNotice() {
+            const change = activeLeaseholdReclassification();
+            document.getElementById('leaseholdExportNotice').hidden = !change
+                || pendingLeaseholdExports.get(change.dealId) !== change.savedKind;
+        }
+
+        function hasLeaseholdEditorDraft(change, form) {
+            return document.getElementById('payinManualHash').value.trim() !== change.manualPayinHash
+                || [...form.querySelectorAll('[id^="pe-"][id$="-hash"], #payoutFounderHash, #mfPayoutManualHash')]
+                    .some(input => input.value.trim())
+                || Object.keys(dealFormDiff(serializeDealEditor())).length > 0;
+        }
+
+        async function changeSavedLeaseholdType(change, target, retryExport = false) {
+            const {dealId} = change;
+            if (activeLeaseholdReclassification() !== change || leaseholdChangesInFlight.has(dealId)) return;
+            if (retryExport ? target !== change.savedKind || pendingLeaseholdExports.get(dealId) !== target
+                : target !== change.target) return;
+
+            const form = document.getElementById('createDealForm');
+            const hasDraft = () => {
+                if (!hasLeaseholdEditorDraft(change, form)) return false;
+                showToast('Сначала сохраните изменения в полях сделки.', 'warning');
+                return true;
+            };
+            leaseholdChangesInFlight.add(dealId);
+            try {
+                if (hasDraft()) return;
+                if (!retryExport && !await showConfirm(
+                    'Изменить тип на «' + leaseholdReclassificationLabels[target] + '»?', 'Изменить тип'
+                )) return;
+                if (activeLeaseholdReclassification() !== change || hasDraft()) return;
+
+                if (retryExport) {
+                    const saved = await fetch(`${API_URL}/api/deals/${dealId}`).then(response => response.json());
+                    if (!saved.success) throw new Error('Не удалось загрузить сделку');
+                    if (activeLeaseholdReclassification() !== change || hasDraft()) return;
+                    if (saved.deal.deal_kind !== target) {
+                        pendingLeaseholdExports.delete(dealId);
+                        showToast('Тип сделки уже изменился. Проверьте текущий тип.', 'warning');
+                        await openDealEditor(dealId);
                         return;
                     }
-                    if (button.dataset.exportPending !== 'true'
-                            && !await showConfirm('Изменить тип на «' + label + '»?', 'Изменить тип')) return;
-                    if (!button.isConnected || editingDealId !== dealId) return;
-                    const resp = await fetch(`${API_URL}/api/deals/${dealId}`, {
-                        method: 'PUT',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ deal_kind: target, reclassify: true }),
-                    });
-                    const reply = await resp.json();
-                    if (!reply.success) {
-                        showToast(reply.error || 'Не удалось изменить тип сделки', 'error');
-                        return;
-                    }
-                    if (reply.export_pending) {
-                        button.dataset.exportPending = 'true';
-                        button.textContent = 'Повторить выгрузку';
-                        showToast(reply.warning, 'warning', 10000);
-                    } else {
-                        showToast(`Тип сделки #${dealId} изменён`, 'success');
-                        if (editingDealId === dealId) await openDealEditor(dealId);
-                    }
-                } catch (error) {
-                    showToast('Не удалось подтвердить смену типа. Повторите попытку.', 'error');
-                } finally {
-                    button.disabled = false;
                 }
-            });
-            document.querySelector('#create .card-title').append(button);
+
+                form.inert = true;
+                const response = await fetch(`${API_URL}/api/deals/${dealId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ deal_kind: target, reclassify: true }),
+                });
+                const reply = await response.json();
+                if (!reply.success) {
+                    if (activeLeaseholdReclassification() === change) {
+                        showToast(reply.error || 'Не удалось изменить тип сделки', 'error');
+                    }
+                    return;
+                }
+
+                if (reply.export_pending) pendingLeaseholdExports.set(dealId, target);
+                else pendingLeaseholdExports.delete(dealId);
+                if (activeLeaseholdReclassification() !== change) return;
+
+                if (reply.export_pending) showToast(reply.warning, 'warning', 10000);
+                else showToast(retryExport ? 'Таблицы обновлены' : `Тип сделки #${dealId} изменён`, 'success');
+                if (retryExport) updateLeaseholdExportNotice();
+                else await openDealEditor(dealId);
+            } catch (error) {
+                if (activeLeaseholdReclassification() === change) {
+                    showToast(retryExport ? 'Не удалось обновить таблицы. Повторите попытку.'
+                        : 'Не удалось подтвердить смену типа. Повторите попытку.', 'error');
+                }
+            } finally {
+                leaseholdChangesInFlight.delete(dealId);
+                if (leaseholdReclassification === change) form.inert = false;
+            }
+        }
+
+        function retryLeaseholdExport() {
+            const change = activeLeaseholdReclassification();
+            if (change) changeSavedLeaseholdType(change, change.savedKind, true);
         }
 
         async function loadSavedPayinTxLedger(hash, dealId, editorRequestId) {
@@ -5853,7 +5898,6 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
                     // Обновляем заголовок
                     document.querySelector('#create .card-title').innerHTML =
                         `Редактировать сделку #${dealId} <button class="btn btn-secondary btn-sm" style="margin-left: 1rem;" onclick="cancelEditMode()">Отмена</button>`;
-                    addLeaseholdReclassificationButton(dealId, deal.reclassification_target);
 
                     // Проверяем - кастомная сделка или обычная
 
@@ -6104,6 +6148,15 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
                     calculateProfit();
                     dealFormBaseline = JSON.parse(JSON.stringify(serializeDealEditor()));
                     setCustomSubmitMode(dealId);
+                    if (Object.hasOwn(leaseholdReclassificationLabels, deal.reclassification_target)) {
+                        const target = deal.reclassification_target;
+                        leaseholdReclassification = {
+                            dealId, requestId: reqId, target, savedKind: deal.deal_kind || 'exchange',
+                            targetProduct: target === 'exchange' ? 'exchange' : 'leasehold',
+                            manualPayinHash: document.getElementById('payinManualHash').value.trim(),
+                        };
+                    }
+                    syncVisibleDealKind();
                 } else {
                     // Сделка не загрузилась — выходим из режима редактирования
                     showToast('Не удалось загрузить сделку #' + dealId, 'error');
@@ -6120,6 +6173,8 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
 
         function cancelEditMode() {
             editingDealId = null;
+            leaseholdReclassification = null;
+            document.getElementById('createDealForm').inert = false;
             editingPayinRubIsNet = true;
             document.getElementById('payinRubHint').textContent = 'после комиссии банка';
             dealFormBaseline = null;
@@ -8261,7 +8316,7 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
                 queueMicrotask(() => {
                     if (activeLeaseholdReclassification() !== correction) return;
                     syncVisibleDealKind();
-                    if (product === correction.dataset.targetProduct) correction.click();
+                    if (product === correction.targetProduct) changeSavedLeaseholdType(correction, correction.target);
                 });
                 return;
             }
@@ -8285,7 +8340,14 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
             if (!product) return;
             const leasehold = isLeaseholdKind(kind.value);
             const currentProduct = leasehold ? 'leasehold' : kind.value;
-            const targetProduct = activeLeaseholdReclassification()?.dataset.targetProduct;
+            const change = activeLeaseholdReclassification();
+            const targetProduct = change?.targetProduct;
+            const leaseholdOption = product.querySelector('option[value="leasehold"]');
+            const leaseholdLabel = (change && leaseholdReclassificationLabels[leasehold ? kind.value : change.target])
+                || 'Недвижимость лизхолд';
+            if (leaseholdOption.textContent !== leaseholdLabel) leaseholdOption.textContent = leaseholdLabel;
+            document.getElementById('leaseholdTypeHint').hidden = !change && !(editingDealId !== null && kind.disabled);
+            updateLeaseholdExportNotice();
             product.value = currentProduct;
             product.disabled = kind.disabled && !targetProduct;
             document.getElementById('leaseholdPayoutRouteGroup').hidden = !leasehold;

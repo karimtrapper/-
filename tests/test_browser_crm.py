@@ -422,7 +422,7 @@ def test_reclassifies_old_founder_payout_through_existing_editor(ui, monkeypatch
     from tests.test_leasehold_reclassification import seed_direct, snapshot
 
     page, errors, server_errors, _ = ui
-    export_results = iter(({'ok': False}, {'ok': True}, {'ok': True}))
+    export_results = iter(({'ok': False}, {'ok': True}, {'ok': True}, {'ok': False}))
     monkeypatch.setattr(A, '_sync_reclassified_deal_gsheet', lambda deal: next(export_results))
     page.set_viewport_size({'width': width, 'height': 900})
     with A.get_session() as db:
@@ -443,6 +443,7 @@ def test_reclassifies_old_founder_payout_through_existing_editor(ui, monkeypatch
     drop_button = drop.locator('.custom-select-btn')
     notes = page.locator('#createDealForm [name=notes]')
     dialog = page.get_by_role('dialog')
+    leasehold_label = 'Недвижимость лизхолд через личный счёт'
     expected_types = {'deal_kind': 'personal_realty', 'reclassify': True}
 
     def choose_visible(select, label):
@@ -455,9 +456,15 @@ def test_reclassifies_old_founder_payout_through_existing_editor(ui, monkeypatch
     expect(page.locator('#payoutSource')).to_have_value('founder_personal')
     expect(drop_button).to_have_text('Обычная (обмен)')
     expect(product.locator('option[value=mf_freehold]')).to_be_disabled()
+    expect(page.locator('#create .card-title').get_by_text('Изменить тип сделки', exact=True)).to_have_count(0)
+    expect(page.locator('#leaseholdTypeHint')).to_be_visible()
+    choose_visible(product, 'Обычная (обмен)')
+    expect(dialog).to_have_count(0)
+    assert not writes
+
 
     notes.fill('Несохранённое уточнение')
-    choose_visible(product, 'Недвижимость лизхолд')
+    choose_visible(product, leasehold_label)
     expect(page.get_by_text('Сначала сохраните изменения в полях сделки.', exact=True)).to_be_visible()
     expect(notes).to_have_value('Несохранённое уточнение')
     expect(drop_button).to_have_text('Обычная (обмен)')
@@ -465,7 +472,7 @@ def test_reclassifies_old_founder_payout_through_existing_editor(ui, monkeypatch
     assert not writes
     notes.clear()
 
-    choose_visible(product, 'Недвижимость лизхолд')
+    choose_visible(product, leasehold_label)
     expect(dialog).to_contain_text('Недвижимость лизхолд через личный счёт')
     expect(product).to_have_value('exchange')
     expect(drop_button).to_have_text('Обычная (обмен)')
@@ -481,7 +488,7 @@ def test_reclassifies_old_founder_payout_through_existing_editor(ui, monkeypatch
         return intercept.fallback()
 
     page.route('**' + path, reject_put)
-    choose_visible(product, 'Недвижимость лизхолд')
+    choose_visible(product, leasehold_label)
     dialog.get_by_role('button', name='Изменить тип', exact=True).click()
     expect(page.get_by_text('Проверка отказа', exact=True)).to_be_visible()
     expect(drop_button).to_have_text('Обычная (обмен)')
@@ -496,26 +503,31 @@ def test_reclassifies_old_founder_payout_through_existing_editor(ui, monkeypatch
         return intercept.fallback()
 
     page.route('**' + path, abort_put)
-    choose_visible(product, 'Недвижимость лизхолд')
+    choose_visible(product, leasehold_label)
     dialog.get_by_role('button', name='Изменить тип', exact=True).click()
     expect(page.get_by_text('Не удалось подтвердить смену типа. Повторите попытку.', exact=True)).to_be_visible()
     expect(drop_button).to_have_text('Обычная (обмен)')
     page.unroute('**' + path, abort_put)
 
-    choose_visible(product, 'Недвижимость лизхолд')
+    choose_visible(product, leasehold_label)
     with page.expect_response(lambda r: r.request.method == 'PUT' and r.url.endswith(path)) as change:
         dialog.get_by_role('button', name='Изменить тип', exact=True).click()
     assert change.value.json()['export_pending'] is True
     assert change.value.request.post_data_json == expected_types
-    expect(page.get_by_role('button', name='Повторить выгрузку')).to_be_visible()
-    expect(drop_button).to_have_text('Обычная (обмен)')
+    retry_export = page.locator('#leaseholdExportNotice').get_by_role('button', name='Повторить выгрузку')
+    expect(retry_export).to_be_visible()
+    expect(drop_button).to_have_text(leasehold_label)
+    choose_visible(product, leasehold_label)
+    expect(dialog).to_have_count(0)
+    assert writes == [expected_types] * 3
     with page.expect_response(lambda r: r.request.method == 'PUT' and r.url.endswith(path)) as retry:
-        choose_visible(product, 'Недвижимость лизхолд')
+        retry_export.click()
+    expect(retry_export).to_be_hidden()
     assert retry.value.json()['deal']['id'] == deal_id
     assert retry.value.request.post_data_json == expected_types
     assert writes == [expected_types] * 4
 
-    expect(drop_button).to_have_text('Недвижимость лизхолд')
+    expect(drop_button).to_have_text(leasehold_label)
     expect(drop_button).to_be_enabled()
     expect(product.locator('option[value=leasehold]')).to_be_enabled()
     expect(route.locator('option[value=personal_realty]')).to_be_enabled()
@@ -539,7 +551,7 @@ def test_reclassifies_old_founder_payout_through_existing_editor(ui, monkeypatch
     expect(page.locator('#create .card-title')).to_contain_text(f'Редактировать сделку #{deal_id}')
     choose_visible(product, 'Обычная (обмен)')
     expect(dialog).to_contain_text('Обмен')
-    expect(drop_button).to_have_text('Недвижимость лизхолд')
+    expect(drop_button).to_have_text(leasehold_label)
     with page.expect_response(lambda r: r.request.method == 'PUT' and r.url.endswith(path)) as reverse:
         dialog.get_by_role('button', name='Изменить тип', exact=True).click()
     assert reverse.value.json()['deal']['id'] == deal_id
@@ -549,6 +561,22 @@ def test_reclassifies_old_founder_payout_through_existing_editor(ui, monkeypatch
         assert snapshot(db, deal_id) == before
         assert db.get(A.Deal, deal_id).notes == 'Уточнение по договору'
         assert db.get(A.Deal, deal_id).deal_kind == 'exchange'
+
+    choose_visible(product, leasehold_label)
+    with page.expect_response(lambda r: r.request.method == 'PUT' and r.url.endswith(path)) as pending:
+        dialog.get_by_role('button', name='Изменить тип', exact=True).click()
+    assert pending.value.json()['export_pending'] is True
+    expect(retry_export).to_be_visible()
+    with A.get_session() as db:
+        # Another editor has already changed the saved type while this page shows the retry.
+        db.get(A.Deal, deal_id).deal_kind = 'exchange'
+        db.commit()
+    previous_writes = writes.copy()
+    retry_export.click()
+    expect(retry_export).to_be_hidden()
+    expect(drop_button).to_have_text('Обычная (обмен)')
+    expect(page.get_by_text('Тип сделки уже изменился. Проверьте текущий тип.', exact=True)).to_be_visible()
+    assert writes == previous_writes
 
     previous_writes = writes.copy()
     page.locator('#create .card-title').get_by_role('button', name='Отмена', exact=True).click()
@@ -773,8 +801,15 @@ def test_saved_shared_payin_hydration_preserves_editor_values(ui, monkeypatch, w
     usdt = page.locator('#createDealForm [name=payin_amount_usdt]')
     pool = page.locator('#payinTxPoolBox')
     share = pool.locator('input')
-    change_type = page.locator('#leaseholdReclassificationButton')
+    product = page.locator('#dealProductSelect').locator('..')
+    manual_hash = page.locator('#payinManualHash')
     dialog = page.get_by_role('dialog')
+
+    def select_leasehold():
+        product.locator('.custom-select-btn').click()
+        product.locator('.custom-select-opt').get_by_text(
+            'Недвижимость лизхолд через личный счёт', exact=True
+        ).click()
 
     def open_editor(record_id=deal_id):
         with page.expect_request(lambda r: r.url.endswith(payin_path)):
@@ -793,7 +828,29 @@ def test_saved_shared_payin_hydration_preserves_editor_values(ui, monkeypatch, w
     expect(rub).to_have_value('280188.11')
     expect(usdt).to_have_value('3137.64')
     expect(share).to_have_value('3137.64')
-    change_type.click()
+    manual_requests = []
+    page.route('**/api/tx/lookup?hash=a1b2c3*', lambda intercept: manual_requests.append(intercept))
+    saved_manual_hash = manual_hash.input_value()
+    manual_hash.fill('a1b2c3')
+    select_leasehold()
+    expect(dialog).to_have_count(0)
+    expect(manual_hash).to_have_value('a1b2c3')
+    assert not writes
+    manual_hash.fill(saved_manual_hash)
+    for request in manual_requests:
+        request.abort()
+    page.wait_for_function("() => typeof pendingManualPayinHash === 'undefined' || !pendingManualPayinHash")
+
+    select_leasehold()
+    expect(dialog).to_be_visible()
+    manual_hash.evaluate("input => { input.value = 'a1b2c3'; }")
+    dialog.get_by_role('button', name='Изменить тип', exact=True).click()
+    expect(dialog).to_have_count(0)
+    expect(manual_hash).to_have_value('a1b2c3')
+    assert not writes
+    manual_hash.fill(saved_manual_hash)
+
+    select_leasehold()
     expect(dialog).to_contain_text('Недвижимость лизхолд через личный счёт')
     dialog.get_by_role('button', name='Отмена', exact=True).click()
     assert not writes
@@ -806,8 +863,8 @@ def test_saved_shared_payin_hydration_preserves_editor_values(ui, monkeypatch, w
     expect(pool).to_contain_text(re.compile(r'остаток \$350[.,]00'))
     expect(rate).to_have_value('90.91')
     expect(usdt).to_have_value(edited_amount)
-    change_type.click()
-    expect(page.get_by_text('Сначала сохраните изменения в полях сделки.', exact=True)).to_be_visible()
+    select_leasehold()
+    expect(page.get_by_text('Сначала сохраните изменения в полях сделки.', exact=True).last).to_be_visible()
     expect(dialog).to_have_count(0)
 
     open_editor()
@@ -847,9 +904,7 @@ def test_saved_shared_payin_hydration_preserves_editor_values(ui, monkeypatch, w
     open_editor()
     finish_ledger_request(held.pop(0))
     expect(pool).to_contain_text(re.compile(r'остаток \$350[.,]00'))
-    product = page.locator('#dealProductSelect').locator('..')
-    product.locator('.custom-select-btn').click()
-    product.locator('.custom-select-opt').get_by_text('Недвижимость лизхолд', exact=True).click()
+    select_leasehold()
     expect(dialog).to_contain_text('Недвижимость лизхолд через личный счёт')
     with page.expect_response(lambda r: r.request.method == 'PUT'
                               and r.url.endswith(f'/api/deals/{deal_id}')) as reply:
