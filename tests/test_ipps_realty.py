@@ -170,7 +170,7 @@ def test_ipps_selects_only_eligible_cards_and_preserves_link(client, payload):
     assert response.status_code == 201, response.json
     path = f"/api/deals/{response.json['deal']['id']}"
     assert http.put(path, json={'bank_card_id': ipps}).status_code == 400
-    assert http.put(path, json={'deal_kind': 'exchange'}).status_code == 409
+    assert http.put(path, json={'deal_kind': 'personal_realty'}).status_code == 409
     assert card_state(ipps) == (66000, [])
     with crm.get_session() as db:
         for card_id in (ipps, second):

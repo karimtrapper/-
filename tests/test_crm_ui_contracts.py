@@ -319,8 +319,9 @@ def test_manual_payin_hash_requires_explicit_network(html):
     assert 'id="payinManualHash"' in block
     assert '<option value="trc20">TRC-20 (TRON)</option>' in block
     assert '<option value="erc20">ERC-20 (Ethereum)</option>' in block
-    submit = html[html.index("document.getElementById('createDealForm').addEventListener('submit'"):]
-    assert "network: document.getElementById('payinManualNetwork')?.value || 'trc20'" in submit
+    serialize = html[html.index("function serializeStandardDeal(form)"):
+                     html.index("document.getElementById('createDealForm').addEventListener('submit'")]
+    assert "network: document.getElementById('payinManualNetwork')?.value || 'trc20'" in serialize
 
 
 def test_conversion_return_has_tx_picker(html):

@@ -5597,6 +5597,71 @@ select.period-btn:hover:not(.active) { color: var(--text); }
         // ЧУЖОЙ сделкой при уже переключённом editingDealId — сохранение переписывало
         // открытую сделку данными предыдущей (кейс #463: обычная сделка стала фрихолдом).
         let _editorRequestId = 0;
+        let leaseholdEditorBaseline = null;
+        let savedDirectPayout = null;
+
+        function payoutProofSignature(parts) {
+            return JSON.stringify(parts.map(tx => [tx.hash, tx.network || 'trc20', tx.amount_usdt ?? null]));
+        }
+
+        function editorDirectPayoutCost() {
+            if (noConversionOn()) return noConversionCost();
+            if (savedDirectPayout && savedDirectPayout.signature === payoutProofSignature(payoutTxPool)) {
+                return savedDirectPayout.cost;
+            }
+            return payoutTxPoolTotal();
+        }
+
+        const leaseholdReclassificationLabels = {
+            exchange: 'Обмен',
+            ipps_realty: 'Недвижимость лизхолд через ИППС',
+            personal_realty: 'Недвижимость лизхолд через личный счёт',
+        };
+
+        function addLeaseholdReclassificationButton(dealId, target) {
+            const label = leaseholdReclassificationLabels[target];
+            if (!label) return;
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'btn btn-secondary btn-sm';
+            button.style.marginLeft = '0.5rem';
+            button.textContent = 'Изменить тип сделки';
+            button.addEventListener('click', async () => {
+                const current = serializeStandardDeal(document.getElementById('createDealForm'));
+                if (leaseholdEditorChanges(current).length) {
+                    showToast('Сначала сохраните изменения в полях сделки.', 'warning');
+                    return;
+                }
+                if (button.dataset.exportPending !== 'true'
+                        && !await showConfirm('Изменить тип на «' + label + '»?', 'Изменить тип')) return;
+                button.disabled = true;
+                try {
+                    const resp = await fetch(`${API_URL}/api/deals/${dealId}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ deal_kind: target, reclassify: true }),
+                    });
+                    const reply = await resp.json();
+                    if (!reply.success) {
+                        showToast(reply.error || 'Не удалось изменить тип сделки', 'error');
+                        return;
+                    }
+                    if (reply.export_pending) {
+                        button.dataset.exportPending = 'true';
+                        button.textContent = 'Повторить выгрузку';
+                        showToast(reply.warning, 'warning', 10000);
+                    } else {
+                        showToast(`Тип сделки #${dealId} изменён`, 'success');
+                        if (editingDealId === dealId) await openDealEditor(dealId);
+                    }
+                } catch (error) {
+                    showToast('Не удалось подтвердить смену типа. Повторите попытку.', 'error');
+                } finally {
+                    button.disabled = false;
+                }
+            });
+            document.querySelector('#create .card-title').append(button);
+        }
 
         async function openDealEditor(dealId) {
             const reqId = ++_editorRequestId;
@@ -5650,6 +5715,9 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                     // Обновляем заголовок
                     document.querySelector('#create .card-title').innerHTML =
                         `Редактировать сделку #${dealId} <button class="btn btn-secondary btn-sm" style="margin-left: 1rem;" onclick="cancelEditMode()">Отмена</button>`;
+                    addLeaseholdReclassificationButton(dealId, deal.reclassification_target);
+                    document.querySelector('#dealProductSelect option[value="leasehold"]').disabled =
+                        !!deal.reclassification_target && !isLeaseholdKind(deal.deal_kind);
 
                     // Проверяем - кастомная сделка или обычная
 
@@ -5823,7 +5891,10 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                         // Для личных фаундера
                         if (deal.payout_source === 'founder_personal' && deal.payout_founder_name) {
                             form.payout_founder_name.value = deal.payout_founder_name;
-                            payoutTxPool = (deal.payout_tx_hashes || []).map((t, index) => ({
+                            const savedPayoutParts = deal.payout_tx_hashes?.length
+                                ? deal.payout_tx_hashes
+                                : (deal.payout_tx_hash && !deal.payout_no_conversion ? [{ hash: deal.payout_tx_hash }] : []);
+                            payoutTxPool = savedPayoutParts.map((t, index) => ({
                                 hash: t.hash, amount_usdt: t.amount_usdt,
                                 from_address: t.from_address || '', to_address: t.to_address || '',
                                 ...(isPersonalDirect(deal.deal_kind) ? {
@@ -5834,6 +5905,10 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                             }));
                             const hashInput = document.getElementById('payoutFounderHash');
                             if (hashInput) hashInput.value = '';
+                            savedDirectPayout = {
+                                signature: payoutProofSignature(payoutTxPool),
+                                cost: Number(deal.payout_amount_usdt) || 0,
+                            };
                             renderPayoutTxPool();
                             // Возмещение: как сохранили, так и показываем — иначе
                             // пересохранение сделки переигрывало бы решение менеджера
@@ -5870,6 +5945,9 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                     }
 
                     setCustomSubmitMode(dealId);
+                    if (deal.reclassification_target || isCardLeasehold(deal.deal_kind)) {
+                        leaseholdEditorBaseline = serializeStandardDeal(form);
+                    }
                 } else {
                     // Сделка не загрузилась — выходим из режима редактирования
                     showToast('Не удалось загрузить сделку #' + dealId, 'error');
@@ -5884,6 +5962,9 @@ select.period-btn:hover:not(.active) { color: var(--text); }
 
         function cancelEditMode() {
             editingDealId = null;
+            leaseholdEditorBaseline = null;
+            savedDirectPayout = null;
+            document.querySelector('#dealProductSelect option[value="leasehold"]').disabled = false;
             flowSoleProofVerified = false;
             payinRubIsNet = true;
             updatePayinRubBasisHint();
@@ -9294,7 +9375,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                 const prefix = kind === 'ipps_realty' ? 'ipps' : 'personal';
                 const costField = document.getElementById(prefix + 'CostUsdt');
                 const direct = isPersonalDirect(kind);
-                const cost = direct ? noConversionCost() || payoutTxPoolTotal() : Number(costField.value);
+                const cost = direct ? editorDirectPayoutCost() : Number(costField.value);
                 if (direct) costField.value = cost > 0 ? cost.toFixed(2) : '';
                 const payin = payinUsdt + payinExtraSerialize().reduce((sum, part) => sum + (part.amount_usdt || 0), 0);
                 const gross = payin > 0 && cost > 0 ? Math.round((payin - cost) * 100) / 100 : 0;
@@ -9312,7 +9393,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
             // прибыль по сделке висела «неизвестно» (иногда неделями).
             // Своими батами — себестоимость это сумма, которую вписал менеджер;
             // переводов в такой сделке нет по определению
-            const founderCost = noConversionCost() || payoutTxPoolTotal();
+            const founderCost = editorDirectPayoutCost();
             if (payoutSource === 'founder_personal' && founderCost > 0) {
                 const cost = founderCost;
                 const profit = payinUsdt - cost;
@@ -9488,26 +9569,16 @@ select.period-btn:hover:not(.active) { color: var(--text); }
             return false;
         }
 
-        document.getElementById('createDealForm').addEventListener('submit', async function (e) {
-            e.preventDefault();
-            if (pendingManualPayinHash || document.getElementById('payinManualHash')?.value.trim() ||
-                    Array.from(document.querySelectorAll('[id^="pe-"][id$="-hash"]')).some(el => el.value.trim())) {
-                showToast('Дождитесь проверки хэша и добавьте его к приходу', 'warning');
-                return;
-            }
-            if (reportInvalidField(this)) return;
+        function leaseholdEditorChanges(data) {
+            if (!leaseholdEditorBaseline) return [];
+            const derived = ['profit_usdt', 'profit_percent', 'net_profit_usdt', 'referrer_payout_usdt'];
+            const keys = new Set([...Object.keys(data), ...Object.keys(leaseholdEditorBaseline)]);
+            return [...keys].filter(key => !derived.includes(key)
+                && JSON.stringify(data[key]) !== JSON.stringify(leaseholdEditorBaseline[key]));
+        }
 
-            // Если включена кастомная сделка — перенаправляем на кастомный обработчик
-            if (document.getElementById('customDealToggle').checked) {
-                if (editingDealId !== null) {
-                    updateCustomDeal(editingDealId);
-                } else {
-                    createCustomDeal();
-                }
-                return;
-            }
-
-            const formData = new FormData(this);
+        function serializeStandardDeal(form) {
+            const formData = new FormData(form);
             // При редактировании не перетираем статус — оставляем существующий в БД.
             // При создании новой сделки — pending по умолчанию.
             const data = (editingDealId !== null)
@@ -9631,18 +9702,9 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                 }
             }
 
-            if (direct) {
-                if (!data.payout_no_conversion && !data.payout_tx_hashes?.length) {
-                    showToast('Добавьте хэш исходящего перевода', 'error');
-                    return;
-                }
-            } else if (isCardLeasehold(kind)) {
+            if (!direct && isCardLeasehold(kind)) {
                 const prefix = kind === 'ipps_realty' ? 'ipps' : 'personal';
                 const cardId = Number(document.getElementById(prefix + 'PayoutSource').value);
-                if (!cardId) {
-                    showToast(kind === 'ipps_realty' ? 'Выберите активный счёт ИППС' : 'Выберите личный счёт', 'error');
-                    return;
-                }
                 for (const field of ['cash_batch_id', 'payout_wallet_id',
                     'payout_founder_name', 'payout_tx_hash', 'payout_tx_hashes',
                     'payout_owner_approved', 'payout_no_conversion', 'payout_amount_usdt', 'needs_reimbursement']) {
@@ -9656,16 +9718,55 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                     bank_card_id: cardId,
                     payout_amount_thb: document.getElementById(prefix + 'PayoutThb').valueAsNumber,
                 });
-            } else if (document.getElementById('mfDealToggle')?.checked) {
+            } else if (!direct && document.getElementById('mfDealToggle')?.checked) {
                 Object.assign(data, mfFormData());
                 delete data.payout_amount_thb;
                 delete data.payout_source;
-            } else if (document.getElementById('fhDealToggle')?.checked) {
+            } else if (!direct && document.getElementById('fhDealToggle')?.checked) {
                 Object.assign(data, fhFormData());
                 delete data.payout_amount_thb;
                 delete data.payout_source;
-            } else {
+            } else if (!direct) {
                 data.deal_kind = 'exchange';
+            }
+
+            return data;
+        }
+
+        document.getElementById('createDealForm').addEventListener('submit', async function (e) {
+            e.preventDefault();
+            if (pendingManualPayinHash || document.getElementById('payinManualHash')?.value.trim() ||
+                    Array.from(document.querySelectorAll('[id^="pe-"][id$="-hash"]')).some(el => el.value.trim())) {
+                showToast('Дождитесь проверки хэша и добавьте его к приходу', 'warning');
+                return;
+            }
+            if (reportInvalidField(this)) return;
+
+            // Если включена кастомная сделка — перенаправляем на кастомный обработчик
+            if (document.getElementById('customDealToggle').checked) {
+                if (editingDealId !== null) {
+                    updateCustomDeal(editingDealId);
+                } else {
+                    createCustomDeal();
+                }
+                return;
+            }
+
+            let data = serializeStandardDeal(this);
+            const kind = data.deal_kind;
+            if (isPersonalDirect(kind) && !data.payout_no_conversion && !data.payout_tx_hashes?.length) {
+                showToast('Добавьте хэш исходящего перевода', 'error');
+                return;
+            }
+            if (isCardLeasehold(kind) && !isPersonalDirect(kind) && !data.bank_card_id) {
+                showToast(kind === 'ipps_realty' ? 'Выберите активный счёт ИППС' : 'Выберите личный счёт', 'error');
+                return;
+            }
+            if (leaseholdEditorBaseline && editingDealId !== null && kind === leaseholdEditorBaseline.deal_kind) {
+                const changed = leaseholdEditorChanges(data);
+                if (changed.every(key => key === 'notes' || key === 'realty_purpose')) {
+                    data = Object.fromEntries(changed.map(key => [key, data[key] ?? null]));
+                }
             }
 
             // Защита от дублей: блокируем кнопку на время запроса (двойной клик

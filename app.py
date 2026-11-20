@@ -3572,6 +3572,10 @@ def sync_realty_deal_to_gsheet(deal):
     в сводный лист «все сделки» — чтобы считать год без склейки вкладок.
     Никогда не роняет вызывающего: возвращает dict с диагностикой.
     """
+    was_balance_leasehold = getattr(deal, 'deal_kind', None) in BALANCE_REALTY_KINDS
+    _refresh_reclassifiable_sheet_deal(deal)
+    if was_balance_leasehold and deal.deal_kind not in REALTY_KINDS:
+        return _sync_reclassified_deal_gsheet(deal)
     with _gsheet_lock:
         return _sync_realty_deal_impl(deal)
 
@@ -3599,8 +3603,13 @@ def _realty_upsert(ws, rows, deal_id, id_col=None):
         ws.insert_rows([[''] * width], row=hits[-1] + 1)
         hits.append(hits[-1] + 1)
 
-    end = gspread.utils.rowcol_to_a1(hits[-1], width)
-    ws.update(f'A{hits[0]}:{end}', rows, value_input_option='USER_ENTERED')
+    if hits[-1] - hits[0] + 1 == len(hits):
+        end = gspread.utils.rowcol_to_a1(hits[-1], width)
+        ws.update(f'A{hits[0]}:{end}', rows, value_input_option='USER_ENTERED')
+    else:
+        for hit, row in zip(hits, rows):
+            end = gspread.utils.rowcol_to_a1(hit, width)
+            ws.update(f'A{hit}:{end}', [row], value_input_option='USER_ENTERED')
     return False
 
 
@@ -3660,7 +3669,7 @@ def _sync_freehold_impl(sh, deal, when):
     return {'ok': True, 'sheet': ws.title, 'sheet_created': created, 'inserted': inserted}
 
 
-def _sync_realty_deal_impl(deal):
+def _sync_realty_deal_impl(deal, *, require_summary=False):
     try:
         gc = get_gsheet_client()
         if not gc:
@@ -3686,6 +3695,8 @@ def _sync_realty_deal_impl(deal):
             _realty_upsert(_realty_get_or_create_ws(sh, GSHEET_REALTY_ALL, rows=2000),
                            rows, deal.id)
         except Exception as e:
+            if require_summary:
+                raise
             print(f'[GSheet realty] сводный лист: {e}', flush=True)
         return {'ok': True, 'sheet': ws.title, 'sheet_created': created,
                 'inserted': inserted}
@@ -3694,13 +3705,71 @@ def _sync_realty_deal_impl(deal):
         return {'ok': False, 'error': str(e)}
 
 
+def _delete_sheet_deal_rows(ws, deal_id, id_col):
+    ids = ws.col_values(id_col)
+    for row, value in reversed(list(enumerate(ids, start=1))):
+        if str(value).strip() == str(deal_id):
+            ws.delete_rows(row)
+
+
+def _sync_reclassified_deal_gsheet(deal):
+    """Выгружает по текущему типу. Удаляет только строки с тем же CRM ID."""
+    if deal.is_test:
+        return {'ok': True, 'inserted': 0}
+    with _gsheet_lock:
+        try:
+            gc = get_gsheet_client()
+            if not gc:
+                return {'ok': False, 'error': 'no_credentials'}
+            if deal.deal_kind in BALANCE_REALTY_KINDS:
+                result = _sync_realty_deal_impl(deal, require_summary=True)
+                if result['ok']:
+                    ws = gc.open_by_key(GSHEET_ID).worksheet(GSHEET_WORKSHEET)
+                    _delete_sheet_deal_rows(ws, deal.id, 18)
+                return result
+
+            result = _sync_deals_to_gsheet_impl([deal], exact_id=True)
+            if not result['ok']:
+                return result
+            sh = gc.open_by_key(GSHEET_REALTY_ID)
+            for ws in sh.worksheets():
+                title = ws.title.strip().lower()
+                if title == GSHEET_REALTY_ALL or 'leasehold' in title or 'leeshold' in title:
+                    _delete_sheet_deal_rows(ws, deal.id, GSHEET_REALTY_ID_COL)
+            return result
+        except Exception as error:
+            print(f'[GSheet] Deal #{deal.id} export: {error}', flush=True)
+            return {'ok': False, 'error': str(error)}
+
+
+def _refresh_reclassifiable_sheet_deal(deal):
+    # Все пути выгрузки берут блокировки в одном порядке: CRM, затем Sheets.
+    from sqlalchemy.orm import object_session
+    if (isinstance(deal, Deal)
+            and deal.deal_kind in (None, 'exchange', *BALANCE_REALTY_KINDS)
+            and deal.payout_source in (PayOutSource.FOUNDER_PERSONAL, PayOutSource.BANK_CARD)):
+        db = object_session(deal)
+        if db:
+            db.refresh(deal, with_for_update=True)
+
+
 def sync_deals_to_gsheet(deals):
-    """Тонкий враппер: сериализует доступ к листу через _gsheet_lock."""
-    deals = [d for d in deals if not getattr(d, 'is_test', False)]  # демо не льём в таблицу
+    """Ручной экспорт и экспорт после возмещения с учётом направления сделки."""
+    deals = [d for d in deals if not getattr(d, 'is_test', False)]
     if not deals:
         return
+    for deal in sorted((d for d in deals if isinstance(d, Deal)), key=lambda d: d.id):
+        _refresh_reclassifiable_sheet_deal(deal)
     with _gsheet_lock:
-        return _sync_deals_to_gsheet_impl(deals)
+        ordinary = [d for d in deals if getattr(d, 'deal_kind', None) not in BALANCE_REALTY_KINDS]
+        result = _sync_deals_to_gsheet_impl(ordinary) if ordinary else {'ok': True, 'inserted': 0}
+        for deal in deals:
+            if getattr(deal, 'deal_kind', None) in BALANCE_REALTY_KINDS:
+                exported = _sync_reclassified_deal_gsheet(deal)
+                if not exported['ok']:
+                    result.update(ok=False, error=exported['error'])
+                result['inserted'] += int(exported.get('inserted', 0))
+        return result
 
 
 def build_deal_rows(deal, start_num):
@@ -3784,7 +3853,7 @@ def build_deal_rows(deal, start_num):
     return rows
 
 
-def _sync_deals_to_gsheet_impl(deals):
+def _sync_deals_to_gsheet_impl(deals, *, exact_id=False):
     """Добавляет завершённые сделки в Google Sheet 'общая сделка'.
     Идемпотентно: если строка для сделки уже есть (по deal.id в колонке R,
     иначе по client_name + date) — обновляет её через _force_update_deal_row_in_gsheet.
@@ -3807,7 +3876,8 @@ def _sync_deals_to_gsheet_impl(deals):
         for d in deals:
             # Тем же поиском, что и перезапись: у многочастной сделки без якоря
             # он вернёт пусто, и она пойдёт на вставку, а не затрёт чужую строку
-            existing_row_num = find_deal_rows_in_gsheet(all_rows, d)
+            existing_row_num = (_sheet_deal_rows_by_id(all_rows, d.id)
+                                if exact_id else find_deal_rows_in_gsheet(all_rows, d))
             if existing_row_num:
                 existing_to_update.append(d)
             else:
@@ -3815,8 +3885,14 @@ def _sync_deals_to_gsheet_impl(deals):
         # Обновляем существующие
         for d in existing_to_update:
             try:
-                _force_update_deal_row_in_gsheet(ws, all_rows, d)
+                if exact_id:
+                    found = _sheet_deal_rows_by_id(all_rows, d.id)
+                    _realty_upsert(ws, build_deal_rows(d, all_rows[found[0] - 1][0]), d.id, id_col=18)
+                else:
+                    _force_update_deal_row_in_gsheet(ws, all_rows, d)
             except Exception as e:
+                if exact_id:
+                    raise
                 print(f'[GSheet] update existing row error for deal #{getattr(d, "id", "?")}: {e}')
         if not new_deals:
             return {'ok': True, 'inserted': 0, 'updated': len(existing_to_update), 'error': None}
@@ -3940,6 +4016,11 @@ def find_deal_row_in_gsheet(ws, all_rows, deal):
     return None
 
 
+def _sheet_deal_rows_by_id(rows, deal_id):
+    return [i for i, row in enumerate(rows, start=1)
+            if len(row) >= 18 and str(row[17]).strip() == str(deal_id)]
+
+
 def find_deal_rows_in_gsheet(all_rows, deal):
     """Номера ВСЕХ строк сделки (1-indexed), по порядку сверху вниз.
 
@@ -3951,8 +4032,7 @@ def find_deal_rows_in_gsheet(all_rows, deal):
     """
     deal_id_str = str(deal.id) if getattr(deal, 'id', None) else ''
     if deal_id_str:
-        hits = [i + 1 for i, row in enumerate(all_rows)
-                if len(row) >= 18 and str(row[17]).strip() == deal_id_str]
+        hits = _sheet_deal_rows_by_id(all_rows, deal_id_str)
         if hits:
             return hits
 
@@ -4025,6 +4105,9 @@ def update_deal_in_gsheet(deal):
     """Тонкий враппер: сериализует доступ к листу через _gsheet_lock."""
     if getattr(deal, 'is_test', False):
         return
+    _refresh_reclassifiable_sheet_deal(deal)
+    if getattr(deal, 'deal_kind', None) in BALANCE_REALTY_KINDS:
+        return _sync_reclassified_deal_gsheet(deal)
     with _gsheet_lock:
         return _update_deal_in_gsheet_impl(deal)
 
@@ -5309,7 +5392,11 @@ def get_deal(deal_id):
         if not deal:
             return jsonify({'success': False, 'error': 'Сделка не найдена'}), 404
         row = deal.to_dict()
-        if deal.deal_kind in BALANCE_REALTY_KINDS and deal.bank_card:
+        target = _leasehold_reclassification_target(session, deal)
+        if target:
+            row['reclassification_target'] = target
+        if (deal.deal_kind in BALANCE_REALTY_KINDS
+                and deal.payout_source == PayOutSource.BANK_CARD and deal.bank_card):
             card = deal.bank_card
             row['bank_card_name'] = ' · '.join(
                 part for part in (card.bank_name, card.card_name, card.holder_name) if part)
@@ -8875,8 +8962,19 @@ def update_deal(deal_id):
         
         data = request.get_json()
         next_kind = data.get('deal_kind', deal.deal_kind)
-        if next_kind != deal.deal_kind and any(kind in BALANCE_REALTY_KINDS for kind in (deal.deal_kind, next_kind)):
-            return jsonify(success=False, error='Маршрут этой сделки лизхолда выбирается при создании'), 409
+        if (data.get('reclassify') is True or
+                (next_kind != deal.deal_kind
+                 and any(kind in BALANCE_REALTY_KINDS for kind in (deal.deal_kind, next_kind)))):
+            return _reclassify_leasehold(session, deal, data)
+        if (set(data) <= {'notes', 'realty_purpose'}
+                and (deal.deal_kind in BALANCE_REALTY_KINDS or _leasehold_reclassification_target(session, deal))):
+            for field in ('notes', 'realty_purpose'):
+                if field in data:
+                    setattr(deal, field, data[field] or None)
+            session.commit()
+            if 'realty_purpose' in data and deal.deal_kind in BALANCE_REALTY_KINDS:
+                sync_realty_deal_to_gsheet(deal)
+            return jsonify(success=True, deal=deal.to_dict())
         payout_problem = (_prepare_ipps_payout(session, data, deal)
                           or _prepare_personal_payout(session, data, deal))
         if payout_problem:
@@ -9128,10 +9226,12 @@ def update_deal(deal_id):
             elif deal.deal_kind in SWIFT_PAYMENT_KINDS:
                 _apply_mf_freehold(deal, data)
             elif deal.deal_kind == PERSONAL_REALTY_KIND:
+                old_claims = _personal_payout_claims(_saved_personal_payout_parts(deal))
                 if _personal_direct(deal) and 'payout_tx_hashes' in data:
                     _apply_payout_transfers(deal, data)
                     _enrich_payout_transfers(session, deal)
-                _apply_personal_realty(deal, data)
+                _apply_personal_realty(deal, data, reprice=(
+                    _personal_payout_claims(_saved_personal_payout_parts(deal)) != old_claims))
             else:
                 _apply_ipps_realty(deal, data)
             if 'payout_tx_hashes' in data:
@@ -9302,7 +9402,7 @@ def update_deal(deal_id):
                     print(f'[Telegram] Error on complete: {e}')
 
         # Обновление строки в Google Sheet (если сделка возмещена — обновляем статус)
-        if deal.reimbursement_id is not None:
+        if deal.reimbursement_id is not None and deal.deal_kind not in BALANCE_REALTY_KINDS:
             try:
                 update_deal_in_gsheet(deal)
             except Exception as e:
@@ -11771,7 +11871,7 @@ def _prepare_ipps_payout(session, data, deal=None, *, lock_card=True):
         return 'Выберите счёт ИППС'
     if deal is not None:
         if card_id is not None and card_id != deal.bank_card_id:
-            return 'Счёт выплаты ИППС выбран при создании сделки'
+            return 'Счёт ИППС привязан к учтённому списанию. Можно изменить тип с сохранением счёта.'
         card_id = deal.bank_card_id
     else:
         cards = _ipps_cards(session)
@@ -11897,10 +11997,87 @@ def _verify_personal_payout_parts(session, data, parts, deal):
     return None
 
 
+def _leasehold_reclassification_target(session, deal):
+    if (deal.deal_kind not in (None, 'exchange', *BALANCE_REALTY_KINDS)
+            or deal.is_custom or deal.payout_method != PayOutMethod.TRANSFER
+            or deal.status in NON_DEAL_STATUSES + (DealStatus.CANCELLED,)
+            or not _ipps_amount(deal.payout_amount_thb) or not _ipps_amount(deal.payout_amount_usdt)
+            or deal.cash_allocations
+            or session.query(WalletOperation.id).filter_by(deal_id=deal.id).first()):
+        return None
+
+    reverse = deal.deal_kind in BALANCE_REALTY_KINDS
+    if deal.payout_source == PayOutSource.FOUNDER_PERSONAL:
+        if (deal.card_allocations or deal.payout_founder_name not in PERSONAL_CARD_OWNERS.values()
+                or (not deal.payout_no_conversion and not _saved_personal_payout_parts(deal))):
+            return None
+        kind = PERSONAL_REALTY_KIND
+    elif deal.payout_source == PayOutSource.BANK_CARD:
+        card = deal.bank_card
+        allocations = deal.card_allocations
+        if (not card or len(allocations) != 1 or deal.needs_reimbursement is True
+                or deal.reimbursement_id is not None or deal.payout_wallet_id
+                or deal.payout_tx_hash or deal.payout_tx_hashes
+                or session.query(PayoutTxUse.id).filter_by(deal_id=deal.id).first()):
+            return None
+        allocation = allocations[0]
+        if (allocation.card_id != card.id or not allocation.card_rate
+                or allocation.amount_thb != deal.payout_amount_thb
+                or allocation.cost_usdt != deal.payout_amount_usdt):
+            return None
+        if _is_ipps_card(card):
+            kind = IPPS_REALTY_KIND
+        elif card.personal_owner in PERSONAL_CARD_OWNERS or (reverse and deal.deal_kind == PERSONAL_REALTY_KIND):
+            kind = PERSONAL_REALTY_KIND
+        else:
+            return None
+    else:
+        return None
+    if reverse:
+        return 'exchange' if deal.deal_kind == kind else None
+    return kind
+
+
+def _reclassify_leasehold(session, deal, data):
+    target = data.get('deal_kind')
+    allowed = _leasehold_reclassification_target(session, deal)
+    if not allowed or target not in (allowed, deal.deal_kind):
+        reason = ('По сделке уже проведено возмещение. Можно изменить тип только с сохранением выплаты.'
+                  if deal.reimbursement_id is not None else
+                  'Для этого типа должен совпадать уже учтённый источник выплаты. '
+                  'Проверьте способ оплаты и сохранённое списание или перевод.')
+        return jsonify(success=False, error=reason), 409
+    if (set(data) - {'deal_kind', 'reclassify', 'realty_purpose'}
+            or ('realty_purpose' in data and (target not in BALANCE_REALTY_KINDS
+                or not isinstance(data['realty_purpose'], (str, type(None)))
+                or len(data['realty_purpose'] or '') > 200))):
+        return jsonify(success=False, error='Сначала сохраните смену типа, затем измените остальные поля сделки.'), 409
+
+    # Блокировка сделки уже взята общим PUT. Наследуем проводки, статус и суммы.
+    deal.deal_kind = target
+    if 'realty_purpose' in data:
+        deal.realty_purpose = data['realty_purpose'] or None
+    session.commit()
+    # Параллельное возмещение может завершиться между сохранением и выгрузкой.
+    # Обновляем снимок и удерживаем блокировку до окончания переноса строк.
+    session.refresh(deal, with_for_update=True)
+    result = _sync_reclassified_deal_gsheet(deal)
+    payload = {'success': True, 'deal': deal.to_dict()}
+    if not result.get('ok'):
+        payload['export_pending'] = True
+        payload['warning'] = 'Тип сделки сохранён. Обновить таблицы не удалось. Повторите выгрузку.'
+    return jsonify(payload)
+
+
+def _saved_personal_payout_parts(deal):
+    parts = _payout_transfer_parts(deal)
+    if not parts and deal.payout_tx_hash:
+        return _normalize_payout_transfers([deal.payout_tx_hash])
+    return parts
+
+
 def _prepare_personal_payout(session, data, deal=None, *, lock_card=True):
     kind = data.get('deal_kind', deal.deal_kind if deal else None)
-    if deal and kind != deal.deal_kind and PERSONAL_REALTY_KIND in (kind, deal.deal_kind):
-        return 'Маршрут этой сделки лизхолда выбирается при создании'
     if kind != PERSONAL_REALTY_KIND:
         return None
 
@@ -11908,7 +12085,7 @@ def _prepare_personal_payout(session, data, deal=None, *, lock_card=True):
     if source not in (PayOutSource.BANK_CARD, PayOutSource.FOUNDER_PERSONAL):
         return 'Выберите источник выплаты'
     if deal and source != deal.payout_source:
-        return 'Источник выплаты выбирается при создании сделки'
+        return 'Источник связан с учтённой выплатой. Можно изменить тип с сохранением источника.'
     if data.get('payout_method', PayOutMethod.TRANSFER) != PayOutMethod.TRANSFER:
         return 'Для выплаты застройщику укажите банковский перевод'
     if any(data.get(field) for field in ('cash_batch_id', 'is_custom', 'company_sent_thb', 'company_percent',
@@ -11922,19 +12099,34 @@ def _prepare_personal_payout(session, data, deal=None, *, lock_card=True):
 
     if source == PayOutSource.FOUNDER_PERSONAL:
         if data.get('bank_card_id'):
-            return 'Для выплаты по хэшу не выбирайте карту'
+            if not deal or data['bank_card_id'] != deal.bank_card_id:
+                return 'Для выплаты по хэшу не выбирайте карту'
+        if deal:
+            # У старой записи может остаться карточный реквизит. Само списание
+            # привязано к источнику bank_card и здесь никогда не создаётся.
+            data.pop('bank_card_id', None)
         founder = data.get('payout_founder_name', getattr(deal, 'payout_founder_name', None))
         if founder not in PERSONAL_CARD_OWNERS.values():
             return 'Укажите, кто оплатил выплату'
-        old_parts = _payout_transfer_parts(deal) if deal else []
+        old_parts = _saved_personal_payout_parts(deal) if deal else []
         parts = _normalize_payout_transfers(data.get('payout_tx_hashes', old_parts))
         no_conversion = data.get('payout_no_conversion', getattr(deal, 'payout_no_conversion', False))
         if type(no_conversion) is not bool:
             return 'Некорректное значение режима конвертации'
         if 'needs_reimbursement' in data and type(data['needs_reimbursement']) is not bool:
             return 'Некорректное значение возмещения'
-        if deal and deal.needs_reimbursement is not None:
+        if deal:
             data.setdefault('needs_reimbursement', deal.needs_reimbursement)
+        current_status = deal.status if deal else None
+        status = data.get('status', current_status or DealStatus.PENDING)
+        inactive = NON_DEAL_STATUSES + (DealStatus.CANCELLED,)
+        claims_changed = _personal_payout_claims(parts) != _personal_payout_claims(old_parts)
+        financial_change = (deal is None or amount != deal.payout_amount_thb
+                            or founder != deal.payout_founder_name
+                            or no_conversion != bool(deal.payout_no_conversion)
+                            or data.get('payout_wallet_id', deal.payout_wallet_id) != deal.payout_wallet_id
+                            or claims_changed
+                            or (current_status in inactive and status not in inactive))
         if no_conversion:
             if ('payout_tx_hashes' in data and parts) or data.get('payout_tx_hash'):
                 return 'Уберите хэши перевода, если конвертации не было'
@@ -11947,11 +12139,12 @@ def _prepare_personal_payout(session, data, deal=None, *, lock_card=True):
                 return 'Один хэш нельзя использовать для прихода и выплаты'
             if data.get('payout_tx_hash') and data['payout_tx_hash'] != parts[0]['hash']:
                 return 'Хэш выплаты должен совпадать с выбранным переводом'
-            for part in parts:
-                if part['network'] not in ('trc20', 'erc20'):
-                    return 'Укажите сеть исходящего перевода'
-                if part['amount_usdt'] is not None and _ipps_amount(part['amount_usdt']) is None:
-                    return 'Укажите положительную долю USDT с точностью до двух знаков'
+            if financial_change:
+                for part in parts:
+                    if part['network'] not in ('trc20', 'erc20'):
+                        return 'Укажите сеть исходящего перевода'
+                    if part['amount_usdt'] is not None and _ipps_amount(part['amount_usdt']) is None:
+                        return 'Укажите положительную долю USDT с точностью до двух знаков'
             if 'payout_tx_hashes' in data or not deal:
                 data['payout_tx_hashes'] = parts
             data.pop('payout_amount_usdt', None)
@@ -11964,15 +12157,6 @@ def _prepare_personal_payout(session, data, deal=None, *, lock_card=True):
                         != deal.payout_amount_usdt)
                     or _personal_payout_claims(parts) != _personal_payout_claims(old_parts)):
                 return 'Сначала отмените возмещение, чтобы изменить данные выплаты'
-        current_status = deal.status if deal else None
-        status = data.get('status', current_status or DealStatus.PENDING)
-        inactive = NON_DEAL_STATUSES + (DealStatus.CANCELLED,)
-        financial_change = (deal is None or amount != deal.payout_amount_thb
-                            or founder != deal.payout_founder_name
-                            or deal.payout_no_conversion is True
-                            or data.get('payout_wallet_id', deal.payout_wallet_id) != deal.payout_wallet_id
-                            or _personal_payout_claims(parts) != _personal_payout_claims(old_parts)
-                            or (current_status in inactive and status not in inactive))
         if not no_conversion and lock_card:
             if financial_change:
                 problem = _verify_personal_payout_parts(session, data, parts, deal)
@@ -11996,7 +12180,7 @@ def _prepare_personal_payout(session, data, deal=None, *, lock_card=True):
     if type(card_id) is not int or card_id <= 0:
         return 'Выберите личную карту'
     if deal and card_id != deal.bank_card_id:
-        return 'Карта выплаты выбирается при создании сделки'
+        return 'Карта привязана к учтённому списанию. Можно изменить тип с сохранением карты.'
     card_query = session.query(BankCard).filter_by(id=card_id)
     if lock_card:
         card_query = card_query.populate_existing().with_for_update()
@@ -12020,13 +12204,13 @@ def _prepare_personal_payout(session, data, deal=None, *, lock_card=True):
     return None
 
 
-def _apply_personal_realty(deal, data):
+def _apply_personal_realty(deal, data, *, reprice=True):
     if not _personal_direct(deal):
         _apply_ipps_realty(deal, data)
         return
     if 'realty_purpose' in data:
         deal.realty_purpose = data['realty_purpose'] or None
-    if deal.reimbursement_id is None and not deal.payout_no_conversion:
+    if reprice and deal.reimbursement_id is None and not deal.payout_no_conversion:
         deal.payout_amount_usdt = _payout_cost_from_transfers(deal)
     _recalculate_deal_financials(deal, data)
 
