@@ -5663,6 +5663,56 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
         // открытую сделку данными предыдущей (кейс #463: обычная сделка стала фрихолдом).
         let _editorRequestId = 0;
 
+        const leaseholdReclassificationLabels = {
+            exchange: 'Обмен',
+            ipps_realty: 'Недвижимость лизхолд через ИППС',
+            personal_realty: 'Недвижимость лизхолд через личный счёт',
+        };
+
+        function addLeaseholdReclassificationButton(dealId, target) {
+            const label = leaseholdReclassificationLabels[target];
+            if (!label) return;
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'btn btn-secondary btn-sm';
+            button.style.marginLeft = '0.5rem';
+            button.textContent = 'Изменить тип сделки';
+            button.addEventListener('click', async () => {
+                if (Object.keys(dealFormDiff(serializeDealEditor())).length) {
+                    showToast('Сначала сохраните изменения в полях сделки.', 'warning');
+                    return;
+                }
+                if (button.dataset.exportPending !== 'true'
+                        && !await showConfirm('Изменить тип на «' + label + '»?', 'Изменить тип')) return;
+                button.disabled = true;
+                try {
+                    const resp = await fetch(`${API_URL}/api/deals/${dealId}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ deal_kind: target, reclassify: true }),
+                    });
+                    const reply = await resp.json();
+                    if (!reply.success) {
+                        showToast(reply.error || 'Не удалось изменить тип сделки', 'error');
+                        return;
+                    }
+                    if (reply.export_pending) {
+                        button.dataset.exportPending = 'true';
+                        button.textContent = 'Повторить выгрузку';
+                        showToast(reply.warning, 'warning', 10000);
+                    } else {
+                        showToast(`Тип сделки #${dealId} изменён`, 'success');
+                        if (editingDealId === dealId) await openDealEditor(dealId);
+                    }
+                } catch (error) {
+                    showToast('Не удалось подтвердить смену типа. Повторите попытку.', 'error');
+                } finally {
+                    button.disabled = false;
+                }
+            });
+            document.querySelector('#create .card-title').append(button);
+        }
+
         async function openDealEditor(dealId) {
             const reqId = ++_editorRequestId;
             try {
@@ -5707,6 +5757,9 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
                     // Обновляем заголовок
                     document.querySelector('#create .card-title').innerHTML =
                         `Редактировать сделку #${dealId} <button class="btn btn-secondary btn-sm" style="margin-left: 1rem;" onclick="cancelEditMode()">Отмена</button>`;
+                    addLeaseholdReclassificationButton(dealId, deal.reclassification_target);
+                    document.getElementById('dealProductSelect').dataset.reclassification =
+                        deal.reclassification_target && !isLeaseholdKind(deal.deal_kind) ? 'true' : '';
 
                     // Проверяем - кастомная сделка или обычная
 
@@ -5902,7 +5955,10 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
                         // Для личных фаундера
                         if (deal.payout_source === 'founder_personal' && deal.payout_founder_name) {
                             form.payout_founder_name.value = deal.payout_founder_name;
-                            payoutTxPool = (deal.payout_tx_hashes || []).map((t, index) => ({
+                            const savedPayoutParts = deal.payout_tx_hashes?.length
+                                ? deal.payout_tx_hashes
+                                : (deal.payout_tx_hash && !deal.payout_no_conversion ? [{ hash: deal.payout_tx_hash }] : []);
+                            payoutTxPool = savedPayoutParts.map((t, index) => ({
                                 hash: t.hash, amount_usdt: t.amount_usdt,
                                 from_address: t.from_address || '', to_address: t.to_address || '',
                                 ...(isPersonalDirect(deal.deal_kind) ? {
@@ -5913,6 +5969,10 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
                             }));
                             const hashInput = document.getElementById('payoutFounderHash');
                             if (hashInput) hashInput.value = '';
+                            savedDirectPayout = {
+                                signature: payoutProofSignature(payoutTxPool),
+                                cost: Number(deal.payout_amount_usdt) || 0,
+                            };
                             renderPayoutTxPool();
                             // Возмещение: как сохранили, так и показываем — иначе
                             // пересохранение сделки переигрывало бы решение менеджера
@@ -5969,6 +6029,8 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
             editingPayinRubIsNet = true;
             document.getElementById('payinRubHint').textContent = 'после комиссии банка';
             dealFormBaseline = null;
+            savedDirectPayout = null;
+            delete document.getElementById('dealProductSelect').dataset.reclassification;
             document.querySelector('#create .card-title').textContent = 'Создать новую сделку';
             document.getElementById('createDealForm').reset();
             document.getElementById('dealKindSelect').disabled = false;
@@ -8129,7 +8191,8 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
             [...product.options].forEach(option => {
                 const internal = internalOption(option.value);
                 option.disabled = option.value === 'leasehold'
-                    ? [...route.options].every(item => item.disabled) : internal?.disabled === true;
+                    ? product.dataset.reclassification === 'true' || [...route.options].every(item => item.disabled)
+                    : internal?.disabled === true;
                 option.title = internal?.title || '';
             });
             if (leasehold) route.value = kind.value;
@@ -9550,7 +9613,7 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
                 const prefix = kind === 'ipps_realty' ? 'ipps' : 'personal';
                 const input = document.getElementById(prefix + 'CostUsdt');
                 const cost = kind === 'ipps_realty' ? recalcStageIppsCost(input)
-                    : isPersonalDirect(kind) ? noConversionCost() || payoutTxPoolTotal() : Number(input.value);
+                    : isPersonalDirect(kind) ? editorDirectPayoutCost() : Number(input.value);
                 if (isPersonalDirect(kind)) input.value = cost > 0 ? cost.toFixed(2) : '';
                 const payin = payinUsdt + payinExtraSerialize().reduce((sum, part) => sum + (part.amount_usdt || 0), 0);
                 const gross = payin > 0 && cost > 0 ? Math.round((payin - cost) * 100) / 100 : 0;
@@ -9568,7 +9631,7 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
             // прибыль по сделке висела «неизвестно» (иногда неделями).
             // Своими батами — себестоимость это сумма, которую вписал менеджер;
             // переводов в такой сделке нет по определению
-            const founderCost = noConversionCost() || payoutTxPoolTotal();
+            const founderCost = editorDirectPayoutCost();
             if (payoutSource === 'founder_personal' && founderCost > 0) {
                 const cost = founderCost;
                 const profit = payinUsdt - cost;
@@ -11746,6 +11809,20 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
             if (!noConversionOn()) return 0;
             const n = parseFloat(document.getElementById('noConvUsdt')?.value);
             return isNaN(n) || n <= 0 ? 0 : n;
+        }
+
+        let savedDirectPayout = null;
+
+        function payoutProofSignature(parts) {
+            return JSON.stringify(parts.map(tx => [tx.hash, tx.network || 'trc20', tx.amount_usdt ?? null]));
+        }
+
+        function editorDirectPayoutCost() {
+            if (noConversionOn()) return noConversionCost();
+            if (savedDirectPayout && savedDirectPayout.signature === payoutProofSignature(payoutTxPool)) {
+                return savedDirectPayout.cost;
+            }
+            return payoutTxPoolTotal();
         }
 
         // ===== «Деньги за выдачу уже у нас» =====

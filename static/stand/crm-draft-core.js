@@ -661,7 +661,7 @@ window.createCrmDraftCore = function createCrmDraftCore(root, adapters) {
                 const prefix = kind === 'ipps_realty' ? 'ipps' : 'personal';
                 const input = document.getElementById(prefix + 'CostUsdt');
                 const cost = kind === 'ipps_realty' ? recalcStageIppsCost(input)
-                    : isPersonalDirect(kind) ? noConversionCost() || payoutTxPoolTotal() : Number(input.value);
+                    : isPersonalDirect(kind) ? editorDirectPayoutCost() : Number(input.value);
                 if (isPersonalDirect(kind)) input.value = cost > 0 ? cost.toFixed(2) : '';
                 const payin = payinUsdt + payinExtraSerialize().reduce((sum, part) => sum + (part.amount_usdt || 0), 0);
                 const gross = payin > 0 && cost > 0 ? Math.round((payin - cost) * 100) / 100 : 0;
@@ -679,7 +679,7 @@ window.createCrmDraftCore = function createCrmDraftCore(root, adapters) {
             // прибыль по сделке висела «неизвестно» (иногда неделями).
             // Своими батами — себестоимость это сумма, которую вписал менеджер;
             // переводов в такой сделке нет по определению
-            const founderCost = noConversionCost() || payoutTxPoolTotal();
+            const founderCost = editorDirectPayoutCost();
             if (payoutSource === 'founder_personal' && founderCost > 0) {
                 const cost = founderCost;
                 const profit = payinUsdt - cost;
@@ -819,6 +819,20 @@ window.createCrmDraftCore = function createCrmDraftCore(root, adapters) {
             if (!noConversionOn()) return 0;
             const n = parseFloat(document.getElementById('noConvUsdt')?.value);
             return isNaN(n) || n <= 0 ? 0 : n;
+        }
+
+        let savedDirectPayout = null;
+
+        function payoutProofSignature(parts) {
+            return JSON.stringify(parts.map(tx => [tx.hash, tx.network || 'trc20', tx.amount_usdt ?? null]));
+        }
+
+        function editorDirectPayoutCost() {
+            if (noConversionOn()) return noConversionCost();
+            if (savedDirectPayout && savedDirectPayout.signature === payoutProofSignature(payoutTxPool)) {
+                return savedDirectPayout.cost;
+            }
+            return payoutTxPoolTotal();
         }
 
         async function loadCashBatchesForSelect() {

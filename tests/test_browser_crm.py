@@ -415,3 +415,57 @@ def test_reimbursement_prefill_rounding_and_shortfall_validation(ui, monkeypatch
     finally:
         db.close()
     assert not errors, errors
+
+
+def test_reclassifies_old_founder_payout_through_existing_editor(ui, monkeypatch, tmp_path):
+    from tests.test_leasehold_reclassification import seed_direct, snapshot
+
+    page, errors, server_errors, _ = ui
+    monkeypatch.setattr(A, '_sync_reclassified_deal_gsheet', lambda deal: {'ok': True})
+    with A.get_session() as db:
+        deal = seed_direct(db, reimbursed=True)
+        deal.manager_name = 'QA Manager'
+        deal.client_name = 'QA Leasehold'
+        deal_id = deal.id
+        db.commit()
+        before = snapshot(db, deal_id)
+    path = f'/api/deals/{deal_id}'
+    button = page.get_by_role('button', name='Изменить тип сделки', exact=True)
+    page.evaluate('id => openDealEditor(id)', deal_id)
+    expect(button).to_be_visible()
+    expect(page.locator('#payoutSource')).to_have_value('founder_personal')
+    expect(page.locator('#dealProductSelect option[value=leasehold]')).to_be_disabled()
+    notes = page.locator('#createDealForm [name=notes]')
+    notes.fill('Несохранённое уточнение')
+    button.click()
+    expect(page.get_by_text('Сначала сохраните изменения в полях сделки.', exact=True)).to_be_visible()
+    expect(notes).to_have_value('Несохранённое уточнение')
+    notes.clear()
+
+    button.click()
+    dialog = page.get_by_role('dialog')
+    expect(dialog).to_contain_text('Недвижимость лизхолд через личный счёт')
+    with page.expect_response(lambda r: r.request.method == 'PUT' and r.url.endswith(path)) as change:
+        dialog.get_by_role('button', name='Изменить тип', exact=True).click()
+    assert change.value.json()['deal']['id'] == deal_id
+    assert change.value.request.post_data_json == {'deal_kind': 'personal_realty', 'reclassify': True}
+    expect(page.locator('#personalPayoutMode')).to_have_value('direct_conversion')
+    expect(page.locator('#personalPayoutThb')).to_have_value('1125699')
+    expect(page.locator('#personalCostUsdt')).to_have_value('34636.91')
+    expect(page.locator('#payoutSettledByPayin')).to_be_checked()
+    expect(page.locator('#create .card-title')).to_contain_text(f'#{deal_id}')
+    page.set_viewport_size({'width': 390, 'height': 844})
+    expect(button).to_be_visible()
+    page.screenshot(path=str(tmp_path / 'reclassified-mobile.png'), full_page=True)
+
+    notes.fill('Уточнение по договору')
+    save = page.get_by_role('button', name='Сохранить изменения', exact=True)
+    with page.expect_response(lambda r: r.request.method == 'PUT' and r.url.endswith(path)) as edit:
+        save.click()
+    assert edit.value.status == 200, edit.value.text()
+    assert edit.value.request.post_data_json == {'notes': 'Уточнение по договору'}
+    with A.get_session() as db:
+        assert snapshot(db, deal_id) == before
+        assert db.get(A.Deal, deal_id).notes == 'Уточнение по договору'
+    assert not errors, errors
+    assert not server_errors, server_errors

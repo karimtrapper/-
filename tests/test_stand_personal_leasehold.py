@@ -75,3 +75,18 @@ def test_manual_personal_leasehold_closes_once(monkeypatch, source):
         assert db.query(m.PayoutTxUse).count() == int(source == 'founder_personal')
         assert db.query(m.CardTopup).count() == topups_before
         assert db.query(m.StandCrmLink).count() == 1
+
+    # An accounting classification correction works on the linked CRM ID,
+    # without touching the closed board state or creating another link.
+    monkeypatch.setattr(m, '_sync_reclassified_deal_gsheet', lambda deal: {'ok': True})
+    before_board = client.get('/api/stand/state').json
+    deal_id = result['deal']['id']
+    correction = client.put(f'/api/deals/{deal_id}', json={'deal_kind': 'exchange', 'reclassify': True})
+    assert correction.status_code == 200, correction.json
+    assert correction.json['deal']['id'] == deal_id
+    assert correction.json['deal']['payout_amount_usdt'] == COST
+    assert client.get('/api/stand/state').json == before_board
+    with m.get_session() as db:
+        assert db.query(m.StandCrmLink).count() == 1
+        assert db.query(m.CardAllocation).count() == int(source == 'bank_card')
+        assert db.query(m.PayoutTxUse).count() == int(source == 'founder_personal')
