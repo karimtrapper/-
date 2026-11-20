@@ -1029,6 +1029,7 @@ class BankCard(Base):
             'bank_name': self.bank_name, 'card_name': self.card_name, 'holder_name': self.holder_name,
             'balance_thb': self.balance_thb, 'avg_rate': round(avg_rate, 4) if avg_rate else 0,
             'latest_purchase_rate': round(latest_purchase_rate, 4) if latest_purchase_rate else 0,
+            'is_ipps': _is_ipps_card(self.card_name),
             'status': self.status.value if self.status else None,
             'topups': [t.to_dict() for t in self.topups] if self.topups else []
         }
@@ -2060,6 +2061,10 @@ def compute_agent_cascade(profit_usdt, volume_usdt, agents, crypto_base_usdt=Non
 
 IPPS_REALTY_KIND = DealKindCanon.IPPS_REALTY.value
 IPPS_CARD_NAME = 'IPPS счет компании'
+IPPS_CASH_OUT = 'card_transfer_cash_out'
+IPPS_CASH_CANCELLED = 'card_transfer_cash_cancelled'
+IPPS_CASH_MOVEMENTS = (IPPS_CASH_OUT, IPPS_CASH_CANCELLED)
+IPPS_CASH_BATCH = 'card_transfer_cash'
 IPPS_REIMBURSEMENT_ERROR = 'Выплата с баланса ИППС не возмещается'
 STAND_IPPS_KIND = 'ИППС'
 MF_REALTY_KIND = 'mf_realty'      # недвижимость через тайскую компанию (лизхолд)
@@ -23328,6 +23333,7 @@ FINANCE_ARTICLES = {
     'bank_fee_rub':          ('Банковская комиссия, ₽', 'out'),
     'cash_purchase':         ('Закупка наличных ฿', 'transfer'),
     'card_topup':            ('Пополнение тайского счёта', 'transfer'),
+    'ipps_cash_transfer':    ('Перевод с ИППС в кассу', 'transfer'),
     'realty_send':           ('Отправка по сделке недвижимости', 'transfer'),
     'payout_client_thb':     ('Выдача клиенту, ฿', 'out'),
     'payout_developer':      ('Оплата застройщику', 'out'),
@@ -23501,7 +23507,12 @@ def _finance_events(session, date_from=None, date_to=None):
                 ref=f'deal:{d.id}', date_estimated=True))
 
     # ── 5. Закупка батов: партии налички и пополнения карт ────────────────
-    for b in session.query(CashBatch).all():
+    batches = {b.id: b for b in session.query(CashBatch).all()}
+    topups = session.query(CardTopup).all()
+    ipps_batches = {t.source_batch_id for t in topups if t.source_type in IPPS_CASH_MOVEMENTS}
+    for b in batches.values():
+        if b.id in ipps_batches:
+            continue
         day = _fin_day(b.created_at)
         if not in_range(day):
             continue
@@ -23510,9 +23521,18 @@ def _finance_events(session, date_from=None, date_to=None):
             b.amount_thb, 'THB', 'cash_thb',
             counterparty=b.founder_name, ref=f'cash_batch:{b.id}',
             note=b.purchase_method))
-    for t in session.query(CardTopup).all():
+    for t in topups:
         day = _fin_day(t.created_at)
         if not in_range(day):
+            continue
+        if t.source_type in IPPS_CASH_MOVEMENTS:
+            batch = batches.get(t.source_batch_id)
+            if t.source_type == IPPS_CASH_OUT and batch:
+                events.append(dict(_fin_transfer(
+                    day, 'ipps_cash_transfer', -t.amount_thb, 'THB', 'card_thb',
+                    batch.amount_thb, 'THB', 'cash_thb', ref=t.reference,
+                    note=t.notes), bank_card_id=t.card_id, cash_batch_id=batch.id,
+                    cost_usdt=batch.cost_usdt))
             continue
         events.append(_fin_transfer(
             day, 'card_topup', t.cost_usdt, 'USDT', 'usdt',
@@ -23942,12 +23962,15 @@ def get_cash_batches():
     session = get_session()
     try:
         batches = session.query(CashBatch).order_by(CashBatch.created_at.desc()).all()
+        ipps_batch_ids = {batch_id for (batch_id,) in session.query(CardTopup.source_batch_id).filter(
+            CardTopup.source_type.in_(IPPS_CASH_MOVEMENTS))}
         total_remaining = sum(b.remaining_thb for b in batches if b.status == CashBatchStatus.ACTIVE)
         total_cost_usdt = sum((b.remaining_thb / b.purchase_rate) if b.purchase_rate else 0 
                               for b in batches if b.status == CashBatchStatus.ACTIVE)
         weighted_rate = total_remaining / total_cost_usdt if total_cost_usdt > 0 else 0
         return jsonify({
-            'success': True, 'batches': [b.to_dict() for b in batches],
+            'success': True, 'batches': [
+                dict(b.to_dict(), is_ipps_transfer=b.id in ipps_batch_ids) for b in batches],
             'summary': {'total_remaining_thb': total_remaining, 'total_cost_usdt': round(total_cost_usdt, 2),
                         'weighted_avg_rate': round(weighted_rate, 4)}
         })
@@ -23959,6 +23982,8 @@ def create_cash_batch():
     session = get_session()
     try:
         data = request.get_json()
+        if data.get('purchase_method') == IPPS_CASH_BATCH:
+            return jsonify(success=False, error='Используйте перевод со счёта ИППС'), 400
         amount_thb = parse_float(data.get('amount_thb'))
         cost_usdt = parse_float(data.get('cost_usdt'))
 
@@ -23990,9 +24015,15 @@ def adjust_cash_batch(batch_id):
         new_remaining = float(data.get('new_remaining', 0))
         reason = data.get('reason', 'Ручная корректировка')
         
-        batch = session.query(CashBatch).filter(CashBatch.id == batch_id).first()
+        batch = session.query(CashBatch).filter(CashBatch.id == batch_id).with_for_update().first()
         if not batch:
             return jsonify({'success': False, 'error': 'Партия не найдена'}), 404
+        if _ipps_cash_movement(session, batch_id):
+            if batch.status == CashBatchStatus.ARCHIVED:
+                return jsonify(success=False, error='Перевод в эту партию отменён'), 409
+            if (not math.isfinite(new_remaining) or not 0 <= new_remaining <= batch.amount_thb
+                    or round(new_remaining, 2) != new_remaining):
+                return jsonify(success=False, error='Введите остаток в пределах суммы перевода, до двух знаков'), 400
         
         old_remaining = batch.remaining_thb
         batch.remaining_thb = new_remaining
@@ -26065,6 +26096,8 @@ def topup_card(card_id):
 
         amount_thb = parse_float(data.get('amount_thb'))
         source_type = data['source_type'] # 'cash_batch' or 'separate'
+        if source_type in IPPS_CASH_MOVEMENTS:
+            return jsonify(success=False, error='Используйте перевод со счёта ИППС'), 400
 
         cost_usdt = 0
         purchase_rate = 0
@@ -26077,6 +26110,9 @@ def topup_card(card_id):
             batch = session.query(CashBatch).filter(CashBatch.id == batch_id).with_for_update().first()
             if not batch or batch.remaining_thb < amount_thb:
                 return jsonify({'success': False, 'error': 'Недостаточно средств в партии'}), 400
+            if _ipps_cash_movement(session, batch.id) and (
+                    batch.status == CashBatchStatus.ARCHIVED or not math.isfinite(amount_thb) or amount_thb <= 0):
+                return jsonify(success=False, error='Введите положительную сумму из действующей партии'), 400
             
             source_batch_id = batch.id
             purchase_rate = batch.purchase_rate
@@ -26126,6 +26162,8 @@ def get_card_history(card_id):
         topups = session.query(CardTopup).filter(
             CardTopup.card_id == card_id
         ).order_by(CardTopup.created_at.desc()).all()
+        batch_ids = {t.source_batch_id for t in topups if t.source_type in IPPS_CASH_MOVEMENTS}
+        cash_batches = {b.id: b for b in session.query(CashBatch).filter(CashBatch.id.in_(batch_ids))}
 
         result = []
         for t in topups:
@@ -26140,6 +26178,8 @@ def get_card_history(card_id):
                 'reference': t.reference,
                 'notes': t.notes
             }
+            if t.source_type in IPPS_CASH_MOVEMENTS and t.source_batch_id in cash_batches:
+                topup_data['cash_transfer'] = cash_batches[t.source_batch_id].to_dict()
             result.append(topup_data)
 
         # Расходы: выдачи клиентам с этой карты
@@ -26157,7 +26197,8 @@ def get_card_history(card_id):
                 'card_name': card.card_name,
                 'balance_thb': card.balance_thb,
                 'avg_rate': round(avg_rate, 4) if avg_rate else 0,
-                'latest_purchase_rate': round(latest_purchase_rate, 4) if latest_purchase_rate else 0
+                'latest_purchase_rate': round(latest_purchase_rate, 4) if latest_purchase_rate else 0,
+                'is_ipps': _is_ipps_card(card.card_name),
             },
             'topups': result,
             'total_topups': len(result),
@@ -26361,6 +26402,152 @@ def transfer_card(card_id):
         session.close()
 
 
+def _ipps_cash_movement(session, batch_id):
+    return session.query(CardTopup).filter(
+        CardTopup.source_batch_id == batch_id, CardTopup.source_type.in_(IPPS_CASH_MOVEMENTS)
+    ).one_or_none()
+
+
+def _ipps_cash_result(movement, batch, card, *, duplicate=False):
+    cancelled = movement.source_type == IPPS_CASH_CANCELLED
+    return {
+        'success': True, 'duplicate': duplicate, 'transfer_cancelled': cancelled,
+        'reference': movement.reference, 'source_balance_thb': card.balance_thb,
+        'source_card_id': card.id, 'source_name': card.card_name or card.bank_name,
+        'batch': batch.to_dict(), 'transfer_out': movement.to_dict(),
+    }
+
+
+@app.route('/api/cards/<int:card_id>/transfer-to-cash', methods=['POST'])
+def transfer_ipps_to_cash(card_id):
+    """Переносит баты и их себестоимость со счёта ИППС в новую партию кассы."""
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify(success=False, error='Передайте данные перевода'), 400
+    amount = _ipps_amount(data.get('amount_thb'))
+    if amount is None:
+        return jsonify(success=False, error='Введите сумму THB больше нуля, до двух знаков после запятой'), 400
+    amount = float(amount)
+    request_id = data.get('request_id')
+    if not isinstance(request_id, str) or not re.fullmatch(
+            r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}', request_id):
+        return jsonify(success=False, error='Некорректный номер операции'), 400
+    reason = data.get('reason', '')
+    if not isinstance(reason, str) or len(reason.strip()) > 200:
+        return jsonify(success=False, error='Комментарий должен содержать до 200 символов'), 400
+    reason = reason.strip() or None
+    if data.get('purchase_rate') is not None or data.get('cost_usdt') is not None:
+        return jsonify(success=False, error='Себестоимость рассчитывается по остатку счёта'), 400
+
+    session = get_session()
+    try:
+        card = session.query(BankCard).filter_by(id=card_id).with_for_update().first()
+        if card is None:
+            return jsonify(success=False, error='Счёт ИППС не найден'), 404
+        founder = data.get('founder_name') or card.holder_name
+        if founder not in ('Андрей', 'Теодор', card.holder_name):
+            return jsonify(success=False, error='Выберите ответственного за партию кассы'), 400
+
+        reference = f'IPPS-CASH-{card_id}-{request_id}'
+        existing = session.query(CardTopup).filter(
+            CardTopup.card_id == card_id, CardTopup.reference == reference,
+            CardTopup.source_type.in_(IPPS_CASH_MOVEMENTS)
+        ).one_or_none()
+        if existing:
+            batch = session.get(CashBatch, existing.source_batch_id)
+            if (not batch or batch.amount_thb != amount or batch.founder_name != founder
+                    or existing.notes != reason):
+                return jsonify(success=False, error='Номер операции уже использован с другими данными'), 409
+            if existing.source_type == IPPS_CASH_CANCELLED:
+                return jsonify(success=False, error='Этот перевод уже отменён', transfer_cancelled=True), 409
+            return jsonify(_ipps_cash_result(existing, batch, card, duplicate=True))
+
+        if not _is_ipps_card(card.card_name) or card.status != CashBatchStatus.ACTIVE:
+            return jsonify(success=False, error='Выберите действующий счёт ИППС'), 400
+        if not math.isfinite(card.balance_thb or 0) or round(card.balance_thb or 0, 2) < amount:
+            return jsonify(success=False, error='На счёте ИППС недостаточно средств'), 409
+        rate = _card_avg_rate(card)
+        cost = round(amount / rate, 2) if math.isfinite(rate) and rate > 0 else 0
+        if not math.isfinite(cost) or cost <= 0:
+            return jsonify(success=False, error='Не удалось определить себестоимость по остатку ИППС'), 409
+        now = datetime.utcnow()
+        batch = CashBatch(
+            amount_thb=amount, remaining_thb=amount, cost_usdt=cost, purchase_rate=amount / cost,
+            purchase_method=IPPS_CASH_BATCH, founder_name=founder, status=CashBatchStatus.ACTIVE,
+            created_at=now,
+        )
+        session.add(batch)
+        session.flush()
+        movement = CardTopup(
+            card_id=card_id, source_batch_id=batch.id, source_type=IPPS_CASH_OUT,
+            amount_thb=-amount, cost_usdt=-cost, purchase_rate=batch.purchase_rate,
+            reference=reference, notes=reason, created_at=now,
+        )
+        card.balance_thb = round(card.balance_thb - amount, 2)
+        session.add(movement)
+        session.commit()
+        return jsonify(_ipps_cash_result(movement, batch, card)), 201
+    except Exception:
+        session.rollback()
+        app.logger.exception('IPPS cash transfer failed')
+        return jsonify(success=False, error='Не удалось перевести средства в кассу'), 500
+    finally:
+        session.close()
+
+
+def _cancel_ipps_cash_transfer(session, movement):
+    # Как у пополнения из кассы: сначала карта, затем кассовая партия.
+    # Обновляем ORM-объекты после ожидания блокировки другой операции.
+    card_id, batch_id, movement_id = movement.card_id, movement.source_batch_id, movement.id
+    card = session.query(BankCard).filter_by(id=card_id).populate_existing().with_for_update().first()
+    batch = session.query(CashBatch).filter_by(id=batch_id).populate_existing().with_for_update().first()
+    movement = session.query(CardTopup).filter_by(id=movement_id).populate_existing().with_for_update().first()
+    if (not card or not batch or not movement or movement.card_id != card_id
+            or movement.source_batch_id != batch_id or movement.source_type not in IPPS_CASH_MOVEMENTS):
+        return jsonify(success=False, error='Операции счёта и кассы не совпадают'), 409
+    if movement.source_type == IPPS_CASH_CANCELLED and batch.status == CashBatchStatus.ARCHIVED:
+        return jsonify(_ipps_cash_result(movement, batch, card, duplicate=True))
+    if movement.source_type != IPPS_CASH_OUT or (
+            movement.amount_thb, movement.cost_usdt) != (-batch.amount_thb, -batch.cost_usdt):
+        return jsonify(success=False, error='Операции счёта и кассы не совпадают'), 409
+    if (batch.status != CashBatchStatus.ACTIVE or batch.remaining_thb != batch.amount_thb or batch.notes
+            or session.query(CashAllocation.id).filter_by(batch_id=batch_id).first()
+            or session.query(Deal.id).filter_by(cash_batch_id=batch_id).first()
+            or session.query(CardTopup.id).filter(
+                CardTopup.source_batch_id == batch_id, CardTopup.id != movement_id).first()):
+        return jsonify(success=False, error='Партия кассы уже использована или изменена'), 409
+
+    card.balance_thb = round((card.balance_thb or 0) + batch.amount_thb, 2)
+    batch.remaining_thb = 0
+    batch.status = CashBatchStatus.ARCHIVED
+    movement.source_type = IPPS_CASH_CANCELLED
+    movement.amount_thb = movement.cost_usdt = 0
+    session.commit()
+    return jsonify(_ipps_cash_result(movement, batch, card))
+
+
+@app.route('/api/cash/batches/<int:batch_id>/ipps-transfer', methods=['GET', 'DELETE'])
+def cash_batch_ipps_transfer(batch_id):
+    session = get_session()
+    try:
+        movement = _ipps_cash_movement(session, batch_id)
+        if not movement:
+            return jsonify(success=False, error='Перевод ИППС в эту партию не найден'), 404
+        if request.method == 'DELETE':
+            return _cancel_ipps_cash_transfer(session, movement)
+        batch = session.get(CashBatch, batch_id)
+        card = session.get(BankCard, movement.card_id)
+        if not batch or not card:
+            return jsonify(success=False, error='Операции счёта и кассы не совпадают'), 409
+        return jsonify(_ipps_cash_result(movement, batch, card))
+    except Exception:
+        session.rollback()
+        app.logger.exception('IPPS cash transfer history failed')
+        return jsonify(success=False, error='Не удалось обработать перевод ИППС'), 500
+    finally:
+        session.close()
+
+
 @app.route('/api/cards/<int:card_id>/topup/<int:topup_id>', methods=['DELETE'])
 def delete_card_topup(card_id, topup_id):
     session = get_session()
@@ -26368,6 +26555,8 @@ def delete_card_topup(card_id, topup_id):
         topup = session.query(CardTopup).filter(CardTopup.id == topup_id, CardTopup.card_id == card_id).first()
         if not topup:
             return jsonify({'success': False, 'error': 'Пополнение не найдено'}), 404
+        if topup.source_type in IPPS_CASH_MOVEMENTS:
+            return _cancel_ipps_cash_transfer(session, topup)
 
         if (topup.source_type in ('card_transfer_out', 'card_transfer_in')
                 and (topup.reference or '').startswith('CARD-XFER-')):
@@ -26403,11 +26592,15 @@ def delete_card_topup(card_id, topup_id):
                 'reference': topup.reference,
             })
             
-        card = session.query(BankCard).filter(BankCard.id == card_id).first()
+        source_type = topup.source_type
+        card = session.query(BankCard).filter_by(id=card_id).populate_existing().with_for_update().first()
+        topup = session.query(CardTopup).filter_by(id=topup_id, card_id=card_id).populate_existing().with_for_update().first()
+        if not card or not topup or topup.source_type != source_type:
+            return jsonify(success=False, error='Операция изменилась. Обновите историю счёта'), 409
         
         returned_to_batch = None
         if topup.source_type == 'cash_batch' and topup.source_batch_id:
-            batch = session.query(CashBatch).filter(CashBatch.id == topup.source_batch_id).first()
+            batch = session.query(CashBatch).filter_by(id=topup.source_batch_id).with_for_update().first()
             if batch:
                 batch.remaining_thb += topup.amount_thb
                 batch.status = CashBatchStatus.ACTIVE
