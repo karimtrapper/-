@@ -685,3 +685,146 @@ def test_reclassifies_old_founder_payout_through_existing_editor(ui, monkeypatch
     assert writes == previous_writes
     assert not errors, errors
     assert not server_errors, server_errors
+
+
+@pytest.mark.parametrize('width', [1440, 390])
+def test_deal_details_show_unique_proofs_and_keep_channel_amounts(ui, width):
+    page, errors, server_errors, _ = ui
+    page.set_viewport_size({'width': width, 'height': 844})
+    # Capture clipboard writes inside the page instead of using the host pasteboard.
+    page.evaluate("""() => Object.defineProperty(navigator, 'clipboard', {
+        configurable: true, value: {writeText: async value => {window.__qaCopiedProof = value;}}
+    })""")
+    first_hash = '1' * 64
+    extra_hash = '0x' + '2' * 64
+    payout_hash = '0x' + '3' * 64
+    legacy_hash = '4' * 64
+    shared_raw_hash = '5' * 64
+
+    def transfer(hash_value, network, amount):
+        return {'hash': hash_value, 'network': network, 'amount_usdt': amount}
+
+    def channel(amount, *proofs):
+        return {'method': 'crypto_direct', 'amount_usdt': amount, 'tx_hashes': list(proofs)}
+
+    def saved_deal(db, *, total=100, scalar=None, proofs=(), extra=(), verified=False, payout=None):
+        record = A.Deal(
+            deal_type=A.DealType.PAY_IN, deal_kind='personal_realty' if payout else 'exchange',
+            status=A.DealStatus.COMPLETED, payin_method=A.PayInMethod.CRYPTO_DIRECT,
+            payin_amount_usdt=total, payin_tx_hash=scalar, payin_tx_verified=verified,
+            payin_tx_hashes=json.dumps(proofs) if proofs else None,
+            payin_extra=json.dumps(extra) if extra else None,
+            payout_source=A.PayOutSource.FOUNDER_PERSONAL if payout else None,
+            payout_method=A.PayOutMethod.TRANSFER,
+            payout_amount_thb=1170544.91 if payout else 3300,
+            payout_amount_usdt=34636.91 if payout else 100,
+            payout_founder_name='Теодор' if payout else None,
+            payout_tx_hash=payout['hash'] if payout else None,
+            payout_tx_hashes=json.dumps([payout]) if payout else None,
+            needs_reimbursement=False,
+        )
+        db.add(record)
+        db.flush()
+        return record.id
+
+    with A.get_session() as db:
+        separated = saved_deal(
+            db, total=35675.17, scalar=first_hash, verified=True,
+            proofs=[transfer(first_hash, 'trc20', 35028.20), transfer(extra_hash, 'erc20', 646.97)],
+            extra=[channel(646.97, transfer(extra_hash, 'erc20', 646.97))],
+            payout=transfer(payout_hash, 'erc20', 34636.91))
+        multi_main = saved_deal(
+            db, scalar=first_hash,
+            proofs=[transfer(first_hash, 'trc20', 60), transfer(extra_hash, 'erc20', 40)])
+        same_hash_shares = saved_deal(
+            db, scalar=extra_hash, verified=True,
+            proofs=[transfer(first_hash, 'trc20', 40), transfer(extra_hash, 'erc20', 60)],
+            extra=[channel(35, transfer(extra_hash, 'erc20', 35)),
+                   channel(25, transfer(extra_hash, 'erc20', 25))])
+        legacy_only = saved_deal(db, scalar=legacy_hash)
+        legacy_distinct = saved_deal(
+            db, scalar=legacy_hash, verified=True,
+            proofs=[transfer(first_hash, 'trc20', 60)],
+            extra=[channel(40, transfer(extra_hash, 'erc20', 40))])
+        mixed_same_raw_hash = saved_deal(
+            db, scalar=first_hash,
+            proofs=[transfer(first_hash, 'trc20', 30), transfer(shared_raw_hash, 'trc20', 45)],
+            extra=[channel(25, transfer(shared_raw_hash, 'erc20', 25))])
+        canonical_proof = 'ab' * 32
+        legacy_alias = saved_deal(
+            db, scalar=canonical_proof.upper(), verified=True,
+            proofs=[transfer(canonical_proof, 'trc20', 100)])
+        structured_only = saved_deal(db, proofs=[transfer(extra_hash, 'erc20', 100)])
+        without_hash = saved_deal(db)
+        db.commit()
+
+    modal = page.locator('#dealModal')
+    content = page.locator('#dealModalContent')
+    tron = 'https://tronscan.org/#/transaction/'
+    eth = 'https://etherscan.io/tx/'
+
+    def show(deal_id):
+        page.evaluate('id => showDealDetails(id)', deal_id)
+        expect(modal).to_be_visible()
+        expect(content).to_contain_text(f'#{deal_id}')
+
+    show(separated)
+    expect(content).to_contain_text('Приход по каналам (2)')
+    expect(content).to_contain_text(re.compile(r'35[\s,]?675[.,]17'))
+    expect(content).to_contain_text(re.compile(r'35[\s,]?028[.,]20'))
+    expect(content).to_contain_text(re.compile(r'646[.,]97'))
+    expect(content).to_contain_text('Конвертация для выплаты · исходящий USDT')
+    expect(content).to_contain_text(re.compile(r'−\$?34[\s,]?636[.,]91 USDT'))
+    expect(content.locator(f'a[href="{tron + first_hash}"]')).to_have_count(1)
+    expect(content.locator(f'a[href="{eth + extra_hash}"]')).to_have_count(1)
+    expect(content.locator(f'a[href="{eth + payout_hash}"]')).to_have_count(1)
+    expect(content.locator('[title="Подтверждено"]')).to_have_count(1)
+    for source_hash in (first_hash, extra_hash, payout_hash):
+        copy_button = content.locator(f'button[data-proof-hash="{source_hash}"]')
+        expect(copy_button).to_be_visible()
+        copy_button.click()
+        assert page.evaluate('window.__qaCopiedProof') == source_hash
+    assert content.evaluate("""el => [...el.querySelectorAll('button[data-proof-hash]')]
+        .every(button => button.parentElement.scrollWidth <= button.parentElement.clientWidth + 1)""")
+
+    show(multi_main)
+    expect(content).to_contain_text('Хэши прихода')
+    expect(content.locator(f'a[href="{tron + first_hash}"]')).to_have_count(1)
+    expect(content.locator(f'a[href="{eth + extra_hash}"]')).to_have_count(1)
+    expect(content.locator('[title="Ожидает подтверждения"]')).to_have_count(1)
+
+    show(same_hash_shares)
+    expect(content.locator(f'a[href="{eth + extra_hash}"]')).to_have_count(1)
+    expect(content).to_contain_text(re.compile(r'\+\$35[.,]00'))
+    expect(content).to_contain_text(re.compile(r'\+\$25[.,]00 · Тот же перевод, что в приходе 2'))
+    expect(content).to_contain_text('Приход по каналам (3)')
+    expect(content.locator('[title="Подтверждено"]')).to_have_count(1)
+
+    show(legacy_only)
+    expect(content.locator(f'a[href="{tron + legacy_hash}"]')).to_have_count(1)
+    expect(content.locator('button[data-proof-hash]')).to_have_count(1)
+
+    show(legacy_distinct)
+    expect(content.locator(f'a[href="{tron + first_hash}"]')).to_have_count(1)
+    expect(content.locator(f'a[href="{eth + extra_hash}"]')).to_have_count(1)
+    expect(content.locator(f'a[href="{tron + legacy_hash}"]')).to_have_count(1)
+
+    show(mixed_same_raw_hash)
+    expect(content.locator(f'a[href="{tron + shared_raw_hash}"]')).to_have_count(1)
+    expect(content.locator(f'a[href="{eth + shared_raw_hash}"]')).to_have_count(1)
+    expect(content).to_contain_text(re.compile(r'\+\$45[.,]00'))
+    expect(content).to_contain_text(re.compile(r'\+\$25[.,]00'))
+
+    show(legacy_alias)
+    expect(content.locator(f'a[href="{tron + canonical_proof}"]')).to_have_count(1)
+    expect(content.locator(f'a[href="{tron + canonical_proof.upper()}"]')).to_have_count(0)
+    expect(content.locator('[title="Подтверждено"]')).to_have_count(1)
+
+    show(structured_only)
+    expect(content.locator(f'a[href="{eth + extra_hash}"]')).to_have_count(1)
+
+    show(without_hash)
+    expect(content.locator('button[data-proof-hash]')).to_have_count(0)
+    expect(content).not_to_contain_text('Хэш прихода')
+    assert not errors, errors
+    assert not server_errors, server_errors
