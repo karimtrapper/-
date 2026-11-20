@@ -4,6 +4,7 @@
 Без --browser явно SKIPPED, отсутствие Chromium при --browser — ERROR.
 """
 import json
+import re
 import threading
 from datetime import datetime
 from urllib.parse import urlsplit
@@ -528,11 +529,14 @@ def test_manual_payin_hashes_autofill_and_sum(ui):
     assert not errors
 
 
-def test_reclassifies_old_founder_payout_through_existing_editor(ui, monkeypatch, tmp_path):
+@pytest.mark.parametrize('width', [1440, 390])
+def test_reclassifies_old_founder_payout_through_existing_editor(ui, monkeypatch, tmp_path, width):
     from tests.test_leasehold_reclassification import seed_direct, snapshot
 
     page, errors, server_errors, _ = ui
-    monkeypatch.setattr(A, '_sync_reclassified_deal_gsheet', lambda deal: {'ok': True})
+    export_results = iter(({'ok': False}, {'ok': True}, {'ok': True}))
+    monkeypatch.setattr(A, '_sync_reclassified_deal_gsheet', lambda deal: next(export_results))
+    page.set_viewport_size({'width': width, 'height': 900})
     with A.get_session() as db:
         deal = seed_direct(db, reimbursed=True)
         deal.manager_name = 'QA Manager'
@@ -541,33 +545,101 @@ def test_reclassifies_old_founder_payout_through_existing_editor(ui, monkeypatch
         db.commit()
         before = snapshot(db, deal_id)
     path = f'/api/deals/{deal_id}'
-    button = page.get_by_role('button', name='Изменить тип сделки', exact=True)
+    writes = []
+    page.on('request', lambda request: writes.append(request.post_data_json)
+            if request.method == 'PUT' and request.url.endswith(path) else None)
     page.evaluate('id => openDealEditor(id)', deal_id)
-    expect(button).to_be_visible()
-    expect(page.locator('#payoutSource')).to_have_value('founder_personal')
-    expect(page.locator('#dealProductSelect option[value=leasehold]')).to_be_disabled()
+    product = page.locator('#dealProductSelect')
+    route = page.locator('#leaseholdPayoutRoute')
+    drop = product.locator('..')
+    drop_button = drop.locator('.custom-select-btn')
     notes = page.locator('#createDealForm [name=notes]')
+    dialog = page.get_by_role('dialog')
+    expected_types = {'deal_kind': 'personal_realty', 'reclassify': True}
+
+    def choose_visible(select, label):
+        wrapper = select.locator('..')
+        wrapper.locator('.custom-select-btn').click()
+        choice = wrapper.locator('.custom-select-opt').get_by_text(label, exact=True)
+        expect(choice).not_to_have_class(re.compile(r'\bdisabled\b'))
+        choice.click()
+
+    expect(page.locator('#payoutSource')).to_have_value('founder_personal')
+    expect(drop_button).to_have_text('Обычная (обмен)')
+    expect(product.locator('option[value=mf_freehold]')).to_be_disabled()
+
     notes.fill('Несохранённое уточнение')
-    button.click()
+    choose_visible(product, 'Недвижимость лизхолд')
     expect(page.get_by_text('Сначала сохраните изменения в полях сделки.', exact=True)).to_be_visible()
     expect(notes).to_have_value('Несохранённое уточнение')
+    expect(drop_button).to_have_text('Обычная (обмен)')
+    expect(dialog).to_have_count(0)
+    assert not writes
     notes.clear()
 
-    button.click()
-    dialog = page.get_by_role('dialog')
+    choose_visible(product, 'Недвижимость лизхолд')
     expect(dialog).to_contain_text('Недвижимость лизхолд через личный счёт')
+    expect(product).to_have_value('exchange')
+    expect(drop_button).to_have_text('Обычная (обмен)')
+    assert not writes
+    dialog.get_by_role('button', name='Отмена', exact=True).click()
+    expect(dialog).to_have_count(0)
+    expect(drop_button).to_have_text('Обычная (обмен)')
+    assert not writes
+
+    def reject_put(intercept):
+        if intercept.request.method == 'PUT':
+            return intercept.fulfill(status=409, json={'success': False, 'error': 'Проверка отказа'})
+        return intercept.fallback()
+
+    page.route('**' + path, reject_put)
+    choose_visible(product, 'Недвижимость лизхолд')
+    dialog.get_by_role('button', name='Изменить тип', exact=True).click()
+    expect(page.get_by_text('Проверка отказа', exact=True)).to_be_visible()
+    expect(drop_button).to_have_text('Обычная (обмен)')
+    page.unroute('**' + path, reject_put)
+    with A.get_session() as db:
+        assert db.get(A.Deal, deal_id).deal_kind == 'exchange'
+        assert snapshot(db, deal_id) == before
+
+    def abort_put(intercept):
+        if intercept.request.method == 'PUT':
+            return intercept.abort()
+        return intercept.fallback()
+
+    page.route('**' + path, abort_put)
+    choose_visible(product, 'Недвижимость лизхолд')
+    dialog.get_by_role('button', name='Изменить тип', exact=True).click()
+    expect(page.get_by_text('Не удалось подтвердить смену типа. Повторите попытку.', exact=True)).to_be_visible()
+    expect(drop_button).to_have_text('Обычная (обмен)')
+    page.unroute('**' + path, abort_put)
+
+    choose_visible(product, 'Недвижимость лизхолд')
     with page.expect_response(lambda r: r.request.method == 'PUT' and r.url.endswith(path)) as change:
         dialog.get_by_role('button', name='Изменить тип', exact=True).click()
-    assert change.value.json()['deal']['id'] == deal_id
-    assert change.value.request.post_data_json == {'deal_kind': 'personal_realty', 'reclassify': True}
+    assert change.value.json()['export_pending'] is True
+    assert change.value.request.post_data_json == expected_types
+    expect(page.get_by_role('button', name='Повторить выгрузку')).to_be_visible()
+    expect(drop_button).to_have_text('Обычная (обмен)')
+    with page.expect_response(lambda r: r.request.method == 'PUT' and r.url.endswith(path)) as retry:
+        choose_visible(product, 'Недвижимость лизхолд')
+    assert retry.value.json()['deal']['id'] == deal_id
+    assert retry.value.request.post_data_json == expected_types
+    assert writes == [expected_types] * 4
+
+    expect(drop_button).to_have_text('Недвижимость лизхолд')
+    expect(drop_button).to_be_enabled()
+    expect(product.locator('option[value=leasehold]')).to_be_enabled()
+    expect(route.locator('option[value=personal_realty]')).to_be_enabled()
+    expect(route.locator('option[value=ipps_realty]')).to_be_disabled()
+    expect(route.locator('option[value=mf_realty]')).to_be_disabled()
+    expect(route).to_have_value('personal_realty')
     expect(page.locator('#personalPayoutMode')).to_have_value('direct_conversion')
     expect(page.locator('#personalPayoutThb')).to_have_value('1125699')
     expect(page.locator('#personalCostUsdt')).to_have_value('34636.91')
     expect(page.locator('#payoutSettledByPayin')).to_be_checked()
     expect(page.locator('#create .card-title')).to_contain_text(f'#{deal_id}')
-    page.set_viewport_size({'width': 390, 'height': 844})
-    expect(button).to_be_visible()
-    page.screenshot(path=str(tmp_path / 'reclassified-mobile.png'), full_page=True)
+    page.screenshot(path=str(tmp_path / f'reclassified-{width}.png'), full_page=True)
 
     notes.fill('Уточнение по договору')
     save = page.get_by_role('button', name='Сохранить изменения', exact=True)
@@ -575,8 +647,41 @@ def test_reclassifies_old_founder_payout_through_existing_editor(ui, monkeypatch
         save.click()
     assert edit.value.status == 200, edit.value.text()
     assert edit.value.request.post_data_json == {'notes': 'Уточнение по договору'}
+    page.locator('#dealModal').get_by_role('button', name='Редактировать', exact=True).click()
+    expect(page.locator('#create .card-title')).to_contain_text(f'Редактировать сделку #{deal_id}')
+    choose_visible(product, 'Обычная (обмен)')
+    expect(dialog).to_contain_text('Обмен')
+    expect(drop_button).to_have_text('Недвижимость лизхолд')
+    with page.expect_response(lambda r: r.request.method == 'PUT' and r.url.endswith(path)) as reverse:
+        dialog.get_by_role('button', name='Изменить тип', exact=True).click()
+    assert reverse.value.json()['deal']['id'] == deal_id
+    assert reverse.value.request.post_data_json == {'deal_kind': 'exchange', 'reclassify': True}
+    expect(drop_button).to_have_text('Обычная (обмен)')
     with A.get_session() as db:
         assert snapshot(db, deal_id) == before
         assert db.get(A.Deal, deal_id).notes == 'Уточнение по договору'
+        assert db.get(A.Deal, deal_id).deal_kind == 'exchange'
+
+    previous_writes = writes.copy()
+    page.locator('#create .card-title').get_by_role('button', name='Отмена', exact=True).click()
+    if width == 390:
+        page.locator('#bottomNav').get_by_text('Создать', exact=True).click()
+    else:
+        page.locator('.nav-create-btn').first.click()
+    choose_visible(product, 'Недвижимость лизхолд')
+    expect(route).to_have_value('mf_realty')
+    expect(page.locator('#mfDealSection')).to_be_visible()
+    choose_visible(route, 'ИППС')
+    expect(page.locator('#ippsDealSection')).to_be_visible()
+    choose_visible(route, 'Личный счёт')
+    expect(page.locator('#personalDealSection')).to_be_visible()
+    mode = page.locator('#personalPayoutMode')
+    expect(mode).to_have_value('direct_conversion')
+    choose_visible(mode, 'Из остатка карты')
+    expect(mode).to_have_value('bank_card')
+    choose_visible(mode, 'Оплата по хэшу')
+    expect(page.locator('#founderGroup')).to_be_visible()
+    expect(dialog).to_have_count(0)
+    assert writes == previous_writes
     assert not errors, errors
     assert not server_errors, server_errors

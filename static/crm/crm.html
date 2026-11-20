@@ -5618,24 +5618,33 @@ select.period-btn:hover:not(.active) { color: var(--text); }
             personal_realty: 'Недвижимость лизхолд через личный счёт',
         };
 
+        function activeLeaseholdReclassification() {
+            const button = document.getElementById('leaseholdReclassificationButton');
+            return button?.dataset.dealId === String(editingDealId) ? button : null;
+        }
+
         function addLeaseholdReclassificationButton(dealId, target) {
             const label = leaseholdReclassificationLabels[target];
             if (!label) return;
             const button = document.createElement('button');
             button.type = 'button';
+            button.id = 'leaseholdReclassificationButton';
+            button.dataset.dealId = dealId;
+            button.dataset.targetProduct = target === 'exchange' ? 'exchange' : 'leasehold';
             button.className = 'btn btn-secondary btn-sm';
             button.style.marginLeft = '0.5rem';
             button.textContent = 'Изменить тип сделки';
             button.addEventListener('click', async () => {
                 const current = serializeStandardDeal(document.getElementById('createDealForm'));
-                if (leaseholdEditorChanges(current).length) {
-                    showToast('Сначала сохраните изменения в полях сделки.', 'warning');
-                    return;
-                }
-                if (button.dataset.exportPending !== 'true'
-                        && !await showConfirm('Изменить тип на «' + label + '»?', 'Изменить тип')) return;
                 button.disabled = true;
                 try {
+                    if (leaseholdEditorChanges(current).length) {
+                        showToast('Сначала сохраните изменения в полях сделки.', 'warning');
+                        return;
+                    }
+                    if (button.dataset.exportPending !== 'true'
+                            && !await showConfirm('Изменить тип на «' + label + '»?', 'Изменить тип')) return;
+                    if (!button.isConnected || editingDealId !== dealId) return;
                     const resp = await fetch(`${API_URL}/api/deals/${dealId}`, {
                         method: 'PUT',
                         headers: { 'Content-Type': 'application/json' },
@@ -5716,8 +5725,6 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                     document.querySelector('#create .card-title').innerHTML =
                         `Редактировать сделку #${dealId} <button class="btn btn-secondary btn-sm" style="margin-left: 1rem;" onclick="cancelEditMode()">Отмена</button>`;
                     addLeaseholdReclassificationButton(dealId, deal.reclassification_target);
-                    document.querySelector('#dealProductSelect option[value="leasehold"]').disabled =
-                        !!deal.reclassification_target && !isLeaseholdKind(deal.deal_kind);
 
                     // Проверяем - кастомная сделка или обычная
 
@@ -5964,7 +5971,6 @@ select.period-btn:hover:not(.active) { color: var(--text); }
             editingDealId = null;
             leaseholdEditorBaseline = null;
             savedDirectPayout = null;
-            document.querySelector('#dealProductSelect option[value="leasehold"]').disabled = false;
             flowSoleProofVerified = false;
             payinRubIsNet = true;
             updatePayinRubBasisHint();
@@ -5973,7 +5979,11 @@ select.period-btn:hover:not(.active) { color: var(--text); }
             const grossHint = document.getElementById('payinGrossReference');
             if (grossHint) { grossHint.style.display = 'none'; grossHint.textContent = ''; }
             document.querySelector('#create .card-title').textContent = 'Создать новую сделку';
+            // Сбросу нужно восстановить первую доступную опцию маршрута.
+            const leaseholdRoute = document.getElementById('leaseholdPayoutRoute');
+            for (const option of leaseholdRoute.options) option.disabled = false;
             document.getElementById('createDealForm').reset();
+            if (!leaseholdRoute.value) leaseholdRoute.value = 'mf_realty';
             const kindSelect = document.getElementById('dealKindSelect');
             kindSelect.disabled = false;
             kindSelect.querySelector('[value="ipps_realty"]').disabled = false;
@@ -7948,6 +7958,16 @@ select.period-btn:hover:not(.active) { color: var(--text); }
 
         function changeDealProduct() {
             const product = document.getElementById('dealProductSelect').value;
+            const correction = activeLeaseholdReclassification();
+            if (correction) {
+                // Оболочка селекта завершает обработку клика после события change.
+                queueMicrotask(() => {
+                    if (activeLeaseholdReclassification() !== correction) return;
+                    syncVisibleDealKind();
+                    if (product === correction.dataset.targetProduct) correction.click();
+                });
+                return;
+            }
             const kind = document.getElementById('dealKindSelect');
             kind.value = product === 'leasehold' ? document.getElementById('leaseholdPayoutRoute').value : product;
             onDealKindChange();
@@ -7958,11 +7978,19 @@ select.period-btn:hover:not(.active) { color: var(--text); }
             const product = document.getElementById('dealProductSelect');
             if (!product) return;
             const leasehold = isLeaseholdKind(kind.value);
-            product.value = leasehold ? 'leasehold' : kind.value;
-            product.disabled = kind.disabled;
+            const currentProduct = leasehold ? 'leasehold' : kind.value;
+            const targetProduct = activeLeaseholdReclassification()?.dataset.targetProduct;
+            product.value = currentProduct;
+            product.disabled = kind.disabled && !targetProduct;
             document.getElementById('leaseholdPayoutRouteGroup').hidden = !leasehold;
             const route = document.getElementById('leaseholdPayoutRoute');
-            route.disabled = kind.disabled;
+            route.disabled = kind.disabled && !targetProduct;
+            for (const option of product.options) {
+                option.disabled = !!targetProduct && option.value !== currentProduct && option.value !== targetProduct;
+            }
+            for (const option of route.options) {
+                option.disabled = !!targetProduct && option.value !== kind.value;
+            }
             if (leasehold) route.value = kind.value;
         }
 
