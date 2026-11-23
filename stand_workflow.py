@@ -38,8 +38,8 @@ from decimal import Decimal, InvalidOperation
 EDGES = {
     's4': {'s5', 's6'}, 's5': {'s4', 's6'}, 's6': {'s5', 's8'},
     's8': {'s5', 's11'}, 's11': {'s8', 's11b', 's12'},
-    's11b': {'s11', 's12'}, 's12': {'s14'},
-    's14': {'s14m', 's15', 's18', 's22'},
+    's11b': {'s11', 's12'}, 's12': {'s11', 's14'},
+    's14': {'s11', 's14m', 's15', 's18', 's22'},
     's14m': {'s14', 's15', 's18', 's22'},
     's15': {'s18', 's22', 's26'}, 's18': {'s18w'}, 's18w': {'s22'},
     's22': {'s23', 's26'}, 's23': {'s24', 's25', 's26', 's27'},
@@ -94,6 +94,31 @@ def rerate_credit_problem(state, submitted, before, deal):
 
     if credited_incomes(state) != credited_incomes(submitted):
         return 'Зачтённый приход нельзя менять при запросе курса'
+    return None
+
+
+def is_rub_bank_payment(deal):
+    pair = exchange_pair(deal)
+    return (deal.get('payType') in (None, 'По реквизитам') and not is_crypto(deal)
+            and (deal.get('type') != 'Обмен валюты' or bool(pair and pair[0] == 'rub')))
+
+
+def receiving_account_change_problem(state, deal):
+    """An issued RUB bank package can change recipient only before payment starts."""
+    if not is_rub_bank_payment(deal) or not (deal.get('docPack') or deal.get('docVersion')):
+        return 'Сменить счёт можно для выпущенного пакета с оплатой в рублях по реквизитам'
+    pay = deal.get('pay') or {}
+    if (any(deal.get(key) for key in ('payinParts', 'payinHashes', 'payinExtra', 'incomeAmount',
+                                      'payinProcessed', 'receiptConfirmed', 'manualBankReceipt', 'cashPartnerUsdt'))
+            or any(pay.get(key) for key in ('hash', 'usdt', 'rub'))
+            or any(str(income.get('dealId')) == str(deal['id']) for income in state.get('incomes') or [])):
+        return 'Счёт нельзя сменить после поступления или начала сверки оплаты'
+    if (rerate_commitment_problem(state, deal)
+            or any(deal.get(key) for key in ('outgoingReview', 'transferClaim', 'serverSettled',
+                                             'payoutFact', 'mfPayout', 'commissionSends', 'sentToClient'))
+            or any(pay.get(key) for key in ('outHash', 'tx', 'coinsCredit'))
+            or any((deal.get('payout') or {}).get(key) for key in ('hash', 'hashes', 'reimbursement'))):
+        return 'Счёт нельзя сменить после начала исходящей оплаты'
     return None
 
 

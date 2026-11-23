@@ -2431,6 +2431,22 @@ def _stand_manual_account_key(receipt):
     return 'sber'
 
 
+_STAND_RUB_RECEIVING_TERMS = {
+    'sber': {
+        'bank': 'ПАО Сбербанк', 'account': '40807810938720000286',
+        'correspondent': '30101810400000000225', 'bik': '044525225',
+        'recipientName': 'ООО «ЭМ ЭФ КОРПОРЕЙШН»', 'recipientInn': '9909726886',
+        'recipientKpp': '770387001', 'acc': '…0286 · Сбер',
+    },
+    'flowsole': {
+        'bank': 'Московский филиал "БАНК СГБ" г. Москва', 'account': '40807810819000000261',
+        'correspondent': '30101810245250000094', 'bik': '044525094',
+        'recipientName': 'ФЛОУ СОЛЕ КО., ЛТД', 'recipientInn': '9909773251',
+        'recipientKpp': '770387001', 'acc': 'Flow Sole (СГБ) …0261',
+    },
+}
+
+
 def _stand_doc_agent(rub_account, method='bank'):
     """Компания-агент документов сделки стенда → ключ из реестра doc_agents.
 
@@ -8279,7 +8295,7 @@ def stand_state_put():
             return jsonify({'success': False, 'error': problem,
                             'version': row.version or 0, 'data': _stand_strip_files(previous)}), (
                                 403 if problem == 'Действие шага s14 доступно роли operator' else 409)
-        problem = _stand_workflow_problem(previous, payload['data'], actor, db)
+        problem = _stand_workflow_problem(previous, payload['data'], actor, db, row)
         if problem:
             return jsonify(success=False, error=problem, version=row.version or 0, data=_stand_strip_files(previous)), 409
         clean = preserve_server_fields(previous, payload['data'])
@@ -11872,6 +11888,22 @@ STAND_CLIENT_PAYIN_KIND = 'clientPayinReceipt'
 STAND_BANK_CREDIT_KIND = 'bankCreditEvidence'
 
 
+def _stand_receiving_account_change_problem(state, deal, db, row):
+    from stand_workflow import receiving_account_change_problem
+
+    problem = receiving_account_change_problem(state, deal)
+    if problem:
+        return problem
+    proof_kinds = (STAND_CLIENT_PAYIN_KIND, STAND_BANK_CREDIT_KIND, 'receipt', 'payment_order')
+    if (_stand_receipt_items(deal)
+            or any((deal.get(field) or {}).get(kind)
+                   for field in ('files', 'docs', 'docMeta') for kind in proof_kinds)
+            or db.query(StandCloseEvidence.stand_deal_id).filter_by(
+                generation=row.generation, stand_deal_id=deal['id']).first()):
+        return 'Счёт нельзя сменить после появления подтверждения оплаты'
+    return None
+
+
 def _stand_rub_api_account(deal):
     """Сбер MF получает приход из API; остальные рублёвые счета сверяют по выписке."""
     account = deal.get('rubReceivingAccount') or {}
@@ -12826,7 +12858,7 @@ def _stand_freehold_explicit_rub_problem(deal):
     return None
 
 
-def _stand_workflow_problem(previous, state, actor, db):
+def _stand_workflow_problem(previous, state, actor, db, row):
     """Validate graph and evidence after authorization, before accepting a PUT."""
     from stand_workflow import (EDGES, EXCHANGE_PAIRS, document_pack_stale, positive,
                                 quote_dirs, rerate_attempt, rerate_problem)
@@ -12855,6 +12887,18 @@ def _stand_workflow_problem(previous, state, actor, db):
             continue
         if end not in EDGES.get(start, set()):
             return f'Недопустимый переход {start} → {end}'
+        if start in ('s12', 's14') and end == 's11':
+            # The active role returns the task for review. Only successful issue
+            # changes the recipient, current signature or send confirmation.
+            problem = (_stand_receiving_account_change_problem(previous, before, db, row)
+                       or _stand_receiving_account_change_problem(state, deal, db, row))
+            if problem:
+                return problem
+            if (any(before.get(key) != deal.get(key)
+                    for key in ('docsSent', 'expect', 'payTo', 'amountRub', 'amountThb', 'amountUsdt'))
+                    or (before.get('rates') or {}) != (deal.get('rates') or {})
+                    or (before.get('docs') or {}).get('signed') != (deal.get('docs') or {}).get('signed')):
+                return 'При возврате на подготовку сохраните условия и отметки текущего пакета'
         rates = deal.get('rates') or {}
         if (start, end) in (('s4', 's6'), ('s5', 's6')):
             source = before if start == 's5' else deal
@@ -13351,6 +13395,11 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
                 continue
             if actor != _stand_current_step_role(previous, before):
                 continue
+            if actor == 'operator' and (before.get('step'), deal.get('step')) == ('s14', 's11'):
+                problem = _stand_s14_assignee_problem(db, before, actor_id)
+                if problem:
+                    return problem
+                continue
             owner = db.query(AdminUser).filter_by(id=before['assigneeAdminId']).first()
             if (owner and not owner.login_disabled and owner.role == actor
                     and owner.id != actor_id):
@@ -13490,7 +13539,8 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
                 and before.get('payinParts') != deal.get('payinParts')):
             return 'Для этого счёта приход сверяет операционист по выписке'
         receipt = (before or {}).get('manualBankReceipt') or {}
-        if before and before.get('docVersion') and before.get('docFields') != deal.get('docFields'):
+        if (before and (before.get('docVersion') or before.get('docPack'))
+                and before.get('docFields') != deal.get('docFields')):
             return 'Поля выпущенных документов нельзя править через доску — используйте перевыпуск пакета'
         # Пока ручная запись ожидает сверки, у сделки не может появиться
         # параллельный приход из пула или DEMO. После подтверждения допускаем
@@ -16749,12 +16799,9 @@ def _stand_actual_rub_account(data):
     mode = data.get('actualMode')
     if not isinstance(mode, str):
         return None
-    presets = {
-        'flowsole': ('Московский филиал "БАНК СГБ" г. Москва',
-                     '40807810819000000261', '30101810245250000094', '044525094'),
-    }
-    if mode in presets:
-        return presets[mode]
+    if mode == 'flowsole':
+        preset = _STAND_RUB_RECEIVING_TERMS[mode]
+        return preset['bank'], preset['account'], preset['correspondent'], preset['bik']
     if mode != 'custom':
         return None
     bank = _stand_manual_receipt_text(data.get('bank'), 100)
@@ -17241,7 +17288,7 @@ def _stand_freehold_absurd_doc(deal, fields):
         return True
 
 
-def _stand_doc_request(state, deal, F):
+def _stand_doc_request(state, deal, F, *, canonical_purpose=False):
     """Сделка стенда → deal_type, fields и money для генератора документов.
 
     Возвращает {'error': ..., 'fields': [ключи стенда], 'detail': ...}, если
@@ -17363,7 +17410,7 @@ def _stand_doc_request(state, deal, F):
                     or str(F.get('reviewToken') or '') != expected):
                 missing.append('reviewNote')
     # Назначение платежа указывает менеджер; у рублёвого перевода оно обязательно (у крипты его нет)
-    if not crypto and not str(F.get('purpose') or '').strip():
+    if not crypto and not canonical_purpose and not str(F.get('purpose') or '').strip():
         missing.append('purpose')
     # Основание платежа в приложении — инвойс застройщика. Без его номера у лизхолда
     # и фрихолда в документе остаётся «№ [●] от [●]», и генератор выпуск не пропустит.
@@ -17555,12 +17602,13 @@ def stand_docs_issue():
     этого типа и маршрута → допник + счёт. Повторный вызов по той же сделке
     («Поправить и пересоздать») перевыпускает тот же договор / допник новой
     версией. Файлы — в AgreementDoc, в сделку пишется список docsIssued.
+    receivingAccountMode перевыпускает пакет на выбранный счёт одной транзакцией.
     """
     if not STAND_MODE:
         return jsonify({'success': False, 'error': 'stand_only'}), 404
     import docgen
     import doc_agents
-    from stand_workflow import document_pack_stale, rerate_commitment_problem
+    from stand_workflow import document_pack_stale, is_rub_bank_payment, rerate_commitment_problem
     data = request.get_json(silent=True) or {}
     try:
         deal_id = int(data.get('dealId'))
@@ -17569,15 +17617,26 @@ def stand_docs_issue():
     submitted = data.get('docFields')
     if submitted is not None and not isinstance(submitted, dict):
         return jsonify({'success': False, 'error': 'docFields: ожидается объект'}), 400
+    switching_account = 'receivingAccountMode' in data
+    account_mode = data.get('receivingAccountMode')
+    expected_doc_version = data.get('expectedDocVersion')
+    if switching_account and account_mode not in ('sber', 'flowsole'):
+        return jsonify(success=False, error='invalid_receiving_account',
+                       detail='Выберите Сбер или Flow Sole'), 400
+    if switching_account and (type(expected_doc_version) is not int or expected_doc_version < 1):
+        return jsonify(success=False, error='invalid_doc_version',
+                       detail='Обновите карточку сделки и повторите выпуск'), 400
     # Роль фиксируем до сессий записи.
     role = current_role() or 'система'
     db = get_session()
     try:
-        state = json.loads(_stand_row(db).data or '{}')
+        current_row = _stand_row(db)
+        pre_version, pre_generation = current_row.version or 0, current_row.generation
+        state = json.loads(current_row.data or '{}')
         deal = next((d for d in state.get('deals', []) if d.get('id') == deal_id), None)
         if not deal:
             return jsonify({'success': False, 'error': 'Сделка не найдена'}), 404
-        if deal.get('autoPayment') is True and role not in ('operator', 'admin'):
+        if (switching_account or deal.get('autoPayment') is True) and role not in ('operator', 'admin'):
             return jsonify({'success': False, 'error': 'forbidden_role',
                             'detail': 'Пакет документов на этом шаге выпускает операционист'}), 403
         if deal.get('step') not in ('s11', 's11b'):
@@ -17586,6 +17645,19 @@ def stand_docs_issue():
         F = dict(deal.get('docFields') or {})
         F.update({k: v for k, v in (submitted or {}).items()
                   if v is None or (isinstance(v, (str, int, float)) and not isinstance(v, bool))})
+        prior = dict(deal.get('docPack') or {})
+        if switching_account:
+            problem = _stand_receiving_account_change_problem(state, deal, db, current_row)
+            if problem:
+                return jsonify(success=False, error='receiving_account_change_blocked', detail=problem), 409
+            if expected_doc_version != int(deal.get('docVersion') or prior.get('version') or 0):
+                return jsonify(success=False, error='conflict', version=pre_version,
+                               data=_stand_strip_files(_stand_public_state(state, role))), 409
+            F['purpose'] = ''
+            for field, pack_key in (('amountPay', 'amount'), ('amountThb', 'transfer'), ('rate', 'rate')):
+                issued_value = prior.get(pack_key) or (deal.get('docFields') or {}).get(field)
+                if issued_value is not None:
+                    F[field] = issued_value
         reissuing_freehold = (
             deal.get('type') == 'Оплата недвижимости' and deal.get('kind') == 'Фрихолд'
             and not deal.get('autoPayment') and not _stand_is_crypto(deal)
@@ -17618,7 +17690,7 @@ def stand_docs_issue():
         # Если счёт был выбран структурно на s11, генератор всегда получает
         # именно этот снимок, даже если браузер пришлёт подменённый payTo при
         # повторном выпуске. Старые файлы при этом не переписываются.
-        rub_account = deal.get('rubReceivingAccount') or {}
+        rub_account = {'mode': account_mode} if switching_account else (deal.get('rubReceivingAccount') or {})
         rub_account_keys = {'mode', 'bank', 'account', 'correspondent', 'bik',
                             'recipientName', 'recipientInn', 'recipientKpp'}
         if not isinstance(rub_account, dict) or set(rub_account) - rub_account_keys:
@@ -17662,14 +17734,14 @@ def stand_docs_issue():
                     F['payTo'] = (f"{default_recipient} · {rub_account['bank'].strip()} · "
                                  f"р/с {rub_account['account']} · к/с {rub_account['correspondent']} · "
                                  f"БИК {rub_account['bik']}")
-            elif rub_account.get('mode') == 'sber':
-                F['payTo'] = ("ООО «ЭМ ЭФ КОРПОРЕЙШН» · ИНН 9909726886 · КПП 770387001 · "
-                             "ПАО Сбербанк · р/с 40807810938720000286 · "
-                             "к/с 30101810400000000225 · БИК 044525225")
-            elif rub_account.get('mode') == 'flowsole':
-                F['payTo'] = ('ФЛОУ СОЛЕ КО., ЛТД · ИНН 9909773251 · КПП 770387001 · '
-                             'Московский филиал "БАНК СГБ" г. Москва · р/с 40807810819000000261 · '
-                             'к/с 30101810245250000094 · БИК 044525094')
+            else:
+                preset = _STAND_RUB_RECEIVING_TERMS[rub_account['mode']]
+                F['payTo'] = ('{recipientName} · ИНН {recipientInn} · КПП {recipientKpp} · '
+                              '{bank} · р/с {account} · к/с {correspondent} · БИК {bik}').format(**preset)
+        elif (prior or deal.get('docVersion')) and is_rub_bank_payment(deal):
+            legacy_pay_to = deal.get('issuedDocPayTo') or (deal.get('docFields') or {}).get('payTo')
+            if legacy_pay_to:
+                F['payTo'] = legacy_pay_to
         # Новое/повторное приложение крипто-фрихолда выпускается только с
         # утверждённой двуязычной оговоркой; ранее выпущенные файлы не трогаем.
         if (deal.get('kind') == 'Фрихолд'
@@ -17688,9 +17760,8 @@ def stand_docs_issue():
                 and _stand_num(F.get('amountPay')) != _amount(deal.get('amountUsdt'))):
             return jsonify({'success': False, 'error': 'freehold_contract_amount_mismatch',
                             'version': _stand_row(db).version, 'data': state}), 409
-        req = _stand_doc_request(state, deal, F)
-        prior = dict(deal.get('docPack') or {})
-        pre_version = _stand_row(db).version or 0
+        document_deal = dict(deal, rubReceivingAccount=rub_account) if switching_account else deal
+        req = _stand_doc_request(state, document_deal, F, canonical_purpose=switching_account)
     finally:
         db.close()
     if req.get('error'):
@@ -17715,7 +17786,7 @@ def stand_docs_issue():
             from sqlalchemy import text as _t
             db.execute(_t('BEGIN IMMEDIATE'))
         row = _stand_row(db, lock=True)
-        if (row.version or 0) != pre_version:
+        if ((row.version or 0), row.generation) != (pre_version, pre_generation):
             db.close()
             return jsonify({'success': False, 'error': 'conflict',
                             'version': row.version or 0,
@@ -17821,7 +17892,8 @@ def stand_docs_issue():
             fields, 'bank', used.get('part'), agent_key)
     try:
         at = int(time.time() * 1000)
-        version = int(deal.get('docVersion') or 0) + 1
+        last_pack_version = (deal.get('docPack') or {}).get('version')
+        version = max(int(deal.get('docVersion') or 0), int(last_pack_version or 0)) + 1
         entries = [{'kind': STAND_DOC_KIND[x['kind']], 'docId': x['id'], 'file': x['filename'],
                     'mime': x['mime'], 'size': x['size'], 'number': x['number'],
                     'version': version, 'agent': agent_key, 'at': at} for x in issued]
@@ -17838,8 +17910,14 @@ def stand_docs_issue():
             'wallet': used.get('payin_wallet', ''), 'recipient': used.get('payin_recipient', ''),
             'note': note, 'at': at}
         deal['docVersion'] = version
-        if deal.get('autoPayment') is True or reissuing_freehold:
+        if switching_account or deal.get('autoPayment') is True or reissuing_freehold:
             deal.setdefault('docs', {})['signed'] = False
+        if switching_account:
+            deal['rubReceivingAccount'] = rub_account
+            preset = _STAND_RUB_RECEIVING_TERMS[account_mode]
+            expect = deal.get('expect')
+            deal['expect'] = dict(expect if isinstance(expect, dict) else {}, bank=preset['bank'],
+                                  account=preset['account'], acc=preset['acc'], purpose=purpose)
         if reissuing_freehold:
             if deal.get('payTo'):
                 deal['payTo']['amount'] = _stand_number(used.get('transfer_amount'))

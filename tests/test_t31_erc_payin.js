@@ -28,6 +28,7 @@ const inputs = {};
 const checks = {};
 const messages = [];
 const ctx = vm.createContext({S: {deals: [deal], role: 'manager'}, CRM_WALLETS: registry,
+  docHasIssued: d => Boolean(d.docVersion || d.docPack),
   walletBlock: () => '', htmlText: value => String(value), deal: id => id === deal.id ? deal : null,
   isCrypto: d => d.payType === 'Крипта', save: () => { saves++; }, render: () => {},
   log: () => {}, toast: message => messages.push(message), val: id => inputs[id],

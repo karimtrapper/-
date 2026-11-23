@@ -597,10 +597,9 @@ console.log('test_stand_freehold.js: OK');
   assert.equal(ctx.docFields(d).feeNote,approved,'unissued saved old default is replaced');
   d.docFields={feeNote:'Индивидуальная оговорка клиента'};
   assert.equal(ctx.docFields(d).feeNote,approved);
-  const saveCtx=run(['docFieldSave'],['DOC_SRC'],{deal:()=>d,docFields:()=>ctx.docFields(d),
+  const saveCtx=run(['docFieldSave'],['DOC_SRC'],{deal:()=>d,docHasIssued:()=>false,docFormFields:()=>ctx.docFields(d),
     document:{getElementById:()=>null}});
-  saveCtx.docFieldSave(9101);
-  assert.equal(d.docFields.feeNote,approved,
+  assert.equal(saveCtx.docFieldSave(9101).F.feeNote,approved,
     'hidden s11 field must use the legal clause for the next issue');
   d.docFields={feeNote:old};d.docPack={version:1};d.docVersion=1;
   assert.equal(ctx.docFields(d).feeNote,approved,'reissue preview uses the legal clause');
@@ -651,7 +650,8 @@ console.log('test_stand_freehold.js: OK');
     ippsTariff:'bank',amountUsdt:null,freeholdMarkupPct:100475,docs:{},docMiss:[]};
   const ctx={d,ap:{sign:'USDT'},S:{},DOC_SRC:{},DOC_LABEL:{},DOC_PARSE_SLOT_LABEL:{},
     standDocAgent:()=>({shortName:'MF',regLabel:'регистрационный и налоговый номер'}),
-    docFields:()=>({amountPay:d.amountUsdt==null?'':String(d.amountUsdt),amountThb:'97500',
+    DOC_REISSUE_FORMS:{},DRAFTS:{},docHasIssued:x=>Boolean(x.docVersion||x.docPack),
+    docFormFields:()=>({amountPay:d.amountUsdt==null?'':String(d.amountUsdt),amountThb:'97500',
       feeNote:'Вознаграждение агента включено в сумму платежа, отдельно не взимается / The Agent’s fee is included in the payment amount and is not charged separately'}),
     docParseLine:()=>'',isCrypto:x=>x.payType==='Крипта',ippsTariff:()=>({percent:0.8,fixed:50}),
     usd:x=>String(x),num:x=>x==null||x===''?null:Number(x),cleanNum:x=>String(x).replace(/\s/g,''),
@@ -843,7 +843,8 @@ console.log('test_stand_freehold.js: OK');
     standWaitSaved:async()=>{events.push('wait');return {ok:true};},
     standSave:async()=>{events.push('put');ctx.standBase={deals:[{id:9101,amountUsdt:d.amountUsdt}]};ctx.standVer=18;},
     fetch:async()=>{events.push('docs');return {status:200,json:async()=>({success:true,version:19,data:{deals:[d]}})};},
-    standApply:()=>{},render:()=>{},toast:()=>{},save:()=>{},log:()=>{},
+    DOC_REISSUE_FORMS:{},standClone:structuredClone,standApply:()=>{},
+    render:()=>{},toast:()=>{},save:()=>{},log:()=>{},
     go:()=>events.push('next'),num:x=>Number(x),cleanNum:x=>String(x).replace(/\s/g,'')});
   const docIssueSource=html.match(/^async function docIssue\([^]*?^}/m);
   assert.ok(docIssueSource);

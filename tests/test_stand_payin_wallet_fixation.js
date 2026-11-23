@@ -11,7 +11,7 @@ const ctx={S:{role:'operator',convs:[],deals:[]},DRAFTS:{},STAND:true,SCREEN:fal
   document:{getElementById:()=>null},saveNote:()=>{},toast:()=>{},render:()=>{},
   save:()=>calls.push('save'),
   deal:id=>ctx.S.deals.find(d=>d.id===id),val:()=>'',log:()=>{},
-  isCrypto:d=>d.payType==='Крипта',docFieldSave:id=>{ctx.deal(id).docFields={};return [];},
+  isCrypto:d=>d.payType==='Крипта',docFieldSave:()=>({F:{},ch:[]}),
   docReq:()=>[],DOC_LABEL:{},
   docIssue:async(id)=>{calls.push('docIssue');},
   PAYIN_TOL:.005,approx:()=>({pay:100}),payinGot:()=>100,payinForeign:()=>false,
@@ -21,7 +21,7 @@ const ctx={S:{role:'operator',convs:[],deals:[]},DRAFTS:{},STAND:true,SCREEN:fal
   money:String,rnd2:n=>n,standPayinCommit:async()=>true,
 };
 vm.createContext(ctx);
-for(const name of ['walletPurpose','act','payinSettle'])vm.runInContext(fn(name),ctx);
+for(const name of ['walletPurpose','docHasIssued','act','payinSettle'])vm.runInContext(fn(name),ctx);
 
 (async()=>{
   // 1. s11: select не трогали -> walletId по умолчанию записан и сохранён ДО выпуска документов

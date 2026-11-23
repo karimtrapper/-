@@ -7,6 +7,7 @@ import io
 import json
 import re
 import base64
+from copy import deepcopy
 
 import pytest
 from docx import Document
@@ -14,6 +15,7 @@ from docx import Document
 import app as appmod
 import docgen
 import stand_notify
+from tests.test_t29_step_role import board
 
 RUB_PAY_TO = ('ООО «ЭМ ЭФ КОРПОРЕЙШН» · ИНН 9909726886 · КПП 770387001 · ПАО Сбербанк · '
               'р/с 40807810938720000286 · к/с 30101810400000000225 · БИК 044525225')
@@ -816,6 +818,209 @@ def test_sber_preset_unchanged(stand):
     invoice = _text(stand, response.json['issued'][-1]['docId'])
     assert ROLE_AGENT in invoice
     assert ROLE_PARTNER not in invoice
+
+
+def _issue_legacy_rub_freehold(stand):
+    deal = _deal(958, kind='Фрихолд', curBase='fhusd', invoiceUsd=45000, amountRub=3710389.50,
+                 expect={'amount': 3710389.50, 'tol': 750, 'acc': '…0286 · Сбер',
+                         'account': '40807810938720000286', 'bank': 'ПАО Сбербанк',
+                         'purpose': 'Прежнее назначение'})
+    stand.put_board([deal])
+    issued = stand.post('/api/stand/docs/issue', json={'dealId': deal['id'], 'docFields': _fields(
+        amountThb='45000', amountPay='3710389.50', rate='82.4531', purpose='Прежнее назначение')})
+    assert issued.status_code == 200, issued.json
+    old_deal = issued.json['data']['deals'][0]
+    old_deal.update(docsSent=True, docs={'signed': True})
+    stand.put_board([old_deal])
+    return old_deal
+
+
+def test_switch_legacy_rub_freehold_to_flowsole_reissues_without_touching_old_documents(stand):
+    old = _issue_legacy_rub_freehold(stand)
+    assert 'rubReceivingAccount' not in old
+    old_files = {item['docId']: stand.get(f"/api/docs/file/{item['docId']}").data
+                 for item in old['docsIssued']}
+    result = stand.post('/api/stand/docs/issue', json={
+        'dealId': old['id'], 'receivingAccountMode': 'flowsole', 'expectedDocVersion': old['docVersion'],
+        'docFields': {'purpose': 'Прежнее назначение', 'payTo': RUB_PAY_TO,
+                      'amountPay': '4000000', 'amountThb': '50000', 'rate': '80'},
+    })
+    assert result.status_code == 200, result.json
+    current = result.json['data']['deals'][0]
+    pack = result.json['pack']
+    assert pack['version'] == old['docVersion'] + 1
+    assert pack['agreementId'] != old['docPack']['agreementId']
+    assert pack['agreementNumber'] != old['docPack']['agreementNumber']
+    assert pack['agent'] == current['issuedDocAgent'] == 'flow_sole'
+    assert current['rubReceivingAccount'] == {'mode': 'flowsole'}
+    assert pack['recipient'] == 'ФЛОУ СОЛЕ КО., ЛТД'
+    assert '40807810819000000261' in current['docFields']['payTo'] == current['issuedDocPayTo']
+    assert {key: pack[key] for key in ('amount', 'transfer', 'rate')} == {
+        key: old['docPack'][key] for key in ('amount', 'transfer', 'rate')}
+    assert current['amountRub'] == old['amountRub'] and current['invoiceUsd'] == old['invoiceUsd']
+    assert 'docsSent' not in current and current['docs']['signed'] is False
+    assert current['docsIssued'][:len(old['docsIssued'])] == old['docsIssued']
+    purpose = f"Оплата по агентскому договору № {pack['agreementNumber']}, НДС не облагается"
+    assert current['docFields']['purpose'] == pack['purpose'] == purpose
+    assert current['expect'] == {'amount': old['expect']['amount'], 'tol': old['expect']['tol'],
+                                 'account': '40807810819000000261', 'acc': 'Flow Sole (СГБ) …0261',
+                                 'bank': 'Московский филиал "БАНК СГБ" г. Москва', 'purpose': purpose}
+    invoice = _text(stand, result.json['issued'][-1]['docId'])
+    assert purpose in invoice and '40807810819000000261' in invoice
+    assert '40807810938720000286' not in invoice
+    assert {doc_id: stand.get(f'/api/docs/file/{doc_id}').data
+            for doc_id in old_files} == old_files
+    stale = stand.post('/api/stand/docs/issue', json={
+        'dealId': old['id'], 'receivingAccountMode': 'sber', 'expectedDocVersion': old['docVersion'],
+    })
+    assert stale.status_code == 409 and stale.json['error'] == 'conflict', stale.json
+    assert stale.json['data']['deals'][0] == current
+
+
+def test_ordinary_legacy_reissue_preserves_confirmed_recipient(stand):
+    old = _issue_legacy_rub_freehold(stand)
+    result = stand.post('/api/stand/docs/issue', json={
+        'dealId': old['id'], 'docFields': {'payTo': 'Подмена реквизитов'},
+    })
+    assert result.status_code == 200, result.json
+    current = result.json['data']['deals'][0]
+    assert current['docFields']['payTo'] == current['issuedDocPayTo'] == RUB_PAY_TO
+    assert current['docPack']['agreementId'] == old['docPack']['agreementId']
+
+
+def test_switch_rolls_back_new_contract_and_updates_after_generator_error(stand, monkeypatch):
+    old = _issue_legacy_rub_freehold(stand)
+    saved = appmod._docs_save
+
+    def fail_during_save(db, agreement_id, kind, *args):
+        if kind == 'invoice':
+            raise ValueError('synthetic invoice write failure')
+        return saved(db, agreement_id, kind, *args)
+
+    monkeypatch.setattr(appmod, '_docs_save', fail_during_save)
+    result = stand.post('/api/stand/docs/issue', json={
+        'dealId': old['id'], 'receivingAccountMode': 'flowsole',
+        'expectedDocVersion': old['docVersion'], 'docFields': {'purpose': ''},
+    })
+    assert result.status_code == 500, result.json
+    assert 'data' not in result.json
+    db = appmod.get_session()
+    try:
+        row = appmod._stand_row(db)
+        assert row.version == 1 and json.loads(row.data)['deals'] == [old]
+        assert db.query(appmod.Agreement).count() == 1
+        assert db.query(appmod.AgreementDoc).count() == len(old['docsIssued'])
+    finally:
+        db.close()
+
+
+def test_switch_conflicts_if_receipt_is_recorded_after_initial_read(stand, monkeypatch):
+    old = _issue_legacy_rub_freehold(stand)
+    prepare = appmod._stand_doc_request
+
+    def prepare_after_credit(state, deal, fields, **kwargs):
+        request = prepare(state, deal, fields, **kwargs)
+        with appmod.Session.session_factory() as concurrent:
+            row = appmod._stand_row(concurrent)
+            credited = json.loads(row.data)
+            credited['deals'][0]['receiptConfirmed'] = True
+            row.data = json.dumps(credited)
+            row.version += 1
+            concurrent.commit()
+        return request
+
+    monkeypatch.setattr(appmod, '_stand_doc_request', prepare_after_credit)
+    result = stand.post('/api/stand/docs/issue', json={
+        'dealId': old['id'], 'receivingAccountMode': 'flowsole', 'expectedDocVersion': old['docVersion'],
+    })
+    assert result.status_code == 409 and result.json['error'] == 'conflict', result.json
+    assert result.json['data']['deals'][0] == dict(old, receiptConfirmed=True)
+
+
+ACCOUNT_REISSUE_TEST_DEAL_ID = 97502
+
+
+@pytest.mark.parametrize('evidence,board_evidence', [
+    ({'payinProcessed': True}, {}), ({'payinParts': [{}]}, {}), ({'payinHashes': [{}]}, {}),
+    ({'payinExtra': [{}]}, {}), ({'incomeAmount': 10}, {}), ({'receiptConfirmed': True}, {}),
+    ({'manualBankReceipt': {'status': 'pending'}}, {}), ({'pay': {'hash': 'synthetic'}}, {}),
+    ({'files': {'clientPayinReceipt': [{}]}}, {}), ({'files': {'bankCreditEvidence': [{}]}}, {}),
+    ({'files': {'additional': [{'documentType': 'receipt'}]}}, {}),
+    ({'docs': {'payment_order': True}}, {}), ({'ippsPayoutOrder': {'amount': 100}}, {}),
+    ({}, {'incomes': [{'dealId': ACCOUNT_REISSUE_TEST_DEAL_ID}]}),
+])
+def test_switch_and_return_reject_existing_payment_or_outgoing_evidence(board, evidence, board_evidence):
+    install, clients = board
+    terms = {'id': ACCOUNT_REISSUE_TEST_DEAL_ID, 'type': 'Оплата недвижимости',
+             'kind': 'Фрихолд', 'payType': 'По реквизитам',
+             'docVersion': 2, **evidence}
+    install('s11b', terms, board_evidence)
+    issue = clients('operator').post('/api/stand/docs/issue', json={
+        'dealId': ACCOUNT_REISSUE_TEST_DEAL_ID, 'receivingAccountMode': 'flowsole', 'expectedDocVersion': 2,
+    })
+    assert issue.status_code == 409 and issue.json['error'] == 'receiving_account_change_blocked', issue.json
+    install('s14', terms, board_evidence)
+    operator = clients('operator')
+    current = operator.get('/api/stand/state').json
+    current['data']['deals'][0]['step'] = 's11'
+    result = operator.put('/api/stand/state', json=current)
+    assert result.status_code == 409, result.json
+    assert result.json['data']['deals'][0]['step'] == 's14'
+
+
+@pytest.mark.parametrize('step,owner,other', [('s12', 'manager', 'operator'), ('s14', 'operator', 'manager')])
+def test_return_to_review_preserves_current_pack_and_board_guards(board, step, owner, other):
+    install, clients = board
+    install(step, {'id': ACCOUNT_REISSUE_TEST_DEAL_ID, 'type': 'Оплата недвижимости',
+                   'kind': 'Фрихолд', 'payType': 'По реквизитам',
+                   'docPack': {'version': 2}, 'docsSent': True, 'docs': {'signed': True},
+                   'rubReceivingAccount': {'mode': 'sber'}, 'docFields': {'payTo': RUB_PAY_TO}})
+    current = clients(owner).get('/api/stand/state').json
+    current['data']['deals'][0]['step'] = 's11'
+    denied = clients(other).put('/api/stand/state', json=current)
+    assert denied.status_code in (403, 409), denied.json
+    for changes in ({'rubReceivingAccount': {'mode': 'flowsole'}}, {'docFields': {'payTo': 'СГБ'}},
+                    {'docsSent': False}, {'docs': {'signed': False}}):
+        payload = deepcopy(current)
+        payload['data']['deals'][0].update(changes)
+        denied = clients(owner).put('/api/stand/state', json=payload)
+        assert denied.status_code == 409, denied.json
+    result = clients(owner).put('/api/stand/state', json=current)
+    assert result.status_code == 200, result.json
+    saved = result.json['data']['deals'][0]
+    assert saved['step'] == 's11' and saved['docsSent'] and saved['docs']['signed']
+    assert saved['rubReceivingAccount'] == {'mode': 'sber'} and saved['docPack'] == {'version': 2}
+    forbidden = clients('manager').post('/api/stand/docs/issue', json={
+        'dealId': ACCOUNT_REISSUE_TEST_DEAL_ID, 'receivingAccountMode': 'flowsole', 'expectedDocVersion': 2,
+    })
+    assert forbidden.status_code == 403, forbidden.json
+
+
+def test_s14_return_rejects_operator_when_another_operator_is_assigned(board):
+    install, clients = board
+    assigned = clients('operator')
+    with assigned.session_transaction() as session:
+        assigned_id = session['user_id']
+    with appmod.get_session() as db:
+        colleague = appmod.AdminUser(username='stand_docs_s14_colleague', role='operator',
+                                     password_hash='synthetic-disabled')
+        db.add(colleague)
+        db.flush()
+        colleague_id = colleague.id
+        db.commit()
+    other = appmod.app.test_client()
+    with other.session_transaction() as session:
+        session['user_id'] = colleague_id
+    install('s14', {'id': ACCOUNT_REISSUE_TEST_DEAL_ID, 'type': 'Оплата недвижимости', 'kind': 'Фрихолд',
+                    'payType': 'По реквизитам', 'docVersion': 2, 'assigneeAdminId': assigned_id})
+    current = other.get('/api/stand/state').json
+    current['data']['deals'][0]['step'] = 's11'
+    denied = other.put('/api/stand/state', json=current)
+    assert denied.status_code == 409, denied.json
+    assert denied.json['error'].startswith('Шаг у ')
+    assert denied.json['data']['deals'][0]['step'] == 's14'
+    allowed = assigned.put('/api/stand/state', json=current)
+    assert allowed.status_code == 200 and allowed.json['data']['deals'][0]['step'] == 's11', allowed.json
 
 
 # ────────────────── назначение платежа: номер агентского договора ──────────────────

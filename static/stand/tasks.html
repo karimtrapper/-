@@ -2618,23 +2618,44 @@ async function payinWalletForget(id){
     toast('Кошелёк убран из списка приёма оплаты');
   }catch(e){toast('Сеть недоступна — попробуйте ещё раз');}
 }
-function payinS11Fields(d,fld){
+function payinS11Fields(d,fld,canChange=false,mode=''){
   if(!isCrypto(d)){
-    const a=d.rubReceivingAccount||{mode:'sber',bank:'',account:''};
-    return `<div class="fr"><div class="fg w2"><label class="fl">Куда клиент переводит рубли</label>
-      <select class="fc" onchange="rubReceivingAccountSave(${d.id},this.value)">
-        <option value="sber"${(!a.mode||a.mode==='sber')?' selected':''}>Сбер · реквизиты MF Corporation</option>
+    const locked=docHasIssued(d);
+    if(locked&&!canChange&&!d.rubReceivingAccount){
+      const payTo=docFormFields(d).payTo;
+      return `<div class="fg"><span class="fl">Куда клиент переводит рубли</span>
+        <p>${htmlText(payTo)}</p><p class="fh">Счёт закреплён при выпуске пакета.</p></div>`;
+    }
+    const a=mode?{mode}:d.rubReceivingAccount||{mode:locked?'':'sber'};
+    const selectId='rub_receiving_'+d.id;
+    const input=(key,field,label,numeric=false)=>`<input class="fc" id="rub_${key}_${d.id}"
+      ${numeric?'inputmode="numeric"':''} placeholder="${label}" value="${htmlText(a[field]||'')}"
+      ${locked?'readonly':`onchange="rubReceivingAccountSave(${d.id},'custom')"`} style="margin-top:7px">`;
+    return `<div class="fr"><div class="fg w2"><label class="fl" for="${selectId}">Куда клиент переводит рубли</label>
+      <select class="fc" id="${selectId}" ${canChange
+        ?`onchange="docSelectReceivingAccount(${d.id},this.value)" ${S.docIssuing===d.id?'disabled':''}`
+        :locked?'disabled':`onchange="rubReceivingAccountSave(${d.id},this.value)"`}>
+        ${locked&&!d.rubReceivingAccount?`<option value=""${!a.mode?' selected':''}>Счёт из выпущенного пакета</option>`:''}
+        <option value="sber"${a.mode==='sber'?' selected':''}>Сбер · реквизиты MF Corporation</option>
         <option value="flowsole"${a.mode==='flowsole'?' selected':''}>Flow Sole · СГБ</option>
-        <option value="custom"${a.mode==='custom'?' selected':''}>Другой счёт</option></select>
-      ${a.mode==='custom'?`<input class="fc" id="rub_bank_${d.id}" placeholder="Банк получателя" value="${htmlText(a.bank||'')}" onchange="rubReceivingAccountSave(${d.id},'custom')" style="margin-top:7px"><input class="fc" id="rub_account_${d.id}" inputmode="numeric" placeholder="Полный номер банковского счёта" value="${htmlText(a.account||'')}" onchange="rubReceivingAccountSave(${d.id},'custom')" style="margin-top:7px"><input class="fc" id="rub_corr_${d.id}" inputmode="numeric" placeholder="Корреспондентский счёт (20 цифр)" value="${htmlText(a.correspondent||'')}" onchange="rubReceivingAccountSave(${d.id},'custom')" style="margin-top:7px"><input class="fc" id="rub_bik_${d.id}" inputmode="numeric" placeholder="БИК банка (9 цифр)" value="${htmlText(a.bik||'')}" onchange="rubReceivingAccountSave(${d.id},'custom')" style="margin-top:7px"><input class="fc" id="rub_recip_name_${d.id}" placeholder="Наименование получателя (если не ЭМ ЭФ)" value="${htmlText(a.recipientName||'')}" onchange="rubReceivingAccountSave(${d.id},'custom')" style="margin-top:7px"><input class="fc" id="rub_recip_inn_${d.id}" inputmode="numeric" placeholder="ИНН получателя (10 цифр)" value="${htmlText(a.recipientInn||'')}" onchange="rubReceivingAccountSave(${d.id},'custom')" style="margin-top:7px"><input class="fc" id="rub_recip_kpp_${d.id}" inputmode="numeric" placeholder="КПП получателя (9 цифр)" value="${htmlText(a.recipientKpp||'')}" onchange="rubReceivingAccountSave(${d.id},'custom')" style="margin-top:7px">`:''}
-      <p class="fh">Эти данные попадут в документы клиента и станут ожидаемым счётом на s14. Проверьте банк и полный номер до выпуска.</p></div></div>
-      <div style="display:none">${fld('payTo','Куда платит клиент',{area:1})}</div>`;
+        ${!locked||d.rubReceivingAccount?.mode==='custom'?`<option value="custom"${a.mode==='custom'?' selected':''}>${locked?'Текущий другой счёт':'Другой счёт'}</option>`:''}</select>
+      ${a.mode==='custom'?`
+        ${input('bank','bank','Банк получателя')}
+        ${input('account','account','Полный номер банковского счёта',true)}
+        ${input('corr','correspondent','Корреспондентский счёт (20 цифр)',true)}
+        ${input('bik','bik','БИК банка (9 цифр)',true)}
+        ${input('recip_name','recipientName','Наименование получателя (если не ЭМ ЭФ)')}
+        ${input('recip_inn','recipientInn','ИНН получателя (10 цифр)',true)}
+        ${input('recip_kpp','recipientKpp','КПП получателя (9 цифр)',true)}`:''}
+      <p class="fh">${canChange?'Выбранный счёт начнёт действовать после перевыпуска пакета.':locked?'Счёт закреплён при выпуске пакета.':'Эти данные попадут в документы клиента и станут ожидаемым счётом на s14. Проверьте банк и полный номер до выпуска.'}</p></div></div>
+      ${locked?'':`<div style="display:none">${fld('payTo','Куда платит клиент',{area:1})}</div>`}`;
   }
   return `<div class="fr"><div class="fg w2"><label class="fl">Кошелёк, куда клиент платит USDT</label>
     ${payinWalletSelect(d,!!(d.incomeAmount||(d.payinHashes||[]).length))}</div></div>`;
 }
 function rubReceivingAccountSave(id,mode){
   const d=deal(id); if(!d)return;
+  if(d.step!=='s11'||docHasIssued(d))return;
   if(mode==='custom'){
     const bank=(document.getElementById('rub_bank_'+id)?.value??d.rubReceivingAccount?.bank??'').trim();
     const account=(document.getElementById('rub_account_'+id)?.value??d.rubReceivingAccount?.account??'').trim();
@@ -4645,6 +4666,7 @@ function go(d,step,text,persist=true){
   }
   const prev=S.role;
   draftsClear(d.id);
+  delete DOC_REISSUE_FORMS[d.id];
   taskToDeal(d,step);
   d.step=step;
   /* Фрихолд в задачнике — маршрут USDT один: IPPS SWIFT, без выбора (спека 28.09,
@@ -5457,16 +5479,16 @@ function prevPassport(d){
     .sort((a,b)=>b.id-a.id)[0];
   return p?p.docFields:{};
 }
-function standDocAgent(d){
-  const account=d.rubReceivingAccount||{}, digits=v=>String(v||'').replace(/\D/g,'');
+function standDocAgent(d,account=d.rubReceivingAccount||{}){
+  const digits=v=>String(v||'').replace(/\D/g,'');
   const known=account.mode==='custom'&&digits(account.bik).length===9&&digits(account.account).length===20
     ?STAND_DOC_AGENT_META?.accounts?.['bank:'+digits(account.bik)+':'+digits(account.account)]:null;
   const key=isCrypto(d)?'mf_corp':account.mode==='flowsole'?'flow_sole':known||'mf_corp';
   return {key,...(STAND_DOC_AGENT_META?.profiles?.[key]||{})};
 }
-function docFields(d){
-  const F=fake(d), ap=approx(d), agent=standDocAgent(d);
-  const saved=d.docFields||{}, pp=prevPassport(d);
+function docFields(d,saved=d.docFields,account=d.rubReceivingAccount){
+  const F=fake(d), ap=approx(d), agent=standDocAgent(d,account||{});
+  const pp=prevPassport(d);
   const cryptoFreehold=isCrypto(d)&&d.kind==='Фрихолд';
   const oldFeeNote='Комиссия включена в курс, отдельно не взимается';
   const cryptoFeeNote='Вознаграждение агента включено в сумму платежа, отдельно не взимается / The Agent’s fee is included in the payment amount and is not charged separately';
@@ -5500,10 +5522,10 @@ function docFields(d){
        в пакете и на шаге отправки клиенту стоял р/с в Сбере (прогон 25.09). */
     payTo:isCrypto(d)
       ? payToCrypto(payinWallet(d))
-      : (d.rubReceivingAccount&&d.rubReceivingAccount.mode==='flowsole'
+      : (account?.mode==='flowsole'
           ? FLOWSOLE.name+' · ИНН '+FLOWSOLE.inn+' · КПП '+FLOWSOLE.kpp+' · '+FLOWSOLE.bank+' · р/с '+FLOWSOLE.acc+' · к/с '+FLOWSOLE.ks+' · БИК '+FLOWSOLE.bik
-      : d.rubReceivingAccount&&d.rubReceivingAccount.mode==='custom'
-          ? (String(d.rubReceivingAccount.recipientName||'').trim()||MF.rubName)+' · ИНН '+(String(d.rubReceivingAccount.recipientInn||'').trim()||MF.inn)+' · КПП '+(String(d.rubReceivingAccount.recipientKpp||'').trim()||MF.kpp)+' · '+String(d.rubReceivingAccount.bank||'').trim()+' · р/с '+String(d.rubReceivingAccount.account||'').trim()+' · к/с '+String(d.rubReceivingAccount.correspondent||'').trim()+' · БИК '+String(d.rubReceivingAccount.bik||'').trim()
+      : account?.mode==='custom'
+          ? (String(account.recipientName||'').trim()||MF.rubName)+' · ИНН '+(String(account.recipientInn||'').trim()||MF.inn)+' · КПП '+(String(account.recipientKpp||'').trim()||MF.kpp)+' · '+String(account.bank||'').trim()+' · р/с '+String(account.account||'').trim()+' · к/с '+String(account.correspondent||'').trim()+' · БИК '+String(account.bik||'').trim()
           : MF.rubName+' · ИНН '+MF.inn+' · КПП '+MF.kpp+' · '+MF.bank+' · р/с '+MF.acc+' · к/с '+MF.ks+' · БИК '+MF.bik),
     /* Назначение платежа — поле банковского перевода (рубли на счёт в Сбере). В переводе
        USDT такого поля нет, «НДС не облагается» там бессмысленно (Карим, 25.09). */
@@ -5519,7 +5541,7 @@ function docFields(d){
   if(d.reRequest&&d.rates.client&&(!d.docVersion||documentPackStale(d))){
     for(const key of ['amountThb','amountPay','rate','rateAt'])out[key]=auto[key];
   }
-  if(!isCrypto(d)&&d.rubReceivingAccount)out.payTo=auto.payTo;
+  if(!isCrypto(d)&&account)out.payTo=auto.payTo;
   for(const key of ['agent','agentReg','agentDir'])out[key]=auto[key];
   // Поле показывает текст следующего выпуска; старые выпущенные файлы не меняются.
   if(cryptoFreehold)out.feeNote=cryptoFeeNote;
@@ -5537,8 +5559,8 @@ function docFields(d){
    («Иванов Сергей», ник из чата), в договор идёт паспорт. Расхождение не ошибка, но
    о нём надо сказать спокойно, чтобы не принять одно за другое (Карим, 27.09). */
 function fioNorm(v){return String(v||'').toLowerCase().replace(/ё/g,'е').split(/[\s.,]+/).filter(Boolean).sort().join(' ');}
-function fioHint(d){
-  const F=docFields(d), ru=String(F.fio||'').trim(), en=String(F.fioLat||'').trim();
+function fioHint(d,F=docFields(d)){
+  const ru=String(F.fio||'').trim(), en=String(F.fioLat||'').trim();
   const name=String(d.client||'').trim();
   if(!name||(!ru&&!en)) return '';
   const same=ru?fioNorm(ru)===fioNorm(name)
@@ -5565,7 +5587,111 @@ const DOC_LABEL={payoutNetwork:'сеть получателя',payoutWallet:'к�
   rateAt:'момент фиксации курса',partNo:'номер платежа',invoiceTotal:'инвойс целиком',
   agent:'агент',agentReg:'рег. номер',agentDir:'подписант',payTo:'реквизиты',purpose:'назначение',
   feeNote:'оговорка о комиссии',validTill:'срок реквизитов',vehicleModel:'марка и модель',vehicleVin:'VIN',vinState:'статус VIN',vinEvidence:'основание отсутствия VIN',vehicleDetails:'характеристики',sellerName:'продавец',sellerId:'идентификатор продавца',sellerAddress:'адрес продавца',contractNo:'номер ДКП',contractDate:'дата ДКП',paymentStage:'этап оплаты',contractTotal:'цена ДКП',reviewNote:'решение по расхождениям'};
-function docReset(id){const d=deal(id);d.docFields=null;draftsClear(id);save();render();toast('Поля подставлены заново');}
+// Reissue form state lives in this tab. Only the issue endpoint replaces the issued fields.
+const DOC_REISSUE_FORMS={};
+function docHasIssued(d){return !!(d.docVersion||d.docPack);}
+function docIssueVersion(d){return Number(d.docVersion||d.docPack?.version||0);}
+function docAccountChangeAvailable(d){
+  if(!docHasIssued(d)||d.closed||d.crmDealId||d.cashPartnerUsdt||
+      (d.payType!=null&&d.payType!=='По реквизитам')||payCur(d)!=='rub')return false;
+  const has=v=>v&&((typeof v==='object')?Object.keys(v).length>0:true);
+  const present=(obj,fields)=>fields.some(key=>has(obj?.[key]));
+  if(present(d,['payinParts','payinHashes','payinExtra','incomeAmount','payinProcessed','receiptConfirmed','manualBankReceipt'])||
+      present(d.pay,['hash','usdt','rub'])||(S.incomes||[]).some(x=>String(x.dealId)===String(d.id)))return false;
+  const proofKinds=['clientPayinReceipt','bankCreditEvidence','receipt','payment_order'];
+  if(['files','docs','docMeta'].some(key=>present(d[key],proofKinds))||
+      (d.files?.additional||[]).some(f=>proofKinds.includes(f.documentType)))return false;
+  if(present(d,['prepay','ippsPayoutOrder','outgoingOrderAt','serverTransferComplete','outgoingReview',
+      'transferClaim','serverSettled','payoutFact','mfPayout','commissionSends','sentToClient'])||d.cnvId!=null||
+      present(d.pay,['ippsSent','invoicePaid','outHash','tx','coinsCredit'])||has(d.transfer?.sends)||
+      present(d.payout,['hash','hashes','reimbursement']))return false;
+  return !(S.convs||[]).some(c=>['sent','received','done'].includes(c.status)&&(c.sources||[]).some(x=>x.dealId===d.id));
+}
+function docStepActor(d){
+  const actor=STAND&&!SCREEN&&!SNAP?standMe:S.role;
+  return actor==='admin'||(actor===stepWho(d)&&
+    (d.step!=='s14'||!d.assigneeAdminId||String(d.assigneeAdminId)===String(standMeId)));
+}
+function docCanReopen(d){
+  return !!d&&!d.closed&&(d.step==='s11b'||
+    (['s12','s14'].includes(d.step)&&docAccountChangeAvailable(d)))&&docStepActor(d);
+}
+function docReopenButton(d,wrap=false){
+  if(!docCanReopen(d))return '';
+  const button=`<button class="btn btn-outline" onclick="docReopen(${d.id})">Перевыпустить пакет</button>`;
+  return wrap?`<div class="row" style="margin:0 0 12px">${button}</div>`:button;
+}
+async function docReopen(id){
+  const first=deal(id);
+  if(!docCanReopen(first)){toast('Перевыпуск недоступен на текущем шаге');return;}
+  const start=first.step;
+  const useServer=STAND&&!SCREEN&&!SNAP;
+  if(useServer&&!await standRequireSaved('Изменения ещё не сохранены'))return;
+  const current=deal(id);
+  if(!docCanReopen(current)||current.step!==start){toast('Шаг изменился — откройте текущую задачу');return;}
+  S.view='task';
+  go(current,'s11','Пакет документов возвращён на перевыпуск');
+  if(!useServer)return;
+  let saved;
+  try{saved=await standWaitSaved();}catch(e){saved={error:'timeout'};}
+  if(!saved?.ok||(standBase?.deals||[]).find(x=>x.id===id)?.step!=='s11'){
+    standRollbackHandoff(id);
+    toast(standSaveError(saved,'Перевыпуск не открыт — проверьте текущую задачу'));
+  }
+}
+function docFormReceivingMode(d){
+  const form=DOC_REISSUE_FORMS[d.id];
+  return d.step==='s11'&&form?.receivingAccountMode&&form.docVersion===docIssueVersion(d)&&
+    form.receivingAccountMode!==d.rubReceivingAccount?.mode&&docStepActor(d)&&docAccountChangeAvailable(d)
+    ?form.receivingAccountMode:'';
+}
+function docSelectReceivingAccount(id,mode){
+  const d=deal(id);
+  if(!d||d.step!=='s11'||S.docIssuing===id||!docStepActor(d)||!docAccountChangeAvailable(d))return;
+  const previous=d.rubReceivingAccount?.mode||'';
+  if(mode!==previous&&!['sber','flowsole'].includes(mode))return;
+  DOC_REISSUE_FORMS[id]={...DOC_REISSUE_FORMS[id],docVersion:docIssueVersion(d),
+    receivingAccountMode:mode===previous?'':mode,docMiss:[],docErr:''};
+  FOCUS={id:'rub_receiving_'+id};
+  render();
+}
+function docFormFields(d,mode=''){
+  const issued=docHasIssued(d);
+  const saved=DOC_REISSUE_FORMS[d.id]?.autofill&&issued?null:d.docFields;
+  const fields=docFields(d,saved,mode?{mode}:d.rubReceivingAccount);
+  if(mode){
+    const approvedFreehold=d.kind==='Фрихолд'&&
+      (d.freeholdClientInput==='sum'||d.type==='Оплата недвижимости'&&!d.autoPayment&&documentPackStale(d));
+    const money=approvedFreehold
+      ?{amountThb:d.invoiceUsd,amountPay:d.amountRub,rate:d.rates?.client}
+      :{amountThb:d.docPack?.transfer??d.docFields?.amountThb??fields.amountThb,
+        amountPay:d.docPack?.amount??d.docFields?.amountPay??fields.amountPay,
+        rate:d.docPack?.rate??d.docFields?.rate??fields.rate};
+    Object.assign(fields,money,{purpose:''});
+  }else if(issued&&!isCrypto(d)&&!d.rubReceivingAccount){
+    fields.payTo=d.issuedDocPayTo||d.docFields?.payTo||fields.payTo;
+  }
+  return fields;
+}
+function docClearFieldDrafts(id){
+  const prefix=id+'|df_';
+  Object.keys(DRAFTS).forEach(key=>{if(key.startsWith(prefix))delete DRAFTS[key];});
+}
+function docReset(id){
+  const d=deal(id);
+  if(docHasIssued(d)){
+    docClearFieldDrafts(id);
+    DOC_REISSUE_FORMS[id]={...DOC_REISSUE_FORMS[id],autofill:true,docMiss:[],docErr:''};
+  }else{d.docFields=null;draftsClear(id);save();}
+  render();toast('Поля подставлены заново');
+}
+function docFormProblem(d,docMiss=[],docErr=''){
+  if(docHasIssued(d)){
+    DOC_REISSUE_FORMS[d.id]={...DOC_REISSUE_FORMS[d.id],docMiss,docErr};
+    return;
+  }
+  d.docMiss=docMiss;d.docErr=docErr;save();
+}
 const DOC_SRC={payoutNetwork:'реквизиты получателя',payoutWallet:'реквизиты получателя',fio:'паспорт',fioLat:'паспорт',passNo:'паспорт',passIss:'паспорт',passOrg:'паспорт',born:'паспорт',
   dev:'инвойс',invNo:'инвойс',invDate:'инвойс',object:'инвойс / SPA',
   kind:'сделка',amountThb:'расчёт',rate:'расчёт',amountPay:'расчёт',rateAt:'момент фиксации курса',
@@ -5574,8 +5700,8 @@ const DOC_SRC={payoutNetwork:'реквизиты получателя',payoutWal
   payTo:'реквизиты счёта оплаты',purpose:'пишет операционист',feeNote:'шаблон',validTill:'вручную',
   vehicleModel:'ДКП',vehicleVin:'ДКП',vinState:'ДКП',vinEvidence:'ДКП',vehicleDetails:'ДКП',
   sellerName:'ДКП',sellerId:'ДКП',sellerAddress:'ДКП',contractNo:'ДКП',contractDate:'ДКП',paymentStage:'ДКП',contractTotal:'ДКП',reviewNote:'сверка документов'};
-function docFieldSave(id){
-  const d=deal(id), cur=docFields(d), out={}, ch=[];
+function docFieldSave(id,mode=''){
+  const d=deal(id), reissuing=docHasIssued(d), cur=docFormFields(d,mode), out={}, ch=[];
   Object.keys(DOC_SRC).forEach(k=>{
     const el=document.getElementById('df_'+k); if(!el)return;
     const v=el.value.trim();
@@ -5583,14 +5709,17 @@ function docFieldSave(id){
     /* Числа сравниваем как числа: «650000» в сделке и «650 000» в поле — одно и то же,
        а в журнал уходило «Поля пакета поправлены вручную» (аудит 27.09 №22, Карим, 27.09) */
     const a=String(cur[k]==null?'':cur[k]), n=t=>{t=t.replace(/[\s\u00a0]/g,'').replace(',','.');return /^-?\d+(\.\d+)?$/.test(t)?parseFloat(t):null;};
-    if(n(a)!=null&&n(v)!=null?n(a)!==n(v):a!==v) ch.push(k);
+    if(n(a)!=null&&n(v)!=null?n(a)!==n(v):a!==v){
+      ch.push(k);
+      if(reissuing)DRAFTS[id+'|df_'+k]=el.value;
+    }
   });
   // Оговорка не редактируется на s11; crypto-freehold выпускается с
   // утверждённой фразой независимо от сохранённого исторического поля.
   if(cur.feeNote!=null)out.feeNote=cur.feeNote;
+  if(reissuing&&!isCrypto(d))out.payTo=cur.payTo;
   if(d.autoPayment===true)out.reviewToken=autoReviewToken(d,out);
-  d.docFields=out;
-  return ch;
+  return {F:out,ch};
 }
 function autoReviewToken(d,F){
   const shas=['vehicle_contract','inv'].flatMap(k=>filesOf(d,k).map(f=>f.sha256||''));
@@ -5663,8 +5792,12 @@ function docDownloadAll(id){
 }
 /* Выпуск пакета настоящим генератором (тем же, что в CRM). Сервер сам пишет
    в сделку список файлов и версию; сюда возвращается свежая доска. */
-async function docIssue(id,F,ch,comment){
+async function docIssue(id,F,ch,comment,receivingAccountMode=''){
   if(!await standRequireSaved('Сохранение не завершилось — документы не выпущены'))return;
+  const current=deal(id);
+  if(receivingAccountMode&&(!current||docFormReceivingMode(current)!==receivingAccountMode)){
+    render();toast('Условия сделки изменились — проверьте счёт перед выпуском');return;
+  }
   if(STAND&&isCrypto(deal(id))&&deal(id).kind==='Фрихолд'){
     const amount=num(cleanNum(String(F.amountPay||'')));
     if(!(amount>0)){toast('Введите положительную сумму клиента, USDT');return;}
@@ -5681,39 +5814,47 @@ async function docIssue(id,F,ch,comment){
   S.docIssuing=id;standBusy=true;render();toast('Выпускаю документы…');
   let j=null;
   try{
+    const request={dealId:id,docFields:F};
+    if(receivingAccountMode)Object.assign(request,{receivingAccountMode,expectedDocVersion:docIssueVersion(current)});
     const r=await fetch('/api/stand/docs/issue',{method:'POST',credentials:'same-origin',
-      headers:{'Content-Type':'application/json'},body:JSON.stringify({dealId:id,docFields:F})});
+      headers:{'Content-Type':'application/json'},body:JSON.stringify(request)});
     try{j=await r.json();}catch(e){j={success:false,detail:'Сервер ответил '+r.status};}
     j.httpStatus=r.status;
-    if(j.success&&j.data){standVer=j.version;standApply(j.data);}
   }catch(e){j={success:false,detail:'Сервер недоступен — документы не выпущены'};}
   finally{standBusy=false;S.docIssuing=null;}
+  if((j.success||j.httpStatus===409)&&j.data){
+    const next=standPush?standMerge(standBase||{},standSnapshot(),j.data).data:j.data;
+    standVer=j.version;standBase=standClone(j.data);standApply(next);
+  }
   const d=deal(id);
-  if(!d){render();return;}
+  if(!d){if(standPush)save();render();return;}
   if(!j.success){
-    if(j.httpStatus===409){
-      if(j.data){standVer=j.version;standBase=standClone(j.data);standApply(j.data);}
-      render();toast(j.detail||j.error||'Документы не выпущены');return;
-    }
-    d.docFields=F;d.docMiss=j.fields||[];d.docErr=j.detail||j.error||'Документы не выпущены';
-    save();render();toast(d.docErr);
+    const error=j.detail||(j.error==='conflict'?'Доска изменилась — проверьте поля и повторите выпуск':j.error)||'Документы не выпущены';
+    if(docHasIssued(d))docFormProblem(d,j.fields||[],error);
+    else if(j.httpStatus!==409){d.docFields=F;docFormProblem(d,j.fields||[],error);}
+    if(standPush)save();
+    render();toast(error);
     const k=(j.fields||[])[0], el=k&&document.getElementById('df_'+k);
     if(el){el.scrollIntoView({block:'center'});el.focus();}
     return;}
   d.docMiss=[];d.docErr='';
+  const issuedFields=d.docFields||F;
   const spec=exchangeSpec(d);
-  d[spec?amountField(spec.output):'amountThb']=num(cleanNum(String(F.amountThb)));d.rates.client=F.rate;
+  if(!receivingAccountMode){
+    d[spec?amountField(spec.output):'amountThb']=num(cleanNum(String(issuedFields.amountThb)));d.rates.client=issuedFields.rate;
+    const pay=num(cleanNum(String(issuedFields.amountPay)));
+    if(spec)d[amountField(spec.input)]=pay;
+    else if(!isCrypto(d))d.amountRub=pay;
+  }
   /* объект из пакета — в карточку сделки, иначе в шапке всех шагов «не указан» */
-  if(String(F.object||'').trim()) d.object=String(F.object).trim();
-  const pay=num(cleanNum(String(F.amountPay)));
-  if(spec)d[amountField(spec.input)]=pay;
-  else if(!isCrypto(d)) d.amountRub=pay;
+  if(String(issuedFields.object||'').trim()) d.object=String(issuedFields.object).trim();
   d.docComment2=comment;
   if(ch.length) log(d,'Поля пакета поправлены вручную: '+ch.map(k=>DOC_LABEL[k]||k).join(', '));
   go(d,'s11b','Пакет документов создан, версия '+d.docVersion);toast('Создано — проверьте файлы');
 }
 function freeholdDocAmountPreview(id,raw){
   const d=deal(id), amount=num(cleanNum(String(raw))), sent=freeholdSend(d.invoiceUsd||0,ippsTariff(d));
+  if(docHasIssued(d))DRAFTS[id+'|df_amountPay']=raw;
   const income=amount>0?Math.round((amount-sent)*100)/100:null;
   const set=(key,value)=>{const el=document.getElementById(key+'_'+id);if(el)el.value=value;};
   set('fh_doc_income',income==null?'—':income.toFixed(2));
@@ -5725,7 +5866,7 @@ function freeholdDocAmountSave(id,raw){
   const d=deal(id), amount=num(cleanNum(String(raw)));
   if(!(amount>0)){toast('Введите положительную сумму клиента, USDT');return;}
   d.amountUsdt=amount;
-  if(d.docFields)d.docFields.amountPay=String(amount);
+  if(d.docFields&&!docHasIssued(d))d.docFields.amountPay=String(amount);
   save();freeholdDocAmountPreview(id,raw);
 }
 /* «Заменить своим» — настоящий файл уходит на сервер и дальше идёт вместо сгенерированного.
@@ -5776,7 +5917,7 @@ function docSendBlock(d){
     dog:['Агентский договор','Клиент подписывает и присылает скан обратно — загрузить его можно на любом шаге, в блоке «Документы»'],
     app:[P.mode==='addendum'?'Допсоглашение к договору '+(P.agreementNumber||''):'Приложение 1 к договору',
          'Сумма и курс этого платежа: '+money(ap.pay,ap.sign)+' → '+money(ap.thb,ap.thbSign||'฿')+' по курсу '+(d.rates.client||'—')+' '+rateUnit(d)+'. Клиент сверяет и подписывает'],
-    bill:['Счёт на оплату','По нему клиент платит: '+money(ap.pay,ap.sign)+(isCrypto(d)?' на кошелёк USDT':` на счёт MF в ${rubReceivingBankLabel(d)}`)]};
+    bill:['Счёт на оплату','По нему клиент платит: '+money(ap.pay,ap.sign)+(isCrypto(d)?' на кошелёк USDT':` на счёт в ${rubReceivingBankLabel(d)}${P.recipient?' · '+P.recipient:''}`)]};
   const rows=['dog','app','bill'].map(k=>[k,docFileOf(d,k)]).filter(x=>x[1]);
   const sent=d.docsSent;
   return `<div class="paybox" style="margin-bottom:16px">
@@ -6228,7 +6369,7 @@ function draftsRestore(){
   const p=(S.open||S.tab||'')+'|';
   Object.keys(DRAFTS).forEach(k=>{if(k.indexOf(p)!==0)return;
     const el=document.getElementById(k.slice(p.length));
-    if(el&&(el.tagName==='INPUT'||el.tagName==='TEXTAREA'||el.tagName==='SELECT')&&el.value!==DRAFTS[k])el.value=DRAFTS[k];});
+    if(el&&!el.readOnly&&(el.tagName==='INPUT'||el.tagName==='TEXTAREA'||el.tagName==='SELECT')&&el.value!==DRAFTS[k])el.value=DRAFTS[k];});
 }
 function draftsClear(key){const p=key+'|';Object.keys(DRAFTS).forEach(k=>{if(k.indexOf(p)===0)delete DRAFTS[k];});}
 let FOCUS=null;
@@ -7704,7 +7845,7 @@ function viewDeal(d,inquiryField=''){
   const policySend=d.step==='s23'&&hasPolicy(policyWallet)&&!d.outgoingReview?.requestedAt;
   const policyConfirm=d.step==='s24'&&hasPolicy(policyWallet);
   const mine=!d.closed&&((!policySend&&!policyConfirm&&who===S.role)||
-    (S.role==='admin'&&d.step==='s27')||
+    (S.role==='admin'&&['s11','s11b','s27'].includes(d.step))||
     (policySend&&policyOwnsSend(d,policyWallet,S.role))||
     (policyConfirm&&policyOwnsVerification(d,policyWallet,S.role)));
   const p=progress(d), view=S.view||'deal';
@@ -7742,7 +7883,8 @@ function viewDeal(d,inquiryField=''){
       const parallelAction=confirmGate||canDraft?`<section class="task-action">
         ${goalCard(side)}${confirmGate?payToConfirmBlock(d):stepCard(side)}</section>`:'';
       const manualReceiptSide=S.role==='operator'&&d.step==='s14'&&!isCrypto(d)?manualBankReceiptBlock(d):'';
-      body=parallelAction+status+((S.role==='manager'||S.role==='admin')&&d.step==='s14'?s14PingBlock(d,true):'')+(S.role==='manager'&&d.step==='s14'?`<div class="card"><div class="card-title">Ждём деньги — сверяет операционист</div><p>${isCrypto(d)
+      const reissue=['s12','s14'].includes(d.step)?docReopenButton(d):'';
+      body=parallelAction+status+(reissue?`<div class="card">${reissue}</div>`:'')+((S.role==='manager'||S.role==='admin')&&d.step==='s14'?s14PingBlock(d,true):'')+(S.role==='manager'&&d.step==='s14'?`<div class="card"><div class="card-title">Ждём деньги — сверяет операционист</div><p>${isCrypto(d)
         ?`Ожидаем ${money(approx(d).pay,'USDT')} на ${htmlText((payinWallet(d)||{}).addr||'кошелёк из договора')}.`
         :`Ожидаем ${money(expectOf(d).amount,'₽')} на ${htmlText(expectOf(d).acc||'счёт из договора')}.`} Прикреплённые клиентом чеки видны ниже; приход подтверждает операционист.</p></div>`:'')+
         (d.step==='s14'&&(S.role==='operator'||S.role==='manager')?clientPayinBlock(d):'')+manualReceiptSide+
@@ -10994,11 +11136,12 @@ async function docParse(id,quiet){
     const obj=[dd.docParse.fields.project_name,dd.docParse.fields.unit_no].filter(Boolean).join(', ');
     if(dd.autoPayment!==true&&!String(dd.object||'').trim()&&obj){dd.object=obj;log(dd,'Объект из инвойса: '+obj);}
     /* поля пакета, которые ещё не правили руками, пересобираются из распознанного */
-    if(dd.docFields&&!dd.docVersion){const keep=dd.docFields;dd.docFields=null;const auto=docFields(dd);
+    const issued=docHasIssued(dd);
+    if(dd.docFields&&!issued){const keep=dd.docFields;dd.docFields=null;const auto=docFields(dd);
       dd.docFields=Object.assign({},auto,Object.fromEntries(Object.entries(keep).filter(([k,v])=>String(v||'').trim()&&v!==auto[k]&&!['fio','fioLat','passNo','passIss','passOrg','born','dev','invNo','invDate','object'].includes(k))));}
     log(dd,'Документы распознаны: '+Object.keys(dd.docParse.fields).length+' полей'+(dd.docParse.warnings.length?' · замечаний '+dd.docParse.warnings.length:''));
     /* свежий результат распознавания важнее недописанного руками в полях пакета */
-    Object.keys(DRAFTS).forEach(k=>{if(k.indexOf(id+'|df_')===0)delete DRAFTS[k];});
+    if(!issued)docClearFieldDrafts(id);
     save();render();if(!quiet)toast(dd.docParse.failed.length?'Часть документов распознана — проверьте результат':'Документы распознаны');
   }catch(e){const dd=deal(id);dd.docParseState='ошибка сети';save();render();if(!quiet)toast('Распознавание недоступно');}
   finally{clearInterval(progress);DOC_PARSE_STARTED.delete(id);}
@@ -11947,9 +12090,14 @@ function stepGoal(d){
         nums:[['Обязательные',ready+'/'+required.length],['Файлы',String(uploaded.reduce((n,k)=>n+filesOf(d,k).length,filesOf(d,'additional').length))],
               ['Сумма',money2(ap.thb,ap.thbSign||'฿')]],
         sub:ready===required.length?'Передать операционисту — файлы и комментарий сохранятся.':'Загрузите: '+required.filter(k=>!filesOf(d,k).length).map(k=>k==='pass'?'паспорт':'инвойс').join(', ')};}
-    case 's11': return {t:'Собрать пакет документов на подпись',
-      nums:[['Сумма к оплате',money2(ap.pay,ap.sign)],['Курс сделки',isCrypto(d)&&d.kind==='Фрихолд'?'—':d.rates.client||'—'],['Получателю',money2(ap.thb,ap.thbSign||'฿')]],
-      rows:[['Назначение платежа',F.purpose],['Куда платит клиент',F.payTo]]};
+    case 's11': {
+      const mode=docFormReceivingMode(d), preview=mode?docFormFields(d,mode):F;
+      return {t:'Собрать пакет документов на подпись',
+      nums:[['Сумма к оплате',money2(mode?num(preview.amountPay):ap.pay,ap.sign)],
+        ['Курс сделки',isCrypto(d)&&d.kind==='Фрихолд'?'—':(mode?preview.rate:d.rates.client)||'—'],
+        ['Получателю',money2(mode?num(preview.amountThb):ap.thb,ap.thbSign||'฿')]],
+      rows:mode?[['Реквизиты нового пакета',preview.payTo,true]]
+        :[['Назначение платежа',F.purpose],['Куда платит клиент',F.payTo]]};}
     case 's11b': return {t:'Проверить пакет и отдать менеджеру',
       nums:[['Сумма к оплате',money2(ap.pay,ap.sign)],['Курс сделки',isCrypto(d)&&d.kind==='Фрихолд'?'—':d.rates.client||'—'],['Документов',String(docFilesCount(d))]],
       rows:[['Назначение платежа',F.purpose],['Куда платит клиент',F.payTo]]};
@@ -12076,7 +12224,7 @@ function goalCard(d){
     ${g.sub?`<p class="fh" style="margin-top:8px">${htmlText(g.sub)}</p>`:''}
     ${(g.rows||[]).filter(r=>r[1]).length?`<div class="goalrows">${g.rows.filter(r=>r[1]).map(r=>`<div class="payrow">
       <div><div class="k">${htmlText(r[0])}</div><div class="v">${htmlText(r[1])}</div></div>
-      <button class="btn btn-outline btn-sm" onclick="copyAsk(${jsLiteralAttr(r[1])})">копировать</button>
+      ${r[2]?'':`<button class="btn btn-outline btn-sm" onclick="copyAsk(${jsLiteralAttr(r[1])})">копировать</button>`}
     </div>`).join('')}</div>`:''}
   </div>`;
 }
@@ -12571,10 +12719,19 @@ function stepCard(d){
       <span class="sub2">Файлы и комментарий сохранятся в задаче.</span></div></div>`,
 
   s11:()=>{
-    const F=docFields(d);
+    const reissuing=docHasIssued(d);
+    const canChangeAccount=reissuing&&!isCrypto(d)&&docStepActor(d)&&docAccountChangeAvailable(d);
+    const receivingAccountMode=canChangeAccount?docFormReceivingMode(d):'';
+    const F=docFormFields(d,receivingAccountMode);
+    const agent=receivingAccountMode?standDocAgent(d,{mode:receivingAccountMode}):standDocAgent(d);
+    const form=reissuing?DOC_REISSUE_FORMS[d.id]||{}:d;
+    const cryptoFreehold=isCrypto(d)&&d.kind==='Фрихолд';
+    const clientAmount=cryptoFreehold?num(cleanNum(String(DRAFTS[d.id+'|df_amountPay']??F.amountPay??''))):0;
+    const sent=cryptoFreehold?freeholdSend(d.invoiceUsd||0,ippsTariff(d)):0;
+    const lossAck=clientAmount===d.amountUsdt&&d.freeholdLossAck?.fingerprint===freeholdLossFingerprint(d);
     /* Обязательное пустое поле подсвечивается сразу: раньше кнопка молча не срабатывала,
        а единственным сигналом был исчезающий тост — «дальше не идёт» (Карим, 22.09). */
-    const bad=(d.docMiss||[]);
+    const bad=form.docMiss||[];
     const fld=(k,label,opts)=>{
       opts=opts||{};
       const autoParseKey={vehicleModel:'vehicle_model',vehicleVin:'vehicle_vin',vinEvidence:'vehicle_vin_pending_basis',
@@ -12583,24 +12740,25 @@ function stepCard(d){
         contractTotal:'vehicle_contract_total',paymentStage:'vehicle_payment_stage',
         dev:'recipient_name',invNo:'invoice_no',invDate:'invoice_date'}[k];
       const rawSource=['agent','agentReg','agentDir'].includes(k)
-        ?(standDocAgent(d).shortName||'Компания')+' · реестр'
+        ?(agent.shortName||'Компания')+' · реестр'
         :autoParseKey&&d.docParse?.provenance?.[autoParseKey]||DOC_SRC[k]||'';
       const source=DOC_PARSE_SLOT_LABEL[rawSource]||rawSource;
       /* паспортные ФИО и номер подсвечены сразу, если не распознались: имени из заявки
          там больше нет, пустое поле — сигнал вписать по скану (Карим, 27.09) */
-      const flag=(bad.indexOf(k)>=0||(opts.req&&['fio','fioLat','passNo'].indexOf(k)>=0))&&!String(F[k]==null?'':F[k]).trim();
+      const empty=!String((opts.ro?F[k]:DRAFTS[d.id+'|df_'+k]??F[k])??'').trim();
+      const flag=bad.includes(k)||(empty&&opts.req&&['fio','fioLat','passNo'].includes(k));
       return `<div class="fg"><label class="fl">${label}${opts.req?'<span class="rq">*</span>':''}
         <span class="src">${htmlText(source)}</span></label>
-        ${opts.area?`<textarea class="fc${flag?' bad':''}" id="df_${k}">${F[k]||''}</textarea>`
+        ${opts.area?`<textarea class="fc${flag?' bad':''}" id="df_${k}" ${opts.ro?'readonly':''} ${opts.ph?`placeholder="${opts.ph}"`:''}>${htmlText(F[k])}</textarea>`
           :`<input class="fc ${opts.num?'num':''}${opts.big?' big':''}${flag?' bad':''}" id="df_${k}" ${opts.ro?'readonly':''} ${opts.input?`oninput="${opts.input}"`:''} ${opts.change?`onchange="${opts.change}"`:''} value="${(function(){
               const raw=String(F[k]==null?'':F[k]);
               /* суммы печатаем с разделителями: их сверяют глазами с инвойсом.
                  При сохранении пробелы снимаются. */
-              if(!opts.money||!raw.trim()) return raw.replace(/"/g,'&quot;');
+              if(!opts.money||!raw.trim()) return htmlText(raw);
               const n=num(cleanNum(raw));
-              return n==null?raw.replace(/"/g,'&quot;'):Number(n).toLocaleString('ru-RU');})()}" ${opts.ph?`placeholder="${opts.ph}"`:''}>`}
+              return n==null?htmlText(raw):Number(n).toLocaleString('ru-RU');})()}" ${opts.ph?`placeholder="${opts.ph}"`:''}>`}
         ${opts.ro&&!opts.noRoHint?`<p class="fh">зафиксировано до договора (шаги 6, 8) — здесь только чтение</p>`:''}
-        ${flag?`<p class="fh" style="color:var(--red)">Без этого договор не создать</p>`:''}</div>`;
+        ${flag?`<p class="fh" style="color:var(--red)">${empty?'Заполните поле':'Проверьте значение'}</p>`:''}</div>`;
     };
     return `<div class="card"><div class="card-title">Документы клиента
       <span class="sub">сверьте поля ниже с этими файлами — значения распознаны из них</span></div>
@@ -12620,29 +12778,32 @@ function stepCard(d){
     <div class="card"><div class="card-title">Поля пакета документов
       <span class="sub">${d.isOld?'клиент знакомый → допник и счёт':'клиент новый → полный договор'}</span></div>
     ${d.partial?`<div class="alert a-warn"><div>Частичная оплата${d.partNo?' · '+d.partNo:''} по инвойсу на ${money(d.invoiceTotal,d.kind==='Фрихолд'?'$':'฿')} — в приложении указывается и платёж, и остаток.</div></div>`:''}
+    ${canChangeAccount?payinS11Fields(d,fld,true,receivingAccountMode):''}
 
     <div class="keybox">
       <div class="sec po" style="margin:0 0 10px">${isCrypto(d)&&d.kind==='Фрихолд'?'ГЛАВНОЕ · СУММА':'ГЛАВНОЕ · СУММА И КУРС'}</div>
       <div class="fr">
-        ${fld('amountThb',d.autoPayment===true?'Продавцу авто, USD':d.kind==='Фрихолд'?'Инвойс застройщику, $':exchangeSpec(d)?'Сумма получателю, '+SIGN[exchangeSpec(d).output]:'Сумма инвойса к оплате, ฿',{req:1,num:1,big:1,money:1,ro:d.kind==='Фрихолд'})}
+        ${fld('amountThb',d.autoPayment===true?'Продавцу авто, USD':d.kind==='Фрихолд'?'Инвойс застройщику, $':exchangeSpec(d)?'Сумма получателю, '+SIGN[exchangeSpec(d).output]:'Сумма инвойса к оплате, ฿',{req:1,num:1,big:1,money:1,ro:d.kind==='Фрихолд'||receivingAccountMode,noRoHint:receivingAccountMode})}
         ${(isCrypto(d)&&d.kind==='Фрихолд')
           ?`<div class="fg"><label class="fl">Курс сделки</label><input class="fc" readonly value="—"></div>`
-          :fld('rate','Курс сделки, '+(d.kind==='Фрихолд'?'₽ за 1$':rateUnit(d)),{req:1,num:1,big:1})}
-        ${fld('amountPay',isCrypto(d)&&d.kind==='Фрихолд'?'Клиент отправит, USDT':'Сумма клиенту, '+ap.sign,{req:1,num:1,big:1,money:1,
+          :fld('rate','Курс сделки, '+(d.kind==='Фрихолд'?'₽ за 1$':rateUnit(d)),{req:1,num:1,big:1,ro:receivingAccountMode,noRoHint:1})}
+        ${fld('amountPay',isCrypto(d)&&d.kind==='Фрихолд'?'Клиент отправит, USDT':'Сумма клиенту, '+ap.sign,{req:1,num:1,big:1,money:1,ro:receivingAccountMode,noRoHint:1,
           input:isCrypto(d)&&d.kind==='Фрихолд'?`freeholdDocAmountPreview(${d.id},this.value)`:null,
           change:isCrypto(d)&&d.kind==='Фрихолд'?`freeholdDocAmountSave(${d.id},this.value)`:null})}
       </div>
-      ${(isCrypto(d)&&d.kind==='Фрихолд')?`<div class="fr"><div class="fg"><label class="fl">В IPPS уйдёт, USDT</label><input class="fc" readonly value="${money(freeholdSend(d.invoiceUsd||0,ippsTariff(d)),'USDT')}"></div>
-        <div class="fg"><label class="fl">Наш доход, USDT</label><input class="fc" id="fh_doc_income_${d.id}" readonly value="${d.amountUsdt>0?(d.amountUsdt-freeholdSend(d.invoiceUsd||0,ippsTariff(d))).toFixed(2):'—'}"></div>
-        <div class="fg"><label class="fl">Наш доход, %</label><input class="fc" id="fh_doc_pct_${d.id}" readonly value="${d.amountUsdt>0?((d.amountUsdt/freeholdSend(d.invoiceUsd||0,ippsTariff(d))-1)*100).toFixed(4):'—'}"></div></div>
-        <div id="fh_doc_loss_${d.id}">${d.amountUsdt>0&&d.amountUsdt<freeholdSend(d.invoiceUsd||0,ippsTariff(d))?`<div class="alert a-warn"><div><b>Сделка в минус</b> · ${d.freeholdLossAck?.fingerprint===freeholdLossFingerprint(d)?'риск подтверждён':'перед выпуском подтвердите риск отдельно'}</div></div>${d.freeholdLossAck?.fingerprint===freeholdLossFingerprint(d)?'':`<button class="btn btn-outline" onclick="freeholdLossAck(${d.id})">Подтвердить сделку в минус</button>`}`:''}:${d.amountUsdt>0?'':'<div class="alert a-warn"><div>Укажите сумму клиента, USDT, до выпуска документов.</div></div>'}</div>`:''}
-      <p class="fh" style="margin-top:2px">В договор и счёт идёт введённая сумма клиента. Отправка в IPPS и доход показаны для внутренней сверки.</p>
-      ${isCrypto(d)?'':fld('purpose','Назначение перевода — клиент впишет его в платёжное поручение',{req:1,area:1})}
+      ${cryptoFreehold?`<div class="fr"><div class="fg"><label class="fl">В IPPS уйдёт, USDT</label><input class="fc" readonly value="${money(sent,'USDT')}"></div>
+        <div class="fg"><label class="fl">Наш доход, USDT</label><input class="fc" id="fh_doc_income_${d.id}" readonly value="${clientAmount>0?(clientAmount-sent).toFixed(2):'—'}"></div>
+        <div class="fg"><label class="fl">Наш доход, %</label><input class="fc" id="fh_doc_pct_${d.id}" readonly value="${clientAmount>0&&sent?((clientAmount/sent-1)*100).toFixed(4):'—'}"></div></div>
+        <div id="fh_doc_loss_${d.id}">${clientAmount>0&&clientAmount<sent?`<div class="alert a-warn"><div><b>Сделка в минус</b> · ${lossAck?'риск подтверждён':'перед выпуском подтвердите риск отдельно'}</div></div>${lossAck?'':`<button class="btn btn-outline" onclick="freeholdLossAck(${d.id})">Подтвердить сделку в минус</button>`}`:''}:${clientAmount>0?'':'<div class="alert a-warn"><div>Укажите сумму клиента, USDT, до выпуска документов.</div></div>'}</div>`:''}
+      ${receivingAccountMode?`<p class="fh">Сумма и курс сохраняются при смене счёта.</p>
+        ${fld('purpose','Назначение перевода',{area:1,ro:1,noRoHint:1,ph:'Сформируется при выпуске пакета'})}`
+        :`<p class="fh" style="margin-top:2px">В договор и счёт идёт введённая сумма клиента. Отправка в IPPS и доход показаны для внутренней сверки.</p>
+        ${isCrypto(d)?'':fld('purpose','Назначение перевода — клиент впишет его в платёжное поручение',{req:1,area:1})}`}
       ${exchangeSpec(d)?.output==='usdt'?`<div class="fr">${fld('payoutNetwork','Сеть получателя USDT',{req:1})}${fld('payoutWallet','Кошелёк получателя USDT',{req:1})}</div>`:''}
     </div>
 
     <div class="sec pi" style="margin:18px 0 10px">ПРИНЦИПАЛ · ИЗ ПАСПОРТА</div>
-    ${fioHint(d)}
+    ${fioHint(d,F)}
     <div class="fr">
       ${fld('fio','ФИО',{req:1})}
       ${fld('fioLat','Латиницей',{req:1})}
@@ -12692,17 +12853,17 @@ function stepCard(d){
     <div class="sec fin" style="margin:18px 0 10px">РЕКВИЗИТЫ И ОГОВОРКИ</div>
     <div class="fr">
       ${fld('agent','Агент',{ro:1,noRoHint:1})}
-      ${fld('agentReg',standDocAgent(d).regLabel||'Рег. номер',{ro:1,noRoHint:1})}
+      ${fld('agentReg',agent.regLabel||'Рег. номер',{ro:1,noRoHint:1})}
       ${fld('agentDir','Подписант',{ro:1,noRoHint:1})}
     </div>
-    ${payinS11Fields(d,fld)}
+    ${canChangeAccount?'':payinS11Fields(d,fld)}
     ${(isCrypto(d)&&d.kind==='Фрихолд')?`<p class="fh">Оговорка о комиссии в приложении: ${htmlText(F.feeNote)}</p>`:''}
 
-    ${d.docErr?`<div class="alert a-warn"><div><b>Не создано.</b> ${htmlText(d.docErr)}.</div></div>`
-      :(d.docMiss||[]).length?`<div class="alert a-warn"><div><b>Не создано:</b> не заполнено — ${d.docMiss.map(k=>DOC_LABEL[k]||k).join(', ')}. Поля отмечены красным выше.</div></div>`:''}
-    <div class="row"><button class="btn btn-primary" onclick="act(${d.id},'s11')" ${S.docIssuing===d.id?'disabled':''}>${S.docIssuing===d.id?'Выпускаю…':'Создать '+(d.isOld?'допник и счёт':'договор')}</button>
-    <button class="btn btn-secondary" onclick="docReset(${d.id})">Вернуть автозаполнение</button>
-    <button class="btn btn-outline" onclick="ret(${d.id})">Вернуть с вопросом</button></div>
+    ${form.docErr?`<div class="alert a-warn"><div><b>Пакет не выпущен.</b> ${htmlText(form.docErr)}</div></div>`
+      :bad.length?`<div class="alert a-warn"><div><b>Проверьте поля:</b> ${bad.map(k=>htmlText(DOC_LABEL[k]||k)).join(', ')}.</div></div>`:''}
+    <div class="row"><button class="btn btn-primary" onclick="act(${d.id},'s11')" ${S.docIssuing===d.id?'disabled':''}>${S.docIssuing===d.id?'Выпускаю…':reissuing?'Перевыпустить пакет':'Создать '+(d.isOld?'допник и счёт':'договор')}</button>
+    <button class="btn btn-secondary" onclick="docReset(${d.id})" ${S.docIssuing===d.id?'disabled':''}>Вернуть автозаполнение</button>
+    <button class="btn btn-outline" onclick="ret(${d.id})" ${S.docIssuing===d.id?'disabled':''}>Вернуть с вопросом</button></div>
     <p style="font-size:12px;color:var(--text-muted);margin-top:11px">«Вернуть автозаполнение» сбросит ручные правки и подставит значения из паспорта, инвойса и расчёта заново.</p>
     <div class="alert a-info" style="margin-top:12px"><div>Сверьте данные паспорта, инвойса и расчёта перед выпуском. Компания-агент определяется способом оплаты и счётом приёма оплаты.</div></div>
     </div>`;},
@@ -12716,7 +12877,7 @@ function stepCard(d){
       bill:money(ap.pay,ap.sign)+' — ровно столько ждём'+(isCrypto(d)?' на кошелёк':' на счёте')};
     const kinds=['dog','app','bill'].filter(k=>files.some(x=>x.kind===k));
     return `<div class="card"><div class="card-title">Выпущено<span class="sub">версия ${P?P.version:(d.docVersion||1)}${P?' · № '+htmlText(P.number):''}</span></div>
-    ${!P?`<div class="alert a-warn"><div>Пакет ещё не выпущен генератором — нажмите «Поправить и пересоздать».</div></div>`
+    ${!P?`<div class="alert a-warn"><div>Чтобы подготовить актуальные файлы, нажмите «Перевыпустить пакет».</div></div>`
       :`<div class="alert a-ok"><div>${P.mode==='addendum'?'Клиент знакомый — к его договору '+htmlText(P.agreementNumber)+' выпущены допсоглашение и счёт.':'Выпущены договор, приложение и счёт.'} Это настоящие файлы — те же, что уходят из CRM. Скачайте и проверьте ФИО, сумму, курс и ${isCrypto(d)?'кошелёк':'назначение платежа'}.</div></div>`}
     ${P&&P.note?`<div class="alert a-info"><div>${htmlText(P.note)}</div></div>`:''}
     <div class="list">
@@ -12732,9 +12893,9 @@ function stepCard(d){
         </span></div>`;}).join('')}
     </div>
     ${P?`<div class="row" style="margin-top:10px"><button class="btn btn-outline btn-sm" onclick="docDownloadAll(${d.id})">Скачать всё одним архивом</button></div>`:''}
-    <p style="font-size:12px;color:var(--text-muted);margin-top:11px">Не сошлось — «Поправить и пересоздать»: поля вернутся на правку, новый выпуск получит следующую версию, прежние файлы останутся в базе. Случай нестандартный — поправьте файл руками и «Заменить своим» (PDF, DOC или DOCX до 10 МБ): дальше пойдёт он.</p>
+    <p style="font-size:12px;color:var(--text-muted);margin-top:11px">Для изменения данных перевыпустите пакет. Готовый файл можно загрузить через «Заменить своим» (PDF, DOC или DOCX до 10 МБ).</p>
     <div class="row"><button class="btn btn-success" onclick="act(${d.id},'s11b')">Всё верно — отправить менеджеру</button>
-    <button class="btn btn-outline" onclick="go(deal(${d.id}),'s11','Пересоздать пакет')">Поправить и пересоздать</button></div></div>`;},
+    ${docReopenButton(d)}</div></div>`;},
 
   /* Главное — первым: кошелёк клиента (для крипты) и «Ждём приход» сразу под целью,
      подписанный скан и «курс поехал» — ниже (Карим, 27.09, аудит №1) */
@@ -12753,6 +12914,7 @@ function stepCard(d){
 
     <!--note-->
     <div class="row mainrow" style="margin-top:16px"><button class="btn btn-primary" onclick="act(${d.id},'s12')">Ждём приход</button>
+    ${docReopenButton(d)}
     <button class="btn btn-outline" onclick="askClose(${d.id})">Закрыть сделку</button></div>
     <p style="font-size:13px;color:var(--navy-600);line-height:1.65;margin-top:12px">Ожидание ставится руками: мы не всегда ждём деньги. Если клиент передумал — закрывайте с причиной, а не оставляйте висеть.</p>
     <div class="card-title" style="font-size:14px;margin:18px 0 8px">Подписанные документы
@@ -12769,6 +12931,7 @@ function stepCard(d){
     </div>`:''}</div>`,
 
   s14:()=>`<div class="card${d.cashPartnerUsdt?' cash-pay':''}"><div class="card-title">Ждём приход<span class="sub">${d.cashPartnerUsdt?'USDT от партнёра на наш кошелёк':isCrypto(d)?'USDT на кошелёк':`рубли на счёт в ${htmlText(rubReceivingBankLabel(d))}`}</span></div>
+    ${docReopenButton(d,true)}
     ${(d.recipientWarnings||[]).map(w=>`<div class="alert a-warn"><div><b>Перевод ${addressDisclosure(w.hash)} на другой кошелёк</b><br>Ожидали: ${addressDisclosure(w.expected)}<br>Фактически: ${addressDisclosure(w.actual)}<br>
       ${w.acknowledgedById?`Расхождение подтверждено. <button class="btn btn-outline btn-sm" onclick='payinRecipientReconcile(${d.id},${JSON.stringify(w).replace(/'/g,"&#39;")})'>Выбрать фактический кошелёк</button> Затем повторите проверку.`:
         `<button class="btn btn-outline btn-sm" onclick='cnvRecipientAck(${d.id},${JSON.stringify(w).replace(/'/g,"&#39;")})'>Подтверждаю расхождение адреса</button>`}</div></div>`).join('')}
@@ -13552,40 +13715,43 @@ async function act(id,step){
     }else toast('Ушло операционисту');
     if(!d.docParse)docParse(d.id,true);return;}
   if(step==='s11'){
-    if(STAND&&!STAND_DOC_AGENT_META?.profiles?.[standDocAgent(d).key]){
+    const reissuing=docHasIssued(d);
+    const receivingAccountMode=reissuing&&!isCrypto(d)?docFormReceivingMode(d):'';
+    const rubAccount=receivingAccountMode?{mode:receivingAccountMode}:d.rubReceivingAccount||{};
+    if(STAND&&!STAND_DOC_AGENT_META?.profiles?.[standDocAgent(d,rubAccount).key]){
       toast('Не удалось загрузить реквизиты компании. Обновите страницу перед выпуском');return;
     }
-    const ch=docFieldSave(d.id), F=d.docFields;
+    const {F,ch}=docFieldSave(d.id,receivingAccountMode);
+    if(!reissuing)d.docFields=F;
     if(d.autoPayment===true){
       const vinMiss=F.vinState==='known'&&!F.vehicleVin?'vehicleVin':
         F.vinState==='pending'&&!F.vinEvidence?'vinEvidence':null;
-      if(vinMiss){d.docMiss=[vinMiss];save();render();toast('Проверьте статус VIN и основание в ДКП');return;}
+      if(vinMiss){docFormProblem(d,[vinMiss]);render();toast('Проверьте статус VIN и основание в ДКП');return;}
     }
-    const rubAccount=d.rubReceivingAccount||{};
     if(!isCrypto(d)&&rubAccount.mode==='custom'&&(!String(rubAccount.bank||'').trim()||!/^\d{20}$/.test(String(rubAccount.account||''))||!/^\d{20}$/.test(String(rubAccount.correspondent||''))||!/^\d{9}$/.test(String(rubAccount.bik||'')))){
       toast('Укажите банк, номер счёта, корреспондентский счёт (20 цифр) и БИК (9 цифр) до выпуска документов');render();return;}
     if(!isCrypto(d)&&rubAccount.mode==='custom'){
       const name=String(rubAccount.recipientName||'').trim(), inn=String(rubAccount.recipientInn||'').trim(), kpp=String(rubAccount.recipientKpp||'').trim();
       if((name||inn||kpp)&&(!name||!/^\d{10}$/.test(inn)||!/^\d{9}$/.test(kpp))){toast('Укажите наименование, ИНН (10 цифр) и КПП (9 цифр) получателя полностью');render();return;}
     }
-    const miss=docReq(d).filter(k=>!String(F[k]==null?'':F[k]).trim());
+    const miss=docReq(d).filter(k=>(!receivingAccountMode||k!=='purpose')&&!String(F[k]==null?'':F[k]).trim());
     if(miss.length){
-      d.docMiss=miss;save();render();
+      docFormProblem(d,miss);render();
       toast('Не заполнено: '+miss.map(k=>DOC_LABEL[k]||k).join(', '));
       const el=document.getElementById('df_'+miss[0]); if(el){el.scrollIntoView({block:'center'});el.focus();}
       return;}
-    d.docMiss=[];d.docErr='';
+    if(!reissuing){d.docMiss=[];d.docErr='';}
     /* Кошелёк прихода записываем в сделку явно, даже если select не трогали: иначе он
        остаётся «виртуальным» (payinWallet() выводит дефолт), а первая запись walletId
        случается на «Ждём приход» вместе с переходом шага — сервер её отклоняет (QA 29.10).
        Это отдельное сохранение на s11; docIssue ниже ждёт его результата. */
-    if(isCrypto(d)&&!d.walletId){
+    if(isCrypto(d)&&!reissuing&&!d.walletId){
       const def=payinDefaultWallet('TRC-20',d);
       if(def){d.walletId=def.id;save();}
     }
     /* Договор, приложение и счёт выпускает сервер тем же генератором, что CRM */
-    docIssue(d.id,F,ch,val('sn_s11'));return;}
-  if(step==='s11b'){if(!d.docPack||documentPackStale(d)){toast('Выпустите новый пакет через «Поправить и пересоздать»');return;}
+    docIssue(d.id,F,ch,val('sn_s11'),receivingAccountMode);return;}
+  if(step==='s11b'){if(!d.docPack||documentPackStale(d)){toast('Выпустите новый пакет через «Перевыпустить пакет»');return;}
     go(d,'s12','Документы отправлены менеджеру');toast('Ушло менеджеру');return;}
   if(step==='s12'){
     if(documentPackStale(d)){toast('Сначала перевыпустите документы с новым курсом');return;}

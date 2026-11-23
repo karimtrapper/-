@@ -23,6 +23,7 @@ console.log('docparse timeout and partial result UI: PASS');
 // Exercise the response handler as well as its rendered state.
 const parse=html.match(/^async function docParse\([^]*?^}/m)[0];
 const dataUrl=html.match(/^function dataUrlBlob\([^]*?^}/m)[0];
+const docDrafts=html.match(/^function docClearFieldDrafts\([^]*?^}/m)[0];
 const png='data:image/png;base64,'+Buffer.from('\x89PNG\r\n\x1a\nmock').toString('base64');
 const deal={id:7,kind:'Фрихолд',files:{pass:[{data:png,file:'p.png'}],inv:[{data:png,file:'i.png'}]}};
 const handler={PARSE_SLOT:{pass:'passport',inv:'invoice',spa:'spa'},DOC_PARSE_STARTED:new Map(),
@@ -31,8 +32,9 @@ const handler={PARSE_SLOT:{pass:'passport',inv:'invoice',spa:'spa'},DOC_PARSE_ST
  fetch:async()=>({ok:true,json:async()=>({success:true,fields:{client_name_ru:'Тестов Иван'},
    warnings:[],parsed_slots:['passport'],failed:[{slot:'invoice',error:'timeout'}]})}),
  setInterval:()=>1,clearInterval:()=>{},document:{getElementById:()=>null},
- save:()=>{},render:()=>{},toast:()=>{},log:()=>{},DRAFTS:{},DOC_PARSE_AVAILABLE:true};
-vm.runInNewContext(dataUrl+'\n'+parse,handler);
+ save:()=>{},render:()=>{},toast:()=>{},log:()=>{},DRAFTS:{},DOC_PARSE_AVAILABLE:true,
+ docHasIssued:d=>Boolean(d.docVersion||d.docPack)};
+vm.runInNewContext([dataUrl, docDrafts, parse].join('\n'),handler);
 handler.docParse(7,true).then(()=>{
  assert.equal(deal.docParseState,'частично');
  assert.deepEqual(Array.from(deal.docParse.ok),['passport']);

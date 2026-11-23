@@ -61,7 +61,7 @@ assert.match(html, /БИК банка \(9 цифр\)/);
 assert.match(html, /d\.manualBankReceipt\?\.status==='pending'/);
 assert.doesNotMatch(html, /Вебхук банка · DEMO/);
 
-const fieldsStart = html.indexOf('function docFields(d){');
+const fieldsStart = html.indexOf('function docFields(');
 const fieldsEnd = html.indexOf('/* ФИО по паспорту', fieldsStart);
 assert.ok(fieldsStart >= 0 && fieldsEnd > fieldsStart);
 const fieldCtx = vm.createContext({fake:()=>({}), approx:()=>({pay:10000,thb:1000}),
@@ -91,7 +91,7 @@ vm.runInContext(html.slice(labelStart,labelEnd),labelCtx);
 assert.equal(vm.runInContext("rubReceivingBankLabel({rubReceivingAccount:{mode:'custom',bank:'Test Bank'}})",labelCtx),'Test Bank');
 assert.equal(vm.runInContext("rubReceivingBankLabel({rubReceivingAccount:{mode:'custom',bank:''}})",labelCtx),'другой банк');
 assert.equal(vm.runInContext("rubReceivingBankLabel({rubReceivingAccount:{mode:'sber'}})",labelCtx),'Сбер');
-assert.match(html,/на счёт MF в \$\{rubReceivingBankLabel\(d\)\}/);
+assert.match(html,/на счёт в \$\{rubReceivingBankLabel\(d\)\}\$\{P\.recipient/);
 assert.match(html,/рубли на счёт в \$\{htmlText\(rubReceivingBankLabel\(d\)\)\}/);
 assert.match(html,/счёт в \$\{rubReceivingBankLabel\(d\)\}/);
 assert.doesNotMatch(html,/счёт MF в Сбере/);

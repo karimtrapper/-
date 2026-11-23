@@ -71,6 +71,7 @@ const num = x => (x == null || x === '') ? null : parseFloat(String(x).replace('
   const toasts = [], marked = [];
   const ctx = run(['act', 'addrValid'], {
     deal: () => d, cnvMembers: () => [d], saveNote: () => {},
+    prepayWalletUnavailable: () => false,
     convOf: () => ({txs: [{amount: 100, status: 'confirmed'}]}),
     hashSum: txs => txs.reduce((sum, tx) => sum + tx.amount, 0), isCrypto: () => false,
     document: {getElementById: id => ({id, scrollIntoView() {}, focus() {},
@@ -114,13 +115,39 @@ const num = x => (x == null || x === '') ? null : parseFloat(String(x).replace('
   const fields = {df_amountThb: '650 000', df_amountPay: '1 729 000', df_fio: 'Иванов Сергей', df_rate: '2,66'};
   const ctx = run(['docFieldSave'], {
     deal: () => d, DOC_SRC: {amountThb: 1, amountPay: 1, fio: 1, rate: 1},
-    docFields: () => ({amountThb: 650000, amountPay: '1729000', fio: 'Иванов Сергей', rate: '2,66'}),
+    DRAFTS: {}, isCrypto: () => false, docHasIssued: x => Boolean(x.docVersion),
+    docFormFields: () => ({amountThb: 650000, amountPay: '1729000', fio: 'Иванов Сергей', rate: '2,66'}),
     document: {getElementById: id => fields[id] != null ? {value: fields[id]} : null},
   });
-  assert.equal(JSON.stringify(ctx.docFieldSave(1)), '[]');
+  assert.equal(JSON.stringify(ctx.docFieldSave(1).ch), '[]');
   fields.df_amountThb = '651 000';
   fields.df_fio = 'Иванов С.';
-  assert.equal(JSON.stringify(ctx.docFieldSave(1)), JSON.stringify(['amountThb', 'fio']));
+  assert.equal(JSON.stringify(ctx.docFieldSave(1).ch), JSON.stringify(['amountThb', 'fio']));
+  d.docVersion = 1;
+  d.docFields = {fio: 'Иванов Сергей', amountThb: 650000};
+  assert.equal(ctx.docFieldSave(1).F.fio, 'Иванов С.');
+  assert.equal(ctx.DRAFTS['1|df_fio'], 'Иванов С.');
+  assert.deepEqual(d.docFields, {fio: 'Иванов Сергей', amountThb: 650000});
+}
+
+// A reissue reset reapplies the passport data locally and retains legacy payment details.
+{
+  const d = {id: 1, docVersion: 1, docFields: {fio: 'Старое ФИО', payTo: 'Счёт из договора'}};
+  const drafts = {'1|df_fio': 'Ручная правка', '1|sn_s11': 'Комментарий'};
+  let saves = 0;
+  const ctx = run(['docFormFields', 'docClearFieldDrafts', 'docReset'], {
+    deal: () => d, DRAFTS: drafts, DOC_REISSUE_FORMS: {}, isCrypto: () => false,
+    docHasIssued: x => Boolean(x.docVersion),
+    docFields: (x, saved = x.docFields) => ({fio: 'ФИО из паспорта', payTo: 'Сбер по умолчанию', ...saved}),
+    save: () => { saves++; }, render: () => {}, toast: () => {},
+  });
+  ctx.docReset(d.id);
+  const form = ctx.docFormFields(d);
+  assert.equal(form.fio, 'ФИО из паспорта');
+  assert.equal(form.payTo, 'Счёт из договора');
+  assert.deepEqual(d.docFields, {fio: 'Старое ФИО', payTo: 'Счёт из договора'});
+  assert.deepEqual(drafts, {'1|sn_s11': 'Комментарий'});
+  assert.equal(saves, 0);
 }
 
 // Текст задачи Coins: адреса целиком, сеть, назначение, без имени клиента.
