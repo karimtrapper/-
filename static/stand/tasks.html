@@ -1026,7 +1026,7 @@ body.deal-task-mode .top-nav .who{border:0;color:var(--navy-300);font-size:var(-
 
 <script src="/tasks/screens-data.js?v=2609241212"></script>
 <script src="/tasks/crm-draft-core.js?v=4"></script>
-<script src="/tasks/crm-draft-adapter.js?v=6"></script>
+<script src="/tasks/crm-draft-adapter.js?v=8"></script>
 <script src="/static/nav-shell.js?v=6"></script>
 <script>
 const KEY='grusha_proto_v2';
@@ -4541,6 +4541,7 @@ function progress(d){
 
 const CLOSE_REASONS=['Не устроил курс','Ушёл к конкуренту','Передумал покупать','Не наш профиль','Перестал отвечать','Не прошёл проверку'];
 const SOURCES={bitrix:'Битрикс',tg:'Telegram',wa:'WhatsApp',none:'Без переписки'};
+const INQUIRY_TYPES={agent:'Агент',client:'Клиент'};
 let TG_CHATS=[];  // как в проде: чаты приходят из интеграции, на стенде — «вписать вручную»
 let WA_CHATS=[];
 let BX_DEALS=[];
@@ -5296,6 +5297,7 @@ function newDeal(o){
   const d={id:S.seq,code:'СД-'+S.seq,createdAt:now(),step:o.step,closed:false,
     manual:!!o.manual,manualNew:!!o.manualNew,rubIsNet:true,log:[],
     source:o.source,sourceRef:o.sourceRef,bitrixCloseProof:o.bitrixCloseProof||null,client:o.client,type:o.type,
+    ...(validInquiryType(o.inquiryType)?{inquiryType:o.inquiryType}:{}),
     pair:(o.type==='Обмен валюты'?(o.pair||(o.payType==='Крипта'?'USDT → THB':'RUB → THB')):null),
     direction:o.direction||o.pair||'RUB → THB',
     kind:(o.type==='Оплата недвижимости'||o.autoPayment?(o.kind||'Фрихолд'):''),autoPayment:!!o.autoPayment,payType:o.payType||'По реквизитам',curBase:o.curBase||'thb',
@@ -5996,7 +5998,7 @@ function render(){
   const app=document.getElementById('app');
   let main;
   if(S.edit)main=viewEdit();                       /* правка — отдельный экран, как в CRM */
-  else if(S.open){const shown=S.deals.find(d=>d.id===S.open);main=viewDeal(shown);}
+  else if(S.open){const shown=S.deals.find(d=>d.id===S.open);main=viewDeal(shown,shown?dealInquiryTypeField(shown):'');}
   else if(S.draft)main=viewCreate();
   else main=(VIEWS[S.tab]||VIEWS.tasks)();
   if(S.edit) crmDraftCapture();
@@ -6805,6 +6807,8 @@ function viewCreateBody(D,srcCard){
         ${STAND_EMPLOYEES.filter(e=>e.role==='manager'&&!e.login_disabled).map(e=>
           `<option value="${e.id}"${String(D.managerUserId)===String(e.id)?' selected':''}>${htmlText(e.display_name||e.account||e.username||'ID '+e.id)}</option>`).join('')}
       </select></div>`:''}
+    <div class="fg"><label class="fl" for="draftInquiryType">Тип сделки<span class="rq">*</span></label>
+      <select class="fc" id="draftInquiryType" onchange="draftSet('inquiryType',this.value)">${inquiryTypeOptions(D.inquiryType)}</select></div>
     <div class="fg"><label class="fl">Тип запроса<span class="rq">*</span></label>
       <div class="chips">${['Оплата недвижимости','Оплата авто','Обмен валюты'].map(x=>draftFlowChip(D,'type',x)).join('')}</div></div>
 
@@ -6813,7 +6817,7 @@ function viewCreateBody(D,srcCard){
         `<span class="chip ${pairOf(D)===x?'on':''}" onclick="draftPair(${JSON.stringify(x).replace(/"/g,'&quot;')})">${x}</span>`).join('')}</div>
       <p style="font-size:12px;color:var(--text-muted);margin-top:8px">От пары зависит, чем клиент платит и что получает.</p></div>`:''}
 
-    ${D.type==='Оплата недвижимости'?`<div class="fg"><label class="fl">Тип сделки<span class="rq">*</span></label>
+    ${D.type==='Оплата недвижимости'?`<div class="fg"><label class="fl">Тип недвижимости<span class="rq">*</span></label>
       <div class="chips">${['Лизхолд','Фрихолд','Аренда'].map(x=>draftFlowChip(D,'kind',x)).join('')}</div></div>`:''}
 
     ${(D.type==='Оплата недвижимости'&&D.kind==='Фрихолд'||D.type==='Оплата авто')?`<div class="fg"><label class="fl">Тариф IPPS<span class="rq">*</span></label>
@@ -7219,6 +7223,7 @@ function ensureClient(D){
 }
 function draftValid(){
   const D=S.draft;
+  if(!validInquiryType(D.inquiryType)){toast('Выберите тип сделки');return false;}
   if(STAND&&standMe==='admin'&&!STAND_EMPLOYEES.some(e=>e.role==='manager'&&!e.login_disabled&&String(e.id)===String(D.managerUserId))){
     D.createError='Выберите менеджера сделки';render();return false;
   }
@@ -7381,7 +7386,7 @@ function createQuick(){
 function createFull(){
   if(!draftValid())return;const D=S.draft;ensureClient(D);
   D.isOld=D.clientId?!!(clientById(D.clientId)||{}).docs:false;
-  const d=newDeal({...D,step:'manual',manual:true,...draftAmounts(D)});
+  const d=newDeal({...D,step:'manual',manual:true,...draftAmounts(D),noSave:true});
   d.log=[];
   log(d,'Сделка внесена вручную, без задачника · '+(d.type||'')+' · клиент '+(d.client||'без имени'));
   S.draft=null;S.edit=d.id;save();render();toast('Заполните остальные поля и сохраните');
@@ -7619,9 +7624,9 @@ function outgoingStatusSummary(d){
   return `<section class="outgoing-status-summary ${p.kind}" role="status" aria-label="Исходящий перевод">
     <h2>${htmlText(p.title)}</h2>${p.detail?`<p>${htmlText(p.detail)}</p>`:''}${rows.join('')}</section>`;
 }
-function viewDeal(d){
+function viewDeal(d,inquiryField=''){
   if(!d)return '<div class="card">Сделка не найдена. <button class="btn btn-sm btn-outline" onclick="back()">Назад</button></div>';
-  if(S.manualCloseDraft&&S.manualCloseDraft[d.id])return manualCloseScreen(d);
+  if(S.manualCloseDraft&&S.manualCloseDraft[d.id])return manualCloseScreen(d,inquiryField);
   const st=STEPS[d.step]||{title:(d.manual?'внесена вручную':d.step),n:'',who:null};
   const who=stepWho(d);
   const policyWallet=dealWallet(d);
@@ -7701,6 +7706,7 @@ function viewDeal(d){
     ${['manager','admin'].includes(S.role)&&!d.closed&&!d.manual&&!reviewTask?`<button class="btn btn-outline btn-sm" onclick="manualCloseAsk(${d.id})">Перенести в CRM и закрыть</button>`:''}
     ${view==='task'&&branchPath?`<div class="deal-progress"><span>${htmlText(branchPath.active==='refund'?'Возместить оплату':STEPS[branchPath.active]?.title||'Конвертация завершена')}</span>
       <b>Шаг ${branchPath.index+1} из ${branchPath.steps.length}</b><i><span style="width:${Math.round((branchPath.index+1)/Math.max(1,branchPath.steps.length)*100)}%"></span></i></div>`:''}</header>
+  ${inquiryField}
   ${view==='task'&&!d.manual&&clientPayinSummarySupported(d)?clientPayinSummary(d):''}
   ${(view==='deal'||view==='task'||view==='card')?outgoingStatusSummary(d):''}
   ${(function(){
@@ -9260,14 +9266,84 @@ function docSide(d){
 /* Редактирование сделки. Реферал меняется только здесь и на экране создания —
    выбором из списка и с явным сохранением: один клик по чипу в карточке приводил
    к случайной привязке денег. */
-function editOpen(id){S.edit=id;save();render();}
+function editOpen(id){S.edit=id;saveUi();render();}
+const pendingInquiryTypes=new Set();
+function validInquiryType(value){return value==='agent'||value==='client';}
+function inquiryTypeOptions(value){
+  return `<option value="" disabled${validInquiryType(value)?'':' selected'}>Выберите</option>`+
+    Object.entries(INQUIRY_TYPES).map(([key,label])=>`<option value="${key}"${value===key?' selected':''}>${label}</option>`).join('');
+}
+function canSetInquiryType(){
+  return ['manager','admin'].includes(S.role)&&(!STAND||['manager','admin'].includes(standMe));
+}
+function dealInquiryTypeControl(d,inEditor=false){
+  const id=inEditor?'editDealInquiryType'+d.id:'dealInquiryType';
+  return canSetInquiryType()?`<select class="fc" id="${id}" style="max-width:180px"
+    ${pendingInquiryTypes.has(d.id)?'disabled':''} ${inEditor?'':`onchange="setDealInquiryType(${d.id},this.value)"`}>${inquiryTypeOptions(d.inquiryType)}</select>`
+    :`<span>${validInquiryType(d.inquiryType)?INQUIRY_TYPES[d.inquiryType]:'Не указан'}</span>`;
+}
+function dealInquiryTypeField(d){
+  return `<div class="card" style="margin:0 0 12px"><div class="row" style="margin:0">
+    <label for="dealInquiryType" style="font-weight:600">Тип сделки</label>${dealInquiryTypeControl(d)}
+  </div></div>`;
+}
+async function setDealInquiryType(id,value,redraw=true){
+  const d=deal(id);
+  if(!d||!canSetInquiryType()||!validInquiryType(value)||d.inquiryType===value||pendingInquiryTypes.has(id))return false;
+  const draftKey=(S.open||S.tab||'')+'|editDealInquiryType'+id;
+  if(!STAND||SCREEN||SNAP){d.inquiryType=value;delete DRAFTS[draftKey];save();if(redraw)render();return true;}
+  if(standBusy||standPush||standSaveScheduled||standClosing||standVer===null){
+    toast('Дождитесь завершения сохранения и повторите');render();return false;
+  }
+  const base=standBase?.deals?.find(item=>item.id===id);
+  if(!base){toast('Дождитесь загрузки сделки');render();return false;}
+  const version=standVer;
+  let refresh=false,applied=false;
+  pendingInquiryTypes.add(id);
+  standBusy=true;
+  if(redraw)render();
+  try{
+    const response=await fetch('/api/stand/deals/'+id+'/inquiry-type',{method:'PATCH',credentials:'same-origin',
+      headers:{'Content-Type':'application/json'},body:JSON.stringify({version,inquiryType:value})});
+    const result=await response.json();
+    if(response.status===409){
+      delete DRAFTS[draftKey];
+      refresh=true;toast('Доска изменилась. Проверьте тип сделки и повторите');return false;
+    }
+    if(!response.ok||!result.success){toast(result.error||'Не удалось сохранить тип сделки');return false;}
+    delete DRAFTS[draftKey];
+    if(standVer===version){
+      standVer=result.version;
+      standGetEtag=null;
+      base.inquiryType=value;
+      const shown=deal(id);
+      if(shown)shown.inquiryType=value;
+      applied=true;
+    }else refresh=true;
+    toast('Тип сделки сохранён');
+    return applied;
+  }catch(e){
+    refresh=true;
+    toast('Не удалось подтвердить сохранение типа сделки');
+    return false;
+  }finally{
+    standBusy=false;
+    if(standPush){
+      standPush=false;standSaveScheduled=true;setTimeout(standSave,120);
+    }else if(refresh)await standPull(true);
+    pendingInquiryTypes.delete(id);
+    if((redraw||!applied)&&(S.open===id||S.edit===id))render();
+  }
+}
 function editClose(){
   const d=deal(S.edit);
+  if(d)delete DRAFTS[(S.open||S.tab||'')+'|editDealInquiryType'+d.id];
   /* Отмена на только что заведённой вручную сделке = её вообще не было */
   if(d&&d.manualNew){S.deals=S.deals.filter(x=>x.id!==d.id);toast('Черновик удалён');}
   crmDraftLive.delete(S.edit);
   S.edit=null;
-  if(!STAND||!d?.manualNew||d.originMode==='manual')save();
+  if(STAND&&d?.manualNew&&d.originMode==='manual')save();
+  else saveUi();
   render();
 }
 /* Завести сделку целиком, минуя задачник: короткие обмены и то, что прошло давно,
@@ -10218,6 +10294,12 @@ function viewEdit(){
   <div class="card edit-page">
     <div class="card-title">${d.manualNew?'Новая сделка':'Редактировать '+d.code}</div>
     <div class="fr" id="crmDraftStandHead">
+      <div class="fg"><label class="fl" for="${d.manualNew?'crmDraftInquiryType':'editDealInquiryType'+d.id}">Тип сделки${d.manualNew?'<span class="rq">*</span>':''}</label>
+        ${d.manualNew&&canSetInquiryType()?`<select class="fc" id="crmDraftInquiryType">${inquiryTypeOptions(d.inquiryType)}</select>`:
+          `<div class="row" style="margin:0">${dealInquiryTypeControl(d,true)}
+            ${canSetInquiryType()?`<button type="button" class="btn btn-outline btn-sm"
+              ${pendingInquiryTypes.has(d.id)?'disabled':''} onclick="setDealInquiryType(${d.id},val('editDealInquiryType${d.id}'))">Сохранить тип</button>`:''}
+          </div>`}</div>
       <div class="fg"><label class="fl">Откуда обращение</label>
         <select class="fc" id="crmDraftSource">${Object.keys(SOURCES).map(k=>
           `<option value="${k}"${d.source===k?' selected':''}>${SOURCES[k]}</option>`).join('')}</select></div>
@@ -10343,8 +10425,20 @@ function editRecalc(id){
   save();render();
   toast(ch.length?('Пересчитано · '+ch.length+' изм.'):'Пересчитано');
 }
-function editSave(id){
+async function editSave(id){
   const d=deal(id); const isNew=!!d.manualNew;
+  if(pendingInquiryTypes.has(id))return;
+  if(isNew&&!validInquiryType(document.getElementById('crmDraftInquiryType')?.value)){
+    toast('Выберите тип сделки');return;
+  }
+  const nextType=val('editDealInquiryType'+id);
+  const typeChanged=!isNew&&validInquiryType(nextType)&&nextType!==d.inquiryType;
+  if(typeChanged){
+    if(!await setDealInquiryType(id,nextType,false)||S.edit!==id)return;
+    if(!crmDraftHasEdits(id)){
+      crmDraftLive.delete(id);S.edit=null;render();return;
+    }
+  }
   const ch=document.getElementById('crmDraftHost')
     ?(crmDraftActive?.id===id?crmDraftCommit(id):false):editApply(id);
   if(ch===false)return;
@@ -10356,7 +10450,11 @@ function editSave(id){
     if(d.closed) log(d,'Статус при заведении: '+d.closeReason);
     S.edit=null;save();render();toast('Сделка создана: '+d.code);return;
   }
-  if(!ch.length){editClose();toast('Ничего не изменилось');return;}
+  if(!ch.length){
+    if(typeChanged){crmDraftLive.delete(id);S.edit=null;render();}
+    else {editClose();toast('Ничего не изменилось');}
+    return;
+  }
   S.edit=null;save();render();toast('Сохранено: '+ch.length+' изм.');
 }
 function markVerified(id){const d=deal(id);d.verified=!d.verified;
@@ -10499,7 +10597,7 @@ function mcHashCheck(id,which,i){
    факты сделки — строкой со значением и кнопкой «Поправить» (тот же приём, что в «Итоге
    сделки» на s27), недостающие — открытыми полями. Правильно собрать payload для отправки —
    задача 6; здесь только рендер и id/название полей, которые она будет читать. */
-function manualCloseScreen(d){
+function manualCloseScreen(d,inquiryField=''){
   const crypto=isCrypto(d), fh=d.kind==='Фрихолд', realty=d.type==='Оплата недвижимости';
   const paid=clientRubPaid(d), po=d.payout||{}, f=manualCloseFormState(d.id,d);
   const payHashes=(fh||realty)?mfList(d):(po.hashes||[]);
@@ -10649,6 +10747,7 @@ function manualCloseScreen(d){
       <p>Перенос минуя задачник — заполните то, чего не хватает, остальное уже известно.</p>
     </div>
     <button class="btn btn-outline btn-sm" onclick="manualCloseCancel(${d.id})">Отмена</button></header>
+    ${inquiryField}
     <div class="card"><div class="card-title">Получение (Pay-In)</div>${payinSection}</div>
     ${realtySection}
     <div class="card"><div class="card-title">${realty&&!fh?'Перевод в MF Corp':'Выдача (Pay-Out)'}</div>${payoutSection}</div>

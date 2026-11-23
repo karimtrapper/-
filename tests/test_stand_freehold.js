@@ -31,8 +31,11 @@ function run(fnNames, constNames, context) {
   context.SIGN={rub:'₽',thb:'฿',usdt:'USDT'};
   if (context.STAND === undefined) context.STAND = false;
   if (context.standMe === undefined) context.standMe = 'manager';
+  context.pendingInquiryTypes = new Set();
   vm.createContext(context);
-  vm.runInContext(consts(constNames) + '\n' + functions(['payCur','exchangeSpec','amountField','exchangeSync','quoteDirs','dealDisplayKind','recipientTitle',...fnNames]), context);
+  vm.runInContext(consts(['INQUIRY_TYPES',...constNames]) + '\n' +
+    functions(['payCur','exchangeSpec','amountField','exchangeSync','quoteDirs','dealDisplayKind','recipientTitle',
+      'validInquiryType','inquiryTypeOptions','canSetInquiryType',...fnNames]), context);
   return context;
 }
 function divTree(markup) {
@@ -308,7 +311,7 @@ const approxEq = (a, b, eps = 0.005) => assert.ok(Math.abs(a - b) < eps, `${a} !
     cleanNum: x => String(x).replace(/[^\d.,]/g, ''),
     payWays: () => ['Крипта','По реквизитам'],
   });
-  const D = { clientId: 1, type: 'Оплата недвижимости', kind: 'Фрихолд', payType: 'Крипта',
+  const D = { clientId: 1, inquiryType: 'client', type: 'Оплата недвижимости', kind: 'Фрихолд', payType: 'Крипта',
     sum: '45000', cur: 'fhusd', ippsTariff: 'bank', amountUsdt: null };
   ctx.S = { draft: D, thbRates: {success:true} };
   assert.equal(ctx.draftValid(), false, 'положительная сумма нужна перед созданием');
@@ -368,7 +371,7 @@ const approxEq = (a, b, eps = 0.005) => assert.ok(Math.abs(a - b) < eps, `${a} !
     cleanNum: x => String(x).replace(/[^\d.,]/g, ''),
     payWays: () => ['Крипта','По реквизитам'],
   });
-  const D = { clientId: 1, type: 'Оплата недвижимости', kind: 'Фрихолд', payType: 'По реквизитам',
+  const D = { clientId: 1, inquiryType: 'client', type: 'Оплата недвижимости', kind: 'Фрихолд', payType: 'По реквизитам',
     sum: '45000', cur: 'fhusd', ippsTariff: 'bank', invoiceCurrency: 'thb', invoiceThbAmount: '' };
   ctx.S = { draft: D, thbRates: {success:true} };
 
@@ -489,6 +492,10 @@ console.log('test_stand_freehold.js: OK');
     cleanNum:x=>String(x).replace(/[\s\u00a0]/g,'').replace(',','.'),
   });
   rendered=ctx.viewCreateBody(D,'');
+  assert.match(rendered,/id="draftInquiryType"[^>]*><option value="" disabled selected>Выберите/);
+  assert.match(rendered,/<option value="agent">Агент<\/option><option value="client">Клиент<\/option>/);
+  assert.equal(ctx.draftValid(),false);
+  ctx.draftSet('inquiryType','agent');
   assert.ok(rendered.includes('Клиент отправит, USDT'));
   assert.ok(rendered.includes('98330.00'));
   assert.ok(rendered.includes('470.00'));
@@ -559,7 +566,7 @@ console.log('test_stand_freehold.js: OK');
 
 // New crypto-freehold action starts at documents, preserving the direct plan.
 {
-  const D={clientId:1,client:'Synthetic',type:'Оплата недвижимости',kind:'Фрихолд',
+  const D={clientId:1,client:'Synthetic',inquiryType:'agent',type:'Оплата недвижимости',kind:'Фрихолд',
     payType:'Крипта',cur:'fhusd',sum:'97500',ippsTariff:'bank',amountUsdt:'98800'};
   let created;
   const ctx=run(['createGo','draftValid','draftAmounts'],[],{
@@ -570,6 +577,7 @@ console.log('test_stand_freehold.js: OK');
   });
   ctx.createGo();
   assert.equal(created.step,'s8');
+  assert.equal(created.inquiryType,'agent');
   assert.equal(created.amountUsdt,98800);
   assert.equal(created.invoiceUsd,97500);
   assert.equal(created.ippsTariff,'bank');

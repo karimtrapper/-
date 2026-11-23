@@ -192,6 +192,9 @@ def strip_browser_defaults(previous, submitted):
         before = old.get(deal.get('id'))
         if before is None:
             continue
+        # Earlier clients may submit whole deal snapshots without this field.
+        if 'inquiryType' in before and 'inquiryType' not in deal:
+            deal['inquiryType'] = before['inquiryType']
         expected = dict(defaults)
         expected.update(refKnown=before.get('refId') is not None,
             refSrc='вручную' if before.get('refId') else None,

@@ -8048,6 +8048,45 @@ def stand_transfer_approve():
         db.close()
 
 
+@app.route('/api/stand/deals/<int:deal_id>/inquiry-type', methods=['PATCH'])
+def stand_deal_inquiry_type(deal_id):
+    """Classify one stored deal without writing a browser-rendered snapshot."""
+    if not STAND_MODE:
+        return jsonify(success=False, error='stand_only'), 404
+    if current_role() not in ('manager', 'admin'):
+        return jsonify(success=False, error='Тип сделки меняет менеджер или администратор'), 403
+    payload = request.get_json(silent=True)
+    if (not isinstance(payload, dict) or set(payload) != {'inquiryType', 'version'}
+            or payload['inquiryType'] not in ('agent', 'client')
+            or type(payload['version']) is not int or payload['version'] < 0):
+        return jsonify(success=False, error='Некорректный тип сделки'), 400
+    db = get_session()
+    try:
+        if engine.dialect.name == 'sqlite':
+            from sqlalchemy import text
+            db.execute(text('BEGIN IMMEDIATE'))
+        row = db.query(StandState).filter_by(id=1).with_for_update().first()
+        if row is None:
+            return jsonify(success=False, error='Сделка не найдена'), 404
+        version = row.version or 0
+        if payload['version'] != version:
+            return jsonify(success=False, error='conflict'), 409
+        state = json.loads(row.data or '{}')
+        deal = next((d for d in state.get('deals') or [] if d.get('id') == deal_id), None)
+        if deal is None:
+            return jsonify(success=False, error='Сделка не найдена'), 404
+        if deal.get('inquiryType') != payload['inquiryType']:
+            deal['inquiryType'] = payload['inquiryType']
+            row.data = json.dumps(state, ensure_ascii=False)
+            row.version = version + 1
+            row.updated_by = flask_session.get('display_name') or flask_session.get('username')
+            row.updated_at = datetime.utcnow()
+            db.commit()
+        return jsonify(success=True, version=row.version or 0)
+    finally:
+        db.close()
+
+
 @app.route('/api/stand/state', methods=['PUT'])
 def stand_state_put():
     """Запись состояния с проверкой версии.
@@ -13595,6 +13634,12 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
         if 'closeEvidence' in deal:
             return 'Подтверждения закрытия назначает только сервер'
         before = old.get(deal.get('id'))
+        inquiry_type = deal.get('inquiryType')
+        if inquiry_type != (before or {}).get('inquiryType'):
+            if inquiry_type not in ('agent', 'client'):
+                return 'Некорректный тип сделки'
+            if actor not in ('manager', 'admin'):
+                return 'Тип сделки меняет менеджер или администратор'
         if deal.get('closeConfirmation') != (before or {}).get('closeConfirmation'):
             return 'Подтверждение итога назначает только сервер'
         if (not before and deal.get('cashPartnerUsdt')) or (before and (
@@ -13753,6 +13798,7 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
                 manager_parallel = (actor == 'manager' and (
                     changed <= {'_managerDraft'} or
                     changed <= {'payToConfirm', 'log'} or
+                    changed <= {'inquiryType', 'log'} or
                     (before.get('reqTask') == 'open' and
                      changed <= STAND_MANAGER_REQ_FIELDS) or
                     (before.get('reqTask') == 'done' and deal.get('reqTask') == 'open'

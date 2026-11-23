@@ -340,7 +340,7 @@ function crmDraftSnapshot(active) {
   active.form.querySelectorAll('input,select,textarea').forEach((el,i)=>{
     values[el.id||el.name||`#${i}`]=el.type==='checkbox'?el.checked:el.value;
   });
-  return {values,sberParts:active.core.sberParts.map(x=>({...x})),
+  return {values,edited:!!active.edited,sberParts:active.core.sberParts.map(x=>({...x})),
     payinTxPool:active.core.payinTxPool.map(x=>({...x})),
     payinExtra:active.core.payinExtra.map(x=>({...x})),
     agents:active.core.stdAgents.map(x=>({...x})),
@@ -350,6 +350,7 @@ function crmDraftSnapshot(active) {
     payoutTxPool:active.core.payoutTxPool.map(x=>({...x})),
     source:document.getElementById('crmDraftSource')?.value,
     sourceRef:document.getElementById('crmDraftSourceRef')?.value,
+    inquiryType:document.getElementById('crmDraftInquiryType')?.value,
     subtype:document.getElementById('crmDraftRealtySubtype')?.value,
     tariff:document.getElementById('crmDraftTariff')?.value,
     invoiceCurrency:document.getElementById('crmDraftInvoiceCurrency')?.value,
@@ -359,8 +360,12 @@ function crmDraftSnapshot(active) {
 function crmDraftCapture() {
   if(crmDraftActive)crmDraftLive.set(crmDraftActive.id,crmDraftSnapshot(crmDraftActive));
 }
+function crmDraftHasEdits(id) {
+  return crmDraftActive?.id===id?!!crmDraftActive.edited:!!crmDraftLive.get(id)?.edited;
+}
 function crmDraftRestore(active,snapshot) {
   if(!snapshot)return;
+  active.edited=!!snapshot.edited;
   active.form.querySelectorAll('input,select,textarea').forEach((el,i)=>{
     const v=snapshot.values[el.id||el.name||`#${i}`];
     if(v!==undefined){
@@ -394,6 +399,7 @@ function crmDraftRestore(active,snapshot) {
   if(snapshot.customUsdtMode?.payout==='usdt')active.core.onCustomUsdtInput('payout');
   if(snapshot.source!=null)document.getElementById('crmDraftSource').value=snapshot.source;
   if(snapshot.sourceRef!=null)document.getElementById('crmDraftSourceRef').value=snapshot.sourceRef;
+  if(snapshot.inquiryType!=null)crmDraftValue(document,'crmDraftInquiryType',snapshot.inquiryType);
   if(snapshot.subtype!=null){const s=document.getElementById('crmDraftRealtySubtype');if(s)s.value=snapshot.subtype;}
   if(snapshot.tariff!=null)document.getElementById('crmDraftTariff').value=snapshot.tariff;
   if(snapshot.invoiceCurrency!=null)document.getElementById('crmDraftInvoiceCurrency').value=snapshot.invoiceCurrency;
@@ -428,6 +434,8 @@ async function crmDraftMount(id) {
     shadow.append(style);
     const form=page.querySelector('#createDealForm').cloneNode(true);
     crmDraftSanitize(form);
+    const productLabel=form.querySelector('label[for="dealProductSelect"]');
+    if(productLabel)productLabel.textContent='Продукт';
     shadow.append(form);
     const active={id,host,root:shadow,form,core:null,
       clientPicked:!!deal(id)?.clientPinned};
@@ -638,6 +646,21 @@ function crmDraftSourceResolveClient(active) {
 }
 function crmDraftWire(active) {
   const {root,form}=active;
+  // A type-only save must not serialize defaults from the financial editor.
+  const markEdited=e=>{if(e.isTrusted)active.edited=true;};
+  for(const event of ['input','change']){
+    root.addEventListener(event,markEdited,true);
+    document.getElementById('crmDraftStandHead')?.addEventListener(event,e=>{
+      if(!e.target.id?.startsWith('editDealInquiryType')&&e.target.id!=='crmDraftInquiryType')markEdited(e);
+    },true);
+  }
+  root.addEventListener('click',e=>{
+    const target=e.target.closest('[data-crm-call],[data-crm-action],.custom-select-opt,[data-client],[data-client-new]');
+    if(target&&target.dataset.crmCall!=='createCustomDeal()')markEdited(e);
+  },true);
+  root.addEventListener('keydown',e=>{
+    if((e.key==='ArrowUp'||e.key==='ArrowDown')&&e.target.closest('.custom-select-btn'))markEdited(e);
+  },true);
   form.addEventListener('submit',e=>{e.preventDefault();editSave(active.id);});
   root.addEventListener('keydown',e=>{
     const btn=e.target.closest?.('.custom-select-btn');
@@ -797,7 +820,7 @@ function crmDraftWire(active) {
     add.className='btn btn-secondary';
     add.textContent='Добавить хеш';
     hashInput.parentNode.append(add);
-    add.addEventListener('click',()=>crmDraftLookupPayin(active));
+    add.addEventListener('click',e=>{markEdited(e);crmDraftLookupPayin(active);});
     hashInput.addEventListener('keydown',event=>{
       if(event.key==='Enter'){event.preventDefault();crmDraftLookupPayin(active);}
     });
@@ -942,6 +965,10 @@ function crmDraftAction(active,action,target) {
   else if(action==='payout-remove')core.removePayoutTx(i);
   crmDraftCapture();
 }
+function crmDraftCommitInquiry(d) {
+  const value=document.getElementById('crmDraftInquiryType')?.value;
+  if(validInquiryType(value))d.inquiryType=value;
+}
 function crmDraftCommitCustom(a,d,before,flow) {
   const r=a.root,num=key=>crmDraftNum(crmDraftRead(r,key));
   const payinAmount=num('customPayinAmount'),payoutAmount=num('customPayoutAmount');
@@ -967,6 +994,7 @@ function crmDraftCommitCustom(a,d,before,flow) {
   d.sourceRef=document.getElementById('crmDraftSourceRef')?.value||'';
   d.custom=true;d.type='Обмен валюты';d.kind='';
   if(!crmDraftManagerCommit(a,d))return false;
+  crmDraftCommitInquiry(d);
   if(name){
     d.client=name;d.crmClientId=crmDraftNum(crmDraftRead(r,'clientIdHidden'));
     d.clientPinned=!!a.clientPicked;
@@ -1091,6 +1119,7 @@ function crmDraftCommit(id) {
   d.type=flow.type;
   d.kind=flow.kind;
   if(!crmDraftManagerCommit(a,d))return false;
+  crmDraftCommitInquiry(d);
   const name=crmDraftRead(r,'clientSearchInput').trim();
   if(name){
     d.client=name;d.crmClientId=crmDraftNum(crmDraftRead(r,'clientIdHidden'));

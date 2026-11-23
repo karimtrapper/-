@@ -105,7 +105,7 @@ console.log('draftComboVerified: OK');
 function newDealCtx() {
   const context = { now: () => 0, SOURCES: { tg: 'Telegram' }, log: () => {} };
   vm.createContext(context);
-  vm.runInContext(fn('newDeal'), context);
+  vm.runInContext(fn('validInquiryType') + '\n' + fn('newDeal'), context);
   context.S = { seq: 1000, deals: [] };
   return context;
 }
@@ -119,8 +119,11 @@ function newDealCtx() {
 {
   const context = newDealCtx();
   const deal = context.newDeal({ type: 'Оплата недвижимости', kind: 'Фрихолд', payType: 'По реквизитам',
-    source: 'tg', step: 's5', noSave: true });
+    source: 'tg', step: 's5', inquiryType: 'agent', noSave: true });
   assert.equal(deal.unverified_flow_confirmation, undefined);
+  assert.equal(deal.inquiryType, 'agent');
+  assert.equal(deal.type, 'Оплата недвижимости');
+  assert.equal(deal.kind, 'Фрихолд');
 }
 
 console.log('ALL OK');
