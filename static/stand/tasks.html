@@ -787,6 +787,46 @@ input[type="checkbox"]:disabled{opacity:.5;cursor:not-allowed}
 .analytics-view .stat-value{font-size:var(--ds-display);font-weight:var(--ds-bold);color:var(--ds-ink)!important}
 .analytics-view .stat-label{font-size:var(--ds-body);font-weight:var(--ds-regular);color:var(--navy-600)}
 .analytics-view th{font-size:var(--ds-body);text-transform:none;letter-spacing:normal;color:var(--navy-700)}
+.analytics-view .card{margin-bottom:16px}
+.analytics-controls{display:grid;grid-template-columns:minmax(0,1.65fr) minmax(250px,1fr);gap:18px;align-items:start}
+.analytics-label,.analytics-selects label,.analytics-dates label{display:block;font-weight:600;color:var(--navy-700)}
+.analytics-presets,.analytics-dates{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.analytics-presets button{min-height:38px;padding:6px 12px;border:1px solid var(--border);border-radius:var(--r-sm);background:#fff;color:var(--navy-700);font:inherit;cursor:pointer}
+.analytics-presets button[aria-pressed=true]{border-color:var(--navy-700);background:var(--navy-700);color:#fff}
+.analytics-selects{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.analytics-selects .fc,.analytics-dates .fc{display:block;width:100%;margin-top:6px;font-weight:400}
+.analytics-dates label{flex:1 1 125px;max-width:200px;min-width:0}
+.analytics-period,.analytics-date-missing,.analytics-muted{color:var(--navy-600);font-size:13px;line-height:1.4}
+.analytics-period{margin:10px 0 0}
+.analytics-date-missing{margin:0 0 14px}
+.analytics-stats{grid-template-columns:repeat(4,minmax(0,1fr))}
+.analytics-stats .stat-card{min-width:0}
+.analytics-view .analytics-stats .stat-value{font-size:clamp(20px,2.15vw,29px);margin:4px 0}
+.analytics-stats .stat-card.info{grid-column:span 2}
+.analytics-stats .stat-card.info .stat-value{white-space:nowrap}
+.analytics-reasons,.analytics-deals{list-style:none;padding:0;margin:0}
+.analytics-reasons li+li,.analytics-deal+.analytics-deal{border-top:1px solid var(--border)}
+.analytics-reason{display:grid;grid-template-columns:minmax(0,1fr) 3ch 7ch 12px;align-items:center;gap:12px;width:100%;min-height:44px;border:0;background:none;padding:8px 10px;color:var(--navy-700);font:inherit;text-align:left;cursor:pointer}
+.analytics-reason:hover,.analytics-reason[aria-pressed=true]{background:var(--navy-50);border-radius:var(--r-sm)}
+.analytics-reason>span:first-child{overflow-wrap:anywhere}
+.analytics-reason>span:not(:first-child){text-align:right}
+.analytics-reason-count{font-weight:700}
+.analytics-results:focus{outline:2px solid var(--navy-300);outline-offset:2px}
+.analytics-deal{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(0,1fr);gap:8px 20px;padding:12px 0;overflow-wrap:anywhere}
+.analytics-deal-title{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:baseline}
+.analytics-link{font-weight:600;color:var(--navy-700);text-decoration:underline;text-underline-offset:3px}
+.analytics-results .btn{margin-top:8px}
+@media(max-width:700px){
+  .analytics-controls,.analytics-deal{grid-template-columns:minmax(0,1fr)}
+  .analytics-stats{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .analytics-deal{gap:6px;padding:14px 0}
+  .analytics-selects{gap:8px;grid-template-columns:repeat(2,minmax(0,1fr))}
+  .analytics-presets button{min-height:44px}
+}
+.analytics-table-wrap{max-width:100%;overflow:auto}
+.analytics-view .analytics-source-table td:not(:first-child){white-space:nowrap}
+.deal-analytics-back{margin:0 0 12px}
+
 .deal-screen .task-action{background:var(--ds-surface);border:1px solid var(--ds-border);border-radius:var(--ds-card);padding:var(--ds-xl);margin-bottom:var(--ds-md)}
 .deal-screen .client-payin-summary{display:flex;align-items:center;gap:8px 20px;flex-wrap:wrap;padding:12px 16px;margin-bottom:var(--ds-md);background:var(--ds-money);border:1px solid var(--ds-money-border);border-radius:var(--ds-card);color:var(--ds-money-ink)}
 .deal-screen .client-payin-summary.empty{background:var(--ds-page);border-color:var(--ds-border);color:var(--ds-muted)}
@@ -1169,7 +1209,7 @@ async function standPull(force){
   const requestedVersion=standVer;
   standPullPending=true;
   try{
-    const r=await fetch('/api/stand/state',{credentials:'same-origin',
+    const r=await fetch(S.tab==='analytics'?'/api/stand/state?read_only=1':'/api/stand/state',{credentials:'same-origin',
       headers:!force&&standVer!==null&&standGetEtag?{'If-None-Match':standGetEtag}:{}});
     if(r.status===401){location.href='/login';return;}
     if(r.status===304)return;
@@ -5906,7 +5946,7 @@ function s18ToggleCrm(id){
   const d=deal(S.open);if(d){d.brokerCrmDraftIds=[...s18Selected];save();}render();
 }
 async function s18FetchCandidates(){
-  if(!STAND||!['operator','admin'].includes(standMe))return;
+  if(!STAND||S.tab==='analytics'||!['operator','admin'].includes(standMe))return;
   try{
     const r=await fetch('/api/stand/s18/sber-candidates',{credentials:'same-origin'});
     const j=await r.json();if(!j.success)return;
@@ -5958,12 +5998,13 @@ function syncTaskHeaderLink(){
   const label=S.tab==='analytics'?'Аналитика':'Задачник';
   if(title.tagName===tag.toUpperCase()){
     if(title.textContent!==label)title.textContent=label;
+    if(S.open)title.href=S.tab==='analytics'?'/tasks?section=analytics':'/tasks';
     return;
   }
   const next=document.createElement(tag);
   next.className='task-mobile-title';
   next.textContent=label;
-  if(S.open)next.href='/tasks';
+  if(S.open)next.href=S.tab==='analytics'?'/tasks?section=analytics':'/tasks';
   title.replaceWith(next);
 }
 function render(){
@@ -5998,7 +6039,12 @@ function render(){
   const app=document.getElementById('app');
   let main;
   if(S.edit)main=viewEdit();                       /* правка — отдельный экран, как в CRM */
-  else if(S.open){const shown=S.deals.find(d=>d.id===S.open);main=viewDeal(shown,shown?dealInquiryTypeField(shown):'');}
+  else if(S.open){
+    const shown=S.deals.find(d=>d.id===S.open);
+    const analyticsBack=S.tab==='analytics'
+      ?'<button type="button" class="btn btn-outline btn-sm deal-analytics-back" onclick="analyticsCloseDeal()">‹ К аналитике</button>':'';
+    main=analyticsBack+viewDeal(shown,shown?dealInquiryTypeField(shown):'');
+  }
   else if(S.draft)main=viewCreate();
   else main=(VIEWS[S.tab]||VIEWS.tasks)();
   if(S.edit) crmDraftCapture();
@@ -6063,6 +6109,7 @@ function restoreTaskListScroll(){
   }));
 }
 function closeTaskToList(){
+  if(S.open&&S.tab==='analytics'){analyticsCloseDeal();return;}
   if(taskCardHistoryPushed){history.back();return;}
   closeTaskView();
 }
@@ -6075,12 +6122,21 @@ function pushTaskCardHistory(wasOpen){
   taskCardHistoryPushed=true;
 }
 window.addEventListener('popstate',()=>{
+  if(S.tab==='analytics'&&new URLSearchParams(location.search).get('section')==='analytics'){
+    analyticsCardFromURL();render();
+    if(S.open)window.scrollTo(0,0);
+    else if(analyticsReturnScroll!==null)requestAnimationFrame(()=>window.scrollTo(0,analyticsReturnScroll));
+    return;
+  }
   if(!taskCardHistoryPushed)return;
   taskCardHistoryPushed=false;
   if(S.open)closeTaskView();
 });
 document.addEventListener('click',event=>{
   if(!S.open||!mobileTaskCard())return;
+  if(S.tab==='analytics'&&event.target.closest?.('.task-mobile-title')){
+    event.preventDefault();event.stopPropagation();analyticsCloseDeal();return;
+  }
   if(!event.target.closest?.('a[href="/tasks"]'))return;
   event.preventDefault();event.stopPropagation();
   closeTaskToList();
@@ -6113,6 +6169,7 @@ function nextTask(){
 function setInspectRole(role){S.inspectRole=role;saveUi();render();}
 function setView(v){S.view=v;saveUi();render();}
 function back(){
+  if(S.open&&S.tab==='analytics'){analyticsCloseDeal();return;}
   if(S.open&&(mobileTaskCard()||taskCardHistoryPushed)){closeTaskToList();return;}
   S.open=null;S.draft=null;saveUi();render();
 }
@@ -14024,30 +14081,331 @@ function viewConvs(){
 }
 
 /* ---------- аналитика ---------- */
+const ANALYTICS_ZONE='Asia/Bangkok';
+const ANALYTICS_DATE=new Intl.DateTimeFormat('sv-SE',{timeZone:ANALYTICS_ZONE,year:'numeric',month:'2-digit',day:'2-digit'});
+const ANALYTICS_LEGACY_CLOCK=new Intl.DateTimeFormat('ru-RU',{
+  timeZone:ANALYTICS_ZONE,day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23',
+});
+const ANALYTICS_WINDOWS={last7:'7 дней',last30:'30 дней',month:'Этот месяц',all:'Всё время',custom:'Свой период'};
+const ANALYTICS_RATE_REASON='Не устроил курс';
+const ANALYTICS_WON='Успешно завершена';
+const analyticsFilters={period:'last30',basis:'created',inquiry:'all',source:'all',from:'',to:'',reason:null,limit:25};
+const ANALYTICS_TYPES={...INQUIRY_TYPES,unknown:'Не указано'};
+let analyticsChannels=new Map();
+let analyticsReturnScroll=null;
+
+function analyticsIndexChannels(){
+  const index=new Map();
+  for(const channel of ['tg','wa','bitrix']){
+    const byRef=new Map();
+    for(const row of chatList(channel)){
+      if(typeof row.account!=='string'||!row.account||typeof row.id!=='string'||!row.id)continue;
+      const key=row.account+':'+row.id;
+      // Отдельные пары аккаунта и ID могут дать одинаковую строку со знаком «:».
+      byRef.set(key,byRef.has(key)?null:row);
+    }
+    index.set(channel,byRef);
+  }
+  analyticsChannels=index;
+}
+function analyticsInquiry(d){
+  return validInquiryType(d.inquiryType)?d.inquiryType:'unknown';
+}
+function analyticsSource(d){
+  return Object.hasOwn(SOURCES,d.source)?d.source:'unknown';
+}
+function analyticsDateKey(value){
+  if(typeof value==='number'){
+    const t=new Date(value);
+    return value>=1e11&&Number.isFinite(t.getTime())?ANALYTICS_DATE.format(t):'';
+  }
+  if(typeof value!=='string')return '';
+  const ru=value.match(/^(\d{2})\.(\d{2})\.(\d{4})(?:,? \d{2}:\d{2})?$/);
+  const date=ru?ru[3]+'-'+ru[2]+'-'+ru[1]:value.slice(0,10);
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(date))return '';
+  const midnight=Date.parse(date+'T00:00:00Z');
+  if(!Number.isFinite(midnight)||new Date(midnight).toISOString().slice(0,10)!==date)return '';
+  if(ru||value===date)return date;
+  if(!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:\d{2})?$/.test(value))return '';
+  return analyticsDateKey(Date.parse(/(?:Z|[+-]\d{2}:\d{2})$/.test(value)?value:value+'Z'));
+}
+function analyticsDealDate(d,basis){
+  if(basis==='created'){
+    const saved=analyticsDateKey(d.createdTs)||analyticsDateKey(d.createdAt);
+    if(saved)return saved;
+    const first=d.log?.[0];
+    if(!first)return '';
+    if(first.kind!=='comment'){
+      return /^Сделка (?:создана|внесена вручную)(?:$| · |, без задачника · )/.test(first.text||'')
+        ?analyticsDateKey(first.at)||analyticsDateKey(first.ts):'';
+    }
+    const date=analyticsDateKey(first.at);
+    if(!date||!Array.isArray(d.log)||
+       !/^Комментарий · [^\r\n]+?: Сделка (?:создана · |внесена вручную, без задачника · )/.test(first.text||''))return '';
+    // Сервер хранил исходный журнал браузера как комментарии. Дату даёт
+    // связанное системное событие первой передачи, включая старый формат.
+    const handoff=d.log.find(entry=>entry&&entry.kind!=='comment');
+    if(!handoff||!Number.isFinite(handoff.at)||handoff.at<first.at||handoff.at-first.at>=10000)return '';
+    if(handoff.text==='Шаг передан дальше'&&handoff.role===first.role)return date;
+    const legacyStamp=typeof d.createdAt==='string'&&d.createdAt.replace(',','');
+    const legacyHandoff=first.role==='manager'&&handoff.role==='system'&&
+      /^Переход новая заявка → s[45] · manager$/.test(handoff.text||'')&&
+      legacyStamp===ANALYTICS_LEGACY_CLOCK.format(first.at).replace(',','');
+    return legacyHandoff?date:'';
+  }
+  if(!d.closed)return '';
+  const saved=analyticsDateKey(d.closedAt)||analyticsDateKey(d.closedTs);
+  if(saved)return saved;
+  const events=Array.isArray(d.log)?d.log:[];
+  for(let i=events.length-1;i>=0;i--){
+    const entry=events[i];
+    const text=typeof entry?.text==='string'&&entry.kind!=='comment'?entry.text:'';
+    const closeEntry=typeof d.closeReason==='string'&&
+      (text==='Закрыта: '+d.closeReason||text==='Закрыта сразу: '+d.closeReason);
+    const transferEntry=d.serverSettled===true&&d.closeReason===ANALYTICS_WON&&
+      (text.startsWith('Закрыта: перевод подтверждён — ')||
+       (entry?.role==='system'&&text.startsWith('Проверка отправки завершена')));
+    if((closeEntry||transferEntry)&&(!entry.ts||entry.ts===d.closedAt||!d.closedAt)){
+      const date=analyticsDateKey(entry.at)||analyticsDateKey(entry.ts);
+      if(date)return date;
+    }
+  }
+  return '';
+}
+function analyticsPeriod(filters,today=analyticsDateKey(Date.now())){
+  if(filters.period==='all')return {from:'',to:''};
+  if(filters.period==='custom')return {from:filters.from,to:filters.to,
+    invalid:!analyticsDateKey(filters.from)||!analyticsDateKey(filters.to)||filters.from>filters.to};
+  if(filters.period==='month')return {from:today.slice(0,7)+'-01',to:today};
+  const days=filters.period==='last7'?7:30;
+  const start=new Date(Date.parse(today+'T00:00:00Z')-(days-1)*86400000);
+  return {from:start.toISOString().slice(0,10),to:today};
+}
+function analyticsDateLabel(date){
+  return date?date.split('-').reverse().join('.'):'Дата неизвестна';
+}
+function analyticsSetFilter(key,value){
+  if(key==='period'&&value==='custom'&&!analyticsFilters.from){
+    const {from,to}=analyticsPeriod(analyticsFilters.period==='all'?{period:'last30'}:analyticsFilters);
+    analyticsFilters.from=from;analyticsFilters.to=to;
+  }
+  analyticsFilters[key]=value;
+  analyticsFilters.reason=null;
+  analyticsFilters.limit=25;
+  render();
+}
+function analyticsReason(d){
+  const value=typeof d.closeReason==='string'?d.closeReason.trim().replace(/\s+/g,' '):'';
+  return CLOSE_REASONS.find(reason=>reason.toLocaleLowerCase('ru-RU')===value.toLocaleLowerCase('ru-RU'))||value;
+}
+function analyticsSummary(rows){
+  let won=0,lost=0,rateLost=0,turnover=0;
+  rows.forEach(({d})=>{
+    if(!d.closed)return;
+    if(d.closeReason===ANALYTICS_WON){
+      won++;
+      const rub=Number(d.amountRub);
+      if(Number.isFinite(rub))turnover+=rub;
+    }else{
+      lost++;
+      if(analyticsReason(d)===ANALYTICS_RATE_REASON)rateLost++;
+    }
+  });
+  return {all:rows.length,won,lost,rateLost,turnover,open:rows.length-won-lost};
+}
+function analyticsData(deals,filters,period){
+  const base=deals.filter(d=>!d.manualNew&&(filters.basis!=='closed'||d.closed))
+    .filter(d=>filters.inquiry==='all'||analyticsInquiry(d)===filters.inquiry)
+    .filter(d=>!filters.source||filters.source==='all'||analyticsSource(d)===filters.source)
+    .map(d=>({d,date:!period.invalid?analyticsDealDate(d,filters.basis):''}));
+  const unknownDates=period.invalid?0:base.filter(row=>!row.date).length;
+  const rows=period.invalid?[]:base.filter(({date})=>!period.from||(date>=period.from&&date<=period.to));
+  const availableDates=rows.map(row=>row.date).filter(Boolean).sort();
+  const reasons=new Map();
+  rows.forEach(row=>{
+    if(row.d.closed&&row.d.closeReason!==ANALYTICS_WON){
+      const reason=analyticsReason(row.d);
+      if(!reasons.has(reason))reasons.set(reason,[]);
+      reasons.get(reason).push(row);
+    }
+  });
+  return {rows,reasons,unknownDates,firstDate:availableDates[0],lastDate:availableDates.at(-1)};
+}
+function analyticsPercent(count,total){
+  return total?new Intl.NumberFormat('ru-RU',{style:'percent',maximumFractionDigits:1}).format(count/total):'—';
+}
+function standDealConversation(d){
+  if(!d.sourceRef||d.srefOther||d.source==='none')return null;
+  const channel=analyticsChannels.get(d.source)?.get(d.sourceRef);
+  const id=String(channel?.id||'');
+  let href='';
+  if(d.source==='tg'&&/^-?[1-9]\d{0,18}$/.test(id)){
+    href='https://web.telegram.org/a/#'+id;
+  }else if(d.source==='wa'){
+    const phone=id.match(/^([1-9][0-9]{6,14})@(?:s\.whatsapp\.net|c\.us)$/)?.[1]||
+      id.match(/^\+([1-9][0-9]{6,14})$/)?.[1];
+    if(phone)href='https://wa.me/'+phone;
+  }else if(d.source==='bitrix'){
+    const syncId=d.bitrixSync?.bitrix_deal_id;
+    const synced=Number.isSafeInteger(syncId)&&syncId>0 ? String(syncId) : '';
+    const verifiedId=channel?.account==='Grusha'?id:synced;
+    if(/^[1-9]\d*$/.test(verifiedId)&&d.sourceRef==='Grusha:'+verifiedId){
+      href='https://b24-1tgrla.bitrix24.com/crm/deal/details/'+verifiedId+'/';
+    }
+  }
+  return {href,name:channel?.name||d.sourceRef,account:channel?.account||''};
+}
+function standConversationAction(d,chat=standDealConversation(d)){
+  if(!chat?.href)return '<span class="analytics-muted">'+
+    (d.sourceRef&&d.source!=='none'?'Ссылка недоступна':'Переписка не привязана')+'</span>';
+  const label=d.source==='bitrix'?'Открыть в Битриксе':'Открыть '+SOURCES[d.source];
+  const description=[chat.name,chat.account].filter(Boolean).join(' · ');
+  return '<a class="analytics-link" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer" href="'+
+    htmlText(chat.href)+'" title="'+htmlText(description)+'">'+label+' ↗</a>';
+}
+function analyticsPickReason(button){
+  analyticsFilters.reason=button.dataset.reason;
+  analyticsFilters.limit=25;
+  render();
+  document.getElementById('analyticsReasonResults')?.focus();
+}
+function analyticsMore(){
+  analyticsFilters.limit+=25;
+  render();
+}
+function analyticsDealUrl(id){
+  return '/tasks?section=analytics&deal='+encodeURIComponent(id);
+}
+function analyticsOpenDeal(event){
+  if(event.button!==0||event.metaKey||event.ctrlKey||event.shiftKey||event.altKey)return;
+  const id=Number(event.currentTarget.dataset.deal);
+  if(!deal(id))return;
+  event.preventDefault();
+  analyticsReturnScroll=window.scrollY;
+  history.pushState({__calccrmAnalyticsDeal:true},'',analyticsDealUrl(id));
+  S.open=id; S.view='deal'; S.taskBranch=null;
+  render();
+  window.scrollTo(0,0);
+}
+function analyticsCloseDeal(){
+  if(history.state?.__calccrmAnalyticsDeal){history.back();return;}
+  history.replaceState(null,'','/tasks?section=analytics');
+  S.open=null;S.draft=null;S.edit=null;
+  render();
+}
+function analyticsCardFromURL(){
+  const ref=new URLSearchParams(location.search).get('deal');
+  S.open=S.deals.find(d=>String(d.id)===ref)?.id??null;
+  S.view='deal';S.taskBranch=null;S.draft=null;S.edit=null;
+  if(ref&&S.open===null)toast('Сделка не найдена');
+}
+function analyticsGroupTable(rows,groups,groupFor,label){
+  return '<div class="analytics-table-wrap" tabindex="0" role="region" aria-label="'+label+
+    '"><table class="analytics-source-table"><thead><tr><th>'+label+
+    '</th><th>Сделок</th><th>Завершено</th><th>Закрыто отказом</th><th>Оборот</th></tr></thead><tbody>'+
+    Object.entries(groups).map(([key,name])=>{
+      const m=analyticsSummary(rows.filter(({d})=>groupFor(d)===key));
+      return '<tr><td><b>'+name+'</b></td><td class="num">'+m.all+'</td><td class="num">'+m.won+
+        '</td><td class="num">'+m.lost+'</td><td class="num">'+moneyKop(m.turnover,'₽')+'</td></tr>';
+    }).join('')+'</tbody></table></div>';
+}
+function analyticsDealFacts(d){
+  const product=d.autoPayment?'Оплата авто':d.type==='Обмен валюты'&&PAIRS.includes(d.pair)
+    ?'Обмен валюты · '+d.pair:dealDisplayKind(d)||d.type;
+  const amounts={
+    thb:[d.amountThb,'฿'],rub:[d.amountRub,'₽'],usdt:[d.amountUsdt,'USDT'],usd:[d.invoiceUsd,'USD'],
+  };
+  let amount=amounts[d.curBase];
+  if(d.autoPayment)amount=d.autoRequestMode==='rub'?[d.requestedRub,'₽']:[d.requestedUsd,'USD'];
+  else if(d.custom&&d.customData&&['RUB','THB','USDT','USD'].includes(d.customData.payinCurrency))
+    amount=[d.customData.payinAmount,d.customData.payinCurrency];
+  else if(d.kind==='Фрихолд')
+    amount=d.invoiceCurrency==='thb'?[d.invoiceThb,'฿']:amounts.usd;
+  const hasAmount=pair=>pair&&Number.isFinite(Number(pair[0]))&&Number(pair[0])>0;
+  if(!hasAmount(amount))amount=Object.values(amounts).find(hasAmount);
+  return [product,hasAmount(amount)?moneyKop(...amount):''].filter(Boolean).join(' · ');
+}
+function analyticsReasonDeals(reasons,reason){
+  if(reason===null)return '';
+  const rows=(reasons.get(reason)||[]).map(({d})=>({d,date:analyticsDealDate(d,'closed')}))
+    .sort((a,b)=>b.date.localeCompare(a.date)||Number(b.d.id)-Number(a.d.id));
+  const cards=rows.slice(0,analyticsFilters.limit).map(({d,date})=>{
+    const code=htmlText(d.code||'СД-'+d.id);
+    const link=Number.isSafeInteger(d.id)&&d.id>0
+      ?'<a class="analytics-link" data-deal="'+d.id+'" href="'+analyticsDealUrl(d.id)+'" onclick="analyticsOpenDeal(event)">'+code+'</a>'
+      :code;
+    const chat=standDealConversation(d);
+    const source=[SOURCES[analyticsSource(d)]||'Источник не указан',chat?.name||d.sourceRef,chat?.account]
+      .filter(Boolean).join(' · ');
+    const created=analyticsDealDate(d,'created');
+    const dates=[created?'Создана '+analyticsDateLabel(created):'Дата создания неизвестна',
+      date?'Закрыта '+analyticsDateLabel(date):'Дата закрытия неизвестна'].join(' · ');
+    return '<li class="analytics-deal"><div><div class="analytics-deal-title">'+link+
+      '<strong>'+htmlText(d.client||'Клиент не указан')+'</strong></div><div class="analytics-muted">'+
+      htmlText(dates)+'</div><div class="analytics-muted">'+
+      htmlText([ANALYTICS_TYPES[analyticsInquiry(d)],d.manager].filter(Boolean).join(' · '))+
+      '</div><div class="analytics-muted">'+htmlText(analyticsDealFacts(d))+
+      '</div></div><div><div class="analytics-muted">'+htmlText(source)+'</div>'+standConversationAction(d,chat)+'</div></li>';
+  }).join('');
+  return '<section class="card analytics-results" id="analyticsReasonResults" tabindex="-1"><h2 class="card-title">'+
+    htmlText(reason||'Причина не указана')+' <span class="sub">'+rows.length+' '+plural(rows.length,'сделка','сделки','сделок')+'</span></h2>'+
+    (rows.length?'<ul class="analytics-deals">'+cards+'</ul>':'<p class="empty">По этой причине больше нет сделок в выбранном периоде.</p>')+
+    (rows.length>analyticsFilters.limit?'<button type="button" class="btn btn-outline btn-sm" onclick="analyticsMore()">Показать ещё сделки</button>':'')+'</section>';
+}
 function viewAnalytics(){
-  const bySrc={};Object.keys(SOURCES).forEach(k=>bySrc[k]={all:0,won:0,lost:0,sum:0});
-  S.deals.forEach(d=>{const b=bySrc[d.source];if(!b)return;b.all++;
-    if(d.closed&&d.closeReason==='Успешно завершена'){b.won++;b.sum+=d.amountRub||0;}
-    else if(d.closed)b.lost++;});
-  const reasons={};S.deals.filter(d=>d.closed&&d.closeReason!=='Успешно завершена').forEach(d=>{reasons[d.closeReason]=(reasons[d.closeReason]||0)+1;});
-  const won=S.deals.filter(d=>d.closed&&d.closeReason==='Успешно завершена');
-  const turnover=won.reduce((s,d)=>s+(d.amountRub||0),0);
-  return `<div class="analytics-view"><div class="page-h">Аналитика</div>
-  <div class="stats-grid">
-    <div class="stat-card"><div class="stat-value num">${S.deals.length}</div><div class="stat-label">сделок всего</div></div>
-    <div class="stat-card success"><div class="stat-value num">${won.length||'—'}</div><div class="stat-label">завершено</div></div>
-    <div class="stat-card danger"><div class="stat-value num">${S.deals.filter(d=>d.closed&&d.closeReason!=='Успешно завершена').length||'—'}</div><div class="stat-label">отказов</div></div>
-    <div class="stat-card info"><div class="stat-value num">${turnover?turnover.toLocaleString('ru-RU'):'—'}</div><div class="stat-label">оборот, ₽</div></div>
-  </div>
-  <div class="card"><div class="card-title">По источникам</div>
-  <table class="analytics-source-table"><thead><tr><th>Источник</th><th>Сделок</th><th>Завершено</th><th>Закрыто отказом</th><th>Оборот</th></tr></thead><tbody>
-  ${Object.keys(SOURCES).map(k=>`<tr><td><b>${SOURCES[k]}</b></td><td class="num">${bySrc[k].all}</td>
-    <td class="num">${bySrc[k].won}</td><td class="num">${bySrc[k].lost}</td><td class="num">${money(bySrc[k].sum,'₽')}</td></tr>`).join('')}
-  </tbody></table></div>
-  <div class="card"><div class="card-title">Почему закрывали</div>
-  ${Object.keys(reasons).length?`<table><thead><tr><th>Причина</th><th>Сколько</th></tr></thead><tbody>
-  ${Object.entries(reasons).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`<tr><td>${k}</td><td class="num">${v}</td></tr>`).join('')}</tbody></table>`:
-  `<div class="empty">Отказов пока нет. Закройте сделку с причиной — появится строка.</div>`}</div></div>`;
+  if(standLoadError)return '<div class="analytics-view"><h1 class="page-h">Аналитика</h1>'+
+    '<div class="card empty"><p>Не удалось загрузить сделки.</p>'+
+    '<button type="button" class="btn btn-outline" onclick="standPull(true)">Повторить загрузку</button></div></div>';
+  const f=analyticsFilters,p=analyticsPeriod(f);
+  const {rows,reasons,unknownDates,firstDate,lastDate}=analyticsData(S.deals,f,p);
+  const m=analyticsSummary(rows),closed=m.won+m.lost;
+  const dateRange=(from,to)=>analyticsDateLabel(from)+' — '+analyticsDateLabel(to)+' · время Таиланда';
+  const periodLabel=p.invalid?'Укажите корректный диапазон дат.':p.from?dateRange(p.from,p.to):
+    firstDate?'Всё время · '+dateRange(firstDate,lastDate):'Всё время · время Таиланда';
+  const preset=Object.entries(ANALYTICS_WINDOWS).map(([key,label])=>'<button type="button" aria-pressed="'+
+    (f.period===key)+'" onclick="analyticsSetFilter(\'period\',\''+key+'\')">'+label+'</button>').join('');
+  const dateField=(key,label)=>'<label for="analytics-'+key+'">'+label+
+    '<input type="date" id="analytics-'+key+'" class="fc" value="'+htmlText(f[key])+
+    '" onchange="analyticsSetFilter(\''+key+'\',this.value)"></label>';
+  const sources={...SOURCES};
+  if(analyticsFilters.source==='unknown'||S.deals.some(d=>analyticsSource(d)==='unknown'))
+    sources.unknown='Источник не указан';
+  const filterChoices=(groups,selected,all)=>'<option value="all">'+all+'</option>'+
+    Object.entries(groups).map(([key,label])=>'<option value="'+key+'"'+
+      (selected===key?' selected':'')+'>'+label+'</option>').join('');
+  const stat=(label,value,details='',tone='')=>'<div class="stat-card '+tone+'"><div class="stat-label">'+label+
+    '</div><div class="stat-value num">'+value+'</div>'+(details?'<div class="analytics-muted">'+details+'</div>':'')+'</div>';
+  const reasonRows=[...reasons].sort((a,b)=>b[1].length-a[1].length||a[0].localeCompare(b[0],'ru')).map(([reason,list])=>
+    '<li><button type="button" class="analytics-reason" data-reason="'+htmlText(reason)+'" aria-pressed="'+(f.reason===reason)+
+      '" onclick="analyticsPickReason(this)"><span>'+htmlText(reason||'Причина не указана')+
+      '</span><span class="analytics-reason-count num">'+list.length+'</span><span class="analytics-muted num">'+
+      analyticsPercent(list.length,m.lost)+'</span><span aria-hidden="true">›</span></button></li>').join('');
+  return '<div class="analytics-view"><h1 class="page-h">Аналитика</h1>'+
+    '<section class="card analytics-controls" aria-label="Фильтры аналитики"><div><div class="analytics-label">Период</div>'+
+    '<div class="analytics-presets" role="group" aria-label="Период">'+preset+'</div>'+
+    (f.period==='custom'?'<div class="analytics-dates">'+dateField('from','С')+dateField('to','По')+'</div>':'')+
+    '<p class="analytics-period" role="status">'+periodLabel+'</p></div>'+
+    '<div class="analytics-selects"><label for="analytics-basis">Считать по дате<select id="analytics-basis" class="fc" onchange="analyticsSetFilter(\'basis\',this.value)">'+
+    '<option value="created">Создания</option><option value="closed"'+(f.basis==='closed'?' selected':'')+'>Закрытия</option></select></label>'+
+    '<label for="analytics-inquiry">Тип сделки<select id="analytics-inquiry" class="fc" onchange="analyticsSetFilter(\'inquiry\',this.value)">'+
+    filterChoices(ANALYTICS_TYPES,f.inquiry,'Все типы')+'</select></label>'+
+    '<label for="analytics-source">Источник<select id="analytics-source" class="fc" onchange="analyticsSetFilter(\'source\',this.value)">'+
+    filterChoices(sources,f.source,'Все источники')+'</select></label></div></section>'+
+    (unknownDates?'<p class="analytics-date-missing">'+
+      (p.from?'Исключено сделок без точной даты: ':'Сделок без точной даты: ')+unknownDates+'.</p>':'')+
+    (p.invalid?'':'<div class="stats-grid analytics-stats">'+stat('Сделок в задачнике',m.all)+
+      (f.basis==='created'?stat('Открыто сейчас',m.open):'')+stat('Успешно закрыто',m.won,'','success')+
+      stat('Закрыто отказом',m.lost,'','danger')+stat('Конверсия закрытых',analyticsPercent(m.won,closed),m.won+' из '+closed+' закрытых')+
+      stat('Отказы из-за курса',analyticsPercent(m.rateLost,m.lost),m.rateLost+' из '+m.lost+' отказов')+
+      stat('Оборот успешных',moneyKop(m.turnover,'₽'),'','info')+'</div>'+
+      (!rows.length?'<p class="card empty">В выбранном периоде по этому фильтру сделок нет.</p>':'')+
+      '<section class="card"><h2 class="card-title">Причины отказов</h2>'+
+      (reasonRows?'<ul class="analytics-reasons" aria-label="Причины отказов">'+reasonRows+'</ul>':'<p class="empty">За выбранный период отказов нет.</p>')+'</section>'+
+      analyticsReasonDeals(reasons,f.reason)+
+      '<section class="card"><h2 class="card-title">По типу сделки</h2>'+
+      analyticsGroupTable(rows,ANALYTICS_TYPES,analyticsInquiry,'Тип сделки')+'</section>'+
+      '<section class="card"><h2 class="card-title">По источникам</h2>'+
+      analyticsGroupTable(rows,sources,analyticsSource,'Источник')+'</section>')+'</div>';
 }
 
 /* ---------- рефералы ---------- */
@@ -14521,6 +14879,7 @@ async function fetchChannels() {
       TG_CHATS = setKey(json.data.tg || []);
       WA_CHATS = setKey(json.data.wa || []);
       BX_DEALS = setKey(json.data.bitrix || []);
+      analyticsIndexChannels();
     }
   } catch (e) {
     console.error("fetchChannels error", e);
@@ -14549,20 +14908,25 @@ async function standBoot(){
   await fetchCrmClients();
   await fetchDealFlowConfig();
   await standPull(true);
-  for(const pendingClose of crmClosePendingAll())await crmCloseRecover(pendingClose.id);
+  if(S.tab!=='analytics'){
+    for(const pendingClose of crmClosePendingAll())await crmCloseRecover(pendingClose.id);
+  }
   await s18FetchCandidates();
   await checkDocParseCapability();
   await fetchSberMirrorStatus();
   fetchMarket().then(ok=>{if(ok)render();});
   loadCrmWallets();
-  if(!refs().some(r=>r.prod)) refsSync(true);
+  if(S.tab!=='analytics'&&!refs().some(r=>r.prod))refsSync(true);
   setInterval(()=>fetchMarket().then(ok=>{if(ok&&!standTyping())render();}),300000);
   /* Доска как в проде: пустая, без примеров (Карим, 25.09) */
   if(new URLSearchParams(location.search).has('notifications')) S.notesOpen=true;
   render();
   standOpenFromLink();
   setInterval(()=>standPull(false),2500);
-  setInterval(fetchChannels, 60000);
+  setInterval(async()=>{
+    await fetchChannels();
+    if(S.tab==='analytics'&&!S.open&&!standTyping())render();
+  },60000);
   setInterval(fetchSberMirrorStatus,60000);
   setInterval(s18FetchCandidates,60000);
   setInterval(checkDocParseCapability,60000);
@@ -14572,6 +14936,10 @@ async function standBoot(){
    Без этого ссылка вела на общий список и человек искал сделку глазами. */
 function standOpenFromLink(){
   const q=new URLSearchParams(location.search), ref=q.get('deal');
+  if(q.get('section')==='analytics'){
+    analyticsCardFromURL();render();
+    return;
+  }
   if(!ref)return;
   const d=S.deals.find(x=>String(x.id)===String(ref)||x.code===ref);
   if(!d){toast('Сделка '+ref+' не найдена — возможно, доску сбросили');return;}

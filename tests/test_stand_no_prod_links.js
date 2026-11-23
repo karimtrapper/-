@@ -1,14 +1,15 @@
 // Задачник стенда не должен содержать боевых Telegram-ссылок на брокеров/Coins,
 // боевого бота рефералов и прод-домен калькулятора (Карим, 27.09 — T7).
-// Разрешены только: placeholder-подсказки в полях ввода ("t.me/название, @username…")
-// и cpNorm() — она приводит РУЧНОЙ ввод пользователя в ссылку для чужого поля, а не
-// открывает её сама (cpLink всегда возвращает null на стенде).
+// Допустимы подсказки, нормализация ручного ввода (cpLink остаётся отключён)
+// и открытие подтверждённого личного чата из отчёта по сделкам.
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
 const html = fs.readFileSync(path.join(__dirname, '../static/stand/tasks.html'), 'utf8');
 const lines = html.split('\n');
+const conversationStart = lines.findIndex(line => line === 'function standDealConversation(d){');
+const conversationEnd = lines.findIndex((line, i) => i > conversationStart && line === '}');
 
 const ALLOWED_SUBSTRINGS = [
   "placeholder=\"t.me/название, @username или ссылка-приглашение\"",
@@ -18,14 +19,16 @@ const ALLOWED_SUBSTRINGS = [
   '   В приватной группе (t.me/c/…) и по ссылке-приглашению Telegram текст не принимает —',
 ];
 
-function isAllowed(line) {
-  return ALLOWED_SUBSTRINGS.some(s => line.includes(s));
+function isAllowed(line, i) {
+  const isDealConversationLink = conversationStart >= 0 && i > conversationStart && i < conversationEnd
+    && line.trim() === "if(phone)href='https://wa.me/'+phone;";
+  return isDealConversationLink || ALLOWED_SUBSTRINGS.some(s => line.includes(s));
 }
 
 const patterns = [/wa\.me/, /t\.me\//, /grusha\.up\.railway\.app/, /Grushath_bot/, /grusha_lk_bot/];
 const offenders = [];
 lines.forEach((line, i) => {
-  if (isAllowed(line)) return;
+  if (isAllowed(line, i)) return;
   for (const re of patterns) {
     if (re.test(line)) { offenders.push(`${i + 1}: ${line.trim()}`); break; }
   }

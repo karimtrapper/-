@@ -6018,22 +6018,27 @@ def stand_state_get():
         return jsonify({'success': False, 'error': 'stand_only'}), 404
     import doc_agents
     from stand_funding import ACCOUNT_ALIASES
+    read_only = request.args.get('read_only') == '1'
     db = get_session()
     payto_note_added = False
     unchanged = False
     try:
         # Миграция под тем же замком, что и PUT: параллельное сохранение не
         # должно вернуть снятый флаг или затереть чужие изменения.
-        if engine.dialect.name == 'sqlite':
-            from sqlalchemy import text as _t
-            db.execute(_t('BEGIN IMMEDIATE'))
-        row = _stand_row(db, lock=True)
-        state = json.loads(row.data or '{}')
-        repaired, warnings = stand_demo.repair(state)
-        ownership_moved = _stand_move_legacy_s14_to_operator(db, state)
-        repaired = repaired or ownership_moved
-        payto_note_added = _stand_reconcile_payto_confirm_notes(state)
-        repaired = repaired or payto_note_added
+        if read_only:
+            row = db.get(StandState, 1)
+        else:
+            if engine.dialect.name == 'sqlite':
+                from sqlalchemy import text as _t
+                db.execute(_t('BEGIN IMMEDIATE'))
+            row = _stand_row(db, lock=True)
+        state = json.loads(row.data or '{}') if row else _stand_initial_state()
+        repaired, warnings = False, []
+        if not read_only:
+            repaired, warnings = stand_demo.repair(state)
+            ownership_moved = _stand_move_legacy_s14_to_operator(db, state)
+            payto_note_added = _stand_reconcile_payto_confirm_notes(state)
+            repaired = repaired or ownership_moved or payto_note_added
         if repaired:
             row.data = json.dumps(state, ensure_ascii=False)
             row.version = (row.version or 0) + 1
@@ -6041,7 +6046,7 @@ def stand_state_get():
                               'Система: уведомление о реквизитах' if payto_note_added else
                               'Система: исправление тестового режима')
             row.updated_at = datetime.utcnow()
-        response = {'success': True, 'version': row.version or 0,
+        response = {'success': True, 'version': (row.version or 0) if row else 0,
                     'docAgentProfiles': {key: {'name': agent.name, 'reg': agent.reg_no,
                                                'director': agent.director, 'shortName': agent.short_name,
                                                'regLabel': agent.reg_ru}
@@ -6049,13 +6054,13 @@ def stand_state_get():
                     'docAgentAccounts': {account: doc_agents.agent_for_account(identity)
                                          for account, identity in ACCOUNT_ALIASES.items()},
                     'demoEnabled': stand_demo.enabled(), 'demoWarnings': warnings,
-                    'updated_by': row.updated_by, 'role': current_role()}
+                    'updated_by': row.updated_by if row else None, 'role': current_role()}
         # The state may repair itself on GET, so compute the validator only
         # after reconciliation. Include the reset generation, role and all
         # response metadata: a version alone is not a safe cache validator.
         validator = hashlib.sha256(json.dumps({
-            'generation': row.generation, 'version': row.version or 0,
-            'data': row.data if not repaired else json.dumps(state, ensure_ascii=False),
+            'generation': row.generation if row else None, 'version': response['version'],
+            'data': row.data if row and not repaired else json.dumps(state, ensure_ascii=False),
             'metadata': response,
         }, sort_keys=True, ensure_ascii=False, default=str).encode()).hexdigest()
         unchanged = not repaired and request.if_none_match.contains(validator)
@@ -8284,9 +8289,20 @@ def stand_state_put():
                 # Время события задаёт оператор, время регистрации — только сервер.
                 conv['sentRecordedTs'] = int(time.time() * 1000)
         from stand_workflow import rerate_attempt
-        prior_for_rerate = {d.get('id'): d for d in previous.get('deals') or []}
+        stored_deals = {d.get('id'): d for d in previous.get('deals') or []}
+        recorded_at = int(time.time() * 1000)
         for deal in clean.get('deals') or []:
-            before = prior_for_rerate.get(deal.get('id'))
+            before = stored_deals.get(deal.get('id'))
+            if before is None:
+                deal['createdTs'] = recorded_at
+            elif 'createdTs' in before:
+                deal['createdTs'] = before['createdTs']
+            else:
+                deal.pop('createdTs', None)
+            if before and 'closedTs' in before:
+                deal['closedTs'] = before['closedTs']
+            else:
+                deal.pop('closedTs', None)
             # Consent belongs to this PUT, including a retry after a version
             # conflict, and is never returned as part of the saved deal.
             deal.pop('unverified_flow_confirmation', None)
@@ -8298,7 +8314,7 @@ def stand_state_put():
                 # A browser cannot choose the version that counts as stale.
                 deal['rerateDocVersion'] = int(before.get('docVersion') or 0)
         author = flask_session.get('display_name') or flask_session.get('username') or actor
-        accept_journal(previous, clean, actor, author, int(time.time()*1000))
+        accept_journal(previous, clean, actor, author, recorded_at)
         accept_notes(previous, clean, actor)
         _stand_state_events(previous, clean, actor, (row.version or 0) + 1)
 
@@ -14282,6 +14298,7 @@ def _stand_settle_verified(state, members):
         deal['step'] = 'done'
         deal['closeReason'] = 'Успешно завершена'
         deal['closedAt'] = stand_now().strftime('%d.%m, %H:%M')
+        deal['closedTs'] = int(time.time() * 1000)
         deal['serverSettled'] = True
         profit = _stand_small_profit(deal)
         prefix = 'DEMO · ' if deal.get('demoTransfers') else ''
@@ -14357,7 +14374,8 @@ def _stand_settle_verified(state, members):
                 main['assigneeAdminId'] = None
             if main.get('postConv') == 'client' and main.get('outgoingReview'):
                 main.update(step='done', closed=True, closeReason='Успешно завершена',
-                            closedAt=stand_now().strftime('%d.%m, %H:%M'), serverSettled=True)
+                            closedAt=stand_now().strftime('%d.%m, %H:%M'),
+                            closedTs=int(time.time() * 1000), serverSettled=True)
             main['serverTransferComplete'] = True
             if policy:
                 _stand_policy_closed_event(state, main, policy, outgoing)
@@ -14398,10 +14416,11 @@ def _stand_settle_verified(state, members):
                 deal['step'] = 'done'
                 deal['closeReason'] = 'Успешно завершена'
                 deal['closedAt'] = stamp
+                deal['closedTs'] = int(time.time() * 1000)
                 deal['serverSettled'] = True
                 what = 'Coins выдал баты' if deal.get('postConv') == 'coins' else 'USDT ушли клиенту'
                 deal.setdefault('log', []).append({
-                    'ts': stamp, 'at': int(time.time() * 1000), 'role': 'operator',
+                    'ts': stamp, 'at': deal['closedTs'], 'role': 'operator',
                     'text': f'Закрыта: перевод подтверждён — {what}, {dpo["usdt"]:.2f} USDT'})
                 _stand_note(state, f"stand:payout:{deal['id']}", 'manager', deal,
                             f"{'DEMO · ' if deal.get('demoTransfers') else ''}{deal.get('code') or deal['id']}: "
