@@ -29,8 +29,6 @@
     figure { margin: .75rem 0; }
     figure img { display: block; max-width: 100%; height: auto; border: 1px solid #dce3ea; border-radius: .65rem; }
     .figure-link span { display: inline-block; margin-top: .35rem; }
-    .chat-list { margin: .75rem 0 0; padding-left: 1.25rem; overflow-wrap: anywhere; }
-    .chat-list li + li { margin-top: .25rem; }
     .scenarios { border-block-start: 1px solid #dce3ea; }
     .scenarios details { padding: .75rem 0; border-block-end: 1px solid #dce3ea; }
     .scenarios summary { font-weight: 650; cursor: pointer; }
@@ -120,9 +118,14 @@
     <section id="rate" aria-labelledby="rate-title">
       <h2 id="rate-title">1. Ответить на запрос курса</h2>
       <p>Когда клиентский менеджер запрашивает курс, в <a href="/tasks">Задачнике</a> появляется задача <strong>«Ответить курс»</strong>. На экранах показана учебная заявка.</p>
+      <h3>Где запросить курс RUB → USDT</h3>
+      <dl class="field-guide">
+        <div><dt>До 500 000 ₽ включительно</dt><dd>Запросите курс у <a href="https://t.me/c/3984596268/3025">Tradex</a>.</dd></div>
+        <div><dt>Свыше 500 000 ₽</dt><dd>Запросите курс в чате <a href="tg://openmessage?chat_id=5095212604">«Крипта - Платежи»</a>.</dd></div>
+      </dl>
       <figure>
         <a class="figure-link" href="operator-screens/01-rate-overview.png">
-          <img src="operator-screens/01-rate-overview.png" alt="Четыре пункта запроса курса. Открыть заявку, скопировать готовый вопрос, внести ответ и проверить передачу менеджеру." loading="lazy">
+          <img src="operator-screens/01-rate-overview.png" alt="Учебный запрос курса на 500 000 ₽ в Tradex. Открыть заявку, скопировать вопрос, внести ответ и проверить передачу менеджеру." loading="lazy">
           <span>Открыть экран крупнее</span>
         </a>
       </figure>
@@ -130,14 +133,10 @@
         <li><strong>Откройте заявку</strong> В списке задач нажмите на карточку <strong>«Ответить курс»</strong>.</li>
         <li><strong>Скопируйте и отправьте вопрос</strong>
           <dl class="field-guide">
-            <div><dt>Что спросить</dt><dd>Выберите нужное направление. Нажмите <strong>«копировать»</strong> в строке контрагента. Сумма уже есть в тексте.</dd></div>
-            <div><dt>Чат</dt><dd>В той же строке нажмите <strong>«чат»</strong>, чтобы посмотреть сохранённый адрес. Откройте группу, вставьте вопрос и отправьте его. На стенде кнопка <strong>«запросить (на стенде без перехода)»</strong> тоже копирует вопрос. Если видите <strong>«привязать чат»</strong>, используйте список ниже или уточните адрес группы.</dd></div>
+            <div><dt>Что спросить</dt><dd>Для RUB → USDT определите контрагента по сумме в запросе. Нажмите <strong>«копировать»</strong> в его строке. Сумма уже есть в тексте.</dd></div>
+            <div><dt>Чат</dt><dd>В той же строке нажмите <strong>«чат»</strong>, чтобы посмотреть сохранённый адрес. Откройте группу, вставьте вопрос и отправьте его. На стенде кнопка <strong>«запросить (на стенде без перехода)»</strong> тоже копирует вопрос. Если видите <strong>«привязать чат»</strong>, откройте группу по ссылке в инструкции.</dd></div>
           </dl>
-          <strong>Рабочие чаты для запроса курса</strong>
-          <ul class="chat-list">
-            <li><strong>RUB → USDT</strong> · <a href="https://t.me/c/3984596268/3025">Grusha (MF)| Tradex</a>, <a href="https://t.me/c/3969064520/2874">Asia Capital x Grusha (rub-usdt) | АК-1001</a>, <a href="tg://openmessage?chat_id=5095212604">Крипта - Платежи</a> (Екатерина).</li>
-            <li data-for-payout="thb"><strong>USDT → THB</strong> · <a href="tg://openmessage?chat_id=5187853852">Coins TH | mfcorpthai@gmail.com</a>, <a href="tg://openmessage?chat_id=5475769383">Bitazza OTC x MF Corporation Company Limited</a>.</li>
-          </ul>
+          <p data-for-payout="thb"><strong>USDT → THB</strong> · <a href="tg://openmessage?chat_id=5187853852">Coins TH | mfcorpthai@gmail.com</a>, <a href="tg://openmessage?chat_id=5475769383">Bitazza OTC x MF Corporation Company Limited</a>.</p>
         </li>
         <li><strong>Внесите курс</strong>
           <dl class="field-guide">
