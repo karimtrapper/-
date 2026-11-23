@@ -25,6 +25,7 @@ const ctx = vm.createContext({d, S: {role: 'manager',
   val: id => inputs[id] || '', num: value => Number(String(value || '').replace(',', '.')),
   cleanNum: value => String(value || '').replace(/[^\d.,]/g, ''),
   approx: deal => ({pay: deal.amountRub, thb: deal.amountThb, sign: '₽'}),
+  econ: deal => ({invoiceUsd: deal.invoiceUsd}),
   fake: () => ({}), parsed: () => '', prevPassport: () => ({}),
   isCrypto: () => false, payinWallet: () => null,
   standDocAgent: () => ({name:'MF',reg:'1',director:'X'}),
@@ -40,7 +41,7 @@ vm.runInContext(html.match(/^const IPPS_TARIFFS=\{[^]*?^\};/m)[0], ctx);
 for (const name of ['docFields', 'documentPackStale', 'docsSentSet', 'expectOf',
                     'canRerate', 'rerateBalance', 'rerate', 'syncClient', 'thbBankRate',
                     'freeholdRecalcUsd', 'freeholdDealSet', 'freeholdInvoiceSet',
-                    'freeholdFee']) vm.runInContext(fn(name), ctx);
+                    'freeholdFee', 'ippsApplicationText']) vm.runInContext(fn(name), ctx);
 for (const name of ['ippsTariff', 'freeholdSend']) {
   vm.runInContext(html.match(new RegExp(`^function ${name}\\(.*$`, 'm'))[0], ctx);
 }
@@ -82,12 +83,20 @@ assert.ok(d.rates.at);
 
 // A bank-rate refresh and a tariff change use the same controls as a fresh quote.
 Object.assign(d, {kind:'Фрихолд', invoiceCurrency:'thb', invoiceThb:9976500,
-  invoiceUsd:297983.87, fxRate:33.48, fxBank:'Kasikorn', ippsTariff:'bank'});
+  invoiceUsd:297983.87, fxRate:33.48, fxBank:'Kasikorn', ippsTariff:'bank',
+  payTo:{pobo:'SYNTHETIC CLIENT', dev:'Developer', amount:297983.87}});
+const oldApplication = vm.runInContext('ippsApplicationText(d)', ctx);
+assert.doesNotMatch(oldApplication, /^POBO:/);
+assert.match(oldApplication, /Amount: 297,983\.87 USD$/);
 vm.runInContext("freeholdDealSet(1483, 'fxBank', 'Kasikorn')", ctx);
 assert.equal(d.fxRate, 33.86);
 assert.equal(d.invoiceUsd, 294639.69);
 vm.runInContext("freeholdInvoiceSet(1483, 'ippsTariff', 'soft')", ctx);
 assert.equal(d.ippsTariff, 'soft');
+assert.equal(vm.runInContext('freeholdSend(d.invoiceUsd, ippsTariff(d))', ctx), 299109.29);
+const newApplication = vm.runInContext('ippsApplicationText(d)', ctx);
+assert.match(newApplication, /^POBO: SYNTHETIC CLIENT\n/);
+assert.match(newApplication, /Amount: 294,639\.69 USD$/);
 assert.equal(d.docPack.version, 1);
 assert.equal(d.incomeAmount, 2700);
 

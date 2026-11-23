@@ -1599,11 +1599,14 @@ function rubReceivingBankLabel(d){
    не регистрирует платёж от сторонней компании). approx()/avgRate() ниже — про баты,
    к фрихолду не имеют отношения вообще: у него своя ветка freeholdApprox(). */
 const IPPS_TARIFFS={
-  bank:{percent:0.8,fixed:50,label:'Банк · 0,8 % + $50',note:'обычный FET-платёж от компании'},
-  soft:{percent:1.5,fixed:50,label:'Софт-счёт · 1,5 % + $50',note:'платёж от имени клиента — в заявке IPPS строка POBO'}
+  bank:{percent:0.8,fixed:50,label:'Банк · 0,8 % + $50',method:'Банк · FET от компании',note:'обычный FET-платёж от компании'},
+  soft:{percent:1.5,fixed:50,label:'Софт-счёт · 1,5 % + $50',method:'Софт-счёт · POBO от имени клиента',note:'платёж от имени клиента — в заявке IPPS строка POBO'}
 };
 const IPPS_WALLET='TQgQCBXkewuW4RoieDKFP9Ko2SopBh8jso';    // кошелёк IPPS TRC-20, подтверждён 22.09
 function ippsTariff(d){return IPPS_TARIFFS[d.ippsTariff||'bank'];}
+function ippsPaymentMethod(d){
+  return (IPPS_TARIFFS[d.ippsPayoutOrder?.tariff||d.ippsTariff]||IPPS_TARIFFS.bank).method;
+}
 /* Текст заявки в IPPS — формат из чата «IPPS& Grusha (Property Payment)» (спека §3).
    Amount — всегда X (инвойс застройщику), не S: 22.09 отправили X вместо S и досылали
    124 USDT остатком, поэтому на экране отправки обе суммы стоят рядом (см. s23/s24).
@@ -4749,7 +4752,7 @@ function prepayRefundCard(d){
 function reqOpen(d){return !!d&&!d.closed&&d.reqTask==='open';}
 function afterPayin(d,text,persist=true){
   const F=flowOf(d), nxt=F[F.indexOf('s14')+1]||(isCrypto(d)?'s22':'s18');
-  const need=!(d.payTo&&d.payTo.acc);
+  const need=d.kind==='Фрихолд'?!payToReady(d):!(d.payTo&&d.payTo.acc);
   d.reqTask=need?'open':'done';
   if(need) noteAdd('manager','Задача на вас: Реквизиты для оплаты — параллельно с конвертацией',d.id);
   if(S.role==='manager'&&need){S.open=d.id;S.view='task';}
@@ -4773,7 +4776,9 @@ function payToReady(d){
   const pt=d.payTo||{};
   if(!['dev','bank','acc','purpose'].every(k=>String(pt[k]||'').trim()))return false;
   if(d.kind==='Фрихолд')return !!String(pt.swift||'').trim()&&
-    ((d.ippsTariff||'bank')!=='soft'||!!String(pt.pobo||'').trim());
+    ((d.ippsTariff||'bank')!=='soft'||!!String(pt.pobo||'').trim())&&
+    (d.rerateDocVersion==null||d.ippsPayoutOrder?.confirmedAt||d.serverTransferComplete||
+      d.pay?.invoicePaid||Number(pt.amount)===Number(d.invoiceUsd));
   return Number(pt.amount)>0;
 }
 function payToFromForm(d){
@@ -4912,13 +4917,15 @@ function payToCardStatus(d){
 }
 function payToCardFields(d){
   const pt=d.payTo||{};
+  const freehold=d.kind==='Фрихолд', amount=freehold?(d.ippsPayoutOrder?.invoiceUsd||pt.amount):pt.amount;
   return [
     ['Получатель',pt.dev],['Банк',pt.bank],['SWIFT / BIC',pt.swift],
     ['Счёт получателя',pt.acc],['Отделение банка',pt.branch],['Адрес банка',pt.bankAddr],
-    ['Инвойс',pt.inv],['Сумма',pt.amount?(d.kind==='Фрихолд'?usd(pt.amount):money(pt.amount,'฿')):'—'],
-    ['Источник суммы',d.kind==='Фрихолд'?'Из заявки: инвойс застройщика, сумма только для чтения':'Указана менеджером'],
+    ['Инвойс',pt.inv],['Сумма',amount?(freehold?usd(amount):money(amount,'฿')):'—'],
+    ['Источник суммы',freehold?'Из заявки: инвойс застройщика, сумма только для чтения':'Указана менеджером'],
+    ...(freehold?[['Способ выплаты IPPS',ippsPaymentMethod(d)]]:[]),
     ['Назначение платежа',pt.purpose],['Комментарий менеджера',d.stepNotes?.s15],
-    ...(pt.pobo?[['POBO — плательщик',pt.pobo]]:[])
+    ...(pt.pobo&&(!freehold||(d.ippsPayoutOrder?.tariff||d.ippsTariff)==='soft')?[['POBO — плательщик',pt.pobo]]:[])
   ];
 }
 function payToCard(d,compact=false){
@@ -5298,6 +5305,7 @@ function payToConfirmBlock(d){
       ${line('Банк',pt.bank)}
       ${d.kind==='Фрихолд'?line('SWIFT',pt.swift):''}
       ${line('Номер счёта',pt.acc)}
+      ${d.kind==='Фрихолд'?line('Инвойс, USD',usd(d.invoiceUsd))+line('Способ выплаты IPPS',ippsPaymentMethod(d)):''}
       ${line('Назначение',pt.purpose)}
     </div>
     <div class="row" style="margin-top:12px">
@@ -12845,7 +12853,7 @@ function stepCard(d){
       const t=ippsTariff(d), soft=(d.ippsTariff||'bank')==='soft', F2=docFields(d);
       const amount=econ(d).invoiceUsd||d.invoiceUsd||ap.thb||0;
       return `<div class="card"><div class="card-title">Реквизиты для оплаты инвойса
-        <span class="sub">деньги у нас — ${recipientTitle(d)} платим через IPPS SWIFT в USD · тариф ${t.label}</span></div>
+        <span class="sub">IPPS SWIFT в USD · ${htmlText(ippsPaymentMethod(d))} · ${t.label}</span></div>
       <div class="fr">
         <div class="fg w2"><label class="fl">Account Name (получатель)<span class="rq">*</span></label>
           <input class="fc" id="p_dev" value="${(pt.dev||d.dev||(d.docVersion?F2.dev:'')||parsed(d,'recipient_name')||'').replace(/"/g,'&quot;')}" placeholder="Account Name из инвойса"></div>
@@ -13085,7 +13093,7 @@ function stepCard(d){
       if(!payToReady(d)||reqOpen(d))return S.role==='manager'?stepCard({...d,step:'s15',_side:true}):`<div class="card">Ждём реквизиты ${d.autoPayment===true?'продавца авто':'застройщика'} от менеджера.</div>`;
       if(!payToConfirmed(d))return S.role==='manager'?payToConfirmBlock(d):'<div class="card">Ждём подтверждение актуальных реквизитов менеджером.</div>';
       if(!['operator','admin'].includes(S.role))return '<div class="card">Операционист согласует заявку с IPPS и поручит перевод.</div>';
-      return `<div class="card"><div class="card-title">Согласовать заявку IPPS и поручить перевод</div>
+      return `<div class="card"><div class="card-title">Согласовать заявку IPPS и поручить перевод<span class="sub">${htmlText(ippsPaymentMethod(d))}</span></div>
         <div class="${hasPolicy(w)?'derived':'alert a-info'}"><div>Реквизиты ${d.autoPayment===true?'продавца авто':'застройщика'} подтверждены менеджером. Получите от IPPS адрес и сеть для этой заявки, затем поручите перевод.</div></div>
         <div class="derived">${d.prepay?'Источник наперёд: '+htmlText(d.prepay.wallet.name):'Пришло '+(got!=null?usd(got):'—')} · расчёт по заявке ${usd(expected)} USDT</div>
         ${w?walletPolicyLine(w):''}
@@ -13179,7 +13187,7 @@ function stepCard(d){
     ${foundTx&&S.role==='teodor'?`<div class="alert a-warn">В сети уже есть перевод · ${new Date(foundTx.timestamp_ms).toLocaleString('ru-RU',{timeZone:'Europe/Moscow'})} МСК ·
       <a href="https://tronscan.org/#/transaction/${encodeURIComponent(foundTx.hash)}" target="_blank" rel="noopener noreferrer">${htmlText(txShort(foundTx.hash))} · TronScan</a>
       <button class="btn btn-outline btn-sm" onclick="copyAsk(${jsLiteralAttr(foundTx.hash)})">Копировать хеш</button></div>`:''}
-    ${d.kind==='Фрихолд'&&d.ippsPayoutOrder?`<details class="deal-detail"><summary>Поручение IPPS · ${htmlText(d.ippsPayoutOrder.network)}</summary><div class="wallet-address-line">${destinationDisclosure(plannedDestination(d))}</div></details>`:''}
+    ${d.kind==='Фрихолд'&&d.ippsPayoutOrder?`<details class="deal-detail"><summary>Поручение IPPS · ${htmlText(ippsPaymentMethod(d))} · ${htmlText(d.ippsPayoutOrder.network)}</summary><div class="wallet-address-line">${destinationDisclosure(plannedDestination(d))}</div></details>`:''}
 
     <details class="card deal-detail"><summary>Деньги и переводы пачки</summary>
     ${d.prepay?`<p class="fh">${htmlText(prepayFundingText(d))}</p>`:c?`<div class="card" style="background:var(--navy-50);box-shadow:none;margin-bottom:16px">
@@ -13304,7 +13312,7 @@ function stepCard(d){
          никаких нет, перевод уже ушёл криптовым кошельком на шаге подписи (спека 28.09). */
       const X=econ(d).invoiceUsd||d.invoiceUsd||0;
       return `<div class="card"><div class="card-title">Подтверждение от IPPS
-        <span class="sub">MT103 / чек — ${recipientTitle(d)} должно дойти ${usd(X)}</span></div>
+        <span class="sub">MT103 / чек · ${htmlText(ippsPaymentMethod(d))} · ${recipientTitle(d)} должно дойти ${usd(X)}</span></div>
       ${pt.dev?'':`<div class="alert a-warn"><div>Менеджер ещё не заполнил реквизиты — платить не по чему. Верните задачу с вопросом.</div></div>`}
       ${(pt.dev&&!String(pt.purpose||'').trim())?`<div class="alert a-warn"><div>Менеджер не указал назначение для банка ${d.autoPayment===true?'продавца':'застройщика'} — верните с вопросом.</div></div>`:''}
       ${(payToReady(d)&&!payToConfirmed(d))?`<div class="alert a-warn"><div>Ждём подтверждения реквизитов от менеджера.</div></div>`:''}

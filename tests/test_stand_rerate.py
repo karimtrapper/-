@@ -84,12 +84,15 @@ def test_rerated_thb_freehold_edits_and_reissues_agreed_terms(board, monkeypatch
                          amountPay='26818548.30', rate='90')
     old_doc = {'kind': 'app', 'version': 1, 'docId': 21}
     old_economy = {'version': 1, 'invoiceUsd': 297983.87, 'ippsTariff': 'bank'}
+    old_payto = {'dev': 'Synthetic developer', 'bank': 'Synthetic bank', 'swift': 'SYNTHXX1',
+                 'acc': 'SYN-ACCOUNT', 'amount': 297983.87, 'purpose': 'Synthetic invoice'}
     pdf = base64.b64encode(b'%PDF-1.4\n1 0 obj << /Type /Catalog >> endobj\n%%EOF').decode()
     source = {'file': 'synthetic.pdf', 'mime': 'application/pdf',
               'data': 'data:application/pdf;base64,' + pdf}
     install('s6', {**FREEHOLD_THB, 'docsIssued': [old_doc], 'docFields': old_fields,
                    'ownerEconomyAtDoc': old_economy, 'docs': {'signed': True},
-                   'files': {'inv': [source], 'signed': [{**source, 'docVersion': 1}]}})
+                   'files': {'inv': [source], 'signed': [{**source, 'docVersion': 1}]},
+                   'payTo': old_payto, 'payToConfirm': {'payTo': old_payto, 'at': 'old'}})
     manager, operator = clients('manager'), clients('operator')
     invoice_usd = round(FREEHOLD_THB['invoiceThb'] / 33.86, 2)
     fx = put(manager, lambda s: s['deals'][0].update(fxRate=33.86, invoiceUsd=invoice_usd))
@@ -122,6 +125,8 @@ def test_rerated_thb_freehold_edits_and_reissues_agreed_terms(board, monkeypatch
     assert d['docVersion'] == d['docPack']['version'] == 2
     assert d['docsIssued'][0] == old_doc
     assert d['files']['signed'][0]['docVersion'] == 1 and d['docs']['signed'] is False
+    assert d['payTo'] == {**old_payto, 'amount': invoice_usd}
+    assert d.get('payToConfirm') is None
     assert d['docFields']['amountThb'] == d['ownerEconomyAtDoc']['invoiceUsd'] == invoice_usd
     assert float(d['docPack']['amount']) == round(invoice_usd * 91, 2)
     assert d['ownerEconomyAtDoc']['ippsTariff'] == 'soft'

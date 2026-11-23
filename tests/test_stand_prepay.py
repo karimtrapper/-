@@ -568,6 +568,66 @@ def test_start_preserves_broker_and_uses_manager_gate(api, source, step):
     assert not d['pay'].get('usdt'), 'Источник предоплаты не становится приходом брокера'
 
 
+def test_rerated_thb_freehold_uses_reissued_soft_terms_in_ipps_prepay(api):
+    state = board('s18')
+    d = state['deals'][0]
+    d.update(invoiceCurrency='thb', invoiceThb=9976500, fxRate=33.86, invoiceUsd=294639.69,
+             ippsTariff='soft', rerateDocVersion=1, docVersion=1, docPack={'version': 1})
+    d['payTo']['amount'] = d['invoiceUsd']
+    d['reqTask'] = 'done'
+    seed(state)
+    request = {'action': 'start', 'dealId': d['id'], 'walletId': 'founder', 'version': 1}
+    rejected = api[0].post('/api/stand/prepay', json=request)
+    assert rejected.status_code == 409
+    assert 'перевыпустите' in rejected.json['error']
+
+    d.update(docVersion=2, docPack={'version': 2, 'transfer': '294639.69'})
+    seed(state)
+    started = api[0].post('/api/stand/prepay', json=request)
+    assert started.status_code == 200, started.json
+    saved = started.json
+    payment = saved['data']['deals'][0]
+    assert payment['step'] == 's22' and payment['reqTask'] == 'open'
+    assert payment['prepay']['amount'] == 299109.29
+
+    payment['payToConfirm'] = {'payTo': dict(payment['payTo']), 'at': 'confirmed'}
+    saved = put(api, saved, 'manager')
+
+    def instruct(saved, amount):
+        payload = copy.deepcopy(saved)
+        payload['data']['deals'][0].update(step='s23', reqTask='done', _ippsPayoutInstruction=True,
+            transfer={'amount': amount, 'to': 'IPPS', 'addr': IPPS, 'net': 'TRC-20', 'sends': []})
+        api[1][0] = 'operator'
+        return api[0].put('/api/stand/state', json={'version': payload['version'], 'data': payload['data']})
+
+    missing_pobo = instruct(saved, 299109.29)
+    assert missing_pobo.status_code == 409
+    assert 'реквизиты' in missing_pobo.json['error']
+    payment = saved['data']['deals'][0]
+    payment['payTo']['pobo'] = 'SYNTHETIC CLIENT'
+    payment['reqTask'] = 'done'
+    saved = put(api, saved, 'manager')
+    assert instruct(saved, 299109.29).status_code == 409
+    payment = saved['data']['deals'][0]
+    payment['payToConfirm'] = {'payTo': dict(payment['payTo']), 'at': 'new confirmation'}
+    saved = put(api, saved, 'manager')
+    stale_amount = instruct(saved, 300417.74)
+    assert stale_amount.status_code == 409
+    assert 'Сумма поручения' in stale_amount.json['error']
+    issued = instruct(saved, 299109.29)
+    assert issued.status_code == 200, issued.json
+    payment = issued.json['data']['deals'][0]
+    assert payment['step'] == 's23' and payment['postConv'] == 'ipps_swift'
+    order = payment['ippsPayoutOrder']
+    assert (order['amount'], order['invoiceUsd'], order['tariff']) == (299109.29, '294639.69', 'soft')
+    assert order['payTo']['pobo'] == 'SYNTHETIC CLIENT'
+    snapshot = issued.json
+    snapshot['data']['deals'][0]['ippsTariff'] = 'bank'
+    locked = api[0].put('/api/stand/state', json={'version': snapshot['version'], 'data': snapshot['data']})
+    assert locked.status_code == 409
+    assert locked.json['data']['deals'][0]['ippsPayoutOrder'] == order
+
+
 @pytest.mark.parametrize('stage', ['s14', 's27'])
 def test_no_start_outside_broker_stages(api, stage):
     seed(board(stage))

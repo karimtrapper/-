@@ -726,7 +726,7 @@ console.log('test_stand_freehold.js: OK');
 
 // Менеджер подтверждает текущий снимок, затем операционист получает форму IPPS.
 {
-  const ctx=run(['stepWho','myTasks','reqOpen','canRerate','rerateBalance','stepCard','payToConfirmed','payToConfirmBlock','hasPolicy','walletPolicyLine','policyRoleNames','policyInitiators'],['STEPS','SOURCES_PAY'],{
+  const ctx=run(['stepWho','myTasks','reqOpen','canRerate','rerateBalance','stepCard','payToConfirmed','payToConfirmBlock','hasPolicy','walletPolicyLine','policyRoleNames','policyInitiators','ippsPaymentMethod'],['STEPS','SOURCES_PAY','IPPS_TARIFFS'],{
     S:{role:'manager',deals:[],notes:[]},NETS:['TRC-20'],IPPS_WALLET:'T'+'A'.repeat(33),
     STAND:true,approx:()=>({}),fake:()=>({}),stepNote:()=>'',htmlText:String,
     freeholdSend:()=>10130,ippsTariff:()=>({}),usd:x=>'$'+x,convOf:()=>null,
@@ -747,6 +747,7 @@ console.log('test_stand_freehold.js: OK');
   ctx.S.role='operator';
   const operator=ctx.stepCard(d);
   assert.match(operator,/id="fh_order_amount" readonly value="10130"/);
+  assert.match(operator,/Банк · FET от компании/);
   assert.match(operator,/id="fh_order_addr"/);
   assert.match(operator,/это не подтверждение/);
   assert.match(operator,/Копировать текст для группы/);

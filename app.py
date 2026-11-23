@@ -8341,6 +8341,8 @@ def stand_state_put():
                 transfer = deal.get('transfer') or {}
                 deal['ippsPayoutOrder'] = {
                     'amount': round(_stand_number(transfer.get('amount')), 2),
+                    'invoiceUsd': _stand_plain(_stand_num(deal['invoiceUsd'])),
+                    'tariff': deal.get('ippsTariff') or 'bank',
                     'network': transfer.get('net'),
                     'address': str(transfer.get('addr') or '').strip(),
                     'confirmedAt': datetime.utcnow().isoformat(timespec='seconds') + 'Z',
@@ -12071,6 +12073,11 @@ def _stand_payto_problem(deal):
         required += ('swift',)
         if (deal.get('ippsTariff') or 'bank') == 'soft':
             required += ('pobo',)
+        if (deal.get('rerateDocVersion') is not None and not deal.get('ippsPayoutOrder')
+                and not deal.get('serverTransferComplete')
+                and not (deal.get('pay') or {}).get('invoicePaid')
+                and _stand_num(payto.get('amount')) != _stand_num(deal.get('invoiceUsd'))):
+            return 'Сохраните реквизиты с суммой из нового пакета документов'
     else:
         amount = _amount(payto.get('amount'))
         if amount is None or amount <= 0:
@@ -12516,11 +12523,14 @@ def _stand_canonical_payout(payout):
 
 def _stand_prepay_start_problem(state, deal):
     """Разрешение использовать свои USDT появляется только после факта RUB."""
+    from stand_workflow import document_pack_stale
     if (deal.get('type') != 'Оплата недвижимости' or deal.get('kind') != 'Фрихолд'
             or deal.get('payType') == 'Крипта' or deal.get('closed') or deal.get('prepay')
             or deal.get('step') not in ('s18', 's18w') or deal.get('ippsPayoutOrder')
             or (deal.get('transfer') or {}).get('sends')):
         return 'Оплата наперёд доступна рублёвому фрихолду на s18 или s18w'
+    if document_pack_stale(deal):
+        return 'Сначала перевыпустите документы с новым курсом'
     conv = next((c for c in state.get('convs') or [] if c.get('id') == deal.get('cnvId')), {})
     if any(t.get('status') == 'confirmed' for t in conv.get('txs') or []) or (deal.get('pay') or {}).get('usdt'):
         return 'USDT брокера уже пришли'
@@ -12700,6 +12710,7 @@ def stand_prepay_reimburse():
 
 def _stand_freehold_ipps_order_problem(state, before, deal, actor):
     """Поручение операциониста после подтверждения реквизитов менеджером."""
+    from stand_workflow import document_pack_stale
     if not (deal.get('kind') == 'Фрихолд' or before.get('kind') == 'Фрихолд'):
         return None
     issuing = before.get('step') == 's22' and deal.get('step') == 's23'
@@ -12728,6 +12739,8 @@ def _stand_freehold_ipps_order_problem(state, before, deal, actor):
             return 'Сначала менеджер должен сохранить реквизиты заявки, затем поручить перевод'
         if not _stand_payto_confirmed(before) or not _stand_payto_confirmed(deal):
             return 'Сначала менеджер должен подтвердить актуальные реквизиты застройщика'
+        if document_pack_stale(before):
+            return 'Сначала перевыпустите документы с новым курсом'
         # Do not accept client edits to the evidence used for the funding limit.
         if _stand_payto_problem(before):
             return _stand_payto_problem(before)
@@ -16955,7 +16968,8 @@ def _stand_advance_manual_payin(state, deal, receipt):
         deal.setdefault('log', []).append({'at': int(time.time() * 1000),
             'ts': stand_now().strftime('%d.%m, %H:%M'), 'role': 'system',
             'text': 'Задача стала сделкой — деньги пошли, карточка попала в реестр'})
-    need_requisites = not (deal.get('payTo') or {}).get('acc')
+    need_requisites = (_stand_payto_problem(deal) is not None if deal.get('kind') == 'Фрихолд'
+                       else not (deal.get('payTo') or {}).get('acc'))
     deal['reqTask'] = 'open' if need_requisites else 'done'
     if need_requisites:
         _stand_note(state, f"stand:manual-pay-in-requisites:{deal['id']}:{receipt['id']}",
@@ -17546,7 +17560,7 @@ def stand_docs_issue():
         return jsonify({'success': False, 'error': 'stand_only'}), 404
     import docgen
     import doc_agents
-    from stand_workflow import document_pack_stale
+    from stand_workflow import document_pack_stale, rerate_commitment_problem
     data = request.get_json(silent=True) or {}
     try:
         deal_id = int(data.get('dealId'))
@@ -17577,6 +17591,9 @@ def stand_docs_issue():
             and not deal.get('autoPayment') and not _stand_is_crypto(deal)
             and bool(deal.get('docPack') or deal.get('docVersion')) and document_pack_stale(deal))
         if reissuing_freehold:
+            commitment = rerate_commitment_problem(state, deal)
+            if commitment:
+                return jsonify(success=False, error=commitment), 409
             # The old form snapshot may still contain the preceding agreement's terms.
             F.update(amountPay=deal.get('amountRub'), amountThb=deal.get('invoiceUsd'),
                      rate=(deal.get('rates') or {}).get('client'))
@@ -17823,6 +17840,10 @@ def stand_docs_issue():
         deal['docVersion'] = version
         if deal.get('autoPayment') is True or reissuing_freehold:
             deal.setdefault('docs', {})['signed'] = False
+        if reissuing_freehold:
+            if deal.get('payTo'):
+                deal['payTo']['amount'] = _stand_number(used.get('transfer_amount'))
+            deal.pop('payToConfirm', None)
         deal['docFields'] = F
         deal['issuedDocPayTo'] = F.get('payTo')
         # От какой компании выпущены документы: перевыпуск и аудит смотрят сюда,

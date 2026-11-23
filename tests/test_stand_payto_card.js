@@ -4,8 +4,9 @@ const path = require('node:path');
 const vm = require('node:vm');
 
 const html = fs.readFileSync(path.join(__dirname, '../static/stand/tasks.html'), 'utf8');
-const names = ['payToReady', 'payToConfirmed', 'payToCardStatus', 'payToCardFields', 'payToCard', 'payToCopy'];
-const source = names.map(name => {
+const names = ['ippsPaymentMethod', 'payToReady', 'payToConfirmed', 'payToCardStatus', 'payToCardFields', 'payToCard', 'payToCopy'];
+const tariffs = html.match(/^const IPPS_TARIFFS=\{[^]*?^\};/m)[0];
+const source = tariffs + '\n' + names.map(name => {
   const found = html.match(new RegExp(`^function ${name}\\([^]*?^}`, 'm'));
   assert.ok(found, name);
   return found[0];
@@ -29,7 +30,7 @@ function run(role) {
   const ctx = {
     S: {role}, ROLES: {manager: {t: 'менеджер'}},
     htmlText: value => String(value == null ? '' : value).replace(/&/g, '&amp;').replace(/</g, '&lt;'),
-    logWhen: entry => entry.ts, usd: value => '$' + value.toFixed(2),
+    logWhen: entry => entry.ts, usd: value => '$' + Number(value).toFixed(2),
     money: (value, sign) => `${value} ${sign}`, reqOpen: deal => deal.reqTask === 'open',
     deal: id => id === 1484 ? filled : empty, copyAsk: value => { copied = value; },
   };
@@ -77,4 +78,18 @@ for (const role of ['manager', 'operator', 'admin', 'teodor']) {
 
 assert.match(html, /\$\{view==='deal'\?payToCard\(d\):''\}\s*<div class="cols">/);
 assert.match(html, /view==='task'&&S\.role==='operator'&&\['s22','s23','s24','s25','s26'\]\.includes\(d\.step\)&&branch!=='conversion'\?payToCard\(d,true\)/);
+
+{
+  const {ctx} = run('operator');
+  const repriced = {...filled, pay:{}, rerateDocVersion:1, invoiceUsd:294639.69, ippsTariff:'soft',
+    payTo:{...filled.payTo, amount:297983.87, pobo:'SYNTHETIC CLIENT'}};
+  assert.equal(ctx.payToReady(repriced), false);
+  repriced.payTo.amount = 294639.69;
+  assert.equal(ctx.payToReady(repriced), true);
+  assert.match(ctx.payToCard(repriced), /\$294639\.69/);
+  assert.match(ctx.payToCard(repriced), /Софт-счёт · POBO от имени клиента/);
+  repriced.ippsTariff = 'bank';
+  assert.match(ctx.payToCard(repriced), /Банк · FET от компании/);
+  assert.doesNotMatch(ctx.payToCard(repriced), /POBO/);
+}
 console.log('payTo card: roles, full fields, status, old deals, copy and placement OK');
