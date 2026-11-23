@@ -1848,16 +1848,17 @@ function freeholdEstimate(d,amountRub,brokerRate){
   return {sent,incoming,profit,pct:profit!=null&&sent?profit/sent*100:null};
 }
 /* Авто: исходная сумма заявки остаётся отдельной от согласованной суммы и факта входа. */
+const AUTO_MIN_PROFIT=1;
 function autoMarginPct(d,rub){
   const manual=Number(d.autoMarkupPct);
-  if(d.autoMarkupPct!=null&&Number.isFinite(manual)&&manual>=0)return Math.max(1.5,manual);
+  if(d.autoMarkupPct!=null&&Number.isFinite(manual)&&manual>=0)return Math.max(AUTO_MIN_PROFIT,manual);
   const base=d.autoRequestMode==='usd'?num(d.requestedUsd)*num(d.rates.rubUsdt):rub;
   return base<500000?5:base<1000000?4:3;
 }
 function autoMarginSet(id,raw){
   const d=deal(id),v=Number(String(raw).replace(',','.'));
   if(!d||d.autoPayment!==true||d.step!=='s6')return;
-  if(!Number.isFinite(v)||v<1.5||v>5){toast('Укажите прибыль от 1,5 до 5 %');render();return;}
+  if(!Number.isFinite(v)||v<AUTO_MIN_PROFIT||v>5){toast('Укажите прибыль от 1 до 5 %');render();return;}
   d.autoMarkupPct=v;d.autoManualClientRub=false;autoRecalc(d);save();render();
 }
 function autoActualMarginPct(d){
@@ -1870,7 +1871,7 @@ function autoShownMarginPct(d){
   const actual=d.autoManualClientRub===true?autoActualMarginPct(d):null;
   if(actual==null)return autoMarginPct(d,d.amountRub||d.requestedRub||0);
   const tolerance=autoMarginTolerance(d);
-  return actual>=1.5-tolerance&&actual<=5+tolerance?Math.min(5,Math.max(1.5,actual)):actual;
+  return actual>=AUTO_MIN_PROFIT-tolerance&&actual<=5+tolerance?Math.min(5,Math.max(AUTO_MIN_PROFIT,actual)):actual;
 }
 function autoMarginTolerance(d){
   return Math.min(.005,1/(num(d.rates&&d.rates.rubUsdt)*(num(d.invoiceUsd)+1)));
@@ -1886,9 +1887,9 @@ function autoClientRubSet(id,raw){
   d.rates.client=(Math.round(amount/d.invoiceUsd*1e6)/1e6).toFixed(6).replace('.',',');
   const margin=autoActualMarginPct(d);
   const tolerance=autoMarginTolerance(d);
-  if(!Number.isFinite(margin)||margin<1.5-tolerance||margin>5+tolerance){
+  if(!Number.isFinite(margin)||margin<AUTO_MIN_PROFIT-tolerance||margin>5+tolerance){
     d.amountRub=previous;d.rates.client=previousRate;
-    toast('Сумма даёт прибыль вне диапазона 1,5–5 %. Укажите другую сумму');render();return;
+    toast('Сумма даёт прибыль вне диапазона 1–5 %. Укажите другую сумму');render();return;
   }
   d.autoManualClientRub=true;d.freeholdClientInput='sum';
   delete d.autoQuoteError;save();render();
@@ -1902,7 +1903,7 @@ function autoSafeCents(amount,round){
 }
 function autoClientRubForUsd(usdAmount,brokerRate,tariff,margin){
   if(autoSafeCents(usdAmount)==null||!Number.isFinite(brokerRate)||brokerRate<=0||!Number.isFinite(1/brokerRate)||
-     !Number.isFinite(margin)||margin<1.5||!tariff||
+     !Number.isFinite(margin)||margin<AUTO_MIN_PROFIT||!tariff||
      !Number.isFinite(tariff.percent)||tariff.percent<0||
      !Number.isFinite(tariff.fixed)||tariff.fixed<0)return null;
   // Старый калькулятор сначала округляет RUB → USDT с 1 USDT за вывод,
@@ -1928,15 +1929,15 @@ function autoRecalc(d){
     const margin=autoActualMarginPct(d);
     const tolerance=autoMarginTolerance(d);
     if(autoSafeCents(num(d.amountRub))==null||autoSafeCents(num(d.invoiceUsd))==null||
-       !Number.isFinite(margin)||margin<1.5-tolerance||margin>5+tolerance){
-      d.autoQuoteError='Ручная сумма даёт прибыль вне диапазона 1,5–5 %. Укажите другую сумму';return false;
+       !Number.isFinite(margin)||margin<AUTO_MIN_PROFIT-tolerance||margin>5+tolerance){
+      d.autoQuoteError='Ручная сумма даёт прибыль вне диапазона 1–5 %. Укажите другую сумму';return false;
     }
     d.rates.client=(Math.round(d.amountRub/d.invoiceUsd*1e6)/1e6).toFixed(6).replace('.',',');
     delete d.autoQuoteError;return true;
   }
   if(d.autoRequestMode==='rub'){
     const rub=num(d.requestedRub),margin=autoMarginPct(d,rub);
-    if(autoSafeCents(rub)==null||!Number.isFinite(margin)||margin<1.5)return clear();
+    if(autoSafeCents(rub)==null||!Number.isFinite(margin)||margin<AUTO_MIN_PROFIT)return clear();
     const beforeFee=Math.round((rub/(rate*(1+margin/100))-1)*100)/100;
     const invoice=(beforeFee-tariff.fixed)/(1+tariff.percent/100);
     const cents=autoSafeCents(invoice);

@@ -43,7 +43,7 @@ const calc = {state: {dealCategory: 'property_auto', scenario: 'rub-to-usdt',
 vm.createContext(calc);
 const constants = ['PROFIT_LADDER_SMALL', 'PROFIT_LADDER_MEDIUM', 'PROFIT_LADDER_LARGE',
   'PROFIT_USDT_TO_THB', 'PROFIT_THB_TO_USDT', 'PROFIT_FLOOR']
-  .map(name => calculator.match(new RegExp(`^const ${name} = [^;]+;`, 'm'))[0].replace(/^const /, 'var '));
+  .map(name => calculator.match(new RegExp(`^(?:const|let) ${name} = [^;]+;`, 'm'))[0].replace(/^(?:const|let) /, 'var '));
 vm.runInContext(constants.join('\n') + '\n' +
   ['rubBase', 'ladderProfit', 'effectiveProfit', 'calcDealKindAndPayin']
     .map(name => fn(calculator, name)).join('\n'), calc);
@@ -51,6 +51,11 @@ assert.equal(calc.effectiveProfit(79800), 3);
 assert.equal(calc.effectiveProfit(100), 5, 'USD base is converted to RUB only once');
 calc.state.direction = 'amount';
 assert.equal(calc.effectiveProfit(6949596.82), 3);
+calc.state.applyDiscount = true;
+calc.state.profitMargin = 1;
+assert.equal(calc.effectiveProfit(6949596.82), 1.5);
+calc.PROFIT_FLOOR = 1;
+assert.equal(calc.effectiveProfit(6949596.82), 1);
 assert.equal(calc.calcDealKindAndPayin('property_auto', 'custom').deal_kind, 'mf_auto');
 assert.equal(calc.calcDealKindAndPayin('property_auto', 'custom').payin_method, 'sber_reqs');
 assert.match(page, /data-category="property_auto"[^>]*>\s*Оплата авто/);

@@ -105,7 +105,7 @@ const PROFIT_LADDER_MEDIUM = 4.0;  // 500 000 – 1 000 000 ₽
 const PROFIT_LADDER_LARGE = 3.0;   // от 1 000 000 ₽
 const PROFIT_USDT_TO_THB = 2.4;    // решение Карима 27.08.2026
 const PROFIT_THB_TO_USDT = 3.0;
-const PROFIT_FLOOR = 1.5;          // ниже — только с согласованием
+let PROFIT_FLOOR = 1.5;
 
 /** Сумма сделки в рублях — база для порогов лестницы, из чего бы клиент ни платил. */
 function rubBase(amount, scenario = state.scenario, direction = state.direction) {
@@ -168,6 +168,8 @@ async function checkAuth() {
             window.location.href = '/login';
             return false;
         }
+        const {user} = await resp.json();
+        if (user?.stand) PROFIT_FLOOR = 1;
         return true;
     } catch(e) {
         window.location.href = '/login';
@@ -178,6 +180,9 @@ async function checkAuth() {
 // Инициализация
 document.addEventListener('DOMContentLoaded', async () => {
     if (!await checkAuth()) return;
+    // Параметры ссылки применяем после загрузки режима стенда из сессии.
+    try { applyPrefill(); } catch (e) { console.warn('prefill', e); }
+    updateProfitDisplay();
     refreshAllRates();
     setInterval(refreshAllRates, 5 * 60 * 1000);
     setInterval(() => { if (propInv.cur === 'thb') renderPropFx(); }, 60 * 1000);
@@ -189,7 +194,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 function refreshAllRates() {
     refreshRates();
-    propLoadBankRates(true);
+    propLoadBankRates();
 }
 
 function refreshVisibleRates() {
@@ -479,11 +484,10 @@ function setProfitMargin(profit) {
     const value = parseFloat(profit);
     const amount = getAmount();
     if (state.dealCategory === 'property_auto' && value > 5) {
-        showToast('Для оплаты авто укажите прибыль от 1,5 до 5 %', 'error');
+        showToast(`Для оплаты авто укажите прибыль от ${String(PROFIT_FLOOR).replace('.', ',')} до 5 %`, 'error');
         return;
     }
 
-    // Пол 1.5 % — ниже менеджер не опускает без согласования (решение Карима 27.08.2026)
     if (value < PROFIT_FLOOR) {
         showToast(`Ниже ${PROFIT_FLOOR}% — только с согласованием. Поставил ${PROFIT_FLOOR}%`, 'error');
     }
@@ -540,7 +544,10 @@ function updateProfitDisplay() {
     const customBtn = document.getElementById('customProfitBtn');
     if (customBtn) customBtn.classList.toggle('active', state.applyDiscount && !matchedPreset);
     const floorHint = document.getElementById('profitFloorHint');
-    if (floorHint) floorHint.style.display = eff <= PROFIT_FLOOR + 0.001 ? '' : 'none';
+    if (floorHint) {
+        floorHint.textContent = `Ниже ${String(PROFIT_FLOOR).replace('.', ',')}% — только с согласованием менеджера`;
+        floorHint.style.display = eff <= PROFIT_FLOOR + 0.001 ? '' : 'none';
+    }
 }
 
 // Переключение «Своё» — раскрытие инпута для произвольного %
@@ -589,7 +596,7 @@ function onCustomProfitInput(el) {
     }
     if (state.dealCategory === 'property_auto' && capped > 5) {
         hideResults();
-        showToast('Для оплаты авто укажите прибыль от 1,5 до 5 %', 'error');
+        showToast(`Для оплаты авто укажите прибыль от ${String(PROFIT_FLOOR).replace('.', ',')} до 5 %`, 'error');
         return;
     }
 
@@ -2446,7 +2453,7 @@ const propInv = {
     bank: null,          // название банка из PROP_FX_BANKS или 'custom'
     status: 'idle',      // idle | loading | ok | auth (401) | none (эндпоинта нет — прод)
     rates: null, updatedAt: null, stale: false, loadedAt: 0, lastAttemptAt: 0, loading: null,
-    rateLimited: false,
+    rateLimited: false, refreshing: false, refreshFailed: false, disabledBanks: [],
     wantBank: null, wantRate: null, dealRate: null   // что пришло в ссылке из сделки
 };
 
@@ -2492,13 +2499,13 @@ function parseFlexibleAmount(raw) {
     return Number.isFinite(v) && v > 0 ? v : null;
 }
 
-// Курс TT Buying банка: «Другой банк» — среднее трёх, «Не знаю» — минимум
-// (в $ выходит больше — сумма не занижена). Любой из трёх без курса → null.
+// Для «Другой банк» берём среднее, для «Не знаю» — минимум активных банков.
 function propBankRate(rates, bank) {
     if (!rates || !bank) return null;
     if (bank === 'Другой банк' || bank === 'Не знаю') {
-        const vals = PROP_REFERENCE_BANKS.map(b => rates[b]).filter(v => typeof v === 'number' && v > 0);
-        if (vals.length < PROP_REFERENCE_BANKS.length) return null;
+        const banks = PROP_REFERENCE_BANKS.filter(b => !propInv.disabledBanks.includes(b));
+        const vals = banks.map(b => rates[b]).filter(v => typeof v === 'number' && v > 0);
+        if (!vals.length || vals.length < banks.length) return null;
         return bank === 'Не знаю' ? Math.min(...vals) : vals.reduce((a, b) => a + b, 0) / vals.length;
     }
     const v = rates[bank];
@@ -2548,38 +2555,64 @@ function setPropFxBank(bank) {
 function propLoadBankRates(force = false) {
     if (!force && propInv.status === 'ok' && Date.now() - propInv.loadedAt < 5 * 60000) return propInv.loading;
     if (propInv.loading) return propInv.loading;
-    const requestFresh = force || !propInv.loadedAt || Date.now() - propInv.loadedAt >= 5 * 60000;
     propInv.lastAttemptAt = Date.now();
     propInv.rateLimited = false;
+    propInv.refreshFailed = false;
+    propInv.refreshing = force;
     if (propInv.status !== 'ok') propInv.status = 'loading';
-    renderPropFx();
-    propInv.loading = fetch('/api/stand/thb-bank-rates' + (requestFresh ? '?fresh=1' : ''), { credentials: 'same-origin', cache: 'no-store' })
-        .then(async r => {
-            if (r.status === 429 && requestFresh) {
-                propInv.rateLimited = true;
-                r = await fetch('/api/stand/thb-bank-rates', { credentials: 'same-origin', cache: 'no-store' });
+    propInv.loading = (async () => {
+        const options = { credentials: 'same-origin', cache: 'no-store' };
+        const ratesUrl = '/api/stand/thb-bank-rates';
+        let response = await fetch(ratesUrl + (force ? '?fresh=1' : '?reload=1'), options);
+        if (force && response.status === 429) {
+            propInv.rateLimited = true;
+            response = await fetch(ratesUrl + '?reload=1', options);
+        }
+        if (response.status === 401) { propInv.status = 'auth'; return; }
+        if (!response.ok) throw new Error('bank rates request failed');
+        let payload = await response.json();
+        if (force && !propInv.rateLimited) {
+            if (payload.refresh_pending && payload.request_id) {
+                await propWaitForBankRatesRefresh(payload.request_id, options);
+                response = await fetch(ratesUrl + '?reload=1', options);
+                if (!response.ok) throw new Error('bank rates reload failed');
+                payload = await response.json();
+            } else {
+                propInv.refreshFailed = true;
             }
-            if (r.status === 401) { propInv.status = 'auth'; return; }
-            if (!r.ok) { if (propInv.status !== 'ok') propInv.status = 'none'; return; }
-            const j = await r.json().catch(() => null);
-            if (j && j.success && j.rates) {
-                propInv.status = 'ok';
-                propInv.rates = j.rates;
-                propInv.updatedAt = j.updated_at || null;
-                propInv.stale = !!j.stale;
-                propInv.loadedAt = Date.now();
-            } else if (propInv.status !== 'ok') {
-                propInv.status = 'none';
-            }
+        }
+        if (!payload.success || !payload.rates) throw new Error('bank rates unavailable');
+        propInv.status = 'ok';
+        propInv.rates = payload.rates;
+        propInv.updatedAt = payload.updated_at || null;
+        propInv.stale = !!payload.stale;
+        propInv.disabledBanks = payload.disabled || [];
+        propInv.loadedAt = Date.now();
+    })()
+        .catch(() => {
+            if (force) propInv.refreshFailed = true;
+            if (propInv.status !== 'ok') propInv.status = 'none';
         })
-        .catch(() => { if (propInv.status !== 'ok') propInv.status = 'none'; })
         .finally(() => {
             propInv.loading = null;
+            propInv.refreshing = false;
             propResolveWanted();
             renderPropFx();
             onPropInvoiceInput();
         });
+    renderPropFx();
     return propInv.loading;
+}
+
+async function propWaitForBankRatesRefresh(requestId, options) {
+    const statusUrl = '/api/stand/thb-bank-rates-status?request_id=' + encodeURIComponent(requestId);
+    const deadline = Date.now() + 90000;
+    while (Date.now() < deadline) {
+        await new Promise(resolve => setTimeout(resolve, 5000));
+        const response = await fetch(statusUrl, options);
+        if (response.ok && (await response.json()).done) return;
+    }
+    throw new Error('bank rates refresh timed out');
 }
 
 // Банк/курс из ссылки сделки: есть курсы — выбираем банк, нет — «Свой курс» с курсом из сделки
@@ -2601,7 +2634,7 @@ function propResolveWanted() {
 function renderPropFx() {
     const chips = document.getElementById('propFxChips');
     if (!chips) return;
-    const banks = propInv.status === 'ok' ? PROP_FX_BANKS : [];
+    const banks = propInv.status === 'ok' ? PROP_FX_BANKS.filter(b => !propInv.disabledBanks.includes(b)) : [];
     chips.innerHTML = banks.concat([PROP_FX_CUSTOM]).map(b =>
         `<button type="button" class="commission-btn${propInv.bank === b ? ' active' : ''}" data-fxbank="${b}">${b === PROP_FX_CUSTOM ? 'Свой курс' : b}</button>`
     ).join('');
@@ -2621,7 +2654,7 @@ function renderPropFx() {
         const at = propInv.updatedAt ? new Date(propInv.updatedAt).toLocaleString('ru-RU') : '—';
         const minutes = Math.floor((Date.now() - propInv.loadedAt) / 60000);
         const sourceAge = propInv.updatedAt ? Date.now() - new Date(propInv.updatedAt).getTime() : NaN;
-        const stale = propInv.stale || (Number.isFinite(sourceAge) && sourceAge > 3 * 60 * 60 * 1000);
+        const stale = propInv.stale || (Number.isFinite(sourceAge) && sourceAge > 26 * 60 * 60 * 1000);
         hint = 'Курсы TT Buying на ' + at + ' · обновлено ' + (minutes < 1 ? 'только что' : minutes + ' мин назад') +
             (stale ? ' — данные устарели, сверьте с банком.' : '.');
         if (propInv.rateLimited) hint += ' Повторное обновление доступно через минуту.';
@@ -2630,6 +2663,8 @@ function renderPropFx() {
             hint += r ? ` ${propInv.bank}: ${r.toFixed(4)} ฿/$.` : ' Для этого банка нет курса — выберите другой или «Свой курс».';
         }
     }
+    if (propInv.status === 'ok' && propInv.refreshing) hint += ' Обновляем курсы…';
+    if (propInv.refreshFailed) hint += ' Не удалось обновить курсы. Попробуйте ещё раз.';
     if (propInv.dealRate) hint += ` В сделке зафиксирован курс ${propInv.dealRate}.`;
     document.getElementById('propFxHint').textContent = hint;
     const refresh = document.getElementById('propFxRefresh');
@@ -2722,7 +2757,7 @@ function applyPrefill() {
     if (cat === 'property_freehold' || cat === 'property_auto') applyPropPrefill(q);
     if (cat === 'property_auto') {
         const profit = Number(q.get('profit'));
-        if (Number.isFinite(profit) && profit >= 1.5 && profit <= 5) {
+        if (Number.isFinite(profit) && profit >= PROFIT_FLOOR && profit <= 5) {
             state.applyDiscount = true;
             state.profitMargin = profit;
             updateProfitDisplay();
@@ -2736,10 +2771,6 @@ function applyPrefill() {
     }
     if (typeof hideResults === 'function') hideResults();
 }
-
-// Отдельный слушатель — регистрируется последним, поэтому отрабатывает после
-// восстановления типа сделки из localStorage и перекрывает его параметрами ссылки.
-document.addEventListener('DOMContentLoaded', () => { try { applyPrefill(); } catch (e) { console.warn('prefill', e); } });
 
 // Вариант Б2: переносим только существующие DOM-узлы. Их ID, обработчики и
 // расчётные функции остаются прежними, поэтому префилл и CRM используют тот же контракт.

@@ -19,7 +19,8 @@ const ctx = {
   URLSearchParams, S: {draft: null}, Math,
 };
 vm.createContext(ctx);
-vm.runInContext(tariff[0].replace(/^const /, 'var ') + '\n' + html.match(/^const BROKER_FEE=.*;$/m)[0] + '\n' + [
+vm.runInContext(tariff[0].replace(/^const /, 'var ') + '\n' + html.match(/^const BROKER_FEE=.*;$/m)[0] + '\n' +
+  html.match(/^const AUTO_MIN_PROFIT=.*;$/m)[0] + '\n' + [
   'num','brokerSend','freeholdFee','freeholdSend','autoSafeCents',
   'askModes','draftMode','draftAmounts','ippsTariff','autoMarginPct',
   'autoActualMarginPct','autoShownMarginPct','autoMarginTolerance','autoClientRubSet','autoMarginSet',
@@ -67,7 +68,7 @@ const tiny = {autoPayment:true, step:'s6', autoRequestMode:'rub', requestedRub:4
   ippsTariff:'bank', autoMarkupPct:3, rates:{rubUsdt:80}};
 ctx.autoRecalc(tiny);
 assert.ok(tiny.invoiceUsd>0, 'reverse quote must keep a payable cent');
-assert.equal(ctx.autoMarginPct({autoMarkupPct:.1,autoRequestMode:'rub'}, 4000000), 1.5,
+assert.equal(ctx.autoMarginPct({autoMarkupPct:.1,autoRequestMode:'rub'}, 4000000), 1,
   'hydrated margin cannot bypass the approved floor');
 assert.equal(html.includes('autoDisplayMarkup'), false, 'HTML and log must not rewrite user data');
 
@@ -93,7 +94,7 @@ for(const mode of ['usd','rub']) {
   ctx.activeDeal=reloaded;
   ctx.autoClientRubSet(d.id,String(Math.round(initialRub*1.15)));
   assert.equal(reloaded.amountRub,manualRub,'invalid margin must leave agreed amount');
-  assert.match(notices.at(-1),/1,5–5/);
+  assert.match(notices.at(-1),/1–5/);
   ctx.autoClientRubSet(d.id,'недопустимо');
   assert.equal(reloaded.amountRub,manualRub);
   ctx.autoMarginSet(d.id,'4,5');
@@ -188,7 +189,7 @@ for(let i=0;i<300;i++) {
 }
 let moneyChecks=0;
 for(const tariff of ['bank','soft'])for(const rate of [1,80,88,100,105.123456])
-for(const margin of [1.5,3,4,5])for(const usd of amounts) {
+for(const margin of [1,1.5,3,4,5])for(const usd of amounts) {
   const d=fresh('usd');
   d.requestedUsd=usd;d.ippsTariff=tariff;d.rates.rubUsdt=rate;d.autoMarkupPct=margin;
   assert.equal(ctx.autoRecalc(d),true);
@@ -205,16 +206,16 @@ const exact={autoPayment:true,step:'s6',autoRequestMode:'usd',requestedUsd:79800
 assert.equal(ctx.autoRecalc(exact),true);
 assert.equal(exact.amountRub,6970367.62);
 assert.equal(exact.rates.client,'87,347965');
-for(const tariff of ['bank','soft'])for(const requestedUsd of [1005.11,45000]){
+for(const tariff of ['bank','soft'])for(const requestedUsd of [1005.11,45000])for(const margin of [1,1.5]){
   const edge={autoPayment:true,step:'s6',autoRequestMode:'usd',requestedUsd,
-    ippsTariff:tariff,autoMarkupPct:1.5,rates:{rubUsdt:83.498}};
+    ippsTariff:tariff,autoMarkupPct:margin,rates:{rubUsdt:83.498}};
   assert.equal(ctx.autoRecalc(edge),true);
   edge.autoManualClientRub=true;
-  assert.equal(ctx.autoRecalc(edge),true,'old quote at 1.5% must survive manual quote guard');
+  assert.equal(ctx.autoRecalc(edge),true,'quote at 1% or 1.5% must survive manual quote guard');
   const handoff=new URL(ctx.calcLink(edge),'https://example.invalid');
   const profit=Number(handoff.searchParams.get('profit'));
-  assert.ok(profit>=1.5&&profit<=5,'accepted 1.5% quote must hand off an allowed margin');
-  if(requestedUsd===45000&&tariff==='bank')assert.equal(profit,1.5);
+  assert.ok(profit>=1&&profit<=5,'accepted quote must hand off an allowed margin');
+  if(requestedUsd===45000&&tariff==='bank')assert.ok(Math.abs(profit-margin)<0.00001);
 }
 for(const requestedUsd of [1005.11,45000]){
   const edge={autoPayment:true,step:'s6',autoRequestMode:'usd',requestedUsd,

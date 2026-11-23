@@ -8397,6 +8397,9 @@ def stand_state_put():
         db.close()
 
 
+STAND_AUTO_MIN_PROFIT = Decimal('1')
+
+
 def _stand_auto_quote_calculate(deal):
     """Quote the USD payout against a RUB client budget, or invert that quote."""
     from decimal import Decimal, ROUND_HALF_UP
@@ -8436,7 +8439,7 @@ def _stand_auto_quote_calculate(deal):
             return False
         actual = actual_margin(rub, usd_amount)
         tolerance = min(Decimal('.005'), 1/(rate*(usd_amount+1)))
-        if actual < Decimal('1.5')-tolerance or actual > Decimal('5')+tolerance:
+        if actual < STAND_AUTO_MIN_PROFIT-tolerance or actual > Decimal('5')+tolerance:
             return False
         deal.setdefault('rates', {})['client'] = str(
             (rub/usd_amount).quantize(Decimal('0.000001'), rounding=ROUND_HALF_UP))
@@ -13178,8 +13181,8 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
                 return 'Не смешивайте сумму продавцу и бюджет клиента'
             markup = _stand_num(deal.get('autoMarkupPct'))
             if deal.get('autoMarkupPct') is not None and (markup is None or
-                   not markup.is_finite() or markup < Decimal('1.5') or markup > Decimal('5')):
-                return 'Прибыль для оплаты авто должна быть от 1,5 до 5 %'
+                   not markup.is_finite() or markup < STAND_AUTO_MIN_PROFIT or markup > Decimal('5')):
+                return 'Прибыль для оплаты авто должна быть от 1 до 5 %'
             if before and before.get('autoMarkupPct') != deal.get('autoMarkupPct') and before.get('step') != 's6':
                 return 'Прибыль меняют только до согласования с клиентом'
         if deal.get('type') == 'Оплата авто':
@@ -18407,11 +18410,12 @@ def calculate():
             margin = _stand_num(data.get('profit_margin'))
             direction = data.get('direction')
             tariff = data.get('tariff')
+            min_profit = STAND_AUTO_MIN_PROFIT if STAND_MODE else Decimal('1.5')
             if (data.get('scenario') != 'rub-to-usdt' or direction not in ('target', 'amount')
                     or tariff not in ('bank', 'soft') or amount is None or rate is None
                     or margin is None or amount <= 0 or amount > 1000000000000
                     or rate < Decimal('0.000001') or rate > 1000000
-                    or margin < Decimal('1.5') or margin > Decimal('5')
+                    or margin < min_profit or margin > Decimal('5')
                     or amount != amount.quantize(Decimal('0.01'))):
                 return jsonify({'error': 'Некорректные параметры оплаты авто'}), 400
             deal = {'autoPayment': True, 'step': 's6', 'ippsTariff': tariff,

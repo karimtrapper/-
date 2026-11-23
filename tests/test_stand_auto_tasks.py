@@ -258,7 +258,11 @@ def test_manual_client_rub_guard_accepts_valid_and_rejects_invoice_change(mode):
     after = copy.deepcopy(before)
     changed = after['deals'][0]
     changed['autoManualClientRub'] = True
-    changed['amountRub'] = round(changed['amountRub'] + 1000, 2)
+    quote = dict(deal, autoMarkupPct=1, rates=dict(deal['rates']))
+    # The calculator's target quote keeps this deal's USD payout unchanged.
+    quote.update(autoRequestMode='usd', requestedUsd=deal['invoiceUsd'])
+    assert m._stand_auto_quote_calculate(quote)
+    changed['amountRub'] = quote['amountRub']
     assert m._stand_auto_quote_calculate(changed)
     assert m._stand_guard_transition(before, after, 'manager') is None
     bad = copy.deepcopy(after)
