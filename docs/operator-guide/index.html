@@ -48,8 +48,27 @@
       .copy-field textarea { field-sizing: content; min-height: 2.75rem; }
     }
     .caption { margin: 0; color: #475569; }
-    .route-map { margin: 1rem 0; }
-    .route-map dd a { white-space: normal; }
+    [hidden] { display: none !important; }
+    .route-picker { margin: 1.25rem 0 0; }
+    .route-grid { display: grid; grid-template-columns: 1.25fr .9fr 1fr; gap: .85rem; }
+    .route-step { min-width: 0; margin: 0; padding: .75rem; border: 1px solid #dce3ea; border-radius: .7rem; }
+    .route-step legend { padding: 0 .25rem; font-weight: 650; }
+    .route-options { display: grid; gap: .45rem; }
+    .route-options--payments { grid-template-columns: 1fr 1fr; }
+    .route-option { display: flex; align-items: center; gap: .45rem; min-height: 2.8rem; padding: .45rem .5rem; border: 1px solid #dce3ea; border-radius: .45rem; cursor: pointer; font-size: .925rem; line-height: 1.25; }
+    .route-option input { flex: none; margin: 0; accent-color: #1557ae; }
+    .route-option small { display: block; margin-top: .22rem; color: #475569; }
+    .route-option:has(input:checked) { border-color: #1557ae; background: #eef5ff; }
+    .route-option:focus-within { outline: 2px solid #1557ae; outline-offset: 2px; }
+    .route-step:disabled { background: #f8fafc; color: #526075; }
+    .route-step:disabled .route-option { cursor: default; }
+    .route-picker button { margin: 1rem 0 0; min-height: 2.8rem; padding: .45rem .9rem; border: 1px solid #1557ae; border-radius: .5rem; background: #1557ae; color: white; font: inherit; font-weight: 650; cursor: pointer; }
+    .route-picker button:disabled { background: #f1f5f9; color: #526075; border-color: #dce3ea; cursor: default; }
+    .route-picker button:focus-visible { outline: 2px solid #1557ae; outline-offset: 3px; }
+    .route-result { margin: 1.5rem 0 0; padding: 1rem; border: 1px solid #dce3ea; border-radius: .6rem; background: #f7f9fc; }
+    .route-result h2 { margin: 0; }
+    .route-result p { margin: .35rem 0 0; }
+    @media (max-width: 720px) { .route-grid { grid-template-columns: 1fr; } }
     .copy-field button { justify-self: start; padding: .35rem .7rem; border: 1px solid #b9ccdc; border-radius: .45rem; background: white; color: #184b85; font: inherit; cursor: pointer; }
     .copy-field button:focus-visible { outline: 2px solid #14674a; outline-offset: 2px; }
     .table-scroll { overflow-x: auto; margin: .75rem 0; }
@@ -61,13 +80,39 @@
 </head>
 <body>
   <main>
-    <p class="caption"><a href="/tasks">← Задачник</a> · Инструкции для операциониста</p>
-    <h1>Оплата по реквизитам</h1>
-    <p>Сейчас основной маршрут — <strong>Flow Sole через СГБ</strong>. Для отдельных заявок доступна оплата на счёт MF Corporation в Сбере.</p>
-    <dl class="field-guide route-map">
-      <div><dt>Куда клиент платит рубли</dt><dd><a href="#receipt">Flow Sole · СГБ</a> или <a href="#sber">MF Corporation · Сбер</a>. Сверьте счёт с выпущенным пакетом.</dd></div>
-      <div><dt>Как оплачивается инвойс</dt><dd><a href="#ipps-payout">IPPS / SWIFT в USD</a> для фрихолда и авто, если в карточке указан этот маршрут. <a href="#coins">Coins → SCB</a> для выплат в батах через SCB. <a href="#prepay">Оплату наперёд</a> запускайте после согласования источника.</dd></div>
-    </dl>
+    <p class="caption"><a href="/tasks">← Задачник</a></p>
+    <h1>Инструкции для операциониста</h1>
+    <form class="route-picker" id="route-picker" hidden>
+      <div class="route-grid">
+        <fieldset class="route-step">
+          <legend>1. Тип оплаты</legend>
+          <div class="route-options route-options--payments">
+            <label class="route-option"><input type="radio" name="payment" value="freehold" required> Фрихолд</label>
+            <label class="route-option"><input type="radio" name="payment" value="leasehold" required> Лизхолд</label>
+            <label class="route-option"><input type="radio" name="payment" value="rent" required> Аренда</label>
+            <label class="route-option"><input type="radio" name="payment" value="auto" required> Оплата авто</label>
+          </div>
+        </fieldset>
+        <fieldset class="route-step" id="receipt-options" disabled>
+          <legend>2. Тип приёма средств</legend>
+          <div class="route-options">
+            <label class="route-option"><input type="radio" name="receipt" value="bank" required> По реквизитам</label>
+          </div>
+        </fieldset>
+        <fieldset class="route-step" id="account-options" disabled>
+          <legend>3. Куда принимаем</legend>
+          <div class="route-options">
+            <label class="route-option"><input type="radio" name="account" value="sgb" required><span>Flow Sole <small>СГБ · …0261</small></span></label>
+            <label class="route-option"><input type="radio" name="account" value="sber" required><span>MF Corporation <small>Сбер · …0286</small></span></label>
+          </div>
+        </fieldset>
+      </div>
+      <button type="submit" disabled>Показать инструкцию</button>
+    </form>
+    <div class="route-result" id="route-result" hidden>
+      <h2 id="route-title" tabindex="-1"></h2>
+      <p id="route-payout"></p>
+    </div>
     <nav class="contents" aria-label="Разделы инструкции">
       <a href="#rate">Запрос курса</a><a href="#ipds">ИПДС</a><a href="#contract">Договор</a><a href="#receipt">Приход в СГБ</a><a href="#sber">Приход в Сбер</a><a href="#broker">Брокер и USDT</a><a href="#send-sber">Отправка из Сбера</a><a href="#send-sgb">Отправка из СГБ</a><a href="#wallet-signing">Кошельки и подписи</a><a href="#coins">Coins и баты на SCB</a><a href="#scb-payout">Оплата со SCB</a><a href="#ipps-payout">IPPS / SWIFT</a><a href="#prepay">Оплата наперёд</a><a href="#exceptions">Нестандартные ситуации</a>
     </nav>
@@ -77,7 +122,7 @@
       <p>Когда клиентский менеджер запрашивает курс, в <a href="/tasks">Задачнике</a> появляется задача <strong>«Ответить курс»</strong>. На экранах показана учебная заявка.</p>
       <figure>
         <a class="figure-link" href="operator-screens/01-rate-overview.png">
-          <img src="operator-screens/01-rate-overview.png" alt="Четыре пункта запроса курса. Открыть заявку, скопировать готовый вопрос, внести ответ и проверить передачу менеджеру.">
+          <img src="operator-screens/01-rate-overview.png" alt="Четыре пункта запроса курса. Открыть заявку, скопировать готовый вопрос, внести ответ и проверить передачу менеджеру." loading="lazy">
           <span>Открыть экран крупнее</span>
         </a>
       </figure>
@@ -91,13 +136,13 @@
           <strong>Рабочие чаты для запроса курса</strong>
           <ul class="chat-list">
             <li><strong>RUB → USDT</strong> · <a href="https://t.me/c/3984596268/3025">Grusha (MF)| Tradex</a>, <a href="https://t.me/c/3969064520/2874">Asia Capital x Grusha (rub-usdt) | АК-1001</a>, <a href="tg://openmessage?chat_id=5095212604">Крипта - Платежи</a> (Екатерина).</li>
-            <li><strong>USDT → THB</strong> · <a href="tg://openmessage?chat_id=5187853852">Coins TH | mfcorpthai@gmail.com</a>, <a href="tg://openmessage?chat_id=5475769383">Bitazza OTC x MF Corporation Company Limited</a>.</li>
+            <li data-for-payout="thb"><strong>USDT → THB</strong> · <a href="tg://openmessage?chat_id=5187853852">Coins TH | mfcorpthai@gmail.com</a>, <a href="tg://openmessage?chat_id=5475769383">Bitazza OTC x MF Corporation Company Limited</a>.</li>
           </ul>
         </li>
         <li><strong>Внесите курс</strong>
           <dl class="field-guide">
             <div><dt>Курс, ₽ за 1 USDT</dt><dd>В блоке <strong>«Что ответили · RUB → USDT»</strong> впишите число в строке ответившего контрагента. Например, <strong>84,20</strong>. Нажмите <strong>«Отправить»</strong>.</dd></div>
-            <div><dt>Курс, ฿ за 1 USDT</dt><dd>Если в карточке есть <strong>«Что ответили · USDT → THB»</strong>, внесите ответ в нужную строку. Например, <strong>32,05</strong>. Нажмите <strong>«Отправить»</strong>.</dd></div>
+            <div data-for-payout="thb"><dt>Курс, ฿ за 1 USDT</dt><dd>Если в карточке есть <strong>«Что ответили · USDT → THB»</strong>, внесите ответ в нужную строку. Например, <strong>32,05</strong>. Нажмите <strong>«Отправить»</strong>.</dd></div>
             <div><dt>Что уйдёт в сделку</dt><dd>Здесь автоматически появляется лучший из внесённых курсов по каждому направлению.</dd></div>
           </dl>
         </li>
@@ -217,7 +262,7 @@
 
     <section id="contract" aria-labelledby="contract-title">
       <h2 id="contract-title">3. Подготовить договор и передать менеджеру</h2>
-      <p>Когда менеджер приложил документы и передал заявку, откройте задачу <strong>«Подготовить договор»</strong>. Ниже порядок для оплаты через Flow Sole. Если по сделке нужен ИПДС, сначала проверьте пакет по предыдущему шагу.</p>
+      <p>Когда менеджер приложил документы и передал заявку, откройте задачу <strong>«Подготовить договор»</strong>. Если по сделке нужен ИПДС, сначала проверьте пакет по предыдущему шагу.</p>
       <figure>
         <a class="figure-link" href="operator-screens/07-contract-overview.png">
           <img src="operator-screens/07-contract-overview.png" alt="Шесть пронумерованных действий на одной картинке. Пункт 1 — кнопка Распознать документы. Далее сверка полей, сумма и назначение, создание договора, скачивание файлов и передача менеджеру.">
@@ -239,8 +284,8 @@
             <div><dt>Дата рождения, дата выдачи и кем выдан</dt><dd>Сверьте с паспортом и заполните пропуски по оригиналу.</dd></div>
             <div><dt>Получатель платежа</dt><dd>Укажите того, кто указан получателем в инвойсе. Сверьте написание.</dd></div>
             <div><dt>Номер и дата инвойса</dt><dd>Перенесите данные из инвойса, который оплачивает клиент.</dd></div>
-            <div><dt>Недвижимость</dt><dd>Сверьте объект, номер юнита и форму владения.</dd></div>
-            <div><dt>Авто</dt><dd>Сверьте продавца, ДКП, VIN и этап оплаты. Если VIN ещё нет, укажите основание из документов.</dd></div>
+            <div data-for-object="realty"><dt>Недвижимость</dt><dd>Сверьте объект, номер юнита и форму владения.</dd></div>
+            <div data-for-object="auto"><dt>Авто</dt><dd>Сверьте продавца, ДКП, VIN и этап оплаты. Если VIN ещё нет, укажите основание из документов.</dd></div>
           </dl>
           Исправьте ошибки по оригиналу. Если данных в файлах не хватает, нажмите <strong>«Вернуть с вопросом»</strong>.
         </li>
@@ -266,8 +311,8 @@
         </li>
         <li><strong>Проверьте счёт и выпустите пакет</strong>
           <dl class="field-guide">
-            <div><dt>Куда клиент переводит рубли</dt><dd>Выберите <strong>«Flow Sole · СГБ»</strong>. Если в заявке указан Сбер, выберите <strong>«Сбер · реквизиты MF Corporation»</strong>.</dd></div>
-            <div><dt>Агент</dt><dd>Задачник подставляет компанию по выбранному счёту. Для СГБ это Flow Sole Company Limited.</dd></div>
+            <div><dt>Куда клиент переводит рубли</dt><dd><span data-for-account="sgb">Выберите <strong>«Flow Sole · СГБ»</strong>.</span> <span data-for-account="sber">Выберите <strong>«Сбер · реквизиты MF Corporation»</strong>.</span></dd></div>
+            <div><dt>Агент</dt><dd>Задачник подставляет компанию по выбранному счёту. <span data-for-account="sgb">Для СГБ это Flow Sole Company Limited.</span> <span data-for-account="sber">Для Сбера это MF Corporation.</span></dd></div>
             <div><dt>Налоговый или регистрационный номер</dt><dd>Сверьте номер компании, которую подставил Задачник.</dd></div>
             <div><dt>Подписант</dt><dd>Проверьте, что подставленный подписант указан для выбранного агента.</dd></div>
           </dl>
@@ -412,7 +457,7 @@
         <li><strong>Заполните «Подготовка пачки»</strong>
           <dl class="field-guide">
             <div><dt>Состав пачки</dt><dd>По умолчанию выбрана текущая сделка. Добавляйте другие подтверждённые поступления с этого счёта, только если они входят в тот же перевод брокеру. Перед отправкой проверьте весь состав.</dd></div>
-            <div><dt>Сумма пополнения клиента и сумма отправки брокеру, ₽</dt><dd>Первая показывает приход, вторая — сколько фактически уйдёт брокеру. Для <a href="#send-sber">Сбера</a> проверьте расчёт по шаблону <strong>0,3% + 40 ₽</strong>. Для <a href="#send-sgb">СГБ</a> рассчитайте сумму по выписке и внесите её вручную.</dd></div>
+            <div><dt>Сумма пополнения клиента и сумма отправки брокеру, ₽</dt><dd>Первая показывает приход, вторая — сколько фактически уйдёт брокеру. <span data-for-account="sber">Для <a href="#send-sber">Сбера</a> проверьте расчёт по шаблону <strong>0,3% + 40 ₽</strong>.</span> <span data-for-account="sgb">Для <a href="#send-sgb">СГБ</a> рассчитайте сумму по выписке и внесите её вручную.</span></dd></div>
             <div><dt>Брокер и курс обмена RUB→USDT</dt><dd>Выберите согласованного брокера, проверьте его реквизиты в рабочей группе и укажите подтверждённый им курс в рублях за USDT.</dd></div>
             <div><dt>Когда отправили рубли брокеру</dt><dd>Запишите фактические дату и время отправки по МСК. Эти данные помогают найти ответный перевод.</dd></div>
             <div><dt>Куда брокер пришлёт USDT · TRC-20</dt><dd>Выберите согласованный корпоративный кошелёк. Сверьте полный адрес и сеть с данными, переданными брокеру.</dd></div>
@@ -420,7 +465,7 @@
           Откройте <a href="https://t.me/c/3984596268/3025">Grusha (MF)| Tradex</a> или <a href="https://t.me/c/3969064520/2874">Asia Capital x Grusha (rub-usdt) | АК-1001</a>, если с этой группой согласован обмен. Для другого брокера используйте кнопку <strong>«чат»</strong> в его строке запроса курса.
         </li>
         <li><strong>Зафиксируйте отправку рублей</strong>
-          Создайте платёжное поручение по инструкции для <a href="#send-sber">Сбера</a> или <a href="#send-sgb">СГБ</a>. После фактической отправки и сверки полей нажмите <strong>«Отправил брокеру — ждём USDT»</strong>. Если право отправки у другого сотрудника, возьмите сумму и время из его подтверждения.
+          <span data-for-account="sber">Создайте платёжное поручение по инструкции для <a href="#send-sber">Сбера</a>.</span> <span data-for-account="sgb">Создайте платёжное поручение по инструкции для <a href="#send-sgb">СГБ</a>.</span> После фактической отправки и сверки полей нажмите <strong>«Отправил брокеру — ждём USDT»</strong>. Если право отправки у другого сотрудника, возьмите сумму и время из его подтверждения.
         </li>
         <li><strong>Сверьте входящий перевод USDT</strong>
           <dl class="field-guide">
@@ -646,7 +691,7 @@
 
     <section id="prepay" aria-labelledby="prepay-title">
       <h2 id="prepay-title">10. Оплата наперёд через IPPS</h2>
-      <p>Эта ветка доступна для рублёвого фрихолда после подтверждения прихода рублей, пока USDT от брокера ещё не зачтены. Источник USDT заранее согласуйте с ответственным за средства.</p>
+      <p>Используйте эту ветку, если в рублёвой заявке на выплату через IPPS доступна кнопка <strong>«Оплатить наперёд»</strong>. Она появляется после подтверждения прихода рублей, пока USDT от брокера ещё не зачтены. Источник USDT заранее согласуйте с ответственным за средства.</p>
       <figure>
         <a class="figure-link" href="operator-screens/16-prepay-overview.png">
           <img src="operator-screens/16-prepay-overview.png" alt="Кнопка Оплатить наперёд, выбор источника USDT, расчёт суммы в IPPS и запуск параллельной ветки." loading="lazy">
@@ -687,7 +732,7 @@
           <summary>Отправка с кошелька не подтверждается</summary>
           <p>Откройте <strong>«Проверить перевод»</strong> или <strong>«Проверить отправку»</strong>, если такая задача появилась. Сверьте хеш, сеть, источник, адрес назначения, сумму и факт зачисления. При недостаточной сумме проверьте, ожидается ли второй перевод. Перед повторной отправкой убедитесь с владельцем кошелька, что исходная транзакция не прошла.</p>
         </details>
-        <details>
+        <details data-for-payout="thb">
           <summary>Баты уже есть на согласованном балансе</summary>
           <p>В <strong>«Что делаем с USDT»</strong> выберите фактически согласованный источник выплаты. Для лизхолда с оплатой батами из IPPS выберите <strong>«Платим батами с баланса IPPS»</strong>. В поле <strong>«Возврат USDT»</strong> укажите, нужно ли вернуть USDT на кошелёк пополнения. Если возврат нужен, сверьте сумму, сеть и кошелёк с ответственным перед передачей. Если возврат не нужен, подтвердите маршрут, проконтролируйте выплату в батах и приложите подтверждение к сделке.</p>
         </details>
@@ -707,6 +752,130 @@
     </section>
   </main>
   <script>
+    const payments = new Map([
+      ['freehold', { label: 'Фрихолд', object: 'realty', payout: 'usd' }],
+      ['leasehold', { label: 'Лизхолд', object: 'realty', payout: 'thb' }],
+      ['rent', { label: 'Аренда', object: 'realty', payout: 'thb' }],
+      ['auto', { label: 'Оплата авто', object: 'auto', payout: 'usd' }],
+    ]);
+    const accounts = new Map([
+      ['sgb', { label: 'Flow Sole · СГБ', incoming: 'receipt', outgoing: 'send-sgb' }],
+      ['sber', { label: 'MF Corporation · Сбер', incoming: 'sber', outgoing: 'send-sber' }],
+    ]);
+    const payouts = {
+      usd: { label: 'Выплата через IPPS / SWIFT в USD', sections: ['ipps-payout', 'prepay'] },
+      thb: { label: 'Основной маршрут выплаты · Coins → SCB в THB', sections: ['coins', 'scb-payout'] },
+    };
+    const picker = document.getElementById('route-picker');
+    const receiptOptions = document.getElementById('receipt-options');
+    const accountOptions = document.getElementById('account-options');
+    const showGuide = picker.querySelector('button[type="submit"]');
+    const routeResult = document.getElementById('route-result');
+    const routeTitle = document.getElementById('route-title');
+    const routePayout = document.getElementById('route-payout');
+    const contents = document.querySelector('.contents');
+    const sections = new Map(Array.from(document.querySelectorAll('main > section[id]'), section => {
+      const heading = section.querySelector('h2');
+      return [section.id, { section, heading, title: heading.textContent.replace(/^\d+\.\s*/, '') }];
+    }));
+    const contentsLinks = Array.from(contents.querySelectorAll('a[href^="#"]'));
+    const formFields = ['payment', 'receipt', 'account'];
+    let shownRoute = null;
+
+    function getRoute(values) {
+      const payment = values.get('payment');
+      const receipt = values.get('receipt');
+      const account = values.get('account');
+      return payments.has(payment) && receipt === 'bank' && accounts.has(account)
+        ? { payment, receipt, account }
+        : null;
+    }
+
+    function enableChoices() {
+      receiptOptions.disabled = !payments.has(picker.elements.payment.value);
+      accountOptions.disabled = receiptOptions.disabled || !picker.elements.receipt.checked;
+      showGuide.disabled = !getRoute(new FormData(picker));
+    }
+
+    function renderGuide(route, sectionId = '') {
+      shownRoute = route;
+      const payment = route ? payments.get(route.payment) : null;
+      const account = route ? accounts.get(route.account) : null;
+      const payout = payment ? payouts[payment.payout] : null;
+      const ids = route
+        ? ['rate', 'ipds', 'contract', account.incoming, 'broker', account.outgoing,
+          'wallet-signing', ...payout.sections, 'exceptions']
+        : [sectionId];
+      const visibleIds = new Set(ids);
+      let number = 0;
+      for (const [id, entry] of sections) {
+        const visible = visibleIds.has(id);
+        entry.section.hidden = !visible;
+        if (visible) entry.heading.textContent = route ? `${++number}. ${entry.title}` : entry.title;
+      }
+      for (const link of contentsLinks) link.hidden = !visibleIds.has(link.hash.slice(1));
+      contents.hidden = !route;
+      routeResult.hidden = !route;
+      if (route) {
+        routeTitle.textContent = `${payment.label} · По реквизитам · ${account.label}`;
+        routePayout.textContent = payout.label;
+      }
+      for (const item of document.querySelectorAll('[data-for-account]')) {
+        item.hidden = !!route && item.dataset.forAccount !== route.account;
+      }
+      for (const item of document.querySelectorAll('[data-for-object]')) {
+        item.hidden = !!payment && item.dataset.forObject !== payment.object;
+      }
+      for (const item of document.querySelectorAll('[data-for-payout]')) {
+        item.hidden = !!payment && item.dataset.forPayout !== payment.payout;
+      }
+    }
+
+    function updateLocation(route) {
+      if (location.protocol === 'file:') return;
+      const url = new URL(location.href);
+      for (const field of formFields) {
+        if (route) url.searchParams.set(field, route[field]);
+        else url.searchParams.delete(field);
+      }
+      url.hash = '';
+      history.replaceState(null, '', url);
+    }
+
+    picker.addEventListener('change', () => {
+      enableChoices();
+      if (shownRoute || sections.has(location.hash.slice(1))) {
+        updateLocation(null);
+        renderGuide(null);
+      }
+    });
+    picker.addEventListener('submit', event => {
+      event.preventDefault();
+      const route = getRoute(new FormData(picker));
+      if (!route) return;
+      updateLocation(route);
+      renderGuide(route);
+      routeTitle.focus();
+    });
+    window.addEventListener('hashchange', () => {
+      if (!shownRoute) renderGuide(null, location.hash.slice(1));
+      const target = sections.get(location.hash.slice(1))?.section;
+      if (target && !target.hidden) target.scrollIntoView();
+    });
+
+    const initialRoute = getRoute(new URLSearchParams(location.search));
+    if (initialRoute) {
+      for (const input of picker.querySelectorAll('input[type="radio"]')) {
+        input.checked = input.value === initialRoute[input.name];
+      }
+    }
+    enableChoices();
+    const initialSection = location.hash.slice(1);
+    renderGuide(initialRoute, initialSection);
+    picker.hidden = false;
+    const anchor = sections.get(initialSection)?.section;
+    if (anchor && !anchor.hidden) requestAnimationFrame(() => anchor.scrollIntoView());
+
     for (const field of document.querySelectorAll('.copy-field textarea')) {
       const button = document.createElement('button');
       button.type = 'button';
