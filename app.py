@@ -17572,9 +17572,11 @@ def stand_docs_issue():
         F = dict(deal.get('docFields') or {})
         F.update({k: v for k, v in (submitted or {}).items()
                   if v is None or (isinstance(v, (str, int, float)) and not isinstance(v, bool))})
-        if (deal.get('type') == 'Оплата недвижимости' and deal.get('kind') == 'Фрихолд'
-                and not deal.get('autoPayment') and not _stand_is_crypto(deal)
-                and (deal.get('docPack') or deal.get('docVersion')) and document_pack_stale(deal)):
+        reissuing_freehold = (
+            deal.get('type') == 'Оплата недвижимости' and deal.get('kind') == 'Фрихолд'
+            and not deal.get('autoPayment') and not _stand_is_crypto(deal)
+            and bool(deal.get('docPack') or deal.get('docVersion')) and document_pack_stale(deal))
+        if reissuing_freehold:
             # The old form snapshot may still contain the preceding agreement's terms.
             F.update(amountPay=deal.get('amountRub'), amountThb=deal.get('invoiceUsd'),
                      rate=(deal.get('rates') or {}).get('client'))
@@ -17819,7 +17821,7 @@ def stand_docs_issue():
             'wallet': used.get('payin_wallet', ''), 'recipient': used.get('payin_recipient', ''),
             'note': note, 'at': at}
         deal['docVersion'] = version
-        if deal.get('autoPayment') is True:
+        if deal.get('autoPayment') is True or reissuing_freehold:
             deal.setdefault('docs', {})['signed'] = False
         deal['docFields'] = F
         deal['issuedDocPayTo'] = F.get('payTo')
@@ -17880,6 +17882,16 @@ def stand_docs_issue():
         db.close()
 
 
+def _stand_doc_pack_items(deal):
+    version = deal['docPack'].get('version')
+    current = {entry['kind']: entry['docId'] for entry in deal.get('docsIssued') or []
+               if entry.get('version') == version}
+    for kind, own in (deal.get('issued') or {}).items():
+        if isinstance(own, dict) and own.get('docId'):
+            current[kind] = own['docId']
+    return current
+
+
 @app.route('/api/stand/docs/zip', methods=['GET'])
 def stand_docs_zip():
     """«Скачать всё»: текущая версия пакета одним архивом, свои файлы вместо сгенерированных."""
@@ -17903,11 +17915,7 @@ def stand_docs_zip():
             return jsonify({'success': False, 'error': 'Пакет документов ещё не выпущен'}), 404
         if document_pack_stale(deal):
             return jsonify({'success': False, 'error': 'Сначала перевыпустите документы с новым курсом'}), 409
-        current = {e['kind']: e['docId'] for e in deal.get('docsIssued') or []
-                   if e.get('version') == pack.get('version')}
-        for kind, own in (deal.get('issued') or {}).items():
-            if isinstance(own, dict) and own.get('docId'):
-                current[kind] = own['docId']
+        current = _stand_doc_pack_items(deal)
         ids = [current[k] for k in ('dog', 'app', 'bill') if k in current]
         docs = db.query(AgreementDoc).filter(AgreementDoc.id.in_(ids),
             AgreementDoc.deleted_at.is_(None)).all() if ids else []
@@ -32885,6 +32893,18 @@ def docs_download(doc_id):
         d = db.query(AgreementDoc).filter(AgreementDoc.id == doc_id).first()
         if not d or d.deleted_at is not None or d.data is None:
             return jsonify({'success': False, 'error': 'not_found'}), 404
+        if STAND_MODE and 'standDealId' in request.args:
+            from stand_workflow import document_pack_stale
+            deal_id = request.args.get('standDealId', type=int)
+            state = json.loads(_stand_row(db).data or '{}')
+            deal = next((item for item in state.get('deals') or [] if item.get('id') == deal_id), None)
+            pack = (deal or {}).get('docPack') or {}
+            if not pack or pack.get('agreementId') != d.agreement_id:
+                return jsonify(success=False, error='Пакет сделки не найден'), 404
+            if document_pack_stale(deal):
+                return jsonify(success=False, error='Сначала перевыпустите документы с новым курсом'), 409
+            if doc_id not in _stand_doc_pack_items(deal).values():
+                return jsonify(success=False, error='В этом пакете выпущена другая версия документа'), 409
         from flask import Response
         from urllib.parse import quote
         return Response(d.data, mimetype=d.mime, headers={

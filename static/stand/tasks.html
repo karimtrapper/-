@@ -5619,7 +5619,8 @@ function docDownload(id,k,ext){
      операциониста), лежат на сервере: /api/docs/file/<id> */
   const d=deal(id), f=docFileOf(d,k);
   if(!f){toast('Документ ещё не выпущен — операционист создаёт его на шаге «Подготовить договор»');return;}
-  docFetch('/api/docs/file/'+f.docId,f.file||docFileName(d,k,'pdf'),d,'Скачан документ: '+(DOCT[k]||k)+' · '+f.file);
+  const url='/api/docs/file/'+f.docId+(STAND?'?standDealId='+id:'');
+  docFetch(url,f.file||docFileName(d,k,'pdf'),d,'Скачан документ: '+(DOCT[k]||k)+' · '+f.file);
 }
 /* Текущая версия пакета: что выпустил генератор, со своими файлами поверх */
 function documentPackStale(d){

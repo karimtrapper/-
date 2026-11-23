@@ -85,10 +85,11 @@ def test_rerated_thb_freehold_edits_and_reissues_agreed_terms(board, monkeypatch
     old_doc = {'kind': 'app', 'version': 1, 'docId': 21}
     old_economy = {'version': 1, 'invoiceUsd': 297983.87, 'ippsTariff': 'bank'}
     pdf = base64.b64encode(b'%PDF-1.4\n1 0 obj << /Type /Catalog >> endobj\n%%EOF').decode()
+    source = {'file': 'synthetic.pdf', 'mime': 'application/pdf',
+              'data': 'data:application/pdf;base64,' + pdf}
     install('s6', {**FREEHOLD_THB, 'docsIssued': [old_doc], 'docFields': old_fields,
-                   'ownerEconomyAtDoc': old_economy,
-                   'files': {'inv': [{'file': 'synthetic.pdf', 'mime': 'application/pdf',
-                                      'data': 'data:application/pdf;base64,' + pdf}]}})
+                   'ownerEconomyAtDoc': old_economy, 'docs': {'signed': True},
+                   'files': {'inv': [source], 'signed': [{**source, 'docVersion': 1}]}})
     manager, operator = clients('manager'), clients('operator')
     invoice_usd = round(FREEHOLD_THB['invoiceThb'] / 33.86, 2)
     fx = put(manager, lambda s: s['deals'][0].update(fxRate=33.86, invoiceUsd=invoice_usd))
@@ -120,13 +121,20 @@ def test_rerated_thb_freehold_edits_and_reissues_agreed_terms(board, monkeypatch
     d = issue.json['data']['deals'][0]
     assert d['docVersion'] == d['docPack']['version'] == 2
     assert d['docsIssued'][0] == old_doc
+    assert d['files']['signed'][0]['docVersion'] == 1 and d['docs']['signed'] is False
     assert d['docFields']['amountThb'] == d['ownerEconomyAtDoc']['invoiceUsd'] == invoice_usd
     assert float(d['docPack']['amount']) == round(invoice_usd * 91, 2)
     assert d['ownerEconomyAtDoc']['ippsTariff'] == 'soft'
     app_doc = next(entry for entry in issue.json['issued'] if entry['kind'] == 'app')
     assert 'THB 9976500' in _text(operator, app_doc['docId'])
+    url = f"/api/docs/file/{app_doc['docId']}"
+    assert manager.get(f'{url}?standDealId=1474').status_code == 200
     handoff = put(operator, lambda s: s['deals'][0].update(step='s11b'))
     assert handoff.status_code == 200, handoff.json
+    reset = put(manager, lambda state: rerate(state, 's6'))
+    assert reset.status_code == 200, reset.json
+    assert manager.get(f'{url}?standDealId=1474').status_code == 409
+    assert manager.get(url).status_code == 200
 
 
 @pytest.mark.parametrize('step,role,over', [
