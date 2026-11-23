@@ -26,9 +26,10 @@
     .checklist li + li { margin-top: .3rem; }
     a { color: #1d4ed8; text-underline-offset: .15em; }
     a:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
-    figure { margin: .75rem 0; }
-    figure img { display: block; max-width: 100%; height: auto; border: 1px solid #dce3ea; border-radius: .65rem; }
-    .figure-link span { display: inline-block; margin-top: .35rem; }
+    .step-screen { margin: .45rem 0 .7rem; }
+    .step-screen a { display: inline-block; max-width: 100%; vertical-align: top; }
+    .step-screen a > span { display: block; width: fit-content; margin: .25rem 0 0 auto; font-size: .8rem; }
+    .step-screen img { display: block; max-width: 100%; height: auto; border: 1px solid #dce3ea; border-radius: .65rem; }
     .scenarios { border-block-start: 1px solid #dce3ea; }
     .scenarios details { padding: .75rem 0; border-block-end: 1px solid #dce3ea; }
     .scenarios summary { font-weight: 650; cursor: pointer; }
@@ -123,15 +124,22 @@
         <div><dt>До 500 000 ₽ включительно</dt><dd>Запросите курс у <a href="https://t.me/c/3984596268/3025">Tradex</a>.</dd></div>
         <div><dt>Свыше 500 000 ₽</dt><dd>Запросите курс в чате <a href="tg://openmessage?chat_id=5095212604">«Крипта - Платежи»</a>.</dd></div>
       </dl>
-      <figure>
-        <a class="figure-link" href="operator-screens/01-rate-overview.png">
-          <img src="operator-screens/01-rate-overview.png" alt="Учебный запрос курса на 500 000 ₽ в Tradex. Открыть заявку, скопировать вопрос, внести ответ и проверить передачу менеджеру." loading="lazy">
-          <span>Открыть экран крупнее</span>
-        </a>
-      </figure>
       <ol class="steps">
-        <li><strong>Откройте заявку</strong> В списке задач нажмите на карточку <strong>«Ответить курс»</strong>.</li>
+        <li><strong>Откройте заявку</strong>
+          <figure class="step-screen">
+            <a href="operator-screens/steps/01-rate-1.png" title="Открыть экран крупнее" target="_blank" rel="noopener">
+              <img src="operator-screens/steps/01-rate-1.png" width="1358" height="259" alt="Экран: «Откройте заявку»" loading="lazy">
+              <span>Увеличить экран</span>
+            </a>
+          </figure>
+          В списке задач нажмите на карточку <strong>«Ответить курс»</strong>.</li>
         <li><strong>Скопируйте и отправьте вопрос</strong>
+          <figure class="step-screen">
+            <a href="operator-screens/steps/01-rate-2.png" title="Открыть экран крупнее" target="_blank" rel="noopener">
+              <img src="operator-screens/steps/01-rate-2.png" width="1358" height="363" alt="Экран: «Скопируйте и отправьте вопрос»" loading="lazy">
+              <span>Увеличить экран</span>
+            </a>
+          </figure>
           <dl class="field-guide">
             <div><dt>Что спросить</dt><dd>Для RUB → USDT определите контрагента по сумме в запросе. Нажмите <strong>«копировать»</strong> в его строке. Сумма уже есть в тексте.</dd></div>
             <div><dt>Чат</dt><dd>В той же строке нажмите <strong>«чат»</strong>, чтобы посмотреть сохранённый адрес. Откройте группу, вставьте вопрос и отправьте его. На стенде кнопка <strong>«запросить (на стенде без перехода)»</strong> тоже копирует вопрос. Если видите <strong>«привязать чат»</strong>, откройте группу по ссылке в инструкции.</dd></div>
@@ -139,13 +147,26 @@
           <p data-for-payout="thb"><strong>USDT → THB</strong> · <a href="tg://openmessage?chat_id=5187853852">Coins TH | mfcorpthai@gmail.com</a>, <a href="tg://openmessage?chat_id=5475769383">Bitazza OTC x MF Corporation Company Limited</a>.</p>
         </li>
         <li><strong>Внесите курс</strong>
+          <figure class="step-screen">
+            <a href="operator-screens/steps/01-rate-3.png" title="Открыть экран крупнее" target="_blank" rel="noopener">
+              <img src="operator-screens/steps/01-rate-3.png" width="1358" height="154" alt="Экран: «Внесите курс»" loading="lazy">
+              <span>Увеличить экран</span>
+            </a>
+          </figure>
           <dl class="field-guide">
             <div><dt>Курс, ₽ за 1 USDT</dt><dd>В блоке <strong>«Что ответили · RUB → USDT»</strong> впишите число в строке ответившего контрагента. Например, <strong>84,20</strong>. Нажмите <strong>«Отправить»</strong>.</dd></div>
             <div data-for-payout="thb"><dt>Курс, ฿ за 1 USDT</dt><dd>Если в карточке есть <strong>«Что ответили · USDT → THB»</strong>, внесите ответ в нужную строку. Например, <strong>32,05</strong>. Нажмите <strong>«Отправить»</strong>.</dd></div>
             <div><dt>Что уйдёт в сделку</dt><dd>Здесь автоматически появляется лучший из внесённых курсов по каждому направлению.</dd></div>
           </dl>
         </li>
-        <li><strong>Проверьте передачу менеджеру</strong> Как только внесён хотя бы один ответ по каждому направлению из карточки, менеджер получит задачу <strong>«Отдать расчёт клиенту»</strong> и рассчитает итоговый курс.</li>
+        <li><strong>Проверьте передачу менеджеру</strong>
+          <figure class="step-screen">
+            <a href="operator-screens/steps/01-rate-4.png" title="Открыть экран крупнее" target="_blank" rel="noopener">
+              <img src="operator-screens/steps/01-rate-4.png" width="1358" height="260" alt="Экран: «Проверьте передачу менеджеру»" loading="lazy">
+              <span>Увеличить экран</span>
+            </a>
+          </figure>
+          Как только внесён хотя бы один ответ по каждому направлению из карточки, менеджер получит задачу <strong>«Отдать расчёт клиенту»</strong> и рассчитает итоговый курс.</li>
       </ol>
       <div class="copy-field">
         <label for="rate-followup">Что написать в «Вернуть с вопросом», если не хватает суммы</label>
@@ -156,13 +177,6 @@
     <section id="ipds" aria-labelledby="ipds-title">
       <h2 id="ipds-title">2. Запросить и проверить ИПДС</h2>
       <p>ИПДС — документы об источнике происхождения денежных средств. Собирайте их до перевода клиента. Для оплаты недвижимости через Flow Sole СГБ прямо запрашивает ИПДС при сумме от 3 млн ₽. Для оплаты авто, сделок на меньшую сумму и приёма на Сбер проверьте, какой пакет нужен для конкретного платежа. <a href="https://t.me/c/4387135684/388">Сообщение СГБ о пакете</a>.</p>
-      <figure>
-        <a class="figure-link" href="operator-screens/05-ipds-overview.png">
-          <img src="operator-screens/05-ipds-overview.png" alt="Три пункта работы с ИПДС. Открыть документы, вернуть пакет с вопросом и проверить файлы, которые добавит менеджер.">
-          <span>Открыть экран крупнее</span>
-        </a>
-      </figure>
-
       <div class="copy-field">
         <label for="ipds-request">Первый запрос клиентскому менеджеру</label>
         <textarea id="ipds-request" readonly rows="4">По сделке [номер] уточни, пожалуйста, кто платит, с какого счёта и из каких источников собрана сумма. Если источников несколько, напиши, сколько рублей идёт из каждого. Скажи, проходили ли деньги через вклад или другие счета.</textarea>
@@ -233,13 +247,26 @@
       <h3>Как проверить пакет в Задачнике</h3>
       <ol class="steps">
         <li><strong>Откройте «Документы» в задаче «Подготовить договор»</strong>
+          <figure class="step-screen">
+            <a href="operator-screens/steps/05-ipds-1.png" title="Открыть экран крупнее" target="_blank" rel="noopener">
+              <img src="operator-screens/steps/05-ipds-1.png" width="1358" height="668" alt="Откройте «Документы» в задаче «Подготовить договор»" loading="lazy">
+              <span>Увеличить экран</span>
+            </a>
+          </figure>
           <dl class="field-guide">
             <div><dt>ФИО, подписи и даты</dt><dd>Сверьте данные фактического плательщика и подписи в документах.</dd></div>
             <div><dt>Сумма по источникам</dt><dd>Сложите суммы, подтверждённые документами. Они должны покрыть платёж.</dd></div>
             <div><dt>Выписки</dt><dd>Проследите путь денег от поступления через промежуточные счета и вклады до актуального остатка на счёте оплаты.</dd></div>
           </dl>
         </li>
-        <li><strong>Верните неполный пакет</strong> Нажмите <strong>«Вернуть с вопросом»</strong>.
+        <li><strong>Верните неполный пакет</strong>
+          <figure class="step-screen">
+            <a href="operator-screens/steps/05-ipds-2.png" title="Открыть экран крупнее" target="_blank" rel="noopener">
+              <img src="operator-screens/steps/05-ipds-2.png" width="1358" height="100" alt="Экран: «Верните неполный пакет»" loading="lazy">
+              <span>Увеличить экран</span>
+            </a>
+          </figure>
+          Нажмите <strong>«Вернуть с вопросом»</strong>.
           <dl class="field-guide">
             <div><dt>Чего не хватает, чтобы сделать шаг?</dt><dd>Укажите конкретный документ, нужный счёт и период выписки.</dd></div>
           </dl>
@@ -248,7 +275,14 @@
             <textarea id="ipds-followup" readonly rows="4">По СД-[номер] пришёл подписанный ДКП. Нужна выписка по счёту продавца с зачислением по этому ДКП и выписка по счёту, с которого клиент заплатит, с движением и остатком. Если между ними были переводы, приложи выписки по этим счетам.</textarea>
           </div>
         </li>
-        <li><strong>Проверьте новые файлы, когда задача вернётся</strong> Менеджер добавляет файлы на этапе <strong>«Сбор документов»</strong>.
+        <li><strong>Проверьте новые файлы, когда задача вернётся</strong>
+          <figure class="step-screen">
+            <a href="operator-screens/steps/05-ipds-3.png" title="Открыть экран крупнее" target="_blank" rel="noopener">
+              <img src="operator-screens/steps/05-ipds-3.png" width="1358" height="691" alt="Экран: «Проверьте новые файлы, когда задача вернётся»" loading="lazy">
+              <span>Увеличить экран</span>
+            </a>
+          </figure>
+          Менеджер добавляет файлы на этапе <strong>«Сбор документов»</strong>.
           <dl class="field-guide">
             <div><dt>Анкета ИПДС</dt><dd>Менеджер нажимает <strong>«Загрузить»</strong> в строке анкеты, если она есть.</dd></div>
             <div><dt>Тип документа</dt><dd>Для выписок, справок и документов об источнике менеджер нажимает <strong>«Добавить документ»</strong> и выбирает <strong>«Другое»</strong>.</dd></div>
@@ -262,20 +296,26 @@
     <section id="contract" aria-labelledby="contract-title">
       <h2 id="contract-title">3. Подготовить договор и передать менеджеру</h2>
       <p>Когда менеджер приложил документы и передал заявку, откройте задачу <strong>«Подготовить договор»</strong>. Если по сделке нужен ИПДС, сначала проверьте пакет по предыдущему шагу.</p>
-      <figure>
-        <a class="figure-link" href="operator-screens/07-contract-overview.png">
-          <img src="operator-screens/07-contract-overview.png" alt="Шесть пронумерованных действий на одной картинке. Пункт 1 — кнопка Распознать документы. Далее сверка полей, сумма и назначение, создание договора, скачивание файлов и передача менеджеру.">
-          <span>Открыть экран крупнее</span>
-        </a>
-      </figure>
       <ol class="steps">
         <li><strong>Распознайте документы</strong>
+          <figure class="step-screen">
+            <a href="operator-screens/steps/07-contract-1.png" title="Открыть экран крупнее" target="_blank" rel="noopener">
+              <img src="operator-screens/steps/07-contract-1.png" width="1358" height="416" alt="Экран: «Распознайте документы»" loading="lazy">
+              <span>Увеличить экран</span>
+            </a>
+          </figure>
           <ul class="checklist">
             <li>В блоке <strong>«Документы клиента»</strong> нажмите <strong>«Распознать документы»</strong> и дождитесь результата.</li>
             <li>Если результат уже есть, переходите к сверке. После замены файла нажмите <strong>«Распознать заново»</strong>.</li>
           </ul>
         </li>
         <li><strong>Сверьте поля и заполните пропуски</strong>
+          <figure class="step-screen">
+            <a href="operator-screens/steps/07-contract-2.png" title="Открыть экран крупнее" target="_blank" rel="noopener">
+              <img src="operator-screens/steps/07-contract-2.png" width="1358" height="393" alt="Экран: «Сверьте поля и заполните пропуски»" loading="lazy">
+              <span>Увеличить экран</span>
+            </a>
+          </figure>
           <dl class="field-guide">
             <div><dt>ФИО</dt><dd>Перенесите полное имя из паспорта.</dd></div>
             <div><dt>Латиницей</dt><dd>Сверьте написание имени с загранпаспортом.</dd></div>
@@ -289,6 +329,12 @@
           Исправьте ошибки по оригиналу. Если данных в файлах не хватает, нажмите <strong>«Вернуть с вопросом»</strong>.
         </li>
         <li><strong>Проверьте расчёт и напишите назначение</strong>
+          <figure class="step-screen">
+            <a href="operator-screens/steps/07-contract-3.png" title="Открыть экран крупнее" target="_blank" rel="noopener">
+              <img src="operator-screens/steps/07-contract-3.png" width="1358" height="542" alt="Экран: «Проверьте расчёт и напишите назначение»" loading="lazy">
+              <span>Увеличить экран</span>
+            </a>
+          </figure>
           <dl class="field-guide">
             <div><dt>Сумма инвойса к оплате</dt><dd>Укажите сумму и валюту текущего платежа. Если платёж частичный, сверьте, какой взнос оформляется.</dd></div>
             <div><dt>Курс сделки</dt><dd>Сверьте с курсом, который менеджер согласовал с клиентом.</dd></div>
@@ -309,6 +355,12 @@
           </div>
         </li>
         <li><strong>Проверьте счёт и выпустите пакет</strong>
+          <figure class="step-screen">
+            <a href="operator-screens/steps/07-contract-4.png" title="Открыть экран крупнее" target="_blank" rel="noopener">
+              <img src="operator-screens/steps/07-contract-4.png" width="1358" height="661" alt="Экран: «Проверьте счёт и выпустите пакет»" loading="lazy">
+              <span>Увеличить экран</span>
+            </a>
+          </figure>
           <dl class="field-guide">
             <div><dt>Куда клиент переводит рубли</dt><dd><span data-for-account="sgb">Выберите <strong>«Flow Sole · СГБ»</strong>.</span> <span data-for-account="sber">Выберите <strong>«Сбер · реквизиты MF Corporation»</strong>.</span></dd></div>
             <div><dt>Агент</dt><dd>Задачник подставляет компанию по выбранному счёту. <span data-for-account="sgb">Для СГБ это Flow Sole Company Limited.</span> <span data-for-account="sber">Для Сбера это MF Corporation.</span></dd></div>
@@ -318,6 +370,12 @@
           Нажмите <strong>«Создать договор»</strong>. Для знакомого клиента кнопка может называться <strong>«Создать допник и счёт»</strong>.
         </li>
         <li><strong>Откройте и проверьте файлы</strong>
+          <figure class="step-screen">
+            <a href="operator-screens/steps/07-contract-5.png" title="Открыть экран крупнее" target="_blank" rel="noopener">
+              <img src="operator-screens/steps/07-contract-5.png" width="1358" height="657" alt="Экран: «Откройте и проверьте файлы»" loading="lazy">
+              <span>Увеличить экран</span>
+            </a>
+          </figure>
           <ul class="checklist">
             <li>На этапе <strong>«Проверить и отправить»</strong> скачайте файлы по отдельности или нажмите <strong>«Скачать всё одним архивом»</strong>.</li>
             <li>В новом пакете будут договор, приложение и счёт. Если Задачник нашёл действующий договор для этого клиента и маршрута, будут допсоглашение и счёт.</li>
@@ -325,6 +383,12 @@
           </ul>
         </li>
         <li><strong>Передайте пакет менеджеру</strong>
+          <figure class="step-screen">
+            <a href="operator-screens/steps/07-contract-6.png" title="Открыть экран крупнее" target="_blank" rel="noopener">
+              <img src="operator-screens/steps/07-contract-6.png" width="1358" height="108" alt="Экран: «Передайте пакет менеджеру»" loading="lazy">
+              <span>Увеличить экран</span>
+            </a>
+          </figure>
           <ul class="checklist">
             <li>Если нашли ошибку, нажмите <strong>«Поправить и пересоздать»</strong>, исправьте поля и проверьте новый выпуск.</li>
             <li>Когда всё сверено, нажмите <strong>«Всё верно — отправить менеджеру»</strong>. У менеджера появится задача <strong>«Отправить клиенту»</strong>.</li>
@@ -346,18 +410,23 @@
     <section id="receipt" aria-labelledby="receipt-title">
       <h2 id="receipt-title">4. Ждём приход на счёт Flow Sole в СГБ</h2>
       <p>Операционист сверяет зачисление по выписке СГБ и вручную подтверждает его в Задачнике. Чек клиента помогает найти операцию. Факт зачисления проверяйте в выписке по нашему счёту.</p>
-      <figure>
-        <a class="figure-link" href="operator-screens/10-sgb-receipt-overview.png">
-          <img src="operator-screens/10-sgb-receipt-overview.png" alt="Пять пунктов ожидания прихода. Во втором показаны скриншоты СГБ Бизнес Онлайн: пункт меню Выписка и колонки Дата оп., Кредит, Контрагент и Основание. В остальных показано, какие кнопки нажать в Задачнике.">
-          <span>Открыть экран крупнее</span>
-        </a>
-      </figure>
-
       <ol class="steps">
         <li><strong>Откройте задачу «Ждём приход»</strong>
+          <figure class="step-screen">
+            <a href="operator-screens/steps/10-sgb-receipt-1.png" title="Открыть экран крупнее" target="_blank" rel="noopener">
+              <img src="operator-screens/steps/10-sgb-receipt-1.png" width="1358" height="902" alt="Откройте задачу «Ждём приход»" loading="lazy">
+              <span>Увеличить экран</span>
+            </a>
+          </figure>
           После отправки договора, счёта и реквизитов клиенту менеджер ставит отметку <strong>«Отправил клиенту»</strong> и нажимает <strong>«Ждём приход»</strong>. У операциониста появляется задача по этому платежу. Если клиент прислал чек, он будет в блоке <strong>«Чеки клиента об оплате»</strong>, когда его приложат к заявке.
         </li>
         <li><strong>Найдите зачисление в СГБ</strong>
+          <figure class="step-screen">
+            <a href="operator-screens/steps/10-sgb-receipt-2.png" title="Открыть экран крупнее" target="_blank" rel="noopener">
+              <img src="operator-screens/steps/10-sgb-receipt-2.png" width="1358" height="641" alt="СГБ Бизнес Онлайн: меню «Выписка», фильтр по периоду, колонки «Кредит» и «Контрагент»" loading="lazy">
+              <span>Увеличить экран</span>
+            </a>
+          </figure>
           <ul class="checklist">
             <li>В <a href="https://ibc.severgazbank.ru/">СГБ Бизнес Онлайн</a> нажмите <strong>«Выписка»</strong> в левом меню.</li>
             <li>В поле <strong>«Счёт»</strong> проверьте, что выбран рублёвый счёт Flow Sole <strong>…0261</strong>. В <strong>«Период»</strong> укажите даты от отправки платежа и нажмите <strong>«Получить»</strong>.</li>
@@ -372,9 +441,21 @@
           Если доступа к выписке пока нет, запросите её у Теодора.
         </li>
         <li><strong>Начните сверку по выписке</strong>
+          <figure class="step-screen">
+            <a href="operator-screens/steps/10-sgb-receipt-3.png" title="Открыть экран крупнее" target="_blank" rel="noopener">
+              <img src="operator-screens/steps/10-sgb-receipt-3.png" width="1358" height="229" alt="Экран: «Начните сверку по выписке»" loading="lazy">
+              <span>Увеличить экран</span>
+            </a>
+          </figure>
           Когда нашли зачисление, откройте блок <strong>«Сверка банковского прихода»</strong> и нажмите <strong>«Начать сверку по выписке»</strong>. Задачник откроет форму ручного прихода.
         </li>
         <li><strong>Приложите выписку и заполните поля</strong>
+          <figure class="step-screen">
+            <a href="operator-screens/steps/10-sgb-receipt-4.png" title="Открыть экран крупнее" target="_blank" rel="noopener">
+              <img src="operator-screens/steps/10-sgb-receipt-4.png" width="1358" height="724" alt="Экран: «Приложите выписку и заполните поля»" loading="lazy">
+              <span>Увеличить экран</span>
+            </a>
+          </figure>
           <dl class="field-guide">
             <div><dt>Выписка / подтверждение зачисления</dt><dd>Нажмите <strong>«Загрузить»</strong>. Приложите выписку или скрин операции из СГБ, где видны счёт, сумма, плательщик и назначение.</dd></div>
             <div><dt>Сумма прихода, ₽</dt><dd>Введите сумму строки зачисления до копеек. Если комиссия банка отражена отдельным списанием, укажите сумму зачисления целиком.</dd></div>
@@ -384,6 +465,12 @@
           </dl>
         </li>
         <li><strong>Подтвердите приход и проверьте статус</strong>
+          <figure class="step-screen">
+            <a href="operator-screens/steps/10-sgb-receipt-5.png" title="Открыть экран крупнее" target="_blank" rel="noopener">
+              <img src="operator-screens/steps/10-sgb-receipt-5.png" width="1358" height="106" alt="Экран: «Подтвердите приход и проверьте статус»" loading="lazy">
+              <span>Увеличить экран</span>
+            </a>
+          </figure>
           Когда выписка подтверждает, что это платёж по сделке, нажмите <strong>«Подтвердить приход»</strong>. При совпадении данных Задачник переведёт заявку на <strong>«Отправка брокеру для конвертации»</strong>. Если сумма отличается больше допуска или назначение отличается от ожидаемого, у менеджера появится задача <strong>«Разобрать поступление»</strong>.
         </li>
       </ol>
@@ -407,23 +494,35 @@
     <section id="sber" aria-labelledby="sber-title">
       <h2 id="sber-title">5. Ждём приход на счёт MF Corporation в Сбере</h2>
       <p>Откройте <strong>«Ждём приход»</strong>, когда менеджер отправил клиенту пакет со счётом Сбера <strong>…0286</strong>. Задачник подгружает банковские операции. Если платёж уже привязался, проверьте выбранные поступления перед завершением этапа.</p>
-      <figure>
-        <a class="figure-link" href="operator-screens/11-sber-receipt-overview.png">
-          <img src="operator-screens/11-sber-receipt-overview.png" alt="Задачник показывает поступления Сбера, кнопку Забрать, итог прихода и задачу менеджера для разбора расхождений." loading="lazy">
-          <span>Открыть экран крупнее</span>
-        </a>
-      </figure>
       <ol class="steps">
         <li><strong>Найдите платёж и нажмите «Забрать»</strong>
+          <figure class="step-screen">
+            <a href="operator-screens/steps/11-sber-receipt-1.png" title="Открыть экран крупнее" target="_blank" rel="noopener">
+              <img src="operator-screens/steps/11-sber-receipt-1.png" width="1222" height="209" alt="Найдите платёж и нажмите «Забрать»" loading="lazy">
+              <span>Увеличить экран</span>
+            </a>
+          </figure>
           <dl class="field-guide">
             <div><dt>Ждём сумму и счёт зачисления</dt><dd>Сверьте ожидаемые данные с выпущенным счётом. По чеку клиента уточните время, плательщика и назначение.</dd></div>
             <div><dt>Приходы из API Сбера</dt><dd>Сравните сумму, дату, счёт, плательщика и назначение в банковской строке. Нажмите <strong>«Забрать»</strong> у найденной операции. Если переводили несколькими частями, привяжите каждую отдельно.</dd></div>
           </dl>
         </li>
         <li><strong>Проверьте итог, затем подтвердите приход</strong>
+          <figure class="step-screen">
+            <a href="operator-screens/steps/11-sber-receipt-2.png" title="Открыть экран крупнее" target="_blank" rel="noopener">
+              <img src="operator-screens/steps/11-sber-receipt-2.png" width="1222" height="323" alt="Экран: «Проверьте итог, затем подтвердите приход»" loading="lazy">
+              <span>Увеличить экран</span>
+            </a>
+          </figure>
           В строке <strong>«Забрано»</strong> проверьте полную сумму. Если взяли чужую операцию, нажмите <strong>«Убрать»</strong> рядом с ней. Когда приход собран, нажмите <strong>«Приход собран — дальше»</strong>. При совпадении данных рублёвая заявка перейдёт на конвертацию.
         </li>
         <li><strong>Передайте расхождение менеджеру</strong>
+          <figure class="step-screen">
+            <a href="operator-screens/steps/11-sber-receipt-3.png" title="Открыть экран крупнее" target="_blank" rel="noopener">
+              <img src="operator-screens/steps/11-sber-receipt-3.png" width="1222" height="594" alt="Экран: «Передайте расхождение менеджеру»" loading="lazy">
+              <span>Увеличить экран</span>
+            </a>
+          </figure>
           Если сумма, счёт или назначение расходятся, у менеджера появится <strong>«Разобрать поступление»</strong>. Укажите в комментарии, что совпало и что отличается. Менеджер проверит принадлежность платежа, заполнит <strong>«Почему привязываем»</strong> или вернёт заявку к выбору операций.
         </li>
       </ol>
@@ -446,14 +545,14 @@
     <section id="broker" aria-labelledby="broker-title">
       <h2 id="broker-title">6. Отправить рубли брокеру и сверить приход USDT</h2>
       <p>После подтверждения рублей откройте <strong>«Отправка брокеру для конвертации»</strong>. Для СГБ и Сбера экран подготовки одинаков по назначению. Счёт в заголовке, состав пачки и сумма отправки зависят от фактического прихода.</p>
-      <figure>
-        <a class="figure-link" href="operator-screens/12-broker-overview.png">
-          <img src="operator-screens/12-broker-overview.png" alt="Задачник показывает поля суммы, курса, времени и кошелька, затем кнопки фиксации отправки и проверки прихода USDT." loading="lazy">
-          <span>Открыть экран крупнее</span>
-        </a>
-      </figure>
       <ol class="steps">
         <li><strong>Заполните «Подготовка пачки»</strong>
+          <figure class="step-screen">
+            <a href="operator-screens/steps/12-broker-1.png" title="Открыть экран крупнее" target="_blank" rel="noopener">
+              <img src="operator-screens/steps/12-broker-1.png" width="1222" height="882" alt="Заполните «Подготовка пачки»" loading="lazy">
+              <span>Увеличить экран</span>
+            </a>
+          </figure>
           <dl class="field-guide">
             <div><dt>Состав пачки</dt><dd>По умолчанию выбрана текущая сделка. Добавляйте другие подтверждённые поступления с этого счёта, только если они входят в тот же перевод брокеру. Перед отправкой проверьте весь состав.</dd></div>
             <div><dt>Сумма пополнения клиента и сумма отправки брокеру, ₽</dt><dd>Первая показывает приход, вторая — сколько фактически уйдёт брокеру. <span data-for-account="sber">Для <a href="#send-sber">Сбера</a> проверьте расчёт по шаблону <strong>0,3% + 40 ₽</strong>.</span> <span data-for-account="sgb">Для <a href="#send-sgb">СГБ</a> рассчитайте сумму по выписке и внесите её вручную.</span></dd></div>
@@ -464,9 +563,21 @@
           Откройте <a href="https://t.me/c/3984596268/3025">Grusha (MF)| Tradex</a> или <a href="https://t.me/c/3969064520/2874">Asia Capital x Grusha (rub-usdt) | АК-1001</a>, если с этой группой согласован обмен. Для другого брокера используйте кнопку <strong>«чат»</strong> в его строке запроса курса.
         </li>
         <li><strong>Зафиксируйте отправку рублей</strong>
+          <figure class="step-screen">
+            <a href="operator-screens/steps/12-broker-2.png" title="Открыть экран крупнее" target="_blank" rel="noopener">
+              <img src="operator-screens/steps/12-broker-2.png" width="1222" height="65" alt="Экран: «Зафиксируйте отправку рублей»" loading="lazy">
+              <span>Увеличить экран</span>
+            </a>
+          </figure>
           <span data-for-account="sber">Создайте платёжное поручение по инструкции для <a href="#send-sber">Сбера</a>.</span> <span data-for-account="sgb">Создайте платёжное поручение по инструкции для <a href="#send-sgb">СГБ</a>.</span> После фактической отправки и сверки полей нажмите <strong>«Отправил брокеру — ждём USDT»</strong>. Если право отправки у другого сотрудника, возьмите сумму и время из его подтверждения.
         </li>
         <li><strong>Сверьте входящий перевод USDT</strong>
+          <figure class="step-screen">
+            <a href="operator-screens/steps/12-broker-3.png" title="Открыть экран крупнее" target="_blank" rel="noopener">
+              <img src="operator-screens/steps/12-broker-3.png" width="1222" height="317" alt="Экран: «Сверьте входящий перевод USDT»" loading="lazy">
+              <span>Увеличить экран</span>
+            </a>
+          </figure>
           <dl class="field-guide">
             <div><dt>Выбрать из входящих</dt><dd>Найдите перевод на кошелёк пачки и проверьте сумму, отправителя, время и свободный остаток.</dd></div>
             <div><dt>Или хеш вручную · Сеть прихода</dt><dd>Вставьте полный хеш, выберите фактическую сеть и нажмите <strong>«Проверить»</strong>. Дождитесь результата проверки суммы и адреса.</dd></div>
@@ -474,6 +585,12 @@
           </dl>
         </li>
         <li><strong>Завершите сверку USDT по пачке</strong>
+          <figure class="step-screen">
+            <a href="operator-screens/steps/12-broker-4.png" title="Открыть экран крупнее" target="_blank" rel="noopener">
+              <img src="operator-screens/steps/12-broker-4.png" width="1222" height="65" alt="Экран: «Завершите сверку USDT по пачке»" loading="lazy">
+              <span>Увеличить экран</span>
+            </a>
+          </figure>
           Когда все нужные части получены, нажмите <strong>«USDT получены — решить, что с ними делать»</strong>. По предоплате кнопка называется <strong>«USDT получены — завершить конвертацию»</strong>. При расхождении уточните у брокера, будет ли остаток, и согласуйте с ответственным фактическую сумму к зачёту.
         </li>
       </ol>
@@ -491,21 +608,33 @@
     <section id="send-sber" aria-labelledby="send-sber-title">
       <h2 id="send-sber-title">Отправка рублей брокеру из Сбера</h2>
       <p>Используйте этот порядок для средств, зачисленных на счёт MF Corporation в Сбере <strong>…0286</strong>.</p>
-      <figure>
-        <a class="figure-link" href="operator-screens/17-sber-outgoing-overview.png">
-          <img src="operator-screens/17-sber-outgoing-overview.png" alt="Расчёт суммы в Задачнике и поля рублёвого платёжного поручения СберБизнес." loading="lazy">
-          <span>Открыть экран крупнее</span>
-        </a>
-      </figure>
       <ol class="steps">
         <li><strong>Рассчитайте сумму к отправке</strong>
+          <figure class="step-screen">
+            <a href="operator-screens/steps/17-sber-outgoing-1.png" title="Открыть экран крупнее" target="_blank" rel="noopener">
+              <img src="operator-screens/steps/17-sber-outgoing-1.png" width="1267" height="904" alt="Экран: «Рассчитайте сумму к отправке»" loading="lazy">
+              <span>Увеличить экран</span>
+            </a>
+          </figure>
           В <strong>«Подготовка пачки · Сбер»</strong> от подтверждённой суммы вычтите <strong>0,3% + 40 ₽</strong>. В шаблоне Задачника <strong>0,1% + 40 ₽</strong> — расход на валютный контроль, <strong>0,2%</strong> остаётся на рублёвом счёте компании. Например, при пополнении на <strong>100 000 ₽</strong> удержание составит <strong>340 ₽</strong>. В поле <strong>«Сумма отправки брокеру, ₽»</strong> будет <strong>99 660 ₽</strong>.
         </li>
         <li><strong>Создайте рублёвое платёжное поручение</strong>
+          <figure class="step-screen">
+            <a href="operator-screens/steps/17-sber-outgoing-2.png" title="Открыть экран крупнее" target="_blank" rel="noopener">
+              <img src="operator-screens/steps/17-sber-outgoing-2.png" width="1267" height="589" alt="Экран: «Создайте рублёвое платёжное поручение»" loading="lazy">
+              <span>Увеличить экран</span>
+            </a>
+          </figure>
           В СберБизнес откройте <strong>«Платежи и переводы» → «Новый документ» → «Рублёвый платёж»</strong>. Выберите счёт списания <strong>…0286</strong>. Укажите получателя, ИНН и КПП при наличии, БИК и счёт брокера из подтверждённых реквизитов. Перенесите рассчитанную сумму и согласованное назначение для платежа брокеру. Приложите обосновывающий документ, если он требуется.
           <a href="https://www.sberbank.ru/help/business/sbbol/scheta-i-platezhy/gen_info/100882">Инструкция СберБизнес по форме платежа</a>.
         </li>
         <li><strong>Передайте на банковскую подпись и зафиксируйте отправку</strong>
+          <figure class="step-screen">
+            <a href="operator-screens/steps/17-sber-outgoing-3.png" title="Открыть экран крупнее" target="_blank" rel="noopener">
+              <img src="operator-screens/steps/17-sber-outgoing-3.png" width="1267" height="283" alt="Экран: «Передайте на банковскую подпись и зафиксируйте отправку»" loading="lazy">
+              <span>Увеличить экран</span>
+            </a>
+          </figure>
           Операционист готовит платёжку. Сотрудник с правом подписи сверяет её, подписывает и отправляет в банк. Когда поручение исполнено, сохраните подтверждение из СберБизнес. Сверьте сумму и время с полями в Задачнике, затем нажмите <strong>«Отправил брокеру — ждём USDT»</strong>.
         </li>
       </ol>
@@ -563,16 +692,31 @@
       </div>
 
       <h3>Как отправить документы в СГБ Бизнес Онлайн</h3>
-      <figure>
-        <a class="figure-link" href="operator-screens/20-sgb-broker-letter-overview.png">
-          <img src="operator-screens/20-sgb-broker-letter-overview.png" alt="СГБ Бизнес Онлайн. Письма, Исходящие, Новый, получатель Валютный контроль, подпись и вкладка Отправленные." loading="lazy">
-          <span>Открыть экран крупнее</span>
-        </a>
-      </figure>
       <ol class="steps">
-        <li><strong>Откройте «Письма» → «Исходящие» → «Новый»</strong> Подготовьте платёжное поручение по реквизитам выбранного брокера, чтобы указать его номер и дату в письме. <a href="#send-sgb">Как создать платёжное поручение</a>.</li>
-        <li><strong>Выберите получателя и приложите пакет</strong> Проверьте отправителя <strong>Flow Sole</strong> и счёт <strong>…0261</strong>. В получателе выберите <strong>«Московский филиал “БАНК СГБ” г. Москва; Валютный контроль»</strong>. В теме укажите номер и дату ПП и брокера. В тексте укажите сумму и список файлов. Приложите актуальные подписанные PDF.</li>
-        <li><strong>Подпишите письмо и проверьте отправку</strong> Передайте письмо сотруднику с правом подписи. Проверьте его во вкладке <strong>«Отправленные»</strong>. Сообщите в чат СГБ номер письма и ПП, дождитесь ответа по пакету и обработайте замечания перед отправкой платежа. <a href="https://t.me/c/4387135684/594">Чат «СГБ- Флоу Соле»</a>.</li>
+        <li><strong>Откройте «Письма» → «Исходящие» → «Новый»</strong>
+          <figure class="step-screen">
+            <a href="operator-screens/steps/20-sgb-broker-letter-1.png" title="Открыть экран крупнее" target="_blank" rel="noopener">
+              <img src="operator-screens/steps/20-sgb-broker-letter-1.png" width="1267" height="251" alt="Откройте «Письма» → «Исходящие» → «Новый»" loading="lazy">
+              <span>Увеличить экран</span>
+            </a>
+          </figure>
+          Подготовьте платёжное поручение по реквизитам выбранного брокера, чтобы указать его номер и дату в письме. <a href="#send-sgb">Как создать платёжное поручение</a>.</li>
+        <li><strong>Выберите получателя и приложите пакет</strong>
+          <figure class="step-screen">
+            <a href="operator-screens/steps/20-sgb-broker-letter-2.png" title="Открыть экран крупнее" target="_blank" rel="noopener">
+              <img src="operator-screens/steps/20-sgb-broker-letter-2.png" width="1267" height="520" alt="Экран: «Выберите получателя и приложите пакет»" loading="lazy">
+              <span>Увеличить экран</span>
+            </a>
+          </figure>
+          Проверьте отправителя <strong>Flow Sole</strong> и счёт <strong>…0261</strong>. В получателе выберите <strong>«Московский филиал “БАНК СГБ” г. Москва; Валютный контроль»</strong>. В теме укажите номер и дату ПП и брокера. В тексте укажите сумму и список файлов. Приложите актуальные подписанные PDF.</li>
+        <li><strong>Подпишите письмо и проверьте отправку</strong>
+          <figure class="step-screen">
+            <a href="operator-screens/steps/20-sgb-broker-letter-3.png" title="Открыть экран крупнее" target="_blank" rel="noopener">
+              <img src="operator-screens/steps/20-sgb-broker-letter-3.png" width="1267" height="259" alt="Экран: «Подпишите письмо и проверьте отправку»" loading="lazy">
+              <span>Увеличить экран</span>
+            </a>
+          </figure>
+          Передайте письмо сотруднику с правом подписи. Проверьте его во вкладке <strong>«Отправленные»</strong>. Сообщите в чат СГБ номер письма и ПП, дождитесь ответа по пакету и обработайте замечания перед отправкой платежа. <a href="https://t.me/c/4387135684/594">Чат «СГБ- Флоу Соле»</a>.</li>
       </ol>
       <div class="copy-field">
         <label for="sgb-broker-letter">Текст письма в валютный контроль</label>
@@ -583,14 +727,14 @@
     <section id="send-sgb" aria-labelledby="send-sgb-title">
       <h2 id="send-sgb-title">Отправка рублей брокеру из СГБ</h2>
       <p>Используйте этот порядок для средств на рублёвом счёте Flow Sole в СГБ <strong>…0261</strong>. СГБ списывает валютный контроль на входящем и исходящем платеже. Ставка на каждую операцию <strong>0,25% + НДС</strong>. За каждое исходящее платёжное поручение добавляется <strong>41 ₽</strong>. На двух процентных списаниях получается около <strong>0,6%</strong>. <a href="https://t.me/c/4387135684/552">Разъяснение СГБ для Flow Sole</a>.</p>
-      <figure>
-        <a class="figure-link" href="operator-screens/18-sgb-outgoing-overview.png">
-          <img src="operator-screens/18-sgb-outgoing-overview.png" alt="Архивный интерфейс СГБ с пунктами Платежные поручения, Создать и Подписать. Реквизиты скрыты." loading="lazy">
-          <span>Открыть экран крупнее</span>
-        </a>
-      </figure>
       <ol class="steps">
         <li><strong>Сверьте остаток по выписке и оставьте комиссию на выход</strong>
+          <figure class="step-screen">
+            <a href="operator-screens/steps/18-sgb-send-amount.png" title="Открыть экран крупнее" target="_blank" rel="noopener">
+              <img src="operator-screens/steps/18-sgb-send-amount.png" width="1158" height="290" alt="Задачник, «Подготовка пачки · Flow Sole»: поле «Сумма отправки брокеру, ₽»" loading="lazy">
+              <span>Увеличить экран</span>
+            </a>
+          </figure>
           <dl class="field-guide">
             <div><dt>Входящая комиссия</dt><dd>Найдите списание по этому приходу. Если комиссию уже списали, берите доступный остаток по сделке после этого списания. Если ещё не списали, предусмотрите её в расчёте.</dd></div>
             <div><dt>Исходящая комиссия и платёжка</dt><dd>От рассчитанного остатка оставьте столько, чтобы хватило на комиссию исходящего перевода и 41 ₽ за каждое поручение. Комиссия исходящего платежа считается от суммы, которую укажете в платёжке.</dd></div>
@@ -599,10 +743,30 @@
           </dl>
         </li>
         <li><strong>Создайте поручение в СГБ Бизнес Онлайн</strong>
-          Откройте <strong>«Рублевые документы» → «Платежное поручение» → «Создать»</strong>. Выберите расчётный счёт Flow Sole <strong>…0261</strong>. Сверьте получателя, ИНН, БИК и счёт с подтверждёнными реквизитами брокера. Введите рассчитанную сумму и назначение по договору с брокером. Если СГБ согласовал специальное назначение, код валютной операции или пакет документов, используйте согласованные данные. <a href="#sgb-broker-documents">Как собрать пакет для валютного контроля</a>.
-          <a href="https://ibc.severgazbank.ru/">Вход в СГБ Бизнес Онлайн</a>.
+          <figure class="step-screen">
+            <a href="operator-screens/steps/18-sgb-outgoing-1.png" title="Открыть экран крупнее" target="_blank" rel="noopener">
+              <img src="operator-screens/steps/18-sgb-outgoing-1.png" width="1267" height="286" alt="Экран: «Создайте поручение в СГБ Бизнес Онлайн»" loading="lazy">
+              <span>Увеличить экран</span>
+            </a>
+          </figure>
+          Откройте <strong>«Рублевые документы» → «Платежное поручение» → «Создать»</strong>. <a href="https://ibc.severgazbank.ru/">Вход в СГБ Бизнес Онлайн</a>.
+        </li>
+        <li><strong>Заполните платёжное поручение</strong>
+          <figure class="step-screen">
+            <a href="operator-screens/steps/18-sgb-outgoing-2.png" title="Открыть экран крупнее" target="_blank" rel="noopener">
+              <img src="operator-screens/steps/18-sgb-outgoing-2.png" width="1267" height="1008" alt="Экран: «Заполните платёжное поручение»" loading="lazy">
+              <span>Увеличить экран</span>
+            </a>
+          </figure>
+          Выберите расчётный счёт Flow Sole <strong>…0261</strong>. Сверьте получателя, ИНН, БИК и счёт с подтверждёнными реквизитами брокера. Введите рассчитанную сумму и назначение по договору с брокером. Если СГБ согласовал специальное назначение, код валютной операции или пакет документов, используйте согласованные данные. <a href="#sgb-broker-documents">Как собрать пакет для валютного контроля</a>.
         </li>
         <li><strong>Передайте на подпись и проверьте исполнение</strong>
+          <figure class="step-screen">
+            <a href="operator-screens/steps/18-sgb-outgoing-3.png" title="Открыть экран крупнее" target="_blank" rel="noopener">
+              <img src="operator-screens/steps/18-sgb-outgoing-3.png" width="1267" height="104" alt="Экран: «Передайте на подпись и проверьте исполнение»" loading="lazy">
+              <span>Увеличить экран</span>
+            </a>
+          </figure>
           Сотрудник с правом подписи открывает подготовленную платёжку и сверяет сумму, реквизиты, назначение и остаток под комиссии. После подписания и подтверждения банком проверьте статус и сохраните исполненное поручение. В Задачнике заполните фактическую сумму и время и нажмите <strong>«Отправил брокеру — ждём USDT»</strong>.
         </li>
       </ol>
@@ -630,20 +794,41 @@
         </table>
       </div>
       <p>Теодор может отправить сам с кошельков компании, где есть отметка <strong>«владелец может отправить сам»</strong>. У личного кошелька владельца, например Андрея или Теодора, перевод выполняет сам владелец. Для остальных кошельков сверяйте назначение и правила в карточке.</p>
-      <figure>
-        <a class="figure-link" href="operator-screens/19-wallet-signing-overview.png">
-          <img src="operator-screens/19-wallet-signing-overview.png" alt="Кнопка Начать работу или Передать финдиру, поля транзакции, затем задача на подпись." loading="lazy">
-          <span>Открыть экран крупнее</span>
-        </a>
-      </figure>
       <ol class="steps">
         <li><strong>Возьмите задачу или передайте её</strong>
+          <figure class="step-screen">
+            <a href="operator-screens/steps/19-wallet-signing-1.png" title="Открыть экран крупнее" target="_blank" rel="noopener">
+              <img src="operator-screens/steps/19-wallet-signing-1.png" width="1222" height="417" alt="Экран: «Возьмите задачу или передайте её»" loading="lazy">
+              <span>Увеличить экран</span>
+            </a>
+          </figure>
           В <strong>«Отправить с кошелька»</strong> проверьте, кто указан в <strong>«Заводит»</strong>. Если это операционист, нажмите <strong>«Начать работу»</strong>. Когда доступна передача финдиру и он будет заводить перевод, нажмите <strong>«Передать» → «Финансисту»</strong>. После передачи проверьте, что он назначен. Если кто-то уже начал работу, выясните, создана ли транзакция, до повторного создания.
         </li>
         <li><strong>Заведите транзакцию и передайте на подпись</strong>
-          Откройте выбранный кошелёк и подготовьте транзакцию по поручению. Сверьте сеть, токен, полный адрес получателя, сумму и источник. В поле <strong>«Что проверили»</strong> оставьте краткую сверку для подписанта. Нажмите <strong>«Передать на подпись»</strong>. Подпись в кошельке ставит сотрудник с ролью <strong>«Подписывает»</strong>. После подписи он отмечает <strong>«Деньги отправлены»</strong>, если кнопка показана в его задаче.
+          <figure class="step-screen">
+            <a href="operator-screens/steps/19-wallet-signing-2.png" title="Открыть экран крупнее" target="_blank" rel="noopener">
+              <img src="operator-screens/steps/19-wallet-signing-2.png" width="1222" height="219" alt="Экран: «Заведите транзакцию и передайте на подпись»" loading="lazy">
+              <span>Увеличить экран</span>
+            </a>
+          </figure>
+          Откройте выбранный кошелёк и подготовьте транзакцию по поручению. Сверьте сеть, токен, полный адрес получателя, сумму и источник. В поле <strong>«Что проверили»</strong> оставьте краткую сверку для подписанта. Нажмите <strong>«Передать на подпись»</strong>. Подпись в кошельке ставит сотрудник с ролью <strong>«Подписывает»</strong>.
+        </li>
+        <li><strong>Дождитесь отметки об отправке</strong>
+          <figure class="step-screen">
+            <a href="operator-screens/steps/19-wallet-signing-3.png" title="Открыть экран крупнее" target="_blank" rel="noopener">
+              <img src="operator-screens/steps/19-wallet-signing-3.png" width="1222" height="163" alt="Экран: «Дождитесь отметки об отправке»" loading="lazy">
+              <span>Увеличить экран</span>
+            </a>
+          </figure>
+          После подписи подписант нажимает <strong>«Деньги отправлены»</strong>, если кнопка показана в его задаче.
         </li>
         <li><strong>Проверьте фактическую отправку</strong>
+          <figure class="step-screen">
+            <a href="operator-screens/steps/19-wallet-verify.png" title="Открыть экран крупнее" target="_blank" rel="noopener">
+              <img src="operator-screens/steps/19-wallet-verify.png" width="1158" height="358" alt="Задачник: поиск перевода в сети, поле «Хеш перевода» и кнопка проверки" loading="lazy">
+              <span>Увеличить экран</span>
+            </a>
+          </figure>
           Когда подписант отправил транзакцию, откройте <strong>«Проверить отправку»</strong>. Используйте <strong>«Найти перевод в сети»</strong> или вставьте полный хеш в <strong>«Хеш перевода»</strong> и нажмите <strong>«Проверить и отметить отправку»</strong>. Сверьте сеть, адреса и фактическую сумму. Для нескольких частей проверьте каждый хеш.
         </li>
       </ol>
@@ -656,14 +841,14 @@
     <section id="coins" aria-labelledby="coins-title">
       <h2 id="coins-title">7. Конвертировать через Coins и сверить баты на SCB</h2>
       <p>На <strong>«Что делаем с USDT»</strong> выберите этот маршрут, когда по сделке согласовано получить THB на счёт MF Corporation в SCB. Для нескольких сделок в пачке заполните назначение каждой.</p>
-      <figure>
-        <a class="figure-link" href="operator-screens/13-coins-overview.png">
-          <img src="operator-screens/13-coins-overview.png" alt="Поля курса и батов, адрес и сеть Coins, кнопка копирования сообщения и ручная сверка прихода на SCB." loading="lazy">
-          <span>Открыть экран крупнее</span>
-        </a>
-      </figure>
       <ol class="steps">
         <li><strong>Внесите параметры обмена</strong>
+          <figure class="step-screen">
+            <a href="operator-screens/steps/13-coins-1.png" title="Открыть экран крупнее" target="_blank" rel="noopener">
+              <img src="operator-screens/steps/13-coins-1.png" width="1222" height="411" alt="Экран: «Внесите параметры обмена»" loading="lazy">
+              <span>Увеличить экран</span>
+            </a>
+          </figure>
           <dl class="field-guide">
             <div><dt>Что делаем</dt><dd>Выберите вариант Coins для получения батов.</dd></div>
             <div><dt>Курс Coins</dt><dd>Запросите курс на текущую сумму в чате <a href="tg://openmessage?chat_id=5187853852">Coins TH | mfcorpthai@gmail.com</a>. Введите подтверждённое количество батов за 1 USDT.</dd></div>
@@ -671,12 +856,30 @@
           </dl>
         </li>
         <li><strong>Сверьте адрес и сеть, передайте отправку</strong>
+          <figure class="step-screen">
+            <a href="operator-screens/steps/13-coins-2.png" title="Открыть экран крупнее" target="_blank" rel="noopener">
+              <img src="operator-screens/steps/13-coins-2.png" width="1222" height="201" alt="Экран: «Сверьте адрес и сеть, передайте отправку»" loading="lazy">
+              <span>Увеличить экран</span>
+            </a>
+          </figure>
           Проверьте поля <strong>«Кому»</strong>, <strong>«Кошелёк получателя»</strong> и <strong>«Сеть»</strong> по подтверждению Coins. На <strong>«Отправить с кошелька»</strong> возьмите задачу или передайте исполнителю с правом завести перевод. Для подписи следуйте правилам выбранного кошелька. <a href="#wallet-signing">Кошельки и подписи</a>.
         </li>
         <li><strong>Отправьте данные Coins после подтверждения перевода</strong>
+          <figure class="step-screen">
+            <a href="operator-screens/steps/13-coins-3.png" title="Открыть экран крупнее" target="_blank" rel="noopener">
+              <img src="operator-screens/steps/13-coins-3.png" width="1222" height="591" alt="Экран: «Отправьте данные Coins после подтверждения перевода»" loading="lazy">
+              <span>Увеличить экран</span>
+            </a>
+          </figure>
           Дождитесь проверенного хеша. На этапе <strong>«Известить Coins»</strong> нажмите <strong>«Копировать всё для Coins»</strong> по нужной сделке. Вставьте текст в рабочую группу Coins. Проверьте адреса, сеть, все относящиеся к сделке хеши, сумму и счёт выдачи. После отправки сообщения нажмите <strong>«Известил Coins — ждём баты на SCB»</strong>.
         </li>
         <li><strong>Сверьте выписку SCB и внесите приход</strong>
+          <figure class="step-screen">
+            <a href="operator-screens/steps/13-coins-4.png" title="Открыть экран крупнее" target="_blank" rel="noopener">
+              <img src="operator-screens/steps/13-coins-4.png" width="1222" height="491" alt="Экран: «Сверьте выписку SCB и внесите приход»" loading="lazy">
+              <span>Увеличить экран</span>
+            </a>
+          </figure>
           <dl class="field-guide">
             <div><dt>Пришло на SCB по этой сделке, ฿</dt><dd>Перенесите сумму фактического зачисления на SCB, подтверждённую выпиской.</dd></div>
             <div><dt>Номер операции / ссылка на выписку</dt><dd>Укажите референс зачисления. Для общей выплаты Coins проверьте долю, относящуюся к сделке.</dd></div>
@@ -693,20 +896,32 @@
 
     <section id="scb-payout" aria-labelledby="scb-payout-title">
       <h2 id="scb-payout-title">8. Оплатить инвойс со счёта SCB и передать чек</h2>
-      <figure>
-        <a class="figure-link" href="operator-screens/14-scb-payout-overview.png">
-          <img src="operator-screens/14-scb-payout-overview.png" alt="Карточка оплаты SCB, поля подтверждённых реквизитов, загрузка чека и отметка менеджера об отправке." loading="lazy">
-          <span>Открыть экран крупнее</span>
-        </a>
-      </figure>
       <ol class="steps">
         <li><strong>Сверьте подтверждённые реквизиты и назначение</strong>
+          <figure class="step-screen">
+            <a href="operator-screens/steps/14-scb-payout-1.png" title="Открыть экран крупнее" target="_blank" rel="noopener">
+              <img src="operator-screens/steps/14-scb-payout-1.png" width="1222" height="571" alt="Экран: «Сверьте подтверждённые реквизиты и назначение»" loading="lazy">
+              <span>Увеличить экран</span>
+            </a>
+          </figure>
           В <strong>«Оплатить инвойс получателю»</strong> сверьте получателя, банк, счёт, сумму THB, инвойс и <strong>«Назначение для банка застройщика»</strong>. Это назначение для выплаты получателю. Менеджер заполняет его в реквизитах и нажимает <strong>«Реквизиты верны — можно платить»</strong>. Если поле пустое, назначение отличается от инвойса или реквизиты изменились, используйте <strong>«Вернуть с вопросом»</strong> и дождитесь подтверждения.
         </li>
         <li><strong>Приложите банковский чек и передайте менеджеру</strong>
+          <figure class="step-screen">
+            <a href="operator-screens/steps/14-scb-payout-2.png" title="Открыть экран крупнее" target="_blank" rel="noopener">
+              <img src="operator-screens/steps/14-scb-payout-2.png" width="1222" height="345" alt="Экран: «Приложите банковский чек и передайте менеджеру»" loading="lazy">
+              <span>Увеличить экран</span>
+            </a>
+          </figure>
           Со счёта <strong>SCB · MF Corp</strong> перечислите получателю сумму инвойса. Например, из 101 ฿, пришедшего от Coins, оплатите получателю 100 ฿. После выплаты откройте <strong>«Чек об оплате»</strong>, нажмите <strong>«Загрузить»</strong> и приложите подтверждение. Если выплата разбита, приложите все чеки. Нажмите <strong>«Оплатил инвойс — передать чек менеджеру»</strong>.
         </li>
         <li><strong>Проверьте передачу на закрытие</strong>
+          <figure class="step-screen">
+            <a href="operator-screens/steps/14-scb-payout-3.png" title="Открыть экран крупнее" target="_blank" rel="noopener">
+              <img src="operator-screens/steps/14-scb-payout-3.png" width="1158" height="363" alt="Экран: «Проверьте передачу на закрытие»" loading="lazy">
+              <span>Увеличить экран</span>
+            </a>
+          </figure>
           У менеджера появится <strong>«Закрытие сделки»</strong>. Он проверяет документы выплаты, отправляет чек клиенту, отмечает отправку и завершает закрытие в CRM. Если просит исправить документы, вернитесь к задаче по уведомлению.
         </li>
       </ol>
@@ -725,17 +940,23 @@
         <div><dt>Две суммы</dt><dd>В строке <strong>Amount</strong> укажите сумму инвойса в USD, которая должна дойти получателю. В поле исходящего перевода укажите рассчитанную и подтверждённую сумму <strong>USDT с комиссией IPPS</strong>. Если вариант счёта изменился, согласуйте с менеджером пересчёт сделки до отправки поручения.</dd></div>
         <div><dt>Пример для инвойса на 10 000 USD</dt><dd>По расчёту Задачника к отправке в IPPS получится <strong>10 130 USDT</strong> через обычный счёт или <strong>10 200 USDT</strong> через виртуальный. Получателю в обоих случаях должно дойти <strong>10 000 USD</strong>.</dd></div>
       </dl>
-      <figure>
-        <a class="figure-link" href="operator-screens/15-ipps-overview.png">
-          <img src="operator-screens/15-ipps-overview.png" alt="Предпросмотр заявки IPPS, поля для подтверждённой суммы, сети и адреса, загрузка поручения и MT103." loading="lazy">
-          <span>Открыть экран крупнее</span>
-        </a>
-      </figure>
       <ol class="steps">
         <li><strong>Проверьте реквизиты и отправьте заявку IPPS</strong>
+          <figure class="step-screen">
+            <a href="operator-screens/steps/15-ipps-1.png" title="Открыть экран крупнее" target="_blank" rel="noopener">
+              <img src="operator-screens/steps/15-ipps-1.png" width="1222" height="476" alt="Экран: «Проверьте реквизиты и отправьте заявку IPPS»" loading="lazy">
+              <span>Увеличить экран</span>
+            </a>
+          </figure>
           Дождитесь, пока менеджер подтвердит реквизиты получателя. Сверьте название, банк, SWIFT, счёт, назначение, номер инвойса и сумму, которая должна дойти в USD. Для авто сверьте продавца и основание платежа по инвойсу или ДКП. На <strong>«Согласовать заявку IPPS и поручить перевод»</strong> нажмите <strong>«Копировать текст для группы»</strong>. Отправьте готовую заявку в <a href="tg://openmessage?chat_id=5415995611">IPPS&amp; Grusha (Property Payment)</a>. Если для авто менеджер указал другую рабочую группу IPPS, отправьте заявку туда.
         </li>
         <li><strong>Внесите подтверждение IPPS и поручите перевод</strong>
+          <figure class="step-screen">
+            <a href="operator-screens/steps/15-ipps-2.png" title="Открыть экран крупнее" target="_blank" rel="noopener">
+              <img src="operator-screens/steps/15-ipps-2.png" width="1222" height="557" alt="Экран: «Внесите подтверждение IPPS и поручите перевод»" loading="lazy">
+              <span>Увеличить экран</span>
+            </a>
+          </figure>
           <dl class="field-guide">
             <div><dt>Подтверждённая сумма, USDT</dt><dd>Задачник рассчитывает её по инвойсу и тарифу. Если сумма IPPS отличается, уточните условия и дождитесь согласованного расчёта в карточке.</dd></div>
             <div><dt>Сеть и адрес из подтверждения IPPS</dt><dd>Для этого поручения доступна сеть TRC-20. Перенесите полный адрес из ответа на текущую заявку и сверьте его с полем в задачнике.</dd></div>
@@ -744,6 +965,12 @@
           Дождитесь фактической отправки, подписи по правилам кошелька и сетевой проверки хеша. Передайте IPPS подтверждённый хеш, когда он понадобится для привязки платежа к заявке.
         </li>
         <li><strong>Загрузите поручение и MT103, затем передайте менеджеру</strong>
+          <figure class="step-screen">
+            <a href="operator-screens/steps/15-ipps-3.png" title="Открыть экран крупнее" target="_blank" rel="noopener">
+              <img src="operator-screens/steps/15-ipps-3.png" width="1222" height="441" alt="Экран: «Загрузите поручение и MT103, затем передайте менеджеру»" loading="lazy">
+              <span>Увеличить экран</span>
+            </a>
+          </figure>
           Если сначала открылся <strong>«Учёт перевода по ранее согласованной заявке»</strong>, проверьте хеши и нажмите <strong>«Продолжить к учёту MT103»</strong>. В <strong>«Подтверждение от IPPS»</strong> приложите платёжное поручение, когда его выдаст IPPS. В блок <strong>«Подтверждение SWIFT / MT103»</strong> приложите банковский документ, когда получите его. Сверьте сумму, получателя, назначение и референс операции. Нажмите <strong>«SWIFT получен — передать менеджеру»</strong>. Менеджер получит документы для отправки клиенту и закрытия.
         </li>
       </ol>
@@ -760,17 +987,23 @@
     <section id="prepay" aria-labelledby="prepay-title">
       <h2 id="prepay-title">10. Оплата наперёд через IPPS</h2>
       <p>Используйте эту ветку, если в рублёвой заявке на выплату через IPPS доступна кнопка <strong>«Оплатить наперёд»</strong>. Она появляется после подтверждения прихода рублей, пока USDT от брокера ещё не зачтены. Источник USDT заранее согласуйте с ответственным за средства.</p>
-      <figure>
-        <a class="figure-link" href="operator-screens/16-prepay-overview.png">
-          <img src="operator-screens/16-prepay-overview.png" alt="Кнопка Оплатить наперёд, выбор источника USDT, расчёт суммы в IPPS и запуск параллельной ветки." loading="lazy">
-          <span>Открыть экран крупнее</span>
-        </a>
-      </figure>
       <ol class="steps">
         <li><strong>Откройте «Оплатить наперёд»</strong>
+          <figure class="step-screen">
+            <a href="operator-screens/steps/16-prepay-1.png" title="Открыть экран крупнее" target="_blank" rel="noopener">
+              <img src="operator-screens/steps/16-prepay-1.png" width="1222" height="118" alt="Откройте «Оплатить наперёд»" loading="lazy">
+              <span>Увеличить экран</span>
+            </a>
+          </figure>
           На ветке конвертации найдите эту кнопку в заявке. Проверьте инвойс, сумму, тариф IPPS и подтверждение источника. Если кнопки нет, ведите обычную конвертацию и уточните согласование у менеджера.
         </li>
         <li><strong>Выберите источник и запустите оплату</strong>
+          <figure class="step-screen">
+            <a href="operator-screens/steps/16-prepay-2.png" title="Открыть экран крупнее" target="_blank" rel="noopener">
+              <img src="operator-screens/steps/16-prepay-2.png" width="1222" height="484" alt="Экран: «Выберите источник и запустите оплату»" loading="lazy">
+              <span>Увеличить экран</span>
+            </a>
+          </figure>
           В <strong>«Источник USDT»</strong> выберите согласованный кошелёк из доступных. Сверьте расчёт <strong>«В IPPS, USDT»</strong> и нажмите <strong>«Запустить оплату наперёд»</strong>. Завершите отдельную задачу выплаты по инструкции <a href="#ipps-payout">IPPS / SWIFT</a> и продолжайте <a href="#broker">конвертацию у брокера</a>.
         </li>
       </ol>
