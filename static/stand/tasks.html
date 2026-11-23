@@ -6402,10 +6402,6 @@ function notificationDeliveryText(m){
     if(to!=='admin'&&admin==='suppressed')return 'Уведомление доставлено '+recipient+'; администраторская копия не отправлялась.';
     return 'Уведомление доставлено '+recipient+'.';
   }
-  if(to==='operator'&&delivery==='suppressed'&&admin==='sent')
-    return 'Задача сохранена. Уведомление получил администратор; Настя увидит задачу в задачнике.';
-  if(to==='operator'&&delivery==='failed'&&admin==='sent')
-    return 'Задача сохранена. Telegram не подтвердил отправку Насте; уведомление получил администратор.';
   if(delivery==='suppressed'&&admin==='sent')
     return 'Задача сохранена. Уведомление получил администратор; адресат увидит задачу в задачнике.';
   if(delivery==='failed'&&admin==='sent')

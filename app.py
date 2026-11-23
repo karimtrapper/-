@@ -7002,7 +7002,7 @@ def stand_sber_mirror_status():
     return jsonify(status(sys.modules[__name__]))
 
 
-STAND_ROLE_PEOPLE = {'manager': 'Елизавета · менеджер', 'operator': 'Настя · операционист',
+STAND_ROLE_PEOPLE = {'manager': 'Елизавета · менеджер', 'operator': 'Операционист',
                      'findir': 'Виталий · фин. директор', 'teodor': 'Теодор', 'admin': 'Админ'}
 STAND_CLOSE_LOSE_REASONS = ('Не устроил курс', 'Ушёл к конкуренту', 'Передумал покупать',
                             'Не наш профиль', 'Перестал отвечать', 'Не прошёл проверку')

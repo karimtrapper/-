@@ -240,7 +240,7 @@ const foundWithCrm = clientFind(S.draft.cq, S.draft.searchCrm);
   if(S.modal.delivery!=='suppressed'||S.modal.adminDelivery!=='sent')
     throw new Error('Save response mixed operator delivery with the admin copy');
   const operatorSuppressedText=notificationDeliveryText(S.modal);
-  if(operatorSuppressedText!=='Задача сохранена. Уведомление получил администратор; Настя увидит задачу в задачнике.')
+  if(operatorSuppressedText!=='Задача сохранена. Уведомление получил администратор; адресат увидит задачу в задачнике.')
     throw new Error('Admin copy success was not explained honestly in the handoff status');
   if(!notificationDeliveryText({to:'operator',delivery:'suppressed',adminDelivery:'failed'}).includes('не подтвердил отправку администраторской копии'))
     throw new Error('Admin failure was omitted from the UI status');
