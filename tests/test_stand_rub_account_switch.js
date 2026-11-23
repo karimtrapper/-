@@ -22,6 +22,7 @@ const ctx = vm.createContext({S: oldState, deal: () => deal,
   docHasIssued: d => Boolean(d.docVersion || d.docPack),
   STAND:true, SCREEN:null, SNAP:null, standMe:'operator', standMeId:7, standBusy:false,
   standPush:false, standVer:1, standBase:null, DRAFTS:{}, DOC_REISSUE_FORMS:{},
+  DOC_REQ:['fio','passNo','object','amountThb','rate','amountPay'], DOC_SRC:{purpose:'пишет операционист'},
   STAND_DOC_AGENT_META:{profiles:{mf_corp:{name:'MF Corporation Company Limited',reg:'0835565024547',director:'Miss Katika Sakornnoi'},
     flow_sole:{name:'Flow Sole Company Limited',reg:'284530232-000',director:'Mr. Souvahn Phanthavong'}},
     accounts:{'bank:044525094:40807810819000000261':'flow_sole'}},
@@ -36,9 +37,9 @@ const ctx = vm.createContext({S: oldState, deal: () => deal,
   save: () => {ctx.saves++;}, render: () => {}, saves:0});
 vm.runInContext(constants + ['standDocAgent', 'docFields', 'expectOf', 'rubReceivingAccountSave',
   'rubReceivingBankLabel', 'manualBankDocsMismatch', 'payinS11Fields', 'documentPackStale',
-  'docIssueVersion', 'docAccountChangeAvailable', 'docStepActor', 'docCanReopen',
+  'docReq', 'docPurposeOptional', 'docIssueVersion', 'docAccountChangeAvailable', 'docStepActor', 'docCanReopen',
   'docFormReceivingMode', 'docSelectReceivingAccount', 'docFormFields', 'docFormProblem',
-  'docIssue'].map(fn).join('\n'), ctx);
+  'docFieldSave', 'docIssue'].map(fn).join('\n'), ctx);
 const run = source => vm.runInContext(source, ctx);
 
 // Старая сделка получает актуальные реквизиты без миграции JSON и потери ручных полей.
@@ -72,11 +73,12 @@ assert.equal(deal.rubReceivingAccount.bank, '', 'очистка поля сох�
 
 assert.match(html, /fld\('purpose','Назначение перевода — клиент впишет его в платёжное поручение'/);
 assert.doesNotMatch(html, /Назначение платежа в Сбер — клиент впишет его в перевод/);
+assert.equal(run("docReq(deal(1)).includes('purpose')"), true);
 
 // Перевыпуск старого пакета с реквизитами только в снимке договора.
 Object.assign(deal, {
   type:'Оплата недвижимости', kind:'Фрихолд', payType:'По реквизитам', step:'s11',
-  docVersion:2, docPack:{version:2, agent:'mf_corp', amount:100000, transfer:1000, rate:100},
+  docVersion:2, docPack:{version:2, agent:'mf_corp', agreementNumber:'MF-123', amount:100000, transfer:1000, rate:100},
   docFields:{fio:'Ручная правка', amountPay:100000, amountThb:1000, rate:100,
     payTo:'ООО «ЭМ ЭФ КОРПОРЕЙШН» · ПАО Сбербанк · р/с 40807810938720000286',
     purpose:'По текущему договору'},
@@ -88,8 +90,14 @@ const saves = ctx.saves;
 assert.match(run("payinS11Fields(deal(1),null,true)"), /<label class="fl" for="rub_receiving_1">Куда клиент переводит рубли<\/label>/);
 assert.match(run("payinS11Fields(deal(1),null,true)"), /<option value="" selected>Счёт из выпущенного пакета/);
 assert.equal(run("docFormFields(deal(1)).payTo"), oldFields.payTo);
+assert.equal(run("docReq(deal(1)).includes('purpose')"), true);
+ctx.DRAFTS['1|df_purpose']='Черновик назначения по старым реквизитам';
+ctx.DRAFTS['1|df_fio']='Черновик ФИО';
 run("docSelectReceivingAccount(1,'flowsole')");
+assert.equal(ctx.DRAFTS['1|df_purpose'], undefined);
+assert.equal(ctx.DRAFTS['1|df_fio'], 'Черновик ФИО');
 assert.equal(run("docFormReceivingMode(deal(1))"), 'flowsole');
+assert.equal(run("docReq(deal(1),'flowsole').includes('purpose')"), false);
 assert.match(run("payinS11Fields(deal(1),null,true,docFormReceivingMode(deal(1)))"), /value="flowsole" selected/);
 let preview = run("docFormFields(deal(1),docFormReceivingMode(deal(1)))");
 assert.match(preview.payTo, /ФЛОУ СОЛЕ.*40807810819000000261/);
@@ -105,9 +113,23 @@ assert.equal(ctx.saves, saves);
 assert.deepEqual(deal.docFields, oldFields);
 assert.equal(deal.rubReceivingAccount, undefined);
 assert.equal(deal.expect.purpose, 'Назначение из выписки');
+ctx.DRAFTS['1|df_purpose']='Черновик назначения для Flow Sole';
+run("docSelectReceivingAccount(1,'flowsole')");
+assert.equal(ctx.DRAFTS['1|df_purpose'], 'Черновик назначения для Flow Sole');
 run("docSelectReceivingAccount(1,'')");
+assert.equal(ctx.DRAFTS['1|df_purpose'], undefined);
 assert.equal(run("docFormReceivingMode(deal(1))"), '');
 assert.equal(run("docFormFields(deal(1)).purpose"), oldFields.purpose);
+
+deal.rubReceivingAccount={mode:'flowsole'};
+assert.equal(run("docReq(deal(1)).includes('purpose')"), false);
+assert.equal(run("docFormFields(deal(1)).purpose"), oldFields.purpose);
+deal.docFields.purpose='Оплата по агентскому договору № MF-123, НДС не облагается';
+assert.equal(run("docFormFields(deal(1)).purpose"), '');
+deal.docFields.purpose='Оплата по агентскому договору № MF-999, НДС не облагается';
+assert.equal(run("docFormFields(deal(1)).purpose"), deal.docFields.purpose);
+deal.docFields.purpose=oldFields.purpose;
+delete deal.rubReceivingAccount;
 
 // Возврат из ожидания доступен исполнителю до фиксации оплаты.
 deal.step='s12';
@@ -148,11 +170,19 @@ delete deal.outgoingOrderAt;
   assert.equal(requests.length,0,'a local draft of an earlier version cannot authorize a switch');
   deal.docVersion=2;
   await ctx.docIssue(1,preview,[],'','flowsole');
+  assert.equal(requests[0].docFields.purpose,'');
   assert.equal(requests[0].receivingAccountMode,'flowsole');
   assert.equal(requests[0].expectedDocVersion,2);
   assert.equal(deal.rubReceivingAccount,undefined);
   assert.deepEqual(deal.docFields,oldFields);
   assert.equal(run("docFormReceivingMode(deal(1))"),'flowsole');
+  fields.df_purpose='  Оплата инвойса 123 по согласованию с банком  ';
+  const manual=run("docFieldSave(1,'flowsole')");
+  assert.equal(manual.F.purpose,'Оплата инвойса 123 по согласованию с банком');
+  await ctx.docIssue(1,manual.F,manual.ch,'','flowsole');
+  assert.equal(requests[1].docFields.purpose,manual.F.purpose);
+  assert.equal(ctx.DRAFTS['1|df_purpose'],fields.df_purpose,'validation failure preserves the entered purpose');
+  assert.deepEqual(deal.docFields,oldFields);
   ctx.fetch=async (_url,options)=>{
     requests.push(JSON.parse(options.body));
     const saved=Object.assign({},deal,{rubReceivingAccount:{mode:'flowsole'},docVersion:3,

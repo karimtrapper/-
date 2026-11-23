@@ -658,7 +658,8 @@ console.log('test_stand_freehold.js: OK');
     docReq:()=>[],fioHint:()=>'',payinWalletSelect:()=>'',htmlText:x=>String(x),
     money:(x,c)=>`${Number(x).toFixed(2)} ${c}`};
   vm.createContext(ctx);
-  vm.runInContext(functions(['exchangeSpec','freeholdFee','freeholdSend','freeholdLossFingerprint','payinS11Fields'])+'\n'+s11,ctx);
+  vm.runInContext(functions(['exchangeSpec','freeholdFee','freeholdSend','freeholdLossFingerprint','payinS11Fields',
+    'docPurposeOptional'])+'\n'+s11,ctx);
   let rendered=ctx.renderS11();
   assert.match(rendered,/id="df_amountPay"[^>]*onchange="freeholdDocAmountSave/);
   assert.match(rendered,/Курс сделки<\/label><input class="fc" readonly value="—"/);
@@ -837,7 +838,7 @@ console.log('test_stand_freehold.js: OK');
 (async()=>{
   const d={id:9101,kind:'Фрихолд',payType:'Крипта',amountUsdt:98800,rates:{},docVersion:0};
   const events=[];
-  const ctx=run(['standSaveError','standRequireSaved'],[],{STAND:true,standLastSaveResult:{ok:true},S:{docIssuing:null},standBusy:false,standPush:false,
+  const ctx=run(['standSaveError','standRequireSaved','docIssueVersion'],[],{STAND:true,standLastSaveResult:{ok:true},S:{docIssuing:null},standBusy:false,standPush:false,
     standVer:17,standBase:{deals:[{id:9101,amountUsdt:98800}]},
     deal:()=>d,isCrypto:()=>true,
     standWaitSaved:async()=>{events.push('wait');return {ok:true};},

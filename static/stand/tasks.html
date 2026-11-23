@@ -5570,15 +5570,14 @@ function fioHint(d,F=docFields(d)){
 }
 /* Обязательные поля пакета — по ним подсвечивается незаполненное */
 const DOC_REQ=['fio','passNo','object','amountThb','rate','amountPay'];
-/* Один список обязательных с сервером (_stand_doc_request): назначение — у рублей,
-   номер инвойса — основание платежа в приложении у лизхолда и фрихолда. Раньше
-   экран и сервер проверяли разное, и пустые поля всплывали по одному (приёмка 25.09). */
-function docReq(d){
+/* Список обязательных полей соответствует _stand_doc_request на сервере.
+   У лизхолда и фрихолда номер инвойса указывают как основание платежа. */
+function docReq(d,mode=''){
   /* Крипто-фрихолд: курса нет вообще (шаги s5/s6 выпадают из пути), поэтому «курс
      сделки» из обязательных полей пакета убираем — его просто не с чем сравнить. */
   const base=(isCrypto(d)&&d.kind==='Фрихолд')?DOC_REQ.filter(k=>k!=='rate'):DOC_REQ;
   return (d.autoPayment===true?base.filter(k=>k!=='object'):base).concat(d.autoPayment===true?['vehicleModel','sellerName','sellerId','dev','contractNo','contractDate','paymentStage','vinState','invNo','invDate']:[],
-    isCrypto(d)?[]:['purpose'],
+    isCrypto(d)||docPurposeOptional(d,mode)?[]:['purpose'],
     (d.autoPayment!==true&&d.type==='Оплата недвижимости'&&(d.kind==='Лизхолд'||d.kind==='Фрихолд'))?['invNo']:[]);
 }
 const DOC_LABEL={payoutNetwork:'сеть получателя',payoutWallet:'кошелёк получателя',fio:'ФИО',fioLat:'латиница',passNo:'номер паспорта',passIss:'дата выдачи',
@@ -5591,6 +5590,9 @@ const DOC_LABEL={payoutNetwork:'сеть получателя',payoutWallet:'к�
 const DOC_REISSUE_FORMS={};
 function docHasIssued(d){return !!(d.docVersion||d.docPack);}
 function docIssueVersion(d){return Number(d.docVersion||d.docPack?.version||0);}
+function docPurposeOptional(d,mode=''){
+  return docHasIssued(d)&&!isCrypto(d)&&(!!mode||standDocAgent(d).key==='flow_sole');
+}
 function docAccountChangeAvailable(d){
   if(!docHasIssued(d)||d.closed||d.crmDealId||d.cashPartnerUsdt||
       (d.payType!=null&&d.payType!=='По реквизитам')||payCur(d)!=='rub')return false;
@@ -5650,6 +5652,7 @@ function docSelectReceivingAccount(id,mode){
   if(!d||d.step!=='s11'||S.docIssuing===id||!docStepActor(d)||!docAccountChangeAvailable(d))return;
   const previous=d.rubReceivingAccount?.mode||'';
   if(mode!==previous&&!['sber','flowsole'].includes(mode))return;
+  if(mode!==(docFormReceivingMode(d)||previous))delete DRAFTS[id+'|df_purpose'];
   DOC_REISSUE_FORMS[id]={...DOC_REISSUE_FORMS[id],docVersion:docIssueVersion(d),
     receivingAccountMode:mode===previous?'':mode,docMiss:[],docErr:''};
   FOCUS={id:'rub_receiving_'+id};
@@ -5670,6 +5673,11 @@ function docFormFields(d,mode=''){
     Object.assign(fields,money,{purpose:''});
   }else if(issued&&!isCrypto(d)&&!d.rubReceivingAccount){
     fields.payTo=d.issuedDocPayTo||d.docFields?.payTo||fields.payTo;
+  }
+  const agreementNumber=d.docPack?.agreementNumber;
+  if(agreementNumber&&docPurposeOptional(d,mode)&&
+      String(fields.purpose||'').trim()===`Оплата по агентскому договору № ${agreementNumber}, НДС не облагается`){
+    fields.purpose='';
   }
   return fields;
 }
@@ -5793,9 +5801,15 @@ function docDownloadAll(id){
 /* Выпуск пакета настоящим генератором (тем же, что в CRM). Сервер сам пишет
    в сделку список файлов и версию; сюда возвращается свежая доска. */
 async function docIssue(id,F,ch,comment,receivingAccountMode=''){
+  const submittedDeal=deal(id);
+  if(!submittedDeal)return;
+  const expectedDocVersion=docIssueVersion(submittedDeal);
   if(!await standRequireSaved('Сохранение не завершилось — документы не выпущены'))return;
   const current=deal(id);
-  if(receivingAccountMode&&(!current||docFormReceivingMode(current)!==receivingAccountMode)){
+  if(!current||docIssueVersion(current)!==expectedDocVersion){
+    render();toast('Версия пакета изменилась — проверьте поля перед выпуском');return;
+  }
+  if(receivingAccountMode&&docFormReceivingMode(current)!==receivingAccountMode){
     render();toast('Условия сделки изменились — проверьте счёт перед выпуском');return;
   }
   if(STAND&&isCrypto(deal(id))&&deal(id).kind==='Фрихолд'){
@@ -5815,7 +5829,8 @@ async function docIssue(id,F,ch,comment,receivingAccountMode=''){
   let j=null;
   try{
     const request={dealId:id,docFields:F};
-    if(receivingAccountMode)Object.assign(request,{receivingAccountMode,expectedDocVersion:docIssueVersion(current)});
+    if(expectedDocVersion)request.expectedDocVersion=expectedDocVersion;
+    if(receivingAccountMode)request.receivingAccountMode=receivingAccountMode;
     const r=await fetch('/api/stand/docs/issue',{method:'POST',credentials:'same-origin',
       headers:{'Content-Type':'application/json'},body:JSON.stringify(request)});
     try{j=await r.json();}catch(e){j={success:false,detail:'Сервер ответил '+r.status};}
@@ -12722,6 +12737,7 @@ function stepCard(d){
     const reissuing=docHasIssued(d);
     const canChangeAccount=reissuing&&!isCrypto(d)&&docStepActor(d)&&docAccountChangeAvailable(d);
     const receivingAccountMode=canChangeAccount?docFormReceivingMode(d):'';
+    const purposeOptional=docPurposeOptional(d,receivingAccountMode);
     const F=docFormFields(d,receivingAccountMode);
     const agent=receivingAccountMode?standDocAgent(d,{mode:receivingAccountMode}):standDocAgent(d);
     const form=reissuing?DOC_REISSUE_FORMS[d.id]||{}:d;
@@ -12758,6 +12774,7 @@ function stepCard(d){
               const n=num(cleanNum(raw));
               return n==null?htmlText(raw):Number(n).toLocaleString('ru-RU');})()}" ${opts.ph?`placeholder="${opts.ph}"`:''}>`}
         ${opts.ro&&!opts.noRoHint?`<p class="fh">зафиксировано до договора (шаги 6, 8) — здесь только чтение</p>`:''}
+        ${opts.hint?`<p class="fh">${htmlText(opts.hint)}</p>`:''}
         ${flag?`<p class="fh" style="color:var(--red)">${empty?'Заполните поле':'Проверьте значение'}</p>`:''}</div>`;
     };
     return `<div class="card"><div class="card-title">Документы клиента
@@ -12795,10 +12812,10 @@ function stepCard(d){
         <div class="fg"><label class="fl">Наш доход, USDT</label><input class="fc" id="fh_doc_income_${d.id}" readonly value="${clientAmount>0?(clientAmount-sent).toFixed(2):'—'}"></div>
         <div class="fg"><label class="fl">Наш доход, %</label><input class="fc" id="fh_doc_pct_${d.id}" readonly value="${clientAmount>0&&sent?((clientAmount/sent-1)*100).toFixed(4):'—'}"></div></div>
         <div id="fh_doc_loss_${d.id}">${clientAmount>0&&clientAmount<sent?`<div class="alert a-warn"><div><b>Сделка в минус</b> · ${lossAck?'риск подтверждён':'перед выпуском подтвердите риск отдельно'}</div></div>${lossAck?'':`<button class="btn btn-outline" onclick="freeholdLossAck(${d.id})">Подтвердить сделку в минус</button>`}`:''}:${clientAmount>0?'':'<div class="alert a-warn"><div>Укажите сумму клиента, USDT, до выпуска документов.</div></div>'}</div>`:''}
-      ${receivingAccountMode?`<p class="fh">Сумма и курс сохраняются при смене счёта.</p>
-        ${fld('purpose','Назначение перевода',{area:1,ro:1,noRoHint:1,ph:'Сформируется при выпуске пакета'})}`
-        :`<p class="fh" style="margin-top:2px">В договор и счёт идёт введённая сумма клиента. Отправка в IPPS и доход показаны для внутренней сверки.</p>
-        ${isCrypto(d)?'':fld('purpose','Назначение перевода — клиент впишет его в платёжное поручение',{req:1,area:1})}`}
+      ${receivingAccountMode?`<p class="fh">Сумма и курс сохраняются при смене счёта.</p>`
+        :`<p class="fh" style="margin-top:2px">В договор и счёт идёт введённая сумма клиента. Отправка в IPPS и доход показаны для внутренней сверки.</p>`}
+      ${isCrypto(d)?'':fld('purpose','Назначение перевода — клиент впишет его в платёжное поручение',{req:!purposeOptional,area:1,
+        hint:purposeOptional?'Оставьте поле пустым, чтобы назначение с номером договора подставилось при выпуске.':''})}
       ${exchangeSpec(d)?.output==='usdt'?`<div class="fr">${fld('payoutNetwork','Сеть получателя USDT',{req:1})}${fld('payoutWallet','Кошелёк получателя USDT',{req:1})}</div>`:''}
     </div>
 
@@ -13734,7 +13751,7 @@ async function act(id,step){
       const name=String(rubAccount.recipientName||'').trim(), inn=String(rubAccount.recipientInn||'').trim(), kpp=String(rubAccount.recipientKpp||'').trim();
       if((name||inn||kpp)&&(!name||!/^\d{10}$/.test(inn)||!/^\d{9}$/.test(kpp))){toast('Укажите наименование, ИНН (10 цифр) и КПП (9 цифр) получателя полностью');render();return;}
     }
-    const miss=docReq(d).filter(k=>(!receivingAccountMode||k!=='purpose')&&!String(F[k]==null?'':F[k]).trim());
+    const miss=docReq(d,receivingAccountMode).filter(k=>!String(F[k]==null?'':F[k]).trim());
     if(miss.length){
       docFormProblem(d,miss);render();
       toast('Не заполнено: '+miss.map(k=>DOC_LABEL[k]||k).join(', '));

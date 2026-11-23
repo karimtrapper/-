@@ -229,9 +229,13 @@ def test_non_auto_agreement_document_xml_unchanged(deal_type, agent, expected_sh
     money = dict(MONEY, agent=agent)
     if deal_type == 'payment':
         money.update(pair='RUB_USD', transfer_amount='USD 1000.00')
-    data, _ = docgen.build_agreement(deal_type, CLIENT, money, when=WHEN)
+    data, number = docgen.build_agreement(deal_type, CLIENT, money, when=WHEN)
     with zipfile.ZipFile(io.BytesIO(data)) as document:
         xml = document.read('word/document.xml')
+    if agent == 'flow_sole':
+        assert number == 'FSC-242-0409-1'
+        # Allow the issuer's new prefix while checking the rest of the document against the original.
+        xml = xml.replace(number.encode(), b'MF-242-0409-1')
     assert hashlib.sha256(xml).hexdigest() == expected_sha
 
 

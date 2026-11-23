@@ -98,16 +98,12 @@ PAYIN_EVIDENCE = {
 
 # ─────────────────────────── нумерация ───────────────────────────
 
-def make_number(passport_no: str, when: datetime | None = None, seq: int = 1) -> str:
-    """`MF-<3 последние цифры паспорта>-<ДДММ>-<номер соглашения>`.
-
-    Схема Карима от 03.09.2026, подтверждена на договоре Бранова
-    (паспорт 77 6892733, 16.06 → MF-733-1606).
-    """
+def make_number(passport_no: str, when: datetime | None = None, seq: int = 1, *, agent=None) -> str:
+    """Префикс агента, последние три цифры паспорта, ДДММ и порядковый номер."""
     digits = re.sub(r'\D', '', passport_no or '')
     tail = (digits[-3:] or '000').rjust(3, '0')
     when = when or datetime.now()
-    return f'MF-{tail}-{when:%d%m}-{seq}'
+    return f'{_agent(agent).file_prefix}-{tail}-{when:%d%m}-{seq}'
 
 
 def date_ru_en(when: datetime) -> str:
@@ -1074,7 +1070,7 @@ def build_agreement(deal_type: str, fields: dict, money: dict,
         raise ValueError(f'неизвестный тип сделки: {deal_type}')
     ag = _agent(agent, money)
     when = when or datetime.now()
-    number = number or make_number(fields.get('client_passport_no', ''), when, 1)
+    number = number or make_number(fields.get('client_passport_no', ''), when, agent=ag)
     money = doc_routes.normalize(money, deal_type)
 
     doc = _open_template(TEMPLATES[deal_type], ag)

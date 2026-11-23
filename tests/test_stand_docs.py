@@ -763,6 +763,12 @@ def test_flowsole_preset_sets_payto_and_authorised_partner_role(stand):
     assert ROLE_PARTNER not in invoice
     assert ROLE_AGENT not in invoice
     assert saved['issuedDocAgent'] == 'flow_sole'
+    number = response.json['pack']['agreementNumber']
+    assert re.fullmatch(r'FSC-567-\d{4}-1', number)
+    assert all(entry['number'] == number and number in entry['file']
+               for entry in response.json['issued'])
+    assert all(number in body for body in texts.values())
+    assert f'Оплата по агентскому договору № {number}, НДС не облагается' in invoice
 
 
 def test_custom_rub_account_with_explicit_recipient_uses_it_and_partner_role(stand):
@@ -795,6 +801,124 @@ def test_custom_rub_account_without_recipient_fields_keeps_old_behaviour(stand):
     invoice = _text(stand, response.json['issued'][-1]['docId'])
     assert ROLE_AGENT in invoice
     assert ROLE_PARTNER not in invoice
+    assert re.fullmatch(r'MF-567-\d{4}-1', response.json['pack']['agreementNumber'])
+
+
+def _issue_legacy_flowsole_package(stand, monkeypatch):
+    deal = _deal(15020, rubReceivingAccount={'mode': 'flowsole'}, expect={
+        'amount': 914795, 'tol': 500, 'account': '40807810819000000261', 'acc': 'Flow Sole (СГБ) …0261'})
+    stand.put_board([deal])
+    make_number = docgen.make_number
+    with monkeypatch.context() as legacy:
+        legacy.setattr(docgen, 'make_number',
+                       lambda passport, when, seq, *, agent: make_number(passport, when, seq))
+        first = stand.post('/api/stand/docs/issue', json={'dealId': deal['id'], 'docFields': _fields()})
+    assert first.status_code == 200, first.json
+    old = first.json['data']['deals'][0]
+    old['docVersion'] = old['docPack']['version'] = 4
+    for item in old['docsIssued']:
+        item['version'] = 4
+    assert old['docPack']['agreementNumber'].startswith('MF-')
+    return old
+
+
+@pytest.mark.parametrize('purpose_mode', ['blank', 'manual_old_number', 'manual_other_number'])
+def test_flowsole_reissue_corrects_legacy_number_and_preserves_history(stand, monkeypatch, purpose_mode):
+    old = _issue_legacy_flowsole_package(stand, monkeypatch)
+    previous = old['docPack']['agreementNumber']
+    old_docs = {item['docId']: stand.get(f"/api/docs/file/{item['docId']}").data
+                for item in old['docsIssued']}
+    stand.put_board([old])
+    stale = stand.post('/api/stand/docs/issue', json={'dealId': old['id'], 'expectedDocVersion': 3})
+    assert stale.status_code == 409 and stale.json['error'] == 'conflict'
+    custom = 'Взнос по договору № {}, основание {}-10, без НДС'
+    other = 'Оплата по агентскому договору № MF-111-0101-3, НДС не облагается'
+    submitted = {'blank': '', 'manual_old_number': custom.format(previous, previous),
+                 'manual_other_number': other}[purpose_mode]
+    issued = stand.post('/api/stand/docs/issue', json={
+        'dealId': old['id'], 'expectedDocVersion': 4, 'docFields': {'purpose': submitted}})
+    assert issued.status_code == 200, issued.json
+    current, pack = issued.json['data']['deals'][0], issued.json['pack']
+    assert pack['version'] == 5 and pack['agreementId'] == old['docPack']['agreementId']
+    number = pack['agreementNumber']
+    assert re.fullmatch(r'FSC-567-\d{4}-1', number)
+    assert current['docsIssued'][:len(old['docsIssued'])] == old['docsIssued']
+    for item in issued.json['issued']:
+        assert item['number'] == number and number in item['file']
+        assert number in _text(stand, item['docId'])
+    purpose = {'blank': f'Оплата по агентскому договору № {number}, НДС не облагается',
+               'manual_old_number': custom.format(number, previous), 'manual_other_number': other}[purpose_mode]
+    assert purpose in _text(stand, issued.json['issued'][-1]['docId'])
+    assert current['docFields']['purpose'] == pack['purpose'] == purpose
+    assert current['expect'] == dict(old['expect'], purpose=purpose)
+    with appmod.get_session() as db:
+        assert db.get(appmod.Agreement, pack['agreementId']).number == number
+        for doc_id, old_bytes in old_docs.items():
+            doc = db.get(appmod.AgreementDoc, doc_id)
+            assert doc.number == previous and doc.data == old_bytes
+
+
+@pytest.mark.parametrize('protection', ['sent', 'send_history', 'signed', 'proof', 'incoming', 'multiple_payments'])
+def test_flowsole_reissue_preserves_used_legacy_agreement_number(stand, monkeypatch, protection):
+    old = _issue_legacy_flowsole_package(stand, monkeypatch)
+    if protection == 'sent':
+        old['docsSent'] = {'version': 4}
+    elif protection == 'send_history':
+        old['log'].append({'text': 'Документы отправлены клиенту (версия 4)'})
+    elif protection == 'signed':
+        old['docs'] = {'signed': True}
+    elif protection == 'proof':
+        old['files'] = {'clientPayinReceipt': [{'id': 'synthetic'}]}
+    stand.put_board([old])
+    with appmod.get_session() as db:
+        if protection == 'incoming':
+            row = appmod._stand_row(db)
+            row.data = json.dumps(dict(json.loads(row.data), incomes=[{'dealId': str(old['id'])}]))
+        elif protection == 'multiple_payments':
+            db.get(appmod.Agreement, old['docPack']['agreementId']).payments_count = 2
+        db.commit()
+    for _ in range(2):
+        issued = stand.post('/api/stand/docs/issue', json={'dealId': old['id'], 'docFields': {'purpose': ''}})
+        assert issued.status_code == 200, issued.json
+        assert issued.json['pack']['agreementNumber'] == old['docPack']['agreementNumber']
+
+
+def test_flowsole_later_payment_references_existing_legacy_agreement(stand, monkeypatch):
+    old = _issue_legacy_flowsole_package(stand, monkeypatch)
+    later = _deal(15021, rubReceivingAccount={'mode': 'flowsole'}, isOld=True)
+    stand.put_board([old, later])
+    issued = stand.post('/api/stand/docs/issue', json={'dealId': later['id'], 'docFields': _fields()})
+    assert issued.status_code == 200, issued.json
+    pack = issued.json['pack']
+    assert pack['mode'] == 'addendum' and pack['paymentNo'] == 2
+    assert pack['agreementId'] == old['docPack']['agreementId']
+    assert pack['agreementNumber'] == old['docPack']['agreementNumber']
+    assert pack['agreementNumber'] in pack['purpose']
+    assert re.fullmatch(r'FSC-567-\d{4}-2', pack['number'])
+    for item in issued.json['issued']:
+        assert pack['number'] in item['file']
+        content = _text(stand, item['docId'])
+        assert pack['number'] in content and pack['agreementNumber'] in content
+
+
+def test_flowsole_legacy_renumber_rolls_back_after_partial_document_save(stand, monkeypatch):
+    old = _issue_legacy_flowsole_package(stand, monkeypatch)
+    stand.put_board([old])
+    save = appmod._docs_save
+
+    def fail_on_invoice(db, agreement_id, kind, *args):
+        if kind == 'invoice':
+            raise ValueError('synthetic invoice write failure')
+        return save(db, agreement_id, kind, *args)
+
+    monkeypatch.setattr(appmod, '_docs_save', fail_on_invoice)
+    issued = stand.post('/api/stand/docs/issue', json={'dealId': old['id'], 'docFields': {'purpose': ''}})
+    assert issued.status_code == 500, issued.json
+    with appmod.get_session() as db:
+        assert json.loads(appmod._stand_row(db).data)['deals'] == [old]
+        agreement = db.get(appmod.Agreement, old['docPack']['agreementId'])
+        assert agreement.number == old['docPack']['agreementNumber']
+        assert [doc.id for doc in agreement.docs] == [item['docId'] for item in old['docsIssued']]
 
 
 def test_custom_rub_account_with_partial_recipient_fields_is_400(stand):
@@ -842,7 +966,7 @@ def test_switch_legacy_rub_freehold_to_flowsole_reissues_without_touching_old_do
                  for item in old['docsIssued']}
     result = stand.post('/api/stand/docs/issue', json={
         'dealId': old['id'], 'receivingAccountMode': 'flowsole', 'expectedDocVersion': old['docVersion'],
-        'docFields': {'purpose': 'Прежнее назначение', 'payTo': RUB_PAY_TO,
+        'docFields': {'purpose': '', 'payTo': RUB_PAY_TO,
                       'amountPay': '4000000', 'amountThb': '50000', 'rate': '80'},
     })
     assert result.status_code == 200, result.json
@@ -851,6 +975,7 @@ def test_switch_legacy_rub_freehold_to_flowsole_reissues_without_touching_old_do
     assert pack['version'] == old['docVersion'] + 1
     assert pack['agreementId'] != old['docPack']['agreementId']
     assert pack['agreementNumber'] != old['docPack']['agreementNumber']
+    assert pack['agreementNumber'].startswith('FSC-')
     assert pack['agent'] == current['issuedDocAgent'] == 'flow_sole'
     assert current['rubReceivingAccount'] == {'mode': 'flowsole'}
     assert pack['recipient'] == 'ФЛОУ СОЛЕ КО., ЛТД'
@@ -875,6 +1000,21 @@ def test_switch_legacy_rub_freehold_to_flowsole_reissues_without_touching_old_do
     })
     assert stale.status_code == 409 and stale.json['error'] == 'conflict', stale.json
     assert stale.json['data']['deals'][0] == current
+
+
+def test_switch_to_flowsole_keeps_edited_payment_purpose(stand):
+    old = _issue_legacy_rub_freehold(stand)
+    prev_number = old['docPack']['agreementNumber']
+    result = stand.post('/api/stand/docs/issue', json={
+        'dealId': old['id'], 'receivingAccountMode': 'flowsole', 'expectedDocVersion': old['docVersion'],
+        'docFields': {'purpose': f'Оплата по договору № {prev_number}, счёт TEST-100, без НДС'},
+    })
+    assert result.status_code == 200, result.json
+    pack = result.json['pack']
+    purpose = f"Оплата по договору № {pack['agreementNumber']}, счёт TEST-100, без НДС"
+    current = result.json['data']['deals'][0]
+    assert current['docFields']['purpose'] == current['expect']['purpose'] == pack['purpose'] == purpose
+    assert purpose in _text(stand, result.json['issued'][-1]['docId'])
 
 
 def test_ordinary_legacy_reissue_preserves_confirmed_recipient(stand):

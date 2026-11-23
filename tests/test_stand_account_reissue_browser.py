@@ -8,27 +8,37 @@ from tests.test_stand_docs import _deal, _fields, stand
 
 
 @pytest.mark.browser
-@pytest.mark.parametrize('legacy', [False, True])
-def test_reissue_rub_freehold_from_sber_to_flow_sole(stand, pytestconfig, legacy):
+@pytest.mark.parametrize('old_mode', ['sber', None, 'flowsole'])
+def test_reissue_rub_freehold_for_flow_sole(stand, pytestconfig, monkeypatch, old_mode):
     from playwright.sync_api import expect, sync_playwright
+    import docgen
 
     deal_id = 986
-    old_account = None if legacy else {'mode': 'sber'}
+    old_account = {'mode': old_mode} if old_mode else None
+    already_flow_sole = old_mode == 'flowsole'
     stand.put_board([_deal(
-        deal_id, step='s11' if legacy else 's11b', kind='Фрихолд', curBase='fhusd',
+        deal_id, step='s11b' if old_mode else 's11', kind='Фрихолд', curBase='fhusd',
         invoiceCurrency='usd', invoiceUsd=30000, amountRub=2880000,
         rates={'client': '96', 'rubUsdt': '90'}, rubReceivingAccount=old_account,
     )])
-    first = stand.post('/api/stand/docs/issue', json={
-        'dealId': deal_id, 'docFields': _fields(
-            kind='Фрихолд', amountThb='30000', amountPay='2880000', rate='96',
-        ),
-    })
+    original_number = docgen.make_number
+    with monkeypatch.context() as legacy_fixture:
+        if already_flow_sole:
+            def legacy_number(passport_no, when=None, seq=1, *args, **kwargs):
+                return original_number(passport_no, when, seq)
+            legacy_fixture.setattr(docgen, 'make_number', legacy_number)
+        first = stand.post('/api/stand/docs/issue', json={
+            'dealId': deal_id, 'docFields': _fields(
+                kind='Фрихолд', amountThb='30000', amountPay='2880000', rate='96',
+            ),
+        })
     assert first.status_code == 200, first.json
+    assert first.json['pack']['agreementNumber'].startswith('MF-')
     first_docs = first.json['issued']
     original = stand.get('/api/docs/file/' + str(first_docs[-1]['docId'])).data
     browser_errors = []
     issue_requests = []
+    manual_purpose = 'Оплата услуг агента Flow Sole, НДС не облагается' if old_mode is None else ''
     # Requests from Playwright run in a different greenlet than pytest's preserved Flask context.
     browser_client = stand.application.test_client()
     browser_client.set_cookie('session', stand.get_cookie('session').value)
@@ -66,23 +76,29 @@ def test_reissue_rub_freehold_from_sber_to_flow_sole(stand, pytestconfig, legacy
         page.on('pageerror', lambda error: browser_errors.append(str(error)))
         page.goto(f'http://calccrm.test/tasks?deal={deal_id}')
         reissue = page.get_by_role('button', name='Перевыпустить пакет', exact=True)
-        if not legacy:
+        if old_mode:
             reissue.click()
         receiving = page.get_by_label('Куда клиент переводит рубли')
-        if not legacy:
-            expect(receiving).to_have_value('sber')
-        receiving.select_option('flowsole')
+        if old_mode:
+            expect(receiving).to_have_value(old_mode)
+        if not already_flow_sole:
+            receiving.select_option('flowsole')
         expect(page.locator('#df_agent')).to_have_value('Flow Sole Company Limited')
-        expect(page.locator('#df_purpose')).to_have_value('')
+        purpose = page.locator('#df_purpose')
+        expect(purpose).to_be_editable()
+        expect(purpose).to_have_value('')
+        if manual_purpose:
+            purpose.fill(manual_purpose)
 
         page.evaluate('standSave()')
         before = stand.get('/api/stand/state').json['data']['deals'][0]
         assert before.get('rubReceivingAccount') == old_account
-        assert before['docPack']['agent'] == 'mf_corp'
+        assert before['docPack']['agent'] == ('flow_sole' if already_flow_sole else 'mf_corp')
         with page.expect_response(lambda r: r.url.endswith('/api/stand/docs/issue')) as result:
             reissue.click()
         assert result.value.ok, result.value.json()
-        assert issue_requests[0]['receivingAccountMode'] == 'flowsole'
+        assert issue_requests[0].get('receivingAccountMode') == (None if already_flow_sole else 'flowsole')
+        assert issue_requests[0]['docFields']['purpose'] == manual_purpose
         page.wait_for_function(
             "(id) => deal(id)?.step === 's11b' && !standBusy && !standSaveScheduled", arg=deal_id,
         )
@@ -95,5 +111,9 @@ def test_reissue_rub_freehold_from_sber_to_flow_sole(stand, pytestconfig, legacy
     assert after['rubReceivingAccount'] == {'mode': 'flowsole'}
     assert after['docVersion'] == 2 and after['docPack']['agent'] == 'flow_sole'
     assert '40807810819000000261' in after['issuedDocPayTo']
-    assert after['docPack']['agreementNumber'] in after['docFields']['purpose']
+    assert after['docPack']['agreementNumber'].startswith('FSC-')
+    if manual_purpose:
+        assert after['docFields']['purpose'] == manual_purpose
+    else:
+        assert after['docPack']['agreementNumber'] in after['docFields']['purpose']
     assert stand.get('/api/docs/file/' + str(first_docs[-1]['docId'])).data == original

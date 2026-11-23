@@ -2583,7 +2583,7 @@ class Agreement(Base):
     client_key = Column(String(20), index=True)
     route_key = Column(String(60), nullable=False, default='legacy')
     deal_type = Column(String(20), nullable=False)          # freehold | leasehold | rental
-    number = Column(String(40), nullable=False, index=True)  # MF-<3 цифры паспорта>-<ДДММ>-<N>
+    number = Column(String(40), nullable=False, index=True)  # <агент>-<3 цифры паспорта>-<ДДММ>-<N>
     status = Column(String(20), default='draft')             # draft | sent | signed
     fields_json = Column(Text, default='{}')                 # распознанное из файлов
     money_json = Column(Text, default='{}')                  # курс, суммы, способ оплаты
@@ -11904,6 +11904,29 @@ def _stand_receiving_account_change_problem(state, deal, db, row):
     return None
 
 
+def _stand_can_renumber_agreement(state, deal, db, row, agreement):
+    pack = deal['docPack']
+    sent_labels = {f"Документы отправлены клиенту (версия {entry['version']})"
+                   for entry in deal.get('docsIssued') or []
+                   if isinstance(entry, dict) and entry.get('version') is not None
+                   and entry.get('number') == agreement.number}
+    return (not pack.get('agreementNumberLocked')
+            and agreement.status == 'draft' and not agreement.signed_at
+            and (agreement.payments_count or 1) == 1
+            and not (deal.get('closed') or deal.get('docsSent')
+                     or any((deal.get(key) or {}).get('signed')
+                            for key in ('docs', 'files', 'docMeta'))
+                     or any(isinstance(entry, dict) and entry.get('text') in sent_labels
+                            for entry in deal.get('log') or []))
+            and not any(other.get('id') != deal['id']
+                        and (other.get('docPack') or {}).get('agreementId') == agreement.id
+                        for other in state.get('deals') or [])
+            and not db.query(AgreementDoc.id).filter(
+                AgreementDoc.agreement_id == agreement.id,
+                AgreementDoc.kind.in_(('signed', 'receipt'))).first()
+            and not _stand_receiving_account_change_problem(state, deal, db, row))
+
+
 def _stand_rub_api_account(deal):
     """Сбер MF получает приход из API; остальные рублёвые счета сверяют по выписке."""
     account = deal.get('rubReceivingAccount') or {}
@@ -17623,7 +17646,8 @@ def stand_docs_issue():
     if switching_account and account_mode not in ('sber', 'flowsole'):
         return jsonify(success=False, error='invalid_receiving_account',
                        detail='Выберите Сбер или Flow Sole'), 400
-    if switching_account and (type(expected_doc_version) is not int or expected_doc_version < 1):
+    if ((switching_account or 'expectedDocVersion' in data)
+            and (type(expected_doc_version) is not int or expected_doc_version < 1)):
         return jsonify(success=False, error='invalid_doc_version',
                        detail='Обновите карточку сделки и повторите выпуск'), 400
     # Роль фиксируем до сессий записи.
@@ -17646,14 +17670,17 @@ def stand_docs_issue():
         F.update({k: v for k, v in (submitted or {}).items()
                   if v is None or (isinstance(v, (str, int, float)) and not isinstance(v, bool))})
         prior = dict(deal.get('docPack') or {})
+        previous_number = prior.get('agreementNumber')
+        if expected_doc_version is not None and expected_doc_version != int(
+                deal.get('docVersion') or prior.get('version') or 0):
+            return jsonify(success=False, error='conflict', version=pre_version,
+                           data=_stand_strip_files(_stand_public_state(state, role))), 409
         if switching_account:
             problem = _stand_receiving_account_change_problem(state, deal, db, current_row)
             if problem:
                 return jsonify(success=False, error='receiving_account_change_blocked', detail=problem), 409
-            if expected_doc_version != int(deal.get('docVersion') or prior.get('version') or 0):
-                return jsonify(success=False, error='conflict', version=pre_version,
-                               data=_stand_strip_files(_stand_public_state(state, role))), 409
-            F['purpose'] = ''
+            if 'purpose' not in (submitted or {}):
+                F['purpose'] = ''
             for field, pack_key in (('amountPay', 'amount'), ('amountThb', 'transfer'), ('rate', 'rate')):
                 issued_value = prior.get(pack_key) or (deal.get('docFields') or {}).get(field)
                 if issued_value is not None:
@@ -17761,7 +17788,9 @@ def stand_docs_issue():
             return jsonify({'success': False, 'error': 'freehold_contract_amount_mismatch',
                             'version': _stand_row(db).version, 'data': state}), 409
         document_deal = dict(deal, rubReceivingAccount=rub_account) if switching_account else deal
-        req = _stand_doc_request(state, document_deal, F, canonical_purpose=switching_account)
+        canonical_purpose = switching_account or bool(
+            (prior or deal.get('docVersion')) and _stand_doc_agent(rub_account) == 'flow_sole')
+        req = _stand_doc_request(state, document_deal, F, canonical_purpose=canonical_purpose)
     finally:
         db.close()
     if req.get('error'):
@@ -17793,7 +17822,9 @@ def stand_docs_issue():
                             'data': json.loads(row.data or '{}')}), 409
         a = None
         if prior.get('agreementId'):
-            a = db.query(Agreement).filter(Agreement.id == prior['agreementId']).first()
+            a = db.query(Agreement).filter(Agreement.id == prior['agreementId']).with_for_update().first()
+            if a is not None and not previous_number:
+                previous_number = a.number
         if a is not None and (doc_agents.agent_of_route_key(a.route_key) != agent_key
                               or a.route_key == 'legacy'
                               or a.client_key != _docs_client_key(fields)
@@ -17811,46 +17842,48 @@ def stand_docs_issue():
             note = '. '.join(filter(None, [reason, note]))
             a = None
             prior = {}
-        route_key = doc_agents.route_key(money['pair'], money['payin_method'], agent_key)
+        agent = doc_agents.get_agent(agent_key)
+        route_key = doc_agents.route_key(money['pair'], money['payin_method'], agent)
         if a is not None and a.route_key != route_key:
             a = None
             prior = {}
         existing = _docs_route_agreement(db, _docs_client_key(fields), deal_type, route_key)
-        # Назначение платежа должно называть настоящий номер АГЕНТСКОГО
-        # ДОГОВОРА (MF-<паспорт>-<ДДММ>-<N>), а не внутренний код задачи
-        # (СД-123). Номер детерминирован и совпадёт с тем, что реально создаст
-        # _docs_new_agreement/_docs_payment ниже — вычисляем в той же
-        # заблокированной транзакции без промежуточных вставок.
+        if a is None and existing is not None:
+            existing = (db.query(Agreement).filter(Agreement.id == existing.id)
+                        .populate_existing().with_for_update().first())
+        when = datetime.now()
+        parent = a or existing
+        legacy_number = (agent_key == 'flow_sole' and a is not None
+                         and prior.get('mode') == 'agreement' and a.number.startswith('MF-'))
+        renumber = (legacy_number and prior.get('paymentNo', 1) == 1
+                    and _stand_can_renumber_agreement(state, deal, db, row, a))
+        if renumber and role not in ('operator', 'admin'):
+            db.close()
+            return jsonify(success=False, error='forbidden_role',
+                           detail='Пакет документов на этом шаге выпускает операционист'), 403
+        agreement_number = (_docs_next_number(db, fields, agent, when)
+                            if renumber or parent is None else parent.number)
         if money.get('payin_method') == 'bank':
-            if a is not None and prior.get('agreementId'):
-                agreement_number = a.number
-            elif existing is not None:
-                agreement_number = existing.number
-            else:
-                agreement_number = _docs_predict_agreement_number(db, fields, deal_type, route_key)
-            old_purpose = str(F.get('purpose') or '').strip()
-            is_auto_template = bool(re.fullmatch(
-                r'Оплата по агентскому договору № \S+, НДС не облагается', old_purpose))
-            if agreement_number and (not old_purpose or is_auto_template):
-                new_purpose = f'Оплата по агентскому договору № {agreement_number}, НДС не облагается'
-                F['purpose'] = new_purpose
-                money['payment_reference'] = new_purpose
+            F['purpose'] = money['payment_reference'] = _docs_agreement_purpose(
+                money.get('payment_reference'), agreement_number, previous_number)
         if a is not None and prior.get('mode') == 'agreement':
             payload, code = _docs_new_agreement(db, deal_type, fields, money, reissue=a,
+                                                number=agreement_number, when=when,
                                                 stand_thb_pending=stand_thb_pending,
                                                 commit=False)
             mode = 'agreement'
         elif a is not None and prior.get('mode') == 'addendum':
             payload, code = _docs_payment(db, a, fields, money, payment_no=prior.get('paymentNo'),
-                                          stand_thb_pending=stand_thb_pending, commit=False)
+                                          stand_thb_pending=stand_thb_pending, commit=False, when=when)
             mode = 'addendum'
         else:
             if existing is not None:
                 payload, code = _docs_payment(db, existing, fields, money,
-                                              stand_thb_pending=stand_thb_pending, commit=False)
+                                              stand_thb_pending=stand_thb_pending, commit=False, when=when)
                 mode = 'addendum'
             else:
                 payload, code = _docs_new_agreement(db, deal_type, fields, money,
+                                                    number=agreement_number, when=when,
                                                     stand_thb_pending=stand_thb_pending,
                                                     commit=False)
                 mode = 'agreement'
@@ -17909,6 +17942,10 @@ def stand_docs_issue():
             'purpose': purpose, 'network': used.get('payin_network', ''),
             'wallet': used.get('payin_wallet', ''), 'recipient': used.get('payin_recipient', ''),
             'note': note, 'at': at}
+        if legacy_number and not renumber:
+            # Повторный выпуск сбрасывает текущую отметку отправки, но сохраняет факт,
+            # что прежний номер уже использован или относится к нескольким платежам.
+            deal['docPack']['agreementNumberLocked'] = True
         deal['docVersion'] = version
         if switching_account or deal.get('autoPayment') is True or reissuing_freehold:
             deal.setdefault('docs', {})['signed'] = False
@@ -17918,6 +17955,8 @@ def stand_docs_issue():
             expect = deal.get('expect')
             deal['expect'] = dict(expect if isinstance(expect, dict) else {}, bank=preset['bank'],
                                   account=preset['account'], acc=preset['acc'], purpose=purpose)
+        elif agent_key == 'flow_sole' and isinstance(deal.get('expect'), dict):
+            deal['expect']['purpose'] = purpose
         if reissuing_freehold:
             if deal.get('payTo'):
                 deal['payTo']['amount'] = _stand_number(used.get('transfer_amount'))
@@ -32536,36 +32575,47 @@ def _docs_route_agreement(db, client_key, deal_type, route_key, exclude_id=None)
     return None
 
 
-def _docs_predict_agreement_number(db, fields, deal_type, route_key, exclude_id=None):
-    """Номер будущего (или уже существующего) договора клиента на этом маршруте.
-
-    Если у клиента уже есть действующий договор этого типа/маршрута —
-    допник пойдёт к нему, и назначение платежа должно называть ИСХОДНЫЙ
-    номер. Иначе предсказываем номер нового договора — та же логика, что
-    выполнит `_docs_new_agreement` при реальном создании (тот же seq-цикл,
-    без вставок между предсказанием и созданием внутри одной транзакции).
-    """
+def _docs_next_number(db, fields, agent, when, payment_no=1, agreement_id=None):
+    """Номера прежних файлов заняты и после перевыпуска пакета."""
     import docgen
-    existing = _docs_route_agreement(db, _docs_client_key(fields), deal_type, route_key,
-                                     exclude_id=exclude_id)
-    if existing is not None:
-        return existing.number
-    seq = 1
-    while db.query(Agreement.id).filter(
-            Agreement.number == docgen.make_number(
-                fields.get('client_passport_no', ''), None, seq)).first() or db.query(AgreementDoc.id).filter(
-            AgreementDoc.number == docgen.make_number(fields.get('client_passport_no', ''), None, seq)).first():
+    passport = fields.get('client_passport_no', '')
+    first_number = docgen.make_number(passport, when, 1, agent=agent)
+    if db.get_bind().dialect.name == 'postgresql':
+        from sqlalchemy import text
+        # CRM и стенд могут выдавать номера одной серии по разным договорам.
+        db.execute(text("SELECT pg_advisory_xact_lock(hashtext('agreement_doc_number'), hashtext(:number))"),
+                   {'number': first_number})
+    seq = payment_no
+    docs = db.query(AgreementDoc.id)
+    if agreement_id is not None:
+        docs = docs.filter(or_(AgreementDoc.agreement_id != agreement_id, AgreementDoc.seq != payment_no))
+    number = first_number if seq == 1 else docgen.make_number(passport, when, seq, agent=agent)
+    while (db.query(Agreement.id).filter(Agreement.number == number).first()
+           or docs.filter(AgreementDoc.number == number).first()):
         seq += 1
-    return docgen.make_number(fields.get('client_passport_no', ''), None, seq)
+        number = docgen.make_number(passport, when, seq, agent=agent)
+    return number
+
+
+def _docs_agreement_purpose(purpose, agreement_number, previous_number=None):
+    purpose = str(purpose or '').strip()
+    template = 'Оплата по агентскому договору № {}, НДС не облагается'
+    if (not purpose or previous_number and purpose == template.format(previous_number)
+            or not previous_number and re.fullmatch(template.format(r'\S+'), purpose)):
+        return template.format(agreement_number)
+    if previous_number and previous_number != agreement_number:
+        return re.sub(r'(?<![\w-])' + re.escape(previous_number) + r'(?![\w-])',
+                      agreement_number, purpose)
+    return purpose
 
 
 def _docs_new_agreement(db, deal_type, fields, money, client_id=None, uploads=(), reissue=None,
-                        stand_thb_pending=False, commit=True):
+                        stand_thb_pending=False, commit=True, *, number=None, when=None):
     """Ядро выпуска рамочного договора: договор + приложение 1 + инвойс.
 
     → (тело ответа, HTTP-код). Общее для CRM (POST /api/docs/agreements) и стенда.
     `reissue` — уже выпущенный договор, который перевыпускаем новой версией
-    (стенд, «Поправить и пересоздать»): номер сохраняется, файлы добавляются.
+    (стенд, «Поправить и пересоздать»): файлы добавляются новой версией.
     """
     import docgen
     import doc_agents
@@ -32606,20 +32656,16 @@ def _docs_new_agreement(db, deal_type, fields, money, client_id=None, uploads=()
                 'agreement_id': dup.id, 'number': dup.number,
                 'detail': 'У клиента уже есть договор этого типа и маршрута — новый платёж оформляется допником'}, 409
 
-    if reissue is not None:
-        number = reissue.number
-    else:
-        # Номер = MF-<3 цифры паспорта>-<ДДММ>-<N>. У одного клиента в один день
-        # может появиться договор второго типа — тогда хвост сдвигаем, иначе
-        # два разных договора получат один номер.
-        number = _docs_predict_agreement_number(db, fields, deal_type, route_key,
-                                                exclude_id=reissue.id if reissue is not None else None)
+    when = when or datetime.now()
+    number = number or (reissue.number if reissue is not None else _docs_next_number(db, fields, agent, when))
+    if agent.key == 'flow_sole' and money['payin_method'] == 'bank' and not money.get('payment_reference'):
+        money['payment_reference'] = _docs_agreement_purpose(None, number)
     money['part'] = 1
     # Договор — рамочный, приложения в нём остаются бланками: клиент
     # подписывает его один раз и держит неизменным.
-    data, _ = docgen.build_agreement(deal_type, fields, money, number=number, agent=agent)
-    addendum = docgen.build_addendum(deal_type, fields, money, number, number, 1, agent=agent)
-    invoice = docgen.build_commercial_invoice(fields, money, number, deal_type, agent=agent)
+    data, _ = docgen.build_agreement(deal_type, fields, money, number=number, when=when, agent=agent)
+    addendum = docgen.build_addendum(deal_type, fields, money, number, number, 1, when=when, agent=agent)
+    invoice = docgen.build_commercial_invoice(fields, money, number, deal_type, when=when, agent=agent)
     problems = (docgen.check(data, allow_forms=True, agent=agent)
                 + docgen.check(addendum, stand_thb_pending=stand_thb_pending, agent=agent)
                 + docgen.check(invoice, agent=agent))
@@ -32639,6 +32685,7 @@ def _docs_new_agreement(db, deal_type, fields, money, client_id=None, uploads=()
     else:
         a = reissue
         a.client_name, a.client_key, a.route_key = client_name, client_key, route_key
+        a.number = number
         a.fields_json = json.dumps(fields, ensure_ascii=False)
         a.money_json = json.dumps(money, ensure_ascii=False)
 
@@ -32691,7 +32738,7 @@ def docs_create_agreement():
 
 
 def _docs_payment(db, a, submitted_fields, submitted_money, payment_no=None,
-                  stand_thb_pending=False, commit=True):
+                  stand_thb_pending=False, commit=True, *, when=None):
     """Ядро очередного платежа: доп. соглашение + инвойс со ссылкой на рамочный договор.
 
     → (тело ответа, HTTP-код). `payment_no` — перевыпуск допника того же платежа
@@ -32779,15 +32826,13 @@ def _docs_payment(db, a, submitted_fields, submitted_money, payment_no=None,
     money['part'] = payment_no
     # Хвост номера = номер платежа. Совпадение с чужим документом
     # разрешаем сдвигом, но внутри одного договора номера не пересекаются.
-    tail = payment_no
-    number = docgen.make_number(fields.get('client_passport_no', ''), None, tail)
-    while db.query(AgreementDoc.id).join(Agreement).filter(
-            AgreementDoc.number == number, Agreement.id != a.id).first():
-        tail += 1
-        number = docgen.make_number(fields.get('client_passport_no', ''), None, tail)
-    add = docgen.build_addendum(a.deal_type, fields, money, number, a.number, payment_no, agent=agent)
+    when = when or datetime.now()
+    number = _docs_next_number(db, fields, agent, when, payment_no, a.id)
+    if agent.key == 'flow_sole' and money['payin_method'] == 'bank' and not money.get('payment_reference'):
+        money['payment_reference'] = _docs_agreement_purpose(None, a.number)
+    add = docgen.build_addendum(a.deal_type, fields, money, number, a.number, payment_no, when=when, agent=agent)
     money['parent_number'] = a.number
-    inv = docgen.build_commercial_invoice(fields, money, number, a.deal_type, agent=agent)
+    inv = docgen.build_commercial_invoice(fields, money, number, a.deal_type, when=when, agent=agent)
     problems = (docgen.check(add, stand_thb_pending=stand_thb_pending, agent=agent)
                 + docgen.check(inv, agent=agent))
     if problems:
@@ -32821,7 +32866,7 @@ def docs_add_payment(agreement_id):
         return jsonify({'success': False, 'error': 'invalid_payload', 'detail': str(exc)}), 400
     db = get_session()
     try:
-        a = db.query(Agreement).filter(Agreement.id == agreement_id).first()
+        a = db.query(Agreement).filter(Agreement.id == agreement_id).with_for_update().first()
         if not a:
             return jsonify({'success': False, 'error': 'not_found'}), 404
         payload, code = _docs_payment(db, a, body.get('fields'), body.get('money'))
@@ -32846,13 +32891,13 @@ def docs_upload_signed(agreement_id):
         return jsonify(success=False, error='Неизвестный тип документа'), 400
     db = get_session()
     try:
-        a = db.query(Agreement).filter(Agreement.id == agreement_id).first()
-        if not a:
-            return jsonify({'success': False, 'error': 'not_found'}), 404
         if role == 'manager':
             _, _, linked = _docs_linked_deals(db, agreement_id)
             if not _docs_manager_allowed(db, linked, actor_id):
                 return jsonify(success=False, error='Документы этой сделки меняет её менеджер'), 403
+        a = db.query(Agreement).filter(Agreement.id == agreement_id).with_for_update().first()
+        if not a:
+            return jsonify({'success': False, 'error': 'not_found'}), 404
         saved = 0
         for f in request.files.getlist('files'):
             raw = f.read(stand_file_storage.FILE_LIMIT + 1)
@@ -32970,7 +33015,7 @@ def docs_change_file(doc_id):
 def docs_set_status(agreement_id):
     db = get_session()
     try:
-        a = db.query(Agreement).filter(Agreement.id == agreement_id).first()
+        a = db.query(Agreement).filter(Agreement.id == agreement_id).with_for_update().first()
         if not a:
             return jsonify({'success': False, 'error': 'not_found'}), 404
         status = (request.get_json(silent=True) or {}).get('status')

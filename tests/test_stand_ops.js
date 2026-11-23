@@ -137,7 +137,7 @@ const num = x => (x == null || x === '') ? null : parseFloat(String(x).replace('
   let saves = 0;
   const ctx = run(['docFormFields', 'docClearFieldDrafts', 'docReset'], {
     deal: () => d, DRAFTS: drafts, DOC_REISSUE_FORMS: {}, isCrypto: () => false,
-    docHasIssued: x => Boolean(x.docVersion),
+    docHasIssued: x => Boolean(x.docVersion), docPurposeOptional: () => false,
     docFields: (x, saved = x.docFields) => ({fio: 'ФИО из паспорта', payTo: 'Сбер по умолчанию', ...saved}),
     save: () => { saves++; }, render: () => {}, toast: () => {},
   });
