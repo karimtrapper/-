@@ -18260,6 +18260,18 @@ def tasks_static(filename):
     return send_from_directory('static/stand', filename)
 
 
+@app.route('/tasks/instructions/', defaults={'filename': 'index.html'})
+@app.route('/tasks/instructions/<path:filename>')
+def tasks_instructions(filename):
+    if not STAND_MODE:
+        return redirect('/crm')
+    if not flask_session.get('user_id'):
+        return redirect('/login')
+    response = send_from_directory('docs/operator-guide', filename)
+    response.headers['Cache-Control'] = 'private, no-store'
+    return response
+
+
 @app.route('/crm')
 def crm_index():
     """CRM страница (защищённая)"""

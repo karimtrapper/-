@@ -6672,6 +6672,7 @@ function viewTasks(){
   const waitCount=others.length?`<span class="task-list-count">${others.length}</span>`:'';
   let h=`<div class="task-list"><div class="task-list-head"><h1>Задачник</h1>
     ${S.role==='manager'||S.role==='admin'?`<div class="task-list-create-bar"><button class="btn btn-primary task-list-create" onclick="startCreate()">+ Новая задача</button></div>`:''}</div>
+    ${role==='operator'||role==='admin'?'<p style="margin:0 0 16px"><a class="btn btn-outline btn-sm" href="/tasks/instructions/">Инструкции для операциониста</a></p>':''}
     `;
   const pend=pendingEx(null);
   if(pend.length&&role==='operator'){

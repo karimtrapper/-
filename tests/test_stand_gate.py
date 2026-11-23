@@ -131,6 +131,7 @@ with m.app.test_client() as c:
         assert response.status_code == expected, (path, response.status_code)
         assert response.headers['Referrer-Policy'] == 'no-referrer'
     closed = ['/crm', '/tasks', '/static/stand/tasks.html', '/ref/previewtoken',
+              '/tasks/instructions/', '/tasks/instructions/operator-screens/10-sgb-receipt-overview.png',
               '/api/ref/previewtoken/stats', '/api/partner/x', '/api/kyc/submit',
               '/api/tg/x', '/api/webhook/x', '/api/sber-incomes/ingest',
               '/api/auth/tg-start', '/api/auth/tg-poll', '/api/auth/tg-login',
@@ -164,6 +165,10 @@ with m.app.test_client() as c:
     assert c.put('/api/admins/%s' % mid, json={'role':'unknown'}).status_code == 400
     assert c.post('/api/admins', json={'display_name':'X','username':'x','role':'unknown'}).status_code == 400
     assert c.put('/api/admins/%s' % mid, json={'role':'operator','notify_enabled':True}).status_code == 200
+    guide = c.get('/tasks/instructions/')
+    assert guide.status_code == 200 and 'private' in guide.headers['Cache-Control']
+    assert 'Оплата по реквизитам' in guide.get_data(as_text=True)
+    assert c.get('/tasks/instructions/operator-screens/10-sgb-receipt-overview.png').mimetype == 'image/png'
     assert c.put('/api/admins/%s' % kid, json={'role':'manager'}).status_code == 400
     assert c.put('/api/admins/%s' % kid, json={'login_disabled':True}).status_code == 400
     assert c.delete('/api/admins/%s' % kid).status_code == 400
