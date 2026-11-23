@@ -1,5 +1,7 @@
 """A manager may reprice before broker/outgoing commitment, retaining client credit."""
+import base64
 import copy
+import io
 import subprocess
 
 import pytest
@@ -60,6 +62,125 @@ def test_s12_rerate_without_client_money_and_fresh_quote_handoff(board):
     assert deal['step'] == 's6' and deal['rates']['rubUsdt'] == '87'
     assert deal['docVersion'] == 1 and deal['docsIssued'][0]['docId'] == 20
     assert deal['rerateDocVersion'] == 1
+
+
+FREEHOLD_THB = {
+    'type': 'Оплата недвижимости', 'kind': 'Фрихолд', 'payType': 'По реквизитам',
+    'curBase': 'fhusd', 'invoiceCurrency': 'thb', 'invoiceThb': 9976500,
+    'invoiceUsd': 297983.87, 'fxBank': 'Kasikorn', 'fxRate': 33.48,
+    'ippsTariff': 'bank', 'selfRate': True, 'isOld': True,
+    'docVersion': 1, 'docPack': {'version': 1, 'agreementId': 123},
+    'reRequest': 3, 'rerateDocVersion': 1, 'rates': {'rubUsdt': '85'},
+}
+
+
+def test_rerated_thb_freehold_edits_and_reissues_agreed_terms(board, monkeypatch):
+    import docgen
+    from tests.test_stand_docs import _fields, _text
+
+    monkeypatch.setattr(docgen, 'to_pdf', lambda raw, timeout=120: None)
+    install, clients = board
+    old_fields = _fields(kind='Фрихолд', passNo='78 1234567', amountThb='297983.87',
+                         amountPay='26818548.30', rate='90')
+    old_doc = {'kind': 'app', 'version': 1, 'docId': 21}
+    old_economy = {'version': 1, 'invoiceUsd': 297983.87, 'ippsTariff': 'bank'}
+    pdf = base64.b64encode(b'%PDF-1.4\n1 0 obj << /Type /Catalog >> endobj\n%%EOF').decode()
+    install('s6', {**FREEHOLD_THB, 'docsIssued': [old_doc], 'docFields': old_fields,
+                   'ownerEconomyAtDoc': old_economy,
+                   'files': {'inv': [{'file': 'synthetic.pdf', 'mime': 'application/pdf',
+                                      'data': 'data:application/pdf;base64,' + pdf}]}})
+    manager, operator = clients('manager'), clients('operator')
+    invoice_usd = round(FREEHOLD_THB['invoiceThb'] / 33.86, 2)
+    fx = put(manager, lambda s: s['deals'][0].update(fxRate=33.86, invoiceUsd=invoice_usd))
+    assert fx.status_code == 200, fx.json
+    assert fx.json['data']['deals'][0]['fxRate'] == 33.86
+    tariff = put(manager, lambda s: s['deals'][0].update(ippsTariff='soft'))
+    assert tariff.status_code == 200, tariff.json
+    d = tariff.json['data']['deals'][0]
+    assert (d['ippsTariff'], d['invoiceUsd']) == ('soft', invoice_usd)
+    assert (d['docVersion'], d['docPack'], d['docsIssued'], d['ownerEconomyAtDoc']) == (
+        1, FREEHOLD_THB['docPack'], [old_doc], old_economy)
+
+    def agree(s):
+        d = s['deals'][0]
+        d.update(step='s8', freeholdClientInput='rate', amountRub=round(invoice_usd * 91, 2))
+        d['rates']['client'] = '91,0000'
+
+    approved = put(manager, agree)
+    assert approved.status_code == 200, approved.json
+    handed = put(manager, lambda s: s['deals'][0].update(step='s11'))
+    assert handed.status_code == 200, handed.json
+    assert operator.get('/api/stand/docs/zip?dealId=1474').status_code == 409
+    blocked = put(operator, lambda s: s['deals'][0].update(step='s11b'))
+    assert blocked.status_code == 409
+    assert 'перевыпустите' in blocked.json['error']
+
+    issue = operator.post('/api/stand/docs/issue', json={'dealId': 1474, 'docFields': old_fields})
+    assert issue.status_code == 200, issue.json
+    d = issue.json['data']['deals'][0]
+    assert d['docVersion'] == d['docPack']['version'] == 2
+    assert d['docsIssued'][0] == old_doc
+    assert d['docFields']['amountThb'] == d['ownerEconomyAtDoc']['invoiceUsd'] == invoice_usd
+    assert float(d['docPack']['amount']) == round(invoice_usd * 91, 2)
+    assert d['ownerEconomyAtDoc']['ippsTariff'] == 'soft'
+    app_doc = next(entry for entry in issue.json['issued'] if entry['kind'] == 'app')
+    assert 'THB 9976500' in _text(operator, app_doc['docId'])
+    handoff = put(operator, lambda s: s['deals'][0].update(step='s11b'))
+    assert handoff.status_code == 200, handoff.json
+
+
+@pytest.mark.parametrize('step,role,over', [
+    ('s6', 'manager', {'rerateDocVersion': None}),
+    ('s6', 'manager', {'rerateDocVersion': 0}),
+    ('s6', 'operator', {}),
+    ('s6', 'manager', {'prepay': {'brokerStep': 's18', 'wallet': {'role': 'findir'}}}),
+    ('s6', 'manager', {'transfer': {'sends': [{'status': 'pending'}]}}),
+    ('s6', 'manager', {'pay': {'invoicePaid': True}}),
+    ('s8', 'manager', {}),
+    ('s11', 'operator', {}),
+    ('s12', 'manager', {}),
+])
+def test_freehold_tariff_locked_outside_uncommitted_rerated_calculation(board, step, role, over):
+    install, clients = board
+    install(step, {**FREEHOLD_THB, **over})
+    client = clients(role)
+    response = put(client, lambda s: s['deals'][0].update(ippsTariff='soft'))
+    assert response.status_code == 409, response.json
+    assert client.get('/api/stand/state').json['data']['deals'][0]['ippsTariff'] == 'bank'
+
+
+def test_rerated_freehold_edit_preserves_credited_money(board):
+    install, clients = board
+    part = {'incId': 44, 'amountRub': 90000}
+    credit = {'id': 44, 'dealId': 1474, 'rub': 90000, 'source': 'sber'}
+    install('s6', {**FREEHOLD_THB, 'payinParts': [part], 'incomeAmount': 90000},
+            {'incomes': [credit]})
+    manager = clients('manager')
+    blocked = put(manager, lambda s: s['deals'][0].update(ippsTariff='soft', payinParts=[]))
+    assert blocked.status_code == 409, blocked.json
+    accepted = put(manager, lambda s: s['deals'][0].update(ippsTariff='soft'))
+    assert accepted.status_code == 200, accepted.json
+    assert accepted.json['data']['deals'][0]['payinParts'] == [part]
+    assert accepted.json['data']['deals'][0]['incomeAmount'] == 90000
+    assert accepted.json['data']['incomes'] == [credit]
+
+
+def test_replacement_version_cannot_make_rerated_pack_current(board):
+    install, clients = board
+    install('s11', {**FREEHOLD_THB, 'docVersion': 2})
+    operator = clients('operator')
+    response = put(operator, lambda s: s['deals'][0].update(step='s11b'))
+    assert response.status_code == 409
+    assert 'перевыпустите' in response.json['error']
+    upload = operator.post('/api/stand/docs/upload', data={
+        'dealId': '1474', 'kind': 'app', 'file': (io.BytesIO(b'%PDF-1.4 synthetic'), 'fake.pdf'),
+    })
+    assert upload.status_code == 409
+    assert 'перевыпустите' in upload.json['error']
+    install('s12', {**FREEHOLD_THB, 'docVersion': 2})
+    sent = put(clients('manager'), lambda s: s['deals'][0].update(docsSent={'version': 2}))
+    assert sent.status_code == 409
+    assert 'перевыпустите' in sent.json['error']
 
 
 @pytest.mark.parametrize('field,value', [

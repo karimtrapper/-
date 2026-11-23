@@ -19,7 +19,8 @@ const d = {id: 1483, step: 's12', type: 'Оплата недвижимости',
   quotes: [{dir: 'rub', rate: '85'}], log: []};
 const inputs = {r3: '2,90', r4: '2900', r1c: '87'};
 const messages = [];
-const ctx = vm.createContext({d, S: {role: 'manager'}, Date,
+const ctx = vm.createContext({d, S: {role: 'manager',
+  thbRates: {success: true, rates: {Kasikorn: 33.86}, updated_at: '2026-11-23T13:00:00Z'}}, Date,
   deal: id => id === 1483 ? d : null,
   val: id => inputs[id] || '', num: value => Number(String(value || '').replace(',', '.')),
   cleanNum: value => String(value || '').replace(/[^\d.,]/g, ''),
@@ -31,12 +32,18 @@ const ctx = vm.createContext({d, S: {role: 'manager'}, Date,
     acc: '40807810938720000286', ks: '30101810400000000225', bik: '044525225'},
   PAYIN_TOL: 0.01, payinSum: deal => deal.payinParts.reduce((sum, part) => sum + part.amountRub, 0),
   payinGot: () => 0, money: (amount, sign) => `${amount} ${sign}`,
-  noteAdd: () => {}, go: (deal, step) => { deal.step = step; },
+  noteAdd: () => {}, go: (deal, step) => { deal.step = step; }, usd: String, log: () => {},
   toast: text => messages.push(text), save: () => {}, render: () => {},
   exchangeSpec: () => null, exchangeSync: () => {},
 });
-for (const name of ['docFields', 'expectOf', 'canRerate', 'rerateBalance',
-                    'rerate', 'syncClient']) vm.runInContext(fn(name), ctx);
+vm.runInContext(html.match(/^const IPPS_TARIFFS=\{[^]*?^\};/m)[0], ctx);
+for (const name of ['docFields', 'documentPackStale', 'docsSentSet', 'expectOf',
+                    'canRerate', 'rerateBalance', 'rerate', 'syncClient', 'thbBankRate',
+                    'freeholdRecalcUsd', 'freeholdDealSet', 'freeholdInvoiceSet',
+                    'freeholdFee']) vm.runInContext(fn(name), ctx);
+for (const name of ['ippsTariff', 'freeholdSend']) {
+  vm.runInContext(html.match(new RegExp(`^function ${name}\\(.*$`, 'm'))[0], ctx);
+}
 
 vm.runInContext('rerate(1483)', ctx);
 assert.equal(d.step, 's5');
@@ -72,4 +79,23 @@ assert.equal(Object.keys(d.rates).length, 0);
 vm.runInContext("syncClient(1483, 'rubUsdt')", ctx);
 assert.equal(d.rates.rubUsdt, '87');
 assert.ok(d.rates.at);
+
+// A bank-rate refresh and a tariff change use the same controls as a fresh quote.
+Object.assign(d, {kind:'Фрихолд', invoiceCurrency:'thb', invoiceThb:9976500,
+  invoiceUsd:297983.87, fxRate:33.48, fxBank:'Kasikorn', ippsTariff:'bank'});
+vm.runInContext("freeholdDealSet(1483, 'fxBank', 'Kasikorn')", ctx);
+assert.equal(d.fxRate, 33.86);
+assert.equal(d.invoiceUsd, 294639.69);
+vm.runInContext("freeholdInvoiceSet(1483, 'ippsTariff', 'soft')", ctx);
+assert.equal(d.ippsTariff, 'soft');
+assert.equal(d.docPack.version, 1);
+assert.equal(d.incomeAmount, 2700);
+
+// The version of a manually replaced file does not validate the old package.
+d.docVersion = 2;
+assert.equal(vm.runInContext('documentPackStale(d)', ctx), true);
+vm.runInContext('docsSentSet(1483, true)', ctx);
+assert.equal(d.docsSent, undefined);
+d.docPack.version = 3;
+assert.equal(vm.runInContext('documentPackStale(d)', ctx), false);
 console.log('rerate UI and credited-balance recalculation: PASS');

@@ -12815,8 +12815,8 @@ def _stand_freehold_explicit_rub_problem(deal):
 
 def _stand_workflow_problem(previous, state, actor, db):
     """Validate graph and evidence after authorization, before accepting a PUT."""
-    from stand_workflow import (EDGES, EXCHANGE_PAIRS, positive, quote_dirs,
-                                rerate_attempt, rerate_problem)
+    from stand_workflow import (EDGES, EXCHANGE_PAIRS, document_pack_stale, positive,
+                                quote_dirs, rerate_attempt, rerate_problem)
     old = {d.get('id'): d for d in previous.get('deals', [])}
     for deal in state.get('deals', []):
         before = old.get(deal.get('id'))
@@ -12831,6 +12831,9 @@ def _stand_workflow_problem(previous, state, actor, db):
             if before.get(key) != deal.get(key):
                 return 'Выпуск документов фиксирует только сервер'
         start, end = before.get('step'), deal.get('step')
+        if document_pack_stale(before) and deal.get('docsSent') and (
+                before.get('docsSent') != deal['docsSent'] or (start, end) == ('s12', 's14')):
+            return 'Сначала перевыпустите документы с новым курсом'
         if rerate_attempt(before, deal):
             problem = rerate_problem(previous, state, before, deal, actor)
             if problem:
@@ -12891,8 +12894,7 @@ def _stand_workflow_problem(previous, state, actor, db):
         if start in ('s11', 's11b') and end in ('s11b', 's12'):
             if not before.get('docPack'):
                 return 'Сначала выпустите пакет документов на сервере'
-            if (before.get('rerateDocVersion') is not None and
-                    int(before.get('docVersion') or 0) <= int(before['rerateDocVersion'])):
+            if document_pack_stale(before):
                 return 'Сначала перевыпустите документы с новым курсом'
         if start == 's12' and end == 's14':
             if not before.get('docPack') or not deal.get('docsSent'):
@@ -13060,7 +13062,8 @@ def _stand_flow_combo(deal):
 def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=None,
                             allow_crm_close=False, manual_close_deal_id=None,
                             receipt_upload=False):
-    from stand_workflow import rerate_attempt, rerate_problem
+    from stand_workflow import (document_pack_stale, rerate_attempt, rerate_commitment_problem,
+                                rerate_credit_problem, rerate_problem)
     if db is not None:
         protected_wallets = {w.id: w for w in db.query(Wallet).filter(
             (Wallet.address.in_(POLICY_WALLET_ADDRESSES)) | (Wallet.initiator_roles.isnot(None))).all()
@@ -13140,7 +13143,7 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
             problem = rerate_problem(previous, new_state, before, deal, actor)
             if problem:
                 return problem
-        elif before and before.get('rerateDocVersion') != deal.get('rerateDocVersion'):
+        elif (before or {}).get('rerateDocVersion') != deal.get('rerateDocVersion'):
             return 'Версию для повторного выпуска документов фиксирует сервер'
     demo_problem = stand_demo.guard(previous, new_state)
     if demo_problem:
@@ -13918,7 +13921,7 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
         # подготовку документов их нельзя менять обходом UI через stand_state PUT.
         # THB сумма инвойса хранится отдельно, но тоже является частью документа.
         if (before.get('kind') == 'Фрихолд' and
-                (before.get('step') in FREEHOLD_LOCKED_STEPS or before.get('docPack')
+                (before.get('step') in FREEHOLD_LOCKED_STEPS or before.get('docPack') or before.get('docVersion')
                  or before.get('closed') or before.get('crmDealId')
                  or before.get('serverTransferComplete') or
                  any(s.get('status') == 'confirmed' for s in
@@ -13929,7 +13932,20 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
             if any(before.get(key) != deal.get(key) for key in
                    ('invoiceUsd', 'ippsTariff', 'invoiceCurrency', 'invoiceThb',
                     'invoiceUsdEstimate', 'fxBank', 'fxRate', 'fxAt')):
-                return 'Инвойс и тариф IPPS нельзя менять после начала подготовки договора'
+                recalculating = (
+                    actor in ('manager', 'admin') and before.get('step') == 's6'
+                    and deal.get('step') in ('s6', 's8') and document_pack_stale(before)
+                    and before.get('type') == deal.get('type') == 'Оплата недвижимости'
+                    and deal.get('kind') == 'Фрихолд'
+                    and not _stand_is_crypto(before) and not _stand_is_crypto(deal)
+                    and not before.get('autoPayment'))
+                if not recalculating:
+                    return 'Инвойс и тариф IPPS нельзя менять после начала подготовки договора'
+                problem = (rerate_commitment_problem(previous, before)
+                           or rerate_commitment_problem(new_state, deal)
+                           or rerate_credit_problem(previous, new_state, before, deal))
+                if problem:
+                    return problem
             if before.get('amountUsdt') != deal.get('amountUsdt'):
                 editable = (before.get('step') == 's11' and deal.get('step') == 's11'
                             and not before.get('docPack') and not before.get('docVersion')
@@ -17530,6 +17546,7 @@ def stand_docs_issue():
         return jsonify({'success': False, 'error': 'stand_only'}), 404
     import docgen
     import doc_agents
+    from stand_workflow import document_pack_stale
     data = request.get_json(silent=True) or {}
     try:
         deal_id = int(data.get('dealId'))
@@ -17555,6 +17572,12 @@ def stand_docs_issue():
         F = dict(deal.get('docFields') or {})
         F.update({k: v for k, v in (submitted or {}).items()
                   if v is None or (isinstance(v, (str, int, float)) and not isinstance(v, bool))})
+        if (deal.get('type') == 'Оплата недвижимости' and deal.get('kind') == 'Фрихолд'
+                and not deal.get('autoPayment') and not _stand_is_crypto(deal)
+                and (deal.get('docPack') or deal.get('docVersion')) and document_pack_stale(deal)):
+            # The old form snapshot may still contain the preceding agreement's terms.
+            F.update(amountPay=deal.get('amountRub'), amountThb=deal.get('invoiceUsd'),
+                     rate=(deal.get('rates') or {}).get('client'))
         if deal.get('autoPayment') is True:
             valid_contract = False
             for item in (deal.get('files') or {}).get('vehicle_contract') or []:
@@ -17870,6 +17893,7 @@ def stand_docs_zip():
     import zipfile
     from flask import Response
     from urllib.parse import quote
+    from stand_workflow import document_pack_stale
     db = get_session()
     try:
         state = json.loads(_stand_row(db).data or '{}')
@@ -17877,6 +17901,8 @@ def stand_docs_zip():
         pack = (deal or {}).get('docPack') or {}
         if not pack:
             return jsonify({'success': False, 'error': 'Пакет документов ещё не выпущен'}), 404
+        if document_pack_stale(deal):
+            return jsonify({'success': False, 'error': 'Сначала перевыпустите документы с новым курсом'}), 409
         current = {e['kind']: e['docId'] for e in deal.get('docsIssued') or []
                    if e.get('version') == pack.get('version')}
         for kind, own in (deal.get('issued') or {}).items():
@@ -17909,6 +17935,7 @@ def stand_docs_upload():
     """
     if not STAND_MODE:
         return jsonify({'success': False, 'error': 'stand_only'}), 404
+    from stand_workflow import document_pack_stale
     try:
         deal_id = int(request.form.get('dealId'))
     except (TypeError, ValueError):
@@ -17931,27 +17958,24 @@ def stand_docs_upload():
     role = current_role() or 'система'
     db = get_session()
     try:
-        state = json.loads(_stand_row(db).data or '{}')
+        if 'postgresql' not in DATABASE_URL:
+            from sqlalchemy import text as _t
+            db.execute(_t('BEGIN IMMEDIATE'))
+        row = _stand_row(db, lock=True)
+        state = json.loads(row.data or '{}')
         deal = next((d for d in state.get('deals', []) if d.get('id') == deal_id), None)
         pack = (deal or {}).get('docPack') or {}
         if not deal or not pack.get('agreementId'):
             return jsonify({'success': False, 'error': 'Сначала выпустите пакет документов'}), 409
+        if document_pack_stale(deal):
+            return jsonify({'success': False, 'error': 'Сначала перевыпустите документы с новым курсом'}), 409
         if kind == 'dog' and pack.get('mode') != 'agreement':
             return jsonify({'success': False, 'error': 'В этом пакете нет договора — только допник и счёт'}), 409
         doc = _docs_save(db, pack['agreementId'], 'manual_' + server_kind, pack.get('number'),
                          pack.get('paymentNo') or 1, os.path.basename(f.filename)[:200], raw,
                          STAND_UPLOAD_EXT[ext])
-        db.commit()
+        db.flush()
         doc_id, filename = doc.id, doc.filename
-    finally:
-        db.close()
-    db = get_session()
-    try:
-        row = _stand_row(db, lock=True)
-        state = json.loads(row.data or '{}')
-        deal = next((d for d in state.get('deals', []) if d.get('id') == deal_id), None)
-        if not deal:
-            return jsonify({'success': False, 'error': 'Сделка исчезла с доски'}), 409
         size = f'{len(raw) / 1024:.0f} КБ' if len(raw) < 1024 * 1024 else f'{len(raw) / 1048576:.1f} МБ'
         deal.setdefault('issued', {})[kind] = {'file': filename, 'size': size, 'docId': doc_id,
                                                'mime': STAND_UPLOAD_EXT[ext],

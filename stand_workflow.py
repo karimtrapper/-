@@ -63,8 +63,8 @@ def rerate_attempt(before, deal):
             (start != end or start == 's6' and before.get('reRequest') != deal.get('reRequest')))
 
 
-def rerate_problem(state, submitted, before, deal, actor):
-    """Check immutable server facts, never the browser's claimed payment flags."""
+def rerate_commitment_problem(state, before):
+    """Check whether an outgoing commitment already fixes the terms."""
     if before.get('closed') or before.get('crmDealId'):
         return 'Закрытая сделка уже не пересчитывается'
     conversion = next((c for c in state.get('convs') or []
@@ -79,6 +79,41 @@ def rerate_problem(state, submitted, before, deal, actor):
         return 'Оплата наперёд или исходящий перевод уже начаты — курс зафиксирован'
     if before.get('step') in ('s22', 's23', 's24', 's25', 's26', 's27', 'done'):
         return 'Этап оплаты уже начат — курс зафиксирован'
+    return None
+
+
+def rerate_credit_problem(state, submitted, before, deal):
+    for key in ('payinParts', 'payinHashes', 'payinExtra', 'incomeAmount',
+                'receiptConfirmed', 'manualBankReceipt', 'pay', 'expect'):
+        if before.get(key) != deal.get(key):
+            return 'Зачтённый приход и его ожидание нельзя менять при запросе курса'
+
+    def credited_incomes(board):
+        return [{k: v for k, v in income.items() if k != 'sel'}
+                for income in board.get('incomes') or [] if income.get('dealId') == before.get('id')]
+
+    if credited_incomes(state) != credited_incomes(submitted):
+        return 'Зачтённый приход нельзя менять при запросе курса'
+    return None
+
+
+def document_pack_stale(deal):
+    """A replacement file can increase docVersion without reissuing the pack."""
+    reset_version = deal.get('rerateDocVersion')
+    if reset_version is None:
+        return False
+    pack_version = (deal.get('docPack') or {}).get('version') or 0
+    try:
+        return int(pack_version) <= int(reset_version)
+    except (TypeError, ValueError):
+        return True
+
+
+def rerate_problem(state, submitted, before, deal, actor):
+    """Check immutable server facts, never the browser's claimed payment flags."""
+    commitment = rerate_commitment_problem(state, before)
+    if commitment:
+        return commitment
     if before.get('step') not in RERATE_STEPS:
         return 'На этом этапе нельзя запросить курс заново'
     if before.get('kind') == 'Фрихолд' and before.get('payType') == 'Крипта':
@@ -100,18 +135,7 @@ def rerate_problem(state, submitted, before, deal, actor):
         return 'Повторный запрос курса нужно начать кнопкой в сделке'
     if deal.get('rates') or deal.get('quotes') or deal.get('ratePick'):
         return 'Для нового запроса очистите прежние курсы и ответы'
-    for key in ('payinParts', 'payinHashes', 'payinExtra', 'incomeAmount',
-                'receiptConfirmed', 'manualBankReceipt', 'pay', 'expect'):
-        if before.get(key) != deal.get(key):
-            return 'Зачтённый приход и его ожидание нельзя менять при запросе курса'
-    def credited_incomes(board):
-        return [{k: v for k, v in income.items() if k != 'sel'}
-                for income in board.get('incomes') or [] if income.get('dealId') == before.get('id')]
-    old_incomes = credited_incomes(state)
-    new_incomes = credited_incomes(submitted)
-    if old_incomes != new_incomes:
-        return 'Зачтённый приход нельзя менять при запросе курса'
-    return None
+    return rerate_credit_problem(state, submitted, before, deal)
 
 
 def positive(value):

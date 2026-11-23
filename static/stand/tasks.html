@@ -1659,6 +1659,7 @@ function freeholdLossFingerprint(d){return [String(Number(d.invoiceUsd)),String(
    оставляем решение менеджеру. */
 function freeholdInvoiceTariffBlock(d){
   const t=ippsTariff(d), X=d.invoiceUsd||0, S=freeholdSend(X,t);
+  const locked=!isCrypto(d)&&!!(d.docPack||d.docVersion);
   const hadRate=isCrypto(d)?(d.amountUsdt!=null):!!num(d.rates.client);
   const income=d.amountUsdt==null?null:Math.round((d.amountUsdt-S)*100)/100;
   const pct=income==null||!S?null:income/S*100;
@@ -1668,11 +1669,11 @@ function freeholdInvoiceTariffBlock(d){
   return `<div class="fr" style="margin-top:10px">
     <div class="fg"><label class="fl">${d.autoPayment===true?'Продавцу авто, USD':'Инвойс застройщику, $'}<span class="rq">*</span></label>
       <input class="fc num" id="fh_inv_${d.id}" value="${X?Number(X).toLocaleString('ru-RU',{minimumFractionDigits:2,maximumFractionDigits:2}):''}"
-        ${d.autoPayment===true?'readonly':`oninput="freeholdLivePreview(${d.id},'invoiceUsd',this.value)" onchange="freeholdInvoiceSet(${d.id},'invoiceUsd',this.value)"`}>
+        ${d.autoPayment===true||locked?'readonly':`oninput="freeholdLivePreview(${d.id},'invoiceUsd',this.value)" onchange="freeholdInvoiceSet(${d.id},'invoiceUsd',this.value)"`}>
       ${d.invoiceUsdEstimate?'<p class="fh">Сумма — ориентир по курсу банка; впишите точную, если она известна.</p>':''}</div>
     <div class="fg w2"><label class="fl">Тариф IPPS</label>
       <div class="chips">${Object.keys(IPPS_TARIFFS).map(k=>
-        `<span class="chip ${(d.ippsTariff||'bank')===k?'on':''}" ${d.autoPayment===true?'':`onclick="freeholdInvoiceSet(${d.id},'ippsTariff','${k}')"`}>${IPPS_TARIFFS[k].label}</span>`).join('')}</div></div>
+        `<span class="chip ${(d.ippsTariff||'bank')===k?'on':''}" ${d.autoPayment===true||locked?'':`onclick="freeholdInvoiceSet(${d.id},'ippsTariff','${k}')"`}>${IPPS_TARIFFS[k].label}</span>`).join('')}</div></div>
     <div class="fg"><label class="fl">В IPPS уйдёт${isCrypto(d)?', USDT':', USD'}</label><input class="fc num" id="fh_sent_${d.id}" readonly value="${isCrypto(d)?money(S,'USDT'):usd(S)}"></div>
   </div>
   ${isCrypto(d)?`<div class="fr">
@@ -1693,8 +1694,8 @@ function freeholdInvoiceTariffBlock(d){
     <div class="fg"><label class="fl">Доход, USDT</label><input class="fc num" id="fh_income_${d.id}" readonly value="${income==null?'—':income.toFixed(2)}"></div>
     <div class="fg"><label class="fl">Доход, %</label><input class="fc num" id="fh_pct_${d.id}" readonly value="${pct==null?'—':pct.toFixed(4)}"></div>
   </div><div id="fh_loss_${d.id}">${loss?`<div class="alert a-warn"><div><b>Сделка в минус</b> · ${money(income,'USDT')}. ${ack?'Риск подтверждён для этих сумм.':'Перед договором подтвердите риск отдельно.'}</div></div>${ack?'':`<button class="btn btn-outline" onclick="freeholdLossAck(${d.id})">Подтвердить сделку в минус</button>`}`:''}${d.amountUsdt==null&&d.freeholdMarkupPct!=null?`<div class="alert a-warn"><div>Старая запись содержит процент, но сумму клиента нужно ввести явно. Процент не применяется.</div></div>`:''}</div>`:''}
-  ${d.autoPayment===true?'':`<p class="fh">Инвойс и тариф правятся до шага «Подготовить договор». Сумму клиента, USDT, операционист может уточнить там до выпуска документов.</p>`}
-  ${hadRate?`<div class="alert a-warn" style="margin-top:8px"><div>${isCrypto(d)?'Сумма клиента уже задана':'Курс клиенту уже назван'} — смена инвойса или тарифа меняет доход; сумму клиента не пересчитываем. Проверьте расчёт.</div></div>`:''}`;
+  ${locked?'<p class="fh">Проверьте согласованные инвойс и тариф перед передачей на выпуск договора.</p>':d.autoPayment===true?'':`<p class="fh">Инвойс и тариф правятся до шага «Подготовить договор». Сумму клиента, USDT, операционист может уточнить там до выпуска документов.</p>`}
+  ${hadRate&&!locked?`<div class="alert a-warn" style="margin-top:8px"><div>${isCrypto(d)?'Сумма клиента уже задана':'Курс клиенту уже назван'} — смена инвойса или тарифа меняет доход; сумму клиента не пересчитываем. Проверьте расчёт.</div></div>`:''}`;
 }
 function freeholdLivePreview(id,field,raw){
   const d=deal(id);if(!d)return;
@@ -5507,7 +5508,7 @@ function docFields(d){
   };
   const out=Object.assign({},auto,saved);
   /* Issued files stay immutable; the next issue form uses the newly agreed money. */
-  if(d.reRequest&&d.rates.client&&(!d.docVersion||d.rerateDocVersion===d.docVersion)){
+  if(d.reRequest&&d.rates.client&&(!d.docVersion||documentPackStale(d))){
     for(const key of ['amountThb','amountPay','rate','rateAt'])out[key]=auto[key];
   }
   if(!isCrypto(d)&&d.rubReceivingAccount)out.payTo=auto.payTo;
@@ -5621,8 +5622,12 @@ function docDownload(id,k,ext){
   docFetch('/api/docs/file/'+f.docId,f.file||docFileName(d,k,'pdf'),d,'Скачан документ: '+(DOCT[k]||k)+' · '+f.file);
 }
 /* Текущая версия пакета: что выпустил генератор, со своими файлами поверх */
+function documentPackStale(d){
+  return d.rerateDocVersion!=null&&!(Number(d.docPack?.version||0)>Number(d.rerateDocVersion));
+}
 function docPackFiles(d){const p=d.docPack;if(!p)return [];return (d.docsIssued||[]).filter(x=>x.version===p.version&&!x.deletedAt);}
 function docFileOf(d,k){
+  if(documentPackStale(d))return null;
   const own=(d.issued||{})[k];
   if(own&&own.docId&&!own.deletedAt)return Object.assign({own:true,kind:k},own);
   return docPackFiles(d).find(x=>x.kind===k)||null;
@@ -5643,6 +5648,7 @@ async function docFetch(url,name,d,text){
 function docDownloadAll(id){
   const d=deal(id);
   if(!d.docPack){toast('Пакет ещё не выпущен');return;}
+  if(documentPackStale(d)){toast('Сначала перевыпустите документы с новым курсом');return;}
   docFetch('/api/stand/docs/zip?dealId='+id,'Documents_'+String(d.code||id).replace(/\s/g,'')+'_v'+d.docPack.version+'.zip',
     d,'Скачан весь пакет документов, версия '+d.docPack.version);
 }
@@ -5754,6 +5760,7 @@ function issuedDrop(id,k){
    менеджер не забыл ни один и не искал их по сделке (Карим, 25.09). */
 function docSendBlock(d){
   const P=d.docPack, ap=approx(d);
+  if(documentPackStale(d))return '<div class="alert a-warn"><div>Отправьте клиенту новую версию после перевыпуска документов.</div></div>';
   if(!P) return `<div class="alert a-warn"><div>Файлов пакета нет — операционист ещё не выпустил документы генератором. Сумма к оплате — <b>${money(ap.pay,ap.sign)}</b>.</div></div>`;
   const esc=v=>JSON.stringify(String(v||'')).replace(/"/g,'&quot;');
   const what={
@@ -5790,6 +5797,7 @@ function docSendBlock(d){
 /* Менеджер отмечает, что пакет ушёл клиенту — иначе «Ждём приход» напомнит */
 function docsSentSet(id,on){
   const d=deal(id);
+  if(on&&documentPackStale(d)){toast('Сначала перевыпустите документы с новым курсом');render();return;}
   d.docsSent=on?{at:now(),version:(d.docPack||{}).version||d.docVersion||1}:null;
   log(d,on?'Документы отправлены клиенту (версия '+d.docsSent.version+')':'Снята отметка «Отправил клиенту»');
   save();render();
@@ -12535,7 +12543,7 @@ function stepCard(d){
 
   s8:()=>`<div class="card"><div class="card-title">Документы клиента<span class="sub">${d.autoPayment===true?'инвойс и ДКП автомобиля'+(d.isOld?'':' · паспорт'):d.isOld?'старый клиент — хватит инвойса':'новый клиент — паспорт и инвойс'}</span></div>
     ${d.isOld?`<p class="fh" style="margin:-4px 0 10px">Паспорт уже есть в старом договоре; приложите новый, только если он изменился.</p>`:''}
-    ${d.kind==='Фрихолд'?`<div class="card-title" style="font-size:14px;margin:0 0 4px">Инвойс и тариф IPPS<span class="sub">последний раз можно поправить перед договором</span></div>${freeholdInvoiceTariffBlock(d)}`:''}
+    ${d.kind==='Фрихолд'?`<div class="card-title" style="font-size:14px;margin:0 0 4px">Инвойс и тариф IPPS</div>${freeholdInvoiceTariffBlock(d)}`:''}
     <div class="list">
       ${/* Паспорт показываем всегда: у знакомого клиента он не обязателен, но если
             он приложен — строка обязана быть в списке, иначе документ «исчезает»
@@ -12691,7 +12699,7 @@ function stepCard(d){
     </div>`;},
 
   s11b:()=>{
-    const P=d.docPack, files=docPackFiles(d);
+    const P=documentPackStale(d)?null:d.docPack, files=P?docPackFiles(d):[];
     const title={dog:'Агентский договор',app:P&&P.mode==='addendum'?'Допсоглашение к договору '+(P.agreementNumber||''):'Приложение 1 — платёж по договору',bill:'Счёт на оплату'};
     const av={dog:'Д',app:'П',bill:'С'};
     const sub={dog:'рамочный, ФИО и паспорт клиента',
@@ -13568,9 +13576,10 @@ async function act(id,step){
     }
     /* Договор, приложение и счёт выпускает сервер тем же генератором, что CRM */
     docIssue(d.id,F,ch,val('sn_s11'));return;}
-  if(step==='s11b'){if(!d.docPack){toast('Пакет не выпущен — «Поправить и пересоздать»');return;}
+  if(step==='s11b'){if(!d.docPack||documentPackStale(d)){toast('Выпустите новый пакет через «Поправить и пересоздать»');return;}
     go(d,'s12','Документы отправлены менеджеру');toast('Ушло менеджеру');return;}
   if(step==='s12'){
+    if(documentPackStale(d)){toast('Сначала перевыпустите документы с новым курсом');return;}
     /* Пакет выпущен, но менеджер не отметил отправку — клиент мог остаться без договора и счёта */
     if(d.docPack&&!d.docsSent){toast('Сначала отправьте клиенту документы и отметьте «Отправил клиенту»');
       const el=document.getElementById('dsent_'+d.id);if(el)el.scrollIntoView({block:'center'});return;}
