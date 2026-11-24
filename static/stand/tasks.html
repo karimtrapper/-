@@ -8017,6 +8017,7 @@ function overview(d,st,mine,p,wh){
   <div class="card" style="margin-bottom:16px"><div class="card-title">Клиент и запрос</div>
     <table class="tbl">
       ${row('Клиент',d.client,d.isOld?'знакомый, договор есть':'новый')}
+      ${d.type==='Оплата недвижимости'?row('Тип недвижимости',dealRealtyKindControl(d)):''}
       ${row('Откуда пришёл',SOURCES[d.source],sourceRefLabel(d.source,d.sourceRef))}
       ${row('Что делаем',['ИППС','Личный счёт'].includes(d.kind)?dealDisplayKind(d):d.autoPayment===true?'Оплата авто':d.type+(d.kind?' · '+d.kind:''))}
       ${row('Как платит',d.payType,isCrypto(d)?'сделка считается в USDT':'')}
@@ -9302,6 +9303,7 @@ function ctxCard(d){
   <summary><span class="ctxh">Что это за сделка</span><span class="ctxl">${line}</span></summary>
   <div class="facts" style="margin-top:14px">
     ${fact('Клиент',d.client,d.isOld?'знакомый — договор уже есть':'новый — нужен полный пакет')}
+    ${d.type==='Оплата недвижимости'?`<div><div class="k">Тип недвижимости</div><div class="v">${dealRealtyKindControl(d)}</div></div>`:''}
     ${fact('Откуда пришёл',SOURCES[d.source],sourceRefLabel(d.source,d.sourceRef)||'без переписки')}
     ${fact('Что делаем',['ИППС','Личный счёт'].includes(d.kind)?dealDisplayKind(d):d.autoPayment===true?'Оплата авто':d.type+(d.kind?' · '+d.kind:''),'платит: '+(d.payType||'не указано'))}
     ${fact('Объект',d.object||'не указан',d.partial?'часть оплаты '+(d.partNo||'')+' по инвойсу на '+money(d.invoiceTotal,d.kind==='Фрихолд'?'$':'฿'):'оплата целиком')}
@@ -9321,6 +9323,70 @@ function ctxCard(d){
 
 /* Документы видны не только на своём шаге: после сдачи шага их всё равно открывают.
    Показываем настоящие файлы: что приложил менеджер и что выпустил генератор. */
+const pendingRealtyKinds=new Set();
+function canSetRealtyKind(d){
+  const hasValue=value=>value!==undefined&&value!==null&&value!==''
+    &&!(Array.isArray(value)&&value.length===0)
+    &&!(value&&typeof value==='object'&&!Array.isArray(value)&&Object.keys(value).length===0);
+  const rates=d?.rates||{},quotes=d?.quotes||[];
+  const noSettledAmounts=['amountThb','amountUsdt','incomeAmount','invoiceUsd','invoiceThb','invoiceTotal',
+    'ippsPayoutOrder','transfer','payinParts','payinHashes','pay','files','docs','issued','docPack',
+    'docVersion','docFields','manualBankReceipt','crmDealId','cnvId','closedAt']
+      .every(key=>!hasValue(d?.[key]));
+  const earlyRates=Object.keys(rates).every(key=>key==='rubUsdt'||key==='at')
+    &&(!hasValue(rates.rubUsdt)||(Number.isFinite(Number(rates.rubUsdt))&&Number(rates.rubUsdt)>0))
+    &&(!hasValue(rates.at)||(Number.isInteger(Number(rates.at))&&Number(rates.at)>0));
+  const rubQuotes=quotes.every(quote=>quote&&typeof quote==='object'&&quote.dir==='rub');
+  return !!d&&STAND&&['manager','admin'].includes(S.role)&&['manager','admin'].includes(standMe)
+    &&['s1','s4','s5'].includes(d.step)&&!d.closed&&d.isTask===true&&d.autoPayment!==true
+    &&d.type==='Оплата недвижимости'&&['Лизхолд','Фрихолд'].includes(d.kind)
+    &&noSettledAmounts&&earlyRates&&rubQuotes&&!d.prepay&&!d.payout&&!d.serverTransferComplete;
+}
+function dealRealtyKindControl(d){
+  if(!canSetRealtyKind(d))return htmlText(d.kind||'Не указан');
+  const busy=pendingRealtyKinds.has(d.id);
+  return `<select class="fc" aria-label="Тип недвижимости" style="max-width:190px" ${busy?'disabled':''}
+    onchange="setDealRealtyKind(${d.id},this.value)">
+    <option value="Лизхолд"${d.kind==='Лизхолд'?' selected':''}>Лизхолд</option>
+    <option value="Фрихолд"${d.kind==='Фрихолд'?' selected':''}>Фрихолд</option>
+  </select>`;
+}
+async function setDealRealtyKind(id,value){
+  const d=deal(id);
+  if(!d||!canSetRealtyKind(d)||!['Лизхолд','Фрихолд'].includes(value)||d.kind===value||pendingRealtyKinds.has(id))return false;
+  if(standBusy||standPush||standSaveScheduled||standClosing||standVer===null){
+    toast('Дождитесь завершения сохранения и повторите');render();return false;
+  }
+  const base=standBase?.deals?.find(item=>item.id===id);
+  if(!base){toast('Дождитесь загрузки сделки');render();return false;}
+  const patchBase=standClone(standBase||standSnapshot());
+  const version=standVer;
+  let refresh=false,applied=false;
+  pendingRealtyKinds.add(id);standBusy=true;render();
+  try{
+    const response=await fetch('/api/stand/deals/'+id+'/kind',{method:'PATCH',credentials:'same-origin',
+      headers:{'Content-Type':'application/json'},body:JSON.stringify({version,kind:value})});
+    const result=await response.json();
+    if(response.status===409){refresh=true;toast(result.error==='conflict'?'Доска изменилась. Повторите исправление после обновления':result.error||'Тип недвижимости уже нельзя менять');return false;}
+    if(!response.ok||!result.success){toast(result.error||'Не удалось сохранить тип недвижимости');return false;}
+    if(standVer===version&&result.data){
+      const queued=standPush||standSaveScheduled;
+      const merged=standMerge(patchBase,standSnapshot(),result.data);
+      standVer=result.version;standGetEtag=null;standBase=standClone(result.data);standApply(merged.data);
+      standPush=queued||!jeq(merged.data,result.data);
+      if(merged.conflicts.length)toast('Сохранённые параллельно изменения конфликтовали — проверьте сделку');
+      applied=true;toast('Тип недвижимости сохранён');
+    }else refresh=true;
+    return applied;
+  }catch(e){refresh=true;toast('Не удалось подтвердить сохранение типа недвижимости');return false;}
+  finally{
+    standBusy=false;
+    if(standPush){standPush=false;standSaveScheduled=true;setTimeout(standSave,120);}
+    else if(refresh)await standPull(true);
+    pendingRealtyKinds.delete(id);
+    if(S.open===id||S.edit===id)render();
+  }
+}
 function docIssuedTitle(d,k){
   const P=d.docPack||{};
   return {dog:'Агентский договор',app:P.mode==='addendum'?'Допсоглашение к договору '+(P.agreementNumber||''):'Приложение 1 к договору',bill:'Счёт на оплату'}[k];

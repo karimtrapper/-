@@ -8108,6 +8108,139 @@ def stand_deal_inquiry_type(deal_id):
         db.close()
 
 
+def _stand_realty_kind_change_problem(deal):
+    """Allow a realty-kind correction only before prices or payment facts exist."""
+    if (deal.get('type') != 'Оплата недвижимости' or deal.get('closed')
+            or deal.get('isTask') is not True or deal.get('autoPayment') is True
+            or deal.get('kind') not in ('Лизхолд', 'Фрихолд')):
+        return 'Тип недвижимости можно менять только у открытой сделки с оплатой недвижимости'
+    if deal.get('step') not in ('s1', 's4', 's5'):
+        return 'Тип недвижимости можно менять только на первом шаге сделки'
+    # Early customer budget/request inputs (amountRub, requestedRub/USD) belong
+    # to the lead and survive a correction. Calculated prices, payment facts,
+    # generated documents and transfer instructions fix the downstream model.
+    protected_values = (
+        'amountThb', 'amountUsdt', 'incomeAmount', 'invoiceUsd',
+        'invoiceThb', 'invoiceTotal',
+        'ippsPayoutOrder', 'transfer', 'payinParts', 'payinHashes', 'pay',
+        'files', 'docs', 'issued', 'docPack', 'docVersion',
+        'docFields', 'manualBankReceipt', 'crmDealId', 'cnvId', 'closedAt',
+    )
+    if any(deal.get(key) not in (None, '', [], {}) for key in protected_values):
+        return 'Тип недвижимости нельзя менять после расчёта или появления документов и платежей'
+    rates = deal.get('rates') or {}
+    if any(key not in ('rubUsdt', 'at') for key in rates):
+        return 'Тип недвижимости нельзя менять после фиксации расчёта клиенту'
+    if 'at' in rates and (type(rates['at']) is not int or rates['at'] <= 0):
+        return 'Время курса RUB/USDT некорректно'
+    if 'rubUsdt' in rates:
+        quote_rate = _stand_num(rates.get('rubUsdt'))
+        if quote_rate is None or not quote_rate.is_finite() or quote_rate <= 0:
+            return 'Курс RUB/USDT некорректен'
+    quotes = deal.get('quotes') or []
+    if any(not isinstance(quote, dict) or quote.get('dir') != 'rub' for quote in quotes):
+        return 'Тип недвижимости нельзя менять после котировки в другой валюте'
+    if deal.get('prepay') or deal.get('payout') or deal.get('serverTransferComplete'):
+        return 'Тип недвижимости нельзя менять после начала оплаты'
+    return None
+
+
+@app.route('/api/stand/deals/<int:deal_id>/kind', methods=['PATCH'])
+def stand_deal_realty_kind(deal_id):
+    """Correct leasehold/freehold classification before the deal enters its flow."""
+    if not STAND_MODE:
+        return jsonify(success=False, error='stand_only'), 404
+    actor = current_role()
+    actor_id = flask_session.get('user_id')
+    if actor not in ('manager', 'admin'):
+        return jsonify(success=False, error='Тип недвижимости меняет менеджер или администратор'), 403
+    payload = request.get_json(silent=True)
+    if (not isinstance(payload, dict) or set(payload) != {'kind', 'version'}
+            or payload.get('kind') not in ('Лизхолд', 'Фрихолд')
+            or type(payload.get('version')) is not int or payload['version'] < 0):
+        return jsonify(success=False, error='Некорректный тип недвижимости'), 400
+    db = get_session()
+    try:
+        if engine.dialect.name == 'sqlite':
+            from sqlalchemy import text
+            db.execute(text('BEGIN IMMEDIATE'))
+        row = db.query(StandState).filter_by(id=1).with_for_update().first()
+        if row is None:
+            return jsonify(success=False, error='Сделка не найдена'), 404
+        version = row.version or 0
+        if payload['version'] != version:
+            return jsonify(success=False, error='conflict', version=version,
+                           data=_stand_strip_files(json.loads(row.data or '{}'))), 409
+        user = db.query(AdminUser).filter_by(id=actor_id).first()
+        if not user or user.login_disabled or user.role != actor:
+            return jsonify(success=False, error='Нет доступа к изменению типа недвижимости'), 403
+        previous = json.loads(row.data or '{}')
+        state = json.loads(row.data or '{}')
+        deal = next((d for d in state.get('deals') or [] if d.get('id') == deal_id), None)
+        if deal is None:
+            return jsonify(success=False, error='Сделка не найдена'), 404
+        if actor == 'manager':
+            owner_id = deal.get('managerUserId')
+            if owner_id is not None:
+                if owner_id != user.id:
+                    return jsonify(success=False, error='Тип недвижимости меняет менеджер этой сделки или администратор'), 403
+            else:
+                owner_name = str(deal.get('manager') or '').strip().casefold()
+                own_names = {(user.display_name or '').strip().casefold(),
+                             (user.username or '').strip().casefold()}
+                if not owner_name or owner_name not in own_names:
+                    return jsonify(success=False, error='Тип недвижимости меняет менеджер этой сделки или администратор'), 403
+        if deal.get('kind') == payload['kind']:
+            return jsonify(success=True, version=version, data=_stand_strip_files(state))
+        problem = _stand_realty_kind_change_problem(deal)
+        if problem:
+            return jsonify(success=False, error=problem), 409
+        before_kind = deal.get('kind')
+        deal['kind'] = payload['kind']
+        if payload['kind'] == 'Фрихолд' and _stand_num(deal.get('amountRub')) is not None \
+                and _stand_num(deal.get('amountRub')) > 0:
+            # Existing RUB amount is the customer's requested price; make the
+            # Freehold display and calculation use that explicit amount.
+            deal['freeholdClientInput'] = 'sum'
+        # For freehold, the RUB quote is the only required quote. If this
+        # correction completes the quote step, hand the task to the manager's
+        # calculation screen; otherwise leave the operator's step untouched.
+        if deal.get('step') == 's5' and payload['kind'] == 'Фрихолд':
+            from stand_workflow import quote_dirs
+            required = quote_dirs(deal)
+            rates = deal.get('rates') or {}
+            if required and all(
+                    (rate := _stand_num(rates.get('rubUsdt' if direction == 'rub' else 'usdtThb')))
+                    is not None and rate.is_finite() and rate > 0
+                    for direction in required):
+                deal['step'] = 's6'
+                deal['assigneeAdminId'] = None
+        previous_deal = next((item for item in previous.get('deals') or []
+                              if item.get('id') == deal_id), {})
+        if previous_deal.get('step') != deal.get('step'):
+            _stand_state_events(previous, state, actor, version + 1)
+        stamp = int(time.time() * 1000)
+        author = user.display_name or user.username
+        deal.setdefault('log', []).append({'at': stamp, 'role': actor, 'by': user.id,
+            'author': author, 'kind': 'classification',
+            'text': f'Тип недвижимости изменён: {before_kind} → {payload["kind"]}' +
+                    ('; задача передана на расчёт' if before_kind != payload['kind'] and deal.get('step') == 's6'
+                     else '')})
+        row.data = json.dumps(state, ensure_ascii=False)
+        committed_version = version + 1
+        row.version = committed_version
+        row.updated_by = author
+        row.updated_at = datetime.utcnow()
+        db.commit()
+        delivered = _stand_deliver_notes() or []
+        new_note_ids = {str(note.get('id')) for note in state.get('notes') or []}
+        notifications = [item for item in delivered if str(item.get('note_id')) in new_note_ids]
+        return jsonify(success=True, version=committed_version, data=_stand_strip_files(state),
+                       notification_delivery=notifications)
+    finally:
+        db.close()
+
+
 @app.route('/api/stand/state', methods=['PUT'])
 def stand_state_put():
     """Запись состояния с проверкой версии.
@@ -13742,6 +13875,9 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
         if 'closeEvidence' in deal:
             return 'Подтверждения закрытия назначает только сервер'
         before = old.get(deal.get('id'))
+        if (before and before.get('kind') != deal.get('kind')
+                and not (before.get('manual') or before.get('manualNew'))):
+            return 'Тип недвижимости меняется только отдельным действием на первом шаге'
         inquiry_type = deal.get('inquiryType')
         if inquiry_type != (before or {}).get('inquiryType'):
             if inquiry_type not in ('agent', 'client'):
