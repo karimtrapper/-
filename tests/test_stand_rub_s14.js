@@ -43,6 +43,14 @@ assert.doesNotMatch(run('manualBankReceiptBlock(S.deals[0])'), /manualBankReceip
 assert.doesNotMatch(run('manualBankReceiptBlock(S.deals[0])'), /Выпущенные документы содержат другие реквизиты/);
 assert.match(html, /Ожидаемый счёт зачисления/);
 assert.doesNotMatch(html, /id="w_acc"/);
+assert.doesNotMatch(html, /cashPayinMethod\(\$\{d\.id\}\)">Клиент передал наличные партнёру/);
+
+d.rubReceivingAccount = {mode: 'flowsole'};
+ctx.S.role = 'operator';
+const flowsole = run('manualBankReceiptBlock(S.deals[0])');
+assert.match(flowsole, /Если деньги пришли на другой банковский счёт/);
+assert.match(flowsole, /Начать сверку по выписке/);
+assert.match(flowsole, /manualBankReceiptRequest\(1485\)/);
 
 d.manualBankReceipt = {status: 'pending', handoff: true,
   documentPayToAtRequest: d.issuedDocPayTo};

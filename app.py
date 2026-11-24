@@ -16619,6 +16619,9 @@ def stand_payin_cash_method():
                     i.get('dealId') == deal['id'] and _stand_number(i.get('rub')) > 0
                     for i in state.get('incomes') or [])):
             return jsonify(success=False, error='Банковский приход уже засчитан или сверяется'), 409
+        if not restoring:
+            return jsonify(success=False,
+                error='Для оплаты по реквизитам используйте сверку прихода по выписке.'), 409
         new_payin_canon = canonical_payin_from_stand('По реквизитам' if restoring else 'Наличные')
         deal_kind_canon = canonical_deal_kind_from_stand(deal.get('type'), deal.get('kind'))
         if not is_verified_flow(deal_kind_canon, new_payin_canon):

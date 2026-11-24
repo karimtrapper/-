@@ -11947,9 +11947,11 @@ function manualBankReceiptBlock(d){
       <p class="fh">Отдельный ручной источник; это не подтверждение Сбер API и не запись зеркала Сбера.</p></div>`;
   }
   if(S.role!=='manager'&&S.role!=='operator'&&S.role!=='admin')return '';
-  const api=rubApiAccount(d);
+  const flowsole=(d.rubReceivingAccount||{}).mode==='flowsole';
+  const api=!flowsole&&rubApiAccount(d);
   return `<div class="sberbox" style="margin-top:14px;border:1px solid #f59e0b"><div class="chtitle">${api?'Приход из API Сбера':'Сверка банковского прихода'}</div>
     <p class="fh">${api?'Поступления Сбера и эквайринга приходят из банковского API. Если деньги фактически пришли на другой счёт, операционист сверит их по выписке.':
+      flowsole?'Если деньги пришли на другой банковский счёт, нажмите «Начать сверку по выписке». Операционист сверит выписку и укажет фактический счёт.':
       'Ждём приход: сумму и фактический счёт по выписке вводит и подтверждает операционист.'}</p>
     ${(S.role==='operator'||S.role==='admin')?`<button class="btn btn-primary btn-sm" onclick="manualBankReceiptRequest(${d.id})">${api?'Сверить приход на другом счёте':'Начать сверку по выписке'}</button>`:''}</div>`;
 }
@@ -13077,7 +13079,6 @@ function stepCard(d){
       ${ex.purposeEdited?`<p class="fh">Изменено вручную. В договоре осталось: «${docFields(d).purpose||'—'}»
         <a href="#" onclick="expectReset(${d.id});return false" style="color:var(--coral)">вернуть как в договоре</a></p>`
         :`<p class="fh">Подставлено из договора. Если клиент прислал чек с другим текстом — впишите его, по нему и будем искать платёж.</p>`}</div>
-    ${(d.rubReceivingAccount||{}).mode==='flowsole'&&!d.payinParts?.length&&!d.manualBankReceipt&&S.role==='operator'?`<div class="row"><button class="btn btn-secondary" onclick="cashPayinMethod(${d.id})">Клиент передал наличные партнёру</button></div>`:''}
     ${clientPayinBlock(d)}
     ${manualBankReceiptBlock(d)}
     ${!d.manualBankReceipt&&rubApiAccount(d)?payinPool(d):''}`;})()}</div>`,
