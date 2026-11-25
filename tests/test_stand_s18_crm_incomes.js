@@ -38,7 +38,8 @@ vm.createContext(ctx);
 vm.runInContext(['MF','FLOWSOLE'].map(name=>html.match(new RegExp('^const '+name+'=[^]*?};', 'm'))[0]).join('\n'),ctx);
 vm.runInContext(['incomeRubBasis', 'partRubBasis', 'pendingEx', 's18Sber', 's18AccountIdentity', 's18AccountKey', 's18AccountLabel', 's18Rub', 's18CrmUnavailable', 's18CrmRows',
   's18DateKey', 's18DateLabel', 's18FilteredRows', 's18CrmSection',
-  's18ClientRub', 's18ClientTotal', 'brokerSentAmount', 'brokerPlanShares', 'brokerSentParse',
+  's18BatchTotal', 's18ClientRub', 's18ClientTotal', 'brokerSentAmount', 'brokerPlanShares', 'brokerSentParse',
+  'sgbBrokerQuote', 'sgbBankFeeDetails', 'sgbBrokerFeePreview', 'brokerSentDraft', 'brokerSentInput', 'brokerSentAuto',
   'brokerSentTimeValue', 'brokerSentTimeParse', 'brokerSentTimeDraft', 'convMargin', 'convMarginBlock'].map(fn).join('\n')+
   '\nlet s18Candidates=[], s18Selected=new Set(), s18SelectedDealId=null;'+
   "let s18Filters={query:'',from:'',to:''},s18Expanded={crm:false,unlinked:false};\n"+stepCode, ctx);
@@ -104,18 +105,22 @@ main.manualBankReceipt = {bank: 'БАНК СГБ', account: '4080781081900000026
 incomes[0] = {id: 'manual:1', source: 'manual_confirmed', dealId: 100,
   accountKey: 'flow_sole', rub: 10000, grossRub: 10000};
 vm.runInContext(`s18Candidates.push({id:4,uuid:'flow4',accountKey:'flow_sole',
-  rub:20000,dealId:44,client:'Flow CRM',date:'2026-10-14T12:00:00',
+  rub:20000,grossRub:20000,dealId:44,client:'Flow CRM',date:'2026-10-14T12:00:00',
   dealRub:20000,payoutUsdt:150});s18Selected=new Set([4])`, ctx);
 rendered = vm.runInContext('stepS18()', ctx);
 assert.match(rendered, /СД-100 · Клиент/);
 assert.match(rendered, /Подготовка пачки · Flow Sole/);
 assert.match(rendered, /Сделка #44 · Flow CRM/);
 assert.match(rendered, /Состав пачки · 2 поступл\./);
+assert.match(rendered, /value="29410,00"/);
+assert.match(rendered, /Комиссия за зачисление 366,00 ₽ · комиссия за перевод 183,00 ₽ · платёжное поручение 41,00 ₽/);
 assert.doesNotMatch(rendered, /Сделка #42|Поступление без сделки/);
 main.manualBankReceipt = {bank: 'Банк клиента', account: '40702810123456789012'};
 incomes[0].accountKey = 'other:40702810123456789012';
 rendered = vm.runInContext('stepS18()', ctx);
 assert.match(rendered, /Подготовка пачки · Другой счёт · 40702810123456789012/);
+assert.match(rendered, /value="9930,00"/);
+assert.doesNotMatch(rendered, /Тариф СГБ/);
 assert.doesNotMatch(rendered, /Сделка #42|Сделка #44|Поступление без сделки/);
 incomes[0] = {id: 'sber:main', source: 'sber', dealId: 100, rub: 9930,
   grossRub: 10000};
@@ -153,17 +158,19 @@ console.log('s18 CRM income UI: PASS');
 
 // Реальное act(s18): найденная QA смешанная пачка сохраняет ровно 2245,86 USDT.
 (async()=>{
-  Object.assign(ctx,{STAND:false,document:{getElementById:()=>null},saveNote:()=>{},
+  Object.assign(ctx,{STAND:false,document:{getElementById:()=>null},saveNote:()=>{},save:()=>{},render:()=>{},
     need:()=>false,val:id=>({b0:'Broker',b1:'84.6',b2:'company',b_sent_time:'2026-10-13T12:00:00'}[id]),cleanNum:String,
     now:()=> '16.10, 12:00',demoAllowed:()=>false,log:()=>{},toast:()=>{},
-    go:(d,step)=>{d.step=step;}});
+    go:(d,step)=>{if(d.prepay)d.prepay.brokerStep=step;else d.step=step;}});
   vm.runInContext(html.match(/^async function act\([^]*?^}/m)[0],ctx);
   main.amountRub=192666.30;main.incomeAmount=192666.31;main.brokerSentOverride=190000;
   main.payinParts[0].amountRub=192666.31;
   main.rates.broker=84.6;main.manualBankReceipt.actualAmount=192666.31;
   incomes[0].rub=incomes[0].grossRub=192666.31;
   incomes[0].accountKey='flow_sole';ctx.S.convs=[];
-  vm.runInContext("s18Candidates=[{id:4,uuid:'flow4',accountKey:'flow_sole',rub:10000,dealId:null}];s18Selected=new Set([4])",ctx);
+  vm.runInContext("s18Candidates=[{id:4,uuid:'flow4',accountKey:'flow_sole',rub:10000,grossRub:40000,dealId:null}];s18Selected=new Set([4])",ctx);
+  const mixedFees=vm.runInContext('sgbBrokerQuote(d,202666.31,s18Candidates,null).bankFees',ctx);
+  assert.equal(mixedFees.incoming,633.39); // 587.64 + one quarter of the 183 RUB minimum
   const preview=vm.runInContext('convMargin(d,202666.31,84.6,s18Candidates)',ctx);
   assert.equal(preview.usdtIn,2135.04);
   assert.equal(preview.unlinkedUsdt,110.82);
@@ -191,6 +198,7 @@ console.log('s18 CRM income UI: PASS');
   assert.match(cn.at,/13\.10\.2026.*12:00:00.*МСК/);
   assert.equal(vm.runInContext("DRAFTS['100|b_sent_time']",ctx),'2026-10-13T12:00:00');
   assert.equal(main.step,'s18w');assert.equal(cn.sent,190000);
+  assert.equal(cn.feeMode,'manual');assert.equal(cn.bankFees,undefined);
   assert.equal(main.brokerSentOverride,190000);
   assert.equal(vm.runInContext("DRAFTS['100|b_sent']",ctx),undefined);
   assert.deepEqual(Array.from(cn.sources,x=>x.usdt),[2135.04,110.82]);
@@ -199,5 +207,46 @@ console.log('s18 CRM income UI: PASS');
   assert.equal(cn.sources[1].usdt,preview.unlinkedUsdt);
   const thirds=vm.runInContext('brokerPlanShares([1,1,1],1,1)',ctx);
   assert.deepEqual(Array.from(thirds),[.33,.33,.34]);
+
+  main.amountRub=main.incomeAmount=main.payinParts[0].amountRub=25307063.58;
+  main.rubIsNet=true;
+  main.manualBankReceipt.actualAmount=25307063.58;
+  incomes[0].rub=incomes[0].grossRub=25307063.58;
+  const fields={b_sent_bank_fees:{},b_sent_error:{},b_sent_submit:{}};
+  ctx.document.getElementById=id=>fields[id];
+  ctx.val=id=>id==='b1'?'83':validFields(id);
+  ctx.brokerRate=()=>83;
+  main.brokerSentOverride=null;
+  vm.runInContext('s18Candidates=[];s18Selected.clear()',ctx);
+  rendered=vm.runInContext('stepS18()',ctx);
+  assert.match(rendered,/value="25153119,01"/);
+  assert.match(rendered,/Комиссия за зачисление 77\s186,55 ₽ · комиссия за перевод 76\s717,02 ₽ · платёжное поручение 41,00 ₽/);
+  assert.match(rendered,/Всего комиссий 153\s944,57 ₽\. Общий расход 25\s307\s063,58 ₽/);
+  ctx.brokerSentDraft(main.id,'25 231 102,39');
+  assert.equal(fields.b_sent_submit.disabled,false);
+  assert.match(fields.b_sent_bank_fees.textContent,/Оценка комиссий СГБ/);
+  assert.match(fields.b_sent_bank_fees.textContent,/Ожидаемый расход выше пополнения на 78\s221,23 ₽/);
+  ctx.brokerSentInput(main.id,'25 231 102,39');
+  assert.equal(main.brokerSentOverride,25231102.39);
+  rendered=vm.runInContext('stepS18()',ctx);
+  assert.match(rendered,/value="25231102,39"/);
+  assert.match(rendered,/Разница с пополнением клиента/);
+  ctx.brokerSentAuto(main.id);
+  assert.equal(main.brokerSentOverride,null);
+  assert.match(vm.runInContext('stepS18()',ctx),/value="25153119,01"/);
+  for(const prepay of [false,true]){
+    main.step=prepay?'s23':'s18';
+    main.prepay=prepay?{brokerStep:'s18'}:null;
+    ctx.S.convs=[];
+    await ctx.act(100,'s18');
+    const saved=ctx.S.convs[0];
+    assert.equal(prepay?main.prepay.brokerStep:main.step,'s18w');
+    assert.equal(saved.feeMode,'sgb');
+    assert.equal(saved.feePct,undefined);
+    assert.equal(saved.sent,25153119.01);
+    assert.equal(saved.held,153944.57);
+    assert.equal(saved.sources[0].usdt,303049.63);
+    assert.deepEqual({...saved.bankFees},{incoming:77186.55,outgoing:76717.02,paymentOrder:41,remainder:0});
+  }
   console.log('s18 mixed broker plan conservation: PASS');
 })().catch(e=>{console.error(e);process.exitCode=1;});

@@ -4,11 +4,38 @@ import json
 import time
 import uuid
 from datetime import datetime
+from decimal import Decimal, ROUND_HALF_UP
 from io import BytesIO
 
 import pytest
 import app as m
+from stand_funding import sgb_broker_quote
 from tests.test_stand_manual_bank_receipt import board, seed, snapshot
+
+
+@pytest.mark.parametrize('credits,expected', [
+    ([('25307063.58', '25307063.58')], ('25153119.01', '77186.55', '76717.02', '0')),
+    ([('100', '100'), ('60100', '60100')], ('59609.69', '366.31', '183', '0')),
+    ([('10000', '10000'), ('10000', '40000')], ('19547.25', '228.75', '183', '0')),
+    ([('60410.26', '60410.26')], ('60001.99', '184.26', '183', '.01')),
+])
+def test_sgb_auto_quote_covers_exact_kopeck_bound(credits, expected):
+    cent = Decimal('.01')
+    credits = [(Decimal(used), Decimal(gross)) for used, gross in credits]
+    total = sum(used for used, _ in credits)
+    sent, fees = sgb_broker_quote(total, credits)
+    assert (sent, fees['incoming'], fees['outgoing'], fees['remainder']) == tuple(map(Decimal, expected))
+    assert fees['paymentOrder'] == 41
+    assert sent + sum(fees.values()) == total
+    next_kopeck = sent + cent
+    next_base = max(Decimal(150), next_kopeck * Decimal('.0025')).quantize(cent, rounding=ROUND_HALF_UP)
+    next_vat = (next_base * Decimal('.22')).quantize(cent, rounding=ROUND_HALF_UP)
+    assert next_kopeck + next_base + next_vat + fees['incoming'] + fees['paymentOrder'] > total
+
+
+def test_sgb_auto_quote_can_have_no_positive_send():
+    gross = Decimal('407')
+    assert sgb_broker_quote(gross, [(gross, gross)]) is None
 
 
 def test_conversion_rejects_mixed_accounts_even_with_force(monkeypatch):
@@ -116,6 +143,8 @@ def test_crm_and_s14_flowsole_share_batch_and_profit(monkeypatch):
     rows = {i['id']: i for i in registry['incomes']}
     assert rows[stand_id]['account_key'] == rows[crm_id]['account_key'] == 'flow_sole'
     assert rows[stand_id]['conv_state'] == rows[crm_id]['conv_state'] == 'pending'
+    candidates = client.get('/api/stand/s18/sber-candidates').json['incomes']
+    assert next(row for row in candidates if row['id'] == crm_id)['grossRub'] == 20000
     before = snapshot(client)
     proposal = copy.deepcopy(before['data'])
     task = proposal['deals'][0]
@@ -128,24 +157,39 @@ def test_crm_and_s14_flowsole_share_batch_and_profit(monkeypatch):
     proposal['convs'] = [{'id': 1, 'broker': 'Test', 'requestNo': '41',
         'rate': '100', 'status': 'sent', 'at': 'test, now',
         'sentTs': sent_ts, 'walletId': 'grusha', 'accountKey': 'flow_sole',
-        'rubTotal': 30000, 'clientRubTotal': 30000, 'held': 130, 'sent': 29870,
-        'feePct': .3, 'feeFix': 40, 'feeCtrl': 70, 'feeOurs': 60,
-        'feeCtrlPct': .1, 'feeOursPct': .2,
-        'sources': [{'dealId': 9301, 'rub': 10000, 'clientRub': 10000, 'usdt': 99.56, 'bankNet': False,
+        'rubTotal': 30000, 'clientRubTotal': 30000, 'held': 590, 'sent': 29410,
+        'feeMode': 'sgb', 'bankFees': {'incoming': 366, 'outgoing': 183,
+                                      'paymentOrder': 41, 'remainder': 0},
+        'sources': [{'dealId': 9301, 'rub': 10000, 'clientRub': 10000, 'usdt': 98.03, 'bankNet': False,
                      'accountKey': 'flow_sole'},
                     {'dealId': None, 'crmIncomeId': crm_id, 'clientRub': 20000, 'incomeId': 'sber:' + crm.uuid,
-                     'rub': 20000, 'usdt': 199.14, 'accountKey': 'flow_sole'}],
+                     'rub': 20000, 'usdt': 196.07, 'accountKey': 'flow_sole'}],
         'txs': []}]
+    for invalid in ({'bankFees': {'incoming': 365.99, 'outgoing': 183, 'paymentOrder': 41, 'remainder': 0}},
+                    {'feeMode': None, 'bankFees': None, 'accountKey': 'sber'}):
+        forged = copy.deepcopy(proposal)
+        forged['convs'][0].update(invalid)
+        refused = client.put('/api/stand/state', json={'version': before['version'], 'data': forged})
+        assert refused.status_code == 409
+        assert 'комиссий СГБ' in refused.json['error']
     batch = client.put('/api/stand/state', json={'version': before['version'],
         'data': proposal})
     assert batch.status_code == 200, batch.json
     conv_id = batch.json['data']['convs'][0]['crmConversionId']
     assert conv_id
+    saved = snapshot(client)
+    assert saved['data']['convs'][0]['bankFees'] == proposal['convs'][0]['bankFees']
+    altered = copy.deepcopy(saved['data'])
+    altered['convs'][0]['bankFees']['outgoing'] = 184
+    refused = client.put('/api/stand/state', json={'version': saved['version'], 'data': altered})
+    assert refused.status_code == 409
     conv = client.get(f'/api/conversions/{conv_id}').json['conversion']
     assert conv['account_key'] == 'flow_sole'
     assert conv['sources_rub'] == 30000
-    # Same formula as Sber: (30,000 - 0.3% - 40) / 100 = 298.70 USDT.
-    assert conv['expected_usdt'] == 298.7
+    assert conv['expected_usdt'] == 294.10
+    assert conv['held_rub'] == 590
+    assert conv['held_percent'] == 0
+    assert conv['held_fixed_rub'] == 590
     incoming_hash = uuid.uuid4().hex + uuid.uuid4().hex
     from stand_transfers import stand_wallet_address
     wallet = stand_wallet_address(proposal, 'grusha')
@@ -153,12 +197,12 @@ def test_crm_and_s14_flowsole_share_batch_and_profit(monkeypatch):
         assert (hash_value, network, receiver) == (incoming_hash, 'trc20', wallet)
         transfer_ts = sent_ts + 120000
         verified_at = datetime.utcfromtimestamp(transfer_ts / 1000).isoformat() + 'Z'
-        return {'status': 'confirmed', 'verifiedAmount': 298.7,
+        return {'status': 'confirmed', 'verifiedAmount': 294.10,
             'timestampMs': transfer_ts, 'verifiedAt': verified_at,
             'to': wallet, 'from': 'TVmgzMQ2zwV2DVPscBf98WRRdhrcpf5x5p'}
     monkeypatch.setattr(m, 'verify_transfer', verified)
     checked = client.post('/api/stand/incoming/check', json={
-        'dealId': 9301, 'hash': incoming_hash, 'network': 'TRC-20', 'amount': 298.7})
+        'dealId': 9301, 'hash': incoming_hash, 'network': 'TRC-20', 'amount': 294.10})
     assert checked.status_code == 200, checked.json
     assert checked.json['ledger']['free_usdt'] == 0
     current = snapshot(client)
@@ -170,13 +214,13 @@ def test_crm_and_s14_flowsole_share_batch_and_profit(monkeypatch):
         stored.data = json.dumps(forged)
         db.flush()
         with pytest.raises(ValueError, match='Ручной приход не совпадает'):
-            m._stand_conversion_income_shares(db, db.get(m.Conversion, conv_id), 298.7)
+            m._stand_conversion_income_shares(db, db.get(m.Conversion, conv_id), 294.10)
         db.rollback()
     finally:
         db.close()
     done = copy.deepcopy(current['data'])
     done['convs'][0]['status'] = 'received'
-    for source, share in zip(done['convs'][0]['sources'], [99.56, 199.14]):
+    for source, share in zip(done['convs'][0]['sources'], [98.03, 196.07]):
         source['usdtFact'] = share
     received = client.put('/api/stand/state', json={'version': current['version'],
         'data': done})
@@ -185,11 +229,11 @@ def test_crm_and_s14_flowsole_share_batch_and_profit(monkeypatch):
     db = m.get_session()
     try:
         deal = db.get(m.Deal, deal_id)
-        assert deal.payin_amount_usdt == 199.14
-        assert deal.profit_usdt == 49.14
+        assert deal.payin_amount_usdt == 196.07
+        assert deal.profit_usdt == 46.07
         tx = db.query(m.PayinTx).filter_by(tx_hash=incoming_hash).one()
         uses = db.query(m.PayinTxUse).filter_by(tx_id=tx.id).all()
-        assert sum(u.amount_usdt for u in uses) == 298.7
+        assert sum(u.amount_usdt for u in uses) == 294.10
         assert any(u.conversion_id == conv['id'] and u.stand_cnv_id == '1' for u in uses)
         report = client.get('/api/deals/ledger?status=all').json
         row = next(r for r in report['deals'] if r['id'] == deal_id)

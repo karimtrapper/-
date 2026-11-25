@@ -222,11 +222,21 @@ def prepare_after_rub(api):
     return edit(api, 'manager', requisites)
 
 
-def send_broker(api, wallet='company'):
+def send_broker(api, wallet='company', bank_fees=None):
     import time
     def handoff(s, d):
         rub = d['incomeAmount']; rate = float(d['rates']['broker'])
-        held = round(rub * .003 + 40, 2); sent = rub - held
+        source = {'dealId': d['id'], 'rub': rub}
+        if bank_fees is None:
+            held = round(rub * .003 + 40, 2)
+            fees = {'feeCtrl': round(rub*.001+40, 2), 'feeOurs': round(rub*.002, 2),
+                    'feePct': .3, 'feeFix': 40, 'feeCtrlPct': .1, 'feeOursPct': .2}
+        else:
+            held = round(sum(bank_fees.values()), 2)
+            fees = {'feeMode': 'sgb', 'bankFees': bank_fees, 'clientRubTotal': d['amountRub']}
+            source['clientRub'] = d['amountRub']
+        sent = round(rub - held, 2)
+        source['usdt'] = round(sent/rate, 2)
         d.update(cnvId=1, walletId=wallet)
         if d.get('prepay'):
             d['prepay']['brokerStep'] = 's18w'
@@ -235,9 +245,7 @@ def send_broker(api, wallet='company'):
         s['convs'] = [{'id': 1, 'walletId': wallet, 'broker': 'Synthetic broker',
             'rate': str(rate), 'status': 'sent', 'at': '13.10, 12:00', 'requestNo': 'TEST',
             'sentTs': int(time.time()*1000), 'rubTotal': rub, 'sent': sent, 'held': held,
-            'feeCtrl': round(rub*.001+40, 2), 'feeOurs': round(rub*.002, 2),
-            'feePct': .3, 'feeFix': 40, 'feeCtrlPct': .1, 'feeOursPct': .2,
-            'sources': [{'dealId': d['id'], 'rub': rub, 'usdt': round(sent/rate, 2)}], 'txs': []}]
+            **fees, 'sources': [source], 'txs': []}]
         s['incomes'][0]['cnvId'] = 1
     return edit(api, 'operator', handoff)
 
@@ -437,7 +445,9 @@ def test_live_1484_snapshot_s23_to_close_via_api_only(api, chain, monkeypatch):
     send_ipps(api, chain, personal=True)
     # Будущие ответы брокера и сети синтетические; сохранённые деньги не переписываются.
     edit(api, 'operator', lambda s,d: d['rates'].update(broker='85.6'))
-    send_broker(api, wallet='grusha')
+    sent = send_broker(api, wallet='grusha', bank_fees={
+        'incoming': 1520.71, 'outgoing': 1511.32, 'paymentOrder': 41, 'remainder': 0})
+    assert sent['data']['convs'][0]['sent'] == 495516.97
     receive_broker(api, chain, amount=5800)
     chain.append(tx(903, 5507.16, sender=COMPANY, to=d['prepay']['wallet']['addr'], ts=int(time.time()*1000)+1000))
     result = post(api, 'findir', '/api/stand/prepay/reimburse', dealId=1484, hash=chain.ref(903))

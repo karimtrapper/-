@@ -7,6 +7,37 @@ import re
 CENT = Decimal('0.01')
 
 
+def sgb_broker_quote(total, credits):
+    """Compute the SGB auto quote in kopecks, including the fee on each credit."""
+    def half_up(numerator, denominator):
+        return (2 * numerator + denominator) // (2 * denominator)
+
+    def fee(amount):
+        base = max(15000, half_up(amount, 400))  # 0.25%, minimum RUB 150
+        return base + half_up(base * 22, 100)
+
+    incoming = 0
+    for used, gross in credits:
+        used_kop, gross_kop = int(used * 100), int(gross * 100)
+        incoming += half_up(fee(gross_kop) * used_kop, gross_kop)
+    payment_order = 4100
+    available = int(total * 100) - incoming - payment_order
+    if available <= fee(1):
+        return None
+    low, high = 1, available
+    while low < high:
+        middle = (low + high + 1) // 2
+        if middle + fee(middle) <= available:
+            low = middle
+        else:
+            high = middle - 1
+    outgoing = fee(low)
+    fees = {'incoming': incoming, 'outgoing': outgoing, 'paymentOrder': payment_order,
+            'remainder': available - low - outgoing}
+    sent = low * CENT
+    return sent, {key: value * CENT for key, value in fees.items()}
+
+
 def money(value, *, positive=False):
     if isinstance(value, bool) or value is None:
         return None

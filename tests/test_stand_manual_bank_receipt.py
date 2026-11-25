@@ -547,13 +547,12 @@ def test_1485_handoff_operator_selects_flowsole_and_acknowledges_documents(monke
     # От подтверждения до s18w идём только через действия ролей, без правки БД.
     before = confirmed.json['data']
     after = copy.deepcopy(before)
-    sent, held, ctrl, ours = 9917.53, 69.97, 49.99, 19.98
     after['convs'] = [{'id': 1, 'name': 'CNV-0001', 'broker': 'QA Broker',
                        'requestNo': '41', 'rate': 100, 'status': 'sent', 'at': '13.10',
-                       'walletId': 'qa-wallet', 'rubTotal': 9987.5, 'sent': sent,
-                       'held': held, 'feeCtrl': ctrl, 'feeOurs': ours,
-                       'feePct': .3, 'feeFix': 40, 'feeCtrlPct': .1, 'feeOursPct': .2,
-                       'sources': [{'dealId': 1485, 'rub': 9987.5, 'usdt': 99.18}],
+                       'walletId': 'qa-wallet', 'rubTotal': 9987.5, 'clientRubTotal': 10000,
+                       'sent': 9580.50, 'held': 407, 'feeMode': 'sgb',
+                       'bankFees': {'incoming': 183, 'outgoing': 183, 'paymentOrder': 41, 'remainder': 0},
+                       'sources': [{'dealId': 1485, 'rub': 9987.5, 'clientRub': 10000, 'usdt': 95.81}],
                        'txs': [], 'sentTs': 1791880000000}]
     after['incomes'][0]['cnvId'] = 1
     after['incomes'][0]['sel'] = False  # convFormSave() снимал UI-галочку в том же PUT.

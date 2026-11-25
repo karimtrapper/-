@@ -25,7 +25,8 @@ import stand_object_store
 import binascii
 import stand_notify
 from sber_acquiring import parse_sber_acquiring
-from stand_funding import account_identity, income_account_identity, incoming_shares, legacy_account_identity
+from stand_funding import (account_identity, income_account_identity, incoming_shares,
+                           legacy_account_identity, sgb_broker_quote)
 from stand_funding import check_batch as _stand_check_batch_funding, check_state as _stand_check_funding_state
 import stand_prepay
 import wallet_policy
@@ -12668,6 +12669,54 @@ def _stand_broker_sent_time_problem(previous, conv, db=None):
     return None
 
 
+def _stand_broker_bank_credits(previous, state, board_sources):
+    """Read the account and full credits from the already registered bank receipts."""
+    old_deals = {d.get('id'): d for d in previous.get('deals') or []}
+    old_incomes = {str(i.get('id')): i for i in previous.get('incomes') or []}
+    deals = {d.get('id'): d for d in state.get('deals') or []}
+    keys, credits = set(), []
+    for source in board_sources:
+        deal_id = source['dealId']
+        for part in deals[deal_id]['payinParts']:
+            income = old_incomes.get(str(part['incId'])) or {}
+            gross = _stand_broker_sent_money(income.get('grossRub') or income.get('rub'))
+            if gross is None or income.get('dealId') != deal_id:
+                return None, []
+            keys.add(income_account_identity(income, old_deals.get(deal_id)))
+            credits.append((gross, gross))
+    return (next(iter(keys)), credits) if len(keys) == 1 else (None, [])
+
+
+def _stand_sgb_crm_credits(db, sources, rows=None, used=None):
+    """Use the original credit for the fee and the selected free portion for its share."""
+    if not sources:
+        return []
+    ids = {source['crmIncomeId'] for source in sources}
+    if db is None or len(ids) != len(sources):
+        return None
+    if rows is None:
+        rows = db.query(SberIncome).filter(SberIncome.id.in_(ids)).all()
+        used = _converted_by_income(db, ids)
+    rows = {row.id: row for row in rows}
+    credits = []
+    for source in sources:
+        row = rows.get(source['crmIncomeId'])
+        free = _stand_broker_sent_money(source.get('rub'))
+        gross = _stand_broker_sent_money(row.amount_rub) if row else None
+        if (gross is None or free is None or free > gross or row.excluded
+                or source.get('incomeId') != 'sber:' + row.uuid
+                or account_identity(_income_account_key(row)) != 'flow_sole'
+                or free != _stand_broker_sent_money(row.free_rub(used))):
+            return None
+        credits.append((free, gross))
+    return credits
+
+
+def _stand_sgb_fee_snapshot_matches(snapshot, fees):
+    return (isinstance(snapshot, dict) and snapshot.keys() == fees.keys()
+            and all(_amount(snapshot[key]) == value for key, value in fees.items()))
+
+
 def _stand_broker_handoff_problem(previous, state, before, deal, db=None):
     """Admission for the operator's RUB send attestation at s18 -> s18w."""
     from decimal import Decimal
@@ -12703,6 +12752,9 @@ def _stand_broker_handoff_problem(previous, state, before, deal, db=None):
     funding = _stand_check_batch_funding(state, conv, dispatch=False, strict_account=True)
     if funding:
         return funding
+    account_key, board_credits = _stand_broker_bank_credits(previous, state, board_sources)
+    if account_key is None:
+        return 'Не указан проверяемый счёт подтверждённого прихода'
     wallet_id = conv.get('walletId')
     wallets = [w for w in previous.get('wallets') or [] if w.get('id') == wallet_id]
     if (not wallet_id or len(wallets) != 1 or deal.get('walletId') != wallet_id):
@@ -12726,7 +12778,7 @@ def _stand_broker_handoff_problem(previous, state, before, deal, db=None):
     rub = sum((_amount(s.get('rub')) or Decimal(0) for s in sources), Decimal(0))
     if rub <= 0 or _amount(conv.get('rubTotal')) != rub:
         return 'Сумма отправки брокеру не совпадает с подтверждёнными приходами'
-    if (conv.get('clientRubTotal') is not None or conv.get('feeMode') == 'manual'
+    if (conv.get('clientRubTotal') is not None or conv.get('feeMode') in ('manual', 'sgb')
             or any(s.get('clientRub') is not None for s in sources)):
         old_deals = {d.get('id'): d for d in previous.get('deals') or []}
         client_total = Decimal(0)
@@ -12751,15 +12803,30 @@ def _stand_broker_handoff_problem(previous, state, before, deal, db=None):
     override = _stand_broker_sent_money(deal.get('brokerSentOverride')) if deal.get('brokerSentOverride') is not None else None
     if deal.get('brokerSentOverride') is not None and (override is None or override > rub):
         return 'Сумма отправки должна быть больше нуля и не превышать подтверждённые RUB'
+    legacy_fees = ('feeCtrl', 'feeOurs', 'feePct', 'feeFix', 'feeCtrlPct', 'feeOursPct')
     if override is not None:
         sent, held = override, rub - override
-        if (conv.get('feeMode') != 'manual' or any(conv.get(k) is not None for k in
-                ('feeCtrl', 'feeOurs', 'feePct', 'feeFix', 'feeCtrlPct', 'feeOursPct'))):
+        if (conv.get('feeMode') != 'manual' or 'bankFees' in conv
+                or any(conv.get(key) is not None for key in legacy_fees)):
             return 'Ручная отправка не должна содержать расчётные удержания'
         facts = {'sent': sent, 'held': held}
+    elif account_key == 'flow_sole':
+        crm_credits = _stand_sgb_crm_credits(db, [s for s in sources if s.get('dealId') is None])
+        if crm_credits is None:
+            return 'Выбранные поступления CRM недоступны для расчёта комиссии СГБ'
+        quote = sgb_broker_quote(rub, board_credits + crm_credits)
+        if quote is None:
+            return 'Подтверждённых RUB недостаточно для автоматической отправки по тарифу СГБ'
+        sent, fees = quote
+        if (conv.get('feeMode') != 'sgb' or any(conv.get(k) is not None for k in legacy_fees)
+                or not _stand_sgb_fee_snapshot_matches(conv.get('bankFees'), fees)):
+            return 'Расчёт комиссий СГБ не совпадает с подтверждёнными поступлениями'
+        facts = {'sent': sent, 'held': rub - sent}
     else:
         if conv.get('feeMode') == 'manual':
             return 'Ручная отправка требует сохранённой суммы сделки'
+        if conv.get('feeMode') == 'sgb' or conv.get('bankFees') is not None:
+            return 'Расчёт комиссий СГБ доступен только для поступлений на счёт Flow Sole'
         ctrl = js_round(rub * Decimal('.001') + 40)
         ours = js_round(rub * Decimal('.002'))
         if ctrl is None or ours is None:
@@ -13547,11 +13614,25 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
     if any(c.get('recipientWarnings') and c.get('id') not in new_convs
            for c in previous.get('convs') or []):
         return 'Сверку адреса получения фиксирует только сервер'
+    old = {d.get('id'): d for d in previous.get('deals', [])}
+    broker_handoffs = set()
+    for deal in new_state.get('deals') or []:
+        before = old.get(deal.get('id')) or {}
+        start = (before.get('prepay') or {}).get('brokerStep', before.get('step'))
+        end = (deal.get('prepay') or {}).get('brokerStep', deal.get('step'))
+        if (start, end) == ('s18', 's18w'):
+            broker_handoffs.add(deal.get('cnvId'))
     for conv in new_state.get('convs') or []:
         before_conv = prior_convs.get(conv.get('id')) or {}
         if before_conv.get('recipientWarnings') != conv.get('recipientWarnings'):
             return 'Сверку адреса получения фиксирует только сервер'
-    old = {d.get('id'): d for d in previous.get('deals', [])}
+        if conv.get('feeMode') == 'sgb' or 'bankFees' in conv:
+            if before_conv:
+                if (before_conv.get('feeMode') != conv.get('feeMode')
+                        or before_conv.get('bankFees') != conv.get('bankFees')):
+                    return 'Расчёт комиссий СГБ в отправленной пачке нельзя менять'
+            elif conv.get('id') not in broker_handoffs:
+                return 'Расчёт комиссий СГБ сохраняется при отправке рублей брокеру'
     for deal in new_state.get('deals') or []:
         before = old.get(deal.get('id'))
         auto_payment = deal.get('autoPayment', False)
@@ -13963,7 +14044,7 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
                 return 'Нет подтверждённого ручного прихода'
     for old_conv in previous.get('convs', []):
         new_conv = new_convs.get(old_conv.get('id'))
-        if old_conv.get('feeMode') == 'manual' or old_conv.get('clientRubTotal') is not None:
+        if old_conv.get('feeMode') in ('manual', 'sgb') or old_conv.get('clientRubTotal') is not None:
             # После отправки меняются только приход USDT, его статус и кошелёк
             # через существующий маршрут. Заявку и плановые доли фиксируем целиком.
             mutable = {'walletId', 'status', 'receivedAt', 'txs', 'sources'}
@@ -19886,7 +19967,7 @@ def stand_s18_sber_candidates():
             result.append({'id': inc.id, 'uuid': inc.uuid, 'date': inc.operation_date,
                            'accountKey': _income_account_key(inc),
                            'accountLabel': _account_label(_income_account_key(inc)),
-                           'payer': inc.payer or '', 'rub': free,
+                           'payer': inc.payer or '', 'rub': free, 'grossRub': inc.amount_rub,
                            'dealId': inc.claimed_deal_id,
                            'client': deal.client_name if deal else None,
                            # Себестоимость из CRM нужна только для оценки прибыли
@@ -20010,7 +20091,7 @@ def _stand_sync_crm_conversions(db, previous, state):
                 else:
                     raise ValueError('Поступление не найдено в общем реестре')
         rows = db.query(SberIncome).filter(SberIncome.uuid.in_(sorted(ids_by_uuid))).order_by(
-            SberIncome.id).with_for_update().all()
+            SberIncome.id).populate_existing().with_for_update().all()
         if len(rows) != len(ids_by_uuid):
             raise ValueError('Поступление Сбера не найдено в CRM')
         if len({account_identity(_income_account_key(row)) for row in rows}) != 1:
@@ -20018,12 +20099,23 @@ def _stand_sync_crm_conversions(db, previous, state):
         used = _converted_by_income(db, [r.id for r in rows])
         if abs(sum(r.free_rub(used) for r in rows) - float(item.get('rubTotal') or 0)) > .01:
             raise ValueError('Сумма поступлений CRM не совпадает с отправленной пачкой')
+        if item.get('feeMode') == 'sgb' and extras:
+            # Recheck original amounts and free portions under the same ordered
+            # row locks as other conversions sharing this registry.
+            board_sources = [s for s in item['sources'] if s.get('dealId') is not None]
+            _, board_credits = _stand_broker_bank_credits(previous, state, board_sources)
+            crm_credits = _stand_sgb_crm_credits(db, extras, rows, used)
+            quote = sgb_broker_quote(_amount(item['rubTotal']), board_credits + crm_credits) if crm_credits else None
+            if (quote is None or _amount(item['sent']) != quote[0]
+                    or not _stand_sgb_fee_snapshot_matches(item.get('bankFees'), quote[1])):
+                raise ValueError('Поступления CRM изменились, пересчитайте комиссию СГБ')
+        fixed_held = item.get('feeMode') in ('manual', 'sgb')
         crm = Conversion(broker=item.get('broker'), request_no=item.get('requestNo'),
                          sent_at=(datetime.utcfromtimestamp(item['sentTs'] / 1000)
                                   if item.get('clientRubTotal') is not None else datetime.utcnow()),
                          rate_rub_usdt=float(item.get('rate')),
-                         held_percent=0 if item.get('feeMode') == 'manual' else .3,
-                         held_fixed_rub=float(item.get('held') or 0) if item.get('feeMode') == 'manual' else 40,
+                         held_percent=0 if fixed_held else .3,
+                         held_fixed_rub=float(item.get('held') or 0) if fixed_held else 40,
                          amount_rub_sent=float(item.get('sent')),
                          status=ConversionStatus.SENT,
                          created_by=flask_session.get('username'))
