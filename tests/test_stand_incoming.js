@@ -87,7 +87,7 @@ function incomingFixture(){
   const d={id:1,demoTransfers:false},c={id:7,walletId:'a',txs:[]};
   const S={open:1,role:'operator',convs:[c]},pending=[],renders=[];
   const ctx={S,STAND:true,deal:()=>d,convOf:()=>c,walletById:id=>({addr:id==='a'?'TWalletA':'TWalletB'}),
-    txPool:()=>[],txUsed:()=>false,demoAllowed:()=>false,htmlText:String,render:()=>renders.push(ctx.cnvIncomingStatus(ctx.cnvIncomingChoices(d,c))),
+    txPool:()=>[],txUsed:()=>false,demoAllowed:()=>false,htmlText:String,cnvRenderIncoming:()=>renders.push(ctx.cnvIncomingStatus(ctx.cnvIncomingChoices(d,c))),
     toast:()=>{},fetch:url=>{const next=deferred();pending.push({url,...next});return next.promise;},encodeURIComponent};
   vm.createContext(ctx);
   for(const name of ['cnvIncomingKey','cnvIncomingChoices','cnvIncomingStatus','cnvTxLoad']){

@@ -5,6 +5,7 @@ import uuid
 from decimal import Decimal
 
 import pytest
+from sqlalchemy import event
 import app as m
 from tests.test_stand_transfers import authenticated_stand_client, _put_board, chain, Response, FROM, TO
 from stand_transfers import verify_transfer
@@ -53,6 +54,45 @@ def test_split_200_and_unlink_returns_shared_remainder(split):
     assert ledger(cli, h)['free_usdt'] == 100
     assert check(3, amount=100).status_code == 200
     assert ledger(cli, h)['free_usdt'] == 0
+
+
+@pytest.mark.parametrize('stale', [{'version': -1}, {'cnvId': 2}])
+def test_unlink_rejects_stale_board_or_batch(split, stale):
+    cli, check, h, _ = split
+    attached = check(amount=100)
+    assert attached.status_code == 200
+    payload = {'dealId': 1, 'cnvId': 1, 'version': attached.json['version'],
+               'hash': h, 'reason': 'перераспределение'}
+    denied = cli.post('/api/stand/incoming/unlink', json={**payload, **stale})
+    assert denied.status_code == 409
+    assert ledger(cli, h)['free_usdt'] == 100
+    saved = cli.get('/api/stand/state').json
+    assert saved['version'] == attached.json['version']
+    assert saved['data']['convs'][0]['txs'][0]['hash'] == h
+
+
+def test_unlink_preserves_allocation_already_moved_to_crm(split):
+    cli, check, h, _ = split
+    assert check(amount=100).status_code == 200
+    with m.get_session() as db:
+        row = m._stand_row(db)
+        deal = m.Deal(client_name='CRM allocation', deal_type=m.DealType.PAY_IN)
+        db.add(deal)
+        db.flush()
+        db.info['stand_payin_origin'] = (row.generation, '1')
+        try:
+            m._sync_payin_tx_uses(db, deal, [{'hash': h, 'amount_usdt': 100}])
+            deal_id = deal.id
+            db.commit()
+        finally:
+            db.info.pop('stand_payin_origin', None)
+
+    denied = cli.post('/api/stand/incoming/unlink', json={
+        'dealId': 1, 'hash': h, 'reason': 'перераспределение'})
+    assert denied.status_code == 409
+    assert ledger(cli, h)['free_usdt'] == 100
+    assert ledger(cli, h)['allocations'][0]['deal_ids'] == [deal_id]
+    assert cli.get('/api/stand/state').json['data']['convs'][0]['txs'][0]['hash'] == h
 
 
 def test_wallet_is_verified_for_each_batch(split):
@@ -317,3 +357,102 @@ def test_new_hash_preview_keeps_full_six_decimal_remainder(split, monkeypatch):
     assert preview.json['ledger']['free_usdt'] == 200.123456
     assert preview.json['ledger']['amount_usdt'] == 200.123456
     assert check().json['tx']['amount'] == 200.123456
+
+
+def test_candidate_list_batches_canonical_ledger_reads(split, monkeypatch):
+    import stand_transfer_discovery
+
+    cli, _, _, state = split
+    prefix = uuid.uuid4().hex
+    hashes = [prefix + f'{index:032x}' for index in range(405)]
+    state['convs'][0]['txs'] = [{'hash': hashes[0].upper()}]
+    _put_board(state)
+
+    db = m.get_session()
+    try:
+        for tx_hash, used in (('0X' + hashes[399].upper(), 0.123456), (hashes[404], 1.234567)):
+            tx = m.PayinTx(tx_hash=tx_hash, amount_usdt=1.234567)
+            db.add(tx)
+            db.flush()
+            db.add(m.PayinTxUse(tx_id=tx.id, stand_generation='other', stand_cnv_id='2', amount_usdt=used))
+        db.commit()
+    finally:
+        db.close()
+
+    candidates = [{'hash': h, 'amount': Decimal('1.234567'), 'from': FROM,
+                   'timestamp_ms': state['convs'][0]['sentTs'] - index}
+                  for index, h in enumerate(hashes)]
+    monkeypatch.setattr(stand_transfer_discovery, 'discover_transfers', lambda **kwargs: {
+        'status': 'incomplete', 'candidates': candidates})
+    queries = []
+
+    def count_ledger_reads(conn, cursor, statement, parameters, context, executemany):
+        if 'payin_txs' in statement.lower():
+            queries.append(statement)
+
+    event.listen(m.engine, 'before_cursor_execute', count_ledger_reads)
+    try:
+        result = cli.get('/api/stand/incoming/candidates?dealId=1')
+    finally:
+        event.remove(m.engine, 'before_cursor_execute', count_ledger_reads)
+    assert result.status_code == 200, result.json
+    assert result.json['complete'] is False
+    rows = result.json['txs']
+    assert [row['hash'] for row in rows] == hashes[1:-1]
+    assert rows[398]['free_usdt'] == 1.111111
+    assert rows[398]['early'] is True
+    assert len(queries) == 2
+
+    db = m.get_session()
+    try:
+        db.add(m.PayinTx(tx_hash=hashes[399], amount_usdt=1.234567))
+        db.commit()
+    finally:
+        db.close()
+    ambiguous = cli.get('/api/stand/incoming/candidates?dealId=1')
+    assert ambiguous.status_code == 409
+    assert 'несколько написаний' in ambiguous.json['error']
+
+
+def test_registry_batches_legacy_and_exact_balances(split):
+    cli, _, _, _ = split
+    prefix = uuid.uuid4().hex
+    db = m.get_session()
+    try:
+        deal = m.Deal(client_name='ledger response', deal_type=m.DealType.PAY_IN)
+        old = m.PayinTx(tx_hash=prefix + 'a' * 32, amount_usdt=9.999612)
+        exact = m.PayinTx(tx_hash=prefix + 'b' * 32, amount_usdt=9.999612)
+        db.add_all([deal, old, exact])
+        db.add_all(m.PayinTx(tx_hash=prefix + f'{index:032x}', amount_usdt=3)
+                   for index in range(35))
+        db.flush()
+        db.add_all([
+            m.PayinTxUse(tx_id=old.id, deal_id=deal.id, amount_usdt=5.0067),
+            m.PayinTxUse(tx_id=exact.id, deal_id=deal.id, amount_usdt=5.0067),
+            m.PayinTxUse(tx_id=exact.id, stand_generation='other', stand_cnv_id='2', amount_usdt=1.000456),
+        ])
+        deal_id, old_hash, exact_hash = deal.id, old.tx_hash, exact.tx_hash
+        db.commit()
+    finally:
+        db.close()
+
+    queries = []
+
+    def count_ledger_reads(conn, cursor, statement, parameters, context, executemany):
+        if 'payin_tx' in statement.lower():
+            queries.append(statement)
+
+    event.listen(m.engine, 'before_cursor_execute', count_ledger_reads)
+    try:
+        result = cli.get('/api/payin-txs', query_string={'q': prefix, 'unallocated': '1'})
+    finally:
+        event.remove(m.engine, 'before_cursor_execute', count_ledger_reads)
+    assert result.status_code == 200, result.json
+    assert len(queries) == 2
+    rows = {tx['tx_hash']: tx for tx in result.json['txs']}
+    assert len(rows) == 37
+    assert (rows[old_hash]['used_usdt'], rows[old_hash]['free_usdt']) == (5.01, 4.99)
+    assert (rows[exact_hash]['used_usdt'], rows[exact_hash]['free_usdt']) == (6.007156, 3.992456)
+    assert rows[exact_hash]['deal_ids'] == sorted([deal_id, 2])
+    reserve = next(row for row in rows[exact_hash]['allocations'] if row['reserved'])
+    assert reserve['deal_codes'] == ['СД-1485']

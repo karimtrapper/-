@@ -1304,12 +1304,17 @@ class PayinTx(Base):
             PayinTxUse.tx_id == self.id, PayinTxUse.stand_generation.isnot(None)).first()
         return max(0, round((self.amount_usdt or 0) - self.used_usdt(), 6 if reserved else 2))
 
-    def to_dict(self):
+    def to_dict(self, *, uses=None, balance=None):
+        if balance is None:
+            balance = round(self.amount_usdt or 0, 2), self.used_usdt(), self.free_usdt()
+        if uses is None:
+            uses = self.uses or []
+        amount, used, free = balance
         return {'id': self.id, 'tx_hash': self.tx_hash,
                 'network': self.network or 'trc20', 'to_address': self.to_address,
-                'amount_usdt': round(self.amount_usdt or 0, 2), 'source': self.source,
-                'used_usdt': self.used_usdt(), 'free_usdt': self.free_usdt(),
-                'deal_ids': sorted({u.deal_id for u in (self.uses or []) if u.deal_id}),
+                'amount_usdt': amount, 'source': self.source,
+                'used_usdt': used, 'free_usdt': free,
+                'deal_ids': sorted({u.deal_id for u in uses if u.deal_id}),
                 'tx_time': self.tx_time.isoformat() if self.tx_time else None,
                 'notes': self.notes,
                 'created_at': self.created_at.isoformat() if self.created_at else None}
@@ -16124,9 +16129,31 @@ def _payin_find(db, value, lock=True):
 
 def _payin_exact_used(db, tx):
     """Money comparisons never use the two-decimal presentation total."""
-    from decimal import Decimal
-    return sum((Decimal(str(u.amount_usdt or 0)) for u in
-                db.query(PayinTxUse).filter_by(tx_id=tx.id).all()), Decimal(0))
+    uses = db.query(PayinTxUse).filter_by(tx_id=tx.id).all()
+    return _payin_sum_uses(uses)
+
+
+def _payin_sum_uses(uses):
+    return sum((Decimal(str(u.amount_usdt or 0)) for u in uses), Decimal(0))
+
+
+def _payin_used_by_hashes(db, hashes):
+    """Read candidate balances in batches, including legacy case/0x forms."""
+    from sqlalchemy import func
+    used = {}
+    tx_ids = {}
+    keys = list(dict.fromkeys(hashes))
+    for offset in range(0, len(keys), 400):
+        chunk = keys[offset:offset + 400]
+        rows = (db.query(PayinTx.id, PayinTx.tx_hash, PayinTxUse.amount_usdt)
+                .outerjoin(PayinTxUse, PayinTxUse.tx_id == PayinTx.id)
+                .filter(func.lower(PayinTx.tx_hash).in_(chunk + ['0x' + key for key in chunk])))
+        for tx_id, tx_hash, amount in rows:
+            key = _payin_hash_key(tx_hash)
+            if tx_ids.setdefault(key, tx_id) != tx_id:
+                raise ValueError('В реестре несколько написаний одного хеша — нужна сверка долей')
+            used[key] = used.get(key, Decimal(0)) + Decimal(str(amount or 0))
+    return used
 
 
 def _payin_ledger_hint(info):
@@ -16136,14 +16163,19 @@ def _payin_ledger_hint(info):
             + f", свободно ${info['free_usdt']:.2f} из ${info['amount_usdt']:.2f}")
 
 
-def _payin_ledger_info(db, tx, state=None, *, exact=False):
-    info = tx.to_dict()
-    uses = db.query(PayinTxUse).filter_by(tx_id=tx.id).all()
+def _payin_ledger_info(db, tx, state=None, *, exact=False, uses=None, legacy_sum=None):
+    if uses is None:
+        uses = db.query(PayinTxUse).filter_by(tx_id=tx.id).all()
     if exact or any(u.stand_generation for u in uses):
-        used = _payin_exact_used(db, tx)
-        from decimal import Decimal
-        info.update(used_usdt=float(used), amount_usdt=tx.amount_usdt,
-                    free_usdt=float(max(Decimal(0), Decimal(str(tx.amount_usdt)) - used)))
+        used = _payin_sum_uses(uses)
+        free = max(Decimal(0), Decimal(str(tx.amount_usdt)) - used)
+        balance = tx.amount_usdt, float(used), float(free)
+    else:
+        precision = 6 if any(u.stand_generation is not None for u in uses) else 2
+        used = tx.used_usdt() if legacy_sum is None else round(legacy_sum, precision)
+        balance = (round(tx.amount_usdt or 0, 2), used,
+                   max(0, round((tx.amount_usdt or 0) - used, precision)))
+    info = tx.to_dict(uses=uses, balance=balance)
     if state is None and STAND_MODE:
         row = db.query(StandState).filter_by(id=1).first()
         state = json.loads(row.data or '{}') if row else {}
@@ -16274,14 +16306,14 @@ def stand_incoming_candidates():
             after_ts=cutoff, cache_ttl=30)
         if found['status'] == 'unavailable':
             return jsonify(success=False, error='TronScan не ответил — обновите список позже'), 503
+        candidates = found['candidates']
+        used = _payin_used_by_hashes(db, (candidate['hash'] for candidate in candidates))
+        attached = {_payin_hash_key(t.get('hash')) for t in conv.get('txs') or []}
         rows = []
-        for candidate in found['candidates']:
-            tx = _payin_find(db, candidate['hash'], lock=False)
+        for candidate in candidates:
             amount = candidate['amount']
-            used = _payin_exact_used(db, tx) if tx else Decimal(0)
-            free = max(Decimal(0), amount - used)
-            if free <= 0 or any(_payin_hash_key(t.get('hash')) == candidate['hash']
-                                for t in conv.get('txs') or []):
+            free = amount - used.get(candidate['hash'], Decimal(0))
+            if free <= 0 or candidate['hash'] in attached:
                 continue
             rows.append({'hash': candidate['hash'], 'network': 'trc20',
                          'amount_usdt': float(amount), 'free_usdt': float(free),
@@ -16386,9 +16418,10 @@ def stand_incoming_check():
         ledger_tx.to_address = actual_receiver
         ledger_tx.tx_time = datetime.utcfromtimestamp(checked['timestampMs'] / 1000) if checked.get('timestampMs') else None
         db.flush()
-        used = _payin_exact_used(db, ledger_tx)
+        uses = db.query(PayinTxUse).filter_by(tx_id=ledger_tx.id).all()
+        used = _payin_sum_uses(uses)
         remaining = max(Decimal(0), total - used)
-        info = _payin_ledger_info(db, ledger_tx, state, exact=True)
+        info = _payin_ledger_info(db, ledger_tx, state, exact=True, uses=uses)
         if used > total + Decimal('0.005'):
             return jsonify(success=False, error='Превышена сумма перевода: ' + _payin_ledger_hint(info), ledger=info), 409
         if data.get('preview') is True:
@@ -16431,8 +16464,10 @@ def stand_incoming_check():
         row.version = (row.version or 0) + 1
         row.updated_by = 'проверка прихода USDT'
         row.updated_at = datetime.utcnow()
+        version = row.version
+        info = _payin_ledger_info(db, ledger_tx, state, exact=True, uses=[*uses, use])
         db.commit()
-        return jsonify({'success': True, 'tx': tx, 'version': row.version, 'data': state, 'ledger': _payin_ledger_info(db, ledger_tx, state, exact=True)})
+        return jsonify(success=True, tx=tx, version=version, data=state, ledger=info)
     except ValueError as exc:
         db.rollback()
         return jsonify(success=False, error=str(exc)), 409
@@ -16689,6 +16724,12 @@ def stand_incoming_unlink():
         conv = next((c for c in state.get('convs', []) if c.get('id') == (deal or {}).get('cnvId')), None)
         if not deal or not conv:
             return jsonify({'success': False, 'error': 'Пачка не найдена'}), 404
+        if (('version' in data and data['version'] != row.version) or
+                ('cnvId' in data and data['cnvId'] != conv.get('id'))):
+            return jsonify(success=False, error='Пачка изменилась. Обновите карточку и повторите отвязку.'), 409
+        txs = conv.get('txs') or []
+        if not any(t.get('hash') == tx_hash for t in txs):
+            return jsonify({'success': False, 'error': 'Такого прихода в пачке нет'}), 404
         members = [deals.get(s.get('dealId')) for s in conv.get('sources') or []]
         members = [m for m in members if m]
         main = next((m for m in members if m.get('step') in ('s18w', 's22')), deal)
@@ -16717,12 +16758,10 @@ def stand_incoming_unlink():
             for use in owned:
                 db.delete(use)
             db.flush()
-        before = len(conv.get('txs') or [])
-        conv['txs'] = [t for t in conv.get('txs') or [] if t.get('hash') != tx_hash]
-        if len(conv['txs']) == before:
-            return jsonify({'success': False, 'error': 'Такого прихода в пачке нет'}), 404
+        conv['txs'] = [t for t in txs if t.get('hash') != tx_hash]
         stamp = stand_now().strftime('%d.%m, %H:%M')
-        entry = lambda text: {'ts': stamp, 'at': int(time.time() * 1000), 'role': role, 'text': text}
+        entry = lambda text: {'ts': stamp, 'at': int(time.time() * 1000), 'role': role,
+                              'by': flask_session.get('user_id'), 'text': text}
         if conv.get('status') == 'received':
             conv['status'] = 'sent'
             conv.pop('receivedAt', None)
@@ -16741,8 +16780,9 @@ def stand_incoming_unlink():
         row.version = (row.version or 0) + 1
         row.updated_by = 'отвязка прихода USDT'
         row.updated_at = datetime.utcnow()
+        response = {'success': True, 'version': row.version, 'data': _stand_strip_files(state)}
         db.commit()
-        return jsonify({'success': True, 'version': row.version, 'data': state})
+        return jsonify(response)
     finally:
         db.close()
 
@@ -19741,19 +19781,34 @@ def list_payin_txs():
     ?unallocated=1 — только переводы с непустым остатком: это и есть ответ на
     «деньги обменяли или они ещё лежат». ?q= — поиск по хэшу.
     """
+    from sqlalchemy import func
     session = get_session()
     try:
+        state = None
         if STAND_MODE:
             if engine.dialect.name == 'sqlite':
                 session.execute(text('BEGIN IMMEDIATE'))
             row = _stand_row(session, lock=True)
-            _stand_import_legacy_payins(session, row, json.loads(row.data or '{}'))
+            state = json.loads(row.data or '{}')
+            _stand_import_legacy_payins(session, row, state)
             session.commit()
         q = session.query(PayinTx).order_by(PayinTx.created_at.desc(), PayinTx.id.desc())
         needle = (request.args.get('q') or '').strip()
         if needle:
             q = q.filter(PayinTx.tx_hash.ilike(f'%{needle}%'))
-        rows = [_payin_ledger_info(session, t) for t in q.limit(500).all()]
+        txs = q.limit(500).all()
+        uses_by_tx = {}
+        sums_by_tx = {}
+        if txs:
+            uses = (session.query(PayinTxUse, func.sum(PayinTxUse.amount_usdt).over(
+                    partition_by=PayinTxUse.tx_id))
+                    .filter(PayinTxUse.tx_id.in_([tx.id for tx in txs]))
+                    .order_by(PayinTxUse.id))
+            for use, total in uses:
+                uses_by_tx.setdefault(use.tx_id, []).append(use)
+                sums_by_tx[use.tx_id] = total or 0
+        rows = [_payin_ledger_info(session, tx, state, uses=uses_by_tx.get(tx.id, ()),
+                                  legacy_sum=sums_by_tx.get(tx.id, 0)) for tx in txs]
         if request.args.get('unallocated') == '1':
             rows = [r for r in rows if r['free_usdt'] > 0.01]
         return jsonify({'success': True, 'txs': rows[:300]})

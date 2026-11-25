@@ -435,6 +435,7 @@ a.hash:hover{background:#BAE6FD}
   .manual-close-screen>.row:last-child>.btn-outline{display:none}
   .manual-close-screen>.row:last-child>.btn-primary{width:100%;min-height:44px}
   #app .manual-close-screen .hashbox .hrow .btn{min-height:44px}
+  #app .broker-incoming-hashes .hrow .btn,#app .broker-incoming-hashes .hrow input{min-height:44px}
 }
 /* адрес/хеш — всегда одна строка; подпись доли переносится на следующую строку блока, а не ломает адрес.
    Цвет — токен текста, не цвет ссылки браузера по умолчанию (design-gate: #0000EE вне палитры). */
@@ -6445,14 +6446,19 @@ document.addEventListener('input',e=>{const t=e.target;
 document.addEventListener('pointerdown',e=>{
   lastPointer=Date.now();
   brokerSentSubmitPointer=!!e.target?.closest?.('#b_sent_submit');
+  if(e.isPrimary&&document.getElementById('cnv_incoming'))incomingPointerDown=true;
 },true);
 document.addEventListener('click',()=>{brokerSentSubmitPointer=false;});
 document.addEventListener('pointerup',e=>{
   if(!e.target?.closest?.('#b_sent_submit'))brokerSentSubmitPointer=false;
   else setTimeout(()=>{brokerSentSubmitPointer=false;},1500);
+  if(e.isPrimary)cnvReleaseIncomingPointer();
 },true);
-document.addEventListener('pointercancel',()=>{brokerSentSubmitPointer=false;},true);
-window.addEventListener('blur',()=>{brokerSentSubmitPointer=false;});
+document.addEventListener('pointercancel',e=>{
+  brokerSentSubmitPointer=false;
+  if(e.isPrimary)cnvReleaseIncomingPointer();
+},true);
+window.addEventListener('blur',()=>{brokerSentSubmitPointer=false;cnvReleaseIncomingPointer();});
 /* Выпадающие списки без обработчика тоже читаются только по кнопке — брокер на
    «Отправке брокеру» сбрасывался на Tradex при каждой перерисовке (раскадровка 27.09) */
 document.addEventListener('change',e=>{const t=e.target;
@@ -10069,6 +10075,32 @@ function cnvIncomingStatus(choices,d){
   if(!count)return '<p class="fh" role="status">За последние 14 дней свободных входящих переводов не найдено. Обновите список позже или проверьте полный хеш вручную.</p>';
   return '';
 }
+function cnvIncomingSelect(d,choices){
+  const state=S.incomingLoadState?.key===choices.key?S.incomingLoadState.status:null;
+  return `<label class="fl" for="cnv_incoming_select">Выбрать из входящих</label>
+    <select class="fc" id="cnv_incoming_select" onchange="if(this.value)cnvTxPick(${d.id},this.value)">
+      <option value="">— входящие переводы —</option>
+      ${choices.ledger.map(t=>`<option value="ledger:${t.id}">${esc(cnvTxOptionLabel(t))}$${t.amount_usdt.toFixed(2)} · ${esc(t.tx_hash)}</option>`).join('')}
+      ${choices.chain.map(t=>`<option value="chain:${t.hash}">${esc(cnvTxTime(t.timestamp_ms))} · $${t.amount_usdt.toFixed(2)} · ${esc(t.from_address)} · ${esc(t.hash.slice(0,12))}… · свободно $${t.free_usdt.toFixed(2)} из $${t.amount_usdt.toFixed(2)}${t.early?' · раньше отправки рублей':''}</option>`).join('')}
+      ${choices.demo.map(t=>`<option value="${t.id}">${usd(t.amount)} · ${t.net} · ${t.at} · ${t.hash}</option>`).join('')}
+    </select><button class="btn btn-outline btn-sm" ${state==='loading'?'disabled':''} onclick="cnvTxLoad(${d.id})">${state==='error'?'Повторить загрузку':'Обновить список'}</button>
+    ${cnvIncomingStatus(choices,d)}`;
+}
+function cnvRenderIncoming(id){
+  const target=document.getElementById('cnv_incoming');
+  if(S.open!==id||!target)return;
+  /* Строка статуса меняет высоту формы. Обновляем после завершения клика. */
+  if(incomingPointerDown){incomingDeferredRender=id;return;}
+  const d=deal(id);
+  if(d)target.innerHTML=cnvIncomingSelect(d,cnvIncomingChoices(d,convOf(d)));
+}
+function cnvReleaseIncomingPointer(){
+  incomingPointerDown=false;
+  const id=incomingDeferredRender;
+  incomingDeferredRender=null;
+  if(id!==null)setTimeout(()=>cnvRenderIncoming(id),0);
+}
+let incomingPointerDown=false, incomingDeferredRender=null;
 let incomingRequest=null, incomingRequestSeq=0;
 function cnvTxLoad(id){
   const c=convOf(deal(id));if(!c)return Promise.resolve();
@@ -10077,8 +10109,8 @@ function cnvTxLoad(id){
   const seq=++incomingRequestSeq;
   S.incomingLoadFor=key;
   S.incomingLoadState={key,status:'loading'};
-  render();
-  const current=()=>seq===incomingRequestSeq&&S.open===id&&cnvIncomingKey(convOf(deal(id))||{})===key;
+  cnvRenderIncoming(id);
+  const current=()=>seq===incomingRequestSeq&&S.open===id&&cnvIncomingKey(convOf(deal(id)||{})||{})===key;
   const load=async(url,kind)=>{
     try{
       const response=await fetch(url,{credentials:'same-origin'}), data=await response.json();
@@ -10086,7 +10118,7 @@ function cnvTxLoad(id){
       if(current()){
         if(kind==='реестр')S.incomingLedgerRows={key,rows:data.txs||[]};
         else S.incomingChainRows={key,cnvId,rows:data.txs||[],complete:data.complete};
-        render();
+        cnvRenderIncoming(id);
       }
       return data;
     }catch(e){return {error:e.message||'Не удалось загрузить '+kind};}
@@ -10098,7 +10130,7 @@ function cnvTxLoad(id){
     if(current()){
       const error=ledger.error||chain.error;
       S.incomingLoadState={key,status:error?'error':'ready',error};
-      render();
+      cnvRenderIncoming(id);
       if(!error&&!chain.complete)toast('TronScan показал часть переводов. Обновите список позже, если нужного нет.');
     }else if(seq===incomingRequestSeq){S.incomingLoadFor=null;S.incomingLoadState=null;}
     if(incomingRequest?.seq===seq)incomingRequest=null;
@@ -10124,17 +10156,46 @@ function cnvTxPick(id,txId){
   c.txs=c.txs||[];c.txs.push(Object.assign({},t,cnvTo(c)));
   save();render();toast('DEMO: добавлен тестовый приход '+usd(t.amount));
 }
-function cnvTxDel(id,i){const c=convOf(deal(id));if(!c)return;const t=(c.txs||[])[i];if(!t)return;
-  /* подтверждённый сетью приход через общее сохранение не убрать — это защита;
-     отвязка идёт отдельным действием с причиной (Карим, 25.09) */
-  if(t.status==='confirmed'||c.status==='received'){S.txUnlink=t.hash;render();return;}
-  c.txs.splice(i,1);save();render();}
-async function cnvTxUnlink(id,i){
-  const c=convOf(deal(id)), t=c&&(c.txs||[])[i]; if(!t)return;
-  const reason=String(val('txr_'+i)||'').trim();
+function cnvTxUnlinkForm(d,c,t){
+  const request=S.txUnlink;
+  if(request?.dealId!==d.id||request.cnvId!==c.id||request.hash!==t.hash)return '';
+  return `<div class="hrow" style="margin:-2px 0 8px">
+    <input class="fc" id="tx_unlink_reason" aria-label="Причина отвязки"
+      value="${htmlText(request.reason)}" placeholder="Укажите причину отвязки" oninput="S.txUnlink.reason=this.value">
+    <button class="btn btn-secondary btn-sm" onclick="cnvTxUnlink(${d.id})">Отвязать</button>
+    <button class="btn btn-outline btn-sm" onclick="S.txUnlink=null;render()">Отмена</button></div>`;
+}
+function cnvTxDel(id,hash){
+  const c=convOf(deal(id)), i=c?.txs?.findIndex(t=>t.hash===hash);
+  if(i==null||i<0)return;
+  const t=c.txs[i];
+  if(t.status==='confirmed'||t.ledgerUseId||c.status==='received'){
+    if(S.txUnlink?.dealId!==id||S.txUnlink.cnvId!==c.id||S.txUnlink.hash!==hash){
+      S.txUnlink={dealId:id,cnvId:c.id,hash,reason:''};
+      render();
+    }
+    document.getElementById('tx_unlink_reason')?.focus();
+    return;
+  }
+  c.txs.splice(i,1);save();render();
+}
+async function cnvTxUnlink(id){
+  const request=S.txUnlink, c=convOf(deal(id));
+  if(request?.dealId!==id||request.cnvId!==c?.id||!c.txs?.some(t=>t.hash===request.hash))return;
+  const reason=request.reason.trim();
   if(!reason){toast('Напишите, почему отвязываем');return;}
-  const j=await standAction('/api/stand/incoming/unlink',{dealId:id,hash:t.hash,reason});
-  if(j){S.txUnlink=null;render();toast('Приход отвязан');}
+  const j=await standAction('/api/stand/incoming/unlink',
+    {dealId:id,cnvId:c.id,hash:request.hash,reason,version:standVer});
+  if(j?.success){
+    if(S.txUnlink===request)S.txUnlink=null;
+    if(S.incomingShare?.dealId===id){
+      S.incomingShare=null;
+      delete DRAFTS[id+'|w2'];
+    }
+    incomingRequestSeq++;incomingRequest=null;S.incomingLoadFor=null;S.incomingChainRows=null;
+    S.incomingLedgerRows=null;S.incomingLoadState=null;
+    render();toast('Приход отвязан');
+  }
 }
 async function cnvWalletFix(id,wid){
   const d=deal(id), c=convOf(d), w=walletById(wid); if(!c||!w)return;
@@ -10168,18 +10229,33 @@ function cnvTxShareBlock(d){
         onchange="S.incomingShare.confirmed=this.checked"> Подтверждаю, что этот перевод брокера относится к этой пачке</label></div></div>`:''}</div></div>`;
 }
 async function cnvTxManual(id,selectedHash=null,selectedNetwork=null){
-  const d=deal(id),c=convOf(d);if(!c)return;
-  const hash=String(selectedHash||val('w2')||'').trim(),network=selectedNetwork||val('w_net')||'TRC-20';
+  const d=deal(id),c=d&&convOf(d);if(!c)return;
+  const hash=String(selectedHash||val('w2')||'').trim();
+  const network=selectedNetwork?cnvTxNetworkLabel(selectedNetwork):val('w_net')||'TRC-20';
   if(!hash){toast('Введите полный хеш перевода');return;}
   if(demoAllowed()&&d.demoTransfers){
     const found=txFind(hash);if(found){cnvTxPick(id,found.id);return;}
     toast('В DEMO выберите тестовый приход из списка');return;
   }
+  if(selectedHash){
+    const hashInput=document.getElementById('w2'),networkInput=document.getElementById('w_net');
+    if(hashInput)hashInput.value=hash;
+    if(networkInput)networkInput.value=network;
+    DRAFTS[id+'|w2']=hash;
+    DRAFTS[id+'|w_net']=network;
+  }
+  const key=cnvIncomingKey(c);
   S.incomingShare=null;
   const j=await standAction('/api/stand/incoming/check',{dealId:id,hash,network,preview:true});
-  if(j&&j.ledger){S.incomingShare={dealId:id,cnvId:c.id,hash:j.hash,network:j.network,
+  if(j?.ledger&&S.open===id&&cnvIncomingKey(convOf(deal(id)||{})||{})===key&&
+    String(val('w2')||'').trim()===hash&&(val('w_net')||'TRC-20')===network){
+    DRAFTS[id+'|w2']=j.hash;
+    S.incomingShare={dealId:id,key,hash:j.hash,network:j.network,
     ledger:j.ledger,amount:j.ledger.free_usdt,early:j.early,
     sourceKnown:j.sourceKnown,sourceAddress:j.sourceAddress};render();}
+}
+function cnvTxNetworkLabel(network){
+  return String(network).toLowerCase().replace(/-/g,'')==='erc20'?'ERC-20':'TRC-20';
 }
 async function cnvRecipientAck(id,warning){
   const j=await standAction('/api/stand/incoming/ack-recipient',{
@@ -10193,8 +10269,9 @@ async function payinRecipientReconcile(id,warning){
 }
 async function cnvTxAllocate(id){
   const p=S.incomingShare;if(!p||p.dealId!==id)return;
-  if(String(val('w2')||'').trim().toLowerCase().replace(/^0x/,'')!==p.hash.toLowerCase().replace(/^0x/,'')){
-    toast('Хеш изменился — повторите проверку');return;
+  if(cnvIncomingKey(convOf(deal(id)||{})||{})!==p.key||(val('w_net')||'TRC-20')!==cnvTxNetworkLabel(p.network)||
+    String(val('w2')||'').trim().toLowerCase().replace(/^0x/,'')!==p.hash.toLowerCase().replace(/^0x/,'')){
+    toast('Хеш, сеть или кошелёк изменились — повторите проверку');return;
   }
   const amount=Number(String(val('w_share')||'').replace(',','.'));
   if(!Number.isFinite(amount)||amount<=0||amount>p.ledger.free_usdt){
@@ -10204,7 +10281,11 @@ async function cnvTxAllocate(id){
   if(p.early&&!confirmed){toast('Подтвердите, что ранний перевод брокера относится к этой пачке');return;}
   const j=await standAction('/api/stand/incoming/check',{dealId:id,hash:p.hash,network:p.network,amount,
     confirmBeforeRubSend:confirmed});
-  if(j&&j.tx){incomingRequestSeq++;incomingRequest=null;S.incomingShare=null;S.incomingChainRows=null;S.incomingLedgerRows=null;
+  if(j&&j.tx){
+    if(String(DRAFTS[id+'|w2']||'').trim().toLowerCase().replace(/^0x/,'')===p.hash.toLowerCase().replace(/^0x/,'')){
+      delete DRAFTS[id+'|w2'];
+    }
+    incomingRequestSeq++;incomingRequest=null;S.incomingShare=null;S.incomingChainRows=null;S.incomingLedgerRows=null;
     S.incomingLoadState=null;S.incomingLoadFor=null;render();toast('Засчитана доля: '+usd(j.tx.amount));}
 }
 function payinTxPick(id,txId){
@@ -13484,15 +13565,7 @@ function stepCard(d){
     <div class="chtitle" style="margin-top:14px">Переводы от брокера
       <span>сумма перевода проверяется в сети · на пачку можно взять часть</span></div>
     <div class="fr">
-      <div class="fg"><label class="fl">Выбрать из входящих</label>
-        <select class="fc" onchange="if(this.value)cnvTxPick(${d.id},this.value)">
-          <option value="">— входящие переводы —</option>
-          ${choices.ledger.map(t=>`<option value="ledger:${t.id}">${esc(cnvTxOptionLabel(t))}$${t.amount_usdt.toFixed(2)} · ${esc(t.tx_hash)}</option>`).join('')}
-          ${choices.chain.map(t=>`<option value="chain:${t.hash}">${esc(cnvTxTime(t.timestamp_ms))} · $${t.amount_usdt.toFixed(2)} · ${esc(t.from_address)} · ${esc(t.hash.slice(0,12))}… · свободно $${t.free_usdt.toFixed(2)} из $${t.amount_usdt.toFixed(2)}${t.early?' · раньше отправки рублей':''}</option>`).join('')}
-          ${choices.demo.map(t=>
-            `<option value="${t.id}">${usd(t.amount)} · ${t.net} · ${t.at} · ${t.hash}</option>`).join('')}
-        </select><button class="btn btn-outline btn-sm" ${S.incomingLoadState?.key===choices.key&&S.incomingLoadState.status==='loading'?'disabled':''} onclick="cnvTxLoad(${d.id})">${S.incomingLoadState?.key===choices.key&&S.incomingLoadState.status==='error'?'Повторить загрузку':'Обновить список'}</button>
-        ${cnvIncomingStatus(choices,d)}</div>
+      <div class="fg" id="cnv_incoming">${cnvIncomingSelect(d,choices)}</div>
       <div class="fg"><label class="fl">Или хеш вручную</label>
         <input class="fc" id="w2" value="${S.incomingShare?.dealId===d.id?esc(S.incomingShare.hash):''}" placeholder="полный хеш транзакции">
         <p class="fh">сумма и адрес получения проверяются сервером</p></div>
@@ -13503,16 +13576,13 @@ function stepCard(d){
     </div>
 
     ${cnvTxShareBlock(d)}
-    <div class="hashbox">
-      ${(c&&(c.txs||[]).length)?c.txs.map((t,i)=>`<div class="hrow">
+    <div class="hashbox broker-incoming-hashes">
+      ${(c&&(c.txs||[]).length)?c.txs.map(t=>`<div class="hrow">
         <b class="pos" style="min-width:110px">+${usd(t.amount)}</b>
         <span class="net">${t.net||'TRC20'}</span>${(t.src&&t.src!=='хэш')?`<span class="src">сумма ${t.src}</span>`:''}
-        <span style="flex:1;font-size:12.5px;color:var(--text-sec);word-break:break-all">${t.hash}</span>
-        <button class="btn btn-outline btn-sm" onclick="cnvTxDel(${d.id},${i})">убрать</button></div>
-        ${S.txUnlink===t.hash?`<div class="hrow" style="margin:-2px 0 8px">
-          <input class="fc" id="txr_${i}" placeholder="почему отвязываем: выбрали не тот перевод, пришло на другой кошелёк…">
-          <button class="btn btn-secondary btn-sm" onclick="cnvTxUnlink(${d.id},${i})">Отвязать</button>
-          <button class="btn btn-outline btn-sm" onclick="S.txUnlink=null;render()">Отмена</button></div>`:''}`).join('')
+        <span style="flex:1;font-size:12.5px;color:var(--text-sec);word-break:break-all">${htmlText(t.hash)}</span>
+        <button class="btn btn-outline btn-sm" onclick="cnvTxDel(${d.id},${jsLiteralAttr(t.hash)})">Убрать</button></div>
+        ${cnvTxUnlinkForm(d,c,t)}`).join('')
         :`<div class="hempty">К пачке ещё не добавлены переводы. Выберите входящий перевод или проверьте полный хеш вручную.</div>`}
       ${got!=null?`<p class="fh" style="margin-top:8px">Пришло по ${c.txs.length} ${c.txs.length===1?'переводу':'переводам'}: <b>${usd(got)}</b>${
         gap!=null&&Math.abs(gap)>=0.01?` · <b class="${gap>0?'pos':'neg'}">${gap>0?'больше на ':'не хватает '}${usd(Math.abs(gap))}</b> против ожидания`:' — сходится с ожиданием'}</p>`:''}
@@ -13558,14 +13628,11 @@ function stepCard(d){
     <div class="${hasPolicy(w)?'derived':'alert a-info'}"><div>${d.kind==='Фрихолд'
       ?'USDT пришли на кошелёк. В IPPS их ещё нет: они уйдут, только если мы сами отправим перевод.'
       :'USDT пришли на кошелёк. В Coins их ещё нет: туда они попадут, только если мы сами поставим задачу и отправим.'}</div></div>
-    ${(c&&!mem.some(x=>sendList(x).length))?`<details style="margin:-4px 0 12px" ${S.txUnlink?'open':''}><summary class="fh" style="cursor:pointer">Не тот приход или USDT пришли на другой кошелёк — отвязать и вернуться на «Ждём USDT»</summary>
-      <div class="hashbox">${(c.txs||[]).map((t,i)=>`<div class="hrow"><b class="pos" style="min-width:110px">+${usd(t.amount)}</b>
-        <span style="flex:1;font-size:12.5px;color:var(--text-sec);overflow-wrap:anywhere">${t.hash}</span>
-        <button class="btn btn-outline btn-sm" onclick="cnvTxDel(${d.id},${i})">отвязать</button></div>
-        ${S.txUnlink===t.hash?`<div class="hrow" style="margin:-2px 0 8px">
-          <input class="fc" id="txr_${i}" placeholder="почему отвязываем">
-          <button class="btn btn-secondary btn-sm" onclick="cnvTxUnlink(${d.id},${i})">Отвязать</button>
-          <button class="btn btn-outline btn-sm" onclick="S.txUnlink=null;render()">Отмена</button></div>`:''}`).join('')}</div></details>`:''}
+    ${(c&&!mem.some(x=>sendList(x).length))?`<details style="margin:-4px 0 12px" ${S.txUnlink?.dealId===d.id&&S.txUnlink.cnvId===c.id?'open':''}><summary class="fh" style="cursor:pointer">Не тот приход или USDT пришли на другой кошелёк — отвязать и вернуться на «Ждём USDT»</summary>
+      <div class="hashbox broker-incoming-hashes">${(c.txs||[]).map(t=>`<div class="hrow"><b class="pos" style="min-width:110px">+${usd(t.amount)}</b>
+        <span style="flex:1;font-size:12.5px;color:var(--text-sec);overflow-wrap:anywhere">${htmlText(t.hash)}</span>
+        <button class="btn btn-outline btn-sm" onclick="cnvTxDel(${d.id},${jsLiteralAttr(t.hash)})">Убрать</button></div>
+        ${cnvTxUnlinkForm(d,c,t)}`).join('')}</div></details>`:''}
     ${mem.length>1?`<div class="card-title" style="font-size:14px;margin:16px 0 4px">Назначение по каждой сделке пачки</div>
       <p class="fh" style="margin:0 0 4px">В пачке ${mem.length} ${plural(mem.length,'сделка','сделки','сделок')}, и задачи по ним разные: одна уходит в Coins, по другой с кошелька не уходит ничего — выдача с баланса, третья возвращается клиенту на его кошелёк. Владелец кошелька увидит ровно этот список.</p>`:''}
     ${mem.map(x=>pcCard(d,x,cnvShareOf(d,x),w)).join('')}
