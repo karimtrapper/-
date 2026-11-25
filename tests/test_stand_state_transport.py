@@ -133,3 +133,38 @@ def test_analytics_creation_timestamp_is_server_owned(monkeypatch):
     edited = _put(browser, _packed(saved.json))
     assert edited.status_code == 200, edited.json
     assert edited.json['data']['deals'][-1]['createdTs'] == stamp
+
+
+def test_creation_key_deduplicates_retries_without_merging_distinct_deals(monkeypatch):
+    manager_id = _setup(monkeypatch)
+    client = _client(manager_id)
+    monkeypatch.setattr(m, '_stand_deliver_notes', lambda: [])
+    snapshot = client.get('/api/stand/state?read_only=1').json
+    deal = {'id': 2001, 'code': 'СД-2001', 'client': 'Synthetic repeat',
+            'managerUserId': manager_id, 'step': 's5', 'isTask': True, 'closed': False,
+            'type': 'Оплата недвижимости', 'kind': 'Лизхолд', 'payType': 'По реквизитам',
+            'amountThb': 10000, 'source': 'none', 'creationKey': 'a' * 32}
+    snapshot['data']['deals'].append(deal)
+    first = _put(client, _packed(snapshot))
+    assert first.status_code == 200, first.json
+    current = first.json
+    assert current['data']['deals'][-1]['creationKey'] == deal['creationKey']
+    assert sum(note.get('dealId') == 2001 for note in current['data']['notes']) == 1
+
+    # The first request committed before its response was lost.
+    stale = _put(client, _packed(snapshot))
+    assert stale.status_code == 409 and stale.json['error'] == 'conflict'
+    assert stale.json['data']['deals'][-1]['creationKey'] == deal['creationKey']
+    retry = dict(deal, id=2002, code='СД-2002')
+    current['data']['deals'].append(retry)
+    duplicate = _put(client, _packed(current))
+    assert duplicate.status_code == 409 and duplicate.json['error'] == 'duplicate_creation'
+    assert duplicate.json['version'] == current['version']
+    assert len(duplicate.json['data']['notes']) == len(current['data']['notes'])
+
+    # A separately opened form may intentionally contain all the same deal fields.
+    retry['creationKey'] = 'b' * 32
+    saved = _put(client, _packed(current))
+    assert saved.status_code == 200, saved.json
+    assert [item['creationKey'] for item in saved.json['data']['deals'][-2:]] == ['a' * 32, 'b' * 32]
+    assert sum(note.get('dealId') in (2001, 2002) for note in saved.json['data']['notes']) == 2

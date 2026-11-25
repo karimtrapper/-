@@ -95,7 +95,7 @@ function run(names, context) {
     docs: {}, log: [], pay: {}, closed: false};
   const S = {role: 'manager', view: 'task'};
   const ctx = run(['viewDeal', 'prepayCloseReason'], {
-    S, standClosing: null, crmClosePanel: () => '',
+    S, STAND: true, canDeleteStandDeal: () => false, standClosing: null, crmClosePanel: () => '',
     STEPS: {s11: {title: 'Подготовить договор', n: 11, who: 'operator'}},
     ROLES: {manager: {t: 'Менеджер'}, operator: {t: 'Операционист'}},
     SOURCES: {test: 'Тест'}, stepWho: () => 'operator',

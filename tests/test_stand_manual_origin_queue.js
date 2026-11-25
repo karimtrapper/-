@@ -12,11 +12,11 @@ function source(name, async = false) {
 let answerFirst;
 const first = new Promise(resolve => { answerFirst = resolve; });
 const requests = [];
-const draft = {id: 1474, manual: true, manualNew: true, step: 'manual', client: 'before'};
+const draft = {id: 1474, manual: true, manualNew: false, step: 'manual', client: 'before'};
 const cnv = {id: 1, sentTs: 1700000000000, txs: []};
 const S = {deals: [draft], convs: [cnv]};
 const ctx = {S, STAND_SHARED: ['deals', 'convs'], standVer: 1, standBase: {deals: []},
-  standBusy: false, standPush: false, standSaveScheduled: false,
+  standBusy: false, standPush: false, standSaveScheduled: false, brokerSentSubmitPointer: false,
   standClone: structuredClone, standTyping: () => false,
   standApply: () => { throw new Error('queued response replaced local draft'); },
   render: () => {}, toast: () => {}, setTimeout, JSON,
@@ -27,16 +27,18 @@ const ctx = {S, STAND_SHARED: ['deals', 'convs'], standVer: 1, standBase: {deals
   },
 };
 vm.createContext(ctx);
-vm.runInContext(source('standSnapshot') + '\n' + source('standSave', true), ctx);
+vm.runInContext(['standSnapshot', 'standStateRequestPayload', 'standSave']
+  .map(name => source(name, name !== 'standSnapshot')).join('\n'), ctx);
 (async () => {
   const firstSave = ctx.standSave();
+  await Promise.resolve();
   assert.equal(requests[0].data.deals[0].client, 'before');
   draft.client = 'edited while first response pending';
   cnv.txs.push({hash: 'local pending action'});
   await ctx.standSave();
   answerFirst({status: 200, json: async () => ({success: true, version: 2,
     data: {convs: [{id: 1, sentTs: 1700000000000, sentRecordedTs: 1790000000000, txs: []}],
-           deals: [{id: 1474, manual: true, manualNew: true, step: 'manual',
+           deals: [{id: 1474, manual: true, manualNew: false, step: 'manual',
                    client: 'before', originMode: 'manual'}]}})});
   await firstSave;
   await new Promise(resolve => setTimeout(resolve, 160));

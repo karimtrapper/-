@@ -1,20 +1,19 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
+const {webcrypto:crypto} = require('node:crypto');
 
 const html = fs.readFileSync('static/stand/tasks.html', 'utf8');
-const source = html.match(/^async function createGo\([^]*?^}/m);
-assert.ok(source, 'createGo is async');
 
 function extracted(name) {
-  const oneLine = html.match(new RegExp('^function '+name+'\\([^\\n]*\\)\\{[^\\n]*\\}$', 'm'));
+  const oneLine = html.match(new RegExp('^(?:async )?function '+name+'\\([^\\n]*\\)\\{[^\\n]*\\}$', 'm'));
   if (oneLine) return oneLine[0];
   const result = html.match(new RegExp('^(?:async )?function '+name+'\\([^]*?^}', 'm'));
   assert.ok(result, 'missing '+name);
   return result[0];
 }
 
-function setup(savedResult) {
+function setup(savedResult, pull = () => {}) {
   const draft = {clientId: 1, client: 'Synthetic Auto', type: 'Оплата авто',
     kind: 'Фрихолд', payType: 'По реквизитам', cur: 'fhusd',
     invoiceCurrency: 'usd', sum: '45000', note: 'Synthetic note'};
@@ -22,7 +21,7 @@ function setup(savedResult) {
   const notices = [];
   let creates = 0, resolves;
   const pending = new Promise(resolve => { resolves = resolve; });
-  const ctx = {S, STAND: true, standBase: {deals: []}, STEPS: {s5: {title: 'Ответить курс'}},
+  const ctx = {S, STAND: true, crypto, standBase: {deals: []},
     draftValid: () => true, ensureClient: () => {}, clientById: () => ({docs: false}),
     draftAmounts: () => ({invoiceUsd: 45000, requestedUsd: 45000,
       autoRequestMode: 'usd', invoiceCurrency: 'usd'}),
@@ -35,9 +34,11 @@ function setup(savedResult) {
     log: (d, message) => d.log.push(message),
     save: () => {}, render: () => {}, toast: message => notices.push(message),
     standWaitSaved: () => pending, standSaveError: result => result.error || 'Failed',
+    standPull: async () => pull(ctx),
   };
   vm.createContext(ctx);
-  vm.runInContext(source[0], ctx);
+  vm.runInContext(['standCreateKey','standCreatedDeal','standConfirmCreation',
+    'createTask','createGo','createSelf'].map(extracted).join('\n'), ctx);
   return {ctx, S, draft, notices, resolve: serverDeals => {
     if(serverDeals)ctx.standBase = {deals: serverDeals};
     resolves(savedResult);
@@ -56,21 +57,30 @@ function setup(savedResult) {
     assert.equal(board.deals.length,draft?0:1);
   }
   {
-    const board = {draft:{client:'Fixture',clientId:1,inquiryType:'agent'},deals:[]};
-    const snapshots = [];
-    const save = () => snapshots.push(JSON.parse(JSON.stringify(board.deals[0])));
-    const ctx = {S:board,draftValid:()=>true,ensureClient:()=>{},clientById:()=>({docs:false}),
-      draftAmounts:()=>({amountThb:100}), log:(d,text)=>d.log.push(text), save, render:()=>{},toast:()=>{},
+    const board = {draft:{client:'Fixture',clientId:1,inquiryType:'agent'},deals:[],tab:'tasks'};
+    let writes=0;
+    const ctx = {S:board,STAND:true,crypto,standBase:{deals:[]},standBusy:false,standPush:false,
+      standSaveScheduled:false,draftValid:()=>true,ensureClient:()=>{},clientById:()=>({docs:false}),
+      deal:id=>board.deals.find(d=>d.id===id),DRAFTS:{},crmDraftLive:new Map(),
+      draftAmounts:()=>({amountThb:100}), save:()=>writes++,saveUi:()=>{},render:()=>{},toast:()=>{},
+      STAND_SHARED:['deals'],
       newDeal: options => {
         const deal = {...options,id:42,log:['Сделка создана']};
         board.deals.push(deal);
-        if(!options.noSave)save();
+        if(!options.noSave)writes++;
         return deal;
       }};
-    vm.runInNewContext(extracted('createFull')+'\ncreateFull();',ctx);
-    assert.equal(snapshots.length,1,'manual full creation writes the board once');
-    assert.equal(snapshots[0].inquiryType,'agent');
-    assert.match(snapshots[0].log[0],/Сделка внесена вручную/);
+    vm.createContext(ctx);
+    vm.runInContext(['standCreateKey','standCreatedDeal','standSnapshot','createFull','editClose']
+      .map(extracted).join('\n'),ctx);
+    await ctx.createFull();
+    assert.equal(writes,0,'opening the full form never writes an incomplete deal');
+    assert.equal(board.deals[0].inquiryType,'agent');
+    assert.equal(board.deals[0].manualNew,true);
+    assert.equal(ctx.standSnapshot().deals.length,0,'background snapshots exclude unsaved manual deals');
+    ctx.editClose();
+    assert.equal(board.deals.length,0);
+    assert.equal(writes,0,'cancel never writes the unsaved deal');
   }
   for (const otherEdited of [false,true]) {
     const deal = {id:42,inquiryType:'agent'};
@@ -138,7 +148,7 @@ function setup(savedResult) {
   {
     const t = setup({ok: false, error: 'conflict'});
     const saving = t.ctx.createGo();
-    const colleague = {...t.S.deals[0], client: 'Colleague Auto'};
+    const colleague = {...t.S.deals[0], creationKey: 'colleague', client: 'Colleague Auto'};
     t.S.deals = [colleague]; // ответ 409 уже применил серверную доску
     t.resolve();
     await saving;
@@ -163,10 +173,72 @@ function setup(savedResult) {
     const t = setup({ok: true});
     const saving = t.ctx.createGo();
     const ours = {...t.S.deals[0], id: 3403};
-    const concurrent = {...t.S.deals[0], id: 3402};
+    const concurrent = {...t.S.deals[0], id: 3402, creationKey: 'colleague'};
     t.resolve([concurrent, ours]);
     await saving;
     assert.equal(t.S.open, 3403, 'concurrent same-client auto gets original ID; ours is remapped');
+  }
+  {
+    const t = setup({ok:false,error:'network'},ctx=>{
+      ctx.standBase = {deals:[{...ctx.S.deals[0],id:3403}]};
+    });
+    const saving=t.ctx.createSelf();
+    const duplicate=t.ctx.createSelf();
+    assert.equal(t.creates(),1,'self-rate rejects another click while pending');
+    t.resolve();
+    await Promise.all([saving,duplicate]);
+    assert.equal(t.S.draft,null,'the successful committed deal survives a lost PUT response');
+    assert.equal(t.S.open,3403);
+    assert.equal(t.S.view,'task');
+  }
+  {
+    const t = setup({ok:false,error:'network'});
+    const saving=t.ctx.createGo();
+    const first={...t.S.deals[0]};
+    t.resolve();
+    await saving;
+    t.ctx.standBase={deals:[{...first,id:3403}]};
+    await t.ctx.createGo();
+    assert.equal(t.creates(),1,'retry reopens the previously accepted deal');
+    assert.equal(t.S.open,3403);
+  }
+  {
+    const d={id:42,code:'СД-42',type:'Обмен валюты',client:'Synthetic Manual',
+      manualNew:true,creationKey:'c'.repeat(32),log:[{text:'Draft journal'}]};
+    const S={edit:42,deals:[d],seq:42};
+    const notices=[],writes=[];
+    let finish;
+    const ctx={S,crypto,standBase:{deals:[]},document:{getElementById:()=>null},
+      crmDraftLive:new Map([[42,{values:{'payin_amount_rub':'35000'}}]]),
+      crmDraftActive:null,render:()=>{},toast:text=>notices.push(text),
+      log:(deal,text)=>deal.log.push({text}),deal:id=>S.deals.find(row=>row.id===id),
+      save:()=>writes.push(structuredClone(d)),standWaitSaved:()=>new Promise(r=>{finish=r;}),
+      standSaveError:result=>result.error,
+      standPull:async()=>{}};
+    vm.createContext(ctx);
+    vm.runInContext(['standCreateKey','standCreatedDeal','standConfirmCreation','standSaveManualCreation']
+      .map(extracted).join('\n'),ctx);
+    const saving=ctx.standSaveManualCreation(d);
+    assert.equal(S.edit,42);
+    assert.equal(notices.length,0,'manual form reports no optimistic success');
+    assert.equal(writes[0].manualNew,false,'the explicit save submits the completed manual form');
+    const other={id:42,code:'СД-42',client:'Different deal'};
+    ctx.standBase.deals=S.deals=[other];
+    finish({error:'server rejection'});
+    await saving;
+    assert.equal(S.manualCreateError,'server rejection');
+    assert.equal(S.edit,43,'failed creation preserves the local editor without taking the other deal number');
+    assert.equal(d.manualNew,true);
+    assert.equal(d.log.length,1,'a failed save does not repeat the creation journal');
+    assert.equal(ctx.crmDraftLive.get(43).values.payin_amount_rub,'35000');
+    const retry=ctx.standSaveManualCreation(d);
+    assert.equal(writes[1].creationKey,writes[0].creationKey);
+    ctx.standBase.deals=S.deals=[other,{...d,id:44,code:'СД-44'}];
+    finish({ok:true});
+    await retry;
+    assert.equal(S.edit,null);
+    assert.equal(S.open,44);
+    assert.deepEqual(notices,['Сделка создана: СД-44']);
   }
   console.log('auto task createGo confirmation and rejection: PASS');
 })().catch(error => { console.error(error); process.exitCode = 1; });

@@ -2686,6 +2686,16 @@ class StandState(Base):
     generation = Column(String(32))
 
 
+class StandDeletedDeal(Base):
+    """Server-only history and reserved IDs for cards removed from the board."""
+    __tablename__ = 'stand_deleted_deals'
+    stand_deal_id = Column(Integer, primary_key=True, autoincrement=False)
+    creation_key = Column(String(32), index=True)
+    generation = Column(String(32))
+    data = Column(Text, nullable=False)
+    deleted_by = Column(Integer, nullable=False)
+    deleted_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+
 
 class StandChannel(Base):
     __tablename__ = 'stand_channels'
@@ -2758,7 +2768,7 @@ class StandSberMirrorState(Base):
 # их нельзя создавать. Здесь же держим имена таблиц модулей уведомлений T5
 # и курсора зеркала Сбера T10, чтобы при их подключении фильтр сохранился.
 STAND_ONLY_TABLES = frozenset({
-    'stand_state', 'stand_files', 'stand_notify_log', 'stand_tg_bind', 'stand_tg_offset',
+    'stand_state', 'stand_deleted_deals', 'stand_files', 'stand_notify_log', 'stand_tg_bind', 'stand_tg_offset',
     'stand_sber_mirror_state', 'stand_crm_links', 'stand_close_evidence', 'stand_channels',
     'channel_export_messages',
 })
@@ -5812,6 +5822,14 @@ def _stand_initial_state():
         return {'cps': json.load(source)}
 
 
+def _stand_keep_deleted_deal_ids(db, state):
+    from sqlalchemy import func
+    last_deleted_id = db.query(func.max(StandDeletedDeal.stand_deal_id)).scalar()
+    seq = state.get('seq')
+    if last_deleted_id is not None and (type(seq) is not int or seq < last_deleted_id):
+        state['seq'] = last_deleted_id
+
+
 def _stand_row(db, lock=False):
     q = db.query(StandState).filter(StandState.id == 1)
     # При записи берём строку под блокировку: два сохранения подряд иначе
@@ -8241,6 +8259,135 @@ def stand_deal_realty_kind(deal_id):
         db.close()
 
 
+def _stand_manager_owns_deal(db, deal, actor_id):
+    owner_id = deal.get('managerUserId')
+    if owner_id is not None:
+        return type(owner_id) is int and owner_id == actor_id
+
+    def normalized(name):
+        return ' '.join(name.split()).casefold() if isinstance(name, str) else ''
+
+    owner_name = normalized(deal.get('manager'))
+    if not owner_name:
+        return False
+    managers = db.query(AdminUser).filter_by(role='manager').all()
+    owners = [user.id for user in managers if not user.login_disabled
+              and owner_name in {normalized(user.display_name), normalized(user.username)}]
+    return owners == [actor_id]
+
+
+def _stand_deal_delete_problem(db, row, state, deal):
+    """Keep money facts and in-progress financial work visible on the board."""
+    deal_id = str(deal['id'])
+    pay = deal.get('pay') or {}
+    payout = deal.get('payout') or {}
+    payout_invoice = payout.get('invoice')
+    files = deal.get('files') or {}
+    if (any(deal.get(key) for key in ('payinParts', 'incomeAmount', 'payinProcessed',
+                                     'receiptConfirmed', 'manualBankReceipt', 'cashPartnerUsdt'))
+            or any(item.get('hash') or item.get('amount') for item in deal.get('payinHashes') or [])
+            or any(item.get('amountRub') or item.get('amountUsdt') or
+                   any(part.get('hash') or part.get('amount') for part in item.get('hashes') or [])
+                   for item in deal.get('payinExtra') or [])
+            or any(pay.get(key) for key in ('hash', 'usdt', 'rub'))
+            or any(files.get(key) for key in (STAND_CLIENT_PAYIN_KIND, STAND_BANK_CREDIT_KIND))
+            or any(str(income.get('dealId')) == deal_id for income in state.get('incomes') or [])
+            or row.generation and db.query(PayinTxUse.id).filter_by(
+                stand_generation=row.generation, stand_cnv_id=f'cash:{deal_id}').first()):
+        return 'У сделки есть поступление или начата сверка оплаты'
+    if (deal.get('cnvId') is not None or deal.get('conv')
+            or any(str(source.get('dealId')) == deal_id
+                   for conv in state.get('convs') or [] for source in conv.get('sources') or [])
+            or any(deal_id in map(str, other.get('conv') or []) for other in state.get('deals') or [])):
+        return 'Сделка связана с пачкой или конвертацией'
+    if (any(deal.get(key) for key in ('prepay', 'ippsPayoutOrder', 'outgoingOrderAt', 'outgoingReview',
+                                     'transferClaim', 'transferConfirmation', 'transferProposal',
+                                     'transferSentReport', 'transferFound', 'transferAlarm', 'signHandoff',
+                                     'serverTransferComplete', 'serverSettled', 'payoutFact', 'mfPayout',
+                                     'commissionSends', 'sentToClient', 'sentThb', 'refPaid', 'ref2Paid'))
+            or (deal.get('transfer') or {}).get('sends')
+            or any(pay.get(key) for key in ('outHash', 'tx', 'coinsCredit', 'coinsNotified', 'ippsSent', 'invoicePaid'))
+            or any(payout.get(key) for key in ('hash', 'usdt', 'reimbursement'))
+            or any(item.get('hash') or item.get('amount') for item in payout.get('hashes') or [])
+            or isinstance(payout_invoice, dict) and payout_invoice.get('at')
+            or (deal.get('docs') or {}).get('receipt')
+            or _stand_receipt_items(deal) or files.get('payment_order')):
+        return 'По сделке начата отправка или есть данные о выплате'
+    if (deal.get('bitrixSync') or {}).get('status') in ('pending', 'error'):
+        return 'Сначала завершите синхронизацию сделки с Битрикс'
+    return None
+
+
+@app.route('/api/stand/deals/<int:deal_id>/delete', methods=['POST'])
+def stand_deal_delete(deal_id):
+    """Archive one card under the board lock, preserving its files and CRM links."""
+    if not STAND_MODE:
+        return jsonify(success=False, error='stand_only'), 404
+    actor, actor_id = current_role(), flask_session.get('user_id')
+    forbidden = 'Удалить сделку может её менеджер или администратор'
+    if actor not in ('manager', 'admin'):
+        return jsonify(success=False, error=forbidden), 403
+    payload = request.get_json(silent=True)
+    if (not isinstance(payload, dict) or set(payload) != {'version'}
+            or type(payload['version']) is not int or payload['version'] < 0):
+        return jsonify(success=False, error='version_required'), 400
+    db = get_session()
+    try:
+        if engine.dialect.name == 'sqlite':
+            from sqlalchemy import text
+            db.execute(text('BEGIN IMMEDIATE'))
+        row = _stand_row(db, lock=True)
+        user = db.get(AdminUser, actor_id)
+        if not user or user.login_disabled or (user.role or 'admin') != actor:
+            return jsonify(success=False, error=forbidden), 403
+        state = json.loads(row.data or '{}')
+        version = row.version or 0
+        if payload['version'] != version:
+            return jsonify(success=False, error='conflict', version=version, data=_stand_strip_files(state)), 409
+        deals = state.get('deals') or []
+        matches = [deal for deal in deals if str(deal.get('id')) == str(deal_id)]
+        if not matches:
+            return jsonify(success=False, error='Сделка не найдена'), 404
+        if len(matches) != 1:
+            return jsonify(success=False, error='Номер сделки неоднозначен'), 409
+        deal = matches[0]
+        if actor == 'manager' and not _stand_manager_owns_deal(db, deal, actor_id):
+            return jsonify(success=False, error=forbidden), 403
+        problem = _stand_deal_delete_problem(db, row, state, deal)
+        if problem:
+            return jsonify(success=False, error=problem), 409
+
+        def linked_note(note):
+            return isinstance(note, dict) and str(note.get('dealId')) == str(deal_id)
+
+        notes = state.get('notes') or []
+        try:
+            outbox = json.loads(row.notified or '[]')
+        except (TypeError, ValueError):
+            outbox = []
+        outbox = outbox if isinstance(outbox, list) else []
+        archive = {'deal': deal, 'notes': [note for note in notes if linked_note(note)],
+                   'outbox': [note for note in outbox if linked_note(note)]}
+        db.add(StandDeletedDeal(stand_deal_id=deal_id, creation_key=deal.get('creationKey'),
+                               generation=row.generation, data=json.dumps(archive, ensure_ascii=False),
+                               deleted_by=user.id))
+        state['deals'] = [other for other in deals if other is not deal]
+        if archive['notes']:
+            state['notes'] = [note for note in notes if not linked_note(note)]
+        if archive['outbox']:
+            row.notified = json.dumps([note for note in outbox if not linked_note(note)], ensure_ascii=False)
+        db.flush()
+        _stand_keep_deleted_deal_ids(db, state)
+        row.data = json.dumps(state, ensure_ascii=False)
+        row.version = version + 1
+        row.updated_by = user.display_name or user.username
+        row.updated_at = datetime.utcnow()
+        db.commit()
+        return jsonify(success=True, version=row.version, data=_stand_strip_files(state))
+    finally:
+        db.close()
+
+
 @app.route('/api/stand/state', methods=['PUT'])
 def stand_state_put():
     """Запись состояния с проверкой версии.
@@ -8291,6 +8438,36 @@ def stand_state_put():
                             'data': _stand_strip_files(json.loads(row.data or '{}')),
                             'updated_by': row.updated_by}), 409
         previous = json.loads(row.data or '{}')
+        prior_deals = {d.get('id'): d for d in previous.get('deals') or []}
+        creation_keys = {d['creationKey'] for d in prior_deals.values() if d.get('creationKey')}
+        for deal in payload['data'].get('deals') or []:
+            before = prior_deals.get(deal.get('id'))
+            key = deal.get('creationKey')
+            if before is not None:
+                if key is None and before.get('creationKey'):
+                    deal['creationKey'] = before['creationKey']
+                elif key != before.get('creationKey'):
+                    return jsonify(success=False, error='invalid_creation_key',
+                                   version=row.version or 0, data=_stand_strip_files(previous)), 409
+            elif 'creationKey' in deal:
+                if not isinstance(key, str) or not re.fullmatch(r'[0-9a-f]{32}', key):
+                    return jsonify(success=False, error='invalid_creation_key',
+                                   version=row.version or 0, data=_stand_strip_files(previous)), 409
+                if key in creation_keys:
+                    return jsonify(success=False, error='duplicate_creation',
+                                   version=row.version or 0, data=_stand_strip_files(previous)), 409
+                creation_keys.add(key)
+        new_deals = [deal for deal in payload['data'].get('deals') or []
+                     if deal.get('id') not in prior_deals]
+        if any(type(deal.get('id')) is not int or not 0 < deal['id'] <= 2147483647 for deal in new_deals):
+            return jsonify(success=False, error='Некорректный номер сделки',
+                           version=row.version or 0, data=_stand_strip_files(previous)), 409
+        if new_deals and db.query(StandDeletedDeal.stand_deal_id).filter(or_(
+                StandDeletedDeal.stand_deal_id.in_([deal['id'] for deal in new_deals]),
+                StandDeletedDeal.creation_key.in_([deal['creationKey'] for deal in new_deals
+                                                  if deal.get('creationKey')]))).first():
+            return jsonify(success=False, error='Удалённую сделку нельзя вернуть в задачник',
+                           version=row.version or 0, data=_stand_strip_files(previous)), 409
         previous_note_ids = {str(n.get('id')) for n in previous.get('notes') or []}
         from stand_workflow import journal_problem, accept_journal, accept_notes, strip_browser_defaults
         strip_browser_defaults(previous, payload['data'])
@@ -8308,7 +8485,6 @@ def stand_state_put():
             incoming_deal.pop('deletedFiles', None)
             if isinstance(incoming_deal.get('_managerDraft'), dict):
                 incoming_deal['_managerDraft'].pop('deletedFiles', None)
-        prior_deals = {d.get('id'): d for d in previous.get('deals', [])}
         def _file_keys(target):
             return {(kind, f.get('storageId') or f.get('id') or json.dumps(f, sort_keys=True))
                     for kind, files in (target.get('files') or {}).items()
@@ -8432,6 +8608,7 @@ def stand_state_put():
         if problem:
             return jsonify(success=False, error=problem, version=row.version or 0, data=_stand_strip_files(previous)), 409
         clean = preserve_server_fields(previous, payload['data'])
+        _stand_keep_deleted_deal_ids(db, clean)
         old_conv_ids = {c.get('id') for c in previous.get('convs') or []}
         for conv in clean.get('convs') or []:
             if conv.get('id') not in old_conv_ids and conv.get('clientRubTotal') is not None:
@@ -10340,7 +10517,9 @@ def stand_state_reset():
             db.execute(_t('BEGIN IMMEDIATE'))
         row = _stand_row(db, lock=True)
         stand_file_storage.mark_deleted(db, StandFile, json.loads(row.data or '{}'), {})
-        row.data = json.dumps(_stand_initial_state(), ensure_ascii=False)
+        state = _stand_initial_state()
+        _stand_keep_deleted_deal_ids(db, state)
+        row.data = json.dumps(state, ensure_ascii=False)
         row.notified = '[]'
         row.generation = secrets.token_hex(16)
         row.version = (row.version or 0) + 1
@@ -13404,6 +13583,11 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
         if deal.get('type') == 'Оплата авто':
             return 'Некорректный тип сделки задачника'
         manager_id = deal.get('managerUserId')
+        if (db is not None and before and actor == 'manager'
+                and (before.get('managerUserId') != manager_id
+                     or manager_id is None and before.get('manager') != deal.get('manager'))
+                and not _stand_manager_owns_deal(db, before, actor_id)):
+            return 'Менеджера сделки меняет её менеджер или администратор'
         if before and before.get('managerUserId') is not None and manager_id is None:
             return 'Менеджера сделки нельзя снять без назначения другого'
         if manager_id is not None:

@@ -14,7 +14,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 STAND_TABLES = {
-    'stand_state', 'stand_files', 'stand_notify_log', 'stand_tg_bind', 'stand_tg_offset',
+    'stand_state', 'stand_deleted_deals', 'stand_files', 'stand_notify_log', 'stand_tg_bind', 'stand_tg_offset',
     'stand_sber_mirror_state', 'stand_crm_links', 'stand_close_evidence', 'stand_channels',
     'channel_export_messages',
 }
@@ -78,7 +78,7 @@ def test_schema_mode_and_repeated_start(tmp_path, mode):
     tables = set(first['tables'])
     assert {'login_disabled', 'notify_enabled'} <= set(first['columns'])
     if mode == '1':
-        assert 'stand_state' in tables
+        assert {'stand_state', 'stand_deleted_deals'} <= tables
         assert tables - _main_tables() <= STAND_TABLES
     else:
         assert tables == _main_tables()

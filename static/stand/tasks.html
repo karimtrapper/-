@@ -744,6 +744,8 @@ input[type="checkbox"]:disabled{opacity:.5;cursor:not-allowed}
 .deal-screen .deal-head{background:var(--ds-surface);border-radius:var(--ds-card);padding:var(--ds-xl);display:flex;align-items:center;justify-content:space-between;gap:var(--ds-xl);margin-bottom:var(--ds-md)}
 .deal-screen .deal-head h1{font-size:var(--ds-emphasis);font-weight:var(--ds-semibold);margin:var(--ds-xs) 0}
 .deal-screen .deal-head p{color:var(--ds-muted)}
+.deal-screen .deal-head-actions{display:flex;flex-wrap:wrap;gap:var(--ds-sm)}
+#app .deal-head-actions .btn{min-height:44px}
 .deal-screen .deal-progress{width:240px;flex:none;display:grid;gap:var(--ds-xs);font-size:var(--ds-caption)}
 .deal-screen .deal-progress b{font-size:var(--ds-body);font-weight:var(--ds-semibold)}
 .deal-screen .deal-progress i{height:4px;background:var(--ds-border);border-radius:var(--ds-pill);overflow:hidden}
@@ -1079,7 +1081,7 @@ const STAND=true;
 const STAND_SHARED=['deals','convs','seq','cseq','notes','incomes','cps','cpChats',
                     'wallets','refs','clients','bal','txpool','avg','avgU','chatClientMap'];
 let standVer=null, standGetEtag=null, standPullPending=false, standPush=null, standBusy=false, standSaveScheduled=false, standLoadError=false,
-    standClosing=false, standMe=null, standMeId=null, STAND_EMPLOYEES=[];
+    standClosing=false, standMe=null, standMeId=null, standMeNames=[], STAND_EMPLOYEES=[];
 let standLastSaveResult={ok:true};
 let standDemoEnabled=false;
 let STAND_DOC_AGENT_META=null;
@@ -1112,8 +1114,21 @@ function jeq(a,b){return JSON.stringify(a)===JSON.stringify(b);}
    изменения; одно и то же — побеждает серверная, и об этом говорим. */
 function standMerge(base,mine,theirs){
   const out={}, conflicts=[];
+  const remappedIncomes=new Map();
   STAND_SHARED.forEach(k=>{
-    const b=base[k], m=mine[k], t=theirs[k];
+    const b=base[k], t=theirs[k];
+    let m=mine[k];
+    if(k==='deals'&&Array.isArray(m)&&Array.isArray(t)){
+      const confirmedKeys=new Set(t.map(d=>d.creationKey).filter(Boolean));
+      const priorIds=new Set((b||[]).map(d=>d.id));
+      m=m.filter(d=>{
+        if(!d.creationKey||priorIds.has(d.id)||!confirmedKeys.has(d.creationKey))return true;
+        for(const part of d.payinParts||[]){
+          if(part.incId)remappedIncomes.set(part.incId,{from:d.id,to:null});
+        }
+        return false;
+      });
+    }
     if(m===undefined&&t===undefined)return;
     if(jeq(m,b)){if(t!==undefined)out[k]=t;return;}
     if(jeq(t,b)){if(m!==undefined)out[k]=m;return;}
@@ -1160,8 +1175,12 @@ function standMerge(base,mine,theirs){
         if(k==='deals'&&bx===undefined&&mx&&tx) extra.push(mx);
         else conflicts.push(k+':'+id);
       });
-      extra.forEach(x=>{const id=Math.max(0,...arr.map(y=>Number(y.id)||0))+1;
-        arr.push(Object.assign({},x,{id:id,code:'СД-'+id}));});
+      extra.forEach(x=>{const id=Math.max(Number(theirs.seq)||0,...arr.map(y=>Number(y.id)||0))+1;
+        arr.push(Object.assign({},x,{id:id,code:'СД-'+id}));
+        for(const part of x.payinParts||[]){
+          if(part.incId)remappedIncomes.set(part.incId,{from:x.id,to:id});
+        }
+      });
       out[k]=arr;return;
     }
     if(m&&t&&typeof m==='object'&&typeof t==='object'&&!Array.isArray(m)&&!Array.isArray(t)){
@@ -1177,6 +1196,14 @@ function standMerge(base,mine,theirs){
     if(typeof m==='number'&&typeof t==='number'){out[k]=Math.max(m,t);return;}
     if(t!==undefined)out[k]=t; conflicts.push(k);
   });
+  if(remappedIncomes.size&&Array.isArray(out.incomes)){
+    const serverIncomes=new Map((theirs.incomes||[]).map(i=>[i.id,i]));
+    out.incomes=out.incomes.map(income=>{
+      const remap=remappedIncomes.get(income.id);
+      if(!remap||income.dealId!==remap.from)return income;
+      return {...income,dealId:serverIncomes.get(income.id)?.dealId??remap.to};
+    });
+  }
   if(Array.isArray(out.deals)&&typeof out.seq==='number')
     out.seq=Math.max(out.seq,...out.deals.map(x=>Number(x.id)||0));
   return {data:out,conflicts};
@@ -1184,8 +1211,8 @@ function standMerge(base,mine,theirs){
 
 function standSnapshot(){
   const o={}; STAND_SHARED.forEach(k=>{ if(S[k]!==undefined)o[k]=S[k]; });
-  if(S.edit&&Array.isArray(o.deals))
-    o.deals=o.deals.filter(d=>d.id!==S.edit||!d.manualNew||d.originMode==='manual');
+  if(Array.isArray(o.deals))
+    o.deals=o.deals.filter(d=>!d.manualNew||d.originMode==='manual');
   if(Array.isArray(o.incomes))o.incomes=o.incomes.map(({sel,...income})=>income);
   return o;
 }
@@ -1236,7 +1263,7 @@ async function standPull(force){
        затрётся на полуслове. Догоним на следующем тике. */
     if(standTyping()&&!force)return;
     acceptMeta();
-    standVer=j.version; standBase=standClone(j.data); standApply(j.data); render();
+    standVer=j.version; standBase=standClone(j.data); standApply(j.data); if(!S.manualSaving)render();
   }catch(e){if(standVer===null){standLoadError=true;render();}}
   finally{standPullPending=false;}
 }
@@ -1268,12 +1295,12 @@ async function standSave(){
         standLastSaveResult={ok:false,error:j.detail||j.error||'save_rejected'};
         if(S.modal&&S.modal.noteId)S.modal.delivery='save_failed';
         standVer=j.version; standBase=standClone(j.data); standApply(j.data);
-        if(!brokerSentSubmitPointer)render();toast(j.detail||j.error);
+        if(!brokerSentSubmitPointer&&!S.manualSaving)render();toast(j.detail||j.error);
       }else{
         /* Доску поменял коллега: сливаем его правки с нашими и досылаем */
         const mine=standSnapshot(), m=standMerge(standBase||{},mine,j.data||{});
         standVer=j.version; standBase=standClone(j.data); standApply(m.data);
-        if(!standTyping()&&!brokerSentSubmitPointer)render();
+        if(!standTyping()&&!brokerSentSubmitPointer&&!S.manualSaving)render();
         if(!jeq(m.data,j.data)) standPush=true;
         standLastSaveResult=standPush?{ok:false,pending:true}:{ok:true};
         if(m.conflicts.length) toast('Ту же сделку одновременно поменял'+(j.updated_by?' '+j.updated_by:' коллега')+' — оставил его версию, проверьте свою правку');
@@ -1284,7 +1311,7 @@ async function standSave(){
         standLastSaveResult={ok:true};
         standVer=j.version;
         if(j.data)standBase=standClone(j.data);
-        if(j.data&&!standPush){standApply(j.data);if(!standTyping()&&!brokerSentSubmitPointer)render();}
+        if(j.data&&!standPush){standApply(j.data);if(!standTyping()&&!brokerSentSubmitPointer&&!S.manualSaving)render();}
         else if(j.data&&standPush){
           /* Первый PUT нового manual draft возвращает серверный originMode.
              Второй queued PUT уже содержит заполненную форму; переносим только
@@ -5360,7 +5387,7 @@ function closeDeal(d,reason){
   log(d,'Закрыта: '+reason);S.open=null;save();render();toast('Сделка закрыта — '+reason);
 }
 function newDeal(o){
-  S.seq++;
+  S.seq=Math.max(S.seq,...S.deals.map(d=>Number(d.id)||0))+1;
   if(!o.client) o.client=o.sourceRef||'Без имени';
   const managerActorId=(typeof standMe!=='undefined'&&standMe==='manager'&&
     typeof standMeId!=='undefined')?standMeId:null;
@@ -7131,8 +7158,8 @@ function viewCreateBody(D,srcCard){
       ${D.kind==='Фрихолд'&&D.payType==='Крипта'?`<button class="btn btn-primary" onclick="createGo()" ${D.creating?'disabled':''}>${D.creating?'Создаём…':'Создать сделку'}</button>`:`
       <button class="btn btn-primary" onclick="createGo()" ${D.creating?'disabled':''}>${D.creating?'Создаём…':'Создать заявку — курс спросит операционист'}</button>
       <button class="btn btn-secondary" onclick="createSelf()" ${D.creating?'disabled':''}>Курс знаю — сам</button>
-      ${D.type==='Обмен валюты'?`<button class="btn btn-outline" onclick="createQuick()">Без шагов</button>`:''}
-      ${D.type==='Оплата авто'?'':`<button class="btn btn-outline" onclick="createFull()">Внести целиком</button>`}
+      ${D.type==='Обмен валюты'?`<button class="btn btn-outline" onclick="createQuick()" ${D.creating?'disabled':''}>Без шагов</button>`:''}
+      ${D.type==='Оплата авто'?'':`<button class="btn btn-outline" onclick="createFull()" ${D.creating?'disabled':''}>Внести целиком</button>`}
       ${!STAND?`<button class="btn btn-outline" onclick="createClosed()">Закрыть сразу</button>`:''}`}
     </div>
     <p class="fh${cryptoFreehold?' create-next':''}" style="margin-top:10px">${cryptoFreehold?'Далее: загрузить паспорт и инвойс → передать Насте':'Заявка отправляет запрос курса операционисту. Остальные кнопки создают сделку для самостоятельного ведения.'}</p>
@@ -7509,115 +7536,100 @@ function draftAmounts(D){
   if(D.cur==='usd'||D.cur==='usdt')return {amountUsdt:v,amountThb:null,amountRub:null,curBase:'usdt'};
   return {amountRub:v,amountThb:null,amountUsdt:null,curBase:'rub'};
 }
-/* Заявка сразу уходит операционисту: отдельный шаг «нажми, чтобы отправить запрос»
-   ничего не добавлял — менеджер уже всё указал в форме (Карим, 23.09). */
-async function createGo(){
-  if(!S.draft||S.draft.creating||!draftValid())return;const D=S.draft;ensureClient(D);
+function standCreateKey(){
+  return Array.from(crypto.getRandomValues(new Uint8Array(16)),b=>b.toString(16).padStart(2,'0')).join('');
+}
+function standCreatedDeal(key){
+  return key?(standBase?.deals||[]).find(d=>d.creationKey===key):null;
+}
+async function standConfirmCreation(key){
+  let saved;
+  try{saved=await standWaitSaved();}catch(e){saved={error:'timeout'};}
+  let confirmed=standCreatedDeal(key);
+  if(!confirmed&&['network','timeout'].includes(saved?.error)){
+    await standPull(true);
+    confirmed=standCreatedDeal(key);
+  }
+  return {saved,confirmed};
+}
+async function createGo(){return createTask('operator');}
+async function createSelf(){return createTask('self');}
+async function createQuick(){return createTask('quick');}
+async function createTask(mode){
+  const D=S.draft;
+  if(!D||D.creating||!draftValid())return;
   D.createError=null;D.creating=true;
-  const knownIds=new Set((STAND?(standBase?.deals||[]):[]).map(x=>x.id));
-  D.isOld=D.clientId?!!(clientById(D.clientId)||{}).docs:false;
-  /* Крипто-фрихолд: сумма клиента задана явно; внешнего курса нет.
-     Путь начинается со сбора документов у менеджера. */
-  const cryptoFreehold=D.type==='Оплата недвижимости'&&D.kind==='Фрихолд'&&D.payType==='Крипта';
-  /* Одним сохранением: иначе первый PUT ставит сделку на шаг операциониста s5,
-     а второй (комментарий, лог, уведомление) сервер отклоняет как правку чужого
-     шага — и операционист не получал уведомления о новой задаче. */
-  const d=newDeal({...D,type:D.type==='Оплата авто'?'Оплата недвижимости':D.type,autoPayment:D.type==='Оплата авто',step:cryptoFreehold?'s8':'s5',isTask:true,...draftAmounts(D),noSave:true});
-  d.comment=(D.note||'').trim();
-  if(cryptoFreehold){
-    log(d,'Крипто-фрихолд — курса не спрашиваем, сразу к сбору документов'+(d.comment?' · '+d.comment:''));
-  }else{
-    log(d,'Запрос курса ушёл операционисту'+(d.comment?' · '+d.comment:''));
-    /* Первую задачу операционисту создаёт сервер после подтверждённого PUT. */
-    if(!STAND)noteAdd('operator','Задача на вас: '+(STEPS['s5']?STEPS['s5'].title:'Ответить курс')+
+  const key=STAND?(D.creationKey??=standCreateKey()):null;
+  let d=standCreatedDeal(key);
+  if(!d){
+    ensureClient(D);
+    D.isOld=D.clientId?!!(clientById(D.clientId)||{}).docs:false;
+    const cryptoFreehold=D.type==='Оплата недвижимости'&&D.kind==='Фрихолд'&&D.payType==='Крипта';
+    const step=cryptoFreehold?'s8':mode==='self'?'s4':mode==='quick'?'ready':'s5';
+    d=newDeal({...D,type:D.type==='Оплата авто'?'Оплата недвижимости':D.type,
+      autoPayment:D.type==='Оплата авто',step,isTask:true,...draftAmounts(D),noSave:true});
+    if(key)d.creationKey=key;
+    d.self=step==='s4';
+    if(mode==='operator')d.comment=(D.note||'').trim();
+    const message=step==='s8'?'Крипто-фрихолд — курса не спрашиваем, сразу к сбору документов':
+      step==='s4'?'Курс менеджер ставит сам — заявка не уходит операционисту':
+      step==='ready'?'Проведена без шагов — ждёт конвертации':'Запрос курса ушёл операционисту';
+    log(d,message+(d.comment?' · '+d.comment:''));
+    if(!STAND&&step==='s5')noteAdd('operator','Задача на вас: '+(STEPS.s5?.title||'Ответить курс')+
       ' · '+(d.client||'')+(d.comment?' · '+d.comment:''),d.id);
-  }
-  save();render();
-  if(STAND){
-    let saved;
-    try{saved=await standWaitSaved();}catch(e){saved={ok:false,error:'timeout'};}
-    /* Берём только серверный снимок. При одновременном создании сделок merge
-       переносит нашу на следующий свободный ID, поэтому выбираем последний
-       новый ID с теми же исходными полями. */
-    const confirmed=(standBase?.deals||[]).filter(x=>!knownIds.has(x.id)&&
-      x.createdAt===d.createdAt&&x.client===d.client&&x.type===d.type&&x.kind===d.kind&&
-      x.payType===d.payType&&x.pair===d.pair&&x.autoPayment===d.autoPayment&&
-      x.autoRequestMode===d.autoRequestMode&&x.requestedUsd===d.requestedUsd&&
-      x.requestedRub===d.requestedRub&&x.comment===d.comment)
-      .sort((a,b)=>Number(b.id)-Number(a.id))[0];
-    if(!saved?.ok||!confirmed){
-      S.deals=S.deals.filter(x=>x!==d);
-      D.creating=false;
-      D.createError=standSaveError(saved,'Сервер не подтвердил создание заявки — повторите');
-      render();return;
-    }
-    S.open=confirmed.id;
-  }else S.open=d.id;
-  /* менеджеру показываем карточку: задача уже не его, ему важно видеть саму сделку */
-  S.draft=null;S.view=cryptoFreehold?'task':'deal';
-  if(STAND)render();else{save();render();}
-  toast(cryptoFreehold?'Заявка создана — соберите документы':'Заявка создана — курс запрашивает операционист');
-}
-/* Менеджер знает курс — сделка сразу на нём, задача операционисту не создаётся */
-async function createSelf(){
-  if(!draftValid())return;const D=S.draft;ensureClient(D);
-  D.isOld=D.clientId?!!(clientById(D.clientId)||{}).docs:knownBy(D.source,D.sourceRef).some(x=>x.client===D.client);
-  /* крипто-фрихолд: курса нет вообще, «сам» здесь означает то же, что и обычная
-     заявка — сразу к документам (спека 28.09, п.4) */
-  if(D.type==='Оплата недвижимости'&&D.kind==='Фрихолд'&&D.payType==='Крипта'){
-    const d=newDeal({...D,step:'s8',isTask:true,...draftAmounts(D)});
-    log(d,'Крипто-фрихолд — курса не спрашиваем, сразу к сбору документов');
-    S.draft=null;S.open=d.id;S.view='task';save();render();
-    toast('Заявка создана — соберите документы');
-    return;
-  }
-  /* Сразу на s6 без курсов сервер отклонял (нет rates/selfRate) — к моменту
-     первого PUT (внутри newDeal) d.self ещё не стоял. Черновик уже сбрасывался
-     в UI, а сервер откатывал к previous без новой сделки → «Сделка не найдена»
-     (баг TG #516). Заводим на s4 (как и запрос операционисту) с self:true —
-     курс вводится в уже существующей форме s4, на s6 уходим только после
-     selfRate() с проверенными курсами, одним подтверждённым PUT. */
-  D.createError=null;
-  const d=newDeal({...D,type:D.type==='Оплата авто'?'Оплата недвижимости':D.type,autoPayment:D.type==='Оплата авто',step:'s4',isTask:true,...draftAmounts(D),noSave:true});
-  d.self=true;
-  log(d,'Курс менеджер ставит сам — заявка не уходит операционисту');
-  save();render();
-  /* Черновик закрываем и уходим на карточку только после подтверждённого PUT:
-     отказ сервера (409/сеть) не должен оставлять «осиротевшую» сделку в S.deals
-     и показывать «Сделка не найдена» — откатываем создание и показываем
-     причину прямо в форме черновика (Карим, проверка после правки s4). */
-  if(STAND){
-    let saved;
-    try{saved=await standWaitSaved();}catch(e){saved={ok:false,error:'timeout'};}
-    if(!saved.ok||!deal(d.id)){
-      S.deals=S.deals.filter(x=>x.id!==d.id);
-      D.createError=standSaveError(saved,'Сервер не подтвердил создание задачи — повторите');
-      render();
-      return;
+    save();render();
+    if(STAND){
+      const {saved,confirmed}=await standConfirmCreation(key);
+      if(!confirmed){
+        S.deals=S.deals.filter(x=>x.creationKey!==key);
+        D.creating=false;
+        D.createError=standSaveError(saved,'Сервер не подтвердил создание сделки — повторите');
+        render();return;
+      }
+      d=confirmed;
     }
   }
-  S.draft=null;S.open=d.id;S.view='task';
-  /* Сервер уже подтвердил ровно этот снимок — второй PUT с теми же данными
-     избыточен (QA по commit bbf2ffc, п.1): S.draft/S.open/S.view — локальные
-     поля, которых нет в STAND_SHARED. Без STAND сохраняем как раньше, в localStorage. */
-  if(STAND)render();else{save();render();}
-  toast('Укажите курс выбранной пары — заявка не уходит операционисту');
+  if(S.draft!==D)return;
+  S.draft=null;
+  if(d.step!=='ready'){
+    S.open=d.id;
+    S.view=d.self||d.step==='s8'?'task':'deal';
+  }
+  if(!STAND)save();
+  render();
+  toast(d.step==='s8'?'Заявка создана — соберите документы':
+    d.self?'Укажите курс выбранной пары — заявка не уходит операционисту':
+    d.step==='ready'?'Без шагов — встала в очередь на конвертацию, операционист её видит':
+    'Заявка создана — курс запрашивает операционист');
 }
-function createQuick(){
-  if(!draftValid())return;const D=S.draft;ensureClient(D);
-  const d=newDeal({...D,step:'ready',isTask:true,...draftAmounts(D)});
-  log(d,'Проведена без шагов — ждёт конвертации');
-  S.draft=null;save();render();toast('Без шагов — встала в очередь на конвертацию, операционист её видит');
-}
-/* Внести целиком: сделка создаётся из черновика и сразу открывается полной формой.
-   Задач по ней не будет — это способ завести то, что задачник только замедлит. */
-function createFull(){
-  if(!draftValid())return;const D=S.draft;ensureClient(D);
+/* Полная форма открывается как черновик. Сделку добавляет на доску её сохранение. */
+async function createFull(){
+  const D=S.draft;
+  if(!D||D.creating||!draftValid())return;
+  if(STAND&&(standBusy||standPush||standSaveScheduled)){
+    D.creating=true;render();
+    try{await standWaitSaved();}
+    catch(e){D.createError=standSaveError({error:'timeout'});render();return;}
+    finally{D.creating=false;}
+    if(S.draft!==D)return;
+  }
+  const key=STAND?(D.creationKey??=standCreateKey()):null;
+  const confirmed=standCreatedDeal(key);
+  if(confirmed){
+    S.draft=null;S.open=confirmed.id;S.view='deal';render();return;
+  }
+  if(!STAND)ensureClient(D);
   D.isOld=D.clientId?!!(clientById(D.clientId)||{}).docs:false;
-  const d=newDeal({...D,step:'manual',manual:true,...draftAmounts(D),noSave:true});
-  d.log=[];
-  log(d,'Сделка внесена вручную, без задачника · '+(d.type||'')+' · клиент '+(d.client||'без имени'));
-  S.draft=null;S.edit=d.id;save();render();toast('Заполните остальные поля и сохраните');
+  const d=newDeal({...D,step:'manual',manual:true,manualNew:STAND,...draftAmounts(D),noSave:true});
+  if(key)d.creationKey=key;
+  S.draft=null;S.edit=d.id;S.manualCreateError=null;
+  if(!STAND){
+    d.log=[];
+    log(d,'Сделка внесена вручную, без задачника · '+(d.type||'')+' · клиент '+(d.client||'без имени'));
+    save();
+    toast('Заполните остальные поля и сохраните');
+  }
+  render();
 }
 function createClosed(){
   if(STAND){toast('На стенде закрытие оформляется через CRM после сохранения причины');return;}
@@ -7929,10 +7941,15 @@ function viewDeal(d,inquiryField=''){
   }
   if(d.demoTransfers&&!demoAllowed())body='<div class="alert a-warn">В истории есть DEMO-приходы или переводы. Автоматически снять флаг и продолжить нельзя: требуется сверка реальных платежей операционистом.</div>'+body;
   const tab=(v,label)=>`<span class="vtab ${view===v?'on':''}" onclick="setView('${v}')">${label}</span>`;
+  const canCloseManually=['manager','admin'].includes(S.role)&&!d.closed&&!d.manual&&!reviewTask;
+  const canDelete=STAND&&canDeleteStandDeal(d);
   return `<div class="deal-screen"><div class="task-card-nav"><button type="button" onclick="closeTaskToList()">‹ Все задачи</button><button type="button" onclick="nextTask()" ${typeof taskListCursor==='undefined'||typeof taskListEntries==='undefined'||taskListCursor<0||taskListCursor+1>=taskListEntries.length?'disabled':''}>Следующая задача ›</button></div><div class="deal-breadcrumb">Задачник / ${htmlText(d.code)}</div>
   <header class="deal-head"><div><p class="deal-code">${htmlText(d.code)} · ${htmlText(['ИППС','Личный счёт'].includes(d.kind)?dealDisplayKind(d):d.autoPayment===true?'Оплата авто':d.kind||d.type)}${d.prepay?' · оплата наперёд':''}</p>
     <h1>${htmlText(d.client)}</h1><p>${htmlText([d.object,d.dev,d.manager?'менеджер '+d.manager:''].filter(Boolean).join(' · '))}</p></div>
-    ${['manager','admin'].includes(S.role)&&!d.closed&&!d.manual&&!reviewTask?`<button class="btn btn-outline btn-sm" onclick="manualCloseAsk(${d.id})">Перенести в CRM и закрыть</button>`:''}
+    ${canCloseManually||canDelete?`<div class="deal-head-actions">
+      ${canCloseManually?`<button class="btn btn-outline btn-sm" onclick="manualCloseAsk(${d.id})">Перенести в CRM и закрыть</button>`:''}
+      ${canDelete?`<button type="button" class="btn btn-outline btn-sm" ${standClosing?'disabled':''} onclick="deleteStandDeal(${d.id})">Удалить из задачника</button>`:''}
+    </div>`:''}
     ${view==='task'&&branchPath?`<div class="deal-progress"><span>${htmlText(branchPath.active==='refund'?'Возместить оплату':STEPS[branchPath.active]?.title||'Конвертация завершена')}</span>
       <b>Шаг ${branchPath.index+1} из ${branchPath.steps.length}</b><i><span style="width:${Math.round((branchPath.index+1)/Math.max(1,branchPath.steps.length)*100)}%"></span></i></div>`:''}</header>
   ${inquiryField}
@@ -9351,6 +9368,57 @@ function dealRealtyKindControl(d){
     <option value="Фрихолд"${d.kind==='Фрихолд'?' selected':''}>Фрихолд</option>
   </select>`;
 }
+function canDeleteStandDeal(d){
+  if(!STAND||!d||!standMeId)return false;
+  const stored=standBase?.deals?.find(item=>item.id===d.id);
+  if(!stored)return false;
+  if(standMe==='admin')return true;
+  if(standMe!=='manager')return false;
+  if(stored.managerUserId!=null)return stored.managerUserId===standMeId;
+  const normalized=name=>String(name||'').trim().replace(/\s+/g,' ').toLocaleLowerCase('ru-RU');
+  const name=normalized(stored.manager);
+  if(!name)return false;
+  const owners=new Set(STAND_EMPLOYEES.filter(e=>e.role==='manager'&&!e.login_disabled&&
+    normalized(e.display_name)===name).map(e=>e.id));
+  if(standMeNames.some(alias=>normalized(alias)===name))owners.add(standMeId);
+  return owners.size===1&&owners.has(standMeId);
+}
+async function deleteStandDeal(id){
+  const d=deal(id);
+  if(!canDeleteStandDeal(d)||standClosing)return;
+  if(standBusy||standPush||standSaveScheduled||standVer===null){
+    toast('Дождитесь завершения сохранения и повторите');return;
+  }
+  if(!confirm('Удалить '+(d.code||'сделку')+' из задачника?'))return;
+  const version=standVer;
+  let refresh=false,deleted=false;
+  standBusy=true;standClosing=true;render();
+  try{
+    const response=await fetch('/api/stand/deals/'+id+'/delete',{method:'POST',credentials:'same-origin',
+      headers:{'Content-Type':'application/json'},body:JSON.stringify({version})});
+    const result=await response.json();
+    if(result.data&&standVer===version){
+      const queued=standPush||standSaveScheduled;
+      const snapshot=queued?standMerge(standBase,standSnapshot(),result.data).data:result.data;
+      standVer=result.version;standGetEtag=null;standBase=standClone(result.data);standApply(snapshot);
+    }
+    if(!response.ok||!result.success){
+      refresh=response.status===404;
+      toast(result.error==='conflict'?'Доска изменилась. Проверьте сделку и повторите удаление':
+        result.error||'Не удалось удалить сделку');return;
+    }
+    deleted=true;
+    toast('Сделка удалена из задачника');
+  }catch(e){
+    refresh=true;toast('Не удалось подтвердить удаление. Обновите список сделок');
+  }finally{
+    standBusy=false;standClosing=false;
+    if(standPush){standPush=false;standSaveScheduled=true;setTimeout(standSave,120);}
+    else if(refresh)await standPull(true);
+    if(S.open===id&&(deleted||!deal(id)))back();
+    else render();
+  }
+}
 async function setDealRealtyKind(id,value){
   const d=deal(id);
   if(!d||!canSetRealtyKind(d)||!['Лизхолд','Фрихолд'].includes(value)||d.kind===value||pendingRealtyKinds.has(id))return false;
@@ -9631,11 +9699,13 @@ async function setDealInquiryType(id,value,redraw=true){
   }
 }
 function editClose(){
+  if(S.manualSaving)return;
   const d=deal(S.edit);
   if(d)delete DRAFTS[(S.open||S.tab||'')+'|editDealInquiryType'+d.id];
   /* Отмена на только что заведённой вручную сделке = её вообще не было */
   if(d&&d.manualNew){S.deals=S.deals.filter(x=>x.id!==d.id);toast('Черновик удалён');}
   crmDraftLive.delete(S.edit);
+  S.manualCreateError=null;
   S.edit=null;
   if(STAND&&d?.manualNew&&d.originMode==='manual')save();
   else saveUi();
@@ -9644,6 +9714,7 @@ function editClose(){
 /* Завести сделку целиком, минуя задачник: короткие обмены и то, что прошло давно,
    вести по шагам незачем — нужен один экран со всеми полями и расчётами. */
 async function startManual(){
+  if(S.manualSaving)return;
   if(STAND){
     if(standVer===null){toast('Дождитесь загрузки списка сделок');return;}
     if(standBusy||standPush||standSaveScheduled){
@@ -9662,6 +9733,8 @@ async function startManual(){
   S.deals=(S.deals||[]).filter(x=>!isReallyEmpty(x));
   const d=newDeal({source:'tg',sourceRef:'',client:'',type:'Обмен валюты',
     payType:'По реквизитам',curBase:'rub',step:'manual',manual:true,manualNew:true,noSave:true});
+  if(STAND)d.creationKey=standCreateKey();
+  S.manualCreateError=null;
   S.edit=d.id;saveUi();render();
 }
 
@@ -10617,7 +10690,8 @@ function viewEdit(){
         <input class="fc num" id="crmDraftInvoiceThb" value="${d.invoiceThb??''}"></div>
     </div>
     <div id="crmDraftHost">Загружаю форму CRM…</div>
-    <div class="row" style="margin-top:18px"><button class="btn btn-primary" onclick="editSave(${d.id})">${d.manualNew?'Создать сделку':'Сохранить изменения'}</button>
+    ${S.manualCreateError&&d.manualNew?`<div class="create-error-alert">${htmlText(S.manualCreateError)}</div>`:''}
+    <div class="row" style="margin-top:18px"><button id="crmDraftSave" class="btn btn-primary" onclick="editSave(${d.id})">${d.manualNew?'Создать сделку':'Сохранить изменения'}</button>
       <button class="btn btn-outline" onclick="editRecalc(${d.id})">Рассчитать прибыль</button>
       <button class="btn btn-outline" onclick="editClose()">Отмена</button></div>
   </div><div id="crmDraftLegacy" hidden>${viewEditLegacy()}</div>`;
@@ -10714,6 +10788,7 @@ function editApply(id){
   return ch;
 }
 function editRecalc(id){
+  if(S.manualSaving)return;
   const ch=document.getElementById('crmDraftHost')
     ?(crmDraftActive?.id===id?crmDraftCommit(id):false):editApply(id);
   if(ch===false)return;
@@ -10721,8 +10796,9 @@ function editRecalc(id){
   toast(ch.length?('Пересчитано · '+ch.length+' изм.'):'Пересчитано');
 }
 async function editSave(id){
-  const d=deal(id); const isNew=!!d.manualNew;
-  if(pendingInquiryTypes.has(id))return;
+  const d=deal(id);
+  if(!d||S.manualSaving||pendingInquiryTypes.has(id))return;
+  const isNew=!!d.manualNew;
   if(isNew&&!validInquiryType(document.getElementById('crmDraftInquiryType')?.value)){
     toast('Выберите тип сделки');return;
   }
@@ -10739,8 +10815,9 @@ async function editSave(id){
   if(ch===false)return;
   if(STAND&&isNew&&!d.managerUserId){toast('Выберите менеджера сделки');return;}
   if(isNew){
+    if(STAND){await standSaveManualCreation(d);return;}
     d.manualNew=false;
-    if(!STAND)d.log=[];
+    d.log=[];
     log(d,'Сделка внесена вручную, без задачника · '+(d.type||'')+' · клиент '+(d.client||'без имени'));
     if(d.closed) log(d,'Статус при заведении: '+d.closeReason);
     S.edit=null;save();render();toast('Сделка создана: '+d.code);return;
@@ -10751,6 +10828,54 @@ async function editSave(id){
     return;
   }
   S.edit=null;save();render();toast('Сохранено: '+ch.length+' изм.');
+}
+async function standSaveManualCreation(d){
+  const originalId=d.id, key=d.creationKey??=standCreateKey();
+  const journal=d.log.slice();
+  S.manualSaving=true;
+  S.manualCreateError=null;
+  const button=document.getElementById('crmDraftSave');
+  if(button){button.disabled=true;button.textContent='Создаём…';}
+  let confirmed=standCreatedDeal(key);
+  if(!confirmed){
+    d.manualNew=false;
+    log(d,'Сделка внесена вручную, без задачника · '+(d.type||'')+' · клиент '+(d.client||'без имени'));
+    save();
+    const result=await standConfirmCreation(key);
+    confirmed=result.confirmed;
+    if(!confirmed){
+      const optimisticId=S.deals.find(x=>x.creationKey===key)?.id;
+      S.deals=S.deals.filter(x=>x.creationKey!==key);
+      const storedIncomes=new Map((standBase?.incomes||[]).map(i=>[i.id,i.dealId]));
+      for(const part of d.payinParts||[]){
+        const income=(S.incomes||[]).find(i=>i.id===part.incId);
+        if(income&&(income.dealId===originalId||income.dealId===optimisticId))
+          income.dealId=storedIncomes.get(income.id)??null;
+      }
+      if(deal(originalId)){
+        d.id=Math.max(S.seq,...S.deals.map(x=>Number(x.id)||0))+1;
+        d.code='СД-'+d.id;
+        S.seq=d.id;
+        if(crmDraftLive.has(originalId)){
+          crmDraftLive.set(d.id,crmDraftLive.get(originalId));
+          crmDraftLive.delete(originalId);
+        }
+        if(crmDraftActive?.id===originalId)crmDraftActive=null;
+      }
+      d.manualNew=true;d.log=journal;
+      S.deals.unshift(d);
+      S.edit=d.id;
+      S.manualCreateError=standSaveError(result.saved,'Сервер не подтвердил создание сделки — повторите');
+    }
+  }
+  S.manualSaving=false;
+  if(confirmed){
+    crmDraftLive.delete(originalId);
+    S.edit=null;
+    S.open=confirmed.id;S.view='deal';
+    toast('Сделка создана: '+confirmed.code);
+  }
+  render();
 }
 function markVerified(id){const d=deal(id);d.verified=!d.verified;
   log(d,d.verified?'Сделка проверена — цифры сверены':'Отметка «проверено» снята');save();render();
@@ -15158,6 +15283,7 @@ async function standBoot(){
     if(!me.success){location.href='/login';return;}
     standMe=me.user.role||'admin';
     standMeId=me.user.id||null;
+    standMeNames=[me.user.display_name,me.user.username];
     if(standMe!=='admin')S.role=standMe;
     const analyticsView=new URLSearchParams(location.search).get('section')==='analytics';
     if(analyticsView){S.tab='analytics';S.open=null;S.draft=null;S.edit=null;}

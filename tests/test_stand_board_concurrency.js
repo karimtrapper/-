@@ -2,7 +2,7 @@
 const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
 const html=fs.readFileSync('static/stand/tasks.html','utf8');
 const source=n=>html.match(new RegExp('^function '+n+'\\([^]*?^}','m'))[0];
-const ctx={STAND_SHARED:['deals','seq','notes']};vm.createContext(ctx);
+const ctx={STAND_SHARED:['deals','seq','notes','incomes']};vm.createContext(ctx);
 vm.runInContext(source('jeq')+'\n'+source('standMerge'),ctx);
 const clone=structuredClone,base={deals:[{id:1,step:'s5',quotes:[{rate:85}],log:[]}],seq:1};
 function merge(changeMine,changeTheirs){const mine=clone(base),theirs=clone(base);changeMine(mine.deals[0]);changeTheirs(theirs.deals[0]);return JSON.parse(JSON.stringify(ctx.standMerge(base,mine,theirs)));}
@@ -28,4 +28,25 @@ assert.equal(r.data.deals[0].rates.rubUsdt,'82,45');
 assert.equal(r.data.deals[0].rates.client,'91');
 assert.equal(r.data.deals[0].step,'s8');
 assert.deepEqual(r.conflicts,[]);
+{
+  const base={deals:[],seq:1,incomes:[{id:'first',dealId:null},{id:'second',dealId:null}]};
+  const local={id:2,code:'СД-2',client:'Same',amountRub:35000,creationKey:'first',
+    payinParts:[{incId:'first'}]};
+  const server={...local,id:3,code:'СД-3'};
+  const mine={deals:[local],seq:2,incomes:[{id:'first',dealId:2},{id:'second',dealId:null}]};
+  const theirs={deals:[server],seq:3,incomes:[{id:'first',dealId:3},{id:'second',dealId:null}]};
+  const replay=ctx.standMerge(base,mine,theirs);
+  assert.deepEqual(JSON.parse(JSON.stringify(replay.data)),theirs,
+    'a replay keeps the accepted card and income even if its card number was reassigned');
+  const distinct={deals:[{...local,creationKey:'second',payinParts:[{incId:'second'}]}],seq:2,
+    incomes:[{id:'first',dealId:null},{id:'second',dealId:2}]};
+  const collision={deals:[{...server,id:2,code:'СД-2'}],seq:2,
+    incomes:[{id:'first',dealId:2},{id:'second',dealId:null}]};
+  const savedBoth=ctx.standMerge(base,distinct,collision);
+  assert.equal(savedBoth.data.deals[0].creationKey,'first');
+  assert.equal(savedBoth.data.deals[1].creationKey,'second');
+  assert.equal(savedBoth.data.deals[1].id,3);
+  assert.equal(savedBoth.data.incomes[0].dealId,2);
+  assert.equal(savedBoth.data.incomes[1].dealId,3);
+}
 console.log('board merge: independent edits, append-only log, atomic conflicts PASS');

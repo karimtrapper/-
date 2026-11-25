@@ -15,7 +15,7 @@ const deal = {id: 9500, code: 'SYN-9500', client: 'Клиент', type: 'Опл�
   kind: 'Фрихолд', source: 'tg', step: 's14', docs: {}, rates: {}, pay: {}, log: [entry]};
 const ctx = {
   Date, Number, String, Math, S: {view: 'deal', role: 'operator'},
-  standClosing: null, crmClosePanel: () => '',
+  STAND: true, canDeleteStandDeal: () => false, standClosing: null, crmClosePanel: () => '',
   STEPS: {s14: {title: 'Ждём приход', n: 14, who: 'operator'}},
   ROLES: {manager: {n: 'Менеджер', t: 'менеджер'}, operator: {n: 'Операционист', t: 'операционист'}},
   SOURCES: {tg: 'Telegram'},
@@ -25,6 +25,7 @@ const ctx = {
   approx: () => ({pay: 100, thb: 0}), apMoney: () => '100', isCrypto: () => false,
   rateUnit: () => '₽', money: n => String(n), dur: () => '2 мин', flowOf: () => [],
   dealTaskPathCard: () => '', dealWallet: () => null,
+  dealRealtyKindControl: d => d.kind,
   outgoingStatusSummary: () => '',
 };
 vm.createContext(ctx);
