@@ -1,4 +1,5 @@
 """Balance operation between the existing IPPS account and THB cash inventory."""
+from datetime import datetime, timedelta
 from uuid import uuid4
 
 import pytest
@@ -36,6 +37,47 @@ def ledger(tmp_path, monkeypatch):
 @pytest.fixture
 def payload():
     return {'amount_thb': '6500.25', 'request_id': str(uuid4()), 'reason': 'Перевод QA'}
+
+
+def test_ipps_card_shows_balance_cost_and_latest_movements(ledger):
+    http, source_id, _, factory = ledger
+    purchase_at = datetime(2026, 11, 20, 10)
+    with factory() as db:
+        card = db.get(crm.BankCard, source_id)
+        old_purchases = list(card.topups)
+        for purchase in old_purchases:
+            purchase.created_at = purchase_at - timedelta(days=1)
+        latest_purchase = crm.CardTopup(
+            created_at=purchase_at, amount_thb=36000, cost_usdt=1000, purchase_rate=36,
+            source_type='separate',
+        )
+        card.topups.extend([
+            latest_purchase,
+            crm.CardTopup(created_at=purchase_at - timedelta(hours=1), amount_thb=-3550,
+                          cost_usdt=-100, purchase_rate=35.5, source_type='adjustment'),
+            crm.CardTopup(created_at=purchase_at + timedelta(hours=2), amount_thb=0,
+                          cost_usdt=0, purchase_rate=0, source_type=crm.IPPS_CASH_CANCELLED),
+        ])
+        deal = crm.Deal(deal_type=crm.DealType.PAY_IN)
+        card.allocations.append(crm.CardAllocation(
+            deal=deal, created_at=purchase_at + timedelta(hours=1), amount_thb=35750,
+            cost_usdt=1000, card_rate=35.75,
+        ))
+        card.balance_thb = 67700
+        db.commit()
+        purchase_id, deal_id = latest_purchase.id, deal.id
+
+    cards = http.get('/api/cards').json['cards']
+    listed = next(card for card in cards if card['id'] == source_id)
+    assert listed['balance_thb'] == 67700
+    assert listed['remaining_cost_usdt'] == 1900
+    assert listed['avg_rate'] == round(67700 / 1900, 4)
+    payout, purchase, adjustment = listed['recent_operations']
+    assert (payout['deal_id'], payout['amount_thb'], payout['cost_usdt'], payout['purchase_rate']) == (
+        deal_id, -35750, -1000, 35.75,
+    )
+    assert purchase['id'] == purchase_id
+    assert adjustment['source_type'] == 'adjustment'
 
 
 def test_ipps_cash_transfer_preserves_inventory_history_and_cancel(ledger, payload):

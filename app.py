@@ -747,12 +747,13 @@ class BankCard(Base):
     topups = relationship("CardTopup", back_populates="card")
     
     def to_dict(self):
-        avg_rate = _card_avg_rate(self)
+        avg_rate, remaining_cost_usdt = _card_balance_rate_and_cost(self)
         latest_purchase_rate = _card_latest_purchase_rate(self)
         return {
             'id': self.id, 'created_at': self.created_at.isoformat() if self.created_at else None,
             'bank_name': self.bank_name, 'card_name': self.card_name, 'holder_name': self.holder_name,
             'balance_thb': self.balance_thb, 'avg_rate': round(avg_rate, 4) if avg_rate else 0,
+            'remaining_cost_usdt': round(remaining_cost_usdt, 2) if avg_rate else None,
             'latest_purchase_rate': round(latest_purchase_rate, 4) if latest_purchase_rate else 0,
             'is_ipps': _is_ipps_card(self), 'personal_owner': self.personal_owner,
             'status': self.status.value if self.status else None,
@@ -5408,8 +5409,8 @@ def get_deal(deal_id):
     finally:
         session.close()
 
-def _card_avg_rate(card):
-    """Средневзвешенный курс ОСТАТКА карты, THB за 1 USDT.
+def _card_balance_rate_and_cost(card):
+    """Средневзвешенный курс остатка карты и его себестоимость в USDT.
 
     Из пополнений вычитаются и ручные списания (они лежат в ``card_topups``
     отрицательными строками), и выдачи клиентам из ``card_allocations``.
@@ -5422,7 +5423,12 @@ def _card_avg_rate(card):
     allocated_usdt = sum(a.cost_usdt for a in card.allocations) if card.allocations else 0
     remaining_thb = topup_thb - allocated_thb
     remaining_usdt = topup_usdt - allocated_usdt
-    return remaining_thb / remaining_usdt if remaining_thb > 0 and remaining_usdt > 0 else 0
+    rate = remaining_thb / remaining_usdt if remaining_thb > 0 and remaining_usdt > 0 else 0
+    return rate, remaining_usdt
+
+
+def _card_avg_rate(card):
+    return _card_balance_rate_and_cost(card)[0]
 
 
 def _card_latest_purchase_rate(card):
@@ -12828,9 +12834,26 @@ def get_cards():
     try:
         cards = session.query(BankCard).all()
         total_remaining = sum(c.balance_thb for c in cards if c.status == CashBatchStatus.ACTIVE)
+        result = []
+        for card in cards:
+            data = card.to_dict()
+            operations = [t for t in card.topups if t.source_type != IPPS_CASH_CANCELLED]
+            operations.extend(card.allocations)
+            operations.sort(key=lambda operation: (operation.created_at or datetime.min, operation.id), reverse=True)
+            data['recent_operations'] = [
+                operation.to_dict() if isinstance(operation, CardTopup) else {
+                    'deal_id': operation.deal_id,
+                    'created_at': operation.created_at.isoformat() if operation.created_at else None,
+                    'amount_thb': -operation.amount_thb,
+                    'cost_usdt': -operation.cost_usdt,
+                    'purchase_rate': operation.card_rate,
+                }
+                for operation in operations[:3]
+            ]
+            result.append(data)
         return jsonify({
             'success': True,
-            'cards': [c.to_dict() for c in cards],
+            'cards': result,
             'total_remaining_thb': total_remaining
         })
     finally:

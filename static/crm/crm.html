@@ -12075,10 +12075,13 @@ select.period-btn:hover:not(.active) { color: var(--text); }
         });
 
         function renderBalanceCard(card) {
-            const recentTopups = (card.topups || []).filter(t => t.source_type !== 'card_transfer_cash_cancelled').slice(0, 3);
+            const recentOperations = card.recent_operations || [];
+            const remainingCost = card.remaining_cost_usdt?.toLocaleString('ru-RU', {
+                minimumFractionDigits: 2, maximumFractionDigits: 2
+            });
             return `
             <div class="card" style="background: #f8f9fa; padding: 1rem; margin-bottom: 1rem; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
-                <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 0.5rem;">
                     <div>
                         <h4 style="margin-bottom: 0.5rem; color: #1a1a2e; font-weight: 600;">${escapeHtml(card.bank_name)} - ${escapeHtml(card.card_name || 'Без названия')}</h4>
                         <p style="color: #666; font-size: 0.9rem;">${escapeHtml(card.holder_name || 'Неизвестно')} | ${formatDate(card.created_at)}</p>
@@ -12086,22 +12089,26 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                     </div>
                     <div style="text-align: right;">
                         <div style="font-size: 1.25rem; font-weight: 600; color: ${card.balance_thb < 0 ? '#ef4444' : '#10b981'};">${formatThbAmount(card.balance_thb)} ฿</div>
-                        <div style="font-size: 0.85rem; color: #666;">Ср. курс: ${card.avg_rate || '-'}</div>
+                        <div style="font-size: 0.85rem; color: #666;">Курс остатка: <span style="white-space: nowrap;">${formatThbUsdRate(card.avg_rate)}${card.avg_rate ? ' THB/USDT' : ''}</span></div>
+                        ${remainingCost ? `<div style="font-size: 0.85rem; color: #666;">Себестоимость: <span style="white-space: nowrap;">${remainingCost} USDT</span></div>` : ''}
                     </div>
                 </div>
 
-                ${recentTopups.length > 0 ? `
+                ${recentOperations.length > 0 ? `
                     <div style="margin-top: 1rem; border-top: 1px solid #e5e7eb; padding-top: 0.75rem;">
                         <p style="font-size: 0.85rem; font-weight: 500; margin-bottom: 0.5rem; color: #4a5568;">Последние операции:</p>
-                        ${recentTopups.map(t => `
-                            <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.5rem; background: white; border-radius: 6px; margin-bottom: 0.25rem; border: 1px solid #edf2f7;">
+                        ${recentOperations.map(t => `
+                            <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; padding: 0.5rem; background: white; border-radius: 6px; margin-bottom: 0.25rem; border: 1px solid #edf2f7;">
                                 <div style="font-size: 0.85rem;">
-                                    <span style="font-weight: 600; color: ${(t.amount_thb || 0) < 0 ? '#f59e0b' : '#2d3748'};">${(t.amount_thb || 0) < 0 ? '−' : '+'}${formatThbAmount(Math.abs(t.amount_thb || 0))} ฿</span>
+                                    <span style="font-weight: 600; color: ${t.amount_thb < 0 ? '#f59e0b' : '#2d3748'};">${t.amount_thb < 0 ? '−' : '+'}${formatThbAmount(Math.abs(t.amount_thb))} ฿</span>
                                     <span style="color: #718096; margin-left: 0.25rem;">
-                                        ($${Math.abs(t.cost_usdt || 0).toFixed(2)} @ ${formatThbUsdRate(t.purchase_rate)})
+                                        (${Math.abs(t.cost_usdt).toFixed(2)} USDT @ ${formatThbUsdRate(t.purchase_rate)})
                                     </span>
+                                    <div style="color: #718096;">${formatDate(t.created_at)}</div>
                                 </div>
-                                ${t.source_type === 'card_transfer_cash_out'
+                                ${t.deal_id
+                                    ? `<button class="btn btn-sm btn-info" onclick="openDealEditor(${t.deal_id})">Сделка</button>`
+                                    : t.source_type === 'card_transfer_cash_out'
                                     ? `<button class="btn btn-sm btn-info" onclick="showIppsCashHistory(${t.source_batch_id})">В кассу</button>`
                                     : `<button class="btn btn-sm btn-danger" style="padding: 0.1rem 0.4rem;" onclick="deleteCardTopup(${card.id}, ${t.id}, false, ${t.source_type === 'card_transfer_out' || t.source_type === 'card_transfer_in'})">×</button>`}
                             </div>`).join('')}
