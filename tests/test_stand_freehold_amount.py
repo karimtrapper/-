@@ -252,3 +252,38 @@ def test_crm_fact_is_verified_hash_not_planned_amount():
     assert m._stand_crm_fact_problem(deal, crm, 'mf_freehold') != 'payin_amount_mismatch'
     deal['payinHashes'][0]['verified'] = False
     assert m._stand_crm_fact_problem(deal, crm, 'mf_freehold') == 'payin_basis_unverified'
+
+
+@pytest.mark.parametrize('confirmed,sent,percent,fixed,arrival', [
+    (98330, 98330, 0.8, 50, 97500),
+    (97623.45, 97623.45, 0, 123.45, 97500),
+    (97500, 97500, 0, 0, 97500),
+    (97623.45, 97625.00, 0, 123.45, 97501.55),
+])
+def test_crm_ipps_order_prices_verified_payout(confirmed, sent, percent, fixed, arrival):
+    deal = board(98800)['deals'][0]
+    deal.update({
+        'payerWallet': WALLET,
+        'payinHashes': [{'hash': 'a' * 64, 'amount': 98800, 'verified': True, 'from': WALLET}],
+        'ippsPayoutOrder': {'confirmedAt': '2026-11-25T12:00:00Z', 'amount': confirmed},
+        'mfPayout': [{'hash': 'b' * 64, 'amount': sent}],
+    })
+    crm = {
+        'deal_kind': 'mf_freehold', 'payin_method': 'crypto_direct', 'payin_amount_usdt': 98800,
+        'invoice_amount_usd': 97500, 'transfer_fee_percent': percent, 'transfer_fee_fixed_usd': fixed,
+        'transfer_sent_usd': sent, 'payout_tx_hashes': [{'hash': 'b' * 64, 'amount_usdt': sent}],
+        'payin_tx_hashes': [{'hash': 'a' * 64, 'amount_usdt': 98800}],
+    }
+    assert m._stand_crm_fact_problem(deal, crm, 'mf_freehold') is None
+    if percent == 0:
+        assert m._stand_crm_fact_problem(deal, {**crm, 'transfer_fee_fixed_usd': fixed + 0.004},
+                                         'mf_freehold') == 'locked_invoice_mismatch'
+        assert m._stand_crm_fact_problem({**deal, 'ippsPayoutOrder': {'amount': confirmed}}, crm,
+                                         'mf_freehold') == 'locked_invoice_mismatch'
+    assert m._stand_crm_fact_problem(deal, {**crm, 'transfer_sent_usd': sent + 1},
+                                     'mf_freehold') == 'transfer_sent_mismatch'
+    crm_deal = m.Deal(payin_amount_usdt=98800)
+    assert m._apply_mf_freehold(crm_deal, crm)['arrive_usd'] == arrival
+    assert crm_deal.payout_amount_usdt == sent
+    assert crm_deal.profit_usdt == round(98800 - sent, 2)
+    assert m._apply_mf_freehold(crm_deal, {'realty_purpose': 'Updated'})['arrive_usd'] == arrival

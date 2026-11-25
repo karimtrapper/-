@@ -70,6 +70,19 @@ def sent_money(value, reviewing=False):
         return None
 
 
+def _prepay_within_limit(deal, transfer, sends, reviewing):
+    limit = money((deal.get('prepay') or {}).get('amount'), positive=True)
+    assigned = money(transfer.get('amount'), positive=True)
+    if limit is None or assigned is None or assigned > limit:
+        return False
+    order = deal.get('ippsPayoutOrder') or {}
+    approved = money(order.get('amount'), positive=True) if order.get('confirmedAt') else limit
+    if assigned != approved:
+        return False
+    parts = [sent_money(send.get('amount'), reviewing) for send in sends]
+    return all(part is not None for part in parts) and (reviewing or sum(parts) <= assigned)
+
+
 def _physical_send(deal, wallet_id):
     route = deal.get('postConv')
     if route in (None, 'keep'):
@@ -229,14 +242,11 @@ def check_batch(state, conv, *, dispatch=False, independent_id=None, strict_acco
         return None
     if independent_id is not None:
         deal = deals.get(independent_id) or {}
-        prepay = deal.get('prepay') or {}
         transfer = deal.get('transfer') or {}
-        limit = money(prepay.get('amount'), positive=True)
         reviewing = bool((deal.get('outgoingReview') or {}).get('requestedAt'))
-        parts = [sent_money(s.get('amount'), reviewing) for s in transfer.get('sends') or []
+        sends = [s for s in transfer.get('sends') or []
                  if s.get('status') not in ('failed', 'mismatch')]
-        if (independent_id not in ids or limit is None or money(transfer.get('amount')) != limit
-                or any(p is None for p in parts) or (not reviewing and sum(parts) > limit)):
+        if independent_id not in ids or not _prepay_within_limit(deal, transfer, sends, reviewing):
             return 'Недостаточно разрешённых средств для оплаты наперёд'
         return None
     incoming = Decimal(0)
@@ -263,11 +273,7 @@ def check_batch(state, conv, *, dispatch=False, independent_id=None, strict_acco
         sends = [s for s in transfer.get('sends') or []
                  if s.get('status') not in ('failed', 'mismatch')]
         if deal.get('prepay'):
-            limit = money(deal['prepay'].get('amount'), positive=True)
-            assigned = money(transfer.get('amount'), positive=True)
-            parts = [sent_money(s.get('amount'), reviewing) for s in sends]
-            if (limit is None or assigned != limit or any(p is None for p in parts)
-                    or (not reviewing and sum(parts) > limit)):
+            if not _prepay_within_limit(deal, transfer, sends, reviewing):
                 return 'Отправки IPPS должны укладываться в разрешённую сумму оплаты наперёд'
             continue
         if not _physical_send(deal, conv.get('walletId')):

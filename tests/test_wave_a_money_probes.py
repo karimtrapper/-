@@ -1,12 +1,11 @@
-"""Audit evidence/money/test_rounding_adverse.py rerun with corrected cents as a positive control."""
+"""Regression checks for IPPS amount rounding and transfer timing."""
 import copy
 import pytest
 from tests.test_stand_prepay import api, board, seed, put, IPPS
 
 @pytest.mark.usefixtures('stand_demo_environment')
-@pytest.mark.parametrize('amount,status', [(1005.11,409),(1005.12,200)])
-def test_soft_tariff_decimal_amount_accepted_old_binary_amount_rejected(api, amount, status):
-    import app as m
+@pytest.mark.parametrize('amount,status', [(1005.11, 200), (1005.12, 200), (1005.13, 409)])
+def test_soft_tariff_rounds_half_up_and_allows_discount(api, amount, status):
     state = board(step='s18w')
     d = state['deals'][0]
     d.update(invoiceUsd=941, ippsTariff='soft')
@@ -17,8 +16,8 @@ def test_soft_tariff_decimal_amount_accepted_old_binary_amount_rejected(api, amo
         'action': 'start', 'dealId': 1484, 'walletId': 'teodor', 'version': 1})
     assert response.status_code == 200, response.json
     saved = response.json
-    print('prepay_server_amount', saved['data']['deals'][0]['prepay']['amount'])
     d = saved['data']['deals'][0]
+    assert d['prepay']['amount'] == 1005.12
     d['payToConfirm'] = {'payTo': copy.deepcopy(d['payTo']), 'at': 'confirmed'}
     d['reqTask'] = 'done'
     saved = put(api, saved, 'manager')
@@ -27,12 +26,13 @@ def test_soft_tariff_decimal_amount_accepted_old_binary_amount_rejected(api, amo
              transfer={'amount': amount, 'to': 'IPPS', 'addr': IPPS,
                        'net': 'TRC-20', 'sends': []})
     api[1][0] = 'operator'
-    rejected = api[0].put('/api/stand/state', json={
+    response = api[0].put('/api/stand/state', json={
         'version': saved['version'], 'data': saved['data']})
-    print('order_with_ui_amount', amount, rejected.status_code, rejected.json.get('error'))
-    assert rejected.status_code == status, rejected.json
-    if status == 409:
-        assert 'Сумма поручения' in rejected.json['error']
+    assert response.status_code == status, response.json
+    if status == 200:
+        assert response.json['data']['deals'][0]['ippsPayoutOrder']['amount'] == amount
+    else:
+        assert 'Сумма поручения' in response.json['error']
 
 from tests.test_stand_outgoing_review import network, setup_send, tx, action, MARKER
 

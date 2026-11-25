@@ -104,6 +104,26 @@ for(const [tariff,pct,sent] of [['bank',0.8,45410],['soft',1.5,45725]]){
 const noTariff=ctx.crmPayload({...base,kind:'Фрихолд',ippsTariff:null,invoiceUsd:45000,mfPayout:[]});
 assert.equal(noTariff.transfer_fee_percent,null);
 assert.equal(noTariff.transfer_sent_usd,null);
+
+// Use the real economics to cover the confirmed order, then the verified transfer.
+ctx.refAgents = () => [];
+const oneLine = name => html.match(new RegExp(`^function ${name}\\([^\\n]+$`, 'm'))[0];
+vm.runInContext([fn('freeholdFee'), oneLine('freeholdSend'), oneLine('ippsTariff'), fn('econ')].join('\n'), ctx);
+const agreed = {...base,kind:'Фрихолд',ippsTariff:'bank',invoiceUsd:1000.005,
+  ippsPayoutOrder:{confirmedAt:'2026-11-25T12:00:00Z',amount:1012.34},mfPayout:[]};
+const planned = ctx.crmPayload(agreed);
+assert.equal(planned.invoice_amount_usd,1000.01);
+assert.equal(planned.transfer_fee_percent,0);
+assert.equal(planned.transfer_fee_fixed_usd,12.33);
+assert.equal(planned.transfer_sent_usd,1012.34);
+assert.equal(ctx.econ(agreed).cost,1012.34);
+const fulfilled = {...agreed,serverTransferComplete:true,payout:{usdt:1013.45},
+  mfPayout:[{hash:'synthetic-out',net:'trc20',amount:1013.45}]};
+const fact = ctx.crmPayload(fulfilled);
+assert.equal(fact.transfer_sent_usd,1013.45);
+assert.equal(fact.transfer_fee_fixed_usd,12.33);
+assert.equal(ctx.econ(fulfilled).cost,1013.45);
+
 const custom=ctx.crmPayload({...base,type:'Обмен валюты',kind:'',custom:true,
   payinParts:[],payinExtra:[],agents:[{name:'Synthetic Agent',tier:1,comp:'revshare',percent:10}],
   customData:{payinCurrency:'RUB',payinAmount:92000,payinRate:92,payinUsdt:1000,

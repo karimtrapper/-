@@ -747,7 +747,8 @@ console.log('test_stand_freehold.js: OK');
   assert.equal(ctx.stepWho(d),'operator');
   ctx.S.role='operator';
   const operator=ctx.stepCard(d);
-  assert.match(operator,/id="fh_order_amount" readonly value="10130"/);
+  assert.match(operator,/id="fh_order_amount" inputmode="decimal" value="10130"/);
+  assert.doesNotMatch(operator,/id="fh_order_amount"[^>]*readonly/);
   assert.match(operator,/Банк · FET от компании/);
   assert.match(operator,/id="fh_order_addr" value="" autocomplete="off"/);
   assert.match(operator,/Вставьте адрес, который IPPS подтвердил для этой заявки/);
@@ -760,8 +761,9 @@ console.log('test_stand_freehold.js: OK');
     assert.ok(!form.includes(legacy.transfer.addr));
   }
   const address='T'+'B'.repeat(33);
-  const saved=ctx.stepCard({...legacy,ippsPayoutOrder:{address,amount:10130,network:'TRC-20',confirmedAt:'synthetic'}});
+  const saved=ctx.stepCard({...legacy,ippsPayoutOrder:{address,amount:10129.5,network:'TRC-20',confirmedAt:'synthetic'}});
   assert.match(saved,new RegExp(`id="fh_order_addr" value="${address}" readonly`));
+  assert.match(saved,/id="fh_order_amount" inputmode="decimal" value="10129\.5" readonly/);
   assert.ok(!saved.includes(legacy.transfer.addr));
   d.payTo.acc='changed';
   assert.equal(ctx.stepWho(d),'manager');
@@ -771,19 +773,19 @@ console.log('test_stand_freehold.js: OK');
 // Saving SWIFT details is a separate, idempotent manager action; copying the group
 // text is local-only and cannot mark the instruction as approved.
 {
-  const deal={id:1473,kind:'Фрихолд',step:'s22',reqTask:'open',payTo:{},log:[]};
+  const deal={id:1473,kind:'Фрихолд',step:'s22',reqTask:'open',invoiceUsd:10000,payTo:{},log:[]};
   const calls=[];
   const values={p_dev:'Synthetic Ltd',p_bank:'Synthetic Bank',p_acc:'SYNTH-ACCOUNT',
     p_inv:'INV-SYNTH',p_purp:'Synthetic purpose',p_swift:'SYNTHXX1',
-    p_branch:'',p_bankaddr:''};
-  const ctx=run(['freeholdIpPsPayToSave','freeholdIpPsCopyGroup'],[],{
+    p_branch:'',p_bankaddr:'',fh_order_amount:'10 129,50'};
+  const ctx=run(['freeholdIpPsPayToSave','freeholdIpPsConfirmedAmount','freeholdIpPsCopyGroup','freeholdFee','ippsApplicationText'],[],{
     S:{role:'manager'},deal:()=>deal,val:id=>values[id]||'',
     payToRequired:()=>({}),need:()=>false,payToFromForm:()=>({
       dev:values.p_dev,bank:values.p_bank,acc:values.p_acc,inv:values.p_inv,
       purpose:values.p_purp,swift:values.p_swift,amount:10000,branch:'',bankAddr:''}),
     payToReady:()=>true,log:(d,text)=>{calls.push(text);d.log.push({text});},
     save:()=>calls.push('save'),render:()=>calls.push('render'),toast:x=>calls.push(x),
-    num:Number,cleanNum:x=>String(x),ippsApplicationText:()=> 'Synthetic application',
+    econ:d=>({invoiceUsd:d.invoiceUsd}),moneyKop:(x,c)=>x+' '+c,
     copyAsk:x=>calls.push('copy:'+x),freeholdSend:()=>10130,ippsTariff:()=>({}),
   });
   ctx.freeholdIpPsPayToSave(1473);
@@ -793,7 +795,19 @@ console.log('test_stand_freehold.js: OK');
   ctx.freeholdIpPsPayToSave(1473);
   assert.equal(deal.log.length,logs,'repeat save does not add a duplicate note');
   ctx.freeholdIpPsCopyGroup(1473);
-  assert.ok(calls.some(x=>String(x).startsWith('copy:')));
+  const copied=calls.find(x=>x.startsWith('copy:'));
+  assert.match(copied,/Amount: 10,000\.00 USD\n\nUSDT для перевода: 10129\.50/);
+  for(const value of ['', '-10129', '10129.999', '9999.99', '10130.01', 'Infinity']){
+    values.fh_order_amount=value;
+    assert.equal(ctx.freeholdIpPsConfirmedAmount(deal),null,value);
+  }
+  values.fh_order_amount='10000';
+  deal.invoiceUsd=10000.004;
+  assert.equal(ctx.freeholdIpPsConfirmedAmount(deal),10000);
+  deal.invoiceUsd=10000.005;
+  assert.equal(ctx.freeholdIpPsConfirmedAmount(deal),null);
+  values.fh_order_amount='10000.01';
+  assert.equal(ctx.freeholdIpPsConfirmedAmount(deal),10000.01);
   assert.equal(deal.ippsPayoutOrder,undefined,'copy/save alone is not an authorization');
 }
 
@@ -808,11 +822,12 @@ console.log('test_stand_freehold.js: OK');
     payinHashes:[{amount:1},{amount:10999}],transfer:{sends:[]}};
   const d=JSON.parse(JSON.stringify(original)), notices=[], events=[];
   let outcome={ok:false,error:'Распределение USDT не совпадает с подтверждённым приходом и долями RUB'};
-  const values={fh_order_amount:'10130',fh_order_net:'TRC-20',
+  const values={fh_order_amount:'10129.50',fh_order_net:'TRC-20',
     fh_order_addr:'',p_dev:'Synthetic',p_bank:'Synthetic Bank',
     p_acc:'SYNTH-ACCOUNT',p_swift:'SYNTHXX1',p_purp:'Synthetic purpose',
     p_inv:'',p_branch:'',p_bankaddr:''};
-  const ctx=run(['addrValid','standSaveError'],['ADDR_RE'],{STAND:true,S:{role:'operator',modal:{id:1473}},standBusy:false,
+  const ctx=run(['addrValid','standSaveError','freeholdIpPsConfirmedAmount','freeholdFee'],['ADDR_RE'],{
+    STAND:true,S:{role:'operator',modal:{id:1473}},standBusy:false,
     standPush:false,standSaveScheduled:false,deal:()=>d,document:{getElementById:id=>
       id==='fh_order_ack'?{checked:true}:null},saveNote:()=>{},val:id=>values[id]||'',
     prepayWalletUnavailable:()=>false,prepayWalletUnavailableCard:()=>'',
@@ -821,7 +836,7 @@ console.log('test_stand_freehold.js: OK');
     convOf:()=>null,hashSum:()=>11000,freeholdSend:()=>10130,ippsTariff:()=>({}),
     toast:m=>notices.push(m),go:(x,to)=>{x.step=to;events.push('go:'+to);},
     standWaitSaved:async()=>{events.push('wait');if(outcome.ok){d.ippsPayoutOrder={
-      amount:10130,network:'TRC-20',address:values.fh_order_addr,confirmedAt:'synthetic'};}
+      amount:d.transfer.amount,network:'TRC-20',address:values.fh_order_addr,confirmedAt:'synthetic'};}
       return outcome;},
     standRollbackHandoff:id=>{events.push('rollback');Object.keys(d).forEach(k=>delete d[k]);
       Object.assign(d,JSON.parse(JSON.stringify(original)));ctx.S.modal=null;},
@@ -845,6 +860,7 @@ console.log('test_stand_freehold.js: OK');
   events.length=0;notices.length=0;ctx.S.modal={id:1473};outcome={ok:true};
   await ctx.act(1473,'s22');
   assert.equal(d.step,'s23');
+  assert.equal(d.ippsPayoutOrder.amount,10129.50);
   assert.ok(d.ippsPayoutOrder.confirmedAt);
   assert.ok(events.includes('wait'));
   assert.ok(notices.some(x=>/Поручение сохранено/.test(x)));

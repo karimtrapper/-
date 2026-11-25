@@ -5358,7 +5358,7 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
                             <p><strong>${deal.deal_kind === 'mf_auto' ? 'Счёт продавца' : 'Инвойс застройщику'}:</strong> $${(deal.invoice_amount_usd || 0).toFixed(2)}</p>
                             <p><strong>Отправлено:</strong> $${(deal.transfer_sent_usd || 0).toFixed(2)}</p>
                             <p style="color:#6b7280;">— комиссия за перевод: $${(deal.transfer_fee_usd || 0).toFixed(2)}
-                               (${Number(deal.transfer_fee_percent || 0).toFixed(2)}% + $${Number(deal.transfer_fee_fixed_usd || 0).toFixed(0)})</p>
+                               (${Number(deal.transfer_fee_percent || 0).toFixed(2)}% + $${Number(deal.transfer_fee_fixed_usd || 0).toFixed(2)})</p>
                             <p><strong>Дойдёт ${deal.deal_kind === 'mf_auto' ? 'продавцу' : 'застройщику'}:</strong> $${(deal.transfer_arrive_usd || 0).toFixed(2)}
                                ${(deal.invoice_amount_usd && (deal.transfer_arrive_usd || 0) - deal.invoice_amount_usd < -0.01)
                                   ? `<span style="color:#dc2626;">— не хватает $${(deal.invoice_amount_usd - (deal.transfer_arrive_usd || 0)).toFixed(2)}</span>` : ''}</p>

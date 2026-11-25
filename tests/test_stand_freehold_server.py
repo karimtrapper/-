@@ -103,6 +103,10 @@ def test_freehold_instruction_requires_manager_saved_payto_amount_contract_and_f
     allowed = authorized_s23_state(demo=True)
     assert appmod._stand_guard_transition(before, allowed, actor='operator') is None
     assert appmod._stand_guard_transition(before, allowed, actor='admin') is None
+    for amount in (10000, 10129.99):
+        discounted = copy.deepcopy(allowed)
+        discounted['deals'][0]['transfer']['amount'] = amount
+        assert appmod._stand_guard_transition(before, discounted, actor='operator') is None
 
     bad_actor = json.loads(json.dumps(allowed))
     assert 'только операционист' in appmod._stand_guard_transition(before, bad_actor, actor='manager')
@@ -111,9 +115,14 @@ def test_freehold_instruction_requires_manager_saved_payto_amount_contract_and_f
     bad_marker['deals'][0].pop('_ippsPayoutInstruction')
     assert 'подтверждение операциониста' in appmod._stand_guard_transition(before, bad_marker, actor='operator')
 
-    bad_contract = json.loads(json.dumps(allowed))
-    bad_contract['deals'][0]['transfer']['amount'] = 10129
-    assert 'расчётом договора' in appmod._stand_guard_transition(before, bad_contract, actor='operator')
+    for amount in (9999.99, 10130.01):
+        bad_contract = copy.deepcopy(allowed)
+        bad_contract['deals'][0]['transfer']['amount'] = amount
+        assert 'расчётом по тарифу IPPS' in appmod._stand_guard_transition(before, bad_contract, actor='operator')
+    for amount in (0, -10129, 10129.999, 'NaN', 'Infinity', ''):
+        invalid_amount = copy.deepcopy(allowed)
+        invalid_amount['deals'][0]['transfer']['amount'] = amount
+        assert 'Некорректная сумма' in appmod._stand_guard_transition(before, invalid_amount, actor='operator')
 
     bad_network = json.loads(json.dumps(allowed))
     bad_network['deals'][0]['transfer'].update(net='ERC-20', addr='0x' + 'a' * 40)
@@ -125,6 +134,7 @@ def test_freehold_instruction_requires_manager_saved_payto_amount_contract_and_f
         {'hash': 'demo:incoming:1:b', 'amount': 9999, 'demo': True},
     ]
     insufficient_after = authorized_s23_state(demo=True)
+    insufficient_after['deals'][0]['transfer']['amount'] = 10000.01
     insufficient_after['deals'][0]['payinHashes'] = json.loads(json.dumps(
         insufficient['deals'][0]['payinHashes']))
     assert 'превышает подтверждённый приход' in appmod._stand_guard_transition(
@@ -176,6 +186,20 @@ def test_confirmed_legacy_freehold_transfer_without_order_is_not_blocked():
         after, before['deals'][0], after['deals'][0], 'teodor') is None
 
 
+@pytest.mark.parametrize('invoice,minimum', [(10000.004, 10000), (10000.005, 10000.01)])
+def test_freehold_discount_minimum_rounds_invoice_to_cents(invoice, minimum):
+    before = manager_s22_deal()
+    before['invoiceUsd'] = invoice
+    state = authorized_s23_state()
+    deal = state['deals'][0]
+    deal['invoiceUsd'] = invoice
+    deal['transfer']['amount'] = minimum
+    assert appmod._stand_freehold_ipps_order_problem(state, before, deal, 'operator') is None
+    deal['transfer']['amount'] = round(minimum - 0.01, 2)
+    assert 'суммой инвойса' in appmod._stand_freehold_ipps_order_problem(
+        state, before, deal, 'operator')
+
+
 def test_legacy_confirmed_freehold_s25_can_continue_without_fabricated_order():
     before = freehold_board('s25')
     d = before['deals'][0]
@@ -219,12 +243,13 @@ def test_admin_role_choice_can_commit_one_manager_instruction_idempotently(monke
     before = client.get('/api/stand/state')
     assert before.status_code == 200
     payload = authorized_s23_state(demo=True)
+    payload['deals'][0]['transfer']['amount'] = 10129.50
     put = client.put('/api/stand/state', json={
         'version': before.json['version'], 'role': 'manager', 'data': payload})
     assert put.status_code == 200, put.json
     saved = put.json['data']['deals'][0]
     proof = saved['ippsPayoutOrder']
-    assert proof['amount'] == 10130
+    assert proof['amount'] == saved['transfer']['amount'] == 10129.50
     assert proof['network'] == 'TRC-20'
     assert proof['address'] == IPPS_WALLET
     assert proof['confirmedAt']
@@ -233,6 +258,13 @@ def test_admin_role_choice_can_commit_one_manager_instruction_idempotently(monke
     note_ids = [n.get('id') for n in put.json['data']['notes']]
     assert len(note_ids) == len(set(note_ids))
     version = put.json['version']
+
+    changed = copy.deepcopy(put.json['data'])
+    changed['deals'][0]['transfer']['amount'] = 10129.51
+    rejected = client.put('/api/stand/state', json={
+        'version': version, 'role': 'operator', 'data': changed})
+    assert rejected.status_code == 409
+    assert 'подтверждённым поручением' in rejected.json['error']
 
     retry = client.put('/api/stand/state', json={
         'version': before.json['version'], 'role': 'manager', 'data': payload})

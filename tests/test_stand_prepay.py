@@ -537,14 +537,14 @@ def put(api, saved, role):
     return response.json
 
 
-def order(api, saved):
+def order(api, saved, *, amount=10130):
     d = saved['data']['deals'][0]
     d['payToConfirm'] = {'payTo': copy.deepcopy(d['payTo']), 'at': 'confirmed'}
     d['reqTask'] = 'done'
     saved = put(api, saved, 'manager')
     d = saved['data']['deals'][0]
     d.update(step='s23', reqTask='done', _ippsPayoutInstruction=True,
-             transfer={'amount': 10130, 'to': 'IPPS', 'addr': IPPS, 'net': 'TRC-20', 'sends': []})
+             transfer={'amount': amount, 'to': 'IPPS', 'addr': IPPS, 'net': 'TRC-20', 'sends': []})
     return put(api, saved, 'operator')
 
 
@@ -670,11 +670,21 @@ def test_source_amount_and_mode_cannot_be_forged_by_put(api):
     assert m._stand_guard_transition(before, saved['data'], 'operator')
 
 
-def payout(api, source, incoming='company', saved=None):
-    saved = order(api, saved or start(api, source, incoming=incoming))
+def payout(api, source, incoming='company', saved=None, *, amount=10130):
+    saved = order(api, saved or start(api, source, incoming=incoming), amount=amount)
     d = saved['data']['deals'][0]
-    d['transfer']['sends'] = [{'ref': 'demo:1484:out', 'amount': 10130, 'net': 'TRC-20'}]
-    saved = put(api, saved, 'findir' if source == 'company' else 'teodor')
+    role = 'findir' if source == 'company' else 'teodor'
+    if amount < d['prepay']['amount']:
+        excessive = copy.deepcopy(saved)
+        excessive['data']['deals'][0]['transfer']['sends'] = [
+            {'ref': 'demo:1484:above-order', 'amount': round(amount + .01, 2), 'net': 'TRC-20'}]
+        api[1][0] = role
+        refused = api[0].put('/api/stand/state', json={'version': excessive['version'], 'data': excessive['data']})
+        assert refused.status_code == 409, refused.json
+        assert refused.json['error'] == 'Отправки превышают сумму подтверждённого поручения IPPS'
+        assert refused.json['version'] == saved['version']
+    d['transfer']['sends'] = [{'ref': 'demo:1484:out', 'amount': amount, 'net': 'TRC-20'}]
+    saved = put(api, saved, role)
     api[1][0] = 'operator'
     r = api[0].post('/api/stand/prepay', json={'action': 'cancel', 'dealId': 1484, 'version': saved['version']})
     assert r.status_code == 409
@@ -687,7 +697,7 @@ def payout(api, source, incoming='company', saved=None):
     saved = r.json
     d = saved['data']['deals'][0]
     assert d['step'] == 's26' and d['prepay']['brokerStep'] in ('s18', 's18w', 'done')
-    assert d['serverTransferComplete'] and d['payout']['usdt'] == 10130
+    assert d['serverTransferComplete'] and d['payout']['usdt'] == amount
     return saved
 
 
@@ -951,8 +961,10 @@ def test_prepayment_does_not_wait_for_another_deal_in_broker_batch(api):
 
 @pytest.mark.parametrize('source', ['founder', 'company'])
 @pytest.mark.parametrize('received_usdt', [10000, 11000], ids=['partial_loss', 'full_profit'])
-def test_actual_crm_close_requires_all_results_and_preserves_profit(api, source, received_usdt):
-    saved = receive(api, payout(api, source), received_usdt, secrets.token_hex(32))
+@pytest.mark.parametrize('amount,percent,fixed', [(10130, .8, 50), (10050.25, 0, 50.25)],
+                         ids=['tariff', 'discount'])
+def test_actual_crm_close_requires_all_results_and_preserves_profit(api, source, received_usdt, amount, percent, fixed):
+    saved = receive(api, payout(api, source, amount=amount), received_usdt, secrets.token_hex(32))
     if source == 'founder':
         api[1][0] = 'findir'
         saved = api[0].post('/api/stand/prepay/reimburse', json={
@@ -960,8 +972,8 @@ def test_actual_crm_close_requires_all_results_and_preserves_profit(api, source,
     state = saved['data']
     d = state['deals'][0]
     # Даже при недоборе брокера возвращается весь расход IPPS, а не сумма прихода.
-    assert d['payout']['usdt'] == 10130
-    assert d['payout']['reimbursement']['usdt'] == 10130
+    assert d['payout']['usdt'] == amount
+    assert d['payout']['reimbursement']['usdt'] == amount
     assert d['pay']['usdt'] == received_usdt
     # Транспорт сети подменён; закрытие проверяет реальный реестр долей прихода.
     d['demoTransfers'] = False
@@ -988,12 +1000,12 @@ def test_actual_crm_close_requires_all_results_and_preserves_profit(api, source,
     crm = {'client_name': 'Synthetic prepay', 'deal_kind': 'mf_freehold',
            'payin_method': 'sber_reqs', 'payin_rate_rub_usdt': 80,
            'payin_amount_rub': 900000, 'payin_amount_usdt': received_usdt,
-           'invoice_amount_usd': 10000, 'transfer_fee_percent': .8,
-           'transfer_fee_fixed_usd': 50, 'transfer_sent_usd': 10130,
+           'invoice_amount_usd': 10000, 'transfer_fee_percent': percent,
+           'transfer_fee_fixed_usd': fixed, 'transfer_sent_usd': amount,
            'realty_purpose': 'Invoice',
            'payin_tx_hashes': [{'hash': d['payinHashes'][0]['hash'], 'network': 'trc20',
                                 'amount_usdt': received_usdt}],
-           'payout_tx_hashes': [{'hash': 'demo:1484:out', 'network': 'trc20', 'amount_usdt': 10130}]}
+           'payout_tx_hashes': [{'hash': 'demo:1484:out', 'network': 'trc20', 'amount_usdt': amount}]}
     api[1][0] = 'manager'
     for missing in ('receipt', 'invoice', 'sent', 'refund'):
         broken = copy.deepcopy(state)
@@ -1012,7 +1024,8 @@ def test_actual_crm_close_requires_all_results_and_preserves_profit(api, source,
     seed(state)
     r = api[0].post('/api/stand/deals/1484/crm-close', json={'version': 1, 'crm': crm})
     assert r.status_code == 201, r.json
-    assert r.json['deal']['profit_usdt'] == received_usdt - 10130
+    assert r.json['deal']['transfer_arrive_usd'] == 10000
+    assert r.json['deal']['profit_usdt'] == round(received_usdt - amount, 2)
     again = api[0].post('/api/stand/deals/1484/crm-close', json={'version': 1, 'crm': crm})
     assert again.status_code == 200 and again.json['duplicate']
 

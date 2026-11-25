@@ -69,6 +69,14 @@ assert.equal((card.match(/class="owner-line"/g) || []).length, 6);
 assert.match(card, /Возмещение<\/span><span class="owner-value">2 234,76 USDT → кошелёк Теодора<\/span><span class="owner-hint">ждём USDT брокера/);
 assert.doesNotMatch(card, /Возмещение<\/span><span class="owner-value">\$/);
 
+const discounted = {...deal1487, ippsPayoutOrder: {confirmedAt: '2026-11-25T12:00:00Z', amount: 2200},
+  payout: {usdt: 2234.76}, economics: {...deal1487.economics, ippsAgreed: 2200, ippsDiscounted: true, bankFee: 47.53}};
+card = ctx.ownerSummary(discounted);
+assert.match(card, /Согласованная комиссия IPPS:<\/b> \$47\.53/);
+assert.match(card, /Возмещение<\/span><span class="owner-value">2 200,00 USDT/);
+card = ctx.ownerSummary({...discounted, serverTransferComplete: true, payout: {usdt: 2201}});
+assert.match(card, /Возмещение<\/span><span class="owner-value">2 201,00 USDT/);
+
 const deal1484 = {...base, id: 1484, cnvId: 2, prepay: {wallet: wallets[0], amount: 2234.76},
   payinParts: [{amountRub: 250000, incId: 102}], files: {},
   economics: {...base.economics, byFact: true}};
@@ -224,6 +232,8 @@ async function checkOwnerRole(role) {
   ctx.NavShell = {mount: () => {}};
   ctx.fetchChannels = async () => {};
   ctx.fetchCrmClients = async () => {};
+  ctx.fetchDealFlowConfig = async () => {};
+  ctx.crmClosePendingAll = () => [];
   ctx.standPull = async () => {};
   ctx.s18FetchCandidates = async () => {};
   ctx.checkDocParseCapability = async () => {};

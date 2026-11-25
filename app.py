@@ -5253,7 +5253,7 @@ def _mf_freehold_telegram_text(deal):
         f"{_payin_parts_block(deal)}\n"
         f"Отправлено: ${sent:,.2f}\n"
         f"— комиссия за перевод: ${fee:,.2f} "
-        f"({deal.transfer_fee_percent or 0:.2f}% + ${deal.transfer_fee_fixed_usd or 0:,.0f})\n"
+        f"({deal.transfer_fee_percent or 0:.2f}% + ${deal.transfer_fee_fixed_usd or 0:,.2f})\n"
         f"— дойдёт {'продавцу' if is_auto else 'застройщику'}: ${arrive:,.2f}"
     )
     gap = round(arrive - invoice, 2) if invoice else 0
@@ -11120,7 +11120,7 @@ def _stand_crm_fact_problem(board, crm, kind, *, state=None, preview_unverified=
     The CRM preview permits editing descriptive fields, but a POST may not
     replace the confirmed invoice, tariff, route or on-chain transfers.
     """
-    from decimal import Decimal, ROUND_HALF_UP
+    from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
     import math
     custom = board.get('customData') or {}
     flow_sole = ((board.get('payType') == 'По реквизитам'
@@ -11412,11 +11412,30 @@ def _stand_crm_fact_problem(board, crm, kind, *, state=None, preview_unverified=
     if kind in SWIFT_PAYMENT_KINDS:
         tariff = {'bank': (Decimal('0.8'), Decimal('50')),
                   'soft': (Decimal('1.5'), Decimal('50'))}.get(board.get('ippsTariff') or 'bank')
-        invoice = money(board.get('invoiceUsd'))
-        if (invoice is None or invoice <= 0 or not tariff
-                or not matches('invoice_amount_usd', invoice)
-                or not exact('transfer_fee_percent', tariff[0])
-                or not matches('transfer_fee_fixed_usd', tariff[1])):
+        raw_invoice = positive(board.get('invoiceUsd'))
+        if raw_invoice is None or not tariff:
+            return 'locked_invoice_mismatch'
+        order = board.get('ippsPayoutOrder') or {}
+        agreed = positive(order.get('amount')) if order.get('confirmedAt') else None
+        try:
+            invoice = (raw_invoice.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+                       if agreed is not None else money(raw_invoice))
+            tariff_amount = (_amount(stand_prepay.amount({**board, 'invoiceUsd': raw_invoice}))
+                             if agreed is not None else None)
+        except InvalidOperation:
+            return 'locked_invoice_mismatch'
+        percent, fixed = tariff
+        discounted = tariff_amount is not None and invoice <= agreed < tariff_amount
+        if discounted:
+            # Preserve the agreed fee when CRM later recalculates from the
+            # invoice or the actual outgoing transfers.
+            percent, fixed = Decimal(0), agreed - invoice
+        invoice_matches = (exact('invoice_amount_usd', invoice) if agreed is not None
+                           else matches('invoice_amount_usd', invoice))
+        fixed_matches = (exact('transfer_fee_fixed_usd', fixed) if discounted
+                         else matches('transfer_fee_fixed_usd', fixed))
+        if (invoice <= 0 or not invoice_matches
+                or not exact('transfer_fee_percent', percent) or not fixed_matches):
             return 'locked_invoice_mismatch'
         if any(crm.get(key) is not None for key in (
                 'invoice_amount_thb', 'buy_rate_thb_usdt', 'sell_rate_thb_usdt',
@@ -11429,7 +11448,7 @@ def _stand_crm_fact_problem(board, crm, kind, *, state=None, preview_unverified=
             return 'payout_facts_mismatch'
         sent = sum((money(t.get('amount')) or Decimal(0) for t in transfers), Decimal(0))
         if not sent:
-            sent = (invoice * (Decimal(1) + tariff[0] / 100) + tariff[1]).quantize(Decimal('0.01'))
+            sent = agreed or (invoice * (Decimal(1) + percent / 100) + fixed).quantize(Decimal('0.01'))
         if not matches('transfer_sent_usd', sent):
             return 'transfer_sent_mismatch'
     elif kind == PERSONAL_REALTY_KIND and board.get('paySrc') == 'scb':
@@ -13196,11 +13215,15 @@ def _stand_freehold_ipps_order_problem(state, before, deal, actor):
         transfer = deal.get('transfer') or {}
         try:
             from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
-            invoice = Decimal(str(deal.get('invoiceUsd')))
+            invoice = Decimal(str(before.get('invoiceUsd')))
             amount = Decimal(str(transfer.get('amount')))
-            expected = Decimal(str(stand_prepay.amount(deal)))
-            if invoice <= 0 or amount != expected:
-                return 'Сумма поручения должна совпасть с расчётом договора'
+            expected = Decimal(str(stand_prepay.amount(before)))
+            if (not invoice.is_finite() or invoice <= 0 or not amount.is_finite()
+                    or amount <= 0 or amount != amount.quantize(Decimal('0.01'))):
+                return 'Некорректная сумма поручения IPPS'
+            minimum = invoice.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+            if not minimum <= amount <= expected:
+                return 'Сумма поручения должна быть между суммой инвойса и расчётом по тарифу IPPS'
         except (InvalidOperation, TypeError, ValueError, KeyError):
             return 'Некорректная сумма поручения IPPS'
         network = transfer.get('net')
@@ -13249,6 +13272,12 @@ def _stand_freehold_ipps_order_problem(state, before, deal, actor):
                 or transfer.get('net') != old_order.get('network')
                 or transfer.get('addr') != old_order.get('address')):
             return 'Перевод должен совпадать с подтверждённым поручением менеджера'
+        if (old_order.get('confirmedAt') and new_sends != old_sends
+                and not (before.get('outgoingReview') or {}).get('requestedAt')):
+            total_sent = sum(_amount(s.get('amount')) or 0 for s in new_sends
+                             if s.get('status') not in ('failed', 'mismatch'))
+            if total_sent > (_amount(old_order.get('amount')) or 0):
+                return 'Отправки превышают сумму подтверждённого поручения IPPS'
     return None
 
 

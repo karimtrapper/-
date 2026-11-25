@@ -2316,7 +2316,7 @@ function econ(d){
     invoice:invoice,buy:buy,kind:d.kind||'Обмен',ready:false,
     sentThb:null,feeThb:null,feeUsd:null,cost:null,crypto:null,gross:null,pct:null,
     agents:[],agentsTotal:0,net:null,bankFee:null,sentUsd:null,pockets:'один',
-    invoiceUsd:null,feePercent:null,feeFixed:null};
+    invoiceUsd:null,feePercent:null,feeFixed:null,ippsAgreed:null,ippsDiscounted:false};
   /* Фрихолд: S/тариф/комиссия не зависят от прихода вообще — считаем сразу из
      инвойса и тарифа IPPS, чтобы сумма для реквизитов (шаг «Реквизиты для оплаты»,
      параллельная задача менеджера) была известна до конвертации брокером
@@ -2326,7 +2326,14 @@ function econ(d){
     r.invoiceUsd=X;
     if(X){
       r.feePercent=t.percent;r.feeFixed=t.fixed;r.bankFee=freeholdFee(X,t);
-      r.sentUsd=d.serverTransferComplete&&d.payout?.usdt>0?d.payout.usdt:freeholdSend(X,t);
+      const tariffAmount=freeholdSend(X,t);
+      r.ippsAgreed=d.ippsPayoutOrder?.confirmedAt?Number(d.ippsPayoutOrder.amount):null;
+      const invoice=freeholdFee(X,{percent:100,fixed:0});
+      r.ippsDiscounted=r.ippsAgreed!=null&&r.ippsAgreed>=invoice&&r.ippsAgreed<tariffAmount;
+      if(r.ippsDiscounted){
+        r.feePercent=0;r.feeFixed=r.bankFee=Math.round((r.ippsAgreed-invoice)*100)/100;
+      }
+      r.sentUsd=d.serverTransferComplete&&d.payout?.usdt>0?d.payout.usdt:r.ippsAgreed||tariffAmount;
       const networkFees=d.prepay?(d.commissionSends||[]).reduce((sum,tx)=>sum+num(tx.amount),0):0;
       r.cost=r.sentUsd+networkFees;
     }
@@ -4815,6 +4822,7 @@ async function prepayAction(id,action){
   const j=await standAction('/api/stand/prepay',{dealId:id,action,version:standVer,walletId:val('prepay_wallet')});
   if(j){
     delete DRAFTS[id+'|fh_order_addr'];
+    delete DRAFTS[id+'|fh_order_amount'];
     S.prepayForm=null;render();toast(action==='start'?'Оплата идёт параллельно с конвертацией':'Оплата наперёд отменена');
   }
 }
@@ -4836,9 +4844,10 @@ function prepayPanel(d){
       <button class="btn btn-primary" onclick="prepayAction(${d.id},'start')">Запустить оплату наперёд</button></div>`;
   }
   const refund=prepayRefundRole(d), due=d.payout?.usdt;
+  const agreed=d.ippsPayoutOrder?.confirmedAt?d.ippsPayoutOrder.amount:p.amount;
   return `<div class="card"><div class="card-title">Оплата наперёд · параллельные задачи</div>
     <p>Конвертация: <b>${p.brokerStep==='done'?'USDT брокера получены':STEPS[p.brokerStep].title}</b></p>
-    <p>Оплата: <b>${d.pay?.invoicePaid?'MT103/чек получен':(d.step==='s23'&&d.outgoingReview?.requestedAt?'Проверить отправку':d.step==='s22'?'Подготовить заявку IPPS':STEPS[d.step].title)}</b> · ${htmlText(p.wallet.name)} · ${usd(p.amount)}</p>
+    <p>Оплата: <b>${d.pay?.invoicePaid?'MT103/чек получен':(d.step==='s23'&&d.outgoingReview?.requestedAt?'Проверить отправку':d.step==='s22'?'Подготовить заявку IPPS':STEPS[d.step].title)}</b> · ${htmlText(p.wallet.name)} · ${usd(due||agreed)}</p>
     ${S.role==='operator'&&['s22','s23'].includes(d.step)&&!sendList(d).length?`<button class="btn btn-outline" onclick="prepayAction(${d.id},'cancel')">Отменить оплату наперёд</button>`:''}
     <p>Возмещение на ${htmlText(p.wallet.name)}: ${d.payout?.reimbursement?htmlText(d.payout.reimbursement.kind):(due?usd(due)+' · ждём приход брокера или перевод':'после отправки IPPS')}</p>
     ${refund===S.role?`<p>С кошелька ${htmlText(walletById(convOf(d)?.walletId)?.name||'получения USDT брокера')} на <span class="addr">${htmlText(p.wallet.addr)}</span></p><label class="fl">Хеш возмещения ${usd(due)}</label><input class="fc addr" id="prepay_refund_${d.id}" placeholder="TRC-20 хеш">
@@ -4918,11 +4927,32 @@ function freeholdIpPsPayToSave(id){
   log(d,'Менеджер сохранил реквизиты заявки IPPS для сверки в группе');
   save();render();toast('Реквизиты сохранены. Сверьте сумму, сеть и адрес в группе, затем отдельно поручите перевод.');
 }
+function freeholdIpPsConfirmedAmount(d){
+  const raw=val('fh_order_amount');
+  const decimal=/^(?:\d+|\d{1,3}(?:[ \u00a0\u202f]\d{3})+)(?:[.,]\d{1,2})?$/;
+  const amount=decimal.test(raw)?Number(raw.replace(/[ \u00a0\u202f]/g,'').replace(',','.')):NaN;
+  if(!Number.isFinite(amount)||amount<=0){
+    toast('Укажите сумму USDT с точностью до двух знаков после запятой');
+    return null;
+  }
+  const invoice=Number(d.invoiceUsd);
+  if(!Number.isFinite(invoice)||invoice<=0){
+    toast('В сделке не указана сумма инвойса в USD');
+    return null;
+  }
+  const minimum=freeholdFee(invoice,{percent:100,fixed:0}), expected=freeholdSend(invoice,ippsTariff(d));
+  if(amount<minimum||amount>expected){
+    toast('Допустимая сумма: от '+moneyKop(minimum,'USDT')+' до '+moneyKop(expected,'USDT'));
+    return null;
+  }
+  return amount;
+}
 function freeholdIpPsCopyGroup(id){
   const d=deal(id);if(!d||d.kind!=='Фрихолд'||d.step!=='s22')return;
-  const pt=d.payTo||{}, amount=freeholdSend(d.invoiceUsd||0,ippsTariff(d));
+  const amount=freeholdIpPsConfirmedAmount(d);if(amount==null)return;
+  const pt=d.payTo||{};
   const network=val('fh_order_net')||'TRC-20', address=String(val('fh_order_addr')||'').trim();
-  const text=ippsApplicationText(d,pt)+'\n\nUSDT для перевода: '+(amount?amount.toFixed(2):'сумма из подтверждения')+
+  const text=ippsApplicationText(d,pt)+'\n\nUSDT для перевода: '+amount.toFixed(2)+
     '\nNetwork: '+network+'\nIPPS wallet: '+(address||'адрес из подтверждения');
   copyAsk(text);
 }
@@ -5355,7 +5385,8 @@ function ownerSummary(d){
   const sendLine=line('Отправляем',sendValue,wallet?.name?'с кошелька: '+wallet.name:'',
     item('Куда',route+(destination?' · '+destination:''))+
     item('Получателю',d.kind==='Фрихолд'&&d.invoiceUsd?usdMark(d,d.invoiceUsd):d.pay?.coinsCredit?.thb?money(d.pay.coinsCredit.thb,'฿'):null)+
-    item('Тариф / комиссия',d.kind==='Фрихолд'?ippsTariff(d).label+(E.bankFee!=null?' · '+usd(E.bankFee):''):d.companyPct!=null?d.companyPct+' %':null)+
+    item('Тариф / комиссия',d.kind==='Фрихолд'?ippsTariff(d).label+(!E.ippsDiscounted&&E.bankFee!=null?' · '+usd(E.bankFee):''):d.companyPct!=null?d.companyPct+' %':null)+
+    item('Согласованная комиссия IPPS',E.ippsDiscounted?usd(E.bankFee):null)+
     item('С кошелька',wallet?wallet.name+(wallet.owner?' · '+wallet.owner:''):null)+
     (d.prepay?item('Наперёд',convOf(d)?.receivedAt?'USDT брокера уже получены':'деньги клиента ещё в конвертации'):''));
   const src=c?.sources?.find(x=>String(x.dealId)===String(d.id))||{};
@@ -5386,7 +5417,7 @@ function ownerSummary(d){
       (estimate?.legacy&&!c?item('Источник','Снимок расчёта при выпуске старого пакета не сохранялся; использованы доступные поля договора и текущая сохранённая котировка'): ''):
       'Расчёт появится после получения нужных данных');
   const reimbursement=d.payout?.reimbursement;
-  const refundAmount=reimbursement?.usdt??d.prepay?.amount;
+  const refundAmount=reimbursement?.usdt??(d.serverTransferComplete?d.payout?.usdt:null)??E.ippsAgreed??d.prepay?.amount;
   const refundWallet=d.prepay?.wallet?.name?.replace(/^Кошелёк /,'кошелёк ')||d.prepay?.wallet?.owner&&'кошелёк '+d.prepay.wallet.owner;
   const refundLine=d.prepay?line('Возмещение',refundAmount!=null?moneyKop(refundAmount,'USDT')+(refundWallet?' → '+refundWallet:''):'ещё нет',
     reimbursement?'возмещено':brokerGot?'ждёт возмещения':'ждём USDT брокера',
@@ -8194,8 +8225,13 @@ function overview(d,st,mine,p,wh){
       ${d.kind==='Фрихолд'
         ?row('Инвойс застройщику',usdMark(d,E.invoiceUsd)+(d.invoiceCurrency==='thb'&&d.invoiceThb?' (по инвойсу '+money(d.invoiceThb,'฿')+')':''))
           +row('Тариф IPPS',ippsTariff(d).label)
-          +row('Отправлено в IPPS',usd(E.sentUsd),'комиссия '+E.feePercent+'% + '+usd(E.feeFixed)+' = '+usd(E.bankFee))
-          +row('Дойдёт застройщику',usdMark(d,E.invoiceUsd))
+          +(E.ippsAgreed!=null?row('Согласовано с IPPS',moneyKop(E.ippsAgreed,'USDT'),
+            E.ippsDiscounted?'комиссия '+usd(E.bankFee):''):'')
+          +(d.serverTransferComplete||E.ippsAgreed==null
+            ?row(d.serverTransferComplete?'Отправлено в IPPS':'По тарифу к отправке в IPPS',moneyKop(E.sentUsd,'USDT'),
+              E.ippsDiscounted?'':'комиссия '+E.feePercent+'% + '+usd(E.feeFixed)+' = '+usd(E.bankFee)):'')
+          +row('Дойдёт застройщику',usdMark(d,E.ippsDiscounted&&d.serverTransferComplete
+            ?Math.max(0,E.sentUsd-E.bankFee):E.invoiceUsd))
         :row('Инвойс застройщику',money(E.invoice,'฿'))
           +row('Отправлено в компанию',money(E.sentThb,'฿'),'комиссия '+E.companyPct.toFixed(2)+'% = '+money(E.feeThb,'฿')+' / '+usd(E.feeUsd))
           +row('Курс покупки',String(E.buy).replace('.',','),'฿ за 1 USDT'+(d.postConv==='coins'?' · Coins USDT→THB':''))}
@@ -8596,14 +8632,13 @@ function crmPayload(d){
     if(coinsRate&&E.sentThb) p.company_sent_thb=E.sentThb;
     else p.company_percent=d.companyPct==null?1:d.companyPct;
   }else if(prop){
-    /* Фрихолд без батов: инвойс в USD и тариф уже на самой сделке (менеджер выбрал
-       банк 0,8%+50$ или софт-счёт 1,5%+50$ при заявке) — не зашитые 0,8%/50$, и не
-       деление батов на курс (спека 28.09-freehold-no-baht). Формула — та же, что
-       у сервера (compute_mf_freehold): S = X·(1+p)+F. */
     const t=IPPS_TARIFFS[d.ippsTariff]||{percent:null,fixed:null}, X=d.invoiceUsd??null;
+    const invoice=E.ippsAgreed!=null?freeholdFee(X,{percent:100,fixed:0}):r2(X);
     Object.assign(p,{deal_kind:d.autoPayment===true?'mf_auto':'mf_freehold',realty_purpose:(d.payTo&&d.payTo.purpose)||d.object||'',
-      invoice_amount_usd:r2(X),transfer_fee_percent:t.percent,transfer_fee_fixed_usd:t.fixed,
-      transfer_sent_usd:r2(mf.reduce((a,t2)=>a+(+t2.amount_usdt||0),0))||r2(X!=null&&t.percent!=null?freeholdSend(X,t):null),payout_tx_hashes:mf});
+      invoice_amount_usd:invoice,transfer_fee_percent:E.ippsDiscounted?0:t.percent,
+      transfer_fee_fixed_usd:E.ippsDiscounted?E.feeFixed:t.fixed,
+      transfer_sent_usd:r2(mf.reduce((a,t2)=>a+(+t2.amount_usdt||0),0))||E.ippsAgreed||r2(X!=null&&t.percent!=null?freeholdSend(X,t):null),
+      payout_tx_hashes:mf});
   }else{
     const method={
       'наличные в офисе':'office','курьер':'courier','банкомат':'atm',
@@ -13625,7 +13660,9 @@ function stepCard(d){
         <div class="derived">${d.prepay?'Источник наперёд: '+htmlText(d.prepay.wallet.name):'Пришло '+(got!=null?usd(got):'—')} · расчёт по заявке ${usd(expected)} USDT</div>
         ${w?walletPolicyLine(w):''}
         <div class="fr" style="margin-top:12px">
-          <div class="fg"><label class="fl">Подтверждённая сумма, USDT<span class="rq">*</span></label><input class="fc num" id="fh_order_amount" readonly value="${expected}"></div>
+          <div class="fg"><label class="fl" for="fh_order_amount">Подтверждённая сумма, USDT<span class="rq">*</span></label>
+            <input class="fc num" id="fh_order_amount" inputmode="decimal" value="${order.confirmedAt?htmlText(order.amount):expected}"${order.confirmedAt?' readonly':''} aria-describedby="fh_order_amount_hint">
+            <p class="fh" id="fh_order_amount_hint">От суммы инвойса до расчёта по тарифу IPPS.</p></div>
           <div class="fg"><label class="fl">Сеть<span class="rq">*</span></label><select class="fc" id="fh_order_net"><option value="">— выбрать —</option><option>TRC-20</option></select><p class="fh">Сейчас поддерживается только TRC-20 для исходящего IPPS.</p></div>
           <div class="fg w2"><label class="fl" for="fh_order_addr">Адрес из подтверждения IPPS<span class="rq">*</span></label>
             <input class="fc addr" id="fh_order_addr" value="${htmlText(order.confirmedAt?order.address:'')}"${order.confirmedAt?' readonly':''} autocomplete="off" spellcheck="false" placeholder="полный адрес получателя">
@@ -14276,16 +14313,14 @@ async function act(id,step){
     go(d,'s22','USDT на кошельке — решаем, что дальше');toast('Пришло '+moneyKop(got,'USDT'));return;}
   if(step==='s22'){
     if(d.kind==='Фрихолд'){
-      const amount=freeholdSend(d.invoiceUsd||0,ippsTariff(d)), network=val('fh_order_net'), address=String(val('fh_order_addr')||'').trim();
       if(!document.getElementById('fh_order_ack')?.checked){toast('Подтвердите, что заявка и реквизиты согласованы в группе IPPS');return;}
-      if(!Number.isFinite(amount)||amount<=0){toast('Укажите подтверждённую сумму USDT');return;}
+      const amount=freeholdIpPsConfirmedAmount(d);if(amount==null)return;
+      const network=val('fh_order_net'), address=String(val('fh_order_addr')||'').trim();
       if(!NETS.includes(network)||!addrValid(address,network)){toast('Проверьте адрес и сеть из подтверждения IPPS');return;}
       if(!payToReady(d)){toast('Сначала заполните и сохраните SWIFT, счёт и назначение заявки');return;}
       if(!payToConfirmed(d)){toast('Сначала менеджер должен подтвердить актуальные реквизиты');return;}
       const batch=convOf(d), funded=d.prepay?d.prepay.amount:(batch?hashSum(batch.txs):hashSum(d.payinHashes));
       if(funded==null||Math.round(amount*100)>Math.round(funded*100)){toast('Сумма поручения превышает подтверждённый приход или приход ещё не зарегистрирован');return;}
-      const expected=freeholdSend(d.invoiceUsd||0,ippsTariff(d));
-      if(Math.round(amount*100)!==Math.round(expected*100)){toast('Сумма IPPS должна совпасть с расчётом договора: '+usd(expected));return;}
       d.postConv='ipps_swift';
       d.transfer=Object.assign({},d.transfer||{},{amount,to:'IPPS',addr:address,net:network});
       d.reqTask='done';
