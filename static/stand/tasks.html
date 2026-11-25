@@ -1630,7 +1630,6 @@ const IPPS_TARIFFS={
   bank:{percent:0.8,fixed:50,label:'Банк · 0,8 % + $50',method:'Банк · FET от компании',note:'обычный FET-платёж от компании'},
   soft:{percent:1.5,fixed:50,label:'Софт-счёт · 1,5 % + $50',method:'Софт-счёт · POBO от имени клиента',note:'платёж от имени клиента — в заявке IPPS строка POBO'}
 };
-const IPPS_WALLET='TQgQCBXkewuW4RoieDKFP9Ko2SopBh8jso';    // кошелёк IPPS TRC-20, подтверждён 22.09
 function ippsTariff(d){return IPPS_TARIFFS[d.ippsTariff||'bank'];}
 function ippsPaymentMethod(d){
   return (IPPS_TARIFFS[d.ippsPayoutOrder?.tariff||d.ippsTariff]||IPPS_TARIFFS.bank).method;
@@ -3236,7 +3235,7 @@ function payoutRecord(x,phase,main){
     /* Фрихолд: единственный маршрут — IPPS SWIFT в USD, застройщик получает X,
        на кошельке уходит S (спека 28.09, §2 «s22»). */
     if(k==='ipps_swift'){x.paySrc='ipps_swift';Object.assign(po,{method:'IPPS · SWIFT в USD',
-      source:'IPPS (SWIFT)',usdt:pcAmount(x)||null,wallet:IPPS_WALLET});}
+      source:'IPPS (SWIFT)',usdt:pcAmount(x)||null,wallet:plannedDestination(x).address});}
   }else{
     const l=sendList(x).filter(t=>t.status==='confirmed'&&(t.hash||t.ref));
     const hashes=l.map(t=>({amount:t.verifiedAmount,network:pcNet(x).replace('-',''),hash:t.hash||t.ref}));
@@ -4811,7 +4810,10 @@ function prepayCloseReason(d){
 async function prepayAction(id,action){
   if(!await standRequireSaved())return;
   const j=await standAction('/api/stand/prepay',{dealId:id,action,version:standVer,walletId:val('prepay_wallet')});
-  if(j){S.prepayForm=null;render();toast(action==='start'?'Оплата идёт параллельно с конвертацией':'Оплата наперёд отменена');}
+  if(j){
+    delete DRAFTS[id+'|fh_order_addr'];
+    S.prepayForm=null;render();toast(action==='start'?'Оплата идёт параллельно с конвертацией':'Оплата наперёд отменена');
+  }
 }
 async function prepayReimburse(id){
   const j=await standAction('/api/stand/prepay/reimburse',{dealId:id,hash:val('prepay_refund_'+id)});
@@ -13612,7 +13614,9 @@ function stepCard(d){
         <div class="fr" style="margin-top:12px">
           <div class="fg"><label class="fl">Подтверждённая сумма, USDT<span class="rq">*</span></label><input class="fc num" id="fh_order_amount" readonly value="${expected}"></div>
           <div class="fg"><label class="fl">Сеть<span class="rq">*</span></label><select class="fc" id="fh_order_net"><option value="">— выбрать —</option><option>TRC-20</option></select><p class="fh">Сейчас поддерживается только TRC-20 для исходящего IPPS.</p></div>
-          <div class="fg w2"><label class="fl">Адрес из подтверждения IPPS<span class="rq">*</span></label><input class="fc addr" id="fh_order_addr" value="${htmlText((d.transfer||{}).addr||IPPS_WALLET)}" placeholder="полный адрес получателя"><p class="fh">Предложен известный адрес IPPS; это не подтверждение. Сверьте в группе или замените по сообщению IPPS.</p></div>
+          <div class="fg w2"><label class="fl" for="fh_order_addr">Адрес из подтверждения IPPS<span class="rq">*</span></label>
+            <input class="fc addr" id="fh_order_addr" value="${htmlText(order.confirmedAt?order.address:'')}"${order.confirmedAt?' readonly':''} autocomplete="off" spellcheck="false" placeholder="полный адрес получателя">
+            ${order.confirmedAt?'':'<p class="fh">Вставьте адрес, который IPPS подтвердил для этой заявки.</p>'}</div>
         </div>
         <label class="task-check task-check--confirm"><input type="checkbox" id="fh_order_ack"> Подтверждаю: указал в группе IPPS сумму, сеть и адрес, получил подтверждение и поручаю ${hasPolicy(w)?'участникам отправки':d.prepay&&!d.prepay.wallet.multisig?'владельцу кошелька':'финдиру'} исходящий перевод.</label>
         ${payToReady(d)?`<div class="derived" style="margin-top:12px"><b>Предпросмотр заявки для сверки в группе</b><pre style="white-space:pre-wrap;font-size:12px;margin:6px 0 0">${htmlText(ippsApplicationText(d,d.payTo||{}))}</pre>

@@ -569,8 +569,8 @@ console.log('test_stand_freehold.js: OK');
   const D={clientId:1,client:'Synthetic',inquiryType:'agent',type:'Оплата недвижимости',kind:'Фрихолд',
     payType:'Крипта',cur:'fhusd',sum:'97500',ippsTariff:'bank',amountUsdt:'98800'};
   let created;
-  const ctx=run(['createGo','draftValid','draftAmounts'],[],{
-    S:{draft:D},STAND:false,ensureClient:()=>{},clientById:()=>({docs:false}),payWays:()=>['Крипта'],
+  const ctx=run(['createGo','createTask','standCreatedDeal','draftValid','draftAmounts'],[],{
+    S:{draft:D},STAND:false,standBase:null,ensureClient:()=>{},clientById:()=>({docs:false}),payWays:()=>['Крипта'],
     newDeal:o=>(created={...o,id:9101}),log:()=>{},save:()=>{},render:()=>{},toast:()=>{},
     num:x=>x==null||x===''?null:Number(String(x).replace(',','.')),
     cleanNum:x=>String(x).replace(/[\s\u00a0]/g,'').replace(',','.'),
@@ -692,7 +692,7 @@ console.log('test_stand_freehold.js: OK');
     fake:()=>({}),econ:()=>({parts:[{fact:98799.5}],ready:false,multi:false,payin:98799.5}),
     docListRows:()=>({issued:[],client:[]}),isCrypto:x=>x.payType==='Крипта',
     apMoney:(ap,k)=>k==='pay'?ap.pay+' USDT':ap.thb+' $',
-    usd:v=>'$'+v,stepTitle:()=>'',refSignal:()=>null,
+    usd:v=>'$'+v,stepTitle:()=>'',refSignal:()=>null,dealRealtyKindControl:x=>x.kind,
     cnvRow:()=>'',fillNote:()=>'',fixCard:()=>'',signedBlock:()=>'',docExtraControl:()=>''});
   const rendered=ctx.overview(d,{},true,{i:1,n:10},'manager').replace(/\u00a0/g,' ');
   assert.match(rendered,/Клиент отправит<\/th><td>98800 USDT/);
@@ -728,7 +728,7 @@ console.log('test_stand_freehold.js: OK');
 // Менеджер подтверждает текущий снимок, затем операционист получает форму IPPS.
 {
   const ctx=run(['stepWho','myTasks','reqOpen','canRerate','rerateBalance','stepCard','payToConfirmed','payToConfirmBlock','hasPolicy','walletPolicyLine','policyRoleNames','policyInitiators','ippsPaymentMethod'],['STEPS','SOURCES_PAY','IPPS_TARIFFS'],{
-    S:{role:'manager',deals:[],notes:[]},NETS:['TRC-20'],IPPS_WALLET:'T'+'A'.repeat(33),
+    S:{role:'manager',deals:[],notes:[]},NETS:['TRC-20'],
     STAND:true,approx:()=>({}),fake:()=>({}),stepNote:()=>'',htmlText:String,
     freeholdSend:()=>10130,ippsTariff:()=>({}),usd:x=>'$'+x,convOf:()=>null,
     dealWallet:()=>null,hashSum:()=>11000,cnvMembers:d=>[d],pcOut:()=>10130,
@@ -749,10 +749,20 @@ console.log('test_stand_freehold.js: OK');
   const operator=ctx.stepCard(d);
   assert.match(operator,/id="fh_order_amount" readonly value="10130"/);
   assert.match(operator,/Банк · FET от компании/);
-  assert.match(operator,/id="fh_order_addr"/);
-  assert.match(operator,/это не подтверждение/);
+  assert.match(operator,/id="fh_order_addr" value="" autocomplete="off"/);
+  assert.match(operator,/Вставьте адрес, который IPPS подтвердил для этой заявки/);
   assert.match(operator,/Копировать текст для группы/);
   assert.doesNotMatch(operator,/id="p_acc"/);
+  const legacy={...d,transfer:{addr:'T'+'A'.repeat(33)}};
+  for(const variant of [legacy,{...legacy,autoPayment:true},{...legacy,prepay:{wallet:{name:'QA',multisig:true}}}]){
+    const form=ctx.stepCard(variant);
+    assert.match(form,/id="fh_order_addr" value=""/);
+    assert.ok(!form.includes(legacy.transfer.addr));
+  }
+  const address='T'+'B'.repeat(33);
+  const saved=ctx.stepCard({...legacy,ippsPayoutOrder:{address,amount:10130,network:'TRC-20',confirmedAt:'synthetic'}});
+  assert.match(saved,new RegExp(`id="fh_order_addr" value="${address}" readonly`));
+  assert.ok(!saved.includes(legacy.transfer.addr));
   d.payTo.acc='changed';
   assert.equal(ctx.stepWho(d),'manager');
   assert.doesNotMatch(ctx.stepCard(d),/fh_order_addr/);
@@ -799,15 +809,15 @@ console.log('test_stand_freehold.js: OK');
   const d=JSON.parse(JSON.stringify(original)), notices=[], events=[];
   let outcome={ok:false,error:'Распределение USDT не совпадает с подтверждённым приходом и долями RUB'};
   const values={fh_order_amount:'10130',fh_order_net:'TRC-20',
-    fh_order_addr:'T'+'A'.repeat(33),p_dev:'Synthetic',p_bank:'Synthetic Bank',
+    fh_order_addr:'',p_dev:'Synthetic',p_bank:'Synthetic Bank',
     p_acc:'SYNTH-ACCOUNT',p_swift:'SYNTHXX1',p_purp:'Synthetic purpose',
     p_inv:'',p_branch:'',p_bankaddr:''};
-  const ctx=run(['standSaveError'],[],{STAND:true,S:{role:'operator',modal:{id:1473}},standBusy:false,
+  const ctx=run(['addrValid','standSaveError'],['ADDR_RE'],{STAND:true,S:{role:'operator',modal:{id:1473}},standBusy:false,
     standPush:false,standSaveScheduled:false,deal:()=>d,document:{getElementById:id=>
       id==='fh_order_ack'?{checked:true}:null},saveNote:()=>{},val:id=>values[id]||'',
     prepayWalletUnavailable:()=>false,prepayWalletUnavailableCard:()=>'',
     num:Number,cleanNum:x=>String(x).replace(/[^\d.,]/g,''),NETS:['TRC-20'],
-    addrValid:()=>true,payToReady:()=>true,payToConfirmed:()=>true,payToFromForm:()=>({...d.payTo}),
+    payToReady:()=>true,payToConfirmed:()=>true,payToFromForm:()=>({...d.payTo}),
     convOf:()=>null,hashSum:()=>11000,freeholdSend:()=>10130,ippsTariff:()=>({}),
     toast:m=>notices.push(m),go:(x,to)=>{x.step=to;events.push('go:'+to);},
     standWaitSaved:async()=>{events.push('wait');if(outcome.ok){d.ippsPayoutOrder={
@@ -819,6 +829,12 @@ console.log('test_stand_freehold.js: OK');
   const source=html.match(/^async function act\([^]*?^}/m);
   assert.ok(source,'actual tasks.html act() exists');
   vm.runInContext(source[0],ctx);
+  await ctx.act(1473,'s22');
+  assert.equal(d.step,'s22');
+  assert.deepEqual(events,[]);
+  assert.ok(notices.includes('Проверьте адрес и сеть из подтверждения IPPS'));
+  values.fh_order_addr='T'+'A'.repeat(33);
+  notices.length=0;
   await ctx.act(1473,'s22');
   assert.equal(d.step,'s22');
   assert.equal(ctx.S.modal,null);
