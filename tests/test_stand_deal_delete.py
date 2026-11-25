@@ -209,3 +209,36 @@ def test_archived_card_keeps_crm_row_link_and_invoice_through_reset(actors):
             db.delete(db.get(m.Deal, crm_id))
             m.stand_file_storage.purge(db, m.StandFile, db.get(m.StandFile, item['storageId']))
             db.commit()
+
+
+def test_task_archive_is_server_owned_and_hidden_from_nav_counts(actors):
+    archived = card(201, actors['lisa'], step='s18w', taskArchived=True)
+    active = card(202, actors['lisa'], step='s18w')
+    notes = [{'id': 'archived', 'dealId': '201', 'role': 'operator'},
+             {'id': 'active', 'dealId': 202, 'role': 'operator'},
+             {'id': 'general', 'role': 'operator'}]
+    seed(archived, active, notes=notes)
+    client = client_for(actors, 'operator')
+    assert client.get('/api/stand/nav-count').json == {
+        'success': True, 'count': 1, 'notifications': 2,
+    }
+    admin = client_for(actors, 'admin')
+    saved = admin.get('/api/stand/state?read_only=1').json
+    proposal = saved['data']
+    proposal['deals'][0].pop('taskArchived')
+    proposal['deals'][1]['taskArchived'] = True
+    proposal['deals'].append(card(203, actors['lisa'], taskArchived=True,
+                                  unverified_confirmed=True))
+    result = admin.put('/api/stand/state', json={'version': saved['version'], 'data': proposal})
+    assert result.status_code == 200, result.json
+    proposed_again = result.json['data']
+    assert proposed_again['deals'][0]['taskArchived'] is True
+    assert all('taskArchived' not in d for d in proposed_again['deals'][1:])
+    assert proposed_again['notes'] == notes
+    proposed_again['deals'][0]['taskArchived'] = False
+    result = admin.put('/api/stand/state', json={'version': result.json['version'], 'data': proposed_again})
+    assert result.status_code == 200, result.json
+    assert result.json['data']['deals'][0]['taskArchived'] is True
+    assert client.get('/api/stand/nav-count').json == {
+        'success': True, 'count': 1, 'notifications': 2,
+    }

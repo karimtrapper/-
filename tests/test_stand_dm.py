@@ -297,3 +297,30 @@ def test_bind_route_uses_current_account_and_policy_requires_numeric_private_id(
     assert notify.process_update({'message': {'chat': {'type': 'private', 'id': 999},
                                               'from': {'id': 999}, 'text': '/start bind_' + nonce}})
     assert notify.can_send('telegram', 999, 'sendMessage')
+
+
+def test_task_archive_skips_archived_telegram_notes_and_queue(dm, monkeypatch):
+    calls, ids, board = dm
+    archived_note = note(1)
+    general_note = {**note(2), 'dealId': None}
+    outbox_note = {**note(3), 'dealId': '7'}
+    board([archived_note, general_note])
+    with appmod.SessionLocal() as db:
+        row = appmod._stand_row(db)
+        state = json.loads(row.data)
+        state['deals'][0].update(taskArchived=True, step='s23')
+        row.data = json.dumps(state)
+        row.notified = json.dumps([outbox_note])
+        db.commit()
+    inspected = []
+    monkeypatch.setattr(appmod, '_stand_batch_main', lambda *_args: inspected.append(7))
+    notify.deliver()
+    assert [message['chat_id'] for message in sends(calls)] == [101, 102, 104]
+    assert all('Задача 2' in message['text'] for message in sends(calls))
+    assert inspected == []
+    assert log_status(archived_note['id'], ids['manager']) is None
+    assert log_status(outbox_note['id'], ids['manager']) is None
+    with appmod.SessionLocal() as db:
+        row = appmod._stand_row(db)
+        assert json.loads(row.data) == state
+        assert json.loads(row.notified) == [outbox_note]

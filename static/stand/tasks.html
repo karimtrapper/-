@@ -1213,7 +1213,7 @@ function standMerge(base,mine,theirs){
 function standSnapshot(){
   const o={}; STAND_SHARED.forEach(k=>{ if(S[k]!==undefined)o[k]=S[k]; });
   if(Array.isArray(o.deals))
-    o.deals=o.deals.filter(d=>!d.manualNew||d.originMode==='manual');
+    o.deals=o.deals.filter(d=>d.taskArchived===true||!d.manualNew||d.originMode==='manual');
   if(Array.isArray(o.incomes))o.incomes=o.incomes.map(({sel,...income})=>income);
   return o;
 }
@@ -3808,7 +3808,10 @@ async function s14Ping(id){
   const result=await standAction('/api/stand/s14/ping',{version:standVer,dealId:id,text:field?.value||''});
   if(result)toast('Операционист получил напоминание');
 }
-function notesFor(role){ return notes().filter(n=>n.role===role); }
+function notesFor(role){
+  const archived=new Set(S.deals.filter(d=>d.taskArchived===true).map(d=>String(d.id)));
+  return notes().filter(n=>n.role===role&&!archived.has(String(n.dealId)));
+}
 function notesUnread(role){ return notesFor(role).filter(n=>!n.read).length; }
 function notesOpen(){ S.notesOpen=!S.notesOpen; save(); render(); }
 function notesRead(){ notesFor(S.role).forEach(n=>n.read=true); save(); render(); }
@@ -4992,7 +4995,7 @@ function taskBranchesForRole(d,role){
   const conversion=(role==='operator'&&d.prepay.brokerStep!=='done')||prepayRefundRole(d)===role;
   return [...(conversion?['conversion']:[]),...(ownsPayment||sidePayment?['payment']:[])];
 }
-function myTasks(role){return S.deals.filter(d=>taskBranchesForRole(d,role).length);}
+function myTasks(role){return S.deals.filter(d=>d.taskArchived!==true&&taskBranchesForRole(d,role).length);}
 function myTaskCount(role){return myTasks(role).reduce((count,d)=>count+taskBranchesForRole(d,role).length,0);}
 /* Подтверждение реквизитов перед оплатой (Карим, T34 п.3): прямо перед тем, как
    операционист заплатит (s26) или для фрихолда отправит заявку в IPPS (s25),
@@ -5422,7 +5425,7 @@ function payToConfirmBlock(d){
     </div></div>`;
 }
 function waitingOn(role){return S.deals.filter(d=>{
-  if(d.closed||!STEPS[d.step]||!stepWho(d)||stepWho(d)===role)return false;
+  if(d.taskArchived===true||d.closed||!STEPS[d.step]||!stepWho(d)||stepWho(d)===role)return false;
   const w=dealWallet(d);
   return !(d.step==='s23'&&hasPolicy(w)&&policyOwnsSend(d,w,role));
 });}
@@ -6082,7 +6085,7 @@ function pendingEx(exceptId){
   S.deals.forEach(d=>{if(d.id!==exceptId)(d.conv||[]).forEach(x=>taken[x]=1);});
   /* Крипта конвертации не требует: USDT клиента уже у нас. В рублёвой пачке она
      шла с 0 ₽, а её баты попадали в «должны выдать» (прогон 24.09). */
-  return S.deals.filter(x=>!x.closed&&x.step==='ready'&&!isCrypto(x)&&x.id!==exceptId&&!taken[x.id]);
+  return S.deals.filter(x=>x.taskArchived!==true&&!x.closed&&x.step==='ready'&&!isCrypto(x)&&x.id!==exceptId&&!taken[x.id]);
 }
 let s18Candidates=[], s18Selected=new Set(), s18SelectedDealId=null;
 let s18Filters={query:'',from:'',to:''}, s18Expanded={crm:false,unlinked:false};
@@ -6418,10 +6421,19 @@ function openTask(id,branch){
   if(fromList)window.scrollTo(0,0);
   if(taskUsesThbRates())ensureThbRates();
 }
+function nextTaskIndex(){
+  if(taskListCursor<0)return -1;
+  return taskListEntries.findIndex((item,index)=>{
+    if(index<=taskListCursor)return false;
+    const d=deal(item.id);
+    return d&&d.taskArchived!==true;
+  });
+}
 function nextTask(){
-  const next=taskListEntries[taskListCursor+1];
-  if(!next)return;
-  taskListCursor++;
+  const index=nextTaskIndex();
+  if(index<0)return;
+  taskListCursor=index;
+  const next=taskListEntries[index];
   if(next.view==='deal')openDeal(next.id);
   else openTask(next.id,next.branch);
   window.scrollTo(0,0);
@@ -6730,7 +6742,7 @@ let taskListSection=null;
 let taskDealFilter='all';
 function setTaskDealFilter(filter){taskDealFilter=filter;render();}
 function taskDealsHtml(role){
-  const deals=S.deals.filter(d=>taskDealFilter==='exchange'?d.type==='Обмен валюты':
+  const deals=S.deals.filter(d=>d.taskArchived!==true).filter(d=>taskDealFilter==='exchange'?d.type==='Обмен валюты':
     taskDealFilter==='leasehold'?String(d.kind||'').toLowerCase().includes('лизхолд'):
     taskDealFilter==='freehold'?d.autoPayment!==true&&String(d.kind||'').toLowerCase().includes('фрихолд'):
     taskDealFilter==='auto'?d.autoPayment===true:
@@ -6757,7 +6769,7 @@ function showTaskListSection(section){
 function viewTasks(){
   if(standLoadError)return `<div class="task-list"><div class="card task-list-empty"><strong>Задачи не загрузились</strong><p>Проверьте соединение и повторите загрузку.</p><button class="btn btn-primary" onclick="standPull(true)">Повторить загрузку</button></div></div>`;
   const role=S.role;
-  const mine=role==='admin'?S.deals.filter(d=>!d.closed&&STEPS[d.step]&&stepWho(d)):myTasks(role);
+  const mine=role==='admin'?S.deals.filter(d=>d.taskArchived!==true&&!d.closed&&STEPS[d.step]&&stepWho(d)):myTasks(role);
   const others=role==='admin'?[]:waitingOn(role);
   const section=taskListSection||(mine.length?'mine':others.length?'wait':'mine');
   const mineTotal=role==='admin'?mine.length:myTaskCount(role);
@@ -6860,7 +6872,8 @@ function dealStatusLabel(d){
 }
 function viewDeals(){
   const F=S.dealFilter||{};
-  const list=S.deals.filter(d=>{
+  const visibleDeals=S.deals.filter(d=>d.taskArchived!==true);
+  const list=visibleDeals.filter(d=>{
     if(d.isTask&&!d.closed)return false;           // пока это задача — в реестр не попадает
     if(F.status==='pending'&&(d.closed||d.verified))return false;
     if(F.status==='completed'&&!(d.closed&&d.closeReason==='Успешно завершена'))return false;
@@ -6893,7 +6906,7 @@ function viewDeals(){
     <div class="row"><button class="btn btn-primary btn-sm" onclick="render()">Применить</button>
       <button class="btn btn-outline btn-sm" onclick="S.dealFilter={};save();render()">Сбросить</button></div>
   </div>
-  <div class="card"><div class="card-title">Список сделок<span class="sub">${list.length} из ${S.deals.length}</span>
+  <div class="card"><div class="card-title">Список сделок<span class="sub">${list.length} из ${visibleDeals.length}</span>
     ${S.role==='manager'||S.role==='admin'?`<button class="btn btn-primary btn-sm" onclick="startManual()">+ Создать сделку</button>
       <button class="btn btn-outline btn-sm" onclick="startCreate()">Завести задачу</button>`:''}</div>
   ${list.length?`<table><thead><tr>
@@ -8009,7 +8022,7 @@ function viewDeal(d,inquiryField=''){
   const tab=(v,label)=>`<span class="vtab ${view===v?'on':''}" onclick="setView('${v}')">${label}</span>`;
   const canCloseManually=['manager','admin'].includes(S.role)&&!d.closed&&!d.manual&&!reviewTask;
   const canDelete=STAND&&canDeleteStandDeal(d);
-  return `<div class="deal-screen"><div class="task-card-nav"><button type="button" onclick="closeTaskToList()">‹ Все задачи</button><button type="button" onclick="nextTask()" ${typeof taskListCursor==='undefined'||typeof taskListEntries==='undefined'||taskListCursor<0||taskListCursor+1>=taskListEntries.length?'disabled':''}>Следующая задача ›</button></div><div class="deal-breadcrumb">Задачник / ${htmlText(d.code)}</div>
+  return `<div class="deal-screen"><div class="task-card-nav"><button type="button" onclick="closeTaskToList()">‹ Все задачи</button><button type="button" onclick="nextTask()" ${typeof nextTaskIndex==='undefined'||nextTaskIndex()<0?'disabled':''}>Следующая задача ›</button></div><div class="deal-breadcrumb">Задачник / ${htmlText(d.code)}</div>
   <header class="deal-head"><div><p class="deal-code">${htmlText(d.code)} · ${htmlText(['ИППС','Личный счёт'].includes(d.kind)?dealDisplayKind(d):d.autoPayment===true?'Оплата авто':d.kind||d.type)}${d.prepay?' · оплата наперёд':''}</p>
     <h1>${htmlText(d.client)}</h1><p>${htmlText([d.object,d.dev,d.manager?'менеджер '+d.manager:''].filter(Boolean).join(' · '))}</p></div>
     ${canCloseManually||canDelete?`<div class="deal-head-actions">
@@ -9769,7 +9782,7 @@ function editClose(){
   const d=deal(S.edit);
   if(d)delete DRAFTS[(S.open||S.tab||'')+'|editDealInquiryType'+d.id];
   /* Отмена на только что заведённой вручную сделке = её вообще не было */
-  if(d&&d.manualNew){S.deals=S.deals.filter(x=>x.id!==d.id);toast('Черновик удалён');}
+  if(d?.manualNew&&d.taskArchived!==true){S.deals=S.deals.filter(x=>x.id!==d.id);toast('Черновик удалён');}
   crmDraftLive.delete(S.edit);
   S.manualCreateError=null;
   S.edit=null;
@@ -9795,7 +9808,7 @@ async function startManual(){
   const hasFiles = x => typeof x.files==='object'&&x.files!==null&&Object.values(x.files).some(l=>l&&l.length>0);
   const hasDocs = x => typeof x.docs==='object'&&x.docs!==null&&Object.values(x.docs).some(v=>v);
   const hasData = x => hasFiles(x) || (x.notes||[]).length>0 || hasDocs(x);
-  const isReallyEmpty = x => x.manualNew && !x.client && !x.amountRub && !x.amountThb && !x.amountUsdt && !x.incomeAmount && !hasData(x) && !(x._managerDraft && hasData(x._managerDraft));
+  const isReallyEmpty = x => x.manualNew && x.taskArchived!==true && !x.client && !x.amountRub && !x.amountThb && !x.amountUsdt && !x.incomeAmount && !hasData(x) && !(x._managerDraft && hasData(x._managerDraft));
   S.deals=(S.deals||[]).filter(x=>!isReallyEmpty(x));
   const d=newDeal({source:'tg',sourceRef:'',client:'',type:'Обмен валюты',
     payType:'По реквизитам',curBase:'rub',step:'manual',manual:true,manualNew:true,noSave:true});
@@ -15477,6 +15490,10 @@ function standOpenFromLink(){
   if(!ref)return;
   const d=S.deals.find(x=>String(x.id)===String(ref)||x.code===ref);
   if(!d){toast('Сделка '+ref+' не найдена — возможно, доску сбросили');return;}
+  if(d.taskArchived===true){
+    history.replaceState(null,'',location.pathname);
+    return;
+  }
   S.open=d.id; S.tab='tasks'; S.view=myTasks(S.role).some(x=>x.id===d.id)?'task':'card';
   render();
   history.replaceState(null,'',location.pathname);

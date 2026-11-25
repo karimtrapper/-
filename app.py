@@ -6132,7 +6132,7 @@ def stand_nav_count():
         db.close()
 
     def has_task(deal):
-        if deal.get('closed'):
+        if deal.get('closed') or deal.get('taskArchived') is True:
             return False
         step = deal.get('step')
         if step in _STAND_STEP_ROLE and _stand_current_step_role(state, deal) == role:
@@ -6178,7 +6178,10 @@ def stand_nav_count():
                 return True
         return False
 
+    archived_ids = {str(deal['id']) for deal in state.get('deals', [])
+                    if deal.get('taskArchived') is True}
     unread = sum(note.get('role') == role and not note.get('read')
+                 and str(note.get('dealId')) not in archived_ids
                  for note in state.get('notes', []))
     return jsonify({'success': True,
                     'count': sum(has_task(d) for d in state.get('deals', [])),
@@ -8448,6 +8451,10 @@ def stand_state_put():
         creation_keys = {d['creationKey'] for d in prior_deals.values() if d.get('creationKey')}
         for deal in payload['data'].get('deals') or []:
             before = prior_deals.get(deal.get('id'))
+            if before and before.get('taskArchived') is True:
+                deal['taskArchived'] = True
+            else:
+                deal.pop('taskArchived', None)
             key = deal.get('creationKey')
             if before is not None:
                 if key is None and before.get('creationKey'):
@@ -8543,7 +8550,7 @@ def stand_state_put():
                 if old_draft is not None:
                     deal['_managerDraft'] = old_draft
         def _is_truly_empty_manual(d):
-            if not isinstance(d, dict) or not d.get('manualNew'):
+            if not isinstance(d, dict) or not d.get('manualNew') or d.get('taskArchived') is True:
                 return False
             if d.get('client') or d.get('amountRub') or d.get('amountThb') or d.get('amountUsdt') or d.get('incomeAmount'):
                 return False

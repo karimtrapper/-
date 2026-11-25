@@ -237,6 +237,7 @@ def deliver():
             row = _app._stand_row(db)
             state = json.loads(row.data or '{}')
             deals = {str(d.get('id')): d for d in state.get('deals') or []}
+            archived_ids = {deal_id for deal_id, deal in deals.items() if deal.get('taskArchived') is True}
             notes = list(state.get('notes') or [])
             # Закрытия хранятся и в серверной очереди: список заметок доски
             # ограничен 40 элементами и может вытеснить неотправленную карточку.
@@ -251,11 +252,12 @@ def deliver():
                 if isinstance(note, dict) and note.get('id') and str(note['id']) not in present:
                     notes.append(note)
                     present.add(str(note['id']))
+            notes = [note for note in notes if str(note.get('dealId')) not in archived_ids]
             # Уже открытые до исправления свободные задачи получают один
             # адресный цикл по текущему кошельку, без повторного проигрывания истории.
             queued = {str(n.get('dealId')) for n in notes if n.get('recipientRoles')}
-            for deal in deals.values():
-                if (str(deal.get('id')) in queued or deal.get('closed') or deal.get('step') != 's23'
+            for deal_id, deal in deals.items():
+                if (deal_id in archived_ids or deal_id in queued or deal.get('closed') or deal.get('step') != 's23'
                         or deal.get('transferClaim') or deal.get('transferFound')
                         or deal.get('transferAlarm') or deal.get('transferSentReport')):
                     continue
