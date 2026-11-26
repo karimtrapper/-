@@ -41,7 +41,6 @@ CASH_PARTNER_DRAFT_STEPS = {'s4', 's5', 's6', 's8', 's11'}
 CASH_PARTNER_FIELDS = {
     'name': ('партнёр', 100),
     'location': ('место передачи', 350),
-    'contact': ('контакт', 200),
     'appointmentAt': ('дата и время встречи', 16),
 }
 

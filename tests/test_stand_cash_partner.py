@@ -166,7 +166,7 @@ def test_incoming_list_shows_available_wallet_transfers(monkeypatch):
 
 
 _SETUP = {'name': 'Cash Partner QA', 'location': 'Test meeting place',
-          'contact': 'Test contact', 'appointmentAt': '2026-11-26T15:40'}
+          'appointmentAt': '2026-11-26T15:40'}
 _ACTION = '/api/stand/payin/cash-partner'
 
 
@@ -248,6 +248,7 @@ def test_cash_setup_belongs_to_manager_then_locked_on_s11(cash_board):
     use_role('manager')
     malformed = {**_SETUP, 'appointmentAt': '2026-02-30T15:40'}
     assert _save_deal(client, lambda d: d.update(cashPartner=malformed)).status_code == 409
+    assert _save_deal(client, lambda d: d.update(cashPartner={**_SETUP, 'contact': 'Old'})).status_code == 409
     assert _save_deal(client, lambda d: d.update(step='s11')).json['error'].startswith('Укажите партнёра')
     saved = _save_deal(client, lambda d: d.update(cashPartner=_SETUP))
     assert saved.status_code == 200, saved.json
@@ -258,7 +259,13 @@ def test_cash_setup_belongs_to_manager_then_locked_on_s11(cash_board):
     assert _save_deal(client, lambda d: d.update(cashPartner={**_SETUP, 'name': 'Different'})).status_code == 409
     del deal['cashPartner']
     _put_board(state)
-    assert _save_deal(client, lambda d: d.update(cashPartner=_SETUP)).status_code == 200
+    assert _save_deal(client, lambda d: d.update(cashPartner=_SETUP)).status_code == 409
+    returned = _save_deal(client, lambda d: d.update(step='s8'))
+    assert returned.status_code == 200, returned.json
+    use_role('manager')
+    saved = _save_deal(client, lambda d: d.update(cashPartner=_SETUP))
+    assert saved.status_code == 200, saved.json
+    assert saved.json['data']['deals'][0]['cashPartner'] == _SETUP
 
 
 def test_cash_lifecycle_binds_roles_and_exact_ledger_funding(cash_board, monkeypatch):

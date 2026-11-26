@@ -6084,7 +6084,7 @@ function docSendBlock(d){
     dog:['Агентский договор','Клиент подписывает и присылает скан обратно — загрузить его можно на любом шаге, в блоке «Документы»'],
     app:[P.mode==='addendum'?'Допсоглашение к договору '+(P.agreementNumber||''):'Приложение 1 к договору',
          'Сумма и курс этого платежа: '+money(ap.pay,ap.sign)+' → '+money(ap.thb,ap.thbSign||'฿')+' по курсу '+(d.rates.client||'—')+' '+rateUnit(d)+'. Клиент сверяет и подписывает'],
-    bill:['Счёт на оплату','По нему клиент платит: '+money(cash?P.amount??ap.pay:ap.pay,ap.sign)+(cash?' наличными партнёру':isCrypto(d)?' на кошелёк USDT':` на счёт в ${rubReceivingBankLabel(d)}${P.recipient?' · '+P.recipient:''}`)]};
+    bill:['Счёт на оплату','По нему клиент платит: '+money(cash?P.amount??ap.pay:ap.pay,ap.sign)+(cash?' наличными':isCrypto(d)?' на кошелёк USDT':` на счёт в ${rubReceivingBankLabel(d)}${P.recipient?' · '+P.recipient:''}`)]};
   const rows=['dog','app','bill'].map(k=>[k,docFileOf(d,k)]).filter(x=>x[1]);
   const sent=d.docsSent;
   return `<div class="paybox" style="margin-bottom:16px">
@@ -6719,10 +6719,10 @@ function viewDoc(){
 function tgPayBlock(d,step){
   if(step!=='s12'&&step!=='s11b') return '';
   const F=docFields(d), ap=approx(d);
-  const rows=isNativeCashPartner(d)?cashPartnerHandoffRows(d,d.docPack?.amount??ap.pay):[
+  const rows=(isNativeCashPartner(d)?cashPartnerHandoffRows(d,d.docPack?.amount??ap.pay):[
     ['Сумма к оплате', money(ap.pay,ap.sign)],
     ['Назначение платежа', F.purpose||''],['Куда платить', F.payTo||'']
-  ].filter(x=>x[1]);
+  ]).filter(x=>x[1]);
   const all=rows.map(x=>x[0]+': '+x[1]).join('\n');
   return `<div class="paybox">
     <div class="chtitle" style="margin-bottom:8px">Договор готов — можно отправлять
@@ -12378,8 +12378,8 @@ function isNativeCashPartner(d){
   if(d.docVersion||Object.keys(d.docPack||{}).length)return d.docPack?.method==='cash';
   return Object.keys(d.cashPartner||{}).length>0||['s4','s5','s6','s8','s11'].includes(d.step);
 }
-const CASH_PARTNER_FIELDS={name:'Партнёр',location:'Адрес встречи',contact:'Контакт для встречи',appointmentAt:'Дата и время встречи'};
-const CASH_PARTNER_LENGTHS={name:100,location:350,contact:200,appointmentAt:16};
+const CASH_PARTNER_FIELDS={name:'Партнёр',location:'Адрес встречи',appointmentAt:'Дата и время встречи'};
+const CASH_PARTNER_LENGTHS={name:100,location:350,appointmentAt:16};
 function cashPartnerReady(partner){
   return Object.keys(CASH_PARTNER_FIELDS).every(key=>{
     const value=partner?.[key];
@@ -12392,13 +12392,36 @@ function cashPartnerDate(value){
   return Number.isFinite(date.getTime())?date.toLocaleString('ru-RU',{dateStyle:'short',timeStyle:'short'}):'';
 }
 function cashPartnerSetupEdit(d){
-  const saved=STAND&&!SCREEN&&!SNAP?(standBase?.deals||[]).find(x=>x.id===d.id):d;
-  return !d.closed&&!docHasIssued(d)&&(S.role==='admin'||stepWho(d)===S.role)&&
-    (d.step==='s8'||(d.step==='s11'&&!cashPartnerReady(saved?.cashPartner)));
+  return d.step==='s8'&&!d.closed&&!docHasIssued(d)&&docStepActor(d);
+}
+function cashPartnerCanReturn(d){
+  return isNativeCashPartner(d)&&d.step==='s11'&&!d.closed&&!docHasIssued(d)&&
+    !cashPartnerReady(d.cashPartner)&&docStepActor(d);
+}
+async function cashPartnerReturnToManager(id){
+  if(!cashPartnerCanReturn(deal(id)))return;
+  const useServer=STAND&&!SCREEN&&!SNAP;
+  if(useServer&&!await standRequireSaved())return;
+  const d=deal(id);
+  if(!cashPartnerCanReturn(d))return;
+  saveNote(d,'s11');
+  go(d,'s8','Документы возвращены менеджеру для заполнения данных встречи');
+  if(useServer){
+    let saved;
+    try{saved=await standWaitSaved();}catch(e){saved={ok:false,error:'timeout'};}
+    if(!saved?.ok||(standBase?.deals||[]).find(x=>x.id===id)?.step!=='s8'){
+      standRollbackHandoff(id);
+      toast(standSaveError(saved,'Задача не вернулась менеджеру — повторите попытку'));return;
+    }
+  }
+  toast('Задача возвращена менеджеру');
 }
 function cashPartnerSetupBlock(d){
   const partner=d.cashPartner||{};
-  if(!cashPartnerSetupEdit(d))return `<div class="card" style="margin-bottom:12px"><div class="card-title">Встреча у партнёра</div>${cashPartnerDetails(d)}</div>`;
+  if(!cashPartnerSetupEdit(d))return `<div class="card" style="margin-bottom:12px"><div class="card-title">Встреча у партнёра</div>
+    ${cashPartnerDetails(d)}
+    ${cashPartnerCanReturn(d)?`<div class="alert a-warn" role="status"><div>До выпуска документов менеджер должен указать партнёра, адрес и время встречи.</div></div>
+    <div class="row"><button type="button" class="btn btn-primary" onclick="cashPartnerReturnToManager(${d.id})">Вернуть менеджеру</button></div>`:''}</div>`;
   return `<div class="card" style="margin-bottom:12px"><div class="card-title">Встреча у партнёра</div>
     <div class="fr">${Object.entries(CASH_PARTNER_FIELDS).map(([key,label])=>{
       const input=`cash_partner_${key}_${d.id}`;
@@ -12409,22 +12432,28 @@ function cashPartnerSetupBlock(d){
 }
 async function cashPartnerSetupSave(id,showNotice=false){
   const d=deal(id);
-  if(!isNativeCashPartner(d)||d.closed)return false;
-  if(!cashPartnerSetupEdit(d))return cashPartnerReady(d.cashPartner);
+  if(!isNativeCashPartner(d)||d.step!=='s8'||d.closed||!docStepActor(d))return false;
+  const useServer=STAND&&!SCREEN&&!SNAP;
+  if(docHasIssued(d)){
+    if(useServer&&!await standRequireSaved('Данные встречи ещё не сохранены'))return false;
+    const saved=useServer?(standBase?.deals||[]).find(x=>x.id===id):d;
+    if(saved?.step==='s8'&&cashPartnerReady(saved.cashPartner))return true;
+    toast('Проверьте сохранённые данные встречи');return false;
+  }
   const keys=Object.keys(CASH_PARTNER_FIELDS);
   const setup=Object.fromEntries(keys.map(key=>[key,val(`cash_partner_${key}_${id}`).trim()]));
-  if(!cashPartnerReady(setup)){toast('Заполните партнёра, адрес, контакт и время встречи');return false;}
-  const useServer=STAND&&!SCREEN&&!SNAP;
+  if(!cashPartnerReady(setup)){toast('Заполните партнёра, адрес и время встречи');return false;}
   const savedSetup=useServer?(standBase?.deals||[]).find(x=>x.id===id)?.cashPartner:null;
-  const changed=keys.some(key=>setup[key]!==d.cashPartner?.[key]);
-  if(changed||useServer&&keys.some(key=>setup[key]!==savedSetup?.[key])){
+  const same=value=>Object.keys(value||{}).length===keys.length&&keys.every(key=>setup[key]===value[key]);
+  const changed=!same(d.cashPartner);
+  if(changed||useServer&&!same(savedSetup)){
     if(changed)log(d,'Сохранены данные встречи у партнёра');
     d.cashPartner=setup;save();
   }
   if(useServer){
     if(!await standRequireSaved('Данные встречи ещё не сохранены'))return false;
     const saved=(standBase?.deals||[]).find(x=>x.id===id);
-    if(saved?.step!==d.step||keys.some(key=>setup[key]!==saved.cashPartner?.[key])){
+    if(saved?.step!==d.step||!same(saved.cashPartner)){
       toast('Данные встречи изменились — проверьте текущую задачу');return false;
     }
   }
@@ -12471,7 +12500,7 @@ function cashPartnerDetails(d){
   const {receipt,rate,verified,expected}=cashPartnerNumbers(d), partner=d.cashPartner||{};
   const row=(label,value)=>value==null||value===''?'':trow(label,htmlText(value));
   return `<table class="tbl">
-    ${row('Партнёр',partner.name)}${row('Адрес встречи',partner.location)}${row('Контакт',partner.contact)}
+    ${row('Партнёр',partner.name)}${row('Адрес встречи',partner.location)}
     ${row('Дата и время встречи',cashPartnerDate(partner.appointmentAt))}
     ${row('Принято наличными',receipt?moneyKop(receipt.amountRub,'₽')+' · '+cashPartnerDate(receipt.at):null)}
     ${row('Курс партнёра',rate?String(rate.rate).replace('.',',')+' ₽ за 1 USDT · '+cashPartnerDate(rate.rateAt||rate.at):null)}
@@ -12479,9 +12508,9 @@ function cashPartnerDetails(d){
     ${row('Проверено по хешам',verified!=null?moneyKop(verified,'USDT'):null)}</table>`;
 }
 function cashPartnerHandoffRows(d,amount){
-  const partner=d.cashPartner||{};
-  return [['Сумма наличными',moneyKop(amount,'₽')],['Партнёр',partner.name],['Адрес встречи',partner.location],
-    ['Контакт для встречи',partner.contact],['Дата и время встречи',cashPartnerDate(partner.appointmentAt)]];
+  const meeting=d.cashPartner||{};
+  return [['Сумма наличными',moneyKop(amount,'₽')],['Адрес встречи',meeting.location],
+    ['Дата и время встречи',cashPartnerDate(meeting.appointmentAt)]];
 }
 function cashPartnerHandoffBlock(d,amount){
   const rows=cashPartnerHandoffRows(d,amount).filter(([,value])=>value);
@@ -13401,6 +13430,7 @@ function stepCard(d){
   s11:()=>{
     const cash=isNativeCashPartner(d);
     const reissuing=docHasIssued(d);
+    if(cash&&!reissuing&&!cashPartnerReady(d.cashPartner))return cashPartnerSetupBlock(d);
     const canChangeAccount=reissuing&&!isCrypto(d)&&docStepActor(d)&&docAccountChangeAvailable(d);
     const receivingAccountMode=canChangeAccount?docFormReceivingMode(d):'';
     const purposeOptional=docPurposeOptional(d,receivingAccountMode);
@@ -13562,7 +13592,7 @@ function stepCard(d){
     const kinds=['dog','app','bill'].filter(k=>files.some(x=>x.kind===k));
     return `<div class="card"><div class="card-title">Выпущено<span class="sub">версия ${P?P.version:(d.docVersion||1)}${P?' · № '+htmlText(P.number):''}</span></div>
     ${!P?`<div class="alert a-warn"><div>Чтобы подготовить актуальные файлы, нажмите «Перевыпустить пакет».</div></div>`
-      :`<div class="alert a-ok"><div>${P.mode==='addendum'?'Клиент знакомый — к его договору '+htmlText(P.agreementNumber)+' выпущены допсоглашение и счёт.':'Выпущены договор, приложение и счёт.'} Это настоящие файлы — те же, что уходят из CRM. Скачайте и проверьте ФИО, сумму, курс и ${cash?'данные партнёра':isCrypto(d)?'кошелёк':'назначение платежа'}.</div></div>`}
+      :`<div class="alert a-ok"><div>${P.mode==='addendum'?'Клиент знакомый — к его договору '+htmlText(P.agreementNumber)+' выпущены допсоглашение и счёт.':'Выпущены договор, приложение и счёт.'} Это настоящие файлы — те же, что уходят из CRM. Скачайте и проверьте ФИО, сумму, курс и ${cash?'адрес, дату и время встречи':isCrypto(d)?'кошелёк':'назначение платежа'}.</div></div>`}
     ${P&&P.note?`<div class="alert a-info"><div>${htmlText(P.note)}</div></div>`:''}
     <div class="list">
       ${kinds.map(k=>{const own=(d.issued||{})[k], f=docFileOf(d,k);
@@ -13600,7 +13630,7 @@ function stepCard(d){
     <div class="row mainrow" style="margin-top:16px"><button class="btn btn-primary" onclick="act(${d.id},'s12')">${isNativeCashPartner(d)?'Ждём клиента у партнёра':'Ждём приход'}</button>
     ${docReopenButton(d)}
     <button class="btn btn-outline" onclick="askClose(${d.id})">Закрыть сделку</button></div>
-    <p style="font-size:13px;color:var(--navy-600);line-height:1.65;margin-top:12px">${isNativeCashPartner(d)?'Сообщите клиенту адрес, контакт и время встречи. После визита подтвердите фактическую сумму, которую принял партнёр.':'Ожидание ставится руками: мы не всегда ждём деньги. Если клиент передумал — закрывайте с причиной, а не оставляйте висеть.'}</p>
+    <p style="font-size:13px;color:var(--navy-600);line-height:1.65;margin-top:12px">${isNativeCashPartner(d)?'Сообщите клиенту сумму, адрес и время встречи. После визита подтвердите фактически принятую сумму.':'Ожидание ставится руками: мы не всегда ждём деньги. Если клиент передумал — закрывайте с причиной, а не оставляйте висеть.'}</p>
     <div class="card-title" style="font-size:14px;margin:18px 0 8px">Подписанные документы
       <span class="sub">скан можно приложить и позже — на любом шаге, в блоке «Документы» справа</span></div>
     ${fileBlock(d,'signed','Подписанный пакет от клиента','если клиент прислал скан — приложите, можно несколько файлов')}
@@ -14403,11 +14433,7 @@ async function act(id,step){
     if(!d.docParse)docParse(d.id,true);return;}
   if(step==='s11'){
     const cash=isNativeCashPartner(d);
-    if(cash){
-      if(!await cashPartnerSetupSave(id))return;
-      d=deal(id);
-      if(!d||d.step!==step)return;
-    }
+    if(cash&&!cashPartnerReady(d.cashPartner)){toast('Для выпуска нужны данные встречи от менеджера');return;}
     const reissuing=docHasIssued(d);
     const receivingAccountMode=reissuing&&!cash&&!isCrypto(d)?docFormReceivingMode(d):'';
     const rubAccount=receivingAccountMode?{mode:receivingAccountMode}:d.rubReceivingAccount||{};

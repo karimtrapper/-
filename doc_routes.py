@@ -3,6 +3,7 @@ from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
 INVERSE_RATE = 'payin_per_transfer'  # исторический формат, в том числе без маркера
 DIRECT_RATE = 'transfer_per_payin'
+STAND_CASH_COLLECTION = '_stand_cash_collection'
 
 PAIRS = {
     'RUB_THB': ('RUB', 'THB'), 'USDT_THB': ('USDT', 'THB'),
@@ -26,6 +27,10 @@ def pair_for(money, deal_type='leasehold'):
     return key, *PAIRS[key]
 
 
+def is_stand_cash_collection(money):
+    return money.get('payin_method') == 'cash' and money.get(STAND_CASH_COLLECTION) is True
+
+
 def normalize(money, deal_type='leasehold'):
     m = dict(money)
     key, incoming, outgoing = pair_for(m, deal_type)
@@ -47,6 +52,11 @@ def normalize(money, deal_type='leasehold'):
              payin_method=method, rate_basis=basis)
     if method != 'bank':
         m['payment_reference'] = ''
+    if deal_type not in ('leasehold', 'freehold', 'rental') or incoming != 'RUB' or method != 'cash':
+        m.pop(STAND_CASH_COLLECTION, None)
+    if is_stand_cash_collection(m):
+        for field in ('payin_recipient', 'payin_recipient_role', 'payin_details', 'cash_network', 'cash_contact'):
+            m.pop(field, None)
     return m
 
 
@@ -78,10 +88,12 @@ def details(m):
     if m['payin_method'] == 'usdt':
         return f"Сеть / Network: {m.get('payin_network', '')}\nUSDT: {m.get('payin_wallet', '')}"
     if m['payin_method'] == 'cash':
+        place = f"Место / Location: {m.get('cash_location', '')}\n"
+        time = f"Дата и время / Date and time: {m.get('cash_datetime', '')}"
+        if is_stand_cash_collection(m):
+            return place + time
         return (f"Сеть / Cash collection network: {m.get('cash_network', '')}\n"
-                f"Место / Location: {m.get('cash_location', '')}\n"
-                f"Контакт / Contact: {m.get('cash_contact', '')}\n"
-                f"Дата и время / Date and time: {m.get('cash_datetime', '')}")
+                + place + f"Контакт / Contact: {m.get('cash_contact', '')}\n" + time)
     return m.get('payin_details', '')
 
 
@@ -110,15 +122,18 @@ def rate_text(m, deal_type='leasehold'):
 
 def validate(m, deal_type):
     """Проверка перед выдачей; низкоуровневые builders пригодны и для черновиков."""
-    normalize(m, deal_type)
+    m = normalize(m, deal_type)
     if deal_type == 'freehold' and m['transfer_currency'] != 'USD':
         raise ValueError('Для фрихолда выберите перевод получателю в USD')
     if deal_type in ('leasehold', 'rental') and m['transfer_currency'] != 'THB':
         raise ValueError('Для лизхолда/аренды выберите THB; для другого перевода — тип «Перевод / обмен»')
-    required = ['payin_recipient', 'payin_recipient_role', 'rate_valid_until']
-    required += {'bank': ['payin_details'], 'sbp': ['payin_details'],
-                 'usdt': ['payin_network', 'payin_wallet'],
-                 'cash': ['cash_network', 'cash_location', 'cash_contact', 'cash_datetime']}[m['payin_method']]
+    if is_stand_cash_collection(m):
+        required = ['rate_valid_until', 'cash_location', 'cash_datetime']
+    else:
+        required = ['payin_recipient', 'payin_recipient_role', 'rate_valid_until']
+        required += {'bank': ['payin_details'], 'sbp': ['payin_details'],
+                     'usdt': ['payin_network', 'payin_wallet'],
+                     'cash': ['cash_network', 'cash_location', 'cash_contact', 'cash_datetime']}[m['payin_method']]
     if m['transfer_currency'] == 'USDT':
         required += ['payout_network', 'payout_wallet']
     missing = [k for k in required if not str(m.get(k) or '').strip()]

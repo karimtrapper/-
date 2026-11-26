@@ -13422,19 +13422,17 @@ def _stand_cash_partner_state_problem(state, before, deal, actor, actor_id, db):
     setup = deal.get('cashPartner')
     if before.get('cashPartner') != setup:
         step = before.get('step')
-        edit_role = {'s8': 'manager', 's11': 'operator'}.get(step)
-        if (not cash or not edit_role or deal.get('step') not in (step, 's11')
+        if (not cash or step != 's8' or deal.get('step') not in ('s8', 's11')
                 or before.get('docPack') or before.get('docVersion')
-                or before.get('closed') or before.get('crmDealId')
-                or step == 's11' and not cash_partner_errors(before.get('cashPartner'))):
-            return 'Данные партнёра меняют до выпуска документов'
-        if actor not in (edit_role, 'admin'):
-            return 'Данные партнёра заполняет исполнитель шага'
+                or before.get('closed') or before.get('crmDealId')):
+            return 'Данные встречи заполняет менеджер до передачи на подготовку договора'
+        if actor not in ('manager', 'admin'):
+            return 'Данные встречи заполняет менеджер сделки'
         if (db is not None and actor == 'manager'
                 and not _stand_manager_owns_deal(db, before, actor_id)):
             return 'Данные партнёра заполняет менеджер сделки'
         if cash_partner_errors(setup) or set(setup) != set(CASH_PARTNER_FIELDS):
-            return 'Укажите партнёра, место, контакт, дату и время встречи'
+            return 'Укажите партнёра, место, дату и время встречи'
         deal['cashPartner'] = {key: setup[key].strip() for key in CASH_PARTNER_FIELDS}
     if not cash:
         return None
@@ -13568,7 +13566,7 @@ def _stand_workflow_problem(previous, state, actor, db, row):
                 return 'Нужна сумма получателю'
         if start == 's8' and end == 's11':
             if cash and cash_partner_errors(deal.get('cashPartner')):
-                return 'Укажите партнёра, место, контакт, дату и время встречи'
+                return 'Укажите партнёра, место, дату и время встречи'
             required = (('inv',) if deal.get('isOld') else ('pass', 'inv'))
             if deal.get('autoPayment') is True:
                 required += ('vehicle_contract',)
@@ -18384,12 +18382,10 @@ def _stand_doc_request(state, deal, F, *, canonical_purpose=False):
         invalid = cash_partner_errors(setup)
         missing.extend(invalid)
         if not invalid:
-            partner = {key: setup[key].strip() for key in CASH_PARTNER_FIELDS}
-            meeting = local_datetime(partner['appointmentAt'])
-            money.update(payin_recipient=partner['name'],
-                         payin_recipient_role='Уполномоченный партнёр Агента / Agent’s authorised partner',
-                         cash_network=partner['name'], cash_location=partner['location'],
-                         cash_contact=partner['contact'], cash_datetime=meeting.strftime('%d.%m.%Y %H:%M'))
+            meeting = local_datetime(setup['appointmentAt'])
+            money.update({doc_routes.STAND_CASH_COLLECTION: True},
+                         cash_location=setup['location'].strip(),
+                         cash_datetime=meeting.strftime('%d.%m.%Y %H:%M'))
     else:
         pay_to = str(F.get('payTo') or '').strip()
         if not pay_to:
@@ -33748,11 +33744,14 @@ def _docs_payment(db, a, submitted_fields, submitted_money, payment_no=None,
                     'recipient_swift', 'recipient_bik', 'recipient_bank_address'):
             fields.pop(key, None)
     fields.update(submitted_fields)
+    cash_collection_parent = doc_routes.is_stand_cash_collection(old_money)
     money = old_money
     if auto_transition:
         for key in ('auto_document_schema', 'object_label', 'invoice_description', 'payment_purpose'):
             money.pop(key, None)
     money.update(submitted_money)
+    if cash_collection_parent:
+        money[doc_routes.STAND_CASH_COLLECTION] = True
     if money.get('pair') == 'USDT_USD' and 'rate' not in submitted_money:
         # Крипто-фрихолд: курса нет. Курс, оставшийся в рамочном договоре от прошлых
         # выпусков, не наследуем — иначе «Курс не соответствует суммам» (Карим, 29.09).
@@ -33776,6 +33775,8 @@ def _docs_payment(db, a, submitted_fields, submitted_money, payment_no=None,
         # Каждый новый платёж требует реквизитов из новой формы, не из старого инвойса.
         for key in (*doc_routes.ROUTE_FIELDS, 'rate_valid_until', 'payment_reference'):
             money[key] = submitted_money.get(key, '')
+        if doc_routes.is_stand_cash_collection(money):
+            money = doc_routes.normalize(money, a.deal_type)
         route_missing = doc_routes.validate(money, a.deal_type)
         # Допник выпускает та же компания, что и договор. Платёж на реквизиты другой
         # компании — это другой договор, а не допник к этому.

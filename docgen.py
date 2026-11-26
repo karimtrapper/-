@@ -851,6 +851,10 @@ def _fill_appendix1(doc, f: dict, deal_type: str, money: dict, number: str, when
         _set_cell(rows[-1].cells[-1], fee_note if crypto_freehold
                   else DEFAULTS['fee_included'])
     _set_field(t, 'Комиссия платёжного партнёра', DEFAULTS['fee_included'])
+    if doc_routes.is_stand_cash_collection(money):
+        conversion_row = _find_row(t, 'Комиссия платёжного партнёра')
+        if conversion_row is not None:
+            _set_cell(conversion_row.cells[0], 'Расходы на конвертацию / Conversion costs')
 
     if deal_type == 'freehold':
         _set_field(t, 'Банковские расходы', money.get('bank_charges') or 'OUR')
@@ -930,8 +934,13 @@ def _fill_appendix2(doc, f: dict, money: dict, number: str, when: datetime, agen
         _set_field(t, 'Реквизиты / Payment details', doc_routes.details(money))
     if method != 'bank':
         _set_field(t, 'Назначение платежа', payment_reference(f, method, agent=ag))
-    _set_field(t, 'Наличные', doc_routes.details(money) if method == 'cash' else
-               'Не применимо / Not applicable')
+    if doc_routes.is_stand_cash_collection(money):
+        for row in list(t.rows):
+            if row.cells[0].text.startswith(('Получатель платежа', 'Роль получателя', 'Наличные')):
+                t._element.remove(row._element)
+    else:
+        _set_field(t, 'Наличные', doc_routes.details(money) if method == 'cash' else
+                   'Не применимо / Not applicable')
 
 
 def _apply_route(doc, money, deal_type):
@@ -1329,17 +1338,27 @@ def _route_invoice(fields, money, number, when, agent=None):
                   if money.get('auto_document_schema') == 'vehicle-v1' else ''))
     _set_cell(doc.tables[2].rows[0].cells[-1], 'ИТОГО К ОПЛАТЕ / AMOUNT DUE\n' +
               doc_routes.amount(money.get('total_payin'), money['payin_currency']))
-    _set_field(doc.tables[3], 'Получатель платежа', money.get('payin_recipient') or '')
+    private_cash = doc_routes.is_stand_cash_collection(money)
+    if private_cash:
+        recipient_row = _find_row(doc.tables[3], 'Получатель платежа')
+        if recipient_row is not None:
+            doc.tables[3]._element.remove(recipient_row._element)
+    else:
+        _set_field(doc.tables[3], 'Получатель платежа', money.get('payin_recipient') or '')
     _set_field(doc.tables[3], 'Реквизиты', doc_routes.details(money))
     _set_field(doc.tables[3], 'Способ оплаты', doc_routes.METHODS[money['payin_method']])
     _set_field(doc.tables[3], 'Назначение платежа', money.get('payment_reference') or
                payment_reference(fields, money['payin_method'], agent=ag))
     row = doc.tables[3].rows[-1]
-    role = money.get('payin_recipient_role') or ''
-    _set_cell(row.cells[0], f'Роль получателя / Recipient role: {role}\n'
-              f'Оплата указанному получателю по реквизитам настоящего счёта является надлежащим исполнением обязательства Клиента перед {ag.name} по указанной операции.\n'
-              f'Payment to the named recipient using the details in this Invoice constitutes due performance of the Client’s obligation to {ag.name} for this transaction.\n'
-              + PAYIN_EVIDENCE[money['payin_method']]
+    if private_cash:
+        payment_confirmation = ('Оплатите наличными по указанному адресу в согласованные дату и время.\n'
+                                'Pay in cash at the specified address on the agreed date and time.\n')
+    else:
+        role = money.get('payin_recipient_role') or ''
+        payment_confirmation = (f'Роль получателя / Recipient role: {role}\n'
+            f'Оплата указанному получателю по реквизитам настоящего счёта является надлежащим исполнением обязательства Клиента перед {ag.name} по указанной операции.\n'
+            f'Payment to the named recipient using the details in this Invoice constitutes due performance of the Client’s obligation to {ag.name} for this transaction.\n')
+    _set_cell(row.cells[0], payment_confirmation + PAYIN_EVIDENCE[money['payin_method']]
               + f': направить менеджеру {ag.short_name} / send to the {ag.short_name} manager.')
     # Короткий шаблон не содержит блока подписи, поэтому добавляем его явно.
     # Подпись и печать те же, что в договоре; размещаем рядом для компактности.

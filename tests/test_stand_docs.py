@@ -1201,33 +1201,76 @@ def test_operator_manual_purpose_is_preserved(stand):
     ('Аренда', 'RUB_THB', {}),
     ('Фрихолд', 'RUB_USD', {'amountThb': '10000', 'amountPay': '900000', 'rate': '90'}),
 ])
-def test_realty_cash_documents_use_partner_details_and_mf(stand, kind, pair, over):
+def test_realty_cash_documents_use_meeting_details_and_mf(stand, kind, pair, over):
     setup = {'name': 'Cash Partner QA', 'location': 'Test meeting place',
-             'contact': 'Test contact', 'appointmentAt': '2026-11-26T15:40'}
+             'appointmentAt': '2026-11-26T15:40'}
     data = _deal(1148, payType='Наличные', kind=kind, cashPartner=setup,
                  invoiceUsd=10000 if kind == 'Фрихолд' else None,
                  rubReceivingAccount={'mode': 'flowsole'})
     fields = _fields(kind=kind, **over)
-    stand.put_board([{**data, 'cashPartner': {**setup, 'contact': ''}}])
+    stand.put_board([{**data, 'cashPartner': {**setup, 'name': ''}}])
     missing = stand.post('/api/stand/docs/issue', json={'dealId': 1148, 'docFields': fields})
-    assert missing.status_code == 400 and missing.json['fields'] == ['contact']
+    assert missing.status_code == 400 and missing.json['fields'] == ['name']
 
     stand.put_board([data])
     issued = stand.post('/api/stand/docs/issue', json={'dealId': 1148, 'docFields': fields})
     assert issued.status_code == 200, issued.json
     pack = issued.json['pack']
     assert (pack['agent'], pack['method'], pack['pair'], pack['purpose']) == ('mf_corp', 'cash', pair, '')
+    assert pack['recipient'] == ''
     amount = 'RUB 900 000.00' if kind == 'Фрихолд' else 'RUB 914 795.00'
     for document_kind in ('dog', 'app', 'bill'):
         text = _text(stand, next(doc['docId'] for doc in issued.json['issued'] if doc['kind'] == document_kind))
         assert amount in text
-        if document_kind == 'dog':
-            assert 'Cash Partner QA' not in text
-            assert 'Test contact' not in text
-        else:
-            assert 'Cash Partner QA' in text
-            assert 'Test contact' in text
+        if document_kind in ('app', 'bill'):
+            assert 'Наличные / Cash' in text
+        for internal in ('Cash Partner QA', 'Cash collection network',
+                         'Recipient role', 'Payment to the named recipient',
+                         'Payment partner and conversion fee'):
+            assert internal not in text
         assert 'Test meeting place' in text
         assert '26.11.2026 15:40' in text
         assert '40807810938720000286' not in text
         assert '40807810819000000261' not in text
+
+
+def test_repeat_realty_cash_documents_ignore_previous_recipient_and_contact(stand):
+    setup = {'name': 'Internal name QA', 'location': 'First meeting place',
+             'appointmentAt': '2026-11-26T12:40'}
+    stand.put_board([_deal(1148, payType='Наличные', cashPartner=setup)])
+    first = stand.post('/api/stand/docs/issue', json={'dealId': 1148, 'docFields': _fields()})
+    assert first.status_code == 200, first.json
+    agreement_id = first.json['pack']['agreementId']
+    agreement_doc_id = next(doc['docId'] for doc in first.json['issued'] if doc['kind'] == 'dog')
+    original = stand.get(f'/api/docs/file/{agreement_doc_id}').data
+
+    db = appmod.get_session()
+    try:
+        agreement = db.get(appmod.Agreement, agreement_id)
+        terms = json.loads(agreement.money_json)
+        assert 'cash_network' not in terms and 'cash_contact' not in terms
+        # Simulate the old parent format, where the pay-in fields were stored in money_json.
+        terms.pop('_stand_cash_collection')
+        terms.update(cash_network='Old network QA', cash_contact='Old contact QA',
+                     payin_recipient='Old recipient QA', payin_recipient_role='Old role QA')
+        agreement.money_json = json.dumps(terms)
+        db.commit()
+    finally:
+        db.close()
+
+    later = {**setup, 'location': 'Second meeting place',
+             'appointmentAt': '2026-11-27T13:00', 'contact': 'Legacy saved contact QA'}
+    stand.put_board([_deal(1149, payType='Наличные', cashPartner=later, isOld=True)])
+    second = stand.post('/api/stand/docs/issue', json={'dealId': 1149, 'docFields': _fields()})
+    assert second.status_code == 200, second.json
+    assert second.json['pack']['agreementId'] == agreement_id
+    assert second.json['pack']['mode'] == 'addendum'
+    assert second.json['pack']['recipient'] == ''
+    assert stand.get(f'/api/docs/file/{agreement_doc_id}').data == original
+    assert {doc['kind'] for doc in second.json['issued']} == {'app', 'bill'}
+    for doc in second.json['issued']:
+        text = _text(stand, doc['docId'])
+        assert 'Second meeting place' in text and '27.11.2026 13:00' in text
+        for internal in ('Internal name QA', 'Legacy saved contact QA', 'First meeting place',
+                         'Old network QA', 'Old contact QA', 'Old recipient QA', 'Old role QA'):
+            assert internal not in text
