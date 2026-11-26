@@ -492,3 +492,61 @@ def test_cash_freehold_can_set_verified_amount_on_ipps_handoff(cash_board, monke
     assert (deal['step'], deal['postConv'], deal['pay']['usdt']) == ('s22', 'ipps_swift', 200)
     assert any(note['role'] == 'manager' and note['dealId'] == deal['id']
                and 'реквизиты' in note['text'] for note in advanced.json['data']['notes'])
+
+
+def test_cash_coins_handoff_uses_source_registry_with_string_mirror_id(cash_board, request):
+    client, use_role, _, _ = cash_board
+    wallet_address = 'TA' + '6' * 32
+    recipient = 'T' + '7' * 33
+    db = m.get_session()
+    try:
+        assert db.query(m.Wallet).filter_by(address=recipient).first() is None
+        wallet = m.Wallet(address=wallet_address, blockchain='TRON', active=True, accepts_payin=True,
+                          is_multisig=True, limit_usd=10000, initiator_roles='["operator"]',
+                          confirmer_roles='["findir"]')
+        db.add(wallet)
+        db.commit()
+        wallet_id = wallet.id
+    finally:
+        db.close()
+
+    def remove_wallet():
+        db = m.get_session()
+        try:
+            db.delete(db.get(m.Wallet, wallet_id))
+            db.commit()
+        finally:
+            db.close()
+
+    request.addfinalizer(remove_wallet)
+
+    snapshot = client.get('/api/stand/state').json['data']
+    deal = snapshot['deals'][0]
+    deal.update(step='s22', walletId=wallet_id, cashPartnerWalletId=wallet_id,
+                pay={'usdt': 2000}, postConv='coins',
+                transfer={'addr': recipient, 'amount': '1\u00a0234,56'})
+    snapshot['wallets'] = [{'id': wallet_id, 'addr': wallet_address}]
+    _put_board(snapshot)
+
+    use_role('operator')
+    previous = client.get('/api/stand/state').json
+    submitted = copy.deepcopy(previous['data'])
+    submitted['deals'][0]['step'] = 's23'
+    submitted['deals'][0]['transfer']['net'] = 'TRC-20'
+    submitted['wallets'][0]['id'] = str(wallet_id)
+    forged = copy.deepcopy(submitted)
+    forged['wallets'][0]['addr'] = recipient
+    refused = client.put('/api/stand/state', json={'version': previous['version'], 'data': forged})
+    assert refused.status_code == 409, refused.json
+
+    handed = client.put('/api/stand/state', json={'version': previous['version'], 'data': submitted})
+    assert handed.status_code == 200, handed.json
+    state = handed.json['data']
+    saved = state['deals'][0]
+    assert saved['step'] == 's23'
+    assert m.expected_addresses(state, saved) == (wallet_address, recipient)
+    claimed = client.post('/api/stand/transfer/claim',
+                          json={'dealId': saved['id'], 'version': handed.json['version']})
+    assert claimed.status_code == 200, claimed.json
+    assert claimed.json['claim']['walletId'] == wallet_id
+    assert claimed.json['claim']['amount'] == '1234.56'

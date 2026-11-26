@@ -2,6 +2,8 @@
 
 from decimal import Decimal, ROUND_HALF_UP
 
+from stand_transfers import stand_wallet_record
+
 
 def amount(deal):
     """Та же сумма IPPS, что freeholdSend: инвойс + округлённая комиссия."""
@@ -33,9 +35,10 @@ def wallet_id(state, deal):
 def wallet(state, deal):
     if deal.get('prepay'):
         return deal['prepay']['wallet']
-    if wallet_id(state, deal) == 'custom' and (deal.get('payinCustom') or {}).get('multisig') is False:
+    source_id = wallet_id(state, deal)
+    if source_id == 'custom' and (deal.get('payinCustom') or {}).get('multisig') is False:
         return dict(deal['payinCustom'], id='custom')
-    return next((w for w in state.get('wallets') or [] if w.get('id') == wallet_id(state, deal)), {})
+    return stand_wallet_record(state, source_id) or {}
 
 
 def received(state, deal):

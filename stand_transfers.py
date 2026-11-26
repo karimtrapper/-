@@ -82,9 +82,20 @@ def valid_address(value, network):
     return False
 
 
+def stand_wallet_record(state, wallet_id):
+    """Resolve registry IDs that the API stores as integers and the browser mirrors as strings."""
+    wallets = state.get('wallets') or []
+    exact = next((wallet for wallet in wallets if wallet.get('id') == wallet_id), None)
+    if exact is not None:
+        return exact
+    return next((wallet for wallet in wallets
+                 if {type(wallet.get('id')), type(wallet_id)} == {int, str}
+                 and str(wallet.get('id')) == str(wallet_id)), None)
+
+
 def stand_wallet_address(state, wallet_id):
     """Resolve a stand wallet without rewriting persisted wallet IDs or custom addresses."""
-    wallet = next((w for w in state.get('wallets', []) if w.get('id') == wallet_id), None)
+    wallet = stand_wallet_record(state, wallet_id)
     address = (wallet or {}).get('addr')
     # Only the exact old built-in mapping is stale; user-edited addresses retain precedence.
     if wallet_id == 'grusha' and address == LEGACY_GRUSHA_ADDRESS:
