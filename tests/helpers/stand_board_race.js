@@ -21,6 +21,7 @@ function tab(role,cookie){
    const data=response.status===304?{}:await response.json();
    trace(role+':'+(options.method||'GET'),{status:response.status,version:data.version,ids:(data.data?.deals||[]).map(d=>d.id),error:data.error});
    if(ctx.hold&&(!options.method||options.method==='GET')){ctx.hold.ready.resolve();await ctx.hold.release.promise;}
+   if(ctx.holdPut&&options.method==='PUT'){ctx.holdPut.ready.resolve(data);await ctx.holdPut.release.promise;}
    return {status:response.status,headers:response.headers,json:async()=>data};
   }};
  vm.createContext(ctx);
@@ -47,6 +48,29 @@ const newDeal=()=>({id:1472,code:'СД-1472',client:'Concurrency synthetic',type
   trace('after late GET',{uiIds:marina.S.deals.map(d=>d.id),serverIds:persisted.data.deals.map(d=>d.id)});
   assert.equal(persisted.data.deals.length,1,'сервер хранит созданную сделку');
   assert.equal(marina.S.deals.length,1,'поздний поллинг не должен удалять сделку из UI');
+ }else if(process.argv[2]==='queued_journal'){
+  marina.S.deals.push(newDeal());marina.S.seq=1472;await marina.standSave();
+  await artem.standPull(true);
+  const held=artem.holdPut={ready:barrier(),release:barrier()};
+  const deal=artem.S.deals[0];
+  deal.log.push({role:'operator',by:'Browser name',at:100,text:'First saved comment'});
+  const first=artem.standSave();
+  const acknowledged=await held.ready.promise;
+  assert.equal(acknowledged.success,true);
+  const journal=acknowledged.data.deals[0].log;
+  assert.match(journal.at(-1).text,/Комментарий · .*First saved comment$/);
+  deal.log.push({role:'operator',at:101,text:'Second queued comment'});
+  deal.quotes.push({dir:'thb',cpId:'coins',name:'Coins',rate:33});
+  await artem.standSave();
+  artem.holdPut=null;held.release.resolve();
+  await first;await artem.standWaitSaved();
+  assert.ok(artem.standLastSaveResult.ok,artem.standLastSaveResult.error);
+  const saved=artem.S.deals[0];
+  assert.deepEqual(saved.log.slice(0,journal.length),journal);
+  assert.equal(saved.log.length,journal.length+1);
+  assert.equal(saved.log.at(-1).role,'operator');
+  assert.match(saved.log.at(-1).text,/Комментарий · .*Second queued comment$/);
+  assert.equal(saved.quotes.find(q=>q.dir==='thb').rate,33);
  }else{
   marina.S.deals.push(newDeal());marina.S.seq=1472;await marina.standSave();
   await artem.standPull(true);

@@ -893,4 +893,23 @@ console.log('test_stand_freehold.js: OK');
   await ctx.docIssue(9101,{amountPay:'98900'},[],'');
   assert.ok(events.includes('denied-put'));
   assert.ok(!events.includes('docs'),'refused board save must prevent document issuance');
+
+  events.length=0;
+  ctx.isCrypto=()=>false;
+  ctx.standSaveScheduled=false;
+  ctx.standLastSaveResult={ok:false,error:'Прошлые записи журнала нельзя удалять или менять',retryJournal:true};
+  ctx.standWaitSaved=async()=>ctx.standLastSaveResult;
+  assert.equal(await ctx.standRequireSaved('Сохранение не завершилось'),false);
+  assert.deepEqual(events,[],'ordinary actions do not silently retry a rejected edit');
+  ctx.standSave=async()=>{events.push('retry-put');ctx.standLastSaveResult={ok:true};};
+  const edited={fio:'Имя из текущей формы',amountPay:'100000',amountThb:'97500',rate:'1.0256'};
+  ctx.fetch=async (url,options)=>{
+    assert.equal(url,'/api/stand/docs/issue');
+    assert.deepEqual(JSON.parse(options.body),{dealId:9101,docFields:edited});
+    events.push('docs');
+    return {status:200,json:async()=>({success:true})};
+  };
+  await ctx.docIssue(9101,edited,[],'Текущий комментарий');
+  assert.deepEqual(events,['retry-put','docs','next']);
+  assert.equal(d.docComment2,'Текущий комментарий');
 })().catch(e=>{console.error(e);process.exitCode=1;});

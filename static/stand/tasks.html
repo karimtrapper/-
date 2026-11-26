@@ -1268,8 +1268,8 @@ async function standPull(force){
   }catch(e){if(standVer===null){standLoadError=true;render();}}
   finally{standPullPending=false;}
 }
-async function standStateRequestPayload(){
-    const payload=JSON.stringify({version:standVer,fileStorageVersion:1,data:standSnapshot()});
+async function standStateRequestPayload(snapshot=standSnapshot()){
+    const payload=JSON.stringify({version:standVer,fileStorageVersion:1,data:snapshot});
     let body=payload;
     const headers={'Content-Type':'application/json'};
     if(payload.length>16384&&typeof CompressionStream==='function'){
@@ -1287,13 +1287,16 @@ async function standSave(){
   standLastSaveResult={ok:false,pending:true};
   standBusy=true; standPush=false;
   try{
-    const {headers,body}=await standStateRequestPayload();
+    const snapshot=standSnapshot();
+    const submittedJournals=new Map((snapshot.deals||[]).map(d=>[d.id,{creationKey:d.creationKey,log:standClone(d.log||[])}]));
+    const {headers,body}=await standStateRequestPayload(snapshot);
     const r=await fetch('/api/stand/state',{method:'PUT',credentials:'same-origin',
       headers,body});
     if(r.status===409){
       const j=await r.json();
       if(j.error&&j.error!=='conflict'){
-        standLastSaveResult={ok:false,error:j.detail||j.error||'save_rejected'};
+        standLastSaveResult={ok:false,error:j.detail||j.error||'save_rejected',
+          retryJournal:!!j.data&&j.error==='Прошлые записи журнала нельзя удалять или менять'};
         if(S.modal&&S.modal.noteId)S.modal.delivery='save_failed';
         standVer=j.version; standBase=standClone(j.data); standApply(j.data);
         if(!brokerSentSubmitPointer&&!S.manualSaving)render();toast(j.detail||j.error);
@@ -1320,6 +1323,12 @@ async function standSave(){
           (j.data.deals||[]).forEach(saved=>{
             const local=(S.deals||[]).find(x=>x.id===saved.id);
             if(local&&local.manual&&saved.originMode==='manual')local.originMode='manual';
+            const submitted=submittedJournals.get(saved.id);
+            if(!local||!submitted||!Array.isArray(saved.log)||
+                local.creationKey!==submitted.creationKey||saved.creationKey!==submitted.creationKey)return;
+            const length=submitted.log.length, log=local.log||[];
+            // Сервер переоформил отправленные записи. К ним дописываем только то, что появилось после запроса.
+            if(jeq(log.slice(0,length),submitted.log))local.log=standClone(saved.log).concat(log.slice(length));
           });
           /* Время регистрации новой отправки приходит только в ответе сервера.
              Переносим его в queued PUT, сохраняя последующие действия оператора. */
@@ -1362,7 +1371,9 @@ function standSaveError(result,fallback){
     save_rejected:'Сервер отклонил сохранение',
     conflict:'Доска изменилась — обновите сделку и повторите'})[error]||error||fallback;
 }
-async function standRequireSaved(fallback){
+async function standRequireSaved(fallback,retryJournal=false){
+  // Повторный выпуск пакета после отката PUT сохраняет текущий черновик на восстановленной доске.
+  if(retryJournal&&standLastSaveResult?.retryJournal&&!standBusy&&!standPush&&!standSaveScheduled)await standSave();
   let result;
   try{result=await standWaitSaved();}catch(e){result={error:'timeout'};}
   if(result?.ok)return true;
@@ -5956,7 +5967,7 @@ async function docIssue(id,F,ch,comment,receivingAccountMode=''){
   const submittedDeal=deal(id);
   if(!submittedDeal)return;
   const expectedDocVersion=docIssueVersion(submittedDeal);
-  if(!await standRequireSaved('Сохранение не завершилось — документы не выпущены'))return;
+  if(!await standRequireSaved('Сохранение не завершилось — документы не выпущены',true))return;
   const current=deal(id);
   if(!current||docIssueVersion(current)!==expectedDocVersion){
     render();toast('Версия пакета изменилась — проверьте поля перед выпуском');return;

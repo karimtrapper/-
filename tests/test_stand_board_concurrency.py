@@ -65,7 +65,7 @@ def board_server(monkeypatch):
         db.close()
 
 
-@pytest.mark.parametrize('scenario', ['late_poll', 'conflict_fields'])
+@pytest.mark.parametrize('scenario', ['late_poll', 'conflict_fields', 'queued_journal'])
 def test_two_role_sessions_keep_new_deal_and_quotes(board_server, scenario):
     result = subprocess.run(['node', 'tests/helpers/stand_board_race.js', scenario],
                             env=board_server, capture_output=True, text=True, timeout=20)
