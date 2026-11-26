@@ -12,7 +12,7 @@ const end = html.indexOf('function walletSends(w)', start);
 assert.ok(start >= 0 && end > start, 'payin dropdown block not found');
 
 const context = vm.createContext({S: {}, CRM_WALLETS: []});
-vm.runInContext(html.slice(start, end), context);
+vm.runInContext(html.match(/^function isNativeCashPartner\([^]*?^}/m)[0]+'\n'+html.slice(start, end), context);
 const run = (code) => vm.runInContext(code, context);
 
 // --- Реестр с мультисигом Груши, личным Теодора и Андрея (TRC-20) + Теодор ERC-20

@@ -27,6 +27,7 @@ function constSource(name) {
 // hashSum/brokerSend/BROKER_FEE/payinParts — цепочка зависимостей для нерублёвой ветки
 // amountUsdt (T5): она реально вызывает payinParts, а не только упоминает его в коде.
 const SCRIPT = [
+  source('isNativeCashPartner'),
   source('num'), source('val'), source('need'),
   source('isCrypto'), source('payCur'), source('exchangeSpec'),
   source('hashSum'), constSource('BROKER_FEE'), source('brokerSend'), source('payinParts'),

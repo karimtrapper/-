@@ -1,4 +1,9 @@
 """Board workflow rules shared by the state and action endpoints."""
+from copy import deepcopy
+from datetime import datetime
+from decimal import Decimal, InvalidOperation
+import re
+
 EXCHANGE_PAIRS = {
     'RUB → THB': ('rub', 'thb', ('rub', 'thb')),
     'THB → RUB': ('thb', 'rub', ('thb', 'rub')),
@@ -31,14 +36,68 @@ def quote_dirs(deal):
         return EXCHANGE_PAIRS.get(deal.get('pair') or default, (None, None, ()))[2]
     crypto = deal.get('payType') == 'Крипта' or deal.get('curBase') == 'usdt'
     return ('thb',) if crypto else ('rub',) if deal.get('kind') == 'Фрихолд' else ('rub', 'thb')
-from copy import deepcopy
-from decimal import Decimal, InvalidOperation
+
+CASH_PARTNER_DRAFT_STEPS = {'s4', 's5', 's6', 's8', 's11'}
+CASH_PARTNER_FIELDS = {
+    'name': ('партнёр', 100),
+    'location': ('место передачи', 350),
+    'contact': ('контакт', 200),
+    'appointmentAt': ('дата и время встречи', 16),
+}
+
+
+def cash_partner_eligible(deal):
+    return (deal.get('type') == 'Оплата недвижимости'
+            and deal.get('kind') in ('Лизхолд', 'Фрихолд', 'Аренда')
+            and deal.get('payType') == 'Наличные'
+            and not deal.get('autoPayment') and not deal.get('manual')
+            and deal.get('originMode') != 'manual'
+            and not deal.get('custom') and not deal.get('cashPartnerUsdt'))
+
+
+def is_cash_partner(deal):
+    if not cash_partner_eligible(deal):
+        return False
+    pack = deal.get('docPack') or {}
+    return (isinstance(pack, dict) and pack.get('method') == 'cash'
+            or (not pack and not deal.get('docVersion')
+                and (deal.get('step') in CASH_PARTNER_DRAFT_STEPS or bool(deal.get('cashPartner')))))
+
+
+def cash_partner_engaged(deal):
+    """Drafts with only a payment-method label have no partner agreement yet."""
+    return is_cash_partner(deal) and (
+        (deal.get('docPack') or {}).get('method') == 'cash'
+        or any(deal.get(key) for key in ('cashPartner', 'cashPartnerWalletId',
+                                         'cashPartnerReceipt', 'cashPartnerRate')))
+
+
+def local_datetime(value):
+    if not isinstance(value, str) or not re.fullmatch(r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}', value):
+        return None
+    try:
+        return datetime.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+def cash_partner_errors(setup):
+    if not isinstance(setup, dict):
+        return list(CASH_PARTNER_FIELDS)
+    invalid = [field for field, (_, limit) in CASH_PARTNER_FIELDS.items()
+               if not isinstance(setup.get(field), str)
+               or not 0 < len(setup[field].strip()) <= limit
+               or any(ord(char) < 32 for char in setup[field])]
+    if 'appointmentAt' not in invalid and not local_datetime(setup['appointmentAt']):
+        invalid.append('appointmentAt')
+    return invalid
+
 
 # Forward handoffs plus the explicit return buttons in STEPS/ret().
 EDGES = {
     's4': {'s5', 's6'}, 's5': {'s4', 's6'}, 's6': {'s5', 's8'},
     's8': {'s5', 's11'}, 's11': {'s8', 's11b', 's12'},
-    's11b': {'s11', 's12'}, 's12': {'s11', 's14'},
+    's11b': {'s11', 's12'}, 's12': {'s11', 's14c', 's14'}, 's14c': set(),
     's14': {'s11', 's14m', 's15', 's18', 's22'},
     's14m': {'s14', 's15', 's18', 's22'},
     's15': {'s18', 's22', 's26'}, 's18': {'s18w'}, 's18w': {'s22'},
@@ -65,6 +124,8 @@ def rerate_attempt(before, deal):
 
 def rerate_commitment_problem(state, before):
     """Check whether an outgoing commitment already fixes the terms."""
+    if before.get('cashPartnerReceipt'):
+        return 'Рубли уже получены партнёром — курс зафиксирован'
     if before.get('closed') or before.get('crmDealId'):
         return 'Закрытая сделка уже не пересчитывается'
     conversion = next((c for c in state.get('convs') or []

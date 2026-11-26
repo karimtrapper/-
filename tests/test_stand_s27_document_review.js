@@ -25,7 +25,7 @@ ctx.deal=id=>id===ctx.d.id?ctx.d:null;
 ctx.render=()=>{ctx.markup=ctx.renderS27();};
 vm.createContext(ctx);
 vm.runInContext('const S27_DOCUMENT_REVIEW=new Map();\n'+
-  ['receiptDocs','s27ReviewState','s27ReviewNavigate','s27ReviewDocuments'].map(source).join('\n')+card,ctx);
+  ['isNativeCashPartner','receiptDocs','s27ReviewState','s27ReviewNavigate','s27ReviewDocuments'].map(source).join('\n')+card,ctx);
 
 ctx.render();
 assert.match(ctx.markup,/Платёжное поручение \/ чек/);

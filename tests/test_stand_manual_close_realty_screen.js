@@ -14,6 +14,7 @@ function source(name, async = false) {
 // Та же сборка зависимостей, что test_stand_manual_close_screen.js (задача 5) —
 // manualCloseScreen и всё, что оно реально вызывает при рендере.
 const SCRIPT = [
+  source('isNativeCashPartner'),
   source('htmlText'), source('jsLiteralAttr'), source('num'), source('hashSum'),
   source('txShort'), source('explorer'), source('moneyKop'), source('usd'), source('money'),
   source('isCrypto'), source('payCur'), source('exchangeSpec'), source('payinParts'),

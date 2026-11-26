@@ -69,7 +69,7 @@ const fieldCtx = vm.createContext({fake:()=>({}), approx:()=>({pay:10000,thb:100
   standDocAgent:()=>({name:'MF',reg:'1',director:'X'}),
   MF:{rubName:'MF Corp',inn:'9909726886',kpp:'770387001',bank:'Sber',acc:'4080',ks:'3010',bik:'0445'},
   htmlText:String});
-vm.runInContext(html.slice(fieldsStart, fieldsEnd), fieldCtx);
+vm.runInContext(html.match(/^function isNativeCashPartner\([^]*?^}/m)[0]+'\n'+html.slice(fieldsStart, fieldsEnd), fieldCtx);
 const customFields=vm.runInContext(`docFields({id:1,code:'X',rates:{client:10},rubReceivingAccount:{mode:'custom',bank:'Test Bank',account:'40702810900000012345',correspondent:'30101810000000000000',bik:'044525225'}})`,fieldCtx);
 assert.match(customFields.payTo,/Test Bank · р\/с 40702810900000012345 · к\/с 30101810000000000000 · БИК 044525225/);
 
@@ -109,7 +109,7 @@ assert.ok(jsAttrStart>=0&&jsAttrEnd>jsAttrStart);
 vm.runInContext(html.slice(jsAttrStart,jsAttrEnd),safeCtx);
 // goalCard now renders machine strings through addressDisclosure(); load that real helper chain.
 safeCtx.dealWallet = () => null;   // goalCard читает кошелёк политики; здесь сделка без кошелька
-for (const name of ['txShort', 'addressDisclosure', 'policyRoleNames']) {
+for (const name of ['isNativeCashPartner', 'txShort', 'addressDisclosure', 'policyRoleNames']) {
   const start = html.indexOf(`function ${name}(`), end = html.indexOf('\n}\n', start) + 2;
   assert.ok(start >= 0 && end > start, name);
   vm.runInContext(html.slice(start, end), safeCtx);

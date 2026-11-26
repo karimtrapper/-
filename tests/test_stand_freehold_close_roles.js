@@ -13,7 +13,7 @@ const ctx={S:{role:'operator',view:'task'},STAND:true,canDeleteStandDeal:()=>fal
  outgoingStatusSummary:()=>'',
  clientPayinSummarySupported:()=>false,
 };
-vm.createContext(ctx);vm.runInContext(source('viewDeal'),ctx);
+vm.createContext(ctx);vm.runInContext(['isNativeCashPartner','viewDeal'].map(source).join('\n'),ctx);
 const d={id:1484,code:'СД-1484',step:'s27',type:'Оплата недвижимости',kind:'Фрихолд',pay:{invoicePaid:true},log:[],source:'none'};
 for(const role of ['operator','admin','manager']){
  ctx.S.role=role;const out=ctx.viewDeal(d);
@@ -43,7 +43,7 @@ for(const [role,expected] of [['operator',[]],['manager',[]],['admin',[]],['teod
 
 // Задача оператора доступна и из списка задач, после окончания ветки брокера.
 ctx.S.deals=[d];ctx.reqOpen=()=>false;ctx.prepayRefundRole=()=>null;
-vm.runInContext(source('taskBranchesForRole'),ctx);
+vm.runInContext(['cashPartnerWalletTask','taskBranchesForRole'].map(source).join('\n'),ctx);
 vm.runInContext(html.match(/^function myTasks\([^]*?\n/m)[0],ctx);
 assert.equal(ctx.myTasks('operator').length,1);
 d.prepay={brokerStep:'done'};assert.equal(ctx.myTasks('operator').length,1);

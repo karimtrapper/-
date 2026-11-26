@@ -15,7 +15,7 @@ function functions(names) {
 function run(names, context, extra) {
   Object.assign(context,{STAND:false});
   vm.createContext(context);
-  vm.runInContext((extra || '') + '\n' + functions(names), context);
+  vm.runInContext((extra || '') + '\n' + functions(['isNativeCashPartner', ...names]), context);
   return context;
 }
 const num = x => (x == null || x === '') ? null : parseFloat(String(x).replace(',', '.'));

@@ -21,7 +21,7 @@ const ctx={S:{role:'operator',convs:[],deals:[]},DRAFTS:{},STAND:true,SCREEN:fal
   money:String,rnd2:n=>n,standPayinCommit:async()=>true,
 };
 vm.createContext(ctx);
-for(const name of ['walletPurpose','docHasIssued','act','payinSettle'])vm.runInContext(fn(name),ctx);
+for(const name of ['isNativeCashPartner','walletPurpose','docHasIssued','act','payinSettle'])vm.runInContext(fn(name),ctx);
 
 (async()=>{
   // 1. s11: select не трогали -> walletId по умолчанию записан и сохранён ДО выпуска документов

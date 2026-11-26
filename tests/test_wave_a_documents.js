@@ -4,6 +4,7 @@ const s8=html.slice(html.indexOf('  s8:()=>'),html.indexOf('\n  s11:()=>',html.i
 for(const [type,kind,expected] of [['Обмен валюты','',['pass','inv']],['Оплата недвижимости','Лизхолд',['pass','inv','spa','ipds']],['Оплата недвижимости','Фрихолд',['pass','inv','spa','ipds']]]){
  const calls=[],ctx={d:{id:1,type,kind},docRow:(d,k)=>{calls.push(k);return k;},doctOf:()=>'',docParseLine:()=>'',fioHint:()=>'',freeholdInvoiceTariffBlock:()=>'',
    docAdditionalRows:()=>[],docExtraControl:()=>''};
- vm.runInNewContext('({'+s8+'}).s8()',ctx);assert.deepEqual(calls,expected);
+ const native=html.match(/^function isNativeCashPartner\([^]*?^}/m)[0];
+ vm.runInNewContext(native+'\n({'+s8+'}).s8()',ctx);assert.deepEqual(calls,expected);
 }
 console.log('client documents by deal type: PASS');

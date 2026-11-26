@@ -89,16 +89,17 @@ assert.equal(el('resultLabel').textContent, 'Клиент должен внес�
 assert.equal(el('calculatorSubtitle').textContent, 'Рубли · баты · USDT');
 assert.match(page, /@media \(max-width: 700px\)[^]*?dealtype-switcher \{ grid-template-columns: repeat\(2,/);
 
-const cardStart = tasks.indexOf('      const X=d.invoiceUsd||0;\n      const k=num(d.rates.client);');
-const cardEnd = tasks.indexOf('\n    }\n    return `<div class="card">', cardStart);
+const cardStart = tasks.indexOf('  s6:()=>{');
+const cardEnd = tasks.indexOf('\n  s8:()=>', cardStart);
 assert.ok(cardStart > 0 && cardEnd > cardStart);
-const s6 = {num: x => Number(String(x || '0').replace(',', '.')),
+const s6 = {isCrypto:()=>false,num: x => Number(String(x || '0').replace(',', '.')),
   ago: () => '', ippsTariff: () => ({percent: 1.5, fixed: 50}),
   freeholdSend: () => 81047, htmlText: String, moneyKop: String, usd: String,
   freeholdInvoiceInputs6: () => 'SOURCE_FIELDS', freeholdSummary6: () => 'RESULT_FIELDS',
   calcBtn: () => 'CALCULATOR_LINK', fmtAmount: String, quotesSummary: () => ''};
 vm.createContext(s6);
-vm.runInContext('function autoCard(d){' + tasks.slice(cardStart, cardEnd) + '}', s6);
+const cashRoute = tasks.match(/^function isNativeCashPartner\([^]*?^}/m)[0];
+vm.runInContext(cashRoute + '\nfunction autoCard(d){return ({' + tasks.slice(cardStart, cardEnd) + '}).s6();}', s6);
 const rendered = s6.autoCard({...task, step: 's6', autoRequestMode: 'usd',
   requestedUsd: 79800, invoiceUsd: 79800, amountRub: 6949596.82,
   rates: {rubUsdt: 83, client: '87.0877'}, freeholdClientInput: 'sum'});

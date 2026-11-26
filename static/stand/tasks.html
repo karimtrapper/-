@@ -1996,11 +1996,11 @@ function freeholdSummary6(d){
     <div class="fg"><label class="fl">Наценка в расчёте</label>
       <input class="fc num" readonly value="${X&&rub?autoShownMarginPct(d).toFixed(2).replace('.',',')+' %':'—'}"></div>
   </div>`;
-  const {sent,profit,pct}=freeholdEstimate(d,rub,d.rates.rubUsdt);
+  const {sent,profit,pct}=freeholdEstimate(d,rub,d.rates.rubUsdt), cash=isNativeCashPartner(d);
   return `<div class="fr">
     <div class="fg"><label class="fl">В IPPS уйдёт<span class="sub2"> USD: инвойс + комиссия тарифа</span></label>
       <input class="fc num" readonly value="${sent?usd(sent):'—'}"></div>
-    <div class="fg"><label class="fl">Наша прибыль<span class="sub2"> USDT, с удержанием брокера</span></label>
+    <div class="fg"><label class="fl">${cash?'Оценка прибыли':'Наша прибыль'}<span class="sub2"> ${cash?'USDT, по расчётному курсу':'USDT, с удержанием брокера'}</span></label>
       <input class="fc num" readonly value="${profit!=null?moneyKop(profit,'USDT')+' ('+pct.toFixed(2)+'%)':'—'}"></div>
   </div>
   ${profit!=null&&profit<0?`<div class="alert a-warn"><div><b>Сделка в минус</b> · ${moneyKop(profit,'USDT')}. Проверьте курс клиенту.</div></div>`:''}`;
@@ -2249,6 +2249,12 @@ function hashSum(list){
   return n?Math.round(s*100)/100:null;
 }
 function payinParts(d){
+  if(isNativeCashPartner(d)){
+    const {receipt,rate,expected,verified}=cashPartnerNumbers(d);
+    return [{label:'Наличные через партнёра',amountRub:receipt?.amountRub??null,rate:rate?.rate??null,
+      usdt:verified,calc:expected,fact:verified,src:verified!=null?'хэш':null,
+      partner:d.cashPartner?.name||null,hashes:d.payinHashes||[]}];
+  }
   if(d.cashPartnerUsdt){
     const fact=hashSum((d.payinHashes||[]).filter(h=>h.verified));
     return [{label:'Наличные через партнёра',amountRub:d.amountRub||null,rate:null,
@@ -2502,6 +2508,7 @@ function payinDefaultWallet(net,d){
   return payinWalletView((purpose&&choices.find(w=>w.purpose===purpose))||choices[0]);
 }
 function payinWallet(d){
+  if(isNativeCashPartner(d))return cashPartnerWallet(d);
   if(d.walletId==='custom'){const c=d.payinCustom||{};
     return {id:'custom',name:'Указанный кошелёк',owner:c.owner||'владелец уточняется',
       addr:c.addr||'',net:c.network||'',multisig:!!c.multisig};}
@@ -2809,6 +2816,10 @@ function dealWallet(d){
         (crmWalletsLoaded&&CRM_WALLETS.some(w=>w.address===snapshot.addr&&
           (w.initiator_roles||[]).length)))return {...snapshot,policyUnavailable:true};
     return snapshot;
+  }
+  if(isNativeCashPartner(d)){
+    const selected=crmWalletById(d.cashPartnerWalletId);
+    return selected?crmWalletToLegacy(selected):null;
   }
   const c=convOf(d);
   const wid=(c&&c.walletId)||(d&&d.walletId);
@@ -3283,10 +3294,12 @@ function pcNet(x){return (x.transfer||{}).net||'TRC-20';}
 /* Откуда эта сделка взялась в пачке: B2C-обмены заводят отдельно, они уже
    оплачены клиентом и ждут ближайшей конвертации — их и добирают на шаге 18. */
 function pcOrigin(x){
-  const paid=x.amountRub?money(x.amountRub,'₽'):(x.amountUsdt?usd(x.amountUsdt):null);
+  const cash=isNativeCashPartner(x);
+  const paid=cash?(x.cashPartnerReceipt?.amountRub!=null?moneyKop(x.cashPartnerReceipt.amountRub,'₽'):null):
+    x.amountRub?money(x.amountRub,'₽'):(x.amountUsdt?usd(x.amountUsdt):null);
   const bits=[];
-  if(x.payType) bits.push(x.payType);
-  if(paid) bits.push('клиент заплатил '+paid);
+  if(x.payType) bits.push(cash?'Наличные через партнёра':x.payType);
+  if(paid) bits.push((cash?'партнёр принял ':'клиент заплатил ')+paid);
   if(x.readyAt) bits.push('внесена без шагов, ждала конвертации с '+
     new Date(x.readyAt).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit'}));
   else if(x.docVersion) bits.push('прошла задачник, пакет документов есть');
@@ -3975,7 +3988,7 @@ function quotesCard(d){
     ${dirs.map(dir=>`<div class="chtitle" style="margin:4px 0 8px">${quoteDirection(d,dir)}
         <span>${(function(){const b=quoteBest(d,dir);return b?('в сделке '+b.rate+' · '+b.name):'ответов ещё нет';})()}</span></div>
       ${cps().filter(c=>cpDir(c,dir)).map(c=>quoteRow(d,c,dir)).join('')}`).join('')}
-    <p class="fh">Пока рубли не ушли брокеру, менеджер может запросить новый курс и пересогласовать условия.</p></div>`;
+    <p class="fh">${isNativeCashPartner(d)?'До визита клиента менеджер может запросить новый расчёт и согласовать условия.':'Пока рубли не ушли брокеру, менеджер может запросить новый курс и пересогласовать условия.'}</p></div>`;
 }
 function quoteRow(d,c,dir){
   const q=(d.quotes||[]).find(x=>x.cpId===c.id&&x.dir===dir);
@@ -4621,6 +4634,7 @@ const STEPS={
   s11 :{n:11,who:'operator',title:'Подготовить договор'},
   s11b:{n:11,who:'operator',title:'Проверить и отправить'},
   s12 :{n:12,who:'manager' ,title:'Отправить клиенту'},
+  s14c:{n:14,who:'manager' ,title:'Ждём клиента у партнёра'},
   s14 :{n:14,who:'operator',title:'Ждём приход'},
   s14m:{n:14,who:'manager' ,title:'Разобрать поступление'},
   s15 :{n:15,who:'manager' ,title:'Реквизиты для оплаты'},
@@ -4636,7 +4650,9 @@ const STEPS={
   pack :{n:0,who:null,title:'В пачке — ждёт выдачи'},
   done :{n:99,who:null,title:'Закрыта'}
 };
-function stepTitle(d){
+function stepTitle(d,step=d.step){
+  if(step==='s14'&&isNativeCashPartner(d))return 'Ждём USDT от партнёра';
+  if(step!==d.step)return STEPS[step]?.title||step;
   const checking=d.step==='s23'&&d.outgoingReview?.requestedAt;
   const reported=['s23','s24'].includes(d.step)&&d.transferSentReport;
   if(d.prepay)return 'Параллельно: '+(d.prepay.brokerStep==='done'?'USDT получены':STEPS[d.prepay.brokerStep].title)+' · '+(reported?'Проверить перевод':checking?'Проверить отправку':d.step==='s22'?'Подготовить заявку IPPS':STEPS[d.step].title);
@@ -4656,10 +4672,11 @@ const FLOW_RUB =['s5','s6','s8','s11','s12','s14','s15','s18','s18w','s22','s23'
    Coins не назначен, отправлять нечего, и путь вставал на подписи с нулём переводов
    (прогон крипто-лизхолда 25.09). */
 const FLOW_USDT=['s5','s6','s8','s11','s12','s14','s15','s22','s23','s24','s25','s26','s27'];
+const FLOW_CASH_PARTNER=['s5','s6','s8','s11','s12','s14c','s14','s22','s23','s24','s25','s26','s27'];
 const FLOW_ALIAS={s11b:'s11',s14m:'s14'};
 function flowOf(d){
   if(d.prepay)return d.prepay.flow||FLOW_RUB.filter(s=>s!=='s15'&&s!=='s25'&&(!d.selfRate||s!=='s5'));
-  let F=(isCrypto(d)||d.cashPartnerUsdt)?FLOW_USDT:FLOW_RUB;
+  let F=isNativeCashPartner(d)?FLOW_CASH_PARTNER:(isCrypto(d)||d.cashPartnerUsdt)?FLOW_USDT:FLOW_RUB;
   /* Реквизиты — параллельная задача менеджера, а не шаг пути: деньги пришли —
      операционист сразу конвертирует (Карим, 25.09). s15 остаётся только у сделок,
      которые уже стоят на нём. */
@@ -4875,10 +4892,11 @@ function afterPayin(d,text,persist=true){
   const F=flowOf(d), nxt=F[F.indexOf('s14')+1]||(isCrypto(d)?'s22':'s18');
   const need=d.kind==='Фрихолд'?!payToReady(d):!(d.payTo&&d.payTo.acc);
   d.reqTask=need?'open':'done';
-  if(need) noteAdd('manager','Задача на вас: Реквизиты для оплаты — параллельно с конвертацией',d.id);
+  const cash=isNativeCashPartner(d);
+  if(need) noteAdd('manager',cash?'Задача на вас: Реквизиты для оплаты':'Задача на вас: Реквизиты для оплаты — параллельно с конвертацией',d.id);
   if(S.role==='manager'&&need){S.open=d.id;S.view='task';}
   go(d,nxt,text+' — '+(STEPS[nxt]?STEPS[nxt].title.toLowerCase():nxt)+' у операциониста'+(need?', реквизиты для оплаты — у менеджера параллельно':''),persist);
-  if(persist)toast(need?'Операционист начал конвертацию — заполните реквизиты':'Операционист начал конвертацию');
+  if(persist)toast(cash?'Приход подтверждён':need?'Операционист начал конвертацию — заполните реквизиты':'Операционист начал конвертацию');
 }
 /* Реквизиты оплаты застройщику — поля формы «Реквизиты для оплаты». У фрихолда
    больше полей (SWIFT/BIC, отделение, адрес банка, POBO для софт-счёта) и сумма
@@ -5019,6 +5037,7 @@ function taskBranchesForRole(d,role){
     (role==='teodor'&&policyWallet?.owner_can_alone&&
       (policySend||policyConfirm)&&!!d.transferClaim&&!d.transferSentReport));
   const sidePayment=(role==='manager'&&(reqOpen(d)||needsPayConfirm(d)))||
+    cashPartnerWalletTask(d,role)||
     (role==='operator'&&d.step==='s27'&&d.type==='Оплата недвижимости')||
     (role==='operator'&&d.step==='s14'&&(d.manualBankReceipt?.status==='pending'||(!d.manualBankReceipt&&!rubApiAccount(d))));
   if(!d.prepay)return ownsPayment||sidePayment?[null]:[];
@@ -5105,7 +5124,7 @@ function ownerDate(value,withTime=false){
 /* До пачки используем снимок последнего выпущенного договора. У старых пакетов
    снимка нет: восстанавливаем только из сохранившихся полей и явно это подписываем. */
 function ownerEstimate(d){
-  if(isCrypto(d)||convOf(d))return null;
+  if(isNativeCashPartner(d)||isCrypto(d)||convOf(d))return null;
   if(d.kind!=='Фрихолд'){
     const rate=num(d.rates?.rubUsdt);
     if(!(rate>0))return null;
@@ -5151,6 +5170,7 @@ function accountShortLabel(account){
 /* ---------- Итог сделки на закрытии (менеджер) ---------- */
 /* Человеческие названия: технические коды полей (payin_method, ipps_swift) в тексте не показываем */
 function payinHuman(d){
+  if(isNativeCashPartner(d))return 'Наличные через партнёра';
   if(d.payType==='По реквизитам')return d.rubReceivingAccount?.mode==='flowsole'?'Flow Sole (СГБ)':'Сбер';
   return {'СБП':'СБП','Крипта':'Крипта (USDT)','Наличные':'Наличные'}[d.payType]||d.payType||'не выбран';
 }
@@ -5169,6 +5189,7 @@ function payoutHuman(d){
 }
 /* Сколько ₽ клиент заплатил и когда — из подтверждённых частей прихода, не из ожидаемой суммы */
 function clientRubPaid(d){
+  if(isNativeCashPartner(d))return {rub:d.cashPartnerReceipt?.amountRub??null,date:cashPartnerDate(d.cashPartnerReceipt?.at)||null};
   const parts=d.payinParts||[], extra=d.payinExtra||[];
   const sum=parts.reduce((s,p)=>s+(Number(p.amountRub)||0),0)+
     extra.reduce((s,x)=>s+(Number(x.amount_rub??x.amountRub)||0),0);
@@ -5223,14 +5244,20 @@ function crmPreviewFor(d){
 }
 /* Итог сделки: три раздела, в каждой строке источник и «Поправить» */
 function dealSummaryBlock(d){
-  const E=econ(d), rub=!isCrypto(d), fh=d.kind==='Фрихолд', realty=d.type==='Оплата недвижимости';
+  const E=econ(d), rub=!isCrypto(d), fh=d.kind==='Фрихолд', realty=d.type==='Оплата недвижимости', cash=isNativeCashPartner(d);
   const paid=clientRubPaid(d), pv=crmPreviewFor(d), edit=`editOpen(${d.id})`, ev=crmEvidenceParts(d,true);
   const row=(label,value,src,fix)=>`<div class="sumrow"><div class="sumlab">${label}</div><div class="sumval">${value}</div>
     <div class="sumsrc">${htmlText(src)}</div>${fix?`<button class="btn btn-outline btn-sm" onclick="${fix}">Поправить</button>`:'<span></span>'}</div>`;
   const noSum='<span class="sumred">нет суммы</span>';
   /* 1. Получение */
   const inRows=[row('Способ оплаты',htmlText(payinSourceLabel(d)),'заявка',edit)];
-  if(rub){
+  if(cash){
+    const {rate}=cashPartnerNumbers(d);
+    inRows.push(row('Партнёр',htmlText(d.cashPartner?.name)||'—','данные встречи'));
+    inRows.push(row('Принято наличными',moneyKop(paid.rub,'₽'),paid.date));
+    inRows.push(row('Курс партнёра',rate?htmlText(String(rate.rate).replace('.',',')+' ₽ за 1 USDT'):'—',cashPartnerDate(rate?.rateAt||rate?.at)));
+    inRows.push(row('Кошелёк получения',htmlText(cashPartnerWallet(d)?.addr)||'—','TRC-20'));
+  }else if(rub){
     /* Если ждали одну сумму, а подтверждённый приход — другая, не прячем расхождение,
        но и не держим жёлтый призыв к действию вечно: если в Хронологии уже есть
        объяснение (банк/комиссия/расхождение, записано сотрудником) — показываем
@@ -5316,6 +5343,7 @@ function dealSummaryBlock(d){
 /* Сводка владельца читает только сохранённые факты сделки и готовую экономику.
    Неизвестное значение не подменяем расчётом или данными другой сделки. */
 function ownerSummary(d){
+  const cash=isNativeCashPartner(d);
   const safe=v=>htmlText(v==null||v===''?'ещё нет':v);
   const line=(label,value,hint,details)=>`<details class="owner-line"><summary><span class="owner-label">${label}</span><span class="owner-value">${safe(value)}</span>${hint?`<span class="owner-hint">${safe(hint)}</span>`:''}</summary><div class="owner-detail">${details||'Подробностей ещё нет'}</div></details>`;
   const item=(label,value)=>`<div><b>${label}:</b> ${safe(value)}</div>`;
@@ -5370,8 +5398,11 @@ function ownerSummary(d){
   const receiptValue=received?`✓ пришли${paidDate?' '+paidDate:''} · ${crypto?moneyKop(received,'USDT'):moneyKop(received,'₽')}${crypto?'':' · '+paidAccount}${proofName?' · '+proofName:''}`:`✗ не пришли · ждём ${expected}`;
   const receiptHint=received&&receipts.length>1?`${receipts.length} ${plural(receipts.length,'часть','части','частей')}`:
     received&&last.manualReceiptId&&manual.confirmedBy?`сверка: ${reviewer||'операционист'}${manual.confirmedAt?' · '+ownerDate(manual.confirmedAt,true):''}`:'';
-  const receiptLine=line('Деньги клиента',receiptValue,receiptHint,
-    (receiptDetails||item('Ожидаем',expected)+(!crypto?item('Ожидаемый счёт',expectOf(d).acc):''))+receiptProof+checksDetail);
+  const cashReceipt=d.cashPartnerReceipt;
+  const receiptLine=cash?line('Деньги клиента',cashReceipt?moneyKop(cashReceipt.amountRub,'₽'):'Ждём клиента у партнёра',
+    cashPartnerDate(cashReceipt?.at),cashPartnerDetails(d)):
+    line('Деньги клиента',receiptValue,receiptHint,
+      (receiptDetails||item('Ожидаем',expected)+(!crypto?item('Ожидаемый счёт',expectOf(d).acc):''))+receiptProof+checksDetail);
   const invoice=d.kind==='Фрихолд'?(d.invoiceCurrency==='thb'&&d.invoiceThb?money(d.invoiceThb,'฿')+(d.invoiceUsd?' · '+usdMark(d,d.invoiceUsd):''):d.invoiceUsd?usd(d.invoiceUsd):null):d.amountThb?money(d.amountThb,'฿'):null;
   const dealLine=line('Сделка',['ИППС','Личный счёт'].includes(d.kind)?dealDisplayKind(d):d.autoPayment===true?'Оплата авто':d.kind||d.type||'ещё нет',d.object||'объект ещё нет',
     item('Объект',d.object)+item('Застройщик',d.dev)+item('Получатель',d.payTo?.dev)+
@@ -5391,7 +5422,7 @@ function ownerSummary(d){
     (d.prepay?item('Наперёд',convOf(d)?.receivedAt?'USDT брокера уже получены':'деньги клиента ещё в конвертации'):''));
   const src=c?.sources?.find(x=>String(x.dealId)===String(d.id))||{};
   const brokerGot=src.usdtFact!=null||!!c?.receivedAt;
-  const brokerLine=line('Конвертация',!c?'не отправлено':brokerGot?'USDT получены':'отправлено брокеру',
+  const brokerLine=cash?'':line('Конвертация',!c?'не отправлено':brokerGot?'USDT получены':'отправлено брокеру',
     !c?estimate?'котировка '+estimate.name+' '+String(estimate.rate).replace('.',',')+
       ' · ждём USDT ≈ '+moneyKop(estimate.result.incoming,'USDT'):'ждём курс и отправку':
       src.usdtFact!=null?moneyKop(src.usdtFact,'USDT'):src.usdt!=null?'ждём '+moneyKop(src.usdt,'USDT'):'сумма ещё нет',
@@ -5400,15 +5431,15 @@ function ownerSummary(d){
       item('Курс',c.rate)+item('Ждём USDT',src.usdt!=null?usd(src.usdt):null)+item('Получено USDT',src.usdtFact!=null?usd(src.usdtFact):null)+
       item('Кошелёк получения',walletById(c.walletId)?.name)+
       (c.txs||[]).map(t=>`<div><b>Хэш:</b> ${link(t.hash,t.net)}${t.amount!=null?' · '+usd(t.amount):''}</div>`).join(''):'Пачки конвертации ещё нет');
-  const profitFromE=E.ready&&(!!c||crypto);
+  const profitFromE=E.ready&&(!!c||crypto||cash);
   const profitResult=profitFromE?{profit:E.gross,pct:E.pct,incoming:E.payin,sent:E.cost}:estimate?.result;
   const profitReady=profitResult?.profit!=null;
   const profitFact=profitFromE&&E.byFact;
   const profitPct=profitReady&&profitResult.pct!=null?profitResult.pct.toLocaleString('ru-RU',
     {minimumFractionDigits:2,maximumFractionDigits:2})+' %':'—';
   const profitValue=profitReady?(profitFact?'':'≈ ')+usd(profitResult.profit)+' ('+profitPct+')':
-    'нельзя посчитать: '+(!crypto&&!d.rates?.broker&&!d.rates?.rubUsdt?'нет курса брокера':'ещё нет данных');
-  const profitSource=c?(profitFact?'факт по USDT брокера':'ориентир по курсу пачки '+String(c.rate||'').replace('.',',')):
+    'нельзя посчитать: '+(!cash&&!crypto&&!d.rates?.broker&&!d.rates?.rubUsdt?'нет курса брокера':'ещё нет данных');
+  const profitSource=cash&&profitFact?'по проверенным USDT партнёра':c?(profitFact?'факт по USDT брокера':'ориентир по курсу пачки '+String(c.rate||'').replace('.',',')):
     crypto&&profitFromE?(profitFact?'факт по подтверждённым USDT клиента':'ориентир по сумме клиента'):
       estimate?estimate.source+' · котировка '+estimate.name+' '+String(estimate.rate).replace('.',','):'';
   const profitLine=line('Доходность',profitValue,profitSource,
@@ -5603,7 +5634,7 @@ function standDocAgent(d,account=d.rubReceivingAccount||{}){
   const digits=v=>String(v||'').replace(/\D/g,'');
   const known=account.mode==='custom'&&digits(account.bik).length===9&&digits(account.account).length===20
     ?STAND_DOC_AGENT_META?.accounts?.['bank:'+digits(account.bik)+':'+digits(account.account)]:null;
-  const key=isCrypto(d)?'mf_corp':account.mode==='flowsole'?'flow_sole':known||'mf_corp';
+  const key=isCrypto(d)||isNativeCashPartner(d)?'mf_corp':account.mode==='flowsole'?'flow_sole':known||'mf_corp';
   return {key,...(STAND_DOC_AGENT_META?.profiles?.[key]||{})};
 }
 function docFields(d,saved=d.docFields,account=d.rubReceivingAccount){
@@ -5666,6 +5697,7 @@ function docFields(d,saved=d.docFields,account=d.rubReceivingAccount){
   // Поле показывает текст следующего выпуска; старые выпущенные файлы не меняются.
   if(cryptoFreehold)out.feeNote=cryptoFeeNote;
   if(isCrypto(d)){out.purpose='';out.payTo=payToCrypto(payinWallet(d));}
+  if(isNativeCashPartner(d)){out.purpose='';out.payTo='';}
   if(isCrypto(d)&&d.kind==='Фрихолд'){
     out.amountPay=d.amountUsdt==null?'':d.amountUsdt;
     out.rate='';
@@ -5697,7 +5729,7 @@ function docReq(d,mode=''){
      сделки» из обязательных полей пакета убираем — его просто не с чем сравнить. */
   const base=(isCrypto(d)&&d.kind==='Фрихолд')?DOC_REQ.filter(k=>k!=='rate'):DOC_REQ;
   return (d.autoPayment===true?base.filter(k=>k!=='object'):base).concat(d.autoPayment===true?['vehicleModel','sellerName','sellerId','dev','contractNo','contractDate','paymentStage','vinState','invNo','invDate']:[],
-    isCrypto(d)||docPurposeOptional(d,mode)?[]:['purpose'],
+    isCrypto(d)||isNativeCashPartner(d)||docPurposeOptional(d,mode)?[]:['purpose'],
     (d.autoPayment!==true&&d.type==='Оплата недвижимости'&&(d.kind==='Лизхолд'||d.kind==='Фрихолд'))?['invNo']:[]);
 }
 const DOC_LABEL={payoutNetwork:'сеть получателя',payoutWallet:'кошелёк получателя',fio:'ФИО',fioLat:'латиница',passNo:'номер паспорта',passIss:'дата выдачи',
@@ -6044,7 +6076,7 @@ function issuedDrop(id,k){
    назначением («подписать и вернуть», «сумма и курс», «по нему платит»), чтобы
    менеджер не забыл ни один и не искал их по сделке (Карим, 25.09). */
 function docSendBlock(d){
-  const P=d.docPack, ap=approx(d);
+  const P=d.docPack, ap=approx(d), cash=isNativeCashPartner(d);
   if(documentPackStale(d))return '<div class="alert a-warn"><div>Отправьте клиенту новую версию после перевыпуска документов.</div></div>';
   if(!P) return `<div class="alert a-warn"><div>Файлов пакета нет — операционист ещё не выпустил документы генератором. Сумма к оплате — <b>${money(ap.pay,ap.sign)}</b>.</div></div>`;
   const esc=v=>JSON.stringify(String(v||'')).replace(/"/g,'&quot;');
@@ -6052,19 +6084,20 @@ function docSendBlock(d){
     dog:['Агентский договор','Клиент подписывает и присылает скан обратно — загрузить его можно на любом шаге, в блоке «Документы»'],
     app:[P.mode==='addendum'?'Допсоглашение к договору '+(P.agreementNumber||''):'Приложение 1 к договору',
          'Сумма и курс этого платежа: '+money(ap.pay,ap.sign)+' → '+money(ap.thb,ap.thbSign||'฿')+' по курсу '+(d.rates.client||'—')+' '+rateUnit(d)+'. Клиент сверяет и подписывает'],
-    bill:['Счёт на оплату','По нему клиент платит: '+money(ap.pay,ap.sign)+(isCrypto(d)?' на кошелёк USDT':` на счёт в ${rubReceivingBankLabel(d)}${P.recipient?' · '+P.recipient:''}`)]};
+    bill:['Счёт на оплату','По нему клиент платит: '+money(cash?P.amount??ap.pay:ap.pay,ap.sign)+(cash?' наличными партнёру':isCrypto(d)?' на кошелёк USDT':` на счёт в ${rubReceivingBankLabel(d)}${P.recipient?' · '+P.recipient:''}`)]};
   const rows=['dog','app','bill'].map(k=>[k,docFileOf(d,k)]).filter(x=>x[1]);
   const sent=d.docsSent;
   return `<div class="paybox" style="margin-bottom:16px">
     <div class="chtitle" style="margin-bottom:8px">Отправить клиенту
       <span>версия ${P.version} · ${rows.length} документа</span></div>
+    ${cash?cashPartnerHandoffBlock(d,P.amount??ap.pay):''}
     ${rows.map(([k,f])=>`<div class="payrow">
       <div><div class="v" style="font-weight:600">${what[k][0]}${f.own?' <span class="badge b-done">свой файл</span>':''}</div>
         <div class="k" style="text-transform:none;letter-spacing:0">${htmlText(what[k][1])}</div>
         <div class="k" style="text-transform:none;letter-spacing:0">${htmlText(f.file)}</div></div>
       <button class="btn btn-primary btn-sm" style="white-space:nowrap" onclick="docDownload(${d.id},'${k}','file')">Скачать ${docExt(f)}</button>
     </div>`).join('')}
-    ${isCrypto(d)
+    ${cash?'':isCrypto(d)
       ?`<div class="payrow"><div><div class="k">Кошелёк для оплаты · сеть ${htmlText(P.network||'TRON (TRC-20)')}</div>
           <div class="v addr" style="font-size:17px;font-weight:700;word-break:break-all">${htmlText(P.wallet)}</div>
           <div class="k" style="text-transform:none;letter-spacing:0">Назначения платежа у перевода USDT нет — клиент присылает хеш перевода</div></div>
@@ -6686,10 +6719,9 @@ function viewDoc(){
 function tgPayBlock(d,step){
   if(step!=='s12'&&step!=='s11b') return '';
   const F=docFields(d), ap=approx(d);
-  const rows=[
+  const rows=isNativeCashPartner(d)?cashPartnerHandoffRows(d,d.docPack?.amount??ap.pay):[
     ['Сумма к оплате', money(ap.pay,ap.sign)],
-    ['Назначение платежа', F.purpose||''],
-    ['Куда платить', F.payTo||'']
+    ['Назначение платежа', F.purpose||''],['Куда платить', F.payTo||'']
   ].filter(x=>x[1]);
   const all=rows.map(x=>x[0]+': '+x[1]).join('\n');
   return `<div class="paybox">
@@ -6842,7 +6874,7 @@ function viewTasks(){
     h+=mine.map(d=>{
       const a=approx(d);
       const side=role==='manager'&&stepWho(d)!=='manager';
-      const taskTitle=side?(needsPayConfirm(d)?'Ваша задача: подтвердить реквизиты перед оплатой':
+      const taskTitle=cashPartnerWalletTask(d,role)?'Выбрать кошелёк для USDT от партнёра':side?(needsPayConfirm(d)?'Ваша задача: подтвердить реквизиты перед оплатой':
         reqOpen(d)?'Ваша параллельная задача: реквизиты для оплаты':stepTitle(d)):stepTitle(d);
       const branches=taskBranchesForRole(d,role);
       return branches.map(branch=>{
@@ -7811,7 +7843,7 @@ function dealTaskPathCard(d,branch){
   const wallet=dealWallet(d);
   return `<div class="card side deal-path"><h4>Путь сделки</h4><ol>${path.steps.map((k,i)=>
     `<li class="${i<path.index||path.done?'done':i===path.index?'current':'next'}"><span class="path-dot"></span>
-      <div><b>${htmlText(k==='refund'?'Возместить оплату':STEPS[k]?.title||k)}</b><small>${i===path.index&&!path.done?'Сейчас · ':''}${htmlText(hasPolicy(wallet)&&k==='s23'?policyStepAssignee(d,'s23'):
+      <div><b>${htmlText(k==='refund'?'Возместить оплату':stepTitle(d,k))}</b><small>${i===path.index&&!path.done?'Сейчас · ':''}${htmlText(hasPolicy(wallet)&&k==='s23'?policyStepAssignee(d,'s23'):
         hasPolicy(wallet)&&k==='s24'?policyRoleNames([stepWho(d,'s24')]):
         k==='refund'?(ROLES[prepayRefundRole(d)]||{}).t:(ROLES[stepWho(d,k)]||{}).t||'')}</small></div></li>`).join('')}</ol></div>`;
 }
@@ -7977,13 +8009,14 @@ function outgoingStatusSummary(d){
 function viewDeal(d,inquiryField=''){
   if(!d)return '<div class="card">Сделка не найдена. <button class="btn btn-sm btn-outline" onclick="back()">Назад</button></div>';
   if(S.manualCloseDraft&&S.manualCloseDraft[d.id])return manualCloseScreen(d,inquiryField);
+  const cash=isNativeCashPartner(d);
   const st=STEPS[d.step]||{title:(d.manual?'внесена вручную':d.step),n:'',who:null};
   const who=stepWho(d);
   const policyWallet=dealWallet(d);
   const policySend=d.step==='s23'&&hasPolicy(policyWallet)&&!d.outgoingReview?.requestedAt;
   const policyConfirm=d.step==='s24'&&hasPolicy(policyWallet);
   const mine=!d.closed&&((!policySend&&!policyConfirm&&who===S.role)||
-    (S.role==='admin'&&['s11','s11b','s27'].includes(d.step))||
+    (S.role==='admin'&&(['s11','s11b','s27'].includes(d.step)||(cash&&['s8','s12','s14c','s14'].includes(d.step))))||
     (policySend&&policyOwnsSend(d,policyWallet,S.role))||
     (policyConfirm&&policyOwnsVerification(d,policyWallet,S.role)));
   const p=progress(d), view=S.view||'deal';
@@ -8020,12 +8053,13 @@ function viewDeal(d,inquiryField=''){
       const side=Object.assign({},d,{step:'s15',_side:true});
       const parallelAction=confirmGate||canDraft?`<section class="task-action">
         ${goalCard(side)}${confirmGate?payToConfirmBlock(d):stepCard(side)}</section>`:'';
-      const manualReceiptSide=S.role==='operator'&&d.step==='s14'&&!isCrypto(d)?manualBankReceiptBlock(d):'';
+      const manualReceiptSide=S.role==='operator'&&d.step==='s14'&&!isCrypto(d)&&!cash?manualBankReceiptBlock(d):'';
+      const cashSide=cash&&['s12','s14c','s14'].includes(d.step)?`<div class="card cash-pay"><div class="card-title">Наличные через партнёра</div>${cashPartnerDetails(d)}${cashPartnerWalletBlock(d)}</div>`:'';
       const reissue=['s12','s14'].includes(d.step)?docReopenButton(d):'';
-      body=parallelAction+status+(reissue?`<div class="card">${reissue}</div>`:'')+((S.role==='manager'||S.role==='admin')&&d.step==='s14'?s14PingBlock(d,true):'')+(S.role==='manager'&&d.step==='s14'?`<div class="card"><div class="card-title">Ждём деньги — сверяет операционист</div><p>${isCrypto(d)
+      body=cashSide+parallelAction+status+(reissue?`<div class="card">${reissue}</div>`:'')+((S.role==='manager'||S.role==='admin')&&d.step==='s14'?s14PingBlock(d,true):'')+(!cash&&S.role==='manager'&&d.step==='s14'?`<div class="card"><div class="card-title">Ждём деньги — сверяет операционист</div><p>${isCrypto(d)
         ?`Ожидаем ${money(approx(d).pay,'USDT')} на ${htmlText((payinWallet(d)||{}).addr||'кошелёк из договора')}.`
         :`Ожидаем ${money(expectOf(d).amount,'₽')} на ${htmlText(expectOf(d).acc||'счёт из договора')}.`} Прикреплённые клиентом чеки видны ниже; приход подтверждает операционист.</p></div>`:'')+
-        (d.step==='s14'&&(S.role==='operator'||S.role==='manager')?clientPayinBlock(d):'')+manualReceiptSide+
+        (!cash&&d.step==='s14'&&(S.role==='operator'||S.role==='manager')?clientPayinBlock(d):'')+manualReceiptSide+
         (S.role==='operator'&&d.step==='s27'?crmEvidencePanel(d):'')+
         (S.role==='admin'&&d.step==='s23'&&personalSend(d)?stepCard(d):'')+
         (managerSide?managerEarlyDocsBlock(d):'')+
@@ -8039,6 +8073,9 @@ function viewDeal(d,inquiryField=''){
       (S.role==='operator'&&d.step==='s14'?s14PingBlock(d,false):'')+ctxCard(d);
   }
   else body=overview(d,st,mine,p,who)+quotesCard(d);
+  if(cash&&view==='task'&&!d.closed&&['s22','s23','s24','s25','s26','s27'].includes(d.step)){
+    body+=`<div class="card cash-pay" style="margin-top:12px"><div class="card-title">Наличные через партнёра</div>${cashPartnerDetails(d)}${cashPartnerWalletBlock(d)}</div>`;
+  }
   if(view==='task'&&d.kind==='Фрихолд'&&d.invoiceCurrency==='thb'&&['s5','s18'].includes(d.step)){
     body=`<div class="card"><div class="card-title">Курс банка застройщика · TT Buying</div>
       <p class="fh">${S.thbRates&&S.thbRates.success?thbRatesMeta():'Загружаем курсы банков…'}${thbRatesRefreshButton()}</p></div>`+body;
@@ -8051,7 +8088,7 @@ function viewDeal(d,inquiryField=''){
   }
   if(d.demoTransfers&&!demoAllowed())body='<div class="alert a-warn">В истории есть DEMO-приходы или переводы. Автоматически снять флаг и продолжить нельзя: требуется сверка реальных платежей операционистом.</div>'+body;
   const tab=(v,label)=>`<span class="vtab ${view===v?'on':''}" onclick="setView('${v}')">${label}</span>`;
-  const canCloseManually=['manager','admin'].includes(S.role)&&!d.closed&&!d.manual&&!reviewTask;
+  const canCloseManually=['manager','admin'].includes(S.role)&&!d.closed&&!d.manual&&!reviewTask&&!cash;
   const canDelete=STAND&&canDeleteStandDeal(d);
   return `<div class="deal-screen"><div class="task-card-nav"><button type="button" onclick="closeTaskToList()">‹ Все задачи</button><button type="button" onclick="nextTask()" ${typeof nextTaskIndex==='undefined'||nextTaskIndex()<0?'disabled':''}>Следующая задача ›</button></div><div class="deal-breadcrumb">Задачник / ${htmlText(d.code)}</div>
   <header class="deal-head"><div><p class="deal-code">${htmlText(d.code)} · ${htmlText(['ИППС','Личный счёт'].includes(d.kind)?dealDisplayKind(d):d.autoPayment===true?'Оплата авто':d.kind||d.type)}${d.prepay?' · оплата наперёд':''}</p>
@@ -8087,7 +8124,7 @@ function viewDeal(d,inquiryField=''){
         title="${d.originMode==='manual'?'Финальное сохранение в CRM':'Для старой ручной сделки нет подтверждённого сервером происхождения'}"
         onclick="crmPushClose(${d.id})">Сохранить в CRM</button>
       ${!d.manualNew&&d.originMode!=='manual'?'<span class="fh">Не подтверждено сервером происхождение ручного черновика; финальное сохранение недоступно.</span>':''}${crmClosePanel(d.id)}`:''}
-  ${!d.closed&&!d.manual&&!reviewTask?`<button class="btn btn-outline btn-sm" ${prepayCloseReason(d)||standClosing?'disabled':''} onclick="askClose(${d.id})">Закрыть сделку</button>${prepayCloseReason(d)?`<p class="fh" role="status">${htmlText(prepayCloseReason(d))}</p>`:''}${view==='task'&&d.step==='s27'?'':crmClosePanel(d.id)}`:''}</div>
+  ${!d.closed&&!d.manual&&!reviewTask?`${cash&&d.cashPartnerReceipt?'':`<button class="btn btn-outline btn-sm" ${prepayCloseReason(d)||standClosing?'disabled':''} onclick="askClose(${d.id})">Закрыть сделку</button>`}${prepayCloseReason(d)?`<p class="fh" role="status">${htmlText(prepayCloseReason(d))}</p>`:''}${view==='task'&&d.step==='s27'?'':crmClosePanel(d.id)}`:''}</div>
   </aside></div></div>`;
 }
 
@@ -8107,7 +8144,7 @@ function cnvRow(d){
     <span style="color:var(--text-muted);font-size:12.5px">${mine.usdtFact!=null?'· по хэшу':'· ожидание по курсу'}${c.sources.length>1?` · пачка из ${c.sources.length} приходов`:''}</span></p>`;
 }
 function overview(d,st,mine,p,wh){
-  const ap=approx(d), F=fake(d), E=econ(d);
+  const ap=approx(d), F=fake(d), E=econ(d), cash=isNativeCashPartner(d);
   const branch=d.prepay?(S.taskBranch||((S.role==='operator'&&d.prepay.brokerStep!=='done')||prepayRefundRole(d)===S.role?'conversion':'payment')):null;
   const branchMine=branch==='conversion'?taskBranchesForRole(d,S.role).includes('conversion'):mine;
   const activeMine=branchMine&&(branch==='conversion'||!d.assigneeAdminId||String(d.assigneeAdminId)===String(standMeId));
@@ -8177,15 +8214,16 @@ function overview(d,st,mine,p,wh){
   ${d.bitrixSync?`<div class="alert ${d.bitrixSync.status==='success'?'a-ok':'a-warn'}" style="margin:0 0 14px"><div><b>${d.bitrixSync.status==='success'?'Bitrix: сделка переведена в '+(d.bitrixSync.kind==='lose'?'LOSE':'WON'):'Bitrix не обновлён'}</b>${d.bitrixSync.status==='error'&&d.bitrixSync.error==='wrong_category'?' — сделка в другой воронке.':d.bitrixSync.status==='error'&&d.bitrixSync.error==='already_lost'?' — сделка уже закрыта как проигранная.':d.bitrixSync.status==='error'&&d.bitrixSync.error==='already_won'?' — сделка уже закрыта как успешная.':''}</div>${d.bitrixSync.status!=='success'&&canRole('manager')?`<button class="btn btn-outline btn-sm" onclick="crmRetryBitrix(${d.id})">Повторить</button>`:''}</div>`:''}
   <div class="card" style="margin-bottom:16px">
     <div class="sec pi">Получение</div>
+    ${cash?cashPartnerDetails(d)+cashPartnerWalletBlock(d):''}
     <table class="tbl">
-      ${row('Метод',d.payType||'—')}
-      ${isCrypto(d)&&d.kind==='Фрихолд'?row('План клиента',d.amountUsdt==null?'укажите сумму':money(d.amountUsdt,'USDT'),'договорная сумма')+row('Фактически пришло',E.parts[0].fact!=null?money(E.parts[0].fact,'USDT'):'ожидается','по подтверждённым хешам'):isCrypto(d)?row('Сумма USDT',usd(E.parts[0].usdt),E.parts[0].fact!=null?'по хэшу — факт':'со слов клиента, хэша ещё нет'):row('Сумма RUB',money(d.incomeAmount||d.amountRub,'₽'),
+      ${row('Метод',cash?'Наличные через партнёра':d.payType||'—')}
+      ${cash?'':isCrypto(d)&&d.kind==='Фрихолд'?row('План клиента',d.amountUsdt==null?'укажите сумму':money(d.amountUsdt,'USDT'),'договорная сумма')+row('Фактически пришло',E.parts[0].fact!=null?money(E.parts[0].fact,'USDT'):'ожидается','по подтверждённым хешам'):isCrypto(d)?row('Сумма USDT',usd(E.parts[0].usdt),E.parts[0].fact!=null?'по хэшу — факт':'со слов клиента, хэша ещё нет'):row('Сумма RUB',money(d.incomeAmount||d.amountRub,'₽'),
         E.multi?'это первый канал, остальные ниже':(d.incomeAmount?(d.incomeAmount===ap.pay?'сошлось с ожидаемым':'разошлось с ожидаемым'):'ожидается'))}
-      ${isCrypto(d)||!d.rates.broker?'':row('Курс к USDT',d.rates.broker)}
-      ${isCrypto(d)?'':(E.parts[0].fact!=null
+      ${cash||isCrypto(d)||!d.rates.broker?'':row('Курс к USDT',d.rates.broker)}
+      ${cash||isCrypto(d)?'':(E.parts[0].fact!=null
         ?row('Сумма USDT',usd(E.parts[0].fact),'по хэшу — это факт, от него и считаем')
         :row('Сумма USDT',E.parts[0].calc!=null?usd(E.parts[0].calc):'посчитается после конвертации','ожидание по курсу, хэша ещё нет'))}
-      ${(!isCrypto(d)&&E.parts[0].fact!=null&&E.parts[0].calc!=null&&Math.abs(E.parts[0].fact-E.parts[0].calc)>=0.01)
+      ${(!cash&&!isCrypto(d)&&E.parts[0].fact!=null&&E.parts[0].calc!=null&&Math.abs(E.parts[0].fact-E.parts[0].calc)>=0.01)
         ?row('Разошлось с расчётом',(E.parts[0].fact>E.parts[0].calc?'+':'−')+usd(Math.abs(E.parts[0].fact-E.parts[0].calc)).replace('$',''),'ждали '+usd(E.parts[0].calc)+' — брокер посчитал иначе'):''}
     </table>
     ${E.multi?`<div class="box box-blue">
@@ -8199,8 +8237,8 @@ function overview(d,st,mine,p,wh){
     ${(!E.multi&&d.payinHashes&&d.payinHashes.length)?`<p style="margin-top:10px"><b>Хэши Pay-In (${d.payinHashes.length}):</b><br>
       ${d.payinHashes.map(h=>`<span style="display:inline-block;margin:3px 0">${hashLink(h.hash,h.network,h.amount)}</span><br>`).join('')}</p>`:''}
     ${(!E.multi&&!(d.payinHashes||[]).length&&d.pay.hash)?`<p style="margin-top:10px"><b>Хэш Pay-In:</b> ${hashLink(d.pay.hash,'TRC20')} ${d.closed?'✅':'⏳'}</p>`:''}
-    ${cnvRow(d)}
-    ${E.payin==null?fillNote(d,'Pay-In'):''}
+    ${cash?'':cnvRow(d)}
+    ${!cash&&E.payin==null?fillNote(d,'Pay-In'):''}
   </div>
 
   ${['ИППС','Личный счёт'].includes(d.kind)?`<div class="card" style="margin-bottom:16px">
@@ -8367,9 +8405,10 @@ function pathCard(d){
       const idx=flowOf(d).indexOf(k), cur=flowOf(d).indexOf(d.step);
       const st=d.prepay?(k==='s24'&&!d.prepay.wallet.multisig?'не требуется':prepayStepDone(d,k)?'внесено':([d.step,d.prepay.brokerStep].includes(k)?'сейчас':'ещё нет')):d.closed?'внесено':(cur<0?'—':(idx<cur?'внесено':(idx===cur?'сейчас':'ещё нет')));
       return `<li class="flow-item"${st==='сейчас'&&!d.closed?' style="background:var(--coral-light)"':''}>
-        <div class="flow-item-meta"><span>${STEPS[k].n}. ${k==='s22'&&d.kind==='Фрихолд'?'Согласовать заявку IPPS':(k==='s25'&&d.kind==='Фрихолд'?'Ожидать MT103':STEPS[k].title)}</span><span class="flow-item-who">${policyStepAssignee(d,k)}</span>
+        <div class="flow-item-meta"><span>${STEPS[k].n}. ${k==='s22'&&d.kind==='Фрихолд'?'Согласовать заявку IPPS':(k==='s25'&&d.kind==='Фрихолд'?'Ожидать MT103':stepTitle(d,k))}</span><span class="flow-item-who">${policyStepAssignee(d,k)}</span>
         <span class="flow-item-status">${st==='внесено'?'<span class="badge b-done">внесено</span>':(st==='сейчас'?'<span class="badge b-new">сейчас</span>':`<span class="badge b-wait">${st}</span>`)}</span></div>
-        <div class="flow-item-body"><b>${f.b}</b> — ${d.prepay&&k==='s22'?'согласованная операционистом заявка IPPS для параллельной оплаты':f.w}</div></li>`;}).join('')}
+        <div class="flow-item-body"><b>${f.b}</b> — ${d.prepay&&k==='s22'?'согласованная операционистом заявка IPPS для параллельной оплаты':
+          k==='s14'&&isNativeCashPartner(d)?'курс партнёра и сверка полученных USDT по хешам':f.w}</div></li>`;}).join('')}
     </ul>
     <div class="card-title" style="font-size:14px;margin:18px 0 10px">Хронология</div>
     <div class="hist-feed">
@@ -8402,6 +8441,7 @@ const FILLS={
   s11b:{b:'Документы', w:'проверка пакета перед отправкой'},
   s12 :{b:'Документы', w:'отправка документов клиенту'},
   s14 :{b:'Pay-In',    w:'факт поступления — сколько село на счёт'},
+  s14c:{b:'Pay-In',    w:'сумма наличных, которую принял партнёр'},
   s14m:{b:'Pay-In',    w:'разбор поступления: чей платёж и к какой сделке'},
   /* Реквизиты — своя задача менеджера: раньше тут стояло описание соседней задачи
      операциониста «Pay-In — конвертация» (аудит 27.09, №15) */
@@ -8434,18 +8474,23 @@ function noncryptoPayout(d){
   return !mfList(d).length&&!!num(d.amountThb)&&(!actual||actual>=num(d.amountThb)-1)&&!!pt.bank&&!!pt.acc;
 }
 function crmGaps(d){
-  const g=[], E=econ(d), po=d.payout||{}, rub=payCur(d)==='rub';
+  const g=[], E=econ(d), po=d.payout||{}, rub=payCur(d)==='rub', cash=isNativeCashPartner(d);
   const need=(ok,label,step)=>{if(!ok)g.push({label:label,step:step});};
   need(d.clientId||d.client,'Клиент','Заявка');
   need(d.manager,'Менеджер','Заявка');
   need(d.payType,'Метод получения','Заявка');
-  if(rub){
+  if(cash){
+    need(d.cashPartnerReceipt?.amountRub,'Наличные, принятые партнёром','Ждём клиента у партнёра');
+    need(d.cashPartnerRate?.rate,'Курс партнёра, ₽ за 1 USDT','Ждём USDT от партнёра');
+    need(d.cashPartnerWalletId,'Кошелёк получения','Ждём USDT от партнёра');
+  }else if(rub){
     /* у обмена «без шагов» рубли внесены суммой сделки — это и есть payin_amount_rub */
     need(d.incomeAmount||(d.payinParts||[]).length||(d.amountRub&&d.type!=='Оплата недвижимости'),'Рубли прихода','Ждём приход');
     need(num(d.rates.broker),'Курс RUB→USDT','Отправка брокеру для конвертации');
   }
-  need(E.payin,'USDT прихода',rub?'Ждём USDT от брокера':'Ждём приход');
-  need((d.payinHashes||[]).length,'Хеши прихода',rub?'Ждём USDT от брокера':'Ждём приход');
+  const payinStep=cash?'Ждём USDT от партнёра':rub?'Ждём USDT от брокера':'Ждём приход';
+  need(E.payin,'USDT прихода',payinStep);
+  need((d.payinHashes||[]).length,'Хеши прихода',payinStep);
   if(d.kind==='Личный счёт'){
     need(po.thb>0,'Фактическая выплата, THB','Выплата застройщику');
     need(po.usdt>0,'Себестоимость, USDT','Выплата застройщику');
@@ -8544,7 +8589,7 @@ function crmPayload(d){
       profit_percent:(+c.payoutUsdt)>0?profit/(+c.payoutUsdt)*100:null,
       net_profit_usdt:c.netProfit??Math.round(base*100)/100,notes:c.notes||null};
   }
-  const E=econ(d), po=d.payout||{}, rub=payCur(d)==='rub', prop=d.type==='Оплата недвижимости';
+  const E=econ(d), po=d.payout||{}, rub=payCur(d)==='rub', prop=d.type==='Оплата недвижимости', cash=isNativeCashPartner(d);
   const r2=v=>(v==null||v===''||!isFinite(v))?null:Math.round(v*100)/100;
   const hx=l=>(l||[]).filter(h=>h&&h.hash).map(h=>({hash:h.hash,network:crmNet(h.network||h.net),amount_usdt:h.amount??h.amount_usdt??null}));
   const p={client_name:d.client, client_id:typeof d.clientId==='string'&&d.clientId.startsWith('crm:')?parseInt(d.clientId.slice(4)):(d.crmClientId??null),
@@ -8554,17 +8599,18 @@ function crmPayload(d){
     ...(d.rubIsNet===true?{payin_rub_is_net:true}:{}),
     payin_method:d.payType==='По реквизитам'&&d.rubReceivingAccount?.mode==='flowsole'
       ?'flow_sole_reqs':PAYIN_CRM[d.payType]||'sber_reqs',
-    payin_amount_rub:rub?(d.incomeAmount||d.amountRub||null):null,
+    payin_amount_rub:cash?d.cashPartnerReceipt?.amountRub??null:rub?(d.incomeAmount||d.amountRub||null):null,
     /* API _apply_payin_extra прибавит дополнительные части само. Основной
        приход берём из первого payinParts: extra может быть задан только RUB
        и курсом, без amount_usdt, поэтому вычитание сырых extra его теряло. */
     // Flow Sole keeps the amount entered in the CRM draft. A selected hash may
     // represent the whole network transfer, not the CRM declared share.
-    payin_amount_usdt:r2(d.payType==='По реквизитам'&&d.rubReceivingAccount?.mode==='flowsole'
+    payin_amount_usdt:cash?cashPartnerNumbers(d).verified:r2(d.payType==='По реквизитам'&&d.rubReceivingAccount?.mode==='flowsole'
       &&d.amountUsdt!=null?d.amountUsdt:
       (d.kind==='Фрихолд'&&isCrypto(d))?payinParts(d)[0]?.fact:payinParts(d)[0]?.usdt),
-    payin_rate_rub_usdt:rub?(num(d.rates.broker)||null):null,
-    payin_tx_hashes:hx(d.payinHashes),
+    payin_rate_rub_usdt:cash?d.cashPartnerRate?.rate??null:rub?(num(d.rates.broker)||null):null,
+    ...(cash?{payin_partner_name:d.cashPartner?.name??null,payin_wallet_id:d.cashPartnerWalletId??null}:{}),
+    payin_tx_hashes:hx(cash?cashPartnerNumbers(d).hashes:d.payinHashes),
     payin_parts:(d.payinParts||[]).map(x=>({uuid:x.uuid||String(x.incId||'').replace(/^sber:/,'')||null,
       amount_rub:x.amountRub??null,payer:x.payer||'',date:x.date||'',note:x.note||'',
       kind:x.kind==='acquiring'?'acquiring':'transfer',fee_rub:x.fee??null,net_rub:x.net??x.amountRub??null,
@@ -8689,6 +8735,7 @@ function crmPayloadFinal(d){
 }
 function crmLockedKeys(d){
   const locked=new Set(['payin_tx_hashes','payout_tx_hashes']);
+  if(isNativeCashPartner(d))['payin_amount_rub','payin_rate_rub_usdt','payin_amount_usdt','payin_partner_name','payin_wallet_id'].forEach(key=>locked.add(key));
   if(d.payType)locked.add('payin_method');
   if(d.payinHashes?.length||d.amountUsdt||(d.pay||{}).usdt||
      (!isCrypto(d)&&num(d.incomeAmount||d.amountRub)>0&&num((d.rates||{}).broker)>0))
@@ -8812,7 +8859,7 @@ function crmEvidencePanel(d){
     </div>`;
 }
 function crmForm(d){
-  const p=crmPayloadFinal(d), id=d.id, ed=d.crmEdit||{}, locked=crmLockedKeys(d);
+  const p=crmPayloadFinal(d), id=d.id, ed=d.crmEdit||{}, locked=crmLockedKeys(d), cash=isNativeCashPartner(d);
   const esc=v=>htmlText(v==null?'':v);
   const mark=k=>ed[k]!==undefined?' <span class="src">поправлено</span>':'';
   const inp=(k,label,o)=>{o=o||{};const v=p[k];
@@ -8846,13 +8893,14 @@ function crmForm(d){
       <div class="psec pin" style="margin-top:12px">Pay-In (Получение)</div>
       <div class="fr">
         ${sel('payin_method','Метод Pay-In',PAYIN_LABEL)}
-        ${p.custom_payin_currency?ro('Сумма '+p.custom_payin_currency,p.custom_payin_amount):p.payin_amount_rub!=null||payCur(d)==='rub'?inp('payin_amount_rub','Сумма RUB',{hint:d.rubIsNet===true?'после комиссии банка':'до комиссии банка (сделка заведена до 20.10)'}):''}
-        ${!p.custom_payin_currency&&payCur(d)==='rub'&&!isCrypto(d)?(()=>{const cp=clientRubPaid(d);
+        ${p.custom_payin_currency?ro('Сумма '+p.custom_payin_currency,p.custom_payin_amount):p.payin_amount_rub!=null||payCur(d)==='rub'?inp('payin_amount_rub','Сумма RUB',{hint:cash?'фактически принято партнёром':d.rubIsNet===true?'после комиссии банка':'до комиссии банка (сделка заведена до 20.10)'}):''}
+        ${!cash&&!p.custom_payin_currency&&payCur(d)==='rub'&&!isCrypto(d)?(()=>{const cp=clientRubPaid(d);
           return ro('Клиент заплатил, ₽',cp.rub!=null?moneyKop(cp.rub,'₽'):'нет суммы',cp.date?'приход от '+cp.date+', из частей прихода':'из подтверждённых частей прихода');})():''}
         ${inp('payin_amount_usdt','Сумма USDT')}
       </div>
       <div class="fr">
-        ${payCur(d)==='rub'?inp('payin_rate_rub_usdt','Курс RUB/USDT',{hint:'курс брокера, ₽ за 1 USDT'}):''}
+        ${payCur(d)==='rub'?inp('payin_rate_rub_usdt','Курс RUB/USDT',{hint:cash?'курс партнёра, ₽ за 1 USDT':'курс брокера, ₽ за 1 USDT'}):''}
+        ${cash?ro('Партнёр',p.payin_partner_name)+ro('Кошелёк для USDT',cashPartnerWallet(d)?.addr):''}
         ${isCrypto(d)&&d.kind==='Фрихолд'?ro('Клиент отправит',money(d.amountUsdt,'USDT'),'план договора; Pay-In выше — факт прихода'):
           ro('Курс клиенту',(d.rates.client||'—')+' '+(d.kind==='Фрихолд'?'₽ за 1 $':rateUnit(d)),'тот, о котором договорились с клиентом')}
       </div>
@@ -9442,7 +9490,7 @@ function ctxCard(d){
     ${isCrypto(d)&&d.kind==='Фрихолд'
       ?fact('Клиент отправит',d.amountUsdt==null?'укажите сумму':money(d.amountUsdt,'USDT'),'план договора; факт прихода — по хешам')
       :fact('Курс клиенту',(d.rates.client||'—')+' '+rateUnit(d),d.kind==='Фрихолд'
-        ?(d.selfRate?'проставил менеджер сам':'брокер RUB→USDT: '+(d.rates.rubUsdt||'—'))
+        ?(d.selfRate?'проставил менеджер сам':(isNativeCashPartner(d)?'расчётный RUB→USDT: ':'брокер RUB→USDT: ')+(d.rates.rubUsdt||'—'))
         :(d.selfRate?'проставил менеджер сам · ':'')+(isCrypto(d)?'USDT→THB: '+(d.rates.usdtThb||'—')+' · рублей в сделке нет':'контрагенты: '+(d.rates.rubUsdt||'—')+' / '+(d.rates.usdtThb||'—')))}
     ${fact('Документы',all.length?all.map(k=>doctOf(d,k)).join(', '):(d.type==='Оплата недвижимости'?'ещё не приложены':'по обмену не нужны'),all.length?all.length+' шт.':(d.type==='Оплата недвижимости'?'собирает менеджер на шаге 8':'договор и паспорт — только у недвижимости'))}
     ${last?fact('Последнее действие',(ROLES[last.role]?ROLES[last.role].n:'Система')+' · '+logWhen(last),htmlText(last.text)):''}
@@ -11078,6 +11126,8 @@ function markVerified(id){const d=deal(id);d.verified=!d.verified;
   toast(d.verified?'Отмечена проверенной':'Отметка снята');}
 function askClose(id){
   const d=deal(id);
+  if(!d)return;
+  if(isNativeCashPartner(d)&&d.cashPartnerReceipt){toast('Наличные приняты. Продолжите работу с приходом и выплатой.');return;}
   const r=prompt('Причина закрытия:\n'+CLOSE_REASONS.map((x,i)=>(i+1)+'. '+x).join('\n'),'1');
   if(!r)return;const reason=CLOSE_REASONS[Number(r)-1]||CLOSE_REASONS[0];
   if(STAND)standCloseLose(id,reason);else closeDeal(d,reason);
@@ -12322,6 +12372,207 @@ function payinForeign(d,h){
     (payinNet(d)==='ERC-20'?h.from.toLowerCase()!==d.payerWallet.toLowerCase():h.from!==d.payerWallet));
 }
 function payinGot(d){return rnd2((d.payinHashes||[]).filter(h=>!payinForeign(d,h)).reduce((s,h)=>s+(Number(h.amount)||0),0));}
+function isNativeCashPartner(d){
+  if(!d||d.type!=='Оплата недвижимости'||!['Лизхолд','Фрихолд','Аренда'].includes(d.kind)||d.payType!=='Наличные'||
+     d.autoPayment||d.manual||d.originMode==='manual'||d.cashPartnerUsdt||d.custom)return false;
+  if(d.docVersion||Object.keys(d.docPack||{}).length)return d.docPack?.method==='cash';
+  return Object.keys(d.cashPartner||{}).length>0||['s4','s5','s6','s8','s11'].includes(d.step);
+}
+const CASH_PARTNER_FIELDS={name:'Партнёр',location:'Адрес встречи',contact:'Контакт для встречи',appointmentAt:'Дата и время встречи'};
+const CASH_PARTNER_LENGTHS={name:100,location:350,contact:200,appointmentAt:16};
+function cashPartnerReady(partner){
+  return Object.keys(CASH_PARTNER_FIELDS).every(key=>{
+    const value=partner?.[key];
+    return typeof value==='string'&&value.trim()&&value.trim().length<=CASH_PARTNER_LENGTHS[key];
+  })&&/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(partner.appointmentAt)&&!!cashPartnerDate(partner.appointmentAt);
+}
+function cashPartnerDate(value){
+  if(!value)return '';
+  const date=new Date(value);
+  return Number.isFinite(date.getTime())?date.toLocaleString('ru-RU',{dateStyle:'short',timeStyle:'short'}):'';
+}
+function cashPartnerSetupEdit(d){
+  const saved=STAND&&!SCREEN&&!SNAP?(standBase?.deals||[]).find(x=>x.id===d.id):d;
+  return !d.closed&&!docHasIssued(d)&&(S.role==='admin'||stepWho(d)===S.role)&&
+    (d.step==='s8'||(d.step==='s11'&&!cashPartnerReady(saved?.cashPartner)));
+}
+function cashPartnerSetupBlock(d){
+  const partner=d.cashPartner||{};
+  if(!cashPartnerSetupEdit(d))return `<div class="card" style="margin-bottom:12px"><div class="card-title">Встреча у партнёра</div>${cashPartnerDetails(d)}</div>`;
+  return `<div class="card" style="margin-bottom:12px"><div class="card-title">Встреча у партнёра</div>
+    <div class="fr">${Object.entries(CASH_PARTNER_FIELDS).map(([key,label])=>{
+      const input=`cash_partner_${key}_${d.id}`;
+      return `<div class="fg"><label class="fl" for="${input}">${label}<span class="rq">*</span></label>
+        <input class="fc" id="${input}" type="${key==='appointmentAt'?'datetime-local':'text'}" value="${htmlText(partner[key])}" maxlength="${CASH_PARTNER_LENGTHS[key]}" required></div>`;
+    }).join('')}</div>
+    <div class="row"><button type="button" class="btn btn-secondary" onclick="cashPartnerSetupSave(${d.id},true)">Сохранить данные встречи</button></div></div>`;
+}
+async function cashPartnerSetupSave(id,showNotice=false){
+  const d=deal(id);
+  if(!isNativeCashPartner(d)||d.closed)return false;
+  if(!cashPartnerSetupEdit(d))return cashPartnerReady(d.cashPartner);
+  const keys=Object.keys(CASH_PARTNER_FIELDS);
+  const setup=Object.fromEntries(keys.map(key=>[key,val(`cash_partner_${key}_${id}`).trim()]));
+  if(!cashPartnerReady(setup)){toast('Заполните партнёра, адрес, контакт и время встречи');return false;}
+  const useServer=STAND&&!SCREEN&&!SNAP;
+  const savedSetup=useServer?(standBase?.deals||[]).find(x=>x.id===id)?.cashPartner:null;
+  const changed=keys.some(key=>setup[key]!==d.cashPartner?.[key]);
+  if(changed||useServer&&keys.some(key=>setup[key]!==savedSetup?.[key])){
+    if(changed)log(d,'Сохранены данные встречи у партнёра');
+    d.cashPartner=setup;save();
+  }
+  if(useServer){
+    if(!await standRequireSaved('Данные встречи ещё не сохранены'))return false;
+    const saved=(standBase?.deals||[]).find(x=>x.id===id);
+    if(saved?.step!==d.step||keys.some(key=>setup[key]!==saved.cashPartner?.[key])){
+      toast('Данные встречи изменились — проверьте текущую задачу');return false;
+    }
+  }
+  keys.forEach(key=>delete DRAFTS[id+'|cash_partner_'+key+'_'+id]);
+  if(showNotice){render();toast('Данные встречи сохранены');}
+  return true;
+}
+function cashPartnerWallet(d){
+  const w=crmWalletById(d.cashPartnerWalletId);
+  return w?payinWalletView(w):null;
+}
+function cashPartnerWalletTask(d,role){
+  return role==='operator'&&isNativeCashPartner(d)&&!d.closed&&!d.cashPartnerWalletId&&['s12','s14c'].includes(d.step);
+}
+function cashPartnerWalletChoices(d){
+  return uniqueWallets(CRM_WALLETS.filter(w=>w.active!==false&&w.accepts_payin&&
+    (!w.not_for_new_deals||String(w.id)===String(d.cashPartnerWalletId))&&
+    ['TRON','TRC20','TRC-20'].includes(String(w.blockchain||'').toUpperCase())&&addrValid(w.address,'TRC-20')),
+    d.cashPartnerWalletId);
+}
+function cashPartnerWalletBlock(d){
+  const w=cashPartnerWallet(d), id=`cash_wallet_${d.id}`;
+  const editable=!d.closed&&['operator','admin'].includes(S.role)&&['s11','s12','s14c','s14'].includes(d.step)&&!(d.payinHashes||[]).length;
+  const wallets=editable?cashPartnerWalletChoices(d):[];
+  return `<div class="fg"><label class="fl" for="${id}">Кошелёк для USDT · TRC-20</label>
+    ${w?`<div class="fc cash-wallet">${htmlText(w.addr)}</div>`:editable?'':'<p class="fh">Кошелёк выбирает операционист.</p>'}
+    ${editable?(wallets.length?`<div class="row"><select class="fc" id="${id}"><option value="">${w?'Выбрать другой кошелёк':'Выберите кошелёк'}</option>
+      ${wallets.map(item=>`<option value="${htmlText(item.id)}" ${String(item.id)===String(d.cashPartnerWalletId)?'selected':''}>${walletOptionText(item)}</option>`).join('')}
+      </select><button type="button" class="btn btn-secondary" onclick="cashPartnerAction(${d.id},'wallet')">Сохранить кошелёк</button></div>`:
+      `<p class="fh">${crmWalletsLoaded?'В реестре нет кошельков TRC-20 для приёма USDT.':'Загружаем реестр кошельков…'}</p>`):''}</div>`;
+}
+function cashPartnerNumbers(d){
+  const receipt=d.cashPartnerReceipt, rate=d.cashPartnerRate;
+  const hashes=(d.payinHashes||[]).filter(h=>h?.verified&&h.ledgerUseId&&Number.isFinite(Number(h.amount))&&Number(h.amount)>0);
+  const networkTotal=hashes.length?Math.round(hashes.reduce((total,h)=>total+Number(h.amount),0)*1e6)/1e6:null;
+  const verified=d.step!=='s14'&&networkTotal!=null&&Number(d.pay?.usdt)>0?Number(d.pay.usdt):networkTotal;
+  const expected=Number(receipt?.amountRub)>0&&Number(rate?.rate)>0?receipt.amountRub/rate.rate:null;
+  const delta=expected!=null&&verified!=null?verified-expected:null;
+  const matched=!!d.cashPartnerWalletId&&verified>0&&expected>0&&delta!=null&&Math.abs(delta)<=PAYIN_TOL&&
+    hashes.length===(d.payinHashes||[]).length&&new Set(hashes.map(h=>h.ledgerUseId)).size===hashes.length;
+  return {receipt,rate,hashes,verified,expected,delta,matched};
+}
+function cashPartnerDetails(d){
+  const {receipt,rate,verified,expected}=cashPartnerNumbers(d), partner=d.cashPartner||{};
+  const row=(label,value)=>value==null||value===''?'':trow(label,htmlText(value));
+  return `<table class="tbl">
+    ${row('Партнёр',partner.name)}${row('Адрес встречи',partner.location)}${row('Контакт',partner.contact)}
+    ${row('Дата и время встречи',cashPartnerDate(partner.appointmentAt))}
+    ${row('Принято наличными',receipt?moneyKop(receipt.amountRub,'₽')+' · '+cashPartnerDate(receipt.at):null)}
+    ${row('Курс партнёра',rate?String(rate.rate).replace('.',',')+' ₽ за 1 USDT · '+cashPartnerDate(rate.rateAt||rate.at):null)}
+    ${row('Ожидаем от партнёра',expected!=null?moneyKop(expected,'USDT'):null)}
+    ${row('Проверено по хешам',verified!=null?moneyKop(verified,'USDT'):null)}</table>`;
+}
+function cashPartnerHandoffRows(d,amount){
+  const partner=d.cashPartner||{};
+  return [['Сумма наличными',moneyKop(amount,'₽')],['Партнёр',partner.name],['Адрес встречи',partner.location],
+    ['Контакт для встречи',partner.contact],['Дата и время встречи',cashPartnerDate(partner.appointmentAt)]];
+}
+function cashPartnerHandoffBlock(d,amount){
+  const rows=cashPartnerHandoffRows(d,amount).filter(([,value])=>value);
+  const copy=rows.map(([label,value])=>label+': '+value).join('\n');
+  return `<section class="derived" style="display:block;margin-bottom:12px" aria-label="Куда передать наличные">
+    <div class="chtitle">Куда передать наличные</div>
+    <table class="tbl">${rows.map(([label,value])=>trow(label,htmlText(value))).join('')}</table>
+    <div class="row"><button type="button" class="btn btn-outline btn-sm" onclick="copyAsk(${jsLiteralAttr(copy)})">Скопировать для клиента</button></div></section>`;
+}
+function cashPositiveNumber(value,maxDecimals){
+  const normalized=String(value).trim().replace(/\s+/g,'').replace(',','.');
+  const amount=Number(normalized);
+  const decimals=normalized.split('.')[1]?.length||0;
+  return /^\d+(?:\.\d+)?$/.test(normalized)&&decimals<=maxDecimals&&Number.isFinite(amount)&&amount>0?amount:null;
+}
+async function cashPartnerAction(id,op,hash){
+  const d=deal(id);
+  if(!isNativeCashPartner(d)||d.closed)return;
+  const body={dealId:id,op};
+  const fields=[];
+  if(op==='wallet'){
+    const input='cash_wallet_'+id;
+    const w=cashPartnerWalletChoices(d).find(x=>String(x.id)===val(input));
+    if(!w){toast('Выберите кошелёк TRC-20 из реестра');return;}
+    body.walletId=Number(w.id);
+    fields.push(input);
+  }else if(op==='receive'){
+    const input='cash_receipt_'+id;
+    body.amountRub=cashPositiveNumber(val(input),2);
+    if(!(body.amountRub>0)){toast('Введите фактическую сумму наличными, ₽');return;}
+    fields.push(input);
+  }else if(op==='rate'){
+    const input='cash_rate_'+id, timestamp='cash_rate_at_'+id;
+    body.rate=cashPositiveNumber(val(input),6);
+    body.rateAt=val(timestamp);
+    if(!(body.rate>0)||!cashPartnerDate(body.rateAt)){toast('Укажите курс партнёра, дату и время');return;}
+    fields.push(input,timestamp);
+  }else if(op==='unlink'){
+    const input='cash_unlink_'+id+'_'+hash;
+    if(!(d.payinHashes||[]).some(h=>h.hash===hash))return;
+    body.hash=hash;
+    body.reason=val(input).trim();
+    if(!body.reason){toast('Укажите причину отвязки');return;}
+    fields.push(input);
+  }else return;
+  if(!await standRequireSaved())return;
+  const j=await standAction('/api/stand/payin/cash-partner',{...body,version:standVer});
+  if(!j?.success)return;
+  fields.forEach(field=>delete DRAFTS[id+'|'+field]);
+  if(op==='wallet'&&S.cashIncoming)delete S.cashIncoming[id];
+  render();
+  toast({wallet:'Кошелёк сохранён',receive:'Получение наличных подтверждено',rate:'Курс партнёра сохранён',unlink:'Перевод отвязан'}[op]);
+}
+function cashPartnerVisitCard(d){
+  return `<div class="card cash-pay"><div class="card-title">Ждём клиента у партнёра</div>
+    ${cashPartnerHandoffBlock(d,d.docPack?.amount??approx(d).pay)}${cashPartnerWalletBlock(d)}
+    <div class="fg"><label class="fl" for="cash_receipt_${d.id}">Партнёр фактически принял, ₽</label>
+      <input class="fc num" id="cash_receipt_${d.id}" inputmode="decimal" placeholder="Введите фактическую сумму">
+      <p class="fh">Заполните после подтверждения от партнёра.</p></div>
+    <div class="row"><button type="button" class="btn btn-primary" onclick="cashPartnerAction(${d.id},'receive')">Подтвердить приём наличных</button>
+      <button type="button" class="btn btn-outline" onclick="askClose(${d.id})">Закрыть сделку</button></div></div>`;
+}
+function cashPartnerUsdtCard(d){
+  const {rate,hashes,expected,delta,matched}=cashPartnerNumbers(d);
+  const now=new Date(), localNow=new Date(now.getTime()-now.getTimezoneOffset()*60000).toISOString().slice(0,16);
+  const w=cashPartnerWallet(d);
+  return `<div class="card cash-pay"><div class="card-title">Ждём USDT от партнёра</div>
+    ${cashPartnerDetails(d)}${cashPartnerWalletBlock(d)}
+    <div class="fr"><div class="fg"><label class="fl" for="cash_rate_${d.id}">Курс партнёра, ₽ за 1 USDT</label>
+      <input class="fc num" id="cash_rate_${d.id}" inputmode="decimal" value="${htmlText(rate?.rate)}" required></div>
+      <div class="fg"><label class="fl" for="cash_rate_at_${d.id}">Дата и время курса</label>
+        <input class="fc" id="cash_rate_at_${d.id}" type="datetime-local" value="${htmlText(rate?.rateAt||localNow)}" required></div></div>
+      <div class="row"><button type="button" class="btn btn-secondary" onclick="cashPartnerAction(${d.id},'rate')">Сохранить курс</button></div>
+    ${w?`${hashes.length?`<div class="hashbox">${hashes.map(h=>{
+        const input='cash_unlink_'+d.id+'_'+h.hash;
+        return `<div class="hrow"><b>+${moneyKop(h.amount,'USDT')}</b>${hashLink(h.hash,'TRC20')}<span class="src">Проверено</span></div>
+          <details class="deal-detail"><summary>Отвязать перевод</summary>
+            <div class="fg"><label class="fl" for="${htmlText(input)}">Причина отвязки</label>
+              <input class="fc" id="${htmlText(input)}" maxlength="500" required></div>
+            <button type="button" class="btn btn-outline btn-sm" onclick="cashPartnerAction(${d.id},'unlink',${jsLiteralAttr(h.hash)})">Отвязать хеш</button></details>`;
+      }).join('')}</div>`:''}
+      <div class="fg"><label class="fl" for="cash_incoming_${d.id}">Входящие переводы</label>
+        <div class="row"><button type="button" class="btn btn-secondary" onclick="cashIncomingLoad(${d.id})">Показать входящие на кошелёк</button></div>
+        ${S.cashIncoming?.[d.id]?`<select class="fc" id="cash_incoming_${d.id}" onchange="cashIncomingPick(${d.id},this.value)"><option value="">Выберите перевод</option>
+          ${S.cashIncoming[d.id].map(t=>`<option value="${htmlText(t.hash)}">${money(t.amount,'USDT')} · ${htmlText(t.from)} · ${htmlText(t.hash.slice(0,12))}…</option>`).join('')}</select>`:''}</div>
+      <div class="fg"><label class="fl" for="ph_${d.id}">Хеш перевода или ссылка на Tronscan</label><div class="row">
+        <input class="fc" id="ph_${d.id}" autocomplete="off"><button type="button" class="btn btn-secondary" onclick="payinCheck(${d.id})">Проверить в сети</button></div></div>`:''}
+    ${delta!=null&&Math.abs(delta)>PAYIN_TOL?`<div class="alert a-warn"><div>${delta<0?'Осталось получить':'Проверено сверх ожидаемого'} ${moneyKop(Math.abs(delta),'USDT')}. Сверьте переводы и курс с партнёром.</div></div>`:''}
+    ${expected!=null?`<p class="fh">Допуск при сверке ±${PAYIN_TOL} USDT.</p>`:''}
+    <div class="row"><button type="button" class="btn btn-primary" onclick="cashPayinFinish(${d.id})" ${matched?'':'disabled'}>Подтвердить приход и перейти к выплате</button></div></div>`;
+}
 async function cashPayinMethod(id,restore=false){
   const j=await standAction('/api/stand/payin/cash-method',{dealId:id,restore});
   if(j&&j.success)toast(restore?'Снова ждём оплату через Flow Sole':'Теперь ждём USDT от партнёра');
@@ -12335,8 +12586,22 @@ async function cashIncomingLoad(id){
   }catch(e){toast('Не удалось получить входящие переводы');}
 }
 function cashIncomingPick(id,hash){if(hash)payinCheck(id,hash);}
-function cashPayinFinish(id){
-  const d=deal(id), hashes=d.payinHashes||[];
+async function cashPayinFinish(id){
+  let d=deal(id);
+  if(isNativeCashPartner(d)){
+    if(!await standRequireSaved())return;
+    d=deal(id);
+    if(!isNativeCashPartner(d)||d.step!=='s14'||d.closed)return;
+    const {matched,verified,hashes}=cashPartnerNumbers(d);
+    if(!matched){toast('Сверьте курс и сумму проверенных переводов');return;}
+    d.amountUsdt=verified;d.pay.usdt=verified;d.pay.hash=hashes[0].hash;
+    afterPayin(d,'USDT от партнёра получены: '+moneyKop(verified,'USDT'),false);
+    if(!await standPayinCommit('Приход подтверждён — можно готовить выплату')){
+      standRollbackHandoff(id);render();
+    }
+    return;
+  }
+  const hashes=d.payinHashes||[];
   if(d.step!=='s14'||!d.cashPartnerUsdt||!hashes.length||hashes.some(h=>!h.verified||!h.ledgerUseId)){
     toast('Сначала проверьте каждый перевод партнёра в сети');return;
   }
@@ -12452,7 +12717,10 @@ async function payinCheck(id,pickedHash){
   if(!ref){toast('Вставьте хеш или ссылку на обозреватель сети '+network);return;}
   if(!/(?:0x)?[a-fA-F0-9]{64}/.test(ref)){toast('Нужен полный хеш из 64 символов или ссылка с ним');return;}
   const j=await standAction('/api/stand/payin/check',{dealId:id,hash:ref});
-  if(j&&j.tx){if(d.cashPartnerUsdt){S.cashIncoming=null;render();}else await payinSettle(id,true);}
+  if(j&&j.tx){if(d.cashPartnerUsdt||isNativeCashPartner(d)){
+    if(S.cashIncoming)delete S.cashIncoming[id];
+    delete DRAFTS[id+'|ph_'+id];render();
+  }else await payinSettle(id,true);}
 }
 
 /* ---------- карточки шагов ---------- */
@@ -12461,7 +12729,7 @@ async function payinCheck(id,pickedHash){
    и назначение лежали вперемешку с текстом (Карим, 22.09 — «нет иерархии»).
    Здесь шапка задачи: одна фраза цели, крупные числа и строки для копирования. */
 function stepGoal(d){
-  const ap=approx(d), F=docFields(d), E=econ(d);
+  const ap=approx(d), F=docFields(d), E=econ(d), cash=isNativeCashPartner(d);
   const money2=(v,s)=>v?money(v,s):'—';
   switch(d.step){
     case 's4': return {t:'Получить курсы контрагентов, чтобы посчитать клиенту',
@@ -12481,20 +12749,20 @@ function stepGoal(d){
     return isCrypto(d)
       ? {t:'Вернуть курс USDT → THB — рублей в сделке нет',
          nums:[['USDT → THB',d.rates.usdtThb||'ждём'],['Объём',ap.pay?apMoney(ap,'pay'):'—'],['Получателю',ap.thb?apMoney(ap,'thb'):'—']]}
-      : {t:'Вернуть два числа: курс брокера и курс партнёра',
+      : {t:cash?'Указать расчётные курсы RUB → USDT и USDT → THB':'Вернуть два числа: курс брокера и курс партнёра',
       nums:[['RUB → USDT',d.rates.rubUsdt||'ждём'],['USDT → THB',d.rates.usdtThb||'ждём'],
             ['Объём',ap.pay?apMoney(ap,'pay'):'—']]};
     case 's6': return {t:'Назвать клиенту один курс и одну сумму',
       nums:[['Курс клиенту',(d.rates.client||'—')+' '+rateUnit(d)],
             ['Клиент отдаёт',ap.pay?apMoney(ap,'pay'):'—'],['Получателю',ap.thb?apMoney(ap,'thb'):'—']],
-      sub:d.kind==='Фрихолд'?'брокер RUB→USDT: '+(d.rates.rubUsdt||'—'):(isCrypto(d)?'Coins/Bitazza: '+(d.rates.usdtThb||'—'):'контрагенты: '+(d.rates.rubUsdt||'—')+' / '+(d.rates.usdtThb||'—'))};
+      sub:d.kind==='Фрихолд'?(cash?'расчётный RUB→USDT: ':'брокер RUB→USDT: ')+(d.rates.rubUsdt||'—'):(isCrypto(d)?'Coins/Bitazza: '+(d.rates.usdtThb||'—'):'контрагенты: '+(d.rates.rubUsdt||'—')+' / '+(d.rates.usdtThb||'—'))};
     case 's8': {const uploaded=['pass','inv','spa','vehicle_contract','ipds'].filter(k=>filesOf(d,k).length);
       const required=d.isOld?['inv']:['pass','inv'];
       const ready=required.filter(k=>filesOf(d,k).length).length;
       return {t:d.isOld?'Приложить инвойс':'Приложить паспорт и инвойс',
         nums:[['Обязательные',ready+'/'+required.length],['Файлы',String(uploaded.reduce((n,k)=>n+filesOf(d,k).length,filesOf(d,'additional').length))],
               ['Сумма',money2(ap.thb,ap.thbSign||'฿')]],
-        sub:ready===required.length?'Передать операционисту — файлы и комментарий сохранятся.':'Загрузите: '+required.filter(k=>!filesOf(d,k).length).map(k=>k==='pass'?'паспорт':'инвойс').join(', ')};}
+        sub:ready===required.length?(cash?'Укажите данные встречи и передайте документы.':'Передать операционисту — файлы и комментарий сохранятся.'):'Загрузите: '+required.filter(k=>!filesOf(d,k).length).map(k=>k==='pass'?'паспорт':'инвойс').join(', ')};}
     case 's11': {
       const mode=docFormReceivingMode(d), preview=mode?docFormFields(d,mode):F;
       return {t:'Собрать пакет документов на подпись',
@@ -12506,11 +12774,19 @@ function stepGoal(d){
     case 's11b': return {t:'Проверить пакет и отдать менеджеру',
       nums:[['Сумма к оплате',money2(ap.pay,ap.sign)],['Курс сделки',isCrypto(d)&&d.kind==='Фрихолд'?'—':d.rates.client||'—'],['Документов',String(docFilesCount(d))]],
       rows:[['Назначение платежа',F.purpose],['Куда платит клиент',F.payTo]]};
-    case 's12': return {t:'Отправить клиенту договор и реквизиты — и дождаться оплаты',
+    case 's12': return {t:cash?'Отправить документы и данные встречи':'Отправить клиенту договор и реквизиты — и дождаться оплаты',
       nums:[['К оплате',money2(ap.pay,ap.sign)],[isCrypto(d)&&d.kind==='Фрихолд'?'Клиент отправит':'Курс клиенту',isCrypto(d)&&d.kind==='Фрихолд'?money(d.amountUsdt,'USDT'):(d.rates.client||'—')+' '+rateUnit(d)],
             ['Получатель получит',money2(ap.thb,ap.thbSign||'฿')]],
       rows:[['Назначение платежа',F.purpose],['Куда платит клиент',F.payTo]]};
-    case 's14': return {t:'Дождаться денег от клиента и опознать их',
+    case 's14c': return {t:'Подтвердить, сколько наличных принял партнёр',
+      nums:[['К оплате наличными',money2(ap.pay,'₽')],['Партнёр',d.cashPartner?.name||'—'],
+      ['Встреча',cashPartnerDate(d.cashPartner?.appointmentAt)||'—']]};
+    case 's14': if(cash){
+      const {receipt,expected,verified}=cashPartnerNumbers(d);
+      return {t:'Сверить USDT от партнёра',nums:[['Принято наличными',moneyKop(receipt?.amountRub,'₽')],
+        ['Ожидаем USDT',moneyKop(expected,'USDT')],['Проверено по хешам',moneyKop(verified,'USDT')]]};
+    }
+    return {t:'Дождаться денег от клиента и опознать их',
       nums:[['Ждём',money2(ap.pay,ap.sign)],['Куда',isCrypto(d)?'кошелёк TRC-20':`счёт в ${rubReceivingBankLabel(d)}`],['Допуск',isCrypto(d)?'± 5 USDT':'± 0,5 %']]};
     case 's15': {const pt=d.payTo||{};
       return {t:d.kind==='Фрихолд'?`Внести реквизиты для оплаты ${recipientTitle(d)} (IPPS SWIFT)`:'Внести реквизиты для оплаты инвойса',
@@ -12609,7 +12885,7 @@ function goalCard(d){
   const g=stepGoal(d); if(!g) return '';
   const titles={s4:'Запросите курс',s5:'Ответьте курсом',s6:'Отдайте расчёт клиенту',
     s8:'Соберите документы',s11:'Подготовьте договор',s11b:'Проверьте пакет документов',
-    s12:'Отправьте документы клиенту',s14:'Сверьте приход клиента',s14m:'Разберите поступление',
+    s12:'Отправьте документы клиенту',s14:isNativeCashPartner(d)?'Сверьте USDT от партнёра':'Сверьте приход клиента',s14m:'Разберите поступление',
     s15:'Подтвердите реквизиты',s18:'Отправьте рубли брокеру',s18w:'Сверьте USDT от брокера',
     s22:d.kind==='Фрихолд'?'Согласуйте заявку IPPS':'Выберите назначение USDT',
     s23:d.transferSentReport?'Проверьте перевод':d.outgoingReview&&['operator','admin'].includes(S.role)?'Засчитайте перевод':
@@ -12811,10 +13087,10 @@ function prepayFundingText(d){
     '. '+(p.brokerStep==='done'?'USDT брокера уже получены.':'Рубли конвертируются параллельно.');
 }
 function taskFacts(d,x){
-  const c=convOf(x)||convOf(d), ap2=approx(x), tr=x.transfer||{};
+  const c=convOf(x)||convOf(d), ap2=approx(x), tr=x.transfer||{}, cash=isNativeCashPartner(x);
   const src=c?((c.sources||[]).find(y=>y.dealId===x.id)||null):null;
   const fact=src?(src.usdtFact!=null?src.usdtFact:src.usdt):((x.pay&&x.pay.usdt)||null);
-  const paid=x.amountRub?money(x.amountRub,'₽'):(x.amountUsdt?usd(x.amountUsdt):null);
+  const paid=cash?moneyKop(x.cashPartnerReceipt?.amountRub,'₽'):x.amountRub?money(x.amountRub,'₽'):(x.amountUsdt?usd(x.amountUsdt):null);
   /* Статус шага здесь не нужен: владелец кошелька и так стоит на этом шаге,
      а про сделки без задачника уже сказано в строке «клиент заплатил». */
   const f=(k,v,sub)=>v?`<div><div class="k">${k}</div><div class="v">${v}${sub?`<small>${sub}</small>`:''}</div></div>`:'';
@@ -12822,7 +13098,7 @@ function taskFacts(d,x){
     ${f('Что за сделка',x.autoPayment===true?'Оплата авто':x.type+(x.kind?' · '+x.kind:''),x.object||x.pair||'')}
     ${f('Клиент',x.client,SOURCES[x.source]?('из '+SOURCES[x.source]+(x.sourceRef?' · '+x.sourceRef:'')):'')}
     ${f('Клиент заплатил',paid||'—',(x.payType||'')+(x.readyAt?' · без задачника':''))}
-    ${x.prepay?f('Источник оплаты',usd(x.prepay.amount),htmlText(prepayFundingText(x))):f('Стало USDT',fact!=null?usd(fact):'—',c?(c.name+' · '+c.broker+' · курс '+c.rate):'клиент платил криптой — конвертации не было')}
+    ${x.prepay?f('Источник оплаты',usd(x.prepay.amount),htmlText(prepayFundingText(x))):f('Стало USDT',fact!=null?usd(fact):'—',cash?'получены от партнёра':c?(c.name+' · '+c.broker+' · курс '+c.rate):'клиент платил криптой — конвертации не было')}
     ${x.postConv==='coins'
       /* Банк застройщика здесь не показываем: подписант читал его рядом с адресом
          Coins и думал, что платит застройщику (аудит 27.09 №4, Карим, 27.09) */
@@ -12958,7 +13234,7 @@ function stepCard(d){
         ?'Какой курс RUB→USDT на '+moneyKop(d.requestedRub||0,'₽')+'?'
         :'Какой курс RUB→USDT на '+moneyKop(S2,'USDT')+'?';
       const r=quoteBest(d,'rub');
-      return `<div class="card"><div class="card-title">Что ответил брокер</div>
+      return `<div class="card"><div class="card-title">${isNativeCashPartner(d)?'Расчётный курс RUB → USDT':'Что ответил брокер'}</div>
       ${d.reRequest?`<div class="alert a-info"><div><b>Повторный запрос №${d.reRequest}.</b> Клиент вернулся после паузы.</div></div>`:''}
       <div class="alert a-warn"><div><b>${d.autoPayment===true?'Оплата авто':'Фрихолд'} · платит ${d.payType||'не указано'}.</b> ${d.autoPayment===true&&d.autoRequestMode==='rub'?'Бюджет клиента '+moneyKop(d.requestedRub||0,'₽')+' · выплату USD рассчитаем по курсу':(d.autoPayment===true?'Продавцу авто ':'Застройщику ')+usd(X)+' · тариф '+t.label+' · в IPPS уйдёт '+moneyKop(S2,'USDT')}.</div></div>
       <div class="alert a-info"><div>${d.autoPayment===true?'Нужен курс RUB → USDT для расчёта оплаты продавцу.':'Батов в фрихолде нет — спрашиваем только курс RUB → USDT на точный объём в USDT.'}</div></div>
@@ -13017,6 +13293,7 @@ function stepCard(d){
     <div class="row"><button class="btn btn-outline" onclick="ret(${d.id})">Вернуть с вопросом</button></div></div>`;},
 
   s6:()=>{
+    const cash=isNativeCashPartner(d), rubLabel=cash?'Расчётный курс · RUB → USDT':'Курс брокера · RUB → USDT';
     if(d.kind==='Фрихолд'&&!isCrypto(d)){
       /* Рублёвый фрихолд: «Итог с клиентом» (Карим, 06.10) — менеджер вписывает инвойс
          (฿ + курс ฿/$ или сразу $), тариф и курс ₽ за 1$ либо сумму клиенту.
@@ -13040,7 +13317,7 @@ function stepCard(d){
       ${freeholdInvoiceInputs6(d)}
       <div class="card-title" style="font-size:14px;margin:14px 0 4px">Итог с клиентом</div>
       <div class="fr">
-        <div class="fg"><label class="fl">Курс брокера · RUB → USDT</label>
+        <div class="fg"><label class="fl">${rubLabel}</label>
           <input class="fc num" ${d.selfRate?'id="r1c" onchange="syncFreeholdBrokerRate('+d.id+')"':'readonly'} value="${d.rates.rubUsdt||''}"></div>
         <div class="fg"><label class="fl">Итоговый курс клиенту<span class="rq">*</span><span class="sub2"> ₽ за 1 $, 4 знака</span></label>
           <input class="fc num" id="r3" value="${k?k.toFixed(4).replace('.',','):''}" placeholder="курс клиенту, ₽ за 1 $"
@@ -13049,7 +13326,7 @@ function stepCard(d){
           <input class="fc num" id="r4" value="${rub!=null?fmtAmount(String(rub).replace('.',',')):''}" oninput="fmtAmountEl(this)" onchange="syncFreeholdRate(${d.id},'sum')"></div>
       </div>
       <div class="fr">
-        <div class="fg"><label class="fl">Себестоимость<span class="sub2"> ₽ за 1 $ — S × курс брокера / X, для сверки с курсом клиенту</span></label>
+        <div class="fg"><label class="fl">Себестоимость<span class="sub2"> ₽ за 1 $ — S × ${cash?'расчётный курс':'курс брокера'} / X, для сверки с курсом клиенту</span></label>
           <input class="fc num" readonly value="${costRate!=null?String(costRate).replace('.',','):'—'}"></div>
       </div>
       ${freeholdSummary6(d)}
@@ -13067,11 +13344,11 @@ function stepCard(d){
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7M3 4v5h5"/></svg>
       <span>Прошлый запрос: <b>RUB→USDT ${d.ratesPrev.rubUsdt} · USDT→THB ${d.ratesPrev.usdtThb}</b>${d.ratesPrev.client?', клиенту '+d.ratesPrev.client:''} — ${ago(d.ratesPrev.at)}</span></div>`:''}
     <div class="fr">
-      ${!quoteDirs(d).includes('rub')?'':`<div class="fg"><label class="fl">Курс брокера · RUB → USDT</label>
+      ${!quoteDirs(d).includes('rub')?'':`<div class="fg"><label class="fl">${rubLabel}</label>
         <input class="fc num" id="r1c" value="${d.rates.rubUsdt||''}" placeholder="₽ за 1 USDT"
           oninput="rememberFocus();syncClient(${d.id},'rubUsdt')">
         <p class="fh">ответ операциониста</p></div>`}
-      ${!quoteDirs(d).includes('thb')?'':`<div class="fg"><label class="fl">Курс партнёра · ฿/USDT</label>
+      ${!quoteDirs(d).includes('thb')?'':`<div class="fg"><label class="fl">${cash?'Курс выплаты · ฿/USDT':'Курс партнёра · ฿/USDT'}</label>
         <input class="fc num" id="r2c" value="${d.rates.usdtThb||''}" placeholder="฿ за 1 USDT"
           oninput="rememberFocus();syncClient(${d.id},'usdtThb')"></div>`}
       <div class="fg"><label class="fl">Итоговый курс клиенту<span class="rq">*</span><span class="sub2"> ${rateUnit(d)}</span></label>
@@ -13117,10 +13394,12 @@ function stepCard(d){
     ${docExtraControl(d)}
     ${docParseLine(d)}
     ${fioHint(d)}
+    ${isNativeCashPartner(d)?cashPartnerSetupBlock(d):''}
     <div class="row"><button class="btn btn-primary" onclick="act(${d.id},'s8')">Передать операционисту</button>
       <span class="sub2">Файлы и комментарий сохранятся в задаче.</span></div></div>`,
 
   s11:()=>{
+    const cash=isNativeCashPartner(d);
     const reissuing=docHasIssued(d);
     const canChangeAccount=reissuing&&!isCrypto(d)&&docStepActor(d)&&docAccountChangeAvailable(d);
     const receivingAccountMode=canChangeAccount?docFormReceivingMode(d):'';
@@ -13201,7 +13480,7 @@ function stepCard(d){
         <div id="fh_doc_loss_${d.id}">${clientAmount>0&&clientAmount<sent?`<div class="alert a-warn"><div><b>Сделка в минус</b> · ${lossAck?'риск подтверждён':'перед выпуском подтвердите риск отдельно'}</div></div>${lossAck?'':`<button class="btn btn-outline" onclick="freeholdLossAck(${d.id})">Подтвердить сделку в минус</button>`}`:''}:${clientAmount>0?'':'<div class="alert a-warn"><div>Укажите сумму клиента, USDT, до выпуска документов.</div></div>'}</div>`:''}
       ${receivingAccountMode?`<p class="fh">Сумма и курс сохраняются при смене счёта.</p>`
         :`<p class="fh" style="margin-top:2px">В договор и счёт идёт введённая сумма клиента. Отправка в IPPS и доход показаны для внутренней сверки.</p>`}
-      ${isCrypto(d)?'':fld('purpose','Назначение перевода — клиент впишет его в платёжное поручение',{req:!purposeOptional,area:1,
+      ${cash||isCrypto(d)?'':fld('purpose','Назначение перевода — клиент впишет его в платёжное поручение',{req:!purposeOptional,area:1,
         hint:purposeOptional?'Оставьте поле пустым, чтобы назначение с номером договора подставилось при выпуске.':''})}
       ${exchangeSpec(d)?.output==='usdt'?`<div class="fr">${fld('payoutNetwork','Сеть получателя USDT',{req:1})}${fld('payoutWallet','Кошелёк получателя USDT',{req:1})}</div>`:''}
     </div>
@@ -13244,7 +13523,7 @@ function stepCard(d){
     <div class="fr">
       ${fld('invNo','Номер инвойса',{req:docReq(d).indexOf('invNo')>=0})}
       ${fld('invDate','Дата инвойса')}
-      ${fld('validTill','Реквизиты действуют до',{ph:'если указан срок'})}
+      ${cash?'':fld('validTill','Реквизиты действуют до',{ph:'если указан срок'})}
     </div>`}
 
     <div class="sec po" style="margin:18px 0 10px">ДЕНЬГИ · ОСТАЛЬНОЕ</div>
@@ -13254,13 +13533,13 @@ function stepCard(d){
       ${d.autoPayment===true?'':fld('partNo','Какой это платёж',{ph:'номер платежа из скольких'})}
     </div>
 
-    <div class="sec fin" style="margin:18px 0 10px">РЕКВИЗИТЫ И ОГОВОРКИ</div>
+    <div class="sec fin" style="margin:18px 0 10px">${cash?'КОМПАНИЯ-АГЕНТ':'РЕКВИЗИТЫ И ОГОВОРКИ'}</div>
     <div class="fr">
       ${fld('agent','Агент',{ro:1,noRoHint:1})}
       ${fld('agentReg',agent.regLabel||'Рег. номер',{ro:1,noRoHint:1})}
       ${fld('agentDir','Подписант',{ro:1,noRoHint:1})}
     </div>
-    ${canChangeAccount?'':payinS11Fields(d,fld)}
+    ${cash?cashPartnerSetupBlock(d)+cashPartnerWalletBlock(d):canChangeAccount?'':payinS11Fields(d,fld)}
     ${(isCrypto(d)&&d.kind==='Фрихолд')?`<p class="fh">Оговорка о комиссии в приложении: ${htmlText(F.feeNote)}</p>`:''}
 
     ${form.docErr?`<div class="alert a-warn"><div><b>Пакет не выпущен.</b> ${htmlText(form.docErr)}</div></div>`
@@ -13269,20 +13548,21 @@ function stepCard(d){
     <button class="btn btn-secondary" onclick="docReset(${d.id})" ${S.docIssuing===d.id?'disabled':''}>Вернуть автозаполнение</button>
     <button class="btn btn-outline" onclick="ret(${d.id})" ${S.docIssuing===d.id?'disabled':''}>Вернуть с вопросом</button></div>
     <p style="font-size:12px;color:var(--text-muted);margin-top:11px">«Вернуть автозаполнение» сбросит ручные правки и подставит значения из паспорта, инвойса и расчёта заново.</p>
-    <div class="alert a-info" style="margin-top:12px"><div>Сверьте данные паспорта, инвойса и расчёта перед выпуском. Компания-агент определяется способом оплаты и счётом приёма оплаты.</div></div>
+    <div class="alert a-info" style="margin-top:12px"><div>Сверьте данные паспорта, инвойса и расчёта перед выпуском.${cash?'':' Компания-агент определяется способом оплаты и счётом приёма оплаты.'}</div></div>
     </div>`;},
 
   s11b:()=>{
+    const cash=isNativeCashPartner(d);
     const P=documentPackStale(d)?null:d.docPack, files=P?docPackFiles(d):[];
     const title={dog:'Агентский договор',app:P&&P.mode==='addendum'?'Допсоглашение к договору '+(P.agreementNumber||''):'Приложение 1 — платёж по договору',bill:'Счёт на оплату'};
     const av={dog:'Д',app:'П',bill:'С'};
     const sub={dog:'рамочный, ФИО и паспорт клиента',
       app:money(ap.thb,ap.thbSign||'฿')+' получателю · курс '+(d.rates.client||'—')+' '+rateUnit(d),
-      bill:money(ap.pay,ap.sign)+' — ровно столько ждём'+(isCrypto(d)?' на кошелёк':' на счёте')};
+      bill:money(ap.pay,ap.sign)+' — ровно столько ждём'+(cash?' наличными':isCrypto(d)?' на кошелёк':' на счёте')};
     const kinds=['dog','app','bill'].filter(k=>files.some(x=>x.kind===k));
     return `<div class="card"><div class="card-title">Выпущено<span class="sub">версия ${P?P.version:(d.docVersion||1)}${P?' · № '+htmlText(P.number):''}</span></div>
     ${!P?`<div class="alert a-warn"><div>Чтобы подготовить актуальные файлы, нажмите «Перевыпустить пакет».</div></div>`
-      :`<div class="alert a-ok"><div>${P.mode==='addendum'?'Клиент знакомый — к его договору '+htmlText(P.agreementNumber)+' выпущены допсоглашение и счёт.':'Выпущены договор, приложение и счёт.'} Это настоящие файлы — те же, что уходят из CRM. Скачайте и проверьте ФИО, сумму, курс и ${isCrypto(d)?'кошелёк':'назначение платежа'}.</div></div>`}
+      :`<div class="alert a-ok"><div>${P.mode==='addendum'?'Клиент знакомый — к его договору '+htmlText(P.agreementNumber)+' выпущены допсоглашение и счёт.':'Выпущены договор, приложение и счёт.'} Это настоящие файлы — те же, что уходят из CRM. Скачайте и проверьте ФИО, сумму, курс и ${cash?'данные партнёра':isCrypto(d)?'кошелёк':'назначение платежа'}.</div></div>`}
     ${P&&P.note?`<div class="alert a-info"><div>${htmlText(P.note)}</div></div>`:''}
     <div class="list">
       ${kinds.map(k=>{const own=(d.issued||{})[k], f=docFileOf(d,k);
@@ -13305,7 +13585,7 @@ function stepCard(d){
      подписанный скан и «курс поехал» — ниже (Карим, 27.09, аудит №1) */
   s12:()=>`<div class="card"><div class="card-title">Документы готовы — что дальше</div>
     <p class="fh" style="margin-top:-4px">Файлы для клиента — в самом верху страницы, блок «Отправить клиенту».</p>
-    ${d.docsSent||filesOf(d,'clientPayinReceipt').length?clientPayinBlock(d):''}
+    ${!isNativeCashPartner(d)&&(d.docsSent||filesOf(d,'clientPayinReceipt').length)?clientPayinBlock(d):''}
     ${isCrypto(d)?`<div class="chtitle" style="margin-top:18px">Как ждём приход
       <span>наблюдатель узнаёт перевод клиента по кошельку, а не по сумме — клиент часто сначала шлёт тест</span></div>
     <div class="fr">
@@ -13317,10 +13597,10 @@ function stepCard(d){
     </div>`:''}
 
     <!--note-->
-    <div class="row mainrow" style="margin-top:16px"><button class="btn btn-primary" onclick="act(${d.id},'s12')">Ждём приход</button>
+    <div class="row mainrow" style="margin-top:16px"><button class="btn btn-primary" onclick="act(${d.id},'s12')">${isNativeCashPartner(d)?'Ждём клиента у партнёра':'Ждём приход'}</button>
     ${docReopenButton(d)}
     <button class="btn btn-outline" onclick="askClose(${d.id})">Закрыть сделку</button></div>
-    <p style="font-size:13px;color:var(--navy-600);line-height:1.65;margin-top:12px">Ожидание ставится руками: мы не всегда ждём деньги. Если клиент передумал — закрывайте с причиной, а не оставляйте висеть.</p>
+    <p style="font-size:13px;color:var(--navy-600);line-height:1.65;margin-top:12px">${isNativeCashPartner(d)?'Сообщите клиенту адрес, контакт и время встречи. После визита подтвердите фактическую сумму, которую принял партнёр.':'Ожидание ставится руками: мы не всегда ждём деньги. Если клиент передумал — закрывайте с причиной, а не оставляйте висеть.'}</p>
     <div class="card-title" style="font-size:14px;margin:18px 0 8px">Подписанные документы
       <span class="sub">скан можно приложить и позже — на любом шаге, в блоке «Документы» справа</span></div>
     ${fileBlock(d,'signed','Подписанный пакет от клиента','если клиент прислал скан — приложите, можно несколько файлов')}
@@ -13334,7 +13614,8 @@ function stepCard(d){
       <button class="btn btn-secondary" onclick="rerate(${d.id},'курс поехал, пока клиент думал')">Запросить курсы заново</button>
     </div>`:''}</div>`,
 
-  s14:()=>`<div class="card${d.cashPartnerUsdt?' cash-pay':''}"><div class="card-title">Ждём приход<span class="sub">${d.cashPartnerUsdt?'USDT от партнёра на наш кошелёк':isCrypto(d)?'USDT на кошелёк':`рубли на счёт в ${htmlText(rubReceivingBankLabel(d))}`}</span></div>
+  s14c:()=>cashPartnerVisitCard(d),
+  s14:()=>isNativeCashPartner(d)?cashPartnerUsdtCard(d):`<div class="card${d.cashPartnerUsdt?' cash-pay':''}"><div class="card-title">Ждём приход<span class="sub">${d.cashPartnerUsdt?'USDT от партнёра на наш кошелёк':isCrypto(d)?'USDT на кошелёк':`рубли на счёт в ${htmlText(rubReceivingBankLabel(d))}`}</span></div>
     ${docReopenButton(d,true)}
     ${(d.recipientWarnings||[]).map(w=>`<div class="alert a-warn"><div><b>Перевод ${addressDisclosure(w.hash)} на другой кошелёк</b><br>Ожидали: ${addressDisclosure(w.expected)}<br>Фактически: ${addressDisclosure(w.actual)}<br>
       ${w.acknowledgedById?`Расхождение подтверждено. <button class="btn btn-outline btn-sm" onclick='payinRecipientReconcile(${d.id},${JSON.stringify(w).replace(/'/g,"&#39;")})'>Выбрать фактический кошелёк</button> Затем повторите проверку.`:
@@ -13677,7 +13958,7 @@ function stepCard(d){
     }
     return `<div class="card"><div class="card-title">Что делаем с USDT
       <span class="sub">${got?usd(got)+' на кошельке':'сумма не определена'}${c?' · '+c.name+' · '+mem.length+' '+plural(mem.length,'сделка','сделки','сделок'):''}</span></div>
-    ${w&&!hasPolicy(w)?walletLine(w):!w?`<div class="alert a-warn"><div>Кошелёк не выбран — вернитесь на шаг отправки брокеру и укажите, куда пришли USDT.</div></div>`:''}
+    ${w&&!hasPolicy(w)?walletLine(w):!w?`<div class="alert a-warn"><div>${isNativeCashPartner(d)?'Кошелёк партнёрского прихода недоступен. Обновите реестр кошельков.':'Кошелёк не выбран — вернитесь на шаг отправки брокеру и укажите, куда пришли USDT.'}</div></div>`:''}
     ${w?walletPolicyLine(w):''}
     <div class="${hasPolicy(w)?'derived':'alert a-info'}"><div>${d.kind==='Фрихолд'
       ?'USDT пришли на кошелёк. В IPPS их ещё нет: они уйдут, только если мы сами отправим перевод.'
@@ -13768,7 +14049,7 @@ function stepCard(d){
       </table>
       ${c.sources.length>1?`<p style="font-size:12.5px;color:var(--text-muted);margin-top:10px">В пачке также: ${c.sources.filter(x=>x.dealId!==d.id).map(x=>htmlText(x.dealId?(deal(x.dealId)||{}).code||'#'+x.dealId:x.crmDealId?'CRM #'+x.crmDealId:'поступление без сделки')+' '+htmlText(x.payer||'')+' — '+usd(x.usdt)).join(' · ')}</p>`:''}
       <div class="row" style="margin-top:10px"><button class="btn btn-outline btn-sm" onclick="cnvOpen(${c.id})">Открыть пачку целиком</button></div>
-    </div>`:`<div class="alert a-warn"><div><b>Пачки конвертации нет.</b> ${isCrypto(d)?'Клиент платил криптой — USDT пришли напрямую, конвертировать было нечего.':'Рубли ещё не конвертированы — проверьте, откуда берутся деньги на этот платёж.'}</div></div>`}
+    </div>`:isNativeCashPartner(d)?cashPartnerDetails(d):`<div class="alert a-warn"><div><b>Пачки конвертации нет.</b> ${isCrypto(d)?'Клиент платил криптой — USDT пришли напрямую, конвертировать было нечего.':'Рубли ещё не конвертированы — проверьте, откуда берутся деньги на этот платёж.'}</div></div>`}
 
     ${transferModeBlock(d)}
     ${packTasks(d,!hasPolicy(policyWallet)&&(!personalSend(d)||(['operator','admin'].includes(S.role)&&!!d.outgoingReview)))}
@@ -13944,7 +14225,7 @@ function stepCard(d){
     /* Фрихолд без батов: у крипто-фрихолда курса нет вообще (шаги 5/6 выпадают) —
        требовать его в чек-листе закрытия нельзя, иначе кнопка не разблокируется
        никогда (QA БЛОКЕР №12, 28.09). У рублёвого — курс клиенту ₽ за 1$, не ₽/฿. */
-    const ok=d.kind==='Фрихолд'
+    const ok=isNativeCashPartner(d)?[['Курс клиенту',d.rates.client],['Курс партнёра RUB→USDT',d.cashPartnerRate?.rate],['Хеши прихода USDT',inHashes]]:d.kind==='Фрихолд'
       ? (isCrypto(d) ? [['Хеши прихода USDT',inHashes]]
         : [['Курс клиенту, ₽ за 1 $',d.rates.client],['Курс обмена RUB→USDT',d.rates.broker],['Хеши обмена',inHashes]])
       : (isCrypto(d)
@@ -14013,7 +14294,7 @@ function stepCard(d){
 
 /* ---------- действия ---------- */
 async function act(id,step){
-  const d=deal(id);
+  let d=deal(id);
   if(!d||d.closed||(d.step!==step&&!(d.prepay&&d.prepay.brokerStep===step))){toast('Шаг уже изменился — откройте текущую задачу');return;}
   if(['s22','s23','s24'].includes(step)&&prepayWalletUnavailable(d)){
     toast('Не удалось сверить кошелёк отправки с реестром');return;
@@ -14098,7 +14379,11 @@ async function act(id,step){
     if(!d.isOld&&!filesOf(d,'pass').length){toast('Нужен паспорт');return;}
     if(!filesOf(d,'inv').length){toast('Нужен инвойс');return;}
     if(d.autoPayment===true&&!filesOf(d,'vehicle_contract').length){toast('Нужен ДКП автомобиля');return;}
-    if(STAND){try{await standWaitSaved();}catch(e){toast(standSaveError({error:'timeout'}));return;}}
+    if(isNativeCashPartner(d)){
+      if(!await cashPartnerSetupSave(id))return;
+      d=deal(id);
+      if(!d||d.step!==step)return;
+    }else if(STAND){try{await standWaitSaved();}catch(e){toast(standSaveError({error:'timeout'}));return;}}
     managerDraftPublishDocs(d);
     d.docComment=val('sn_s8')||d.docComment||'';go(d,'s11','Документы переданы операционисту');
     if(STAND&&!SCREEN&&!SNAP){
@@ -14117,8 +14402,14 @@ async function act(id,step){
     }else toast('Ушло операционисту');
     if(!d.docParse)docParse(d.id,true);return;}
   if(step==='s11'){
+    const cash=isNativeCashPartner(d);
+    if(cash){
+      if(!await cashPartnerSetupSave(id))return;
+      d=deal(id);
+      if(!d||d.step!==step)return;
+    }
     const reissuing=docHasIssued(d);
-    const receivingAccountMode=reissuing&&!isCrypto(d)?docFormReceivingMode(d):'';
+    const receivingAccountMode=reissuing&&!cash&&!isCrypto(d)?docFormReceivingMode(d):'';
     const rubAccount=receivingAccountMode?{mode:receivingAccountMode}:d.rubReceivingAccount||{};
     if(STAND&&!STAND_DOC_AGENT_META?.profiles?.[standDocAgent(d,rubAccount).key]){
       toast('Не удалось загрузить реквизиты компании. Обновите страницу перед выпуском');return;
@@ -14130,9 +14421,9 @@ async function act(id,step){
         F.vinState==='pending'&&!F.vinEvidence?'vinEvidence':null;
       if(vinMiss){docFormProblem(d,[vinMiss]);render();toast('Проверьте статус VIN и основание в ДКП');return;}
     }
-    if(!isCrypto(d)&&rubAccount.mode==='custom'&&(!String(rubAccount.bank||'').trim()||!/^\d{20}$/.test(String(rubAccount.account||''))||!/^\d{20}$/.test(String(rubAccount.correspondent||''))||!/^\d{9}$/.test(String(rubAccount.bik||'')))){
+    if(!cash&&!isCrypto(d)&&rubAccount.mode==='custom'&&(!String(rubAccount.bank||'').trim()||!/^\d{20}$/.test(String(rubAccount.account||''))||!/^\d{20}$/.test(String(rubAccount.correspondent||''))||!/^\d{9}$/.test(String(rubAccount.bik||'')))){
       toast('Укажите банк, номер счёта, корреспондентский счёт (20 цифр) и БИК (9 цифр) до выпуска документов');render();return;}
-    if(!isCrypto(d)&&rubAccount.mode==='custom'){
+    if(!cash&&!isCrypto(d)&&rubAccount.mode==='custom'){
       const name=String(rubAccount.recipientName||'').trim(), inn=String(rubAccount.recipientInn||'').trim(), kpp=String(rubAccount.recipientKpp||'').trim();
       if((name||inn||kpp)&&(!name||!/^\d{10}$/.test(inn)||!/^\d{9}$/.test(kpp))){toast('Укажите наименование, ИНН (10 цифр) и КПП (9 цифр) получателя полностью');render();return;}
     }
@@ -14160,6 +14451,15 @@ async function act(id,step){
     /* Пакет выпущен, но менеджер не отметил отправку — клиент мог остаться без договора и счёта */
     if(d.docPack&&!d.docsSent){toast('Сначала отправьте клиенту документы и отметьте «Отправил клиенту»');
       const el=document.getElementById('dsent_'+d.id);if(el)el.scrollIntoView({block:'center'});return;}
+    if(isNativeCashPartner(d)){
+      if(!cashPartnerReady(d.cashPartner)){toast('Проверьте данные встречи у партнёра');return;}
+      if(!await standRequireSaved())return;
+      d=deal(id);if(!d||d.step!==step||!d.docsSent)return;
+      go(d,'s14c','Документы отправлены — ждём клиента у партнёра');
+      if(await standRequireSaved()){toast('Ждём клиента у партнёра');}
+      else{standRollbackHandoff(id);render();}
+      return;
+    }
     if(isCrypto(d)&&!d.payerWallet&&!d.payerUnknown){toast('Укажите кошелёк клиента или отметьте, что привяжете перевод по хешу');return;}
     const w=isCrypto(d)?payinWallet(d):null;
     go(d,'s14',isCrypto(d)?'Ожидание прихода: на '+(w?w.name+' '+w.addr:'—')+(d.payerWallet?' с кошелька клиента '+d.payerWallet:' · кошелёк клиента неизвестен, привязка по хешу'):'Ожидание прихода поставлено');
@@ -14319,7 +14619,8 @@ async function act(id,step){
       if(!NETS.includes(network)||!addrValid(address,network)){toast('Проверьте адрес и сеть из подтверждения IPPS');return;}
       if(!payToReady(d)){toast('Сначала заполните и сохраните SWIFT, счёт и назначение заявки');return;}
       if(!payToConfirmed(d)){toast('Сначала менеджер должен подтвердить актуальные реквизиты');return;}
-      const batch=convOf(d), funded=d.prepay?d.prepay.amount:(batch?hashSum(batch.txs):hashSum(d.payinHashes));
+      const batch=convOf(d), funded=d.prepay?d.prepay.amount:
+        (batch?hashSum(batch.txs):isNativeCashPartner(d)?d.pay?.usdt:hashSum(d.payinHashes));
       if(funded==null||Math.round(amount*100)>Math.round(funded*100)){toast('Сумма поручения превышает подтверждённый приход или приход ещё не зарегистрирован');return;}
       d.postConv='ipps_swift';
       d.transfer=Object.assign({},d.transfer||{},{amount,to:'IPPS',addr:address,net:network});
@@ -14342,7 +14643,8 @@ async function act(id,step){
        по третьей перевода нет. Пока хоть по одной не решили — отправлять нечего. */
     const mem=cnvMembers(d);
     const batch=convOf(d);
-    const funded=batch?hashSum(batch.txs):((isCrypto(d)||d.cashPartnerUsdt)?hashSum(d.payinHashes):null);
+    const funded=batch?hashSum(batch.txs):
+      isNativeCashPartner(d)?d.pay?.usdt:(isCrypto(d)||d.cashPartnerUsdt)?hashSum(d.payinHashes):null;
     const totalOut=pcOut(d);
     if(funded==null||Math.round(totalOut*100)>Math.round(funded*100)){
       toast('Подтверждено '+usd(funded||0)+', по задачам '+usd(totalOut)+' — сначала нужен подтверждённый приход на всю отправку');return;}

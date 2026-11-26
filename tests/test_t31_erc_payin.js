@@ -34,7 +34,7 @@ const ctx = vm.createContext({S: {deals: [deal], role: 'manager'}, CRM_WALLETS: 
   log: () => {}, toast: message => messages.push(message), val: id => inputs[id],
   // «Чей кошелёк»/мультисиг/«Запомнить» читаются через DOM (owner-select + чекбоксы)
   document: {getElementById: id => (id in checks ? {checked: checks[id]} : null)}});
-vm.runInContext(html.slice(start, end), ctx);
+vm.runInContext(html.match(/^function isNativeCashPartner\([^]*?^}/m)[0]+'\n'+html.slice(start, end), ctx);
 // Политика кошелька: payinWalletSelect показывает строку «Заводит / Подписывает»
 const policySource = html.slice(html.indexOf('const POLICY_ROLE_ORDER'), html.indexOf('function policySignerCards'));
 vm.runInContext(policySource + '\n' + html.match(/^function walletPolicyLine\([^]*?^}/m)[0], ctx);

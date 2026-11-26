@@ -15,6 +15,7 @@ function source(name, async = false) {
 // всё, что он реально ВЫЗЫВАЕТ при рендере (не то, что просто упомянуто в onclick-строках —
 // те не выполняются без клика, их определять в контексте не нужно).
 const SCRIPT = [
+  source('isNativeCashPartner'),
   source('htmlText'), source('jsLiteralAttr'), source('num'), source('hashSum'),
   source('txShort'), source('explorer'), source('moneyKop'), source('usd'),
   source('isCrypto'), source('payCur'), source('exchangeSpec'), source('payinParts'),

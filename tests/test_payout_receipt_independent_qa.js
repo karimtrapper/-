@@ -8,7 +8,7 @@ const ctx={S:{role:'manager',deals:[],manualCloseForm:{}},htmlText:s=>String(s).
   CRM_CLOSE_STATUS:new Map(),MANAGER_DRAFT_DOCS:['pass','inv','spa','ipds'],managerDraft:()=>({}),
   crmPayloadFinal:()=>({deal_kind:'mf_realty'}),brokerSend:()=>0,BROKER_FEE:{},SOURCES_PAY:{},document:{getElementById:()=>null},Number,Math,atob};
 vm.createContext(ctx);
-for(const n of ['managerDraftDocTarget','fileValid','filesOf','receiptDocs','hasReceipt','mfList','noncryptoPayout','num',
+for(const n of ['isNativeCashPartner','managerDraftDocTarget','fileValid','filesOf','receiptDocs','hasReceipt','mfList','noncryptoPayout','num',
   'crmCloseReason','crmCloseBlockers','crmEvidenceParts','val','isCrypto','payCur','hashSum','payinParts','clientRubPaid',
   'payoutHuman','manualCloseFormState','manualCloseSbpChoice','manualCloseMerge','manualClosePayload'])
   try{vm.runInContext(source(n),ctx);}catch(e){console.log('skip dep',n,e.message);}
@@ -68,7 +68,7 @@ try{
 
 
 // 5. Приход USDT всегда с hash: экран ручного переноса даёт ввод hash для cash/bank/СБП, payload его несёт
-const SCRIPT2=['htmlText','jsLiteralAttr','num','hashSum','txShort','explorer','moneyKop','usd','money','isCrypto','payCur',
+const SCRIPT2=['isNativeCashPartner','htmlText','jsLiteralAttr','num','hashSum','txShort','explorer','moneyKop','usd','money','isCrypto','payCur',
   'exchangeSpec','payinParts','refAgents','econ','refSignal','agentsBlock','managerDraftDocTarget','fileValid','filesOf',
   'receiptDocs','hasReceipt','fileBlock','hashShareOf','hashCell','payoutHuman','clientRubPaid','mfList','txPoolInit','txPool',
   'txUsed','crmNet','manualCloseFormState','manualCloseSbpChoice','manualCloseScreen','manualCloseMerge','manualClosePayload','val'].map(n=>{try{return source(n);}catch(e){return '';}}).join('\n');

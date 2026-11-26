@@ -34,7 +34,7 @@ function run(fnNames, constNames, context) {
   context.pendingInquiryTypes = new Set();
   vm.createContext(context);
   vm.runInContext(consts(['INQUIRY_TYPES',...constNames]) + '\n' +
-    functions(['payCur','exchangeSpec','amountField','exchangeSync','quoteDirs','dealDisplayKind','recipientTitle',
+    functions(['isNativeCashPartner','payCur','exchangeSpec','amountField','exchangeSync','quoteDirs','dealDisplayKind','recipientTitle',
       'validInquiryType','inquiryTypeOptions','canSetInquiryType',...fnNames]), context);
   return context;
 }
@@ -658,7 +658,7 @@ console.log('test_stand_freehold.js: OK');
     docReq:()=>[],fioHint:()=>'',payinWalletSelect:()=>'',htmlText:x=>String(x),
     money:(x,c)=>`${Number(x).toFixed(2)} ${c}`};
   vm.createContext(ctx);
-  vm.runInContext(functions(['exchangeSpec','freeholdFee','freeholdSend','freeholdLossFingerprint','payinS11Fields',
+  vm.runInContext(functions(['isNativeCashPartner','exchangeSpec','freeholdFee','freeholdSend','freeholdLossFingerprint','payinS11Fields',
     'docPurposeOptional'])+'\n'+s11,ctx);
   let rendered=ctx.renderS11();
   assert.match(rendered,/id="df_amountPay"[^>]*onchange="freeholdDocAmountSave/);
@@ -843,7 +843,7 @@ console.log('test_stand_freehold.js: OK');
   });
   const source=html.match(/^async function act\([^]*?^}/m);
   assert.ok(source,'actual tasks.html act() exists');
-  vm.runInContext(source[0],ctx);
+  vm.runInContext(functions(['isNativeCashPartner'])+'\n'+source[0],ctx);
   await ctx.act(1473,'s22');
   assert.equal(d.step,'s22');
   assert.deepEqual(events,[]);

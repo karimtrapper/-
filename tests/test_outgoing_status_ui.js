@@ -27,7 +27,7 @@ const ctx = {S: {role: 'admin', view: 'task', deals: []},
   isCrypto: () => false, expectOf: () => ({}),
 };
 vm.createContext(ctx);
-for (const name of ['htmlText', 'sendList', 'explorer', 'outgoingStatusSummaryData',
+for (const name of ['isNativeCashPartner', 'htmlText', 'sendList', 'explorer', 'outgoingStatusSummaryData',
                     'outgoingStatusSummary', 'viewDeal']) vm.runInContext(source(name), ctx);
 const base = () => ({id: 1501, code: 'СД-1501', client: 'Синтетика',
   step: 's24', type: 'Оплата недвижимости', kind: 'Фрихолд',

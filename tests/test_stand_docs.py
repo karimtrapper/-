@@ -1194,3 +1194,40 @@ def test_operator_manual_purpose_is_preserved(stand):
     assert saved['docFields']['purpose'] == manual_purpose
     invoice = _text(stand, response.json['issued'][-1]['docId'])
     assert manual_purpose in invoice
+
+
+@pytest.mark.parametrize('kind,pair,over', [
+    ('Лизхолд', 'RUB_THB', {}),
+    ('Аренда', 'RUB_THB', {}),
+    ('Фрихолд', 'RUB_USD', {'amountThb': '10000', 'amountPay': '900000', 'rate': '90'}),
+])
+def test_realty_cash_documents_use_partner_details_and_mf(stand, kind, pair, over):
+    setup = {'name': 'Cash Partner QA', 'location': 'Test meeting place',
+             'contact': 'Test contact', 'appointmentAt': '2026-11-26T15:40'}
+    data = _deal(1148, payType='Наличные', kind=kind, cashPartner=setup,
+                 invoiceUsd=10000 if kind == 'Фрихолд' else None,
+                 rubReceivingAccount={'mode': 'flowsole'})
+    fields = _fields(kind=kind, **over)
+    stand.put_board([{**data, 'cashPartner': {**setup, 'contact': ''}}])
+    missing = stand.post('/api/stand/docs/issue', json={'dealId': 1148, 'docFields': fields})
+    assert missing.status_code == 400 and missing.json['fields'] == ['contact']
+
+    stand.put_board([data])
+    issued = stand.post('/api/stand/docs/issue', json={'dealId': 1148, 'docFields': fields})
+    assert issued.status_code == 200, issued.json
+    pack = issued.json['pack']
+    assert (pack['agent'], pack['method'], pack['pair'], pack['purpose']) == ('mf_corp', 'cash', pair, '')
+    amount = 'RUB 900 000.00' if kind == 'Фрихолд' else 'RUB 914 795.00'
+    for document_kind in ('dog', 'app', 'bill'):
+        text = _text(stand, next(doc['docId'] for doc in issued.json['issued'] if doc['kind'] == document_kind))
+        assert amount in text
+        if document_kind == 'dog':
+            assert 'Cash Partner QA' not in text
+            assert 'Test contact' not in text
+        else:
+            assert 'Cash Partner QA' in text
+            assert 'Test contact' in text
+        assert 'Test meeting place' in text
+        assert '26.11.2026 15:40' in text
+        assert '40807810938720000286' not in text
+        assert '40807810819000000261' not in text

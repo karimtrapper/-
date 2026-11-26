@@ -16,19 +16,20 @@ const src=fs.readFileSync('static/stand/tasks.html','utf8');
 const broker=src.slice(src.indexOf('const BROKER_FEE='),
                        src.indexOf('/* Откуда физически',src.indexOf('const BROKER_FEE=')));
 const parts=src.slice(src.indexOf('function hashSum('),src.indexOf('function econ('));
+const native=src.match(/^function isNativeCashPartner\([^]*?^}/m)[0];
 const payloadStart=src.indexOf('const E=econ(d)',src.indexOf('function crmPayload('));
 const serializer=src.slice(payloadStart,src.indexOf('payin_rate_rub_usdt:',payloadStart));
-// The Flow Sole branch makes this serializer expression multiline.
-const field=serializer.match(/(payin_amount_usdt:r2\([\s\S]*?\)),\s*$/);
+const field=serializer.match(/(payin_amount_usdt:[\s\S]*),\s*$/);
 if(!field)throw Error('CRM serializer payin_amount_usdt expression missing');
 const box={cases:JSON.parse(process.argv[1]), field:field[1], result:null, crypto:null};
 vm.runInNewContext(`function num(x){return Number(x)||0}
 function isCrypto(d){return d.payType==='Крипта'}
 function payinForeign(d,h){return !!h.otherSender}
 function r2(v){return (v==null||v===''||!isFinite(v))?null:Math.round(v*100)/100}
-${broker}\n${parts}
+${broker}\n${parts}\n${native}
 result=cases.map(([rub,rate])=>{
   const d={payType:'Наличные',incomeAmount:rub,rates:{broker:rate},payinHashes:[]};
+  const cash=isNativeCashPartner(d);
   const b=brokerSend(rub), main=payinParts(d)[0];
   return {control:b.ctrl,retained:b.ours,sent:b.sent,
           usdt:Math.round(main.usdt*100)/100,
@@ -38,6 +39,7 @@ const freehold={kind:'Фрихолд',payType:'Крипта',amountUsdt:98800,ra
   payinHashes:[{hash:'confirmed',amount:98799.5,verified:true},
                {hash:'unverified',amount:400,verified:false}]};
 const d=freehold;
+const cash=isNativeCashPartner(d);
 crypto={plan:d.amountUsdt,fact:payinParts(d)[0].fact,
         payloadUsdt:eval('({' + field + '})').payin_amount_usdt};`,box);
 console.log(JSON.stringify({cash:box.result,crypto:box.crypto}));

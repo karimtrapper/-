@@ -16,7 +16,7 @@ const ctx={d,ap:{thb:100},S:{role:'manager'},standVer:7,standBusy:false,standSav
   crmCloseReadiness:()=>status.pending?{ready:false,blockers:[{message:'Проверяем факты закрытия на сервере'}]}:
     {ready:status.facts.every(f=>f.ready),blockers:status.facts.filter(f=>!f.ready).map(f=>({message:ctx.crmCloseReason(f)}))}};
 vm.createContext(ctx);
-vm.runInContext(['crmCloseReason','crmCloseBlockers','crmEvidenceParts'].map(source).join('\n')+s27,ctx);
+vm.runInContext(['isNativeCashPartner','crmCloseReason','crmCloseBlockers','crmEvidenceParts'].map(source).join('\n')+s27,ctx);
 ctx.dealSummaryBlock=d=>{const p=ctx.crmEvidenceParts(d,true);return p.payinBtn+p.payoutBtn+p.receiptBtn+p.sentBtn;};
 let out=ctx.renderS27();
 assert.equal((out.match(/onclick="crmPushClose/g)||[]).length,1);

@@ -35,7 +35,7 @@ const ctx = vm.createContext({S: oldState, deal: () => deal,
   standApply:data => Object.assign(deal,data.deals[0]),
   go: (d,step) => {d.step=step;}, log: () => {}, toast: () => {},
   save: () => {ctx.saves++;}, render: () => {}, saves:0});
-vm.runInContext(constants + ['standDocAgent', 'docFields', 'expectOf', 'rubReceivingAccountSave',
+vm.runInContext(constants + ['isNativeCashPartner', 'standDocAgent', 'docFields', 'expectOf', 'rubReceivingAccountSave',
   'rubReceivingBankLabel', 'manualBankDocsMismatch', 'payinS11Fields', 'documentPackStale',
   'docReq', 'docPurposeOptional', 'docIssueVersion', 'docAccountChangeAvailable', 'docStepActor', 'docCanReopen',
   'docFormReceivingMode', 'docSelectReceivingAccount', 'docFormFields', 'docFormProblem',

@@ -38,7 +38,7 @@ const ctx = vm.createContext({d, S: {role: 'manager',
   exchangeSpec: () => null, exchangeSync: () => {},
 });
 vm.runInContext(html.match(/^const IPPS_TARIFFS=\{[^]*?^\};/m)[0], ctx);
-for (const name of ['docFields', 'documentPackStale', 'docsSentSet', 'expectOf',
+for (const name of ['isNativeCashPartner', 'docFields', 'documentPackStale', 'docsSentSet', 'expectOf',
                     'canRerate', 'rerateBalance', 'rerate', 'syncClient', 'thbBankRate',
                     'freeholdRecalcUsd', 'freeholdDealSet', 'freeholdInvoiceSet',
                     'freeholdFee', 'ippsApplicationText']) vm.runInContext(fn(name), ctx);

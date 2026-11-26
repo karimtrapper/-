@@ -25,7 +25,7 @@ function consts(names) {
 }
 function run(fnNames, constNames, context) {
   vm.createContext(context);
-  vm.runInContext(consts(constNames) + '\n' + functions(fnNames), context);
+  vm.runInContext(consts(constNames) + '\n' + functions(['isNativeCashPartner',...fnNames]), context);
   return context;
 }
 

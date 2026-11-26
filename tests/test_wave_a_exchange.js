@@ -4,7 +4,7 @@ for(const script of html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g))n
 function fn(name){return (html.match(new RegExp(`^function ${name}\\([^\\n]*\\}\\s*$`,'m'))||html.match(new RegExp(`^function ${name}\\([^]*?^}`,'m')))[0];}
 const ctx={S:{},SIGN:{rub:'₽',thb:'฿',usdt:'USDT'},save(){},render(){},mfList:()=>[],refById:()=>null,
   refAgents:()=>[]};vm.createContext(ctx);
-vm.runInContext(['brokerSend','quotes','quoteBuy','quoteDirection','quoteBest','exchangeSpec','amountField','quoteDirs','exchangeSync','payCur','isCrypto','num','cleanNum','approx','rateUnit','costRate','syncClient','hashSum','payinParts','econ','crmNet','crmPayload'].map(fn).join('\n'),ctx);
+vm.runInContext(['isNativeCashPartner','brokerSend','quotes','quoteBuy','quoteDirection','quoteBest','exchangeSpec','amountField','quoteDirs','exchangeSync','payCur','isCrypto','num','cleanNum','approx','rateUnit','costRate','syncClient','hashSum','payinParts','econ','crmNet','crmPayload'].map(fn).join('\n'),ctx);
 for(const n of ['BROKER_FEE','PAYIN_CRM','PAYOUT_CRM'])vm.runInContext(html.match(new RegExp(`^const ${n}[^]*?;`,'m'))[0],ctx);
 const results=[];
 for(const [pair,input,output,amount,rate,expected,dirs] of [

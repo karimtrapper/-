@@ -36,7 +36,7 @@ function makeCtx(overrides = {}) {
     ...overrides,
   };
   vm.createContext(ctx);
-  vm.runInContext(consts + names.map(source).join('\n'), ctx);
+  vm.runInContext(consts + ['isNativeCashPartner',...names].map(source).join('\n'), ctx);
   return ctx;
 }
 

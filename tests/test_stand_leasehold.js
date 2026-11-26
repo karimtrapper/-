@@ -15,7 +15,7 @@ function functions(names) {
 function run(names, context) {
   Object.assign(context,{STAND:false,demoAllowed:()=>true,atob});
   vm.createContext(context);
-  vm.runInContext(functions(names.concat(['hasReceipt', 'fileValid'])), context);
+  vm.runInContext(functions(names.concat(['isNativeCashPartner', 'hasReceipt', 'fileValid'])), context);
   return context;
 }
 const round2 = x => Math.round(x * 100) / 100;

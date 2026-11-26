@@ -37,7 +37,7 @@ const context = vm.createContext({
   taskListEntries: [{id: 202}, {id: 201}, {id: 204}], taskListCursor: 0,
   taskDealFilter: 'all',
 });
-vm.runInContext(['standSnapshot', 'deal', 'notes', 'notesFor', 'notesUnread', 'myTasks',
+vm.runInContext(['isNativeCashPartner', 'cashPartnerWalletTask', 'standSnapshot', 'deal', 'notes', 'notesFor', 'notesUnread', 'myTasks',
   'myTaskCount', 'waitingOn', 'pendingEx', 'taskDealsHtml', 'viewDeals',
   'dealStatusLabel', 'dealProfit', 'nextTaskIndex', 'viewTasks', 'standOpenFromLink'].map(source).join('\n'), context);
 

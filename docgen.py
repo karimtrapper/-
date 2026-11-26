@@ -986,10 +986,25 @@ def _apply_route(doc, money, deal_type):
             _set_cell(row.cells[-1], 'The Client confirms the accuracy of recipient details and agrees to execution of the transfer on the stated terms.')
     row = _find_row(doc.tables[0], '2.1.')
     if row is not None:
-        for cell, text in zip(row.cells[-2:], [
-            f"Для настоящего Договора согласовано направление {incoming} → {outgoing}; способ оплаты Клиентом: {doc_routes.METHODS[money['payin_method']]}. Конкретные реквизиты и сеть, если применимо, указываются в Invoice и Payment Instruction.",
-            f"The agreed route under this Agreement is {incoming} → {outgoing}; the Client’s pay-in method is {doc_routes.METHODS[money['payin_method']].split(' / ')[-1]}. Transaction details and network, where applicable, are specified in the Invoice and Payment Instruction."]):
-            cell.add_paragraph(text)
+        method = money['payin_method']
+        cash_realty = method == 'cash' and deal_type in ('leasehold', 'freehold', 'rental')
+        if cash_realty:
+            amount = doc_routes.amount(money.get('total_payin'), incoming)
+            place = money.get('cash_location') or ''
+            meeting = money.get('cash_datetime') or ''
+            lines = (
+                f'Клиент передаёт наличными {amount}. '
+                f'Место передачи — {place}. Дата и время передачи — {meeting}.',
+                f'The Client pays {amount} in cash. '
+                f'Place of payment — {place}. Date and time of payment — {meeting}.',
+            )
+        else:
+            lines = (
+                f"Для настоящего Договора согласовано направление {incoming} → {outgoing}; способ оплаты Клиентом: {doc_routes.METHODS[method]}. Конкретные реквизиты и сеть, если применимо, указываются в Invoice и Payment Instruction.",
+                f"The agreed route under this Agreement is {incoming} → {outgoing}; the Client’s pay-in method is {doc_routes.METHODS[method].split(' / ')[-1]}. Transaction details and network, where applicable, are specified in the Invoice and Payment Instruction.",
+            )
+        for cell, line in zip(row.cells[-2:], lines):
+            cell.add_paragraph(line)
 
 
 def _apply_auto_standard_clauses(doc, agent):

@@ -28,7 +28,7 @@ vm.createContext(ctx);
 for(const name of ['STEPS','FLOW_RUB','FLOW_USDT','FLOW_ALIAS','SOURCES_PAY','POLICY_ROLE_ORDER','POLICY_ROLE_NAMES','POLICY_ROLE_DATIVE']){
   vm.runInContext(html.match(new RegExp(`^const ${name}\\s*=[^]*?;`,'m'))[0].replace(/^const /,'var '),ctx);
 }
-for(const name of ['hasPolicy','policyInitiators','policyInitiateTargets','policyInitiateRole','policySignRole','policySignTargets','policyCanClaim','policyRoleNames','policyReleasedByMe','policyLocked','policyOwnsSend','policyOwnsSign','policyNeedsApproval','policyApprovalActor','walletPolicyLine','uniqueWallets','walletOptionText','prepayCanStart','prepayStepDone','prepayRefundRole','prepayPanel','flowOf','progress',
+for(const name of ['isNativeCashPartner','cashPartnerWalletTask','hasPolicy','policyInitiators','policyInitiateTargets','policyInitiateRole','policySignRole','policySignTargets','policyCanClaim','policyRoleNames','policyReleasedByMe','policyLocked','policyOwnsSend','policyOwnsSign','policyNeedsApproval','policyApprovalActor','walletPolicyLine','uniqueWallets','walletOptionText','prepayCanStart','prepayStepDone','prepayRefundRole','prepayPanel','flowOf','progress',
   'stepTitle','taskBranchesForRole','myTasks','reqOpen','go','sendList','freeholdFee','freeholdSend','crmWalletToLegacy','dealWallet','prepayWalletUnavailable','prepayWalletUnavailableCard','hashSum','econ','act','cnvTxTime','cnvTxHint','cnvTxShareBlock','txShort','jsLiteralAttr','addressDisclosure']){
   vm.runInContext(fn(name),ctx);
 }
@@ -122,7 +122,7 @@ for(const source of ['founder','multisig']){
     destinationDisclosure:d=>d.address||'',
   };
   vm.createContext(view);
-  for(const name of ['personalSend','outgoingPickState','outgoingPickList','outgoingReviewBlock','sendBlock','sendSum','sendDeclared','sendLeft','pcAmount','prepayFundingText','taskFacts','packTasks','signSummary','canRerate','rerateBalance','stepCard']){
+  for(const name of ['isNativeCashPartner','personalSend','outgoingPickState','outgoingPickList','outgoingReviewBlock','sendBlock','sendSum','sendDeclared','sendLeft','pcAmount','prepayFundingText','taskFacts','packTasks','signSummary','canRerate','rerateBalance','stepCard']){
     vm.runInContext(fn(name),view);
   }
   view.packTasks=()=>'<div>Источник оплаты</div>';

@@ -18,7 +18,7 @@ const ctx = {
     notes: 'original', agents: [{name: 'A', percent: 10}]}),
 };
 vm.createContext(ctx);
-vm.runInContext(source('crmLockedKeys') + '\n' + source('crmPayloadFinal'), ctx);
+vm.runInContext(source('isNativeCashPartner') + '\n' + source('crmLockedKeys') + '\n' + source('crmPayloadFinal'), ctx);
 const board = {type: 'Оплата недвижимости', kind: 'Фрихолд', amountUsdt: 46000,
   rates: {broker: 92},
   crmEdit: {invoice_amount_usd: 1, transfer_fee_percent: 7,
