@@ -660,7 +660,9 @@ select.period-btn:hover:not(.active) { color: var(--text); }
 }
 
 /* ---- RESPONSIVE ---- */
+.outgoing-proof-link { display: inline-flex; align-items: center; gap: 0.3rem; max-width: 100%; }
 @media (max-width: 640px) {
+    .outgoing-proof-link a { max-width: 14ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .crm-nav, .nav { display: none; }
     .crm-header { display: flex; }
     .container { padding: 16px 14px 120px; }
@@ -5082,6 +5084,16 @@ select.period-btn:hover:not(.active) { color: var(--text); }
             return {hash, network: dealPayinNetwork(deal, hash, channelProofs)};
         }
 
+        function legacyPayoutTransfer(hash) {
+            return {hash, network: /^0x[0-9a-f]{64}$/i.test(hash) ? 'erc20' : 'trc20'};
+        }
+
+        function formatDealPayoutProofAmount(amount) {
+            return Number(amount).toLocaleString('en-US', {
+                useGrouping: false, minimumFractionDigits: 2, maximumFractionDigits: 6,
+            });
+        }
+
         function renderDealDetailProof(tx, {outgoing = false, verified} = {}) {
             const hash = String(tx.hash);
             const color = outgoing ? '#b91c1c' : '#0369a1';
@@ -5089,15 +5101,16 @@ select.period-btn:hover:not(.active) { color: var(--text); }
             const status = verified === undefined ? '' : (verified
                 ? '<span title="Подтверждено">✅</span>'
                 : '<span title="Ожидает подтверждения">⏳</span>');
-            return `<span style="display:inline-flex;flex-wrap:wrap;gap:0.3rem;align-items:center;max-width:100%;font-size:0.85rem;">
-                ${tx.amount_usdt != null ? `<strong style="color:${outgoing ? color : '#059669'};">${outgoing ? '−' : '+'}$${Number(tx.amount_usdt).toFixed(2)}${outgoing ? ' USDT' : ''}</strong>` : ''}
-                <strong style="color:${color};font-size:0.72rem;">${txNetworkLabel(tx.network)}</strong>
-                <a href="${txExplorerUrl(hash, tx.network)}" target="_blank" rel="noopener noreferrer"
+            const actions = `<a href="${txExplorerUrl(hash, tx.network)}" target="_blank" rel="noopener noreferrer"
                     style="background:${background};padding:1px 5px;border-radius:4px;font-family:monospace;text-decoration:none;color:${color};">${escapeHtml(hash.slice(0, 16))}…</a>
                 <button type="button" data-proof-hash="${encodeURIComponent(hash)}"
                     onclick="copyHash(decodeURIComponent(this.dataset.proofHash))"
                     aria-label="Скопировать хэш" title="Скопировать хэш"
-                    style="border:0;background:none;padding:0;cursor:pointer;">📋</button>
+                    style="border:0;background:none;padding:0;cursor:pointer;">📋</button>`;
+            return `<span style="display:inline-flex;flex-wrap:wrap;gap:0.3rem;align-items:center;max-width:100%;font-size:0.85rem;">
+                ${tx.amount_usdt != null ? `<strong style="color:${outgoing ? color : '#059669'};">${outgoing ? '−' : '+'}$${outgoing ? formatDealPayoutProofAmount(tx.amount_usdt) + ' USDT' : Number(tx.amount_usdt).toFixed(2)}</strong>` : ''}
+                <strong style="color:${color};font-size:0.72rem;">${txNetworkLabel(tx.network)}</strong>
+                ${outgoing ? `<span class="outgoing-proof-link">${actions}</span>` : actions}
                 ${status}</span>`;
         }
 
@@ -5182,10 +5195,17 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                         displayedPayinProofs.set(key, channel);
                         return renderDealDetailProof(tx, {verified: key === legacyProofKey ? !!deal.payin_tx_verified : undefined});
                     };
-                    const personalPayoutProofs = (deal.payout_tx_hashes || []).filter(t => t?.hash);
-                    if (!personalPayoutProofs.length && !deal.payout_no_conversion && deal.payout_tx_hash) {
-                        personalPayoutProofs.push({hash: deal.payout_tx_hash});
-                    }
+                    const storedPayoutProofs = (deal.payout_tx_hashes || [])
+                        .map(t => typeof t === 'string' ? legacyPayoutTransfer(t) : t)
+                        .filter(t => t?.hash);
+                    const legacyPayoutProof = !storedPayoutProofs.length && !deal.payout_no_conversion && deal.payout_tx_hash
+                        ? legacyPayoutTransfer(deal.payout_tx_hash) : null;
+                    const payoutProofs = legacyPayoutProof ? [legacyPayoutProof] : storedPayoutProofs;
+                    const payoutProofLabel = payoutProofs.length === 1 ? 'Хэш выплаты' : `Хэши выплаты (${payoutProofs.length})`;
+                    const renderPayoutProofs = (label = payoutProofLabel) => payoutProofs.length ? `
+                        <p><strong>${label}</strong></p>
+                        ${payoutProofs.map(tx => `<div>${renderDealDetailProof(tx, {outgoing: true})}</div>`).join('')}
+                    ` : '';
 
                     document.getElementById('dealModalContent').innerHTML = `
                         <div class="form-row">
@@ -5279,12 +5299,12 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                             <p><strong>Отправлено в компанию:</strong> ${formatNumber(deal.company_sent_thb)} ฿ ${deal.company_percent != null ? `<span style="color:#6b7280;">(комиссия ${Number(deal.company_percent).toFixed(2)}% = ${formatNumber(deal.company_fee_thb)} ฿ / $${(deal.company_fee_usdt || 0).toFixed(2)})</span>` : ''}</p>
                             <p><strong>Курс покупки:</strong> ${deal.buy_rate_thb_usdt || '-'}${deal.sell_rate_thb_usdt ? ` · <strong>курс клиенту:</strong> ${deal.sell_rate_thb_usdt}` : ''}</p>
                             <p><strong>Себестоимость:</strong> $${(deal.payout_amount_usdt || 0).toFixed(2)}</p>
-                            ${(deal.payout_tx_hashes && deal.payout_tx_hashes.length) ? (() => {
-                                const total = deal.payout_tx_hashes.reduce((a, t) => a + (Number(t.amount_usdt) || 0), 0);
+                            ${storedPayoutProofs.length ? (() => {
+                                const total = storedPayoutProofs.reduce((a, t) => a + (Number(t.amount_usdt) || 0), 0);
                                 return `<div style="background:#fef2f2;padding:0.5rem;border-radius:6px;border:1px solid #fecaca;margin:0.5rem 0;">
-                                    <p style="margin:0 0 4px;"><strong>Переводы в компанию (${deal.payout_tx_hashes.length}):</strong></p>
-                                    ${deal.payout_tx_hashes.map(t => `<p style="margin:0 0 3px;font-size:0.9rem;">
-                                        <strong style="color:#b91c1c;">−$${(Number(t.amount_usdt) || 0).toFixed(2)}</strong>
+                                    <p style="margin:0 0 4px;"><strong>Переводы в компанию (${storedPayoutProofs.length}):</strong></p>
+                                    ${storedPayoutProofs.map(t => `<p style="margin:0 0 3px;font-size:0.9rem;">
+                                        <strong style="color:#b91c1c;">−$${formatDealPayoutProofAmount(t.amount_usdt || 0)}</strong>
                                         <strong style="color:#7f1d1d;font-size:0.72rem;">${txNetworkLabel(t.network)}</strong>
                                         ${t.to_address ? ` → <span style="font-family:monospace;">${escapeHtml(t.to_address.substring(0, 14))}…</span> <span onclick="copyHash('${t.to_address}')" style="cursor:pointer;" title="Скопировать адрес">📋</span>` : ''}
                                         ${t.date ? ` · ${escapeHtml(t.date)}` : ''}
@@ -5292,7 +5312,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                                     </p>`).join('')}
                                     <p style="margin:4px 0 0;color:#b91c1c;font-size:0.85rem;"><strong>Итого ушло:</strong> $${total.toFixed(2)}</p>
                                 </div>`;
-                            })() : '<p style="color:#b45309;font-size:0.9rem;">⚠️ Фактические переводы не отмечены — себестоимость посчитана по курсу.</p>'}
+                            })() : (renderPayoutProofs() || '<p style="color:#b45309;font-size:0.9rem;">⚠️ Фактические переводы не отмечены — себестоимость посчитана по курсу.</p>')}
                             <p><strong>Осталось в крипте:</strong> <span style="color:#059669;">$${(deal.crypto_remainder_usdt != null ? deal.crypto_remainder_usdt : (deal.profit_usdt || 0)).toFixed(2)}</span>
                                · <strong>в компании:</strong> <span style="color:#059669;">${formatNumber(deal.company_fee_thb || 0)} ฿</span> <span style="color:#9ca3af;">($${(deal.company_fee_usdt || 0).toFixed(2)})</span></p>
                             <hr style="margin: 1rem 0;">
@@ -5308,12 +5328,12 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                             <p><strong>Дойдёт ${deal.deal_kind === 'mf_auto' ? 'продавцу' : 'застройщику'}:</strong> $${(deal.transfer_arrive_usd || 0).toFixed(2)}
                                ${(deal.invoice_amount_usd && (deal.transfer_arrive_usd || 0) - deal.invoice_amount_usd < -0.01)
                                   ? `<span style="color:#dc2626;">— не хватает $${(deal.invoice_amount_usd - (deal.transfer_arrive_usd || 0)).toFixed(2)}</span>` : ''}</p>
-                            ${(deal.payout_tx_hashes && deal.payout_tx_hashes.length) ? (() => {
-                                const total = deal.payout_tx_hashes.reduce((a, t) => a + (Number(t.amount_usdt) || 0), 0);
+                            ${storedPayoutProofs.length ? (() => {
+                                const total = storedPayoutProofs.reduce((a, t) => a + (Number(t.amount_usdt) || 0), 0);
                                 return `<div style="background:#ecfeff;padding:0.5rem;border-radius:6px;border:1px solid #a5f3fc;margin:0.5rem 0;">
-                                    <p style="margin:0 0 4px;"><strong>Переводы (${deal.payout_tx_hashes.length}):</strong></p>
-                                    ${deal.payout_tx_hashes.map(t => `<p style="margin:0 0 3px;font-size:0.9rem;">
-                                        <strong style="color:#0e7490;">−$${(Number(t.amount_usdt) || 0).toFixed(2)}</strong>
+                                    <p style="margin:0 0 4px;"><strong>Переводы (${storedPayoutProofs.length}):</strong></p>
+                                    ${storedPayoutProofs.map(t => `<p style="margin:0 0 3px;font-size:0.9rem;">
+                                        <strong style="color:#0e7490;">−$${formatDealPayoutProofAmount(t.amount_usdt || 0)}</strong>
                                         <strong style="color:#155e75;font-size:0.72rem;">${txNetworkLabel(t.network)}</strong>
                                         ${t.to_address ? ` → <span style="font-family:monospace;">${escapeHtml(t.to_address.substring(0, 14))}…</span> <span onclick="copyHash('${t.to_address}')" style="cursor:pointer;" title="Скопировать адрес">📋</span>` : ''}
                                         ${t.date ? ` · ${escapeHtml(t.date)}` : ''}
@@ -5321,7 +5341,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                                     </p>`).join('')}
                                     <p style="margin:4px 0 0;color:#0e7490;font-size:0.85rem;"><strong>Итого ушло:</strong> $${total.toFixed(2)}</p>
                                 </div>`;
-                            })() : '<p style="color:#b45309;font-size:0.9rem;">⚠️ Фактические переводы не отмечены — отправка взята из поля, а не из блокчейна.</p>'}
+                            })() : (renderPayoutProofs() || '<p style="color:#b45309;font-size:0.9rem;">⚠️ Фактические переводы не отмечены — отправка взята из поля, а не из блокчейна.</p>')}
                             ${deal.doc_payment_url ? `<p><strong>Подтверждение платежа:</strong> <a href="${escapeHtml(deal.doc_payment_url)}" target="_blank">открыть</a></p>` : ''}
                             <hr style="margin: 1rem 0;">
                         ` : ''}
@@ -5335,13 +5355,10 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                             <p><strong>Себестоимость:</strong> ${deal.payout_amount_usdt ? deal.payout_amount_usdt.toFixed(2) + ' USDT' : '—'}</p>
                             ${deal.payout_source === 'founder_personal' ? `
                                 ${deal.payout_no_conversion ? '<p>Фаундер оплатил своими батами</p>' : ''}
-                                ${personalPayoutProofs.length ? `
-                                    <p><strong>Конвертация для выплаты · исходящий USDT</strong></p>
-                                    ${personalPayoutProofs.map(tx => `<div>${renderDealDetailProof(tx, {outgoing: true})}</div>`).join('')}
-                                ` : ''}
+                                ${renderPayoutProofs('Конвертация для выплаты · исходящий USDT')}
                                 ${deal.reimbursement_id ? `<p><strong>Возмещение:</strong> #${Number(deal.reimbursement_id)}</p>`
                                     : (deal.needs_reimbursement ? '<p>Ожидает возмещения</p>' : '')}
-                            ` : ''}
+                            ` : renderPayoutProofs()}
                             <hr style="margin: 1rem 0;">
                         ` : ''}
                         ${['mf_realty', 'mf_freehold', 'mf_auto', 'ipps_realty', 'personal_realty'].includes(deal.deal_kind) ? '' : `
@@ -5367,7 +5384,6 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                             <p><strong>Сумма THB:</strong> ${formatNumber(deal.payout_amount_thb)} ฿</p>
                             <p><strong>Стоимость USDT:</strong> ${deal.payout_amount_usdt != null ? '$' + deal.payout_amount_usdt.toFixed(2) : '<span style="color: #f59e0b;">Ожидает возмещения</span>'}</p>
                             ${deal.cash_batch_rate ? `<p><strong>Курс:</strong> ${deal.cash_batch_rate}</p>` : ''}
-                            ${deal.payout_tx_hash ? `<p><strong>Хэш выплаты</strong> <a href="https://tronscan.org/#/transaction/${deal.payout_tx_hash}" target="_blank" style="background: #fee2e2; padding: 2px 6px; border-radius: 4px; font-family: monospace; font-size: 0.85rem; text-decoration: none; color: #b91c1c;">${deal.payout_tx_hash.substring(0, 20)}...</a> <span onclick="copyHash('${deal.payout_tx_hash}')" style="cursor: pointer;" title="Скопировать">📋</span></p>` : ''}
                             ${deal.payout_founder_name ? `<p><strong>Фаундер:</strong> ${escapeHtml(deal.payout_founder_name)}</p>` : ''}
                             ${deal.payout_no_conversion ? `<p style="background:#fef3c7;padding:6px 8px;border-radius:6px;color:#92400e;">
                                 Выдано своими батами — конвертации не было, хеша выдачи нет</p>` : ''}
@@ -5381,6 +5397,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                                 </div>
                             ` : ''}
                         `}
+                        ${renderPayoutProofs()}
                         <hr style="margin: 1rem 0;">
                         `}
 
@@ -5953,18 +5970,18 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                         if (sberParts.length) sberRender();
                         if (deal.payin_amount_usdt) form.payin_amount_usdt.value = deal.payin_amount_usdt;
                         if (deal.payin_amount_rub) form.payin_amount_rub.value = deal.payin_amount_rub;
-                        if (deal.payin_tx_hash) form.payin_tx_hash.value = deal.payin_tx_hash;
-                        // Приход крипты частями: восстанавливаем пул хэшей ОСНОВНОЙ части.
-                        // payin_tx_hashes — слитый список по всей сделке, поэтому хэши,
-                        // закреплённые за дополнительными частями, отсюда убираем: иначе
-                        // один перевод стоял бы и в пуле, и в части, а сохранение удвоило
-                        // бы приход
-                        const extraHashes = new Set((deal.payin_extra || [])
-                            .flatMap(p => (p.tx_hashes || []).map(t => t.hash)));
-                        resetPayinTxPool((deal.payin_tx_hashes || [])
-                            .filter(t => !extraHashes.has(t.hash)));
+                        // В слитом списке payin_tx_hashes уже есть переводы доп. частей.
+                        const savedExtra = savedExtraPayinParts(deal);
+                        const extraProofs = savedExtra.flatMap(part => part.tx_hashes);
+                        const extraKeys = new Set(extraProofs.map(dealDetailProofKey));
+                        const mainProofs = normalizeSavedPayinProofs(deal, deal.payin_tx_hashes)
+                            .filter(tx => !extraKeys.has(dealDetailProofKey(tx)));
+                        const legacyProof = dealLegacyPayinProof(deal, extraProofs);
+                        form.payin_tx_hash.value = legacyProof && !extraKeys.has(dealDetailProofKey(legacyProof))
+                            ? legacyProof.hash : '';
+                        resetPayinTxPool(mainProofs);
                         document.getElementById('payinManualShareExplicit').checked =
-                            deal.payin_tx_hashes?.[0]?.amount_usdt != null;
+                            mainProofs[0]?.amount_usdt != null;
                         payinTxLedger = {};
                         payinTxPool.forEach(t => loadSavedPayinTxLedger(t.hash, dealId, reqId));
                         if (deal.payin_rate_rub_usdt) form.payin_rate_rub_usdt.value = deal.payin_rate_rub_usdt;
@@ -5973,17 +5990,11 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                         // Дополнительные приходы. Плоские поля сделки хранят АГРЕГАТЫ,
                         // поэтому основную часть восстанавливаем вычитанием — иначе в
                         // главном поле окажется итог, и сохранение удвоит приход
-                        payinExtra = (deal.payin_extra || []).map(p => ({
+                        payinExtra = savedExtra.map(p => ({
                             method: p.method, amount_rub: p.amount_rub,
                             rate_rub_usdt: p.rate_rub_usdt, amount_usdt: p.amount_usdt,
                             partner_name: p.partner_name || '',
-                            // Все переводы части, а не первый: раньше остальные
-                            // терялись при пересохранении сделки
-                            tx_hashes: (p.tx_hashes || []).map(t => ({
-                                hash: t.hash,
-                                network: t.network || 'trc20',
-                                amount_usdt: t.amount_usdt != null ? Number(t.amount_usdt) : null,
-                            })),
+                            tx_hashes: p.tx_hashes,
                             note: p.note || '',
                             // У сохранённой части USDT — факт прихода, поэтому
                             // правка рублей должна двигать курс, а не его
@@ -6031,14 +6042,12 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                             form.payout_founder_name.value = deal.payout_founder_name;
                             const savedPayoutParts = deal.payout_tx_hashes?.length
                                 ? deal.payout_tx_hashes
-                                : (deal.payout_tx_hash && !deal.payout_no_conversion ? [{ hash: deal.payout_tx_hash }] : []);
+                                : (deal.payout_tx_hash && !deal.payout_no_conversion ? [legacyPayoutTransfer(deal.payout_tx_hash)] : []);
                             payoutTxPool = savedPayoutParts.map((t, index) => ({
                                 hash: t.hash, amount_usdt: t.amount_usdt,
                                 from_address: t.from_address || '', to_address: t.to_address || '',
-                                ...(isPersonalDirect(deal.deal_kind) ? {
-                                    network: t.network || 'trc20', date: t.date || '',
-                                    wallet_id: index === 0 ? deal.payout_wallet_id : null,
-                                } : {}),
+                                network: t.network || 'trc20', date: t.date || '',
+                                ...(isPersonalDirect(deal.deal_kind) && index === 0 ? {wallet_id: deal.payout_wallet_id} : {}),
                                 wallet_label: deal.payout_wallet_label || '',
                             }));
                             const hashInput = document.getElementById('payoutFounderHash');
@@ -6559,7 +6568,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
         // Текущий курс клиенту = payout_amount_thb / payin_amount_usdt (для USDT→THB)
         function getCurrentClientRate() {
             const f = document.getElementById('createDealForm');
-            const payinUsdt = parseFloat(f.payin_amount_usdt?.value) || 0;
+            const payinUsdt = (parseFloat(f.payin_amount_usdt?.value) || 0) + payinExtraTotalUsdt();
             const payoutThb = parseFloat(f.payout_amount_thb?.value) || 0;
             const exch = parseFloat(document.getElementById('exchangeRateCalc')?.value) || 0;
             if (payinUsdt > 0 && payoutThb > 0) return payoutThb / payinUsdt;
@@ -7746,16 +7755,18 @@ select.period-btn:hover:not(.active) { color: var(--text); }
 
         function payinExtraSummary() {
             const el = document.getElementById('payinExtraSummary');
-            if (!el) return;
-            if (!payinExtra.length) { el.textContent = ''; return; }
-            const main = parseFloat(document.querySelector('[name="payin_amount_usdt"]')?.value) || 0;
-            const total = main + payinExtra.reduce((s, p) => s + (p.amount_usdt || 0), 0);
-            const money = v => '$' + v.toLocaleString('en-US',
-                { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-            el.innerHTML = `<strong>Итого приход: ${money(total)}</strong>
-                <span style="color:#64748b;">— основной ${money(main)} + ${payinExtra.length} доп.</span>`;
-            // Прибыль недвижимости считается от ИТОГОВОГО прихода, а не от основной части
-            if (typeof realtyPayinRecalc === 'function') realtyPayinRecalc();
+            if (payinExtra.length) {
+                const main = parseFloat(document.querySelector('[name="payin_amount_usdt"]')?.value) || 0;
+                const total = main + payinExtraTotalUsdt();
+                const money = v => '$' + v.toLocaleString('en-US',
+                    { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                el.innerHTML = `<strong>Итого приход: ${money(total)}</strong>
+                    <span style="color:#64748b;">— основной ${money(main)} + ${payinExtra.length} доп.</span>`;
+            } else {
+                el.textContent = '';
+            }
+            realtyPayinRecalc();
+            calculateProfit();
         }
 
         function payinExtraSerialize() {
@@ -7780,10 +7791,8 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                 }));
         }
 
-        // Сумма всех дополнительных приходов — нужна сводке недвижимости,
-        // которая должна считать прибыль от итога, а не от основной части
         function payinExtraTotalUsdt() {
-            return payinExtra.reduce((s, p) => s + (p.amount_usdt || 0), 0);
+            return payinExtra.reduce((sum, part) => sum + (Number(part.amount_usdt) || 0), 0);
         }
 
         function applyPayinMethodFields() {
@@ -9522,7 +9531,6 @@ select.period-btn:hover:not(.active) { color: var(--text); }
         function realtyPayinRecalc() {
             if (document.getElementById('mfDealToggle')?.checked) mfRecalc();
             if (document.getElementById('fhDealToggle')?.checked) fhRecalc();
-            if (isCardLeasehold(document.getElementById('dealKindSelect')?.value)) calculateProfit();
         }
 
         function autoCalcUsdt() {
@@ -9539,14 +9547,12 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                 // При редактировании USDT не перезаписываем: там уже стоит факт сделки
                 form.payin_amount_usdt.value = (rub / rate).toFixed(2);
             }
-            realtyPayinRecalc();
-            if (!isCardLeasehold(document.getElementById('dealKindSelect')?.value)) calculateProfit();
             payinExtraSummary();
         }
 
         function calculateProfit() {
             const form = document.getElementById('createDealForm');
-            const payinUsdt = parseFloat(form.payin_amount_usdt.value) || 0;
+            const payinUsdt = (parseFloat(form.payin_amount_usdt.value) || 0) + payinExtraTotalUsdt();
             const kind = document.getElementById('dealKindSelect')?.value;
             if (isCardLeasehold(kind)) {
                 const prefix = kind === 'ipps_realty' ? 'ipps' : 'personal';
@@ -9554,12 +9560,11 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                 const direct = isPersonalDirect(kind);
                 const cost = direct ? editorDirectPayoutCost() : Number(costField.value);
                 if (direct) costField.value = cost > 0 ? cost.toFixed(2) : '';
-                const payin = payinUsdt + payinExtraSerialize().reduce((sum, part) => sum + (part.amount_usdt || 0), 0);
-                const gross = payin > 0 && cost > 0 ? Math.round((payin - cost) * 100) / 100 : 0;
-                _stdGross = { profit: gross, volume: payin > 0 && cost > 0 ? Math.max(payin, cost) : 0 };
+                const gross = payinUsdt > 0 && cost > 0 ? Math.round((payinUsdt - cost) * 100) / 100 : 0;
+                _stdGross = { profit: gross, volume: payinUsdt > 0 && cost > 0 ? Math.max(payinUsdt, cost) : 0 };
                 stdAgentsRecalc();
                 document.getElementById(prefix + 'ProfitSummary').textContent =
-                    payin > 0 && cost > 0 ? 'Валовая прибыль ' + gross.toFixed(2) + ' USDT' : '';
+                    payinUsdt > 0 && cost > 0 ? 'Валовая прибыль ' + gross.toFixed(2) + ' USDT' : '';
                 return;
             }
             const payoutThb = parseFloat(form.payout_amount_thb.value) || 0;
@@ -9706,10 +9711,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
         }
 
         // Auto-calculate on input change
-        ['payin_amount_usdt', 'payout_amount_thb'].forEach(name => {
-            const el = document.querySelector(`[name="${name}"]`);
-            if (el) el.addEventListener('input', calculateProfit);
-        });
+        document.getElementById('payoutAmountThb').addEventListener('input', calculateProfit);
         document.getElementById('payoutSource')?.addEventListener('change', calculateProfit);
         document.getElementById('bankCardSelect')?.addEventListener('change', calculateProfit);
         document.getElementById('personalPayoutThb').addEventListener('input', () => {
@@ -9859,7 +9861,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                     const parts = payoutTxPool.map(t => ({
                         hash: t.hash, amount_usdt: t.amount_usdt,
                         from_address: t.from_address || '', to_address: t.to_address || '',
-                        ...(direct ? { network: t.network || 'trc20', date: t.date || '' } : {}),
+                        network: t.network || 'trc20', date: t.date || '',
                     }));
                     // Хеш вбили, но разбор из сети не успел вернуться — не теряем его
                     if (manual && !parts.some(x => x.hash === manual)) {
@@ -11543,7 +11545,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
             if (!payoutTxPool.length) {
                 box.innerHTML = '';
                 payoutRefreshInfo();
-                if (isPersonalDirect()) calculateProfit();
+                calculateProfit();
                 return;
             }
             box.innerHTML = payoutTxPool.map((t, i) => `
@@ -11555,7 +11557,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                             value="${t.amount_usdt ?? ''}" title="сколько из перевода идёт в эту сделку"
                             oninput="payoutTxShareChanged(${i}, this.value)">
                         <code style="flex:1;color:#64748b;overflow:hidden;text-overflow:ellipsis;">${t.hash.substring(0, 20)}...</code>
-                        <span style="color:#94a3b8;">${t.date || ''}</span>
+                        <span style="color:#94a3b8;">${escapeHtml(t.date || '')}</span>
                         <button type="button" class="btn btn-sm btn-danger" style="padding:1px 6px;"
                                 onclick="removePayoutTx(${i})">✕</button>
                     </div>
@@ -11733,7 +11735,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
             if (total) total.innerHTML = `Переводов: ${payoutTxPool.length} · итого $${payoutTxPoolTotal().toFixed(2)}`;
             payoutRefreshInfo();
             payoutRefreshOverNotes();
-            if (isPersonalDirect()) calculateProfit();
+            calculateProfit();
         }
 
         function payoutRefreshOverNotes() {
@@ -14402,25 +14404,30 @@ ${Math.abs(c.debits_delta_rub) < 0.01
             return labels[method] || method || '-';
         }
 
+        function normalizeSavedPayinProofs(deal, proofs) {
+            return (proofs || []).map(tx => {
+                const hash = typeof tx === 'string' ? tx : tx?.hash;
+                return {hash, amount_usdt: tx?.amount_usdt != null ? Number(tx.amount_usdt) : null,
+                    network: tx?.network || dealPayinNetwork(deal, hash)};
+            }).filter(tx => tx.hash);
+        }
+
+        function savedExtraPayinParts(deal) {
+            return (deal.payin_extra || [])
+                .filter(part => part && typeof part === 'object')
+                .map(part => ({
+                    ...part,
+                    amount_usdt: Number(part.amount_usdt) || 0,
+                    tx_hashes: normalizeSavedPayinProofs(deal, part.tx_hashes ??
+                        (part.tx_hash ? [{hash: part.tx_hash, amount_usdt: part.amount_usdt}] : [])),
+                }));
+        }
+
         // Все части прихода сделки, первая — основная. Зеркало _payin_all_parts
         // на бэкенде: основная часть отдельно не хранится, её суммы
         // восстанавливаются вычитанием дополнительных из агрегатов.
         function payinAllParts(deal) {
-            // Части из БД бывают битыми: null в списке, хэши строками вместо
-            // объектов, часть без суммы. Раньше на таких падал весь рендер
-            // карточки — кнопка «Детали» переставала открывать модалку
-            const extra = (deal.payin_extra || [])
-                .filter(p => p && typeof p === 'object')
-                .map(p => ({
-                    ...p,
-                    amount_usdt: Number(p.amount_usdt) || 0,
-                    tx_hashes: (p.tx_hashes || [])
-                        .map(t => (typeof t === 'string'
-                            ? { hash: t, amount_usdt: null, network: dealPayinNetwork(deal, t) }
-                            : { hash: t?.hash, amount_usdt: t?.amount_usdt ?? null,
-                                network: t?.network || dealPayinNetwork(deal, t?.hash) }))
-                        .filter(t => t.hash),
-                }));
+            const extra = savedExtraPayinParts(deal);
             const mainUsdt = (deal.payin_amount_usdt || 0)
                 - extra.reduce((s, p) => s + (p.amount_usdt || 0), 0);
             const mainRub = (deal.payin_amount_rub || 0)
@@ -14433,9 +14440,8 @@ ${Math.abs(c.debits_delta_rub) < 0.01
             // должны показывать одно и то же
             const extraProofs = extra.flatMap(p => p.tx_hashes);
             const taken = new Set(extraProofs.map(dealDetailProofKey));
-            const mainHashes = (deal.payin_tx_hashes || [])
-                .map(t => (typeof t === 'string' ? { hash: t, amount_usdt: null } : t))
-                .filter(t => t?.hash && !taken.has(dealDetailProofKey(t)));
+            const mainHashes = normalizeSavedPayinProofs(deal, deal.payin_tx_hashes)
+                .filter(tx => !taken.has(dealDetailProofKey(tx)));
             const legacyProof = dealLegacyPayinProof(deal, extraProofs);
             if (!mainHashes.length && legacyProof && !taken.has(dealDetailProofKey(legacyProof))) {
                 mainHashes.push(legacyProof);

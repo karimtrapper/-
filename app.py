@@ -7680,6 +7680,14 @@ def _normalize_tx_hashes(raw):
     return out
 
 
+def _payin_extra_tx_hashes(part):
+    """Хэши дополнительной части, включая старый формат с одним tx_hash."""
+    hashes = part.get('tx_hashes')
+    if hashes is None and part.get('tx_hash'):
+        hashes = [{'hash': part['tx_hash'], 'amount_usdt': part.get('amount_usdt')}]
+    return _normalize_tx_hashes(hashes)
+
+
 def _normalize_payin_extra(raw, *, rub_is_net=False):
     """Дополнительные приходы → список частей одного формата.
 
@@ -7724,7 +7732,7 @@ def _normalize_payin_extra(raw, *, rub_is_net=False):
             'rate_rub_usdt': rate,
             'amount_usdt': round(usdt, 6),
             'partner_name': (str(item.get('partner_name') or '').strip() or None),
-            'tx_hashes': _normalize_tx_hashes(item.get('tx_hashes')),
+            'tx_hashes': _payin_extra_tx_hashes(item),
             'sber_uuids': [str(u) for u in (item.get('sber_uuids') or []) if u],
             'note': str(item.get('note') or '').strip(),
         }
@@ -7815,7 +7823,7 @@ def split_by_payin_share(total, part_amounts, digits=2):
     return out
 
 
-def _apply_payin_extra(session, deal, raw_extra, main_usdt, main_rub):
+def _apply_payin_extra(session, deal, raw_extra, main_usdt, main_rub, *, merge_tx_hashes=True):
     """Пишет дополнительные приходы и пересчитывает агрегаты в плоских полях.
 
     main_usdt / main_rub — суммы ОСНОВНОЙ части, передаются явно. Брать их из
@@ -7825,6 +7833,8 @@ def _apply_payin_extra(session, deal, raw_extra, main_usdt, main_rub):
     Хэши и uuid'ы приходов Сбера сливаются в payin_tx_hashes / payin_parts —
     на этом стоит защита от двойного учёта (get_used_transaction_hashes и
     _sync_sber_claims), и она продолжает работать без правок.
+
+    Возвращает True, если в общий список вошли хэши дополнительных частей.
     """
     extra = _normalize_payin_extra(raw_extra, rub_is_net=deal.payin_rub_is_net is True)
     deal.payin_extra = json.dumps(extra, ensure_ascii=False) if extra else None
@@ -7853,16 +7863,22 @@ def _apply_payin_extra(session, deal, raw_extra, main_usdt, main_rub):
     # сводить сделку к одному «главному» методу больше не требуется.
 
     # Слияние хэшей: без него приход дополнительной части можно списать второй раз
-    merged_hashes = list(_normalize_tx_hashes(
-        json.loads(deal.payin_tx_hashes) if deal.payin_tx_hashes else []))
-    seen = {h['hash'] for h in merged_hashes}
-    for p in extra:
-        for h in p['tx_hashes']:
-            if h['hash'] not in seen:
-                seen.add(h['hash'])
-                merged_hashes.append(h)
-    if merged_hashes:
-        _apply_payin_tx_hashes(deal, merged_hashes)
+    extra_hashes = []
+    if merge_tx_hashes:
+        merged_hashes = _normalize_tx_hashes(
+            json.loads(deal.payin_tx_hashes) if deal.payin_tx_hashes else [])
+        extra_hashes = [h for part in extra for h in part['tx_hashes']]
+        if (extra_hashes and not merged_hashes and deal.payin_tx_hash
+                and all(h['hash'] != deal.payin_tx_hash for h in extra_hashes)):
+            # Легаси-хэш относится к основной части. Для Flow Sole по нему ещё
+            # нужно явно выбрать сеть и при необходимости указать долю.
+            is_flow_sole = deal.payin_account_key == 'flow_sole'
+            merged_hashes.append({'hash': deal.payin_tx_hash,
+                                  'network': 'unknown' if is_flow_sole else 'trc20',
+                                  'amount_usdt': None if is_flow_sole else main_usdt})
+        merged_hashes.extend(extra_hashes)
+        if merged_hashes:
+            _apply_payin_tx_hashes(deal, merged_hashes)
 
     # Слияние приходов Сбера: _sync_sber_claims забирает их из пула по payin_parts
     extra_uuids = [u for p in extra for u in p['sber_uuids']]
@@ -7881,6 +7897,7 @@ def _apply_payin_extra(session, deal, raw_extra, main_usdt, main_rub):
                              'date': '', 'note': 'доп. приход'})
         deal.payin_parts = json.dumps(base, ensure_ascii=False)
         _sync_sber_claims(session, deal, base)
+    return bool(extra_hashes)
 
 
 def _normalize_payout_network(value):
@@ -9055,10 +9072,10 @@ def update_deal(deal_id):
             _sync_sber_claims(session, deal, parts)
 
         # Приход крипты частями: пустой список = вернуться к одиночному хэшу из формы
-        if 'payin_tx_hashes' in data:
+        main_proofs_supplied = 'payin_tx_hashes' in data
+        if main_proofs_supplied:
             _apply_payin_tx_hashes(deal, data.get('payin_tx_hashes'))
-            if deal.payin_account_key != 'flow_sole':
-                _sync_payin_tx_uses(session, deal, _payin_tx_parts(deal))
+        sync_payin_proofs = main_proofs_supplied
 
         # Дополнительные приходы. Суммы основной части вычисляем ДО записи
         # агрегатов: если поле не пришло в payload, восстанавливаем её вычитанием
@@ -9066,15 +9083,34 @@ def update_deal(deal_id):
         # на каждом PUT без payin_extra (интеграции их не шлют).
         if 'payin_extra' in data or deal.payin_extra:
             old_extra = _payin_extra_list(deal)
+            merge_tx_hashes = main_proofs_supplied or 'payin_extra' in data
+            old_extra_hashes = ({h['hash'] for part in old_extra for h in _payin_extra_tx_hashes(part)}
+                                if merge_tx_hashes else set())
+            if old_extra_hashes:
+                if not main_proofs_supplied and deal.payin_tx_hashes:
+                    # Без явного списка основной части берём её из сохранённого
+                    # объединения, убирая прежние хэши дополнительных частей.
+                    _apply_payin_tx_hashes(deal, [part for part in _payin_tx_parts(deal)
+                                                if part['hash'] not in old_extra_hashes])
+                if (not deal.payin_tx_hashes and 'payin_tx_hash' not in data
+                        and deal.payin_tx_hash in old_extra_hashes):
+                    deal.payin_tx_hash = None
             old_usdt = sum(p.get('amount_usdt') or 0 for p in old_extra)
             old_rub = sum(p.get('amount_rub') or 0 for p in old_extra)
             main_usdt = (data['payin_amount_usdt'] if 'payin_amount_usdt' in data
                          else round((deal.payin_amount_usdt or 0) - old_usdt, 6))
             main_rub = (data['payin_amount_rub'] if 'payin_amount_rub' in data
                         else round((deal.payin_amount_rub or 0) - old_rub, 6))
-            _apply_payin_extra(session, deal,
-                               data.get('payin_extra', old_extra),
-                               main_usdt=main_usdt, main_rub=main_rub)
+            has_extra_proofs = _apply_payin_extra(
+                session, deal, data.get('payin_extra', old_extra),
+                main_usdt=main_usdt, main_rub=main_rub, merge_tx_hashes=merge_tx_hashes)
+            sync_payin_proofs = sync_payin_proofs or bool(old_extra_hashes) or has_extra_proofs
+
+        if sync_payin_proofs and deal.payin_account_key != 'flow_sole':
+            parts = _payin_tx_parts(deal)
+            if parts and deal.payin_extra and not deal.payin_tx_hashes:
+                parts[0]['amount_usdt'] = main_usdt
+            _sync_payin_tx_uses(session, deal, parts)
 
         if (deal.payin_account_key == 'flow_sole'
                 and (not deal.payin_tx_verified

@@ -728,6 +728,7 @@ def test_deal_details_show_unique_proofs_and_keep_channel_amounts(ui, width):
     payout_hash = '0x' + '3' * 64
     legacy_hash = '4' * 64
     shared_raw_hash = '5' * 64
+    legacy_extra_hash = '6' * 64
 
     def transfer(hash_value, network, amount):
         return {'hash': hash_value, 'network': network, 'amount_usdt': amount}
@@ -783,6 +784,14 @@ def test_deal_details_show_unique_proofs_and_keep_channel_amounts(ui, width):
             db, scalar=canonical_proof.upper(), verified=True,
             proofs=[transfer(canonical_proof, 'trc20', 100)])
         structured_only = saved_deal(db, proofs=[transfer(extra_hash, 'erc20', 100)])
+        legacy_extra = saved_deal(
+            db, scalar=first_hash,
+            proofs=[transfer(first_hash, 'trc20', 60), transfer(extra_hash, 'erc20', 25)],
+            extra=[{'method': 'crypto_direct', 'amount_usdt': 15, 'tx_hash': legacy_extra_hash},
+                   {'method': 'crypto_direct', 'amount_usdt': 25, 'tx_hash': extra_hash}])
+        legacy_extra_only = saved_deal(
+            db, scalar=legacy_extra_hash, proofs=[legacy_extra_hash],
+            extra=[{'method': 'crypto_direct', 'amount_usdt': 100, 'tx_hash': legacy_extra_hash}])
         without_hash = saved_deal(db)
         db.commit()
 
@@ -854,8 +863,161 @@ def test_deal_details_show_unique_proofs_and_keep_channel_amounts(ui, width):
     show(without_hash)
     expect(content.locator('button[data-proof-hash]')).to_have_count(0)
     expect(content).not_to_contain_text('Хэш прихода')
+
+    show(legacy_extra)
+    expect(content).to_contain_text('Приход по каналам (3)')
+    expect(content.locator(f'a[href="{tron + legacy_extra_hash}"]').locator('..')).to_contain_text('+$15.00')
+    expect(content.locator(f'a[href="{eth + extra_hash}"]')).to_have_count(1)
+    expect(content.locator(f'a[href="{eth + extra_hash}"]').locator('..')).to_contain_text('+$25.00')
+    modal.get_by_role('button', name='Редактировать', exact=True).click()
+    expect(page.locator('#pe-1-usdt')).to_have_value('25')
+    payload = page.evaluate("serializeStandardDeal(document.getElementById('createDealForm'))")
+    assert payload['payin_tx_hashes'] == [transfer(first_hash, 'trc20', 60)]
+    assert [part['tx_hashes'] for part in payload['payin_extra']] == [
+        [transfer(legacy_extra_hash, 'trc20', 15)], [transfer(extra_hash, 'erc20', 25)],
+    ]
+
+    show(legacy_extra_only)
+    expect(content.locator(f'a[href="{tron + legacy_extra_hash}"]')).to_have_count(1)
+    modal.get_by_role('button', name='Редактировать', exact=True).click()
+    expect(page.locator('#pe-0-usdt')).to_have_value('100')
+    page.locator('#payinExtraList button[onclick="payinExtraRemove(0)"]').click()
+    payload = page.evaluate("serializeStandardDeal(document.getElementById('createDealForm'))")
+    assert payload['payin_extra'] == []
+    assert payload['payin_tx_hashes'] == []
+    assert payload['payin_tx_hash'] is None
     assert not errors, errors
     assert not server_errors, server_errors
+
+
+@pytest.mark.parametrize('width', [1440, 390, 375])
+def test_exchange_deal_details_and_editor_use_all_transfers(ui, width, tmp_path):
+    page, errors, server_errors, _ = ui
+    page.set_viewport_size({'width': width, 'height': 844})
+    page.evaluate("""() => Object.defineProperty(navigator, 'clipboard', {
+        configurable: true, value: {writeText: async value => {window.__qaCopiedProof = value;}}
+    })""")
+
+    incoming = [
+        {'hash': 'a' * 64, 'network': 'trc20', 'amount_usdt': 800},
+        {'hash': '0x' + 'b' * 64, 'network': 'erc20', 'amount_usdt': 100},
+    ]
+    payout_amounts = ['40.00', '55.00', '104.00', '589.00', '4.351249', '4.385673', '4.327359']
+    outgoing = [
+        {'hash': ('0x' if i == 7 else '') + str(i) * 64,
+         'network': 'erc20' if i == 7 else 'trc20', 'amount_usdt': float(amount)}
+        for i, amount in enumerate(payout_amounts, 1)
+    ]
+    legacy_hash = '8' * 64
+    legacy_erc_hash = '0x' + '9' * 64
+
+    with A.get_session() as db:
+        def saved_deal(name, **fields):
+            deal = A.Deal(
+                deal_type=A.DealType.PAY_IN, deal_kind='exchange', client_name=name,
+                status=A.DealStatus.COMPLETED, payin_method=A.PayInMethod.CRYPTO_DIRECT,
+                payout_method=A.PayOutMethod.TRANSFER, payout_source=A.PayOutSource.FOUNDER_PERSONAL,
+                payout_founder_name='Андрей', payout_amount_thb=27000, payout_amount_usdt=801.06, **fields,
+            )
+            db.add(deal)
+
+        saved_deal(
+            'QA Multiple Transfers', payin_amount_usdt=900, payin_tx_hash=incoming[0]['hash'],
+            profit_usdt=98.94, net_profit_usdt=98.94, profit_percent=12.35,
+            payin_tx_hashes=json.dumps(incoming),
+            payin_extra=json.dumps([{'method': 'crypto_direct', 'amount_usdt': 100, 'tx_hashes': [incoming[1]]}]),
+            payout_tx_hash=outgoing[0]['hash'], payout_tx_hashes=json.dumps(outgoing),
+        )
+        saved_deal('QA Legacy Payout TRC', payout_tx_hash=legacy_hash)
+        saved_deal('QA Legacy Payout ERC', payout_tx_hash=legacy_erc_hash)
+        saved_deal('QA No Conversion', payout_tx_hash=legacy_hash, payout_no_conversion=True)
+        saved_deal('QA Custom Payout', is_custom=True, custom_payin_currency='USDT', custom_payin_amount=900,
+                   custom_payout_currency='THB', custom_payout_amount=27000,
+                   payout_tx_hashes=json.dumps([outgoing[0], outgoing[-1]]))
+        db.commit()
+
+    if width < 641:
+        page.locator('#bottomNav').get_by_role('button', name='Сделки').click()
+    else:
+        page.locator('.nav-tab[data-section="deals"]').click()
+    modal = page.locator('#dealModal')
+    content = modal.locator('#dealModalContent')
+    tron = 'https://tronscan.org/#/transaction/'
+    eth = 'https://etherscan.io/tx/'
+
+    def show(name):
+        page.locator('#dealsTable tr').filter(has_text=name).get_by_role('button', name='Детали').click()
+        expect(modal).to_be_visible()
+
+    def proof_link(transfer):
+        explorer = eth if transfer['network'] == 'erc20' else tron
+        return content.locator(f'a[href="{explorer + transfer["hash"]}"]')
+
+    for network, explorer, tx_hash in [('TRC', tron, legacy_hash), ('ERC', eth, legacy_erc_hash)]:
+        show(f'QA Legacy Payout {network}')
+        expect(content.locator(f'a[href="{explorer + tx_hash}"]')).to_have_count(1)
+        expect(content.locator('button[data-proof-hash]')).to_have_count(1)
+        modal.locator('.modal-close').click()
+
+    show('QA No Conversion')
+    expect(content).to_contain_text('Выдано своими батами')
+    expect(content.locator('button[data-proof-hash]')).to_have_count(0)
+    modal.locator('.modal-close').click()
+
+    show('QA Custom Payout')
+    expect(proof_link(outgoing[0])).to_have_count(1)
+    expect(proof_link(outgoing[-1])).to_have_count(1)
+    modal.locator('.modal-close').click()
+
+    show('QA Multiple Transfers')
+    expect(content).to_contain_text('Приход по каналам (2)')
+    expect(content).to_contain_text('Хэши выплаты (7)')
+    expect(content).to_contain_text('Стоимость USDT: $801.06')
+    expect(content.locator('button[data-proof-hash]')).to_have_count(9)
+    for transfer in incoming:
+        expect(proof_link(transfer)).to_have_count(1)
+        expect(proof_link(transfer).locator('..')).to_contain_text(f'+${transfer["amount_usdt"]:.2f}')
+    for transfer, amount in zip(outgoing, payout_amounts):
+        link = proof_link(transfer)
+        expect(link).to_have_count(1)
+        expect(link.locator('xpath=../..')).to_contain_text(f'−${amount} USDT')
+    assert content.evaluate("""el => el.scrollWidth <= el.clientWidth + 1 &&
+        [...el.querySelectorAll('.outgoing-proof-link')].every(group => {
+            const link = group.querySelector('a').getBoundingClientRect();
+            const copy = group.querySelector('button').getBoundingClientRect();
+            return Math.abs(link.top - copy.top) < 8 && group.scrollWidth <= group.clientWidth + 1;
+        })""")
+    proof_link(outgoing[-1]).scroll_into_view_if_needed()
+    page.screenshot(path=str(tmp_path / 'deal-payout-proofs.png'))
+
+    for transfer in outgoing:
+        proof_link(transfer).locator('..').get_by_role('button', name='Скопировать хэш').click()
+        assert page.evaluate('window.__qaCopiedProof') == transfer['hash']
+
+    modal.get_by_role('button', name='Редактировать', exact=True).click()
+    profit = page.locator('#profitUsdt')
+    cost = page.locator('#cashBatchCostUsdt')
+    payouts = page.locator('#payoutTxPoolBox')
+    expect(payouts.get_by_title('сколько из перевода идёт в эту сделку')).to_have_count(7)
+    expect(cost).to_have_value('$801.06')
+    expect(profit).to_have_value('98.94')
+    serialized_proofs = page.evaluate("serializeStandardDeal(document.getElementById('createDealForm')).payout_tx_hashes")
+    assert [(tx['hash'], tx['network']) for tx in serialized_proofs] == [(tx['hash'], tx['network']) for tx in outgoing]
+    page.locator('#pe-0-usdt').fill('125')
+    expect(page.locator('#payinExtraSummary')).to_contain_text('$925.00')
+    expect(profit).to_have_value('123.94')
+    payouts.get_by_title('сколько из перевода идёт в эту сделку').last.fill('5.33')
+    expect(cost).to_have_value('$802.07')
+    expect(profit).to_have_value('122.93')
+    page.locator('#payinExtraList button[onclick="payinExtraRemove(0)"]').click()
+    expect(page.locator('#payinExtraSummary')).to_be_empty()
+    expect(profit).to_have_value('-2.07')
+    payouts.get_by_role('button', name='✕').last.click()
+    expect(cost).to_have_value('$796.74')
+    expect(profit).to_have_value('3.26')
+    assert not errors, errors
+    assert not server_errors, server_errors
+
 
 @pytest.mark.parametrize('width', [1440, 390])
 def test_saved_shared_payin_hydration_preserves_editor_values(ui, monkeypatch, width):

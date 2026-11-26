@@ -231,6 +231,138 @@ def tc():
         yield c
 
 
+@pytest.mark.parametrize('send_main_proof', [True, False], ids=['editor', 'extra-only-api'])
+def test_extra_payin_updates_and_releases_its_ledger_share(tc, db, monkeypatch, send_main_proof):
+    extra_hash = '0x' + 'e' * 64
+    monkeypatch.setattr(A, '_tron_tx_usdt_amount', lambda _: 150)
+    monkeypatch.setattr(A, '_etherscan_tx_info', lambda _: {'amount_usdt': 100})
+    main_proof = {'hash': H, 'network': 'trc20', 'amount_usdt': 90}
+    created = tc.post('/api/deals', json={
+        'payin_method': 'crypto_direct', 'payin_amount_usdt': 90,
+        'payin_tx_hashes': [main_proof], 'status': 'pending',
+    })
+    assert created.status_code in (200, 201), created.get_json()
+    deal_id = created.get_json()['deal']['id']
+
+    other = tc.post('/api/deals', json={
+        'payin_method': 'crypto_direct', 'payin_amount_usdt': 25,
+        'payin_tx_hashes': [{'hash': extra_hash, 'network': 'erc20', 'amount_usdt': 25}],
+        'status': 'pending',
+    })
+    assert other.status_code in (200, 201), other.get_json()
+    other_id = other.get_json()['deal']['id']
+
+    def update_extra(share):
+        extra = [] if share is None else [{
+            'method': 'crypto_direct', 'amount_usdt': share,
+            'tx_hashes': [{'hash': extra_hash, 'network': 'erc20', 'amount_usdt': share}],
+        }]
+        data = {'payin_extra': extra}
+        if send_main_proof:
+            data.update(payin_tx_hash=H, payin_tx_hashes=[main_proof], payin_amount_usdt=90)
+        return tc.put(f'/api/deals/{deal_id}', json=data)
+
+    for share in (35, 45, 45):
+        response = update_extra(share)
+        assert response.status_code == 200, response.get_json()
+        deal = response.get_json()['deal']
+        assert deal['payin_amount_usdt'] == 90 + share
+        assert deal['payin_tx_hashes'] == [main_proof, {
+            'hash': extra_hash, 'network': 'erc20', 'amount_usdt': share,
+        }]
+        tx = db.query(PayinTx).filter_by(tx_hash=extra_hash).one()
+        assert {use.deal_id: use.amount_usdt for use in tx.uses} == {deal_id: share, other_id: 25}
+        assert tx.free_usdt() == 75 - share
+
+    response = update_extra(76)
+    assert response.status_code == 400, response.get_json()
+    assert 'нельзя отнести' in response.get_json()['error']
+    saved = db.get(Deal, deal_id)
+    assert saved.payin_amount_usdt == 135
+    assert json.loads(saved.payin_extra)[0]['tx_hashes'][0]['amount_usdt'] == 45
+    tx = db.query(PayinTx).filter_by(tx_hash=extra_hash).one()
+    assert {use.deal_id: use.amount_usdt for use in tx.uses} == {deal_id: 45, other_id: 25}
+
+    response = update_extra(None)
+    assert response.status_code == 200, response.get_json()
+    deal = response.get_json()['deal']
+    assert deal['payin_extra'] is None
+    assert deal['payin_tx_hashes'] == [main_proof]
+    assert deal['payin_amount_usdt'] == 90
+    tx = db.query(PayinTx).filter_by(tx_hash=extra_hash).one()
+    assert {use.deal_id: use.amount_usdt for use in tx.uses} == {other_id: 25}
+    assert tx.free_usdt() == 75
+    main_tx = db.query(PayinTx).filter_by(tx_hash=H).one()
+    assert {use.deal_id: use.amount_usdt for use in main_tx.uses} == {deal_id: 90}
+
+
+@pytest.mark.parametrize('legacy_shape', [True, False], ids=['legacy-shape', 'new-proof'])
+def test_removing_only_extra_proof_clears_its_scalar_alias(tc, db, monkeypatch, legacy_shape):
+    extra_hash = '0x' + 'f' * 64
+    monkeypatch.setattr(A, '_etherscan_tx_info', lambda _: {'amount_usdt': 100})
+    created = tc.post('/api/deals', json={
+        'payin_method': 'partners_cash', 'payin_amount_usdt': 90, 'status': 'pending',
+    })
+    assert created.status_code in (200, 201), created.get_json()
+    deal_id = created.get_json()['deal']['id']
+    response = tc.put(f'/api/deals/{deal_id}', json={
+        'payin_extra': [{'method': 'crypto_direct', 'amount_usdt': 30,
+                         'tx_hashes': [{'hash': extra_hash, 'network': 'erc20', 'amount_usdt': 30}]}],
+    })
+    assert response.status_code == 200, response.get_json()
+    assert response.get_json()['deal']['payin_tx_hash'] == extra_hash
+    tx = db.query(PayinTx).filter_by(tx_hash=extra_hash).one()
+    assert tx.free_usdt() == 70
+
+    if legacy_shape:
+        saved = db.get(Deal, deal_id)
+        saved.payin_extra = json.dumps([{
+            'method': 'crypto_direct', 'amount_usdt': 30, 'tx_hash': extra_hash,
+        }])
+        db.commit()
+
+    response = tc.put(f'/api/deals/{deal_id}', json={'payin_extra': []})
+    assert response.status_code == 200, response.get_json()
+    deal = response.get_json()['deal']
+    assert deal['payin_tx_hashes'] is None
+    assert deal['payin_tx_hash'] is None
+    assert deal['payin_amount_usdt'] == 90
+    tx = db.query(PayinTx).filter_by(tx_hash=extra_hash).one()
+    assert tx.free_usdt() == 100
+
+
+def test_legacy_main_scalar_keeps_its_share_when_an_extra_proof_is_added(tc, db, monkeypatch):
+    monkeypatch.setattr(A, '_tron_tx_usdt_amount', lambda _: 150)
+    created = tc.post('/api/deals', json={
+        'payin_method': 'crypto_direct', 'payin_amount_usdt': 90, 'status': 'pending',
+        'payin_tx_hash': H,
+    })
+    assert created.status_code in (200, 201), created.get_json()
+    deal_id = created.get_json()['deal']['id']
+    saved = db.get(Deal, deal_id)
+    saved.payin_amount_usdt = 120
+    saved.payin_extra = json.dumps([{
+        'method': 'crypto_direct', 'amount_usdt': 30, 'tx_hash': H2,
+    }])
+    db.commit()
+
+    response = tc.put(f'/api/deals/{deal_id}', json={'notes': 'Only a note'})
+    assert response.status_code == 200, response.get_json()
+    assert response.get_json()['deal']['payin_tx_hashes'] is None
+    assert db.query(PayinTx).filter_by(tx_hash=H2).one_or_none() is None
+
+    response = tc.put(f'/api/deals/{deal_id}', json={
+        'payin_extra': [{'method': 'crypto_direct', 'amount_usdt': 35, 'tx_hash': H2}],
+    })
+    assert response.status_code == 200, response.get_json()
+    assert response.get_json()['deal']['payin_tx_hashes'] == [
+        {'hash': H, 'network': 'trc20', 'amount_usdt': 90},
+        {'hash': H2, 'network': 'trc20', 'amount_usdt': 35},
+    ]
+    assert db.query(PayinTx).filter_by(tx_hash=H).one().used_usdt() == 90
+    assert db.query(PayinTx).filter_by(tx_hash=H2).one().used_usdt() == 35
+
+
 def test_deal_without_own_usdt_shows_conversion_share(tc, db):
     """Сделка по СБП: своего USDT нет, но доля из пачки уже разнесена.
 
