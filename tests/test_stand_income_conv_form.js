@@ -17,10 +17,11 @@ const code = names.map(name => {
 const sampleIncome = {id: 5, source: 'manual_confirmed', dealId: 1485, rub: 9987.5,
   payer: 'Иван', date: '13.10', cnvId: null, acc: 'СГБ · 40807810819000000261'};
 const sampleDeal = {id: 1485, code: 'СД-1485', rates: {}, log: []};
-const state = supplied || {incomes: [sampleIncome], deals: [sampleDeal], convs: [], cseq: 0};
+const state = supplied || {incomes: [sampleIncome], deals: [sampleDeal], convs: [], cseq: 0,
+  bal: {usdt: 1000}};
 const income = state.incomes[0], deal = state.deals[0];
 const snapshots = [];
-const ctx = {S: state,
+const ctx = {S: state, workingTasks: false,
   incomeSelected: new Set(),
   STAND_SHARED: Object.keys(state),
   val: id => ({cf_rate: '100', cf_broker: 'Tradex', cf_req: '41'})[id],
@@ -45,4 +46,10 @@ assert.ok(snapshots.length >= 2);
 assert.ok(snapshots.every(s => !Object.hasOwn(s.incomes[0], 'sel')),
   'UI-галочка не должна попадать ни в один PUT');
 if (snapshotMode) process.stdout.write(JSON.stringify(snapshots.at(-1)));
-else console.log('income conversion form: PASS');
+else {
+  assert.deepEqual(ctx.standSnapshot().bal, {usdt: 1000});
+  ctx.workingTasks = true;
+  assert.equal(Object.hasOwn(ctx.standSnapshot(), 'bal'), false);
+  assert.deepEqual(ctx.S.bal, {usdt: 1000});
+  console.log('income conversion form: PASS');
+}

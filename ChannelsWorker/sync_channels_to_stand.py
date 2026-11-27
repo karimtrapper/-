@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-Скрипт для синхронизации метаданных чатов (TG, WA, Bitrix) на тестовый стенд.
+Скрипт для синхронизации метаданных чатов (TG, WA, Bitrix).
 Обычный sync не передаёт текст сообщений, только ID, Имя и Время активности.
-Исключение — одноразовый экспорт переписки Елизаветы (env TG_EXPORT_SINCE, см. ниже).
+Одноразовый экспорт переписки доступен только в прежней конфигурации стенда.
 
 Использование:
   export STAND_BASE_URL="https://grusha.up.railway.app"
@@ -36,6 +36,23 @@ from urllib.parse import urlsplit, urlunsplit
 
 STAND_BASE_URL = os.environ.get("STAND_BASE_URL", "https://grusha-new.up.railway.app").rstrip('/')
 STAND_CHANNEL_SYNC_KEY = os.environ.get("STAND_CHANNEL_SYNC_KEY", "")
+TASKS_CATALOG_MODE = os.environ.get("TASKS_CHANNEL_SYNC_ENABLED") == "1"
+TASKS_CATALOG_BASE_URL = os.environ.get("TASKS_CHANNEL_SYNC_BASE_URL", "").rstrip("/")
+TASKS_CATALOG_KEY = os.environ.get("TASKS_CHANNEL_SYNC_KEY", "")
+
+
+class NoCatalogRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+def catalog_endpoint():
+    target = urlsplit(TASKS_CATALOG_BASE_URL)
+    if (target.scheme != "https" or not target.hostname or target.username or target.password
+            or target.path or target.query or target.fragment or not TASKS_CATALOG_KEY
+            or TASKS_CATALOG_KEY == STAND_CHANNEL_SYNC_KEY):
+        raise ValueError("Configure an HTTPS TASKS_CHANNEL_SYNC_BASE_URL and a dedicated TASKS_CHANNEL_SYNC_KEY")
+    return f"{TASKS_CATALOG_BASE_URL}/api/stand/channels/catalog-sync"
 
 ACCOUNTS = [
     {
@@ -63,6 +80,25 @@ ACCOUNTS = [
 ]
 
 def push_to_stand(channel, account_name, chats):
+    if TASKS_CATALOG_MODE:
+        url = catalog_endpoint()
+        opener = urllib.request.build_opener(NoCatalogRedirect())
+        for start in range(0, len(chats), 250):
+            batch = [
+                {"id": str(chat["id"]), "name": str(chat["name"]).strip()[:255] or str(chat["id"]),
+                 "last_active": chat["last_active"]}
+                for chat in chats[start:start + 250]
+            ]
+            request = urllib.request.Request(
+                url, data=json.dumps({"channel": channel, "account": account_name, "chats": batch}).encode("utf-8"),
+                headers={"Authorization": f"Bearer {TASKS_CATALOG_KEY}", "Content-Type": "application/json"},
+                method="POST")
+            with opener.open(request, timeout=30) as result:
+                if json.load(result).get("success") is not True:
+                    raise RuntimeError("Task channel catalog rejected the batch")
+        print(f"[OK] Synced {len(chats)} {channel} chat metadata rows for {account_name}.")
+        return
+
     url = f"{STAND_BASE_URL}/api/stand/channels/sync"
     sync_tag = uuid.uuid4().hex
     chunk_size = 4000
@@ -210,6 +246,8 @@ def export_message_row(msg, chat_id, chat_name, chat_username, chat_kind, me_id,
 
 def push_export_batch(account_name, messages):
     """Одна порция сообщений на стенд; ретраи на случай рестарта стенда."""
+    if TASKS_CATALOG_MODE:
+        raise RuntimeError("Message export is unavailable in task catalog mode")
     url = f"{STAND_BASE_URL}/api/stand/channels/export"
     body = json.dumps({"account": account_name, "messages": messages}).encode("utf-8")
     last_error = None
@@ -286,6 +324,8 @@ async def export_telegram_history(client, dialogs, account_name, since, sleep=as
 
 async def maybe_export_telegram(client, dialogs, account_name, session_file):
     """Запускает одноразовый экспорт, если задан TG_EXPORT_SINCE и маркера ещё нет."""
+    if TASKS_CATALOG_MODE:
+        return None
     since_raw = os.environ.get("TG_EXPORT_SINCE", "")
     if not since_raw.strip() or account_name != EXPORT_ACCOUNT:
         return None
@@ -342,16 +382,17 @@ async def sync_telegram(account_name, session_file, api_id, api_hash):
         chats = []
         dialogs = []
         async for dialog in client.iter_dialogs():
-            dialogs.append(dialog)
+            if not TASKS_CATALOG_MODE:
+                dialogs.append(dialog)
             chats.append({
                 "id": str(dialog.id),
                 "name": dialog.name or str(dialog.id),
                 "last_active": int(dialog.date.timestamp()) if dialog.date else 0
             })
         try:
-            # Сначала обычный sync метаданных, затем (однократно) экспорт тем же клиентом.
             push_to_stand("tg", account_name, chats)
-            await maybe_export_telegram(client, dialogs, account_name, session_file)
+            if not TASKS_CATALOG_MODE:
+                await maybe_export_telegram(client, dialogs, account_name, session_file)
         finally:
             await client.disconnect()
     finally:
@@ -530,7 +571,7 @@ def _get_bitrix_webhook():
     return None
 
 def sync_bitrix():
-    webhook = _get_bitrix_webhook()
+    webhook = os.environ.get("SYNC_BITRIX_WEBHOOK") if TASKS_CATALOG_MODE else _get_bitrix_webhook()
     if not webhook:
         print("[SKIP] Bitrix (no SYNC_BITRIX_WEBHOOK or Dev/ArbOps/.env value)")
         return
@@ -543,7 +584,7 @@ def sync_bitrix():
     try:
         while True:
             payload = {
-                "select": ["ID", "TITLE", "DATE_MODIFY", "STAGE_ID", "COMPANY_ID", "CONTACT_ID"],
+                "select": ["ID", "TITLE", "DATE_MODIFY"],
                 "order": {"DATE_MODIFY": "DESC"},
                 "filter": {"CATEGORY_ID": 0, "!=STAGE_ID": ["WON", "LOSE"]},
                 "start": start
@@ -573,11 +614,15 @@ def sync_bitrix():
         print(f"[ERROR] Bitrix sync failed: {e}")
 
 def main():
-    if not STAND_CHANNEL_SYNC_KEY:
+    if TASKS_CATALOG_MODE:
+        target = catalog_endpoint()
+    elif not STAND_CHANNEL_SYNC_KEY:
         print("ERROR: STAND_CHANNEL_SYNC_KEY is not set!")
         return
+    else:
+        target = STAND_BASE_URL
     
-    print(f"Syncing channels to {STAND_BASE_URL}")
+    print(f"Syncing channels to {target}")
     
     
     loop_interval = os.environ.get("SYNC_LOOP_INTERVAL")

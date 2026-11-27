@@ -12,7 +12,7 @@ from zoneinfo import ZoneInfo
 from flask import abort, jsonify, request, send_file, session, url_for
 from sqlalchemy import (
     JSON, CheckConstraint, Column, DateTime, ForeignKey, Integer, LargeBinary,
-    String, Table, exists, select,
+    String, Table, exists, func, select,
 )
 
 import stand_object_store
@@ -91,6 +91,8 @@ def _history_entry(row, role, user_id, *, details):
     card = row['snapshot']
     report = row['report_row']
     board = row['source_kind'] == 'board'
+    closed = card.get('closed') if board and type(card.get('closed')) is bool else None
+    source_outcome = text_for_history(card.get('closeReason')) if closed else ''
     item = {
         'id': row['source_id'], 'source_kind': row['source_kind'],
         'code': text_for_history(card.get('code')) or f"№{row['source_id']}",
@@ -98,7 +100,9 @@ def _history_entry(row, role, user_id, *, details):
         'client': text_for_history(card.get('client') if board else card.get('client_name')),
         'type': text_for_history(card.get('type') if board else card.get('deal_kind')),
         'decision': row['decision'], 'crm_deal_id': row['canonical_deal_id'],
-        'closed': row['decision'] != 'move', 'source_deleted': bool(report.get('deleted')),
+        'closed': closed, 'source_state': {True: 'closed', False: 'open'}.get(closed, 'unknown'),
+        'source_outcome': source_outcome or None,
+        'source_deleted': bool(report.get('deleted')),
         'manual': bool(report.get('manual_entry')),
         'created_at': text_for_history(card.get('createdAt') if board else card.get('created_at')),
         'source_status': text_for_history(report.get('stage_status')),
@@ -120,6 +124,9 @@ def _history_entry(row, role, user_id, *, details):
         ]
         if role == 'admin' and row['decision'] == 'review':
             item['candidates'] = [candidate['id'] for candidate in report.get('candidates', [])]
+            item['review'] = {'reason': text_for_history(report.get('reason')),
+                              'evidence': [text_for_history(value) for value in (report.get('evidence') or [])
+                                           if isinstance(value, str)]}
     return item
 
 
@@ -166,20 +173,27 @@ def _local_date(value):
         return None
 
 
-def _legacy_closed_date(card, status, reason):
+def _legacy_closed_date(card, status):
     card_reason = card.get('closeReason')
-    expected_reason = 'Успешно завершена' if status == 'COMPLETED' else reason
-    if card.get('closed') is not True or not expected_reason or card_reason != expected_reason:
+    if card.get('closed') is not True or not isinstance(card_reason, str) or not card_reason.strip():
+        return None
+    reason = card_reason.strip().casefold()
+    source_status = ('COMPLETED' if reason == 'успешно завершена' else 'NOT_LEAD'
+                     if reason in ('не обращение', 'не является обращением') else 'LOSE')
+    if source_status != status:
+        return None
+    events = [entry for entry in reversed(card.get('log') or []) if isinstance(entry, dict) and
+              entry.get('kind') != 'comment' and
+              entry.get('text') in (f'Закрыта: {card_reason}', f'Закрыта сразу: {card_reason}')]
+    if status != 'COMPLETED' and not events:
         return None
     stage_deal_id = card.get('crmDealId')
     if type(stage_deal_id) is int and stage_deal_id > 0:
         if saved := _local_date(card.get('closedAt')) or _local_date(card.get('closedTs')):
             return saved
-    for entry in reversed(card.get('log') or []):
-        if (isinstance(entry, dict) and entry.get('kind') != 'comment' and
-                entry.get('text') in (f'Закрыта: {card_reason}', f'Закрыта сразу: {card_reason}')):
-            if confirmed := _local_date(entry.get('at')) or _local_date(entry.get('ts')):
-                return confirmed
+    for entry in events:
+        if confirmed := _local_date(entry.get('at')) or _local_date(entry.get('ts')):
+            return confirmed
     return None
 
 
@@ -193,7 +207,7 @@ def _analytics_entry(deal, cards):
     reason = text_for_history(deal['lose_reason']) or None
     created_at = deal['created_at']
     opened_on = _local_date(created_at)
-    recent = {day for card in cards if (day := _legacy_closed_date(card, status, reason)) and
+    recent = {day for card in cards if (day := _legacy_closed_date(card, status)) and
               (opened_on is None or day >= opened_on)}
     closed_on = next(iter(recent)) if len(recent) == 1 else None
     if created_at is not None and created_at.tzinfo is None:
@@ -217,6 +231,7 @@ def register_routes(app, base, get_session, stand_file, current_role, *, enabled
     history = base.metadata.tables['stand_task_history']
     records = base.metadata.tables['stand_task_history_records']
     deals = base.metadata.tables['deals']
+    payout_uses = base.metadata.tables['payout_tx_uses']
 
     def authorized():
         if not enabled():
@@ -239,6 +254,19 @@ def register_routes(app, base, get_session, stand_file, current_role, *, enabled
         if row is None or not _can_read_card(row, role):
             abort(404)
         return row
+
+    def canonical_outcome(db, deal_id):
+        if deal_id is None:
+            return None
+        status = db.execute(select(deals.c.status).where(deals.c.id == deal_id)).scalar_one_or_none()
+        if status is None:
+            return None
+        count, amount = db.execute(select(func.count(func.distinct(payout_uses.c.tx_id)),
+                                          func.sum(payout_uses.c.amount_usdt)).where(
+            payout_uses.c.deal_id == deal_id, payout_uses.c.amount_usdt > 0,
+        )).one()
+        payout = {'currency': 'USDT', 'amount': round(amount, 8), 'transfer_count': count} if count else None
+        return {'deal_id': deal_id, 'status': _enum_name(status), 'url': f'/crm?deal={deal_id}', 'payout': payout}
 
     def archived_document(db, document_id):
         return db.execute(select(records.c.payload, records.c.content, records.c.content_sha256).where(
@@ -278,8 +306,9 @@ def register_routes(app, base, get_session, stand_file, current_role, *, enabled
         with get_session() as db:
             rows = db.execute(select(history).where(
                 history.c.canonical_deal_id == deal_id,
-            ).order_by(history.c.source_id)).mappings()
-            return private_json(cards=[_history_entry(row, role, user_id, details=True) for row in rows])
+            ).order_by(history.c.source_id)).mappings().all()
+            return private_json(cards=[_history_entry(row, role, user_id, details=True) for row in rows],
+                                canonical=canonical_outcome(db, deal_id) if rows else None)
 
     @app.get('/api/stand/task-history')
     def stand_task_history_index():
@@ -382,7 +411,9 @@ def register_routes(app, base, get_session, stand_file, current_role, *, enabled
         role, user_id = authorized()
         with get_session() as db:
             row = entry(db, source_kind, source_id, role)
-            return private_json(card=_history_entry(row, role, user_id, details=True))
+            card = _history_entry(row, role, user_id, details=True)
+            card['canonical'] = canonical_outcome(db, row['canonical_deal_id'])
+            return private_json(card=card)
 
     @app.get('/api/stand/task-history/<source_kind>/<int:source_id>/documents/<int:index>')
     def stand_task_history_document(source_kind, source_id, index):

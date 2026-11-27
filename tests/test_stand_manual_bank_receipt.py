@@ -600,7 +600,8 @@ def test_manual_flowsole_conversion_form_click_is_accepted(monkeypatch):
     # Код кнопок из настоящего tasks.html строит снимок для PUT.
     ui = subprocess.run(['node', 'tests/test_stand_income_conv_form.js', '--snapshot'],
                         input=json.dumps(confirmed.json['data'], ensure_ascii=False),
-                        text=True, capture_output=True, check=True)
+                        text=True, capture_output=True)
+    assert ui.returncode == 0, ui.stderr
     clicked = client.put('/api/stand/state', json={
         'version': confirmed.json['version'], 'data': json.loads(ui.stdout)})
     assert clicked.status_code == 200, clicked.json

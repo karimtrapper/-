@@ -98,15 +98,17 @@ function crmDraftParts(d) {
 }
 function crmDraftSafeFetch(url,options) {
   const u=new URL(url,location.origin);
+  if(globalThis.workingTasks&&u.origin===location.origin&&!u.search&&['/api/cash/batches','/api/cards/balance'].includes(u.pathname))
+    u.pathname='/api/stand/close-sources';
   const verifyManualHash=u.pathname==='/api/stand/manual-close/verify-hash'&&!u.search;
   const personalPreview=u.pathname==='/api/deals/personal-preview'&&!u.search;
   const allowed=['/api/sber-incomes','/api/transactions/outgoing','/api/tx/lookup',
     '/api/transactions/incoming','/api/wl-transactions',
     '/api/payout-tx','/api/tron/payout-tx',
-    '/api/cash/batches','/api/cards/balance','/api/wallets',
+    '/api/cash/batches','/api/cards/balance','/api/stand/close-sources','/api/wallets',
     '/api/rates',
     '/api/deals/mf-realty/preview','/api/deals/mf-freehold/preview',
-    '/api/managers','/api/clients','/api/referrers','/api/payin-txs'];
+    '/api/managers','/api/clients','/api/referrers','/api/stand/referrers','/api/payin-txs'];
   if(u.origin!==location.origin || !(verifyManualHash||personalPreview||allowed.includes(u.pathname)||u.pathname.startsWith('/api/payin-txs/')))
     return Promise.reject(new Error('CRM draft request blocked'));
   if(u.pathname==='/api/managers' && u.search!=='?include_staff=1')
@@ -619,7 +621,8 @@ async function crmDraftLoadPayinTx(active) {
 async function crmDraftLoadLists(active) {
   const {root}=active,d=deal(active.id);
   const get=async path=>{try{const r=await crmDraftSafeFetch(path);return r.ok?await r.json():{};}catch{return {};}};
-  const [managers,clients,refs]=await Promise.all([get('/api/managers?include_staff=1'),get('/api/clients'),get('/api/referrers')]);
+  const [managers,clients,refs]=await Promise.all([get('/api/managers?include_staff=1'),get('/api/clients'),
+    get(globalThis.workingTasks?'/api/stand/referrers':'/api/referrers')]);
   if(crmDraftActive!==active)return;
   const manager=root.getElementById('managerSelect');
   const staff=(managers.managers||[]).filter(x=>x.active&&x.user_id);
@@ -652,7 +655,14 @@ function crmDraftSourceChoices() {
     source==='none'?'Телефон / офис / рекомендация':'Чат / источник';
   ref.placeholder=source==='bitrix'?'Поиск по сделкам Битрикса':
     source==='none'?'Телефон, офис, рекомендация':'Имя или номер чата';
-  list.replaceChildren(...chatList(source).map(value=>new Option(value,value)));
+  const choices=chatList(source).map(chat=>new Option(
+    [chat.name,chat.account].filter(Boolean).join(' · '),chat.key));
+  list.replaceChildren(...choices);
+  const selected=document.getElementById('crmDraftSourceName');
+  if(selected){
+    selected.textContent=choices.find(option=>option.value===ref.value)?.text||'';
+    selected.hidden=!selected.textContent;
+  }
 }
 function crmDraftSourceResolveClient(active) {
   const ref=document.getElementById('crmDraftSourceRef')?.value.trim();
@@ -711,8 +721,10 @@ function crmDraftWire(active) {
     crmDraftValue(document,'crmDraftSourceRef','');
     crmDraftSourceChoices();
   });
-  document.getElementById('crmDraftSourceRef')?.addEventListener('change',()=>
-    crmDraftSourceResolveClient(active));
+  document.getElementById('crmDraftSourceRef')?.addEventListener('change',()=>{
+    crmDraftSourceChoices();
+    crmDraftSourceResolveClient(active);
+  });
   crmDraftSourceChoices();
   root.addEventListener('change',e=>{
     const el=e.target;

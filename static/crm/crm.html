@@ -5987,9 +5987,28 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                 const result = await response.json();
                 if (!result.success) throw new Error('История недоступна');
                 if (!result.cards.length || !section.isConnected) return;
-                section.innerHTML = `<h3>Карточки задачника</h3>${result.cards.map(card => {
+                const statusLabels = {
+                    COMPLETED: 'Завершена', VERIFIED: 'Проверена', LOSE: 'Отказ',
+                    NOT_LEAD: 'Не обращение', PENDING: 'В работе', CANCELLED: 'Отменена',
+                };
+                const canonical = result.canonical;
+                const status = statusLabels[String(canonical?.status || '').toUpperCase()];
+                const payout = canonical?.payout;
+                const transfers = payout?.transfer_count;
+                const payoutProof = payout?.currency === 'USDT' && Number.isFinite(payout.amount) && payout.amount > 0 &&
+                    Number.isInteger(transfers) && transfers > 0
+                    ? `<p>Учтено в CRM: ${transfers === 1 ? 'одна выплата' : 'переводов: ' + transfers} · <b>${formatDisplayMoney(payout.amount, payout.currency)}</b></p>`
+                    : '';
+                section.innerHTML = `<h3>Карточки задачника</h3>
+                    ${status ? `<p>Статус сделки CRM: <b>${status}</b></p>` : ''}
+                    ${payoutProof}${result.cards.map(card => {
                     const code = escapeHtml(card.code || `#${card.id}`);
-                    const state = card.source_deleted ? 'Удалена из задачника' : card.closed ? 'Закрыта' : 'Открыта';
+                    const state = card.source_state === 'closed' || card.closed === true ? 'Закрыта в задачнике'
+                        : card.source_state === 'open' || card.closed === false ? 'Открыта в задачнике'
+                        : 'Исходное состояние неизвестно';
+                    const relation = card.decision === 'attach'
+                        ? (card.manual ? 'Ручная привязка к сделке CRM' : 'Привязана к сделке CRM')
+                        : '';
                     const events = [card.log, card.notes].flatMap(items => Array.isArray(items) ? items : []);
                     const entries = events.map(event => {
                         const title = typeof event === 'string' ? event : event?.text || event?.message;
@@ -6007,6 +6026,9 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                     });
                     return `<details class="deal-task-history-card"><summary>${code} · ${state}</summary>
                         ${card.client ? `<p>${escapeHtml(card.client)}</p>` : ''}
+                        ${card.source_deleted ? '<p>Удалена из задачника</p>' : ''}
+                        ${card.source_outcome ? `<p>Исход карточки: ${escapeHtml(card.source_outcome)}</p>` : ''}
+                        ${relation ? `<p>${relation}</p>` : ''}
                         <p><a href="/tasks?section=history&amp;${card.source_kind === 'legacy_deal' ? 'legacy_deal' : 'task_history'}=${encodeURIComponent(card.id)}">Открыть карточку</a></p>
                         ${entries.length ? `<h4>Журнал</h4><ul>${entries.join('')}</ul>` : ''}
                         ${files.length ? `<h4>Документы</h4><ul>${files.join('')}</ul>` : ''}</details>`;

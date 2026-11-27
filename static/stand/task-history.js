@@ -47,8 +47,31 @@
     section.append(element('h2', [card.code, card.client].filter(Boolean).join(' · ')));
     const summary = [card.type, card.created_at, card.source_status].filter(Boolean);
     if (summary.length) section.append(element('p', summary.join(' · ')));
+    const sourceState = {closed: 'Закрыта на исходной доске', open: 'Закрытие не отмечено', unknown: 'Состояние неизвестно'};
+    const decision = {attach: 'Связана со сделкой CRM', archive: 'В архиве', review: 'На сверке', move: 'Перенесена в задачник'};
+    section.append(element('p', [sourceState[card.source_state], card.source_outcome, decision[card.decision]]
+      .filter(Boolean).join(' · ')));
     const dealId = parseId(card.crm_deal_id);
     if (dealId) section.append(link(`Сделка №${dealId} в CRM`, `/crm?deal=${dealId}`));
+    if (card.canonical) {
+      const statuses = {COMPLETED: 'Завершена', VERIFIED: 'Проверена', LOSE: 'Отказ', NOT_LEAD: 'Не обращение', PENDING: 'В работе'};
+      const result = statuses[card.canonical.status] || 'Статус не указан';
+      section.append(element('p', `Итог в CRM — ${result}`));
+      const payout = card.canonical.payout;
+      if (payout && Number.isFinite(payout.amount)) {
+        const amount = new Intl.NumberFormat('ru-RU', {maximumFractionDigits: 8}).format(payout.amount);
+        section.append(element('p', `Выплата по сделке — ${amount} ${payout.currency}`));
+      }
+    }
+    if (card.review?.reason || card.review?.evidence?.length) {
+      section.append(element('h3', 'Основание для сверки'));
+      if (card.review.reason) section.append(element('p', card.review.reason));
+      if (card.review.evidence?.length) {
+        const evidence = element('ul');
+        for (const fact of card.review.evidence) evidence.append(element('li', fact));
+        section.append(evidence);
+      }
+    }
     if (card.candidates?.length) {
       const candidates = element('ul');
       for (const value of card.candidates) {

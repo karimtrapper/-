@@ -6,11 +6,13 @@ from contextlib import ExitStack, closing
 from datetime import datetime, timezone
 import fcntl
 import hashlib
+import io
 import json
 import os
 from pathlib import Path
 import re
 import shutil
+import subprocess
 import sys
 import tempfile
 
@@ -26,11 +28,13 @@ ARCHIVED_SOURCE_KEYS = {
     'stand_crm_links': ('origin',), 'stand_close_evidence': ('generation', 'stand_deal_id', 'kind'),
     'stand_files': ('id',), 'agreements': ('id',),
 }
-DESTINATION_TABLES = ('stand_state', 'stand_deleted_deals', 'stand_files', 'stand_task_imports',
+DESTINATION_TABLES = ('stand_state', 'stand_deleted_deals', 'stand_files', 'stand_channels', 'stand_task_imports',
                       'stand_task_history', 'stand_task_history_records')
 CLOSED_CRM_STATUSES = {'COMPLETED', 'LOSE', 'NOT_LEAD'}
 DECISIONS = {'attach', 'move', 'review', 'archive'}
 OBJECT_EXPORT_MANIFEST = 'stand-files-export.json'
+IMPORT_FORMAT = 2
+CHANNEL_COLUMNS = ('id', 'channel', 'account', 'chat_id', 'name', 'last_active', 'sync_tag')
 
 
 class ImportProblem(ValueError):
@@ -155,6 +159,29 @@ def read_native_rows(cur, table):
     with cur.connection.cursor(cursor_factory=RealDictCursor) as records:
         records.execute(sql.SQL('SELECT * FROM public.{}').format(sql.Identifier(table)))
         return [dict(row) for row in records]
+
+
+def capture_channels(cur, args):
+    pg_restore = args.pg_restore or shutil.which('pg_restore')
+    if pg_restore is None:
+        local_postgres = Path('/opt/homebrew/opt/libpq/bin/pg_restore')
+        pg_restore = local_postgres if local_postgres.is_file() else None
+    require(pg_restore, 'Provide the local pg_restore binary to verify channel metadata from the sealed dump.')
+    try:
+        extract = subprocess.run([str(pg_restore), '--data-only', '--table=stand_channels', '--file=-',
+                                  str(args.snapshot_dir / 'stage.dump')], check=True, capture_output=True).stdout
+    except subprocess.CalledProcessError as exc:
+        raise ImportProblem('The sealed snapshot channel catalog could not be extracted.') from exc
+    columns = ', '.join(CHANNEL_COLUMNS)
+    start = f'COPY public.stand_channels ({columns}) FROM stdin;\n'.encode()
+    _, marker, content = extract.partition(start)
+    content, end, _ = content.partition(b'\n\\.\n')
+    require(marker and end, 'The sealed dump has no compatible channel catalog.')
+    from_db = io.BytesIO()
+    cur.copy_expert(f'COPY (SELECT {columns} FROM public.stand_channels) TO STDOUT', from_db)
+    require(Counter(content.splitlines()) == Counter(from_db.getvalue().splitlines()),
+            'Restored channel metadata differs from the sealed stage dump.')
+    return read_native_rows(cur, 'stand_channels')
 
 
 def read_raw_rows(cur, table, field=None, ids=()):
@@ -315,6 +342,7 @@ def build_plan(bundle, records, archive_rows, native_files, owner_map):
 
     plan = []
     active = []
+    active_notes = []
     needed_owners = set()
     for row in decisions:
         board_id = row.get('board_id')
@@ -351,6 +379,15 @@ def build_plan(bundle, records, archive_rows, native_files, owner_map):
                 if source_owner is not None:
                     needed_owners.add(source_owner)
                     copied[field] = owner_map.get(source_owner)
+            for note in notes[str(board_id)]:
+                if note.get('read') is not False:
+                    continue
+                require(note.get('role') == 'manager' and note.get('id') and isinstance(note.get('text'), str),
+                        'An unread notice needs an explicit local staff and role mapping.')
+                recipient = note.get('recipientAdminId') or snapshot.get('managerUserId')
+                require(recipient == snapshot.get('managerUserId') and type(recipient) is int,
+                        'An unread manager notice does not match the active task owner.')
+                active_notes.append({**note, 'recipientAdminId': owner_map.get(recipient), 'inAppOnly': True})
             active.append(copied)
         note_rows = notes[str(board_id)] if board_id is not None else []
         plan.append((source_kind, source_id, generation, action, linked, owner_map.get(snapshot.get('managerUserId')),
@@ -367,16 +404,37 @@ def build_plan(bundle, records, archive_rows, native_files, owner_map):
     require(len(board_clients) == len(active_keys) and {client['id'] for client in board_clients} == active_keys,
             'An active task does not resolve to a unique board-local client.')
     chat_client_map = {key: client for key, client in state.get('chatClientMap', {}).items() if client in active_keys}
+    require(len({note['id'] for note in active_notes}) == len(active_notes), 'Unread notices have conflicting IDs.')
+    active_notes.sort(key=lambda note: note['at'], reverse=True)
     active_state = {'deals': active, 'clients': board_clients, 'chatClientMap': chat_client_map,
-                    'seq': max(state['seq'], *cards), 'notes': []}
+                    'seq': max(state['seq'], *cards), 'notes': active_notes}
     summary = {'cards': sum(record[0] == 'board' for record in plan), 'decisions': counts,
                'legacy_deal_archive': sum(record[0] == 'legacy_deal' for record in plan),
                'canonical_deals': len(linked_counts), 'links_per_deal': Counter(linked_counts.values()),
                'active_steps': Counter(card['step'] for card in active), 'active_board_clients': len(board_clients),
                'active_cards_with_board_client': sum(card.get('clientId') in active_keys for card in active),
                'raw_records': Counter(row[0] for row in archive_rows), 'board_objects': len(native_files),
-               'historical_documents': sum(content is not None for _, content in docs.values())}
+               'historical_documents': sum(content is not None for _, content in docs.values()),
+               'unread_notices': len(active_notes)}
     return plan, active_state, needed_owners, summary
+
+
+def active_channels(cards, catalog):
+    lookup = defaultdict(list)
+    for row in catalog:
+        lookup[(row['channel'], f"{row['account']}:{row['chat_id']}")].append(row)
+    chosen = {}
+    linked = 0
+    for card in cards:
+        source, reference = card.get('source'), card.get('sourceRef')
+        if source not in ('tg', 'wa', 'bitrix') or card.get('srefOther'):
+            continue
+        matches = lookup[(source, reference)]
+        require(len(matches) == 1, 'A structured active-task source does not resolve uniquely in the approved catalog.')
+        row = matches[0]
+        chosen[(source, reference)] = {key: row[key] for key in ('channel', 'account', 'chat_id', 'name', 'last_active')}
+        linked += 1
+    return list(chosen.values()), linked
 
 
 def read_employee_roles(cur):
@@ -412,7 +470,7 @@ def owner_problems(source_roles, target_roles, owner_map, required):
 
 
 def ensure_empty_board(cur):
-    for table in ('stand_task_history', 'stand_task_history_records', 'stand_deleted_deals', 'stand_files'):
+    for table in ('stand_task_history', 'stand_task_history_records', 'stand_deleted_deals', 'stand_files', 'stand_channels'):
         cur.execute(sql.SQL('SELECT EXISTS(SELECT 1 FROM public.{})').format(sql.Identifier(table)))
         require(not cur.fetchone()[0], f'The local destination already has data in {table}.')
     cur.execute('SELECT data, version, notified FROM public.stand_state WHERE id = 1')
@@ -534,8 +592,8 @@ def json_parameter(value):
     return Json(value, dumps=json_data)
 
 
-def write_plan(cur, bundle_id, state_row, plan, state, archived, native_files, deleted, summary, owner_map):
-    manifest = {**summary, 'staff_mappings': owner_map}
+def write_plan(cur, bundle_id, state_row, plan, state, archived, native_files, deleted, channels, summary, owner_map):
+    manifest = {**summary, 'staff_mappings': owner_map, 'format_version': IMPORT_FORMAT}
     cur.execute('''
         INSERT INTO public.stand_task_imports
         (id, bundle_sha256, generation, source_version, applied_at, reconciliation)
@@ -553,6 +611,7 @@ def write_plan(cur, bundle_id, state_row, plan, state, archived, native_files, d
           for table, key, body, content, digest in archived], page_size=8)
     insert_native(cur, 'stand_files', list(native_files.values()))
     insert_native(cur, 'stand_deleted_deals', deleted)
+    insert_native(cur, 'stand_channels', channels)
     cur.execute('''
         INSERT INTO public.stand_state (id, data, generation, version, updated_by, updated_at, notified)
         VALUES (1, %s, %s, %s, %s, %s, '[]')
@@ -583,6 +642,25 @@ def verify_plan(cur, plan, archived, native_files, deleted):
             'Native deleted-card history failed verification.')
 
 
+def verify_working_sources(cur, channels, notes):
+    stored_channels = {(row['channel'], row['account'], row['chat_id']): row
+                       for row in read_native_rows(cur, 'stand_channels')}
+    for expected in channels:
+        row = stored_channels.get(tuple(expected[key] for key in ('channel', 'account', 'chat_id')))
+        # Workers can refresh display names and timestamps after the import.
+        require(row is not None, 'An approved active-task channel is missing from the target catalog.')
+    cur.execute('SELECT data, notified FROM public.stand_state WHERE id = 1')
+    state_row = cur.fetchone()
+    require(state_row is not None, 'The working task board is missing.')
+    state, outbox = map(json.loads, state_row)
+    stored_notes = {note['id']: note for note in state.get('notes', [])}
+    queued = {note.get('id') for note in outbox if isinstance(note, dict)}
+    for expected in notes:
+        note = stored_notes.get(expected['id'])
+        require(note is not None and {**note, 'read': False} == expected and note['id'] not in queued,
+                'An imported local notice is missing, was reassigned, or entered the external outbox.')
+
+
 def run_import(args, bundle_id, bundle):
     manifests = {name: bundle[f'{name}.manifest'] for name in ('prod', 'stage')}
     stage_deal_ids = {row['stage'] for row in bundle['report']['rows'] if row.get('stage') is not None and
@@ -607,9 +685,12 @@ def run_import(args, bundle_id, bundle):
             records, archived = read_stage_records(stage, stage_deal_ids)
             native_files = {row['id']: row for row in read_native_rows(stage, 'stand_files')}
             deleted = read_native_rows(stage, 'stand_deleted_deals')
+            catalog = capture_channels(stage, args)
             input_dir = (args.snapshot_dir / 'files').resolve()
             objects = validate_objects(bundle, input_dir, native_files)
             plan, active_state, needed_owners, summary = build_plan(bundle, records, archived, native_files, args.owner_map)
+            channels, linked_channels = active_channels(active_state['deals'], catalog)
+            summary.update(active_channel_records=len(channels), active_channel_links=linked_channels)
             summary.update(bundle_sha256=bundle_id, mode='dry-run')
 
             dest_columns = source_columns(dest)
@@ -625,12 +706,15 @@ def run_import(args, bundle_id, bundle):
 
             if marker:
                 require(marker[0] == bundle_id, 'A different board snapshot was already imported here.')
+                require(marker[1].get('format_version') == IMPORT_FORMAT,
+                        'This board used an older import format. Use a fresh local restore to verify the current import.')
                 archived_mapping = {int(key): value for key, value in marker[1]['staff_mappings'].items()}
                 require(not args.owner_map or archived_mapping == args.owner_map,
                         'The applied snapshot used different employee assignments.')
                 if args.owner_map != archived_mapping:
-                    plan, _, _, _ = build_plan(bundle, records, archived, native_files, archived_mapping)
+                    plan, active_state, _, _ = build_plan(bundle, records, archived, native_files, archived_mapping)
                 verify_plan(dest, plan, archived, native_files, deleted)
+                verify_working_sources(dest, channels, active_state['notes'])
                 require(all(target.is_file() for _, target, _ in
                             validate_object_destination(input_dir, args.object_output, objects)),
                         'An imported private file is missing from its local store.')
@@ -673,8 +757,9 @@ def run_import(args, bundle_id, bundle):
             output_fd = lock_output_directory(args.object_output)
             publish_objects(input_dir, args.object_output, objects, created)
             write_plan(dest, bundle_id, records['stand_state'][0], plan, active_state, archived,
-                       native_files, deleted, summary, args.owner_map)
+                       native_files, deleted, channels, summary, args.owner_map)
             verify_plan(dest, plan, archived, native_files, deleted)
+            verify_working_sources(dest, channels, active_state['notes'])
             dest.execute('SELECT data FROM public.stand_state WHERE id = 1')
             require(json.loads(dest.fetchone()[0]) == active_state, 'The working task board failed verification.')
             require(fingerprint(dest, prod_columns) == dest_before and
@@ -723,6 +808,7 @@ def main():
     parser.add_argument('--cluster', type=Path, help='Private PostgreSQL data directory for the local copies')
     parser.add_argument('--port', type=positive_number)
     parser.add_argument('--user')
+    parser.add_argument('--pg-restore', type=Path, help='Local pg_restore binary for the sealed channel catalog')
     parser.add_argument('--prod-db', default='prod_src', help='Readonly local restore of the canonical production dump')
     parser.add_argument('--stage-db', default='stage_src', help='Readonly local restore of the task board dump')
     parser.add_argument('--destination', help='Dedicated local working copy of the production restore')

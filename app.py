@@ -303,6 +303,9 @@ def check_auth():
                   or request.endpoint == 'static' and
                   normpath((request.view_args or {}).get('filename', '')).startswith('stand/'))
     board_api = path.startswith('/api/stand/')
+    if request.endpoint == 'stand_live_channel_catalog_sync' and request.method == 'POST':
+        # This write-only worker credential is validated inside the route.
+        return None
     if board_page or board_api or (tasks_enabled() and path == '/panel'):
         if not tasks_enabled():
             if board_api:
@@ -375,8 +378,19 @@ def check_auth():
         return redirect('/login')
 
     if TASKS_ENABLED and staff.role != 'admin':
-        if path == '/api/admins' or path.startswith('/api/admins/'):
+        g.crm_task_staff_role = staff.role
+        if (path == '/api/admins' or path.startswith(('/api/admins/', '/api/kyc/',
+                '/api/referrers', '/api/docs/agreements'))):
             return jsonify(success=False, error='only_admin'), 403
+        if (path.startswith('/api/docs/file/') and request.method in ('GET', 'HEAD')
+                and not request.args.get('standDealId', type=int)):
+            return jsonify(success=False, error='forbidden'), 403
+        if (staff.role not in ('findir', 'teodor') and
+                (path.startswith(('/api/analytics/', '/api/finance/', '/api/deals/ledger',
+                                  '/api/cards', '/api/cash/', '/api/payout-requests',
+                                  '/api/wallets/summary', '/api/reimbursements'))
+                 or request.endpoint in {'get_wallet_operations', 'wallet_reconcile'})):
+            return jsonify(success=False, error='forbidden'), 403
         # Board actions carry role and approval checks. A legacy CRM write
         # endpoint must not give employees a second path around those checks.
         if (request.method not in ('GET', 'HEAD', 'OPTIONS')
@@ -5878,6 +5892,27 @@ def auth_login():
     finally:
         db.close()
 
+@app.route('/api/stand/referrers', methods=['GET'])
+def stand_referrer_directory():
+    """Minimal CRM catalogue used when assigning an existing referral partner."""
+    if not TASKS_ENABLED:
+        return jsonify(success=False, error='stand_only'), 404
+    db = get_session()
+    try:
+        rows = db.query(Referrer).filter(Referrer.active.is_(True), Referrer.is_test.isnot(True)) \
+            .order_by(func.lower(Referrer.name), Referrer.id).all()
+        response = jsonify(success=True, referrers=[{
+            'id': row.id, 'name': row.name, 'code': row.code,
+            'default_percent': row.default_percent, 'comp_model': row.comp_model or 'revshare',
+            'markup_percent': row.markup_percent or 0, 'payout_currency': row.payout_currency or 'USDT',
+            'lang': row.lang or 'ru', 'active': True, 'is_test': False,
+        } for row in rows])
+        response.headers['Cache-Control'] = 'private, no-store'
+        return response
+    finally:
+        db.close()
+
+
 @app.route('/api/stand/roles', methods=['GET'])
 def stand_roles():
     """Список ролей для админки — чтобы фронт не держал свою копию."""
@@ -6145,12 +6180,19 @@ def _stand_project_private_drafts(response):
             or response.mimetype != 'application/json'):
         return response
     role = current_role()
-    if role in ('manager', 'admin'):
-        return response
     body = response.get_json(silent=True)
-    if isinstance(body, dict) and isinstance(body.get('data'), dict):
-        body['data'] = _stand_public_state(body['data'], role)
-        response.set_data(json.dumps(body, ensure_ascii=False))
+    if isinstance(body, dict) and isinstance(body.get('data'), dict) and 'deals' in body['data']:
+        from stand_workflow import can_read_notice
+        original = body['data']
+        projected = dict(_stand_public_state(original, role))
+        if not STAND_MODE:
+            projected.pop('bal', None)
+        if isinstance(projected.get('notes'), list):
+            uid = flask_session.get('user_id')
+            projected['notes'] = [note for note in projected['notes'] if can_read_notice(note, role, uid)]
+        if projected != original:
+            body['data'] = projected
+            response.set_data(json.dumps(body, ensure_ascii=False))
     return response
 
 
@@ -6305,7 +6347,7 @@ def stand_state_get():
         validator = hashlib.sha256(json.dumps({
             'generation': row.generation if row else None, 'version': response['version'],
             'data': row.data if row and not repaired else json.dumps(state, ensure_ascii=False),
-            'metadata': response,
+            'metadata': response, 'user_id': flask_session.get('user_id'),
         }, sort_keys=True, ensure_ascii=False, default=str).encode()).hexdigest()
         unchanged = not repaired and request.if_none_match.contains(validator)
         if not unchanged:
@@ -6321,6 +6363,196 @@ def stand_state_get():
     result.headers['Cache-Control'] = 'private, no-cache'
     result.vary.add('Accept-Encoding')
     return result
+
+
+def _task_scb_card(card):
+    return (card.bank_name or '').strip().casefold() in {'scb', 'siam commercial bank', 'ไทยพาณิชย์'}
+
+
+def _task_balance_amount(value, places=2):
+    return round(value, places) if value is not None and math.isfinite(value) else None
+
+
+def _task_balance_sources(db):
+    cards = db.query(BankCard).filter_by(status=CashBatchStatus.ACTIVE).order_by(BankCard.id).all()
+    ipps_cards = [card for card in cards if _is_ipps_card(card)]
+    ipps = ipps_cards[0] if len(ipps_cards) == 1 else None
+    scb_cards = [card for card in cards if not _is_ipps_card(card) and _task_scb_card(card)]
+    corporate = [card for card in scb_cards if card.personal_owner is None]
+    scb = corporate[0] if len(corporate) == 1 else None
+    batches = db.query(CashBatch).filter_by(status=CashBatchStatus.ACTIVE).order_by(CashBatch.id).all()
+    wallets = db.query(Wallet).filter_by(active=True).order_by(Wallet.id).all()
+    now = time.time()
+    wallet_rows = []
+    for wallet in wallets:
+        entry = TRONSCAN_CACHE['balances'].get(wallet.address)
+        confirmed = (entry and entry.get('usdt_confirmed') is True and
+                     0 <= now - entry['timestamp'] < CACHE_TTL)
+        wallet_rows.append({'id': wallet.id, 'available_usdt': _task_balance_amount(entry['usdt']) if confirmed else None})
+    return {
+        'source': 'crm',
+        'ipps': {'card_id': ipps.id if ipps else None,
+                 'available_thb': _task_balance_amount(ipps.balance_thb) if ipps else None},
+        'cash': {'available_thb': _task_balance_amount(sum(batch.remaining_thb for batch in batches)),
+                 'batches': [{'id': batch.id, 'available_thb': _task_balance_amount(batch.remaining_thb)}
+                             for batch in batches]},
+        'scb': {'card_id': scb.id if scb else None,
+                'available_thb': _task_balance_amount(scb.balance_thb) if scb else None,
+                'accounts': [{'id': card.id, 'label': card.card_name or f'SCB #{card.id}',
+                              'personal_owner': card.personal_owner,
+                              'available_thb': _task_balance_amount(card.balance_thb)} for card in scb_cards]},
+        'usdt': {'available_usdt': None, 'wallets': wallet_rows},
+    }
+
+
+@app.route('/api/stand/balances', methods=['GET'])
+def stand_balances():
+    if not TASKS_ENABLED or STAND_MODE:
+        return jsonify(success=False, error='not_found'), 404
+    db = get_session()
+    try:
+        response = jsonify(success=True, **_task_balance_sources(db))
+        response.headers['Cache-Control'] = 'private, no-store'
+        return response
+    finally:
+        db.close()
+
+
+@app.route('/api/stand/close-sources', methods=['GET'])
+def stand_close_sources():
+    """The task close form needs active payout sources and their cost inputs."""
+    if not TASKS_ENABLED or STAND_MODE:
+        return jsonify(success=False, error='not_found'), 404
+    if current_role() not in ('admin', 'operator', 'manager'):
+        return jsonify(success=False, error='forbidden'), 403
+    db = get_session()
+    try:
+        cards = db.query(BankCard).filter_by(status=CashBatchStatus.ACTIVE).order_by(BankCard.id).all()
+        batches = db.query(CashBatch).filter_by(status=CashBatchStatus.ACTIVE).order_by(CashBatch.id).all()
+        response = jsonify(success=True,
+            cards=[{'id': item.id, 'bank_name': item.bank_name, 'card_name': item.card_name,
+                    'holder_name': item.holder_name, 'balance_thb': _task_balance_amount(item.balance_thb),
+                    'avg_rate': _task_balance_amount(_card_avg_rate(item), 4),
+                    'is_ipps': _is_ipps_card(item), 'personal_owner': item.personal_owner} for item in cards],
+            batches=[{'id': item.id, 'status': item.status.value,
+                      'remaining_thb': _task_balance_amount(item.remaining_thb),
+                      'purchase_rate': item.purchase_rate, 'created_at': item.created_at.isoformat() if item.created_at else None}
+                     for item in batches],
+            summary={'total_remaining_thb': _task_balance_amount(sum(item.remaining_thb for item in batches))})
+        response.headers['Cache-Control'] = 'private, no-store'
+        return response
+    finally:
+        db.close()
+
+
+_TASK_PAYOUT_SOURCES = {'ipps': 'Баланс IPPS · MF Corp', 'cash': 'Касса · партия налички',
+                        'scb': 'Счёт SCB · MF Corp'}
+
+
+def _task_planned_payout_source(deal):
+    if deal.get('postConv') == 'ipps':
+        return 'ipps'
+    if deal.get('postConv') == 'keep':
+        return (deal.get('transfer') or {}).get('src')
+    return None
+
+
+def _task_payout_plan_problem(db, previous, incoming):
+    old = {deal.get('id'): deal for deal in previous.get('deals', [])}
+    plan_ids = set()
+    for deal in incoming.get('deals', []):
+        if old.get(deal.get('id'), {}).get('step') == 's22' and deal.get('step') in ('s23', 's26'):
+            plan_ids.update(member.get('id') for member in _stand_members(incoming, deal.get('id')))
+    if not plan_ids:
+        return None
+    sources = _task_balance_sources(db)
+    corporate = {account['id']: account for account in sources['scb']['accounts']
+                 if account['personal_owner'] is None}
+    batches = {batch['id']: batch['available_thb'] for batch in sources['cash']['batches']}
+    demands = {}
+    for deal in incoming.get('deals', []):
+        if (deal.get('id') not in plan_ids or deal.get('kind') == 'Фрихолд' or
+                deal.get('postConv') not in ('ipps', 'keep')):
+            continue
+        transfer = deal.get('transfer') or {}
+        source = _task_planned_payout_source(deal)
+        amount = _amount(transfer.get('thb'))
+        error = {'deal_id': deal['id'], 'source': source}
+        if not amount or amount <= 0 or amount > 10 ** 12 or amount != round(amount, 2):
+            return dict(error, code='payout_amount_required', error='Укажите сумму выплаты в THB с точностью до сатанга.')
+        card_id, batch_id = transfer.get('bankCardId'), transfer.get('cashBatchId')
+        if (card_id is not None and type(card_id) is not int or
+                batch_id is not None and type(batch_id) is not int):
+            return dict(error, code='balance_source_unavailable', error='Выберите действующий источник выплаты.')
+        checks = []
+        if source == 'ipps' and batch_id is None:
+            ipps = sources['ipps']
+            canonical_id = ipps['card_id']
+            if canonical_id is not None and card_id in (None, canonical_id):
+                checks.append((('card', canonical_id), ipps['available_thb']))
+                transfer['bankCardId'] = canonical_id
+        elif source == 'scb' and batch_id is None:
+            canonical_id = sources['scb']['card_id'] if card_id is None else card_id
+            if canonical_id in corporate:
+                checks.append((('card', canonical_id), corporate[canonical_id]['available_thb']))
+                transfer['bankCardId'] = canonical_id
+        elif source == 'cash' and card_id is None and (batch_id is None or batch_id in batches):
+            checks.append((('cash', None), sources['cash']['available_thb']))
+            if batch_id is not None:
+                checks.append((('cash', batch_id), batches[batch_id]))
+        if not checks or any(available is None for _, available in checks):
+            return dict(error, code='balance_source_unavailable', error='В CRM нет подтверждённого остатка выбранного источника.')
+        for key, available in checks:
+            required = demands.get(key, 0) + amount
+            if required > _amount(available):
+                return dict(error, code='payout_balance_insufficient',
+                            error='По данным CRM средств для запланированной выплаты недостаточно.',
+                            available_thb=available, requested_thb=float(required))
+            demands[key] = required
+    return None
+
+
+def _task_record_invoice_payment(db, previous, incoming):
+    """Record the receipt-backed fact. The canonical close owns financial postings."""
+    old = {deal.get('id'): deal for deal in previous.get('deals', [])}
+    for deal in incoming.get('deals', []):
+        before = old.get(deal.get('id')) or {}
+        if deal.get('kind') == 'Фрихолд' or deal.get('type') != 'Оплата недвижимости':
+            continue
+        old_paid = bool((before.get('pay') or {}).get('invoicePaid'))
+        new_paid = bool((deal.get('pay') or {}).get('invoicePaid'))
+        if old_paid and ((before.get('payout') or {}).get('invoice') !=
+                         (deal.get('payout') or {}).get('invoice')):
+            return 'Подтверждённая отметка об оплате инвойса сохранена.'
+        if old_paid == new_paid:
+            continue
+        if old_paid or before.get('step') != 's26' or deal.get('step') != 's27':
+            return 'Оплату инвойса фиксируют с чеком при передаче задачи менеджеру.'
+        pay_to = before.get('payTo') or {}
+        amount = _amount(pay_to.get('amount'))
+        if not amount or amount <= 0:
+            return 'Укажите подтверждённую сумму оплаты инвойса.'
+        payout = deal.setdefault('payout', {})
+        invoice = payout.get('invoice')
+        if not isinstance(invoice, dict) or _amount(invoice.get('thb')) != amount:
+            return 'Сумма в отметке об оплате должна совпадать с согласованным инвойсом.'
+        source = _task_planned_payout_source(before) or 'scb'
+        planned_id = (before.get('transfer') or {}).get('bankCardId')
+        invoice_id = invoice.get('bankCardId')
+        if source not in _TASK_PAYOUT_SOURCES or (planned_id is not None and
+                invoice_id not in (None, planned_id)):
+            return 'Укажите согласованный счёт выплаты.'
+        invoice_id = planned_id if invoice_id is None else invoice_id
+        if invoice_id is not None:
+            card = db.get(BankCard, invoice_id) if type(invoice_id) is int else None
+            if not card or not ((source == 'ipps' and _is_ipps_card(card)) or
+                    (source == 'scb' and _task_scb_card(card) and card.personal_owner is None)):
+                return 'Счёт в отметке об оплате не соответствует выбранному корпоративному источнику.'
+        payout['invoice'] = {'source': _TASK_PAYOUT_SOURCES[source], 'thb': float(amount),
+                             'to': pay_to.get('dev') or '', 'at': int(time.time() * 1000)}
+        if invoice_id is not None:
+            payout['invoice']['bankCardId'] = invoice_id
+    return None
 
 
 @app.route('/api/stand/nav-count')
@@ -6387,8 +6619,11 @@ def stand_nav_count():
 
     archived_ids = {str(deal['id']) for deal in state.get('deals', [])
                     if deal.get('taskArchived') is True}
+    from stand_workflow import can_read_notice
+    actor_id = flask_session.get('user_id')
     unread = sum(note.get('role') == role and not note.get('read')
                  and str(note.get('dealId')) not in archived_ids
+                 and can_read_notice(note, role, actor_id)
                  for note in state.get('notes', []))
     return jsonify({'success': True,
                     'count': sum(has_task(d) for d in state.get('deals', [])),
@@ -6819,6 +7054,9 @@ def stand_file_get(deal_id, kind, index):
         use_draft = request.args.get('draft') == '1'
         if use_draft and role not in ('manager', 'admin'):
             return "Forbidden", 403
+        if (TASKS_ENABLED and not STAND_MODE and role == 'manager'
+                and not _stand_manager_owns_deal(db, deal, flask_session.get('user_id'))):
+            return "Forbidden", 403
 
         target = deal.get('_managerDraft') if use_draft else deal
         if not target:
@@ -6908,6 +7146,54 @@ def _stand_sgb_download(raw, mime, filename):
     return response
 
 import hmac
+
+@app.route('/api/stand/channels/catalog-sync', methods=['POST'])
+def stand_live_channel_catalog_sync():
+    key = os.environ.get('TASKS_CHANNEL_SYNC_KEY', '')
+    if (not TASKS_ENABLED or STAND_MODE or os.environ.get('TASKS_CHANNEL_SYNC_ENABLED') != '1'
+            or not key or key == os.environ.get('STAND_CHANNEL_SYNC_KEY')):
+        return jsonify(success=False, error='not_found'), 404
+    bearer = request.headers.get('Authorization', '')
+    if not hmac.compare_digest(bearer.encode('utf-8'), f'Bearer {key}'.encode('utf-8')):
+        return jsonify(success=False, error='unauthorized'), 401
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict) or payload.keys() != {'channel', 'account', 'chats'}:
+        return jsonify(success=False, error='invalid_catalog'), 400
+    channel, account, chats = payload['channel'], payload['account'], payload['chats']
+    if (channel not in ('tg', 'wa', 'bitrix') or not isinstance(account, str)
+            or not re.fullmatch(r'[\w .-]{1,100}', account) or account != account.strip()
+            or not isinstance(chats, list) or len(chats) > 250):
+        return jsonify(success=False, error='invalid_catalog'), 400
+    rows = {}
+    for chat in chats:
+        if not isinstance(chat, dict) or chat.keys() != {'id', 'name', 'last_active'}:
+            return jsonify(success=False, error='invalid_catalog_entry'), 400
+        chat_id, name, last_active = chat['id'], chat['name'], chat['last_active']
+        if (not isinstance(chat_id, str) or not re.fullmatch(r'[A-Za-z0-9_.@+-]{1,100}', chat_id)
+                or not isinstance(name, str) or len(name) > 255 or not name.strip()
+                or '\x00' in name or type(last_active) is not int or not 0 <= last_active <= 2**31 - 1):
+            return jsonify(success=False, error='invalid_catalog_entry'), 400
+        if chat_id not in rows or last_active >= rows[chat_id]['last_active']:
+            rows[chat_id] = {'channel': channel, 'account': account, 'chat_id': chat_id,
+                            'name': name, 'last_active': last_active}
+    if not rows:
+        return jsonify(success=True, count=0)
+    db = get_session()
+    try:
+        if db.bind.dialect.name == 'postgresql':
+            from sqlalchemy.dialects.postgresql import insert
+        else:
+            from sqlalchemy.dialects.sqlite import insert
+        statement = insert(StandChannel).values(list(rows.values()))
+        db.execute(statement.on_conflict_do_update(
+            index_elements=[StandChannel.channel, StandChannel.account, StandChannel.chat_id],
+            set_={'name': statement.excluded.name, 'last_active': statement.excluded.last_active},
+            where=StandChannel.last_active <= statement.excluded.last_active))
+        db.commit()
+        return jsonify(success=True, count=len(rows))
+    finally:
+        db.close()
+
 
 @app.route('/api/stand/channels/sync', methods=['POST'])
 def stand_channels_sync():
@@ -8742,6 +9028,8 @@ def stand_state_put():
         return jsonify({'success': False, 'error': 'no_data'}), 400
     if not isinstance(payload['data'], dict) or 'notified' in payload['data']:
         return jsonify(success=False, error='server_outbox_only'), 400
+    if not STAND_MODE:
+        payload['data'].pop('bal', None)
     if type(payload.get('version')) is not int or payload['version'] < 0:
         return jsonify(success=False, error='version_required'), 400
     actor, actor_id = current_role(), flask_session.get('user_id')
@@ -8790,6 +9078,20 @@ def stand_state_put():
         if reserved_identity:
             return jsonify(success=False, error=reserved_identity,
                            version=row.version or 0, data=_stand_strip_files(previous)), 409
+        if TASKS_ENABLED and not STAND_MODE:
+            for card in payload['data'].get('deals') or []:
+                before = prior_deals.get(card['id'], {})
+                if not any(before.get(key) != card.get(key) for key in ('source', 'sourceRef', 'srefOther')):
+                    continue
+                channel = card.get('source')
+                if channel not in ('tg', 'wa', 'bitrix') or card.get('srefOther') is True:
+                    continue
+                reference = card.get('sourceRef')
+                account, _, chat_id = reference.rpartition(':') if isinstance(reference, str) else ('', '', '')
+                if not account or not chat_id or db.query(StandChannel.id).filter_by(
+                        channel=channel, account=account, chat_id=chat_id).first() is None:
+                    return jsonify(success=False, error='Выберите существующую переписку в справочнике.',
+                                   version=row.version or 0, data=_stand_strip_files(previous)), 422
         previous_note_ids = {str(n.get('id')) for n in previous.get('notes') or []}
         from stand_workflow import journal_problem, accept_journal, accept_notes, strip_browser_defaults
         strip_browser_defaults(previous, payload['data'])
@@ -8929,6 +9231,15 @@ def stand_state_put():
         problem = _stand_workflow_problem(previous, payload['data'], actor, db, row)
         if problem:
             return jsonify(success=False, error=problem, version=row.version or 0, data=_stand_strip_files(previous)), 409
+        if not STAND_MODE:
+            plan_problem = _task_payout_plan_problem(db, previous, payload['data'])
+            if plan_problem:
+                return jsonify(success=False, **plan_problem, version=row.version or 0,
+                               data=_stand_strip_files(previous)), 409
+            problem = _task_record_invoice_payment(db, previous, payload['data'])
+            if problem:
+                return jsonify(success=False, error=problem, code='invoice_payment_invalid', version=row.version or 0,
+                               data=_stand_strip_files(previous)), 409
         clean = preserve_server_fields(previous, payload['data'])
         _stand_keep_deleted_deal_ids(db, clean)
         old_conv_ids = {c.get('id') for c in previous.get('convs') or []}
@@ -8976,7 +9287,7 @@ def stand_state_put():
                 deal['rerateDocVersion'] = int(before.get('docVersion') or 0)
         author = flask_session.get('display_name') or flask_session.get('username') or actor
         accept_journal(previous, clean, actor, author, recorded_at)
-        accept_notes(previous, clean, actor)
+        accept_notes(previous, clean, actor, actor_id)
         _stand_state_events(previous, clean, actor, (row.version or 0) + 1)
 
         _stand_restore_crm_candidates(db, clean)
@@ -19261,6 +19572,9 @@ def stand_docs_zip():
         pack = (deal or {}).get('docPack') or {}
         if not pack:
             return jsonify({'success': False, 'error': 'Пакет документов ещё не выпущен'}), 404
+        if (TASKS_ENABLED and not STAND_MODE and current_role() == 'manager'
+                and not _stand_manager_owns_deal(db, deal, flask_session.get('user_id'))):
+            return jsonify(success=False, error='forbidden'), 403
         if document_pack_stale(deal):
             return jsonify({'success': False, 'error': 'Сначала перевыпустите документы с новым курсом'}), 409
         current = _stand_doc_pack_items(deal)
@@ -26704,6 +27018,8 @@ def get_wallets():
         # с ними ответ идёт 24 секунды (обход TronScan по каждому кошельку),
         # и пикер выдачи всё это время показывал адреса вместо имён.
         no_balances = request.args.get('no_balances', 'false').lower() in ('1', 'true')
+        if getattr(g, 'crm_task_staff_role', None) in ('manager', 'operator'):
+            no_balances = True
         # По умолчанию — только мониторинговые (так было всегда), но подписи
         # нужны и для balance-кошельков: с них тоже уходят выдачи фаундеров.
         want_all = request.args.get('all', 'false').lower() in ('1', 'true')
@@ -26715,8 +27031,12 @@ def get_wallets():
         wallets_with_balance = []
 
         if no_balances:
-            return jsonify({'success': True,
-                            'wallets': [w.to_dict() for w in wallets]})
+            items = [w.to_dict() for w in wallets]
+            if getattr(g, 'crm_task_staff_role', None) in ('manager', 'operator'):
+                for item in items:
+                    item.pop('system_balance', None)
+                    item.pop('policy_log', None)
+            return jsonify(success=True, wallets=items)
         
         headers = {
             'User-Agent': 'Mozilla/5.0 (Apple) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
@@ -26747,16 +27067,21 @@ def get_wallets():
                 if balance_resp is not None and balance_resp.status_code == 200:
                     balance_data = balance_resp.json()
                     wallet_data['trx_balance'] = float(balance_data.get('balance', 0)) / 1_000_000
+                    usdt_confirmed = False
                     for token in balance_data.get('trc20token_balances', []):
                         if token.get('tokenId') == 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t':
                             wallet_data['usdt_balance'] = float(token.get('balance', 0)) / 1_000_000
+                            usdt_confirmed = (balance_data.get('address') == wallet.address
+                                and 'balance' in token and math.isfinite(wallet_data['usdt_balance'])
+                                and wallet_data['usdt_balance'] >= 0)
                             break
 
                     # Обновляем кэш
                     TRONSCAN_CACHE['balances'][wallet.address] = {
                         'usdt': wallet_data['usdt_balance'],
                         'trx': wallet_data['trx_balance'],
-                        'timestamp': current_time
+                        'timestamp': current_time,
+                        'usdt_confirmed': usdt_confirmed,
                     }
                 else:
                     # Если ошибка, попробуем альтернативный эндпоинт баланса
@@ -35418,8 +35743,13 @@ def docs_change_file(doc_id):
             return jsonify(success=False, error='Файл не найден'), 404
         agreement = db.get(Agreement, doc.agreement_id)
         row, state, linked = _docs_linked_deals(db, doc.agreement_id, doc_id)
-        if role == 'manager' and not _docs_manager_allowed(db, linked, actor_id):
-            return jsonify(success=False, error='Документы этой сделки меняет её менеджер'), 403
+        if TASKS_ENABLED and not STAND_MODE and role != 'admin' and not linked:
+            return jsonify(success=False, error='forbidden'), 403
+        if role == 'manager':
+            allowed = (all(_stand_manager_owns_deal(db, deal, actor_id) for deal in linked)
+                       if TASKS_ENABLED and not STAND_MODE else _docs_manager_allowed(db, linked, actor_id))
+            if not allowed:
+                return jsonify(success=False, error='Документы этой сделки меняет её менеджер'), 403
         if role != 'admin' and _docs_delete_blocked(db, agreement, linked):
             return jsonify(success=False, error='Сделка закрыта, удаление документов — только администратором'), 403
         user = db.get(AdminUser, actor_id)
@@ -35483,6 +35813,9 @@ def docs_download(doc_id):
             pack = (deal or {}).get('docPack') or {}
             if not pack or pack.get('agreementId') != d.agreement_id:
                 return jsonify(success=False, error='Пакет сделки не найден'), 404
+            if TASKS_ENABLED and not STAND_MODE and current_role() == 'manager' and not _stand_manager_owns_deal(
+                    db, deal, flask_session.get('user_id')):
+                return jsonify(success=False, error='forbidden'), 403
             if document_pack_stale(deal):
                 return jsonify(success=False, error='Сначала перевыпустите документы с новым курсом'), 409
             if doc_id not in _stand_doc_pack_items(deal).values():

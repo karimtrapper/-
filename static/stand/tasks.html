@@ -1208,6 +1208,7 @@ function standMerge(base,mine,theirs){
 
 function standSnapshot(){
   const o={}; STAND_SHARED.forEach(k=>{ if(S[k]!==undefined)o[k]=S[k]; });
+  if(globalThis.workingTasks)delete o.bal;
   if(Array.isArray(o.deals))
     o.deals=o.deals.filter(d=>d.taskArchived===true||!d.manualNew||d.originMode==='manual');
   if(Array.isArray(o.incomes))o.incomes=o.incomes.map(({sel,...income})=>income);
@@ -1487,7 +1488,8 @@ function migrate(st){
   });
   st.modal=st.modal||null; st.doc=st.doc||null; st.view=st.view||'deal';
   st.convs=st.convs||[]; st.cseq=st.cseq||0; st.cnv=st.cnv||null;
-  if(!st.bal||typeof st.bal.ipps!=='number') st.bal=balInit();
+  if(globalThis.workingTasks)delete st.bal;
+  else if(!st.bal||typeof st.bal.ipps!=='number') st.bal=balInit();
   if(!Array.isArray(st.refs)||!st.refs.length) st.refs=refsInit();
   /* Миграция: до этой правки ручные агенты («Создать реферера» прямо в задачнике)
      имели такие же простые числовые id, как строки настоящей таблицы referrers —
@@ -3242,14 +3244,14 @@ function payoutRecord(x,phase,main){
     if(k==='client'){x.paySrc='client';Object.assign(po,{method:'USDT клиенту на кошелёк',source:SOURCES_PAY.client.t,
       thb:null,usdt:pcAmount(x)||null,wallet:(w&&w.addr)||''});}
     if((k==='ipps'||k==='keep')&&!main){
-      /* Выдача не с кошелька: баты ушли с баланса — списываем, иначе балансы
-         на стенде врут (Поляковой выдали 91 538 ฿ с IPPS, баланс не изменился). */
       const src=k==='ipps'?'ipps':(tr.src||'cash');
       x.paySrc=src;
       Object.assign(po,{method:k==='ipps'?'баты с баланса IPPS':'выдача не с кошелька',source:SOURCES_PAY[src].t,thb:thb});
-      const t=balTake(src,thb,null);
-      log(x,t===false?'На балансе «'+SOURCES_PAY[src].t+'» не хватает '+money(thb,'฿')+' — выдачу надо закрыть другим источником'
-        :'Списано с «'+SOURCES_PAY[src].t+'»: '+money(thb,'฿'));
+      if(!globalThis.workingTasks){
+        const t=balTake(src,thb,null);
+        log(x,t===false?'На балансе «'+SOURCES_PAY[src].t+'» не хватает '+money(thb,'฿')+' — выдачу надо закрыть другим источником'
+          :'Списано с «'+SOURCES_PAY[src].t+'»: '+money(thb,'฿'));
+      }
     }
     if(k==='refund'){
       const fw=walletById(tr.walletId);
@@ -3283,6 +3285,13 @@ function payoutRecord(x,phase,main){
 function packSettle(d,phase){
   cnvMembers(d).forEach(x=>{
     if(x.closed&&x.id!==d.id&&!(phase==='sent'&&x.postConv==='refund')) return;
+    if(globalThis.workingTasks&&x.id!==d.id&&(x.postConv==='ipps'||x.postConv==='keep')){
+      if(phase==='decided'&&!x.closed){
+        if(x.type==='Оплата недвижимости')go(x,'s26','Источник выплаты выбран — нужен чек',false);
+        else noteAdd('manager','Источник выплаты выбран. Подтвердите выплату и закройте сделку в CRM.',x.id);
+      }
+      return;
+    }
     payoutRecord(x,phase,x.id===d.id);
     if(x.id===d.id||x.closed) return;
     if(x.postConv==='refund')return; /* Возмещение и закрытие записывает сервер после проверки. */
@@ -3601,6 +3610,7 @@ function coinsThb(x){const thb=x.amountThb||approx(x).thb||0;
   return x.type==='Оплата недвижимости'&&x.kind!=='Фрихолд'?Math.round(thb*(1+(x.companyPct==null?1:x.companyPct)/100)):thb;}
 function transferSet(id,f,v){
   const x=deal(id);if(sendList(x).length){toast('Назначение перевода уже закреплено — сначала уберите неподтверждённые отправки');return;} x.transfer=Object.assign({},x.transfer||{}); x.transfer[f]=v;
+  if(globalThis.workingTasks&&f==='src')delete x.transfer.bankCardId;
   /* Coins называет курс — сумму USDT считаем от бат, руками её не вводят */
   if(x.postConv==='coins'){
     const r=num(cleanNum(String(x.transfer.rate||'')));
@@ -3648,7 +3658,9 @@ function pcTaskText(x,k,w){
   return '';
 }
 function postConvSet(id,k){
-  const d=deal(id);if(sendList(d).length){toast('По сделке уже зарегистрированы переводы');return;} d.postConv=k;
+  const d=deal(id);if(sendList(d).length){toast('По сделке уже зарегистрированы переводы');return;}
+  if(globalThis.workingTasks&&d.postConv!==k&&d.transfer)delete d.transfer.bankCardId;
+  d.postConv=k;
   const x=POST_CONV.find(p=>p.k===k);
   log(d,'Что делаем с USDT: '+(x?x.t:k));
   save();render();
@@ -3838,7 +3850,8 @@ async function s14Ping(id){
 }
 function notesFor(role){
   const archived=new Set(S.deals.filter(d=>d.taskArchived===true).map(d=>String(d.id)));
-  return notes().filter(n=>n.role===role&&!archived.has(String(n.dealId)));
+  return notes().filter(n=>n.role===role&&!archived.has(String(n.dealId))&&
+    (!n.recipientAdminId||String(n.recipientAdminId)===String(standMeId)||standMe==='admin'));
 }
 function notesUnread(role){ return notesFor(role).filter(n=>!n.read).length; }
 function notesOpen(){ S.notesOpen=!S.notesOpen; save(); render(); }
@@ -4163,6 +4176,33 @@ const THAI_BANKS=['Kasikorn (KBank)','SCB','Bangkok Bank','Krungthai','TTB','Kru
    выглядело кашей: в списке партнёра появлялись чужие сделки с пометкой «вручную». */
 /* Рефереры — только те, кого завели руками («Создать реферера»), выдуманных нет */
 function refsInit(){return [];}
+let crmReferrers=null;
+function mapCrmReferrer(a){
+  const comp=a.comp_model||'revshare';
+  return {id:Number(a.id),name:a.name.trim(),code:a.code||'',lang:a.lang||'ru',comp,
+    percent:+((comp==='markup'?a.markup_percent:comp==='fixed'?(a.fixed_usdt??a.default_percent):a.default_percent)||0),
+    cur:a.payout_currency||'USDT',tg:a.telegram||'',active:a.active!==false,
+    token:'',parentId:null,l2:10,prod:true};
+}
+async function loadCrmReferrers(){
+  try{
+    const response=await fetch('/api/stand/referrers',{credentials:'same-origin',cache:'no-store'});
+    const data=response.ok?await response.json():null;
+    if(!Array.isArray(data?.referrers)){crmReferrers=null;return;}
+    const items=data.referrers.filter(a=>Number(a.id)>0&&a.name?.trim()&&a.active!==false&&!a.is_test);
+    crmReferrers=[...new Map(items.map(a=>[Number(a.id),mapCrmReferrer(a)])).values()];
+  }catch(e){crmReferrers=null;}
+}
+function refChoices(){
+  return globalThis.workingTasks?(crmReferrers||[]):refs();
+}
+function refOptions(selected,agents){
+  const choices=refChoices().filter(r=>!globalThis.workingTasks||r.id===selected?.refId||
+    !agents?.some(a=>a!==selected&&a.refId===r.id));
+  const current=selected?.refId!=null?refById(selected.refId):null;
+  const withCurrent=current&&!choices.some(r=>r.id===current.id)?[...choices,current]:choices;
+  return withCurrent.map(r=>`<option value="${htmlText(r.id)}"${String(selected?.refId)===String(r.id)?' selected':''}>${htmlText(r.name)} · ${htmlText(r.code)}</option>`).join('');
+}
 /* Агенты — из базы стенда (Карим, 25.09: «в тестовом стенде нет агентов, они должны
    быть из прода»). Раньше сервер стенда читал прод напрямую по read-only ключу
    (/api/stand/prod-agents); T1 этот путь выключил (403 stand_blocked) — после заливки
@@ -4199,15 +4239,15 @@ async function refsSync(quiet){
   }catch(e){if(!quiet)toast('Справочник рефереров недоступен — агенты не обновлены');return false;}
 }
 function refFind(q){
-  q=(q||'').trim().toLowerCase(); if(!q)return refs().slice(0,8);
-  return refs().filter(r=>(r.name+' '+r.code+' '+(r.tg||'')).toLowerCase().includes(q)).slice(0,8);
+  q=(q||'').trim().toLowerCase();
+  return refChoices().filter(r=>(r.name+' '+r.code+' '+(r.tg||'')).toLowerCase().includes(q)).slice(0,8);
 }
 function refModel(r){return r.comp==='markup'?'markup +'+r.percent+'%'
   :r.comp==='fixed'?'fixed $'+r.percent:'revshare '+r.percent+'%';}
 function refs(){ if(!S.refs)S.refs=refsInit(); return S.refs; }
-function refBy(name){return refs().find(r=>r.name===name);}
-function refById(id){return refs().find(r=>r.id===id);}
-function refByCode(code){return refs().find(r=>r.code===code);}
+function refBy(name){return (globalThis.workingTasks?crmReferrers?.find(r=>r.name===name):null)||refs().find(r=>r.name===name);}
+function refById(id){return (globalThis.workingTasks?crmReferrers?.find(r=>r.id===id):null)||refs().find(r=>r.id===id);}
+function refByCode(code){return (globalThis.workingTasks?crmReferrers?.find(r=>r.code===code):null)||refs().find(r=>r.code===code);}
 /* Приведение id реферера из значения <select>/<input> (всегда строка в DOM):
    запись из настоящей таблицы referrers — число, ручной агент задачника —
    строка 'm:<n>' (см. refAdd). Раньше везде звали голый Number(v)/parseInt(v),
@@ -4248,7 +4288,7 @@ function sourceRefLabel(source,sourceRef){
    с агентом. Нет следа — нет и вопроса (Карим, 22.09). */
 function refSignal(o){
   const code=o.source==='bitrix'?bxRefCode(o.sourceRef):null;
-  if(code){const r=refs().find(x=>x.code===code); if(r)return {r:r,why:'метка '+code+' в карточке Битрикса'};}
+  if(code){const r=refByCode(code); if(r)return {r:r,why:'метка '+htmlText(code)+' в карточке Битрикса'};}
   const c=o.clientId?clientById(o.clientId):null;
   if(c&&c.refId){const r=refById(c.refId); if(r)return {r:r,why:'партнёр закреплён за клиентом'};}
   const prev=S.deals.find(x=>x.refId&&x.id!==o.id&&x.source===o.source&&x.sourceRef===o.sourceRef);
@@ -4298,7 +4338,7 @@ function agentsBlock(d,ctx,serverPayouts){
       <span class="tier"><button onclick="agentTier('${ctx}',${d.id},${i},-1)">−</button>${a.tier||1}-й уровень<button onclick="agentTier('${ctx}',${d.id},${i},1)">+</button></span>
       <select class="fc" onchange="agentSet('${ctx}',${d.id},${i},'refId',this.value)">
         <option value="">— выбрать агента —</option>
-        ${refs().map(r=>`<option value="${r.id}"${String(a.refId)===String(r.id)?' selected':''}>${r.name} · ${r.code}</option>`).join('')}
+        ${refOptions(a,list)}
       </select>
       <button class="btn btn-outline btn-sm" onclick="agentDel('${ctx}',${d.id},${i})">Убрать</button>
     </div>
@@ -4311,9 +4351,9 @@ function agentsBlock(d,ctx,serverPayouts){
     </div>
     <div class="agnote">${(E.agents[i]&&E.agents[i].base)?'считается от: '+E.agents[i].base:''}${a.paid?' · выплачено '+(a.paidAt||''):''}</div>
   </div>`).join(''):(function(){const sig=refSignal(d);
-    return sig?`<div class="alert a-warn" style="margin:0"><div>Агентов нет, но след есть: <b>${sig.r.name}</b> — ${sig.why}. Если это его клиент, добавьте агентом.</div>
+    return sig?`<div class="alert a-warn" style="margin:0"><div>Агентов нет, но след есть: <b>${htmlText(sig.r.name)}</b> — ${sig.why}. Если это его клиент, добавьте агентом.</div>
       <button class="btn btn-outline btn-sm" style="margin-left:auto;align-self:center;white-space:nowrap"
-        onclick="agentsFromSignal('${ctx}',${d.id})">Добавить ${sig.r.name}</button></div>`
+        onclick="agentsFromSignal('${ctx}',${d.id})">Добавить ${htmlText(sig.r.name)}</button></div>`
     :`<div class="alert a-info" style="margin:0"><div>Агентов нет — вся прибыль остаётся нам. Клиент пришёл сам: ни метки в источнике, ни партнёра за ним не закреплено.</div></div>`;})()}
   ${list.length?`<p style="font-size:13px;margin-top:8px">${serverPayouts?'':`Агентам всего: <b>${moneyKop(total,'USDT')}</b> · чистая наша: <b class="pos">${moneyKop(E.net!=null?E.net:0,'USDT')}</b> · `}
     <span style="color:var(--text-muted)">${mode==='cascade'?'каскадом: каждый следующий считается от выплаты предыдущего':'в долю: все считаются от прибыли'}</span></p>`:''}`;
@@ -4331,7 +4371,7 @@ function draftAgentsBlock(D){
       <span class="tier"><button onclick="dAgentTier(${i},-1)">−</button>Ур.${a.tier||1}<button onclick="dAgentTier(${i},1)">+</button></span>
       <select class="fc" onchange="dAgentSet(${i},'refId',this.value)">
         <option value="">— выбрать агента —</option>
-        ${refs().map(r=>`<option value="${r.id}"${String(a.refId)===String(r.id)?' selected':''}>${r.name} · ${r.code}</option>`).join('')}
+        ${refOptions(a,list)}
       </select>
       <button class="btn btn-outline btn-sm" onclick="dAgentDel(${i})">Убрать</button>
     </div>
@@ -4343,9 +4383,9 @@ function draftAgentsBlock(D){
       <span class="agpay" style="color:var(--text-muted);font-weight:500">посчитается после курса</span>
     </div>
   </div>`).join(''):(function(){const sig=refSignal(D);
-    return sig?`<div class="alert a-warn" style="margin:0"><div>Агентов нет, но след есть: <b>${sig.r.name}</b> — ${sig.why}.</div>
+    return sig?`<div class="alert a-warn" style="margin:0"><div>Агентов нет, но след есть: <b>${htmlText(sig.r.name)}</b> — ${sig.why}.</div>
       <button class="btn btn-outline btn-sm" style="margin-left:auto;align-self:center;white-space:nowrap"
-        onclick="agentsFromSignal('draft',0)">Добавить ${sig.r.name}</button></div>`
+        onclick="agentsFromSignal('draft',0)">Добавить ${htmlText(sig.r.name)}</button></div>`
     :`<div class="alert create-neutral-info" style="margin:0"><div>Агентов нет — вся прибыль остаётся нам. Клиент пришёл сам.</div></div>`;})()}`;
 }
 /* Отметки «пришёл сам» больше нет: отсутствие агента и следа само означает это.
@@ -4360,8 +4400,14 @@ function dAgentTier(i,dir){const a=S.draft.agents[i];a.tier=Math.max(1,Math.min(
   S.draft.agentsMode=null;syncRef(S.draft);save();render();}
 function dAgentSet(i,k,v){
   const a=S.draft.agents[i];
-  if(k==='refId'){a.refId=refIdNorm(v);const r=refById(a.refId);
-    if(r){a.name=r.name;if(!a.touched){a.comp=r.comp;a.percent=r.percent;a.fixed=r.comp==='fixed'?r.percent:0;}}}
+  if(k==='refId'){
+    a.refId=refIdNorm(v);const r=refById(a.refId);
+    if(globalThis.workingTasks){
+      a.crmReferrerId=crmReferrers?.some(item=>item.id===a.refId)?a.refId:null;
+      if(!r)a.name='';
+    }
+    if(r){a.name=r.name;if(!a.touched){a.comp=r.comp;a.percent=r.percent;a.fixed=r.comp==='fixed'?r.percent:0;}}
+  }
   else {a[k]=(k==='comp')?v:Number(String(v).replace(',','.'))||0;a.touched=true;}
   syncRef(S.draft);save();render();
 }
@@ -4375,14 +4421,21 @@ function agentTier(ctx,id,i,dir){const d=deal(id);const a=d.agents[i];
   a.tier=Math.max(1,Math.min(5,(a.tier||1)+dir));d.agentsMode=null;syncRef(d);save();render();}
 function agentSet(ctx,id,i,k,v){
   const d=deal(id),a=d.agents[i];
-  if(k==='refId'){a.refId=refIdNorm(v);const r=refById(a.refId);
-    if(r){a.name=r.name; if(!a.touched){a.comp=r.comp;a.percent=r.percent;a.fixed=r.comp==='fixed'?r.percent:0;}}}
+  if(k==='refId'){
+    a.refId=refIdNorm(v);const r=refById(a.refId);
+    if(globalThis.workingTasks){
+      a.crmReferrerId=crmReferrers?.some(item=>item.id===a.refId)?a.refId:null;
+      if(!r)a.name='';
+    }
+    if(r){a.name=r.name;if(!a.touched){a.comp=r.comp;a.percent=r.percent;a.fixed=r.comp==='fixed'?r.percent:0;}}
+  }
   else {a[k]=(k==='comp')?v:Number(String(v).replace(',','.'))||0; a.touched=true;}
   syncRef(d);save();render();
 }
 function agentsDefault(refId){
   const r=refById(refId); if(!r)return [];
   const out=[{refId:r.id,name:r.name,tier:1,comp:r.comp,percent:r.percent,fixed:r.comp==='fixed'?r.percent:0,paid:false,paidAt:''}];
+  if(globalThis.workingTasks&&crmReferrers?.some(item=>item.id===r.id))out[0].crmReferrerId=r.id;
   const p=r.parentId?refById(r.parentId):null;
   if(p) out.push({refId:p.id,name:p.name,tier:2,comp:'revshare',percent:(r.l2==null?10:r.l2),fixed:0,paid:false,paidAt:''});
   return out;
@@ -4551,11 +4604,69 @@ const SOURCES_PAY={
   client :{t:'USDT клиенту на кошелёк',cur:'usdt',conv:true, debt:false, note:'клиент получает USDT — расход по переводу с нашего кошелька'}
 };
 function balInit(){return {ipps:1250000,cash:480000,scb:2100000,usdt:41800};}
-function bal(){ if(!S.bal)S.bal=balInit(); return S.bal; }
-function balOf(src){const b=bal();return src==='coins'||src==='founder'?b.usdt:(b[src]||0);}
-function balLabel(src){const s=SOURCES_PAY[src];return s.cur==='usdt'?usd(balOf(src)):money(balOf(src),'฿');}
+let crmBalances=null;
+async function loadCrmBalances(){
+  try{
+    const response=await fetch('/api/stand/balances',{credentials:'same-origin',cache:'no-store'});
+    const data=response.ok?await response.json():null;
+    crmBalances=data?.success&&data.source==='crm'?data:null;
+  }catch(e){crmBalances=null;}
+}
+function bal(){
+  if(globalThis.workingTasks)return null;
+  if(!S.bal)S.bal=balInit();
+  return S.bal;
+}
+function balOf(src){
+  if(globalThis.workingTasks){
+    const amount=SOURCES_PAY[src]?.cur==='usdt'?crmBalances?.usdt?.available_usdt:crmBalances?.[src]?.available_thb;
+    return Number.isFinite(amount)?amount:null;
+  }
+  const b=bal();return SOURCES_PAY[src]?.cur==='usdt'?b.usdt:(b[src]||0);
+}
+function balanceText(amount,currency){
+  if(amount==null)return 'Нет данных';
+  return currency==='usdt'?usd(amount):(globalThis.workingTasks?moneyKop(amount,'฿'):money(amount,'฿'));
+}
+function balLabel(src){return balanceText(balOf(src),SOURCES_PAY[src].cur);}
+function plannedBalanceSource(d){
+  if(d.postConv==='ipps')return 'ipps';
+  if(d.postConv==='keep')return d.transfer?.src||null;
+  return null;
+}
+function corporatePayoutAccounts(src){
+  if(src==='ipps')return crmBalances?.ipps?.card_id?[{id:crmBalances.ipps.card_id,
+    label:SOURCES_PAY.ipps.t,available_thb:crmBalances.ipps.available_thb}]:[];
+  return (crmBalances?.scb?.accounts||[]).filter(account=>account.personal_owner===null);
+}
+function payoutBankAccount(d,src,chooseSingleton=true){
+  if(src!=='scb'&&src!=='ipps')return null;
+  const accounts=corporatePayoutAccounts(src), id=Number(d.transfer?.bankCardId)||null;
+  return id?accounts.find(account=>Number(account.id)===id)||null:(chooseSingleton&&accounts.length===1?accounts[0]:null);
+}
+function plannedPayoutAmount(d){
+  return num(cleanNum(String(d.transfer?.thb||'')));
+}
+function plannedPayoutFields(d){
+  const src=plannedBalanceSource(d);
+  if(!globalThis.workingTasks||!src)return '';
+  const accounts=src==='cash'?[]:corporatePayoutAccounts(src);
+  const account=payoutBankAccount(d,src);
+  const renderedAmount=plannedPayoutAmount(d)??approx(d).thb??'';
+  return `<div class="fg"><label class="fl" for="bthb_${d.id}">Сумма выплаты, ฿<span class="rq">*</span></label>
+    <input class="fc num" id="bthb_${d.id}" value="${htmlText(renderedAmount)}" inputmode="decimal"
+      onchange="transferSet(${d.id},'thb',this.value)"></div>
+    ${accounts.length>1?`<div class="fg"><label class="fl" for="bc_${d.id}">Счёт компании<span class="rq">*</span></label>
+      <select class="fc" id="bc_${d.id}" onchange="transferSet(${d.id},'bankCardId',Number(this.value)||null)">
+        <option value="">— выбрать счёт —</option>
+        ${accounts.map(a=>`<option value="${Number(a.id)}"${Number(account?.id)===Number(a.id)?' selected':''}>${htmlText(a.label)} · ${balanceText(a.available_thb,'thb')}</option>`).join('')}
+      </select></div>`:''}
+    <div class="fg"><label class="fl">Доступно по данным CRM</label>
+      <input class="fc num" readonly value="${src==='cash'?balLabel('cash'):balanceText(account?.available_thb,'thb')}"></div>`;
+}
 /* Списание. Возвращает false, если не хватает — это и есть причина выбрать другой источник */
 function balTake(src,thb,usdtRate){
+  if(globalThis.workingTasks)return false;
   const b=bal(), s=SOURCES_PAY[src];
   if(s.cur==='usdt'){
     const need=usdtRate?thb/usdtRate:0;
@@ -7223,6 +7334,7 @@ function viewCreateBody(D,srcCard){
   const found=clientFind(D.cq, D.searchCrm);
   const cl=D.clientId?clientById(D.clientId):null;
   const cryptoFreehold=D.type==='Оплата недвижимости'&&D.kind==='Фрихолд'&&D.payType==='Крипта';
+  const refResults=refFind(D.rq);
   return `<div class="strip"><span class="id">Новая заявка</span><span class="it">${D.kind==='Фрихолд'&&D.payType==='Крипта'?'сумма клиента и инвойс — затем документы':'заведите клиента и что он хочет — запрос уйдёт операционисту'}</span>
     ${D.sourceRef?`<span class="sp"></span><span class="it">Источник: <b>${SOURCES[D.source]} · ${htmlText(D.sourceRef)}</b></span>`:''}</div>
   <div class="cols${cryptoFreehold?' cols-create-compact':''}"><div>
@@ -7329,18 +7441,19 @@ function viewCreateBody(D,srcCard){
       <p class="fh" id="d_fh_preview">${draftFreeholdPreview(D)}</p></div>`:''}
 
     ${(D.refSrc||'').indexOf('ссылка')===0?`<div class="fg"><div class="derived">
-      <span>Пришёл по реферальной ссылке <b>${(refById(D.refId)||{}).name}</b> · метка ${D.refSrc.replace('ссылка ','')} — агент проставлен сам</span></div></div>`:''}
+      <span>Пришёл по реферальной ссылке <b>${htmlText(refById(D.refId)?.name)}</b> · метка ${htmlText(D.refSrc.replace('ссылка ',''))} — агент проставлен сам</span></div></div>`:''}
 
     <div class="fg">
       ${draftAgentsBlock(D)}
-      ${(D.agents||[]).length?'':`<input class="fc" id="rq" style="max-width:520px;margin-top:10px" value="${(D.rq||'').replace(/"/g,'&quot;')}"
-          placeholder="Найти партнёра по имени, коду или телеграму" oninput="rememberFocus();draftSet('rq',this.value)">
+      ${(D.agents||[]).length?'':`<input class="fc" id="rq" style="max-width:520px;margin-top:10px" value="${htmlText(D.rq)}"
+          placeholder="${globalThis.workingTasks?'Найти партнёра по имени или коду':'Найти партнёра по имени, коду или телеграму'}" oninput="rememberFocus();draftSet('rq',this.value)">
         ${(D.rq||'').trim()?`<div class="list" style="margin-top:8px">
-          ${refFind(D.rq).map(r=>`<div class="li" onclick="draftRefSel('${r.id}')"><span class="av">${r.code.replace('GR-','').slice(0,2)}</span>
-            <div><div class="t1">${r.name} ${r.active?'':'<span class="badge b-wait">неактивен</span>'}</div>
-            <div class="t2">${r.code} · ${refModel(r)}${r.parentId?' · привёл '+(refById(r.parentId)||{}).name:''}</div></div>
+          ${refResults.map(r=>`<div class="li" onclick="draftRefSel(${htmlText(refIdLit(r.id))})"><span class="av">${htmlText(r.code.replace('GR-','').slice(0,2))}</span>
+            <div><div class="t1">${htmlText(r.name)} ${r.active?'':'<span class="badge b-wait">неактивен</span>'}</div>
+            <div class="t2">${htmlText(r.code)} · ${refModel(r)}${r.parentId?' · привёл '+htmlText(refById(r.parentId)?.name):''}</div></div>
             <span class="t3">добавить агентом</span></div>`).join('')}</div>
-          ${(D.rq||'').trim().length>1&&!refFind(D.rq).length?`<button class="btn btn-outline btn-sm" style="margin-top:8px" onclick="draftRefNew()">Создать партнёра «${D.rq}»</button>`:''}`:''}`}
+          ${!refResults.length&&globalThis.workingTasks?`<p class="fh">${crmReferrers?'Партнёры не найдены':'Справочник партнёров CRM недоступен'}</p>`:''}
+          ${!globalThis.workingTasks&&(D.rq||'').trim().length>1&&!refResults.length?`<button class="btn btn-outline btn-sm" style="margin-top:8px" onclick="draftRefNew()">Создать партнёра «${htmlText(D.rq)}»</button>`:''}`:''}`}
     </div>
 
 
@@ -7404,6 +7517,7 @@ function draftClientClear(){
   D.clientId=null;D.client='';D.cq='';D.pickOther=true;D.clientManual=false;save();render();
 }
 function draftRefNew(){
+  if(globalThis.workingTasks)return;
   const D=S.draft,name=(D.rq||'').trim(); if(!name)return;
   const r=refAdd({name:name});
   D.refId=r.id;D.refKnown=true;D.refSrc='создан при заведении сделки';D.rq='';D.agents=agentsDefault(r.id);
@@ -8162,10 +8276,12 @@ function viewDeal(d,inquiryField=''){
   const tab=(v,label)=>`<span class="vtab ${view===v?'on':''}" onclick="setView('${v}')">${label}</span>`;
   const canCloseManually=['manager','admin'].includes(S.role)&&!d.taskArchived&&!d.closed&&!d.manual&&!reviewTask&&!cash;
   const canDelete=STAND&&canDeleteStandDeal(d);
+  const conversation=globalThis.workingTasks&&!d.closed?standDealConversation(d):null;
   return `<div class="deal-screen"><div class="task-card-nav"><button type="button" onclick="closeTaskToList()">‹ Все задачи</button><button type="button" onclick="nextTask()" ${typeof nextTaskIndex==='undefined'||nextTaskIndex()<0?'disabled':''}>Следующая задача ›</button></div><div class="deal-breadcrumb">Задачник / ${htmlText(d.code)}</div>
   <header class="deal-head"><div><p class="deal-code">${htmlText(d.code)} · ${htmlText(['ИППС','Личный счёт'].includes(d.kind)?dealDisplayKind(d):d.autoPayment===true?'Оплата авто':d.kind||d.type)}${d.prepay?' · оплата наперёд':''}</p>
     <h1>${htmlText(d.client)}</h1><p>${htmlText([d.object,d.dev,d.manager?'менеджер '+d.manager:''].filter(Boolean).join(' · '))}</p></div>
-    ${canCloseManually||canDelete?`<div class="deal-head-actions">
+    ${canCloseManually||canDelete||conversation?.href||conversation?.group?`<div class="deal-head-actions">
+      ${conversation?.href||conversation?.group?standConversationAction(d,conversation,'btn btn-outline btn-sm'):''}
       ${canCloseManually?`<button class="btn btn-outline btn-sm" onclick="manualCloseAsk(${d.id})">Перенести в CRM и закрыть</button>`:''}
       ${canDelete?`<button type="button" class="btn btn-outline btn-sm" ${standClosing?'disabled':''} onclick="deleteStandDeal(${d.id})">Удалить из задачника</button>`:''}
     </div>`:''}
@@ -8716,7 +8832,8 @@ function crmPayload(d){
     agents:(d.agents||[]).filter(a=>a.refId!=null||String(a.name||'').trim()).map(a=>{
       const src=(a.refId!=null)?refById(a.refId):null;
       const nameOk=src&&String(src.name||'').trim().toLowerCase()===String(a.name||'').trim().toLowerCase();
-      return {referrer_id:(src&&src.prod&&nameOk)?src.id:undefined,name:a.name,tier:a.tier||1,
+      const confirmedId=globalThis.workingTasks&&Number.isInteger(a.crmReferrerId)&&a.crmReferrerId===a.refId?a.crmReferrerId:null;
+      return {referrer_id:confirmedId??((src&&src.prod&&nameOk)?src.id:undefined),name:a.name,tier:a.tier||1,
         comp_model:a.comp||'revshare',
         percent:a.comp==='fixed'?0:(+a.percent||0),fixed_usdt:a.comp==='fixed'?(+a.fixed||0):0};
     })};
@@ -10992,8 +11109,9 @@ function viewEdit(){
       <div class="fg"><label class="fl">Откуда обращение</label>
         <select class="fc" id="crmDraftSource">${Object.keys(SOURCES).map(k=>
           `<option value="${k}"${d.source===k?' selected':''}>${SOURCES[k]}</option>`).join('')}</select></div>
-      <div class="fg"><label class="fl">${d.source==='bitrix'?'Карточка в Битриксе':'Чат / источник'}</label>
-        <input class="fc" id="crmDraftSourceRef" list="crmDraftSourceChoices" value="${htmlText(d.sourceRef||'')}">
+      <div class="fg"><label class="fl" for="crmDraftSourceRef">${d.source==='bitrix'?'Карточка в Битриксе':'Чат / источник'}</label>
+        <input class="fc" id="crmDraftSourceRef" list="crmDraftSourceChoices" aria-describedby="crmDraftSourceName" value="${htmlText(d.sourceRef||'')}">
+        <p class="fh" id="crmDraftSourceName" hidden></p>
         <datalist id="crmDraftSourceChoices"></datalist></div>
       <div class="fg" id="crmDraftRealtySubtypeBox" style="display:${kind==='mf_realty'?'block':'none'}"><label class="fl">Вид недвижимости</label>
         <select class="fc" id="crmDraftRealtySubtype"><option value="Лизхолд"${d.kind==='Аренда'?'':' selected'}>Лизхолд</option>
@@ -13089,14 +13207,15 @@ function pcCard(d,x,share,w){
           <option value="no"${tr.back?'':' selected'}>не нужен — баланс IPPS пополняем отдельно</option>
           <option value="yes"${tr.back?' selected':''}>вернуть на кошелёк, с которого пополняли</option>
         </select>
-        <p class="fh">получателю ушли баты с баланса IPPS, USDT остались у нас. Если баланс пополняли с конкретного кошелька — вернём туда, иначе задачи владельцу кошелька не будет</p></div>`:''}
+        <p class="fh">${globalThis.workingTasks?'Выдача с баланса IPPS. Возврат USDT оформляется отдельно.':'получателю ушли баты с баланса IPPS, USDT остались у нас. Если баланс пополняли с конкретного кошелька — вернём туда, иначе задачи владельцу кошелька не будет'}</p></div>`:''}
       ${k==='keep'?`
       <div class="fg w2"><label class="fl">Откуда выдали баты<span class="rq">*</span></label>
         <select class="fc" id="pk_${x.id}" onchange="transferSet(${x.id},'src',this.value)">
           <option value="">— выбрать —</option>
           ${['cash','scb'].map(v=>`<option value="${v}"${tr.src===v?' selected':''}>${SOURCES_PAY[v].t} · ${balLabel(v)}</option>`).join('')}
         </select>
-        <p class="fh">это Pay-Out сделки: с этого баланса баты и спишутся. Если выдал фаундер своими — назначение «Вернуть фаундеру»</p></div>`:''}
+        <p class="fh">${globalThis.workingTasks?'Если выдал фаундер своими — выберите «Вернуть фаундеру».':'это Pay-Out сделки: с этого баланса баты и спишутся. Если выдал фаундер своими — назначение «Вернуть фаундеру»'}</p></div>`:''}
+      ${plannedPayoutFields(x)}
       ${(k!=='coins'&&pcSends(x))?`
       <div class="fg"><label class="fl">Сумма USDT<span class="rq">*</span></label>
         <input class="fc num" id="ca_${x.id}" value="${tr.amount||''}" placeholder="${share?share.toFixed(2):''}"
@@ -14254,7 +14373,10 @@ function stepCard(d){
     `<div class="row"><button class="btn btn-primary" onclick="act(${d.id},'s25')">Известил Coins — ждём баты на SCB</button></div>`}</div>`;},
 
   s26:()=>{
-    const pt=d.payTo||{}, sum=pt.amount||ap.thb||0;
+    const pt=d.payTo||{}, src=globalThis.workingTasks?(plannedBalanceSource(d)||'scb'):'scb';
+    const sum=globalThis.workingTasks?(pt.amount||plannedPayoutAmount(d)||ap.thb||0):(pt.amount||ap.thb||0);
+    const account=globalThis.workingTasks?payoutBankAccount(d,src):null;
+    const available=src==='cash'?balOf('cash'):account?.available_thb;
     const line=(k,v,copy)=>`<div class="payrow"><div style="min-width:0"><div class="k">${k}</div>
       <div class="v ${k==='Номер счёта'?'addr':''}">${v||'—'}</div></div>
       ${copy&&v?`<button class="btn btn-outline btn-sm" style="white-space:nowrap"
@@ -14288,7 +14410,7 @@ function stepCard(d){
         <button class="btn btn-outline" onclick="ret(${d.id})">Вернуть с вопросом</button></div></div>`;
     }
     return `<div class="card"><div class="card-title">Оплатить инвойс получателю
-      <span class="sub">платим со счёта SCB · MF Corp</span></div>
+      <span class="sub">${globalThis.workingTasks?htmlText(account?.label||SOURCES_PAY[src].t):'платим со счёта SCB · MF Corp'}</span></div>
     ${pt.dev?'':`<div class="alert a-warn"><div>Менеджер ещё не заполнил реквизиты — платить не по чему. Верните задачу с вопросом.</div></div>`}
     ${(pt.dev&&!String(pt.purpose||'').trim())?`<div class="alert a-warn"><div>Менеджер не указал назначение для банка застройщика — верните с вопросом. Без него платить нельзя.</div></div>`:''}
     ${(payToReady(d)&&!payToConfirmed(d))?`<div class="alert a-warn"><div>Ждём подтверждения реквизитов от менеджера — оплатить нельзя, пока он не подтвердит.</div></div>`:''}
@@ -14303,7 +14425,8 @@ function stepCard(d){
     </div>
     <div class="derived" style="margin-top:12px">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
-      <span>Спишется <b>${money(sum,'฿')}</b> со счёта SCB · остаток станет <b>${money(balOf('scb')-sum,'฿')}</b></span></div>
+      ${globalThis.workingTasks?`<span>Доступно по данным CRM: <b>${balanceText(available,'thb')}</b></span>`
+        :`<span>Спишется <b>${money(sum,'฿')}</b> со счёта SCB · остаток станет <b>${money(balOf('scb')-sum,'฿')}</b></span>`}</div>
     <div class="card-title" style="font-size:15px;margin:18px 0 8px">Чек об оплате
       <span class="sub">уйдёт менеджеру — он отправит его клиенту</span></div>
     <div style="border:1.5px dashed var(--coral);border-radius:var(--r);padding:4px">
@@ -14755,7 +14878,7 @@ async function act(id,step){
       toast(x.code+': '+why);};
     const noKind=mem.find(x=>!x.postConv);
     if(noKind){bad(noKind,'не выбрано назначение','pc_'+noKind.id);return;}
-    const noSrc=mem.find(x=>x.postConv==='keep'&&x.id!==d.id&&!(x.transfer||{}).src);
+    const noSrc=mem.find(x=>x.postConv==='keep'&&(globalThis.workingTasks||x.id!==d.id)&&!(x.transfer||{}).src);
     if(noSrc){bad(noSrc,'не указано, откуда выдали баты','pk_'+noSrc.id);return;}
     const noAmt=mem.find(x=>(pcSends(x)||x.postConv==='refund')&&(!Number.isFinite(pcAmount(x))||pcAmount(x)<=0));
     if(noAmt){bad(noAmt,'не указана сумма USDT',(noAmt.postConv==='coins'?'cr_':'ca_')+noAmt.id);return;}
@@ -14766,6 +14889,23 @@ async function act(id,step){
     if(badAddr){const tr=badAddr.transfer||{};
       bad(badAddr,'«'+tr.addr+'» — не адрес '+pcNet(badAddr)+(pcNet(badAddr)==='ERC-20'?' (0x и 40 знаков)':' (T и ещё 33 символа)')+'. Проверьте адрес и сеть',
         (pcInside(badAddr.postConv)&&tr.walletId?'cw_':'cad_')+badAddr.id);return;}
+    if(globalThis.workingTasks){
+      const plans=[];
+      for(const x of mem){
+        const src=plannedBalanceSource(x);
+        if(!src)continue;
+        const amount=plannedPayoutAmount(x)??approx(x).thb;
+        if(!Number.isFinite(amount)||amount<=0){bad(x,'укажите сумму выплаты в батах','bthb_'+x.id);return;}
+        const account=payoutBankAccount(x,src);
+        if(src!=='cash'&&!account){
+          bad(x,corporatePayoutAccounts(src).length?'выберите корпоративный счёт':'корпоративный счёт недоступен в CRM','bc_'+x.id);return;
+        }
+        plans.push({deal:x,amount,cardId:account?.id??null});
+      }
+      plans.forEach(plan=>{
+        plan.deal.transfer={...plan.deal.transfer,thb:plan.amount,bankCardId:plan.cardId};
+      });
+    }
     mem.forEach(x=>{
       const o=POST_CONV.find(p=>p.k===x.postConv);
       const tr=x.transfer||{};
@@ -14780,10 +14920,13 @@ async function act(id,step){
     /* Ни по одной сделке пачки перевода с кошелька нет — подписывать нечего,
        иначе шаг подписи ждал бы переводов, которых не будет. */
     if(!mem.some(x=>pcSends(x))){
-      go(d,'s26','Решение по USDT: переводов с кошелька нет — дальше оплата');toast('Переводов нет — дальше оплата');return;}
+      go(d,'s26','Решение по USDT: переводов с кошелька нет — дальше оплата');
+      if(globalThis.workingTasks&&!await standRequireSaved('Не удалось сохранить план выплаты'))return;
+      toast('Переводов нет — дальше оплата');return;}
     const F=flowOf(d), i=F.indexOf('s22'), nxt=F[i+1]||'s26';
     const mine=POST_CONV.find(p=>p.k===d.postConv);
     go(d,nxt,'Решение по USDT: '+(mine?mine.t:d.postConv)+(mem.length>1?' · задач по пачке: '+mem.length:''));
+    if(globalThis.workingTasks&&!await standRequireSaved('Не удалось сохранить план выплаты'))return;
     toast('К отправке '+usd(pcOut(d)));return;}
   if(step==='s23'){
     if(hasPolicy(dealWallet(d))){
@@ -14829,7 +14972,8 @@ async function act(id,step){
     const gapThb=Math.round((amount-expected)*100)/100;
     if(Math.abs(gapThb)>0.01) toast('Расхождение с заявкой '+(gapThb>0?'+':'')+money(gapThb,'฿')+' — записано в журнал');
     if(!d.pay.coinsCredit){
-      d.pay.coinsCredit={thb:amount,ref,reason,at:now()};bal().scb=Math.round((balOf('scb')+amount)*100)/100;
+      d.pay.coinsCredit={thb:amount,ref,reason,at:now()};
+      if(!globalThis.workingTasks)bal().scb=Math.round((balOf('scb')+amount)*100)/100;
       log(d,'Coins: на SCB поступило '+moneyKop(amount,'฿')+' · операция '+ref+
         (Math.abs(gapThb)>0.01?' · расхождение с заявкой '+(gapThb>0?'+':'')+money(gapThb,'฿')+(reason?' — '+reason:' — причина не указана'):''));
     }
@@ -14859,17 +15003,26 @@ async function act(id,step){
       go(d,'s27','MT103 подтверждён, чек у менеджера — отправить клиенту и закрыть');
       toast('Чек ушёл менеджеру');return;
     }
-    const sum=pt.amount||approx(d).thb||0;
-    const taken=balTake('scb',sum,null);
-    if(taken===false){toast('На счёте SCB не хватает — сообщите фин диру');return;}
+    const src=globalThis.workingTasks?(plannedBalanceSource(d)||'scb'):'scb';
+    const sum=pt.amount||(globalThis.workingTasks?plannedPayoutAmount(d):null)||approx(d).thb||0;
+    if(!globalThis.workingTasks&&balTake('scb',sum,null)===false){toast('На счёте SCB не хватает — сообщите фин диру');return;}
     d.pay.invoicePaid=true;
     /* Оплата инвойса дописывается к Pay-Out, а не затирает его: раньше тут пропадали
        11 217,95 USDT, ушедшие в Coins, и «конвертации не было» (прогон 24.09). */
     const prev=d.payout||{};
-    d.payout=Object.assign({},prev,{invoice:{source:SOURCES_PAY.scb.t,thb:sum,to:pt.dev||'',at:now()}});
-    if(!prev.source){d.paySrc='scb';Object.assign(d.payout,{method:'оплата инвойса',source:SOURCES_PAY.scb.t,thb:sum});}
-    log(d,'Инвойс оплачен со счёта SCB — '+money(sum,'฿')+' · '+(pt.dev||'получателю')+' · чек приложен');
+    const account=globalThis.workingTasks?payoutBankAccount(d,src,false):null;
+    const invoice={source:SOURCES_PAY[src].t,thb:sum,to:pt.dev||'',at:now()};
+    if(account)invoice.bankCardId=Number(account.id);
+    d.payout=Object.assign({},prev,{invoice});
+    if(!prev.source){
+      d.paySrc=src;
+      Object.assign(d.payout,{method:'оплата инвойса',source:invoice.source,thb:sum});
+      if(account)d.payout.bankCardId=Number(account.id);
+    }
+    log(d,globalThis.workingTasks?'Приложен чек об оплате инвойса — '+money(sum,'฿')+' · '+(pt.dev||'получателю')
+      :'Инвойс оплачен со счёта SCB — '+money(sum,'฿')+' · '+(pt.dev||'получателю')+' · чек приложен');
     go(d,'s27','Оплачено, чек у менеджера — отправить клиенту и закрыть');
+    if(globalThis.workingTasks&&!await standRequireSaved('Не удалось передать чек менеджеру'))return;
     toast('Чек ушёл менеджеру');return;}
   if(step==='s27'){
     if(d.prepay&&(d.prepay.brokerStep!=='done'||!d.payout?.reimbursement)){toast('Ждём приход USDT брокера и возмещение на кошелёк оплаты');return;}
@@ -14964,7 +15117,7 @@ function convReceive(id){
 }
 function viewIncome(){
   const list=incomes().filter(x=>S.incShowExcl||!x.excluded);
-  const b=bal(), sel=incSel();
+  const sel=incSel();
   const selSum=sel.reduce((s,x)=>s+(x.rub||0),0);
   const free=incomes().filter(x=>!x.excluded&&!x.cnvId);
   return `<div class="page-h">Поступления <span class="sub">${sberMirrorLabel()}</span></div>
@@ -14997,10 +15150,10 @@ function viewIncome(){
   <div class="card"><div class="card-title">Чем можем платить прямо сейчас
     <span class="sub">от остатка зависит, нужна ли конвертация</span></div>
   <div class="stats-grid">
-    <div class="stat-card info"><div class="stat-value num" style="font-size:19px">${money(b.ipps,'฿')}</div><div class="stat-label">счёт IPPS · MF Corp</div></div>
-    <div class="stat-card"><div class="stat-value num" style="font-size:19px">${money(b.cash,'฿')}</div><div class="stat-label">касса · наличные</div></div>
-    <div class="stat-card"><div class="stat-value num" style="font-size:19px">${money(b.scb,'฿')}</div><div class="stat-label">счёт SCB</div></div>
-    <div class="stat-card success"><div class="stat-value num" style="font-size:19px">${usd(b.usdt)}</div><div class="stat-label">кошелёк USDT</div></div>
+    <div class="stat-card info"><div class="stat-value num" style="font-size:19px">${balLabel('ipps')}</div><div class="stat-label">счёт IPPS · MF Corp</div></div>
+    <div class="stat-card"><div class="stat-value num" style="font-size:19px">${balLabel('cash')}</div><div class="stat-label">касса · наличные</div></div>
+    <div class="stat-card"><div class="stat-value num" style="font-size:19px">${balLabel('scb')}</div><div class="stat-label">счёт SCB</div></div>
+    <div class="stat-card success"><div class="stat-value num" style="font-size:19px">${balLabel('coins')}</div><div class="stat-label">кошелёк USDT</div></div>
   </div>
   <p style="font-size:12.5px;color:var(--text-muted);margin-top:11px">Если баты уже есть на IPPS, в кассе или на SCB — покупать их за USDT не нужно, и путь сделки короче на два шага: без отправки, подписей и Coins.</p>
   </div>`;
@@ -15348,14 +15501,18 @@ function standDealConversation(d){
       href='https://b24-1tgrla.bitrix24.com/crm/deal/details/'+verifiedId+'/';
     }
   }
-  return {href,name:channel?.name||d.sourceRef,account:channel?.account||''};
+  const group=d.source==='wa'&&id.endsWith('@g.us')&&channel?.name;
+  return {href,group,name:channel?.name||d.sourceRef,account:channel?.account||''};
 }
-function standConversationAction(d,chat=standDealConversation(d)){
+function standConversationAction(d,chat=standDealConversation(d),cssClass='analytics-link'){
+  if(chat?.group)return `<div class="analytics-muted" style="overflow-wrap:anywhere">Группа WhatsApp · ${htmlText(chat.name)}
+    <a class="${cssClass}" href="https://web.whatsapp.com/" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer">Открыть WhatsApp Web ↗</a>
+    <button type="button" class="btn btn-outline btn-sm" onclick="copyAsk(${jsLiteralAttr(chat.name)})">Скопировать название</button></div>`;
   if(!chat?.href)return '<span class="analytics-muted">'+
     (d.sourceRef&&d.source!=='none'?'Ссылка недоступна':'Переписка не привязана')+'</span>';
   const label=d.source==='bitrix'?'Открыть в Битриксе':'Открыть '+SOURCES[d.source];
   const description=[chat.name,chat.account].filter(Boolean).join(' · ');
-  return '<a class="analytics-link" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer" href="'+
+  return '<a class="'+cssClass+'" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer" href="'+
     htmlText(chat.href)+'" title="'+htmlText(description)+'">'+label+' ↗</a>';
 }
 function analyticsPickReason(button){
@@ -16074,7 +16231,8 @@ async function standBoot(){
     if(!me.success){location.href='/login';return;}
     standMe=me.user.role||'admin';
     standSandbox=me.user.stand===true;
-    analyticsHistoryEnabled=me.user.tasks_enabled===true&&!standSandbox;
+    globalThis.workingTasks=me.user.tasks_enabled===true&&!standSandbox;
+    analyticsHistoryEnabled=globalThis.workingTasks;
     standMeId=me.user.id||null;
     standMeNames=[me.user.display_name,me.user.username];
     if(!canSwitchRole())S.role=standMe;
@@ -16099,6 +16257,7 @@ async function standBoot(){
   await fetchCrmClients();
   await fetchDealFlowConfig();
   if(S.tab==='analytics')await loadAnalyticsHistory();
+  else if(globalThis.workingTasks)await Promise.all([loadCrmBalances(),loadCrmReferrers()]);
   await standPull(true);
   if(S.tab!=='analytics'){
     for(const pendingClose of crmClosePendingAll())await crmCloseRecover(pendingClose.id);
@@ -16120,6 +16279,10 @@ async function standBoot(){
     if(S.tab==='analytics'&&!S.open&&!standTyping())render();
   },60000);
   if(standSandbox)setInterval(fetchSberMirrorStatus,60000);
+  else if(globalThis.workingTasks&&S.tab!=='analytics')setInterval(async()=>{
+    await Promise.all([loadCrmBalances(),loadCrmReferrers()]);
+    if(!standTyping()&&(S.tab==='income'||S.draft||['s22','s26'].includes(deal(S.open)?.step)))render();
+  },60000);
   setInterval(s18FetchCandidates,60000);
   setInterval(checkDocParseCapability,60000);
   setInterval(loadCrmWallets,60000);

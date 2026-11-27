@@ -265,13 +265,19 @@ def accept_journal(previous, submitted, actor, author, stamp):
                                     'kind': 'comment', 'text': f'Комментарий · {author}: {text}'})
 
 
-def accept_notes(previous, submitted, actor):
+def can_read_notice(note, actor, actor_id):
+    return note.get('inAppOnly') is not True or (
+        note.get('role') == actor and actor_id is not None and note.get('recipientAdminId') == actor_id)
+
+
+def accept_notes(previous, submitted, actor, actor_id=None):
     """Only read acknowledgements may originate in a board snapshot."""
     proposed = {str(n.get('id')): n for n in submitted.get('notes') or [] if isinstance(n, dict)}
     notes = deepcopy(previous.get('notes') or [])
     for note in notes:
         incoming = proposed.get(str(note.get('id')), {})
-        if (actor in ('admin', note.get('role')) and incoming.get('read') is True):
+        if (actor in ('admin', note.get('role')) and can_read_notice(note, actor, actor_id) and
+                incoming.get('read') is True):
             note['read'] = True
     submitted['notes'] = notes
 

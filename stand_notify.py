@@ -254,7 +254,8 @@ def deliver():
                 if isinstance(note, dict) and note.get('id') and str(note['id']) not in present:
                     notes.append(note)
                     present.add(str(note['id']))
-            notes = [note for note in notes if str(note.get('dealId')) not in archived_ids]
+            notes = [note for note in notes if str(note.get('dealId')) not in archived_ids
+                     and note.get('inAppOnly') is not True]
             # Уже открытые до исправления свободные задачи получают один
             # адресный цикл по текущему кошельку, без повторного проигрывания истории.
             queued = {str(n.get('dealId')) for n in notes if n.get('recipientRoles')}

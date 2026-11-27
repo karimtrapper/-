@@ -68,7 +68,8 @@ def imported(local_tasks):
     operator = client_for(make_user('operator'))
     with crm.get_session() as db:
         deal = crm.Deal(deal_type=crm.DealType.PAY_IN, status=crm.DealStatus.COMPLETED,
-                        client_name='Synthetic canonical', source_channel='site', payin_amount_usdt=1800,
+                        client_name='Synthetic canonical', source_channel='site',
+                        payin_method=crm.PayInMethod.CRYPTO_DIRECT, payin_amount_usdt=1800,
                         payout_amount_usdt=1730, profit_usdt=70, net_profit_usdt=70)
         db.add(deal)
         db.commit()
@@ -109,6 +110,11 @@ def test_three_imported_cards_keep_one_financial_deal(imported):
     assert history.status_code == 200
     assert [card['id'] for card in history.json['cards']] == list(CARD_IDS)
     assert {card['crm_deal_id'] for card in history.json['cards']} == {deal_id}
+    analytics = admin.get('/api/stand/task-history/analytics')
+    assert analytics.status_code == 200
+    entry, = analytics.json['deals']
+    assert entry['crm_deal_id'] == deal_id
+    assert entry['payin'] == {'currency': 'USDT', 'amount': 1800}
 
     response = admin.get('/api/stand/state?read_only=1')
     assert response.status_code == 200
@@ -138,6 +144,7 @@ def test_history_private_file_requires_admin_or_owning_manager(imported):
         cards = client.get(f'/api/deals/{deal_id}/task-history').json['cards']
         assert cards[0]['documents'] == []
         assert client.get(url).status_code == 404
+    assert crm.app.test_client().get(url).status_code == 401
     assert admin.delete(url).status_code == 405
     assert admin.get(url).data == PRIVATE_PDF
 
