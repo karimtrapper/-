@@ -959,6 +959,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
     <div class="container">
         <!-- Dashboard Section -->
         <section id="dashboard" class="section active">
+            <div class="crm-section-head slate-dashboard-only" hidden><h1>Дашборд</h1></div>
             <!-- Action items -->
             <div id="attentionAlerts" style="margin-bottom:16px"></div>
 
@@ -996,6 +997,10 @@ select.period-btn:hover:not(.active) { color: var(--text); }
 
             <!-- Метрики -->
             <div class="stats-grid" id="statsGrid"></div>
+            <details class="slate-dashboard-only" id="dashboardMoreMetrics" hidden>
+                <summary>Дополнительные показатели</summary>
+                <div class="stats-grid" id="dashboardMoreGrid"></div>
+            </details>
 
             <div class="card" id="siteCustomersCard" style="padding:20px;margin-bottom:16px">
                 <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:12px">
@@ -1112,7 +1117,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
             </div>
 
             <!-- Графики -->
-            <div style="display:grid;grid-template-columns:2fr 1fr;gap:16px;margin-bottom:16px">
+            <div id="dashboardFinancialCharts" style="display:grid;grid-template-columns:2fr 1fr;gap:16px;margin-bottom:16px">
                 <div class="card" style="padding:20px">
                     <div class="card-title" style="margin-bottom:12px" id="profitChartTitle">Прибыль ($)</div>
                     <div style="position:relative;height:220px"><canvas id="profitChart"></canvas></div>
@@ -1124,7 +1129,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                 </div>
             </div>
 
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+            <div id="dashboardActivityCharts" style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
                 <div class="card" style="padding:20px">
                     <div class="card-title" style="margin-bottom:12px" id="dealsChartTitle">Сделки</div>
                     <div style="position:relative;height:180px"><canvas id="dealsChart"></canvas></div>
@@ -4848,7 +4853,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                     const unreimbursedFounders = d.attention?.unreimbursed_founders ?? 0;
 
                     document.getElementById('statsGrid').innerHTML = `
-                        <div class="stat-card">
+                        <div class="stat-card" data-dashboard-priority>
                             <div class="stat-value">${p.deals_count ?? 0}</div>
                             <div class="stat-label">Сделок ${pl}</div>
                         </div>
@@ -4860,18 +4865,18 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                                 ≈ $${formatNumber(p.realty_fee_usdt ?? 0)} · баты на счёте компании
                             </div>
                         </div>
-                        <div class="stat-card success crm-mobile-stat-hero">
+                        <div class="stat-card success crm-mobile-stat-hero" data-dashboard-priority>
                             <div class="stat-value">$${formatNumber(p.profit_wallet_usdt ?? 0)}</div>
                             <div class="stat-label">Чистая прибыль в крипте ${pl}</div>
                             <div style="font-size:11px;color:#059669;margin-top:4px;line-height:1.5">
                                 после выплат рефералам
                             </div>
                         </div>` : `
-                        <div class="stat-card success crm-mobile-stat-hero">
+                        <div class="stat-card success crm-mobile-stat-hero" data-dashboard-priority>
                             <div class="stat-value">$${p.profit_usdt ?? 0}</div>
                             <div class="stat-label">Чистая прибыль ${pl}</div>
                         </div>`}
-                        <div class="stat-card crm-mobile-stat-display">
+                        <div class="stat-card crm-mobile-stat-display" data-dashboard-priority>
                             <div class="stat-value">$${formatNumber(p.volume_usdt ?? 0)}</div>
                             <div class="stat-label">Объём ${pl}</div>
                             ${(p.volume_auto_usdt || 0) > 0 ? `<div>оплата авто $${formatNumber(p.volume_auto_usdt)} (${p.auto_deals_count ?? 0})</div>` : ''}
@@ -4906,7 +4911,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                             <div class="stat-value">$${formatNumber(p.referrer_payout_usdt ?? 0)}</div>
                             <div class="stat-label">Выплачено рефералам ${pl}</div>
                         </div>
-                        <div class="stat-card ${(p.avg_margin ?? 0) > 0 ? '' : 'warning'}">
+                        <div class="stat-card ${(p.avg_margin ?? 0) > 0 ? '' : 'warning'}" data-dashboard-priority>
                             <div class="stat-value">${p.avg_margin ?? 0}%</div>
                             <div class="stat-label">Ср. маржа ${pl}</div>
                             ${d.margins?.all?.margin_net != null ? `
@@ -4928,6 +4933,18 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                             <div class="stat-label">Не возмещено</div>
                         </div>
                     `;
+
+                    if (document.documentElement.classList.contains('slate-console')) {
+                        const main = document.getElementById('statsGrid');
+                        document.getElementById('dashboardMoreMetrics').hidden = false;
+                        document.getElementById('dashboardMoreGrid').replaceChildren(
+                            ...main.querySelectorAll(':scope > .stat-card:not([data-dashboard-priority])')
+                        );
+                        const customers = document.getElementById('siteCustomersCard');
+                        const financial = document.getElementById('dashboardFinancialCharts');
+                        const activity = document.getElementById('dashboardActivityCharts');
+                        if (customers.previousElementSibling !== activity) customers.before(financial, activity);
+                    }
 
                     renderMargins(d.margins, pl);
 

@@ -1,0 +1,688 @@
+/* Adapt the existing CalcCRM components to the Slate template tokens. */
+html.slate-console {
+  --surface-panel: color-mix(in oklab, var(--background) 46%, var(--muted));
+  --surface-link: color-mix(in oklab, var(--chart-1) 66%, var(--foreground));
+  --surface-good-ink: color-mix(in oklab, var(--success) 61%, var(--foreground));
+  --surface-warn-ink: color-mix(in oklab, var(--warning) 53%, var(--foreground));
+  --surface-bad-ink: color-mix(in oklab, var(--destructive) 66%, var(--foreground));
+  --surface-good: color-mix(in oklab, var(--success) 10%, var(--card));
+  --surface-warn: color-mix(in oklab, var(--warning) 12%, var(--card));
+  --surface-bad: color-mix(in oklab, var(--destructive) 10%, var(--card));
+  --surface-info: color-mix(in oklab, var(--chart-1) 9%, var(--card));
+  --surface-good-line: color-mix(in oklab, var(--success) 23%, var(--border));
+  --surface-warn-line: color-mix(in oklab, var(--warning) 27%, var(--border));
+  --surface-bad-line: color-mix(in oklab, var(--destructive) 24%, var(--border));
+  --surface-info-line: color-mix(in oklab, var(--chart-1) 23%, var(--border));
+}
+
+/* The template tangerine fill needs dark text to meet 4.5:1. */
+html.slate-console[data-preset="tangerine"]:not([data-mode="dark"]) {
+  --surface-primary-ink: oklch(0.17 0.02 264);
+}
+
+/* Existing palette names are consumed by both CSS and live HTML templates. */
+html.slate-console body {
+  --ink-navy: var(--foreground);
+  --navy-900: var(--foreground);
+  --navy-800: var(--foreground);
+  --navy-700: var(--muted-foreground);
+  --navy-600: var(--muted-foreground);
+  --navy-500: var(--muted-foreground);
+  --navy-400: var(--muted-foreground);
+  --navy-300: var(--input);
+  --navy-200: var(--border);
+  --navy-100: var(--muted);
+  --navy-50: var(--surface-panel);
+  --surface-white: var(--card);
+  --page-mist: var(--background);
+  --bg: var(--card);
+  --bg-page: var(--background);
+  --text: var(--foreground);
+  --text-sec: var(--muted-foreground);
+  --text-muted: var(--muted-foreground);
+  --border-light: var(--border);
+  --action-coral: var(--primary);
+  --action-coral-hover: color-mix(in oklab, var(--primary) 86%, var(--card));
+  --coral: var(--primary);
+  --coral-hover: var(--action-coral-hover);
+  --coral-light: var(--surface-info);
+  --green: var(--surface-good-ink);
+  --green-dark: var(--surface-good-ink);
+  --green-darker: var(--surface-good-ink);
+  --green-light: var(--surface-good);
+  --red: var(--surface-bad-ink);
+  --red-light: var(--surface-bad);
+  --amber: var(--surface-warn-ink);
+  --amber-light: var(--surface-warn);
+  --blue: var(--surface-link);
+  --blue-light: var(--surface-info);
+  --indigo: var(--surface-link);
+  --indigo-light: var(--surface-info);
+  --money-surface: var(--surface-good);
+  --money-ink: var(--surface-good-ink);
+  --money-border: var(--surface-good-line);
+  --decision-surface: var(--surface-warn);
+  --decision-ink: var(--surface-warn-ink);
+  --decision-border: var(--surface-warn-line);
+  --blocker-surface: var(--surface-bad);
+  --blocker-ink: var(--surface-bad-ink);
+  --blocker-border: var(--surface-bad-line);
+  --card-shadow: var(--shadow-xs);
+  --r: var(--radius);
+  --r-sm: var(--radius-md);
+  --r-lg: var(--radius-panel);
+  --ds-surface: var(--card);
+  --ds-page: var(--surface-panel);
+  --ds-ink: var(--foreground);
+  --ds-muted: var(--muted-foreground);
+  --ds-border: var(--border);
+  --ds-glass: color-mix(in oklab, var(--card) 96%, transparent);
+  --ds-shadow: var(--shadow-xs);
+  --ds-card: var(--radius);
+  --ds-control: var(--radius-md);
+  --ds-pill: var(--radius-sm);
+  --ds-decision: var(--surface-warn);
+  --ds-decision-border: var(--surface-warn-line);
+  --ds-decision-ink: var(--surface-warn-ink);
+  --ds-blocker: var(--surface-bad);
+  --ds-blocker-border: var(--surface-bad-line);
+  --ds-blocker-ink: var(--surface-bad-ink);
+  --ds-money: var(--surface-good);
+  --ds-money-border: var(--surface-good-line);
+  --ds-money-ink: var(--surface-good-ink);
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  font-variant-numeric: tabular-nums;
+}
+
+html.slate-console body.wave4a {
+  font-family: var(--font-sans) !important;
+}
+html.slate-console body.wave4a :where(.container, .modal-overlay, .modal, .toast) *,
+html.slate-console body.wave4a :where(.container, .modal-overlay, .modal, .toast) *::before,
+html.slate-console body.wave4a :where(.container, .modal-overlay, .modal, .toast) *::after {
+  font-family: var(--font-sans) !important;
+}
+html.slate-console :is(.container, .modal, .modal-overlay) :is(input, select, textarea, button) {
+  font-family: var(--font-sans) !important;
+}
+html.slate-console :is(.container, .modal, .modal-overlay) :is(code, pre, .mono, .addr, .docs-num, .deal-code, .wallet-address, .tx-hash) {
+  font-family: var(--font-mono) !important;
+  font-variant-numeric: tabular-nums;
+}
+html.slate-console :is(.container, .modal, .modal-overlay) :is(button, a, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--ring) !important;
+  outline-offset: 2px;
+}
+html.slate-console :is(.container, .modal, .modal-overlay) :is(input, textarea)::placeholder {
+  color: var(--muted-foreground) !important;
+}
+html.slate-console .container :is(.table-container, .table-wrap, .table-responsive, .analytics-table-wrap) {
+  max-inline-size: 100%;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) var(--background);
+}
+html.slate-console body :is(.container, .modal) :is(h1, .task-list-head h1, .deal-screen .deal-head h1, .header h1, .crm-section-head h1) {
+  font: 600 clamp(1.3rem, .95rem + .9vw, 1.6rem)/1.25 var(--font-sans) !important;
+  letter-spacing: -.028em;
+  text-wrap: balance;
+}
+
+html.slate-console body :is(.container, .modal, .modal-overlay) :is(.card, .stat-card, .rx-card, .calculator-card,
+  .custom-rate-card, .property-card, .wallet-card, .docs-client, .docs-fold, .rates-card, .task-list-panel) {
+  background-color: var(--card) !important;
+  border-color: var(--border) !important;
+  border-radius: var(--radius) !important;
+  box-shadow: var(--shadow-xs) !important;
+}
+html.slate-console body :is(.container, .modal, .modal-overlay) :is(.card-title, .section-header, .task-list-panel-head h2, .rates-title) {
+  color: var(--foreground) !important;
+  font: 600 .925rem/1.4 var(--font-sans) !important;
+  letter-spacing: -.012em;
+  text-wrap: balance;
+}
+html.slate-console body :is(.container, .modal, .modal-overlay) :is(.empty-state, .docs-empty, .task-list-empty) {
+  color: var(--muted-foreground) !important;
+  text-wrap: pretty;
+}
+html.slate-console body :is(.container, .modal) :is(th, .task-deals-heading, .task-list-panel-head) {
+  background-color: var(--muted) !important;
+  color: var(--muted-foreground) !important;
+  font: 600 .75rem/1.35 var(--font-sans) !important;
+  text-transform: none;
+  letter-spacing: 0;
+}
+html.slate-console body :is(.container, .modal) :is(th, td, .task-deal-row) {
+  border-color: var(--border) !important;
+  font-variant-numeric: tabular-nums;
+}
+html.slate-console body :is(.container, .modal) :is(th, td) {
+  border-radius: 0 !important;
+}
+html.slate-console body :is(.container, .modal) :is(td, .task-deal-row) {
+  font: 400 .84rem/1.45 var(--font-sans) !important;
+}
+html.slate-console .container :is(tr[onclick], tr.clickable):hover > td {
+  background-color: var(--accent);
+}
+html.slate-console body :is(.container, .modal) :is(.table-container, .table-wrap, .task-deals-table) {
+  border-color: var(--border) !important;
+}
+html.slate-console body .container :is(td.num, th.num, .number-cell, .docs-money-cell, .task-list-amount, .task-deal-amount) {
+  text-align: end;
+}
+
+html.slate-console body :is(.container, .modal, .modal-overlay) :is(.btn, .calculate-btn, .button-primary, .period-btn, .refresh-btn,
+  .dealtype-btn, .method-btn, .scenario-btn, .direction-btn, .commission-btn, .src-btn, .subtab-btn, .rx-subtab, .docs-pair,
+  .docs-pick, .docs-relink, .task-list-filters button, .chip):not(select, input) {
+  min-block-size: 34px;
+  padding-inline: 12px;
+  border-radius: var(--radius-md) !important;
+  font: 550 .8125rem/1.3 var(--font-sans) !important;
+}
+html.slate-console body :is(.container, .modal, .modal-overlay) :is(.btn-primary, .button-primary, .calculate-btn, .b2-copy-primary, .nav-create-btn),
+html.slate-console body.wave4a :is(#deals, #create, #documents, #balance, #incomes, #conversions, #transactions, #managers, #admins, #kyc, #partners, #referrers, #exchangers, #verification) .btn-primary {
+  background: var(--primary) !important;
+  color: var(--surface-primary-ink, var(--primary-foreground)) !important;
+  border-color: transparent !important;
+}
+html.slate-console body :is(.container, .modal, .modal-overlay) :is(.btn-primary, .button-primary, .calculate-btn, .b2-copy-primary, .nav-create-btn) * {
+  color: inherit !important;
+}
+html.slate-console body :is(.container, .modal, .modal-overlay) :is(.btn-primary, .button-primary, .calculate-btn, .b2-copy-primary, .nav-create-btn):hover:not(:disabled) {
+  background: var(--action-coral-hover) !important;
+}
+html.slate-console body :is(.container, .modal, .modal-overlay) :is(.btn-primary, .button-primary, .calculate-btn, .b2-copy-primary, .nav-create-btn):disabled {
+  background: var(--muted) !important;
+  color: var(--muted-foreground) !important;
+  cursor: not-allowed;
+  opacity: .7;
+}
+html.slate-console body :is(.container, .modal) :is(.period-btn.active, .dealtype-btn.active, .method-btn.active,
+  .scenario-btn.active, .direction-btn.active, .commission-btn.active, .src-btn.active, .subtab-btn.active, .rx-subtab.active,
+  .docs-pair[aria-pressed="true"], .chip.on, .task-list-seg button.on, .task-list-filters button.on) {
+  background: var(--card) !important;
+  border-color: var(--border-strong) !important;
+  color: var(--foreground) !important;
+  font-weight: 650 !important;
+  box-shadow: inset 0 -2px var(--chart-1), var(--shadow-xs) !important;
+}
+html.slate-console body :is(.container, .modal) :is(.period-btn.active, .dealtype-btn.active, .method-btn.active,
+  .scenario-btn.active, .direction-btn.active, .commission-btn.active, .src-btn.active, .subtab-btn.active,
+  .rx-subtab.active, .docs-pair[aria-pressed="true"]) * {
+  color: inherit !important;
+}
+html.slate-console body :is(.container, .modal) :is(.form-control, .form-input, .fc, .rx-inp, .custom-select-btn,
+  input[type="search"], input[type="date"], input[type="number"], textarea, select) {
+  min-inline-size: 0;
+  max-inline-size: 100%;
+  min-block-size: 36px !important;
+  background-color: var(--card) !important;
+  border-color: var(--input) !important;
+  color: var(--foreground) !important;
+  font: 450 .875rem/1.4 var(--font-sans) !important;
+}
+html.slate-console body.wave4a.nav-shell-crm select {
+  appearance: auto !important;
+  background-image: none !important;
+  padding-inline-end: 10px !important;
+}
+html.slate-console body :is(.container, .modal) :is(.form-label, .input-label, .fl, .docs-field > label) {
+  color: var(--muted-foreground) !important;
+  font: 550 .8125rem/1.4 var(--font-sans) !important;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+html.slate-console body :is(.container, .modal, .modal-overlay) :is(.badge, .pill, .rx-pill, .docs-src, .task-list-count) {
+  --badge-fill: var(--muted);
+  --badge-line: var(--border);
+  --badge-ink: var(--muted-foreground);
+  background: var(--badge-fill) !important;
+  border: 1px solid var(--badge-line) !important;
+  border-radius: var(--radius-sm) !important;
+  color: var(--badge-ink) !important;
+  font: 550 .72rem/1.35 var(--font-sans) !important;
+  padding: 2px 6px !important;
+}
+html.slate-console body :is(.container, .modal, .modal-overlay) :is(.badge-completed, .badge-success, .b-done, .pill-money, .alert-success, .a-ok,
+  .crm-close-state[data-kind="success"]) {
+  --badge-fill: var(--surface-good);
+  --badge-line: var(--surface-good-line);
+  --badge-ink: var(--surface-good-ink);
+}
+html.slate-console body :is(.container, .modal, .modal-overlay) :is(.badge-pending, .b-pend, .pill-late, .alert-warning, .a-warn) {
+  --badge-fill: var(--surface-warn);
+  --badge-line: var(--surface-warn-line);
+  --badge-ink: var(--surface-warn-ink);
+}
+html.slate-console body :is(.container, .modal, .modal-overlay) :is(.badge-cancelled, .badge-failed, .badge-lose, .badge-danger, .b-lose, .alert-error, .a-err) {
+  --badge-fill: var(--surface-bad);
+  --badge-line: var(--surface-bad-line);
+  --badge-ink: var(--surface-bad-ink);
+}
+html.slate-console body :is(.container, .modal, .modal-overlay) :is(.badge-verified, .b-work, .b-new, .a-info, .alert-info, .task-list-count.mine) {
+  --badge-fill: var(--surface-info);
+  --badge-line: var(--surface-info-line);
+  --badge-ink: var(--surface-link);
+}
+html.slate-console body :is(.container, .modal, .modal-overlay) :is(.alert, .crm-close-state) {
+  background: var(--badge-fill, var(--surface-panel)) !important;
+  border: 1px solid var(--badge-line, var(--border)) !important;
+  color: var(--badge-ink, var(--foreground)) !important;
+  border-radius: var(--radius-md) !important;
+}
+html.slate-console body :is(.container, .modal, .modal-overlay) :is(.alert, .badge, .pill) > :is(strong, b, span, svg) {
+  color: inherit !important;
+}
+
+/* CRM overview, the ledger, and document management. */
+html.slate-console body.nav-shell-crm #dashboard > .crm-section-head.slate-dashboard-only[hidden] {
+  display: block;
+}
+html.slate-console body.nav-shell-crm #dashboard #dashboardMoreMetrics {
+  margin-block: 0 18px;
+  background-color: var(--surface-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+html.slate-console body.nav-shell-crm #dashboard #dashboardMoreMetrics > summary {
+  padding: 10px 14px;
+  cursor: pointer;
+  color: var(--foreground) !important;
+  font-weight: 550 !important;
+}
+html.slate-console body.nav-shell-crm #dashboard #dashboardMoreGrid {
+  margin: 0;
+  padding: 0 12px 12px;
+}
+html.slate-console body.nav-shell-crm #dashboard :is(#statsGrid, #dashboardMoreGrid) {
+  display: grid !important;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-block: 0 20px;
+}
+html.slate-console body.nav-shell-crm #dashboard :is(#statsGrid, #dashboardMoreGrid) .stat-card {
+  display: flex !important;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  order: 0;
+  gap: 6px;
+  min-inline-size: 0;
+  padding: 14px !important;
+  border: 1px solid var(--border) !important;
+}
+html.slate-console body.nav-shell-crm #dashboard :is(#statsGrid, #dashboardMoreGrid) .stat-card.crm-mobile-stat-hero {
+  background-color: var(--surface-good) !important;
+  border-color: var(--surface-good-line) !important;
+}
+html.slate-console body.nav-shell-crm #dashboard :is(#statsGrid, #dashboardMoreGrid) .stat-card:is(.warning, .danger) {
+  background-color: var(--surface-panel) !important;
+}
+html.slate-console body.nav-shell-crm #dashboard :is(#statsGrid, #dashboardMoreGrid) .stat-card :is(.stat-label, .stat-value) {
+  margin: 0;
+  text-align: start;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+html.slate-console body.nav-shell-crm #dashboard :is(#statsGrid, #dashboardMoreGrid) .stat-card .stat-label {
+  order: -1;
+  color: var(--muted-foreground) !important;
+  font: 550 .78rem/1.35 var(--font-sans) !important;
+}
+html.slate-console body.nav-shell-crm #dashboard :is(#statsGrid, #dashboardMoreGrid) .stat-card .stat-value,
+html.slate-console body.nav-shell-crm .section .stat-card .stat-value {
+  color: var(--foreground) !important;
+  font: 600 clamp(1.24rem, 1.05rem + .55vw, 1.68rem)/1.2 var(--font-sans) !important;
+  letter-spacing: -.035em;
+}
+html.slate-console body.nav-shell-crm #dashboard :is(#statsGrid, #dashboardMoreGrid) .stat-card > div:nth-child(3) {
+  display: block;
+  color: var(--muted-foreground) !important;
+  font: 400 .72rem/1.45 var(--font-sans) !important;
+}
+html.slate-console body.nav-shell-crm #dashboard #periodSelector {
+  padding: 9px;
+  background-color: var(--surface-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+html.slate-console body.nav-shell-crm #dashboard #periodSelector:has(> span) > span {
+  min-inline-size: 0;
+  max-inline-size: 100%;
+  flex-wrap: wrap;
+}
+html.slate-console body.nav-shell-crm #dashboard #periodSelector select {
+  max-inline-size: min(100%, 210px);
+}
+html.slate-console body.nav-shell-crm #dashboard #attentionAlerts:empty {
+  display: none;
+}
+html.slate-console body.nav-shell-crm #dashboard :is(#dashboardFinancialCharts, #dashboardActivityCharts) > .card {
+  min-inline-size: 0;
+  margin: 0;
+}
+html.slate-console body.nav-shell-crm #dashboard #dashboardFinancialCharts {
+  grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr) !important;
+}
+html.slate-console body.nav-shell-crm #dashboard #dashboardActivityCharts {
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+}
+html.slate-console body.nav-shell-crm #deals > .card:has(#filterStatus),
+html.slate-console body.nav-shell-crm :is(#documents .docs-head, #balance .card > div:has(> .balance-subtab-btn),
+  .custom-select-menu, .dropdown-menu) {
+  background-color: var(--surface-panel) !important;
+}
+html.slate-console body.nav-shell-crm #deals > .card:has(#filterStatus) {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px 12px;
+}
+html.slate-console body.nav-shell-crm #deals > .card:has(#filterStatus) > .card-title {
+  grid-column: 1 / -1;
+  margin-block-end: 2px;
+}
+html.slate-console body.nav-shell-crm #deals > .card:has(#filterStatus) > .form-row {
+  display: contents !important;
+}
+html.slate-console body.nav-shell-crm #deals > .card:has(#filterStatus) > .form-row > .form-group {
+  min-inline-size: 0;
+  margin: 0 !important;
+}
+html.slate-console body.nav-shell-crm #deals > .card:has(#filterStatus) .form-label {
+  margin-block-end: 5px !important;
+}
+html.slate-console body.nav-shell-crm #balance .balance-subtab-btn.active {
+  background-color: var(--card) !important;
+  color: var(--foreground) !important;
+  border-color: var(--border-strong) !important;
+  box-shadow: inset 0 -2px var(--chart-1), var(--shadow-xs) !important;
+}
+html.slate-console body.nav-shell-crm #balance #walletHistorySection {
+  background-color: var(--card) !important;
+}
+html.slate-console body.nav-shell-crm #dashboard #buyersBlock :is(#buyersNew, #buyersOld, #buyersTotal) {
+  font: 600 1.75rem/1.3 var(--font-sans) !important;
+  letter-spacing: -.03em;
+}
+html.slate-console body.nav-shell-crm #deals > .card:has(#filterStatus) > .btn {
+  align-self: end;
+  justify-self: start;
+  min-block-size: 36px;
+  background-color: var(--card) !important;
+  color: var(--foreground) !important;
+  border-color: var(--input) !important;
+}
+html.slate-console body.nav-shell-crm #deals > .card:has(#filterStatus) > .btn:hover {
+  background-color: var(--accent) !important;
+}
+html.slate-console body.nav-shell-crm .table-container table:has(#dealsTable) :is(th, td):nth-child(n+8):nth-child(-n+10) {
+  text-align: end;
+  white-space: nowrap;
+}
+html.slate-console body.nav-shell-crm .table-container table:has(#dealsTable) tbody td:first-child {
+  color: var(--muted-foreground) !important;
+  font-family: var(--font-mono) !important;
+}
+
+html.slate-console body.nav-shell-crm .unit-econ-table :is(.ue-group, .ue-name) {
+  background: var(--surface-panel) !important;
+}
+html.slate-console body.nav-shell-crm .unit-econ-table .ue-val {
+  font-weight: 600 !important;
+  color: var(--foreground) !important;
+}
+html.slate-console body.nav-shell-crm :is(.docs-client-head, .docs-fold > summary, #dealsPagination) {
+  background-color: var(--surface-panel) !important;
+}
+html.slate-console body.nav-shell-crm .docs-fold[open] > summary {
+  border-bottom: 1px solid var(--border);
+}
+html.slate-console body.nav-shell-crm .docs-fold-body {
+  border-top: 0;
+}
+html.slate-console body .modal-content {
+  background-color: var(--popover) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: var(--radius-panel) !important;
+  box-shadow: var(--shadow-lg) !important;
+}
+html.slate-console body :is(.toast, #toast) {
+  background-color: var(--foreground);
+  color: var(--background);
+}
+
+/* Task queue, record, and history. */
+html.slate-console body.nav-shell-tasks .task-list {
+  --task-list-shadow: var(--shadow-xs);
+}
+html.slate-console body.nav-shell-tasks :is(.task-list-row, .task-deal-row) {
+  min-block-size: max(44px, var(--row-h));
+  padding-block: 10px;
+}
+html.slate-console body.nav-shell-tasks :is(.task-list-row, .task-deal-row, .task-list-all-toggle):hover {
+  background-color: var(--accent) !important;
+}
+html.slate-console body.nav-shell-tasks :is(.task-list-row-main strong, .task-list-amount) {
+  font-size: .875rem;
+}
+html.slate-console body.nav-shell-tasks .task-list-cols > .task-list-panel {
+  margin-block-start: 0;
+}
+html.slate-console body.nav-shell-tasks .task-list-panel-head:not(.task-list-all-toggle) {
+  padding-block: 13px;
+  border-bottom: 1px solid var(--border);
+}
+html.slate-console body.nav-shell-tasks .task-list-create-bar {
+  background-color: var(--background);
+}
+html.slate-console body.nav-shell-tasks :is(.deal-screen .deal-head, .strip, .keybox, .s18-batch-summary) {
+  background: var(--surface-panel) !important;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--foreground);
+}
+html.slate-console body.nav-shell-tasks .strip :is(.id, .it, .it b, .prog .pt) {
+  color: var(--foreground);
+}
+html.slate-console body.nav-shell-tasks :is(.deal-progress i b, .task-deal-progress i.current, .prog .bar span) {
+  background: var(--chart-1);
+}
+html.slate-console body.nav-shell-tasks :is(.deal-head, .task-list-head, .task-list-panel) {
+  min-inline-size: 0;
+}
+
+html.slate-console body.nav-shell-tasks :is(.task-list-seg, .branch-tabs, .vtabs, .card:has(.analytics-controls)) {
+  background-color: var(--surface-panel) !important;
+}
+html.slate-console body.nav-shell-tasks :is(.analytics-presets button, .vtab, .deal-screen .branch-tabs button) {
+  font: 550 .8125rem/1.35 var(--font-sans);
+}
+html.slate-console body.nav-shell-tasks .analytics-presets button {
+  background-color: var(--card);
+}
+html.slate-console body.nav-shell-tasks :is(.vtab.on, .branch-tabs button.on, .analytics-presets button[aria-pressed="true"], .analytics-reason[aria-pressed="true"]) {
+  background: var(--card);
+  border-color: var(--border-strong);
+  color: var(--foreground);
+  box-shadow: inset 0 -2px var(--chart-1), var(--shadow-xs);
+}
+html.slate-console body.nav-shell-tasks .analytics-view .analytics-stats .stat-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  text-align: start;
+}
+html.slate-console body.nav-shell-tasks .analytics-view .analytics-stats .stat-label {
+  order: -1;
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: .78rem;
+}
+html.slate-console body.nav-shell-tasks .analytics-view .analytics-stats .stat-value {
+  font-weight: 600;
+  letter-spacing: -.035em;
+}
+html.slate-console body.nav-shell-tasks .analytics-view .analytics-stats .stat-card.success {
+  background-color: var(--surface-good) !important;
+  border-color: var(--surface-good-line) !important;
+}
+html.slate-console body.nav-shell-tasks .analytics-view .analytics-stats .stat-card.danger {
+  background-color: var(--surface-bad) !important;
+  border-color: var(--surface-bad-line) !important;
+}
+html.slate-console body.nav-shell-tasks :is(.analytics-link, .task-history-link, .flow-item-body a) {
+  color: var(--surface-link);
+}
+
+/* Calculator parameters and output, each with a separate surface. */
+html.slate-console body.calc-b2 {
+  --b2-ink: var(--foreground);
+  --b2-n700: var(--muted-foreground);
+  --b2-n600: var(--muted-foreground);
+  --b2-n500: var(--muted-foreground);
+  --b2-n400: var(--muted-foreground);
+  --b2-n300: var(--input);
+  --b2-n200: var(--muted);
+  --b2-n100: var(--surface-panel);
+  --b2-white: var(--card);
+  --b2-action: var(--primary);
+  --b2-action-hover: var(--action-coral-hover);
+  background-color: var(--background);
+}
+html.slate-console body.calc-b2 :is(.b2-side-title, .rates-title, .rates-summary, .rate-label, .rate-sub, .rates-updated,
+  .result-label, .result-rate, .result-empty-hint, .b2-copy-preview, .details-header, #createDealBtn, #createPaymentBtn) {
+  color: var(--muted-foreground) !important;
+}
+html.slate-console body.calc-b2 :is(.b2-params, .b2-side, .b2-side-more, .b2-result-bar) {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-xs);
+}
+html.slate-console body.calc-b2 .b2-side {
+  top: calc(var(--header-h, 3rem) + 1rem);
+  background-color: var(--surface-panel);
+  color: var(--foreground);
+}
+html.slate-console body.calc-b2 .b2-result-bar {
+  background-color: var(--card);
+  color: var(--foreground);
+}
+html.slate-console body.calc-b2 :is(#rateSourceToggle, .dealtype-switcher, .method-switcher, .direction-buttons) {
+  background-color: var(--muted);
+  border-color: var(--border);
+}
+html.slate-console body.calc-b2 :is(.rate-item, .rate-item.highlight, .result-main) {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+html.slate-console body.calc-b2 .result-main {
+  padding: 14px;
+  background: var(--surface-info);
+  border-color: var(--surface-info-line);
+}
+html.slate-console body.calc-b2 :is(.rate-value, .result-value, .result-profit, .details-header, .b2-side-title) {
+  color: var(--foreground) !important;
+  font-variant-numeric: tabular-nums;
+}
+html.slate-console body.calc-b2 .rate-value {
+  font-size: 1.2rem;
+  font-weight: 600;
+}
+html.slate-console body.calc-b2 .result-value {
+  font-size: clamp(1.5rem, 1.15rem + 1vw, 2rem);
+  font-weight: 600;
+  letter-spacing: -.035em;
+}
+html.slate-console body.calc-b2 .amount-input {
+  font: 620 1.5rem/1.3 var(--font-sans) !important;
+}
+html.slate-console body.calc-b2 :is(#resultsSection, #commissionLevelSection, .details-section) {
+  border-color: var(--border) !important;
+}
+html.slate-console body.calc-b2 .result-main.is-empty #resultEmptyHint {
+  display: block !important;
+}
+html.slate-console body.calc-b2 .rate-item {
+  text-align: start;
+}
+html.slate-console body.calc-b2 .b2-params .dealtype-switcher {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 92px), 1fr));
+}
+html.slate-console body.calc-b2 #marginWarning {
+  background-color: var(--surface-warn) !important;
+  border-color: var(--surface-warn-line) !important;
+  color: var(--surface-warn-ink) !important;
+}
+html.slate-console body.calc-b2 :is(#createDealBtn, #createPaymentBtn, .refresh-btn, .src-btn) {
+  color: var(--foreground) !important;
+  border-color: var(--input);
+}
+
+@media (max-width: 768px) {
+  html.slate-console body.nav-shell-crm #dashboard :is(#dashboardFinancialCharts, #dashboardActivityCharts) {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+  html.slate-console body.nav-shell-crm #dashboard :is(#statsGrid, #dashboardMoreGrid),
+  html.slate-console body.nav-shell-crm #deals > .card:has(#filterStatus) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  html.slate-console body.nav-shell-tasks .task-list-head {
+    height: auto;
+    margin: 0 0 14px;
+  }
+  html.slate-console body.nav-shell-tasks .task-list-head h1 {
+    display: block;
+  }
+  html.slate-console body.nav-shell-tasks .task-list-create-bar {
+    position: static;
+    padding: 0;
+    border: 0;
+    backdrop-filter: none;
+  }
+  html.slate-console body.nav-shell-on.calc-b2 .b2-result-bar {
+    bottom: 0;
+    border-radius: 0;
+  }
+}
+@media (max-width: 767px) {
+  html.slate-console body.nav-shell-crm #balance .card > div:has(> .balance-subtab-btn) {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+  html.slate-console body.nav-shell-crm #balance .balance-subtab-btn {
+    white-space: normal;
+  }
+  html.slate-console body.nav-shell-crm #dealsTable .crm-deal-row[data-crm-card-ready="1"] {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  html.slate-console body.nav-shell-crm #dealsTable .crm-deal-row[data-crm-card-ready="1"] > td[data-crm-card-role="title"] {
+    grid-column: 1;
+  }
+  html.slate-console body.nav-shell-crm #dealsTable .crm-deal-row[data-crm-card-ready="1"] > td:is([data-crm-label="Сумма USDT"], [data-crm-label="Оплата, ฿"], [data-crm-label="Статус"]) {
+    display: block;
+  }
+  html.slate-console body.nav-shell-crm #dealsTable .crm-deal-row[data-crm-card-ready="1"] > td[data-crm-label="Статус"] {
+    order: -2;
+  }
+  html.slate-console body.nav-shell-crm #dealsTable .crm-deal-row[data-crm-card-ready="1"] > td:is([data-crm-card-role="amount"], [data-crm-card-role="status"]) {
+    display: none;
+  }
+  html.slate-console body.nav-shell-crm #dealsTable .crm-deal-row[data-crm-card-ready="1"] > td:is([data-crm-label="Сумма USDT"], [data-crm-label="Оплата, ฿"])::before {
+    display: block;
+    content: attr(data-crm-label);
+    color: var(--muted-foreground) !important;
+    font-size: .72rem !important;
+  }
+}
+
+@media (pointer: coarse) {
+  html.slate-console body :is(.container, .modal, .modal-overlay) :is(.btn, .period-btn, .refresh-btn, .calculate-btn, .form-control,
+    .dealtype-btn, .method-btn, .direction-btn, .scenario-btn, .fc, .chip, .crm-mobile-details, select, textarea) {
+    min-block-size: 44px !important;
+  }
+}
