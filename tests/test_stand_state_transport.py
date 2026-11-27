@@ -135,6 +135,45 @@ def test_analytics_creation_timestamp_is_server_owned(monkeypatch):
     assert edited.json['data']['deals'][-1]['createdTs'] == stamp
 
 
+def test_analytics_transfer_date_survives_unrelated_save_only(monkeypatch):
+    manager_id = _setup(monkeypatch)
+    client = _client(manager_id)
+    monkeypatch.setattr(m, '_stand_deliver_notes', lambda: [])
+    snapshot = client.get('/api/stand/state?read_only=1').json
+    snapshot['data']['deals'].append({
+        'id': 2001, 'code': 'СД-2001', 'client': 'Manual exchange',
+        'managerUserId': manager_id, 'step': 'manual', 'manual': True, 'closed': False,
+        'type': 'Обмен валюты', 'pair': 'USDT → THB', 'payType': 'Крипта',
+        'unverified_flow_confirmation': ['exchange', 'crypto'],
+        'amountUsdt': 100, 'source': 'none', 'analyticsSettledTs': 1795500000000,
+    })
+    response = _put(client, _packed(snapshot))
+    assert response.status_code == 200, response.json
+    assert 'analyticsSettledTs' not in response.json['data']['deals'][-1]
+
+    verified_at = 1795500000000
+    with m.SessionLocal() as db:
+        row = db.get(m.StandState, 1)
+        state = json.loads(row.data)
+        state['deals'][-1]['analyticsSettledTs'] = verified_at
+        row.data = json.dumps(state)
+        db.commit()
+
+    snapshot = client.get('/api/stand/state?read_only=1').json
+    deal = snapshot['data']['deals'][-1]
+    deal['analyticsSettledTs'] = verified_at + 1000
+    deal['notes'] = 'Дополнение'
+    saved = _put(client, _packed(snapshot))
+    assert saved.status_code == 200, saved.json
+    assert saved.json['data']['deals'][-1]['analyticsSettledTs'] == verified_at
+
+    changed = saved.json
+    changed['data']['deals'][-1]['amountUsdt'] = 200
+    saved = _put(client, _packed(changed))
+    assert saved.status_code == 200, saved.json
+    assert 'analyticsSettledTs' not in saved.json['data']['deals'][-1]
+
+
 def test_creation_key_deduplicates_retries_without_merging_distinct_deals(monkeypatch):
     manager_id = _setup(monkeypatch)
     client = _client(manager_id)

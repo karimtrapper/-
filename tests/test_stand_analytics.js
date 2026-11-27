@@ -188,6 +188,11 @@ assert.equal(stand.analyticsOutcome({...recordedExchange,payout:{usdt:619.24}}),
 assert.equal(stand.analyticsOutcome({...recordedExchange,payinHashes:[{hash:'incoming',amount:null}]}), 'open');
 assert.equal(stand.analyticsOutcome({...recordedExchange,manual:false,originMode:null,step:'s4'}), 'open');
 assert.equal(stand.analyticsDealDate(recordedExchange, 'closed'), '');
+const transferDate=Date.parse('2026-11-24T18:30:00Z');
+const checkedExchange={...recordedExchange,analyticsSettledTs:transferDate};
+assert.equal(stand.analyticsDealDate(checkedExchange,'closed'),'2026-11-25');
+assert.equal(stand.analyticsDealDate({...checkedExchange,closedAt:'2026-11-26'},'closed'),'2026-11-26');
+assert.equal(stand.analyticsDealDate({...checkedExchange,payinHashes:[]},'closed'),'');
 const recordedRows = stand.analyticsData([recordedExchange,{...recordedExchange,manualNew:true}], filters, {from:'',to:''});
 assert.deepEqual(totals(recordedRows.rows),
   {all:1,open:0,won:1,lost:0,unknown:0,rateLost:0,turnover:{RUB:56749.48}});
@@ -287,4 +292,9 @@ assert.match(weekReport, /700 USD/);
 assert.doesNotMatch(weekReport.slice(weekReport.indexOf('По валюте прихода')), /33000 ₽|32000 ₽|45000 ₽|1100 ₽/);
 vm.runInContext("analyticsFilters.reason=ANALYTICS_OUTCOME_FILTERS.won", stand);
 assert.deepEqual([...stand.viewAnalytics().matchAll(/data-deal="(\d+)"/g)].map(match=>match[1]), ['29','28','22','21']);
+stand.S.deals.push(checkedExchange);
+const checkedReport=stand.viewAnalytics();
+assert.match(checkedReport,/Успешно закрыто<\/div><div class="stat-value num">5<\/div>/);
+assert.match(checkedReport,/По подтверждённым переводам · 1/);
+assert.match(checkedReport,/Проведена по переводам 25\.11\.2026/);
 console.log('PASS analytics calendar, filters, metrics, escaping, and exact conversation links');

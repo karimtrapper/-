@@ -8749,6 +8749,19 @@ def stand_state_put():
                 deal['closedTs'] = before['closedTs']
             else:
                 deal.pop('closedTs', None)
+            # Backfilled report dates belong to the exact transfers and amounts
+            # reviewed on the server. Browser edits cannot create or carry them over.
+            if (before and before.get('analyticsSettledTs')
+                    and all(deal.get(key) == before.get(key) for key in (
+                        'manual', 'originMode', 'type', 'kind', 'pair', 'payType', 'paySrc',
+                        'amountRub', 'amountUsdt', 'amountThb', 'incomeAmount', 'customData',
+                        'payinHashes'))
+                    and ((deal.get('payout') or {}).get('hashes') or [])
+                    == ((before.get('payout') or {}).get('hashes') or [])
+                    and (deal.get('mfPayout') or []) == (before.get('mfPayout') or [])):
+                deal['analyticsSettledTs'] = before['analyticsSettledTs']
+            else:
+                deal.pop('analyticsSettledTs', None)
             # Consent belongs to this PUT, including a retry after a version
             # conflict, and is never returned as part of the saved deal.
             deal.pop('unverified_flow_confirmation', None)

@@ -15134,7 +15134,8 @@ function analyticsDealDate(d,basis){
       legacyStamp===ANALYTICS_LEGACY_CLOCK.format(first.at).replace(',','');
     return legacyHandoff?date:'';
   }
-  if(analyticsOutcome(d)==='open')return '';
+  const outcome=analyticsOutcome(d);
+  if(outcome==='open')return '';
   const saved=analyticsDateKey(d.closedAt)||analyticsDateKey(d.closedTs);
   if(saved)return saved;
   const events=Array.isArray(d.log)?d.log:[];
@@ -15151,7 +15152,11 @@ function analyticsDealDate(d,basis){
       if(date)return date;
     }
   }
-  return '';
+  return outcome==='won'?analyticsDateKey(d.analyticsSettledTs):'';
+}
+function analyticsHasTransferCloseDate(d,date){
+  return !!date&&date===analyticsDateKey(d.analyticsSettledTs)&&
+    !analyticsDateKey(d.closedAt)&&!analyticsDateKey(d.closedTs);
 }
 function analyticsPeriod(filters,today=analyticsDateKey(Date.now())){
   if(filters.period==='all')return {from:'',to:''};
@@ -15412,8 +15417,9 @@ function analyticsReasonDeals(reasons,reason,filteredRows=[]){
     const source=[SOURCES[analyticsSource(d)]||'Источник не указан',chat?.name||d.sourceRef,chat?.account]
       .filter(Boolean).join(' · ');
     const created=analyticsDealDate(d,'created');
+    const closingLabel=analyticsHasTransferCloseDate(d,closing)?'Проведена по переводам ':'Закрыта ';
     const dates=[created?'Создана '+analyticsDateLabel(created):'Дата создания неизвестна',
-      opened?'Открыта':closing?'Закрыта '+analyticsDateLabel(closing):'Дата закрытия неизвестна',
+      opened?'Открыта':closing?closingLabel+analyticsDateLabel(closing):'Дата закрытия неизвестна',
       outcome==='all'?{won:'Успешно',lost:'Отказ',unknown:'Итог не указан'}[result]:''].filter(Boolean).join(' · ');
     return '<li class="analytics-deal"><div><div class="analytics-deal-title">'+link+
       '<strong>'+htmlText(d.client||'Клиент не указан')+'</strong></div><div class="analytics-muted">'+
@@ -15440,7 +15446,10 @@ function viewAnalytics(){
   const outcomeLink=(outcome,label)=>'<button type="button" class="analytics-stat-link analytics-link" data-outcome="'+outcome+'" '+
     'aria-pressed="'+(f.reason===ANALYTICS_OUTCOME_FILTERS[outcome])+'" onclick="analyticsPickReason(this)">'+label+'</button>';
   const unknownDetails=m.unknown?outcomeLink('unknown','Итог не указан · '+m.unknown):'';
-  const wonDetails=m.won?outcomeLink('won','Показать успешные сделки'):'';
+  const withTransferDate=rows.filter(row=>row.outcome==='won'&&row.closedInPeriod!==false&&
+    row.d.analyticsSettledTs&&analyticsHasTransferCloseDate(row.d,analyticsDealDate(row.d,'closed'))).length;
+  const wonDetails=m.won?outcomeLink('won','Показать успешные сделки')+
+    (withTransferDate?'<div>По подтверждённым переводам · '+withTransferDate+'</div>':''):'';
   const openDetails=m.open?outcomeLink('open','Показать открытые сделки'):'';
   const allDetails=m.all?outcomeLink('all','Показать все сделки'):'';
   const created=activity?rows.filter(row=>row.createdInPeriod).length:0;
