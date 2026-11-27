@@ -865,3 +865,62 @@ html.slate-console body.nav-shell-crm #payoutRequests .payout-filter-btn.active 
   box-shadow: inset 0 -2px var(--chart-1), var(--shadow-xs) !important;
   font-weight: 650 !important;
 }
+
+/* Financial facts in the deal detail share one neutral panel treatment. */
+html.slate-console body.nav-shell-crm #dealModalContent .deal-detail-panel {
+  background-color: var(--surface-panel) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: var(--radius-md) !important;
+  color: var(--foreground) !important;
+  overflow-wrap: anywhere;
+}
+html.slate-console body.nav-shell-crm #dealModalContent .deal-detail-hash {
+  background-color: var(--card) !important;
+  border-radius: var(--radius-sm) !important;
+  box-shadow: inset 0 0 0 1px var(--border) !important;
+  color: var(--surface-link) !important;
+  font: 500 .8rem/1.5 var(--font-mono) !important;
+  padding: 2px 6px;
+}
+html.slate-console body.nav-shell-crm #dealModalContent .deal-detail-hash:hover {
+  background-color: var(--accent) !important;
+  text-decoration: underline !important;
+}
+html.slate-console body.nav-shell-crm #dealModalContent .deal-detail-address {
+  font-family: var(--font-mono) !important;
+}
+html.slate-console body.nav-shell-crm #dealModalContent .deal-detail-meta {
+  color: var(--muted-foreground) !important;
+}
+html.slate-console body.nav-shell-crm #dealModalContent .deal-detail-paid {
+  color: var(--surface-good-ink) !important;
+}
+html.slate-console body.nav-shell-crm #dealModalContent .deal-detail-unpaid {
+  color: var(--surface-warn-ink) !important;
+}
+html.slate-console body.nav-shell-crm #dealModalContent .deal-detail-warning {
+  background-color: var(--surface-warn) !important;
+  border-color: var(--surface-warn-line) !important;
+  color: var(--surface-warn-ink) !important;
+}
+html.slate-console body.nav-shell-crm #dealModalContent .deal-detail-confirmed {
+  background-color: var(--surface-good) !important;
+  border-color: var(--surface-good-line) !important;
+  color: var(--surface-good-ink) !important;
+}
+html.slate-console body.nav-shell-crm #dealModalContent .deal-detail-error {
+  background-color: var(--surface-bad) !important;
+  border-color: var(--surface-bad-line) !important;
+  color: var(--surface-bad-ink) !important;
+}
+html.slate-console body.nav-shell-crm #dealModalContent .deal-detail-copy {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-block-size: 24px;
+  min-inline-size: 24px;
+  vertical-align: middle;
+}
+html.slate-console body.nav-shell-crm #dealModalContent .deal-detail-copy:hover {
+  background-color: var(--accent) !important;
+}

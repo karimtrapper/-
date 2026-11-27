@@ -913,7 +913,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
     <link rel="stylesheet" href="/static/design-layer.css?v=6">
     <link rel="stylesheet" href="/static/fonts/slate/fonts.css">
     <link rel="stylesheet" href="/static/slate-shell.css?v=2">
-    <link rel="stylesheet" href="/static/slate-surfaces.css?v=4">
+    <link rel="stylesheet" href="/static/slate-surfaces.css?v=5">
 </head>
 
 <body class="wave4a">
@@ -5649,13 +5649,13 @@ select.period-btn:hover:not(.active) { color: var(--text); }
             const status = verified === undefined ? '' : (verified
                 ? '<span title="Подтверждено">✅</span>'
                 : '<span title="Ожидает подтверждения">' + icoWait() + '</span>');
-            const actions = `<a href="${txExplorerUrl(hash, tx.network)}" target="_blank" rel="noopener noreferrer"
+            const actions = `<a class="deal-detail-hash" href="${txExplorerUrl(hash, tx.network)}" target="_blank" rel="noopener noreferrer"
                     style="background:${background};padding:1px 5px;border-radius:4px;font-family:monospace;text-decoration:none;color:${color};">${escapeHtml(hash.slice(0, 16))}…</a>
                 <button type="button" data-proof-hash="${encodeURIComponent(hash)}"
                     onclick="copyHash(decodeURIComponent(this.dataset.proofHash))"
                     aria-label="Скопировать хэш" title="Скопировать хэш"
                     style="border:0;background:none;padding:0;cursor:pointer;">${icoCopy()}</button>`;
-            return `<span style="display:inline-flex;flex-wrap:wrap;gap:0.3rem;align-items:center;max-width:100%;font-size:0.85rem;">
+            return `<span class="deal-detail-proof" style="display:inline-flex;flex-wrap:wrap;gap:0.3rem;align-items:center;max-width:100%;font-size:0.85rem;">
                 ${tx.amount_usdt != null ? `<strong style="color:${outgoing ? color : '#059669'};">${outgoing ? '−' : '+'}$${outgoing ? formatDealPayoutProofAmount(tx.amount_usdt) + ' USDT' : Number(tx.amount_usdt).toFixed(2)}</strong>` : ''}
                 <strong style="color:${color};font-size:0.72rem;">${txNetworkLabel(tx.network)}</strong>
                 ${outgoing ? `<span class="outgoing-proof-link">${actions}</span>` : actions}
@@ -5783,7 +5783,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                             ${deal.payin_amount_rub ? `<p><strong>Сумма RUB:</strong> ${formatNumber(deal.payin_amount_rub)} ₽</p>` : ''}
                             ${deal.payin_method !== 'crypto_direct' ? (clientPaidRub(deal) != null
                                 ? `<p><strong>Клиент заплатил, ₽:</strong> ${formatNumber(clientPaidRub(deal))} ₽</p>`
-                                : `<p><strong>Клиент заплатил, ₽:</strong> <span style="color:#991B1B;background:#FEF2F2;border:1px solid #FECACA;border-radius:999px;padding:1px 8px;">нет суммы</span></p>`) : ''}
+                                : `<p><strong>Клиент заплатил, ₽:</strong> <span class="deal-detail-error" style="color:#991B1B;background:#FEF2F2;border:1px solid #FECACA;border-radius:999px;padding:1px 8px;">нет суммы</span></p>`) : ''}
                             <p><strong>Сумма USDT:</strong> ${payinUsdtCell(deal)}${(!deal.payin_amount_usdt && deal.payin_usdt_converted) ? ` <span style="font-size:0.8rem;color:#64748b;">(из пачки)</span>
                                 <button class="btn btn-sm btn-success" style="margin-left:8px;font-size:11px;padding:3px 8px;"
                                     onclick="applyConvertedPayin(${deal.id}, ${deal.payin_usdt_converted}, ${deal.payin_amount_rub || 0})">Записать в сделку</button>` : ''}</p>
@@ -5792,7 +5792,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                             ${!deal.payin_tx_verified && deal.payin_tx_hash ? `<button class="btn btn-sm btn-primary" onclick="verifyFlowSolePayin(${deal.id})">Сверить hash с сетью</button>` : ''}</p>` : ''}
                         ${deal.payin_partner_name ? `<p><strong>Партнер:</strong> ${escapeHtml(deal.payin_partner_name)}</p>` : ''}
                         ${hasPayinChannels ? `
-                            <div style="background: #f8fafc; padding: 0.5rem; border-radius: 6px; border: 1px solid #e2e8f0; margin: 0.5rem 0;">
+                            <div class="deal-detail-panel" style="background: #f8fafc; padding: 0.5rem; border-radius: 6px; border: 1px solid #e2e8f0; margin: 0.5rem 0;">
                                 <p style="margin: 0 0 4px;"><strong>Приход по каналам (${payinChannels.length}):</strong></p>
                                 ${payinChannels.map((p, idx) => {
                                     const hashSum = p.tx_hashes.reduce((s, t) => s + (t.amount_usdt || 0), 0);
@@ -5813,7 +5813,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                             </div>
                         ` : ''}
                         ${(deal.payin_parts && deal.payin_parts.length) ? `
-                            <div style="background: #f0f9ff; padding: 0.5rem; border-radius: 6px; border: 1px solid #bae6fd; margin: 0.5rem 0;">
+                            <div class="deal-detail-panel" style="background: #f0f9ff; padding: 0.5rem; border-radius: 6px; border: 1px solid #bae6fd; margin: 0.5rem 0;">
                                 <p style="margin: 0 0 4px;"><strong>Приход частями (${deal.payin_parts.length}):</strong></p>
                                 ${deal.payin_parts.map(p => `<p style="margin: 0 0 2px; font-size: 0.9rem;">${p.uuid ? (p.kind === 'acquiring' ? '📲' : '🏦') : '✍️'} ${formatNumber(p.amount_rub)} ₽${p.kind === 'acquiring' ? ` <span style="color:#64748b;">(эквайринг: на счёт ${formatNumber(p.net_rub)} · комиссия ${p.fee_rub == null ? 'неизвестна' : formatNumber(p.fee_rub)})</span>` : (p.payer ? ' · ' + escapeHtml(p.payer) : '')}${p.date ? ' · ' + p.date : ''}${p.note ? ' · ' + escapeHtml(p.note) : ''}</p>`).join('')}
                             </div>
@@ -5828,14 +5828,14 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                         <div id="payinTxSharedBox" style="margin-top:0.25rem;"></div>
                         
                         ${isDoverka ? `
-                            <div style="background: #fef3c7; padding: 0.75rem; border-radius: 8px; margin-top: 0.5rem;">
+                            <div class="deal-detail-panel deal-detail-warning" style="background: #fef3c7; padding: 0.75rem; border-radius: 8px; margin-top: 0.5rem;">
                                 <p style="margin-bottom: 0.5rem;"><strong>Доверка ID:</strong> ${deal.doverka_transaction_id || '-'}</p>
                                 <p style="margin-bottom: 0.5rem;"><strong>Статус Доверки:</strong>
                                     <span style="color: ${(deal.doverka_status === 'confirmed' || doverkaImplicitConfirmed) ? '#10b981' : '#f59e0b'}; font-weight: 600;">
                                         ${deal.doverka_status === 'confirmed' ? '✅ Подтверждено' : deal.doverka_status === 'paid' ? '💰 Выплачено' : doverkaImplicitConfirmed ? '✅ Подтверждено (legacy)' : icoWait() + 'Ожидает выплаты'}
                                     </span>
                                 </p>
-                                ${deal.doverka_payout_hash ? `<p><strong>Хэш от Доверки:</strong> <a href="https://tronscan.org/#/transaction/${deal.doverka_payout_hash}" target="_blank" style="background: #e0f2fe; padding: 2px 6px; border-radius: 4px; font-family: monospace; font-size: 0.85rem; text-decoration: none; color: #0369a1;">${deal.doverka_payout_hash.substring(0, 20)}...</a> <span onclick="copyHash('${deal.doverka_payout_hash}')" style="cursor: pointer;" title="Скопировать">${icoCopy()}</span></p>` : ''}
+                                ${deal.doverka_payout_hash ? `<p><strong>Хэш от Доверки:</strong> <a class="deal-detail-hash" href="https://tronscan.org/#/transaction/${deal.doverka_payout_hash}" target="_blank" style="background: #e0f2fe; padding: 2px 6px; border-radius: 4px; font-family: monospace; font-size: 0.85rem; text-decoration: none; color: #0369a1;">${deal.doverka_payout_hash.substring(0, 20)}...</a> <span onclick="copyHash('${deal.doverka_payout_hash}')" style="cursor: pointer;" title="Скопировать">${icoCopy()}</span></p>` : ''}
                                 
                                 ${dovekraNotConfirmed ? `
                                     <hr style="margin: 0.75rem 0; border-color: #fbbf24;">
@@ -5856,25 +5856,25 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                             <h4 style="color: #7c3aed; margin-bottom: 0.5rem;">Отправка через MF Corporation</h4>
                             ${deal.realty_purpose ? `<p><strong>Назначение:</strong> ${escapeHtml(deal.realty_purpose)}</p>` : ''}
                             <p><strong>Инвойс застройщику:</strong> ${formatNumber(deal.invoice_amount_thb)} ฿</p>
-                            <p><strong>Отправлено в компанию:</strong> ${formatNumber(deal.company_sent_thb)} ฿ ${deal.company_percent != null ? `<span style="color:#6b7280;">(комиссия ${Number(deal.company_percent).toFixed(2)}% = ${formatNumber(deal.company_fee_thb)} ฿ / $${(deal.company_fee_usdt || 0).toFixed(2)})</span>` : ''}</p>
+                            <p><strong>Отправлено в компанию:</strong> ${formatNumber(deal.company_sent_thb)} ฿ ${deal.company_percent != null ? `<span class="deal-detail-meta" style="color:#6b7280;">(комиссия ${Number(deal.company_percent).toFixed(2)}% = ${formatNumber(deal.company_fee_thb)} ฿ / $${(deal.company_fee_usdt || 0).toFixed(2)})</span>` : ''}</p>
                             <p><strong>Курс покупки:</strong> ${deal.buy_rate_thb_usdt || '-'}${deal.sell_rate_thb_usdt ? ` · <strong>курс клиенту:</strong> ${deal.sell_rate_thb_usdt}` : ''}</p>
                             <p><strong>Себестоимость:</strong> $${(deal.payout_amount_usdt || 0).toFixed(2)}</p>
                             ${storedPayoutProofs.length ? (() => {
                                 const total = storedPayoutProofs.reduce((a, t) => a + (Number(t.amount_usdt) || 0), 0);
-                                return `<div style="background:#fef2f2;padding:0.5rem;border-radius:6px;border:1px solid #fecaca;margin:0.5rem 0;">
+                                return `<div class="deal-detail-panel deal-detail-transfers" style="background:#fef2f2;padding:0.5rem;border-radius:6px;border:1px solid #fecaca;margin:0.5rem 0;">
                                     <p style="margin:0 0 4px;"><strong>Переводы в компанию (${storedPayoutProofs.length}):</strong></p>
                                     ${storedPayoutProofs.map(t => `<p style="margin:0 0 3px;font-size:0.9rem;">
                                         <strong style="color:#b91c1c;">−$${formatDealPayoutProofAmount(t.amount_usdt || 0)}</strong>
                                         <strong style="color:#7f1d1d;font-size:0.72rem;">${txNetworkLabel(t.network)}</strong>
-                                        ${t.to_address ? ` → <span style="font-family:monospace;">${escapeHtml(t.to_address.substring(0, 14))}…</span> <span onclick="copyHash('${t.to_address}')" style="cursor:pointer;" title="Скопировать адрес">${icoCopy()}</span>` : ''}
+                                        ${t.to_address ? ` → <span class="deal-detail-address" style="font-family:monospace;">${escapeHtml(t.to_address.substring(0, 14))}…</span> <button type="button" class="deal-detail-copy" data-proof-hash="${encodeURIComponent(t.to_address)}" onclick="copyHash(decodeURIComponent(this.dataset.proofHash))" aria-label="Скопировать адрес" title="Скопировать адрес" style="border:0;background:none;padding:0;cursor:pointer;">${icoCopy()}</button>` : ''}
                                         ${t.date ? ` · ${escapeHtml(t.date)}` : ''}
-                                        <a href="${txExplorerUrl(t.hash, t.network)}" target="_blank" style="background:#fee2e2;padding:2px 6px;border-radius:4px;font-family:monospace;font-size:0.8rem;text-decoration:none;color:#b91c1c;margin-left:4px;">${t.hash.substring(0, 16)}…</a>
+                                        <a class="deal-detail-hash" href="${txExplorerUrl(t.hash, t.network)}" target="_blank" style="background:#fee2e2;padding:2px 6px;border-radius:4px;font-family:monospace;font-size:0.8rem;text-decoration:none;color:#b91c1c;margin-left:4px;">${t.hash.substring(0, 16)}…</a>
                                     </p>`).join('')}
                                     <p style="margin:4px 0 0;color:#b91c1c;font-size:0.85rem;"><strong>Итого ушло:</strong> $${total.toFixed(2)}</p>
                                 </div>`;
                             })() : (renderPayoutProofs() || '<p style="color:#b45309;font-size:0.9rem;">⚠️ Фактические переводы не отмечены — себестоимость посчитана по курсу.</p>')}
                             <p><strong>Осталось в крипте:</strong> <span style="color:#059669;">$${(deal.crypto_remainder_usdt != null ? deal.crypto_remainder_usdt : (deal.profit_usdt || 0)).toFixed(2)}</span>
-                               · <strong>в компании:</strong> <span style="color:#059669;">${formatNumber(deal.company_fee_thb || 0)} ฿</span> <span style="color:#9ca3af;">($${(deal.company_fee_usdt || 0).toFixed(2)})</span></p>
+                               · <strong>в компании:</strong> <span style="color:#059669;">${formatNumber(deal.company_fee_thb || 0)} ฿</span> <span class="deal-detail-meta" style="color:#9ca3af;">($${(deal.company_fee_usdt || 0).toFixed(2)})</span></p>
                             <hr style="margin: 1rem 0;">
                         ` : ''}
 
@@ -5890,14 +5890,14 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                                   ? `<span style="color:#dc2626;">— не хватает $${(deal.invoice_amount_usd - (deal.transfer_arrive_usd || 0)).toFixed(2)}</span>` : ''}</p>
                             ${storedPayoutProofs.length ? (() => {
                                 const total = storedPayoutProofs.reduce((a, t) => a + (Number(t.amount_usdt) || 0), 0);
-                                return `<div style="background:#ecfeff;padding:0.5rem;border-radius:6px;border:1px solid #a5f3fc;margin:0.5rem 0;">
+                                return `<div class="deal-detail-panel deal-detail-transfers" style="background:#ecfeff;padding:0.5rem;border-radius:6px;border:1px solid #a5f3fc;margin:0.5rem 0;">
                                     <p style="margin:0 0 4px;"><strong>Переводы (${storedPayoutProofs.length}):</strong></p>
                                     ${storedPayoutProofs.map(t => `<p style="margin:0 0 3px;font-size:0.9rem;">
                                         <strong style="color:#0e7490;">−$${formatDealPayoutProofAmount(t.amount_usdt || 0)}</strong>
                                         <strong style="color:#155e75;font-size:0.72rem;">${txNetworkLabel(t.network)}</strong>
-                                        ${t.to_address ? ` → <span style="font-family:monospace;">${escapeHtml(t.to_address.substring(0, 14))}…</span> <span onclick="copyHash('${t.to_address}')" style="cursor:pointer;" title="Скопировать адрес">${icoCopy()}</span>` : ''}
+                                        ${t.to_address ? ` → <span class="deal-detail-address" style="font-family:monospace;">${escapeHtml(t.to_address.substring(0, 14))}…</span> <button type="button" class="deal-detail-copy" data-proof-hash="${encodeURIComponent(t.to_address)}" onclick="copyHash(decodeURIComponent(this.dataset.proofHash))" aria-label="Скопировать адрес" title="Скопировать адрес" style="border:0;background:none;padding:0;cursor:pointer;">${icoCopy()}</button>` : ''}
                                         ${t.date ? ` · ${escapeHtml(t.date)}` : ''}
-                                        <a href="${txExplorerUrl(t.hash, t.network)}" target="_blank" style="background:#cffafe;padding:2px 6px;border-radius:4px;font-family:monospace;font-size:0.8rem;text-decoration:none;color:#0e7490;margin-left:4px;">${t.hash.substring(0, 16)}…</a>
+                                        <a class="deal-detail-hash" href="${txExplorerUrl(t.hash, t.network)}" target="_blank" style="background:#cffafe;padding:2px 6px;border-radius:4px;font-family:monospace;font-size:0.8rem;text-decoration:none;color:#0e7490;margin-left:4px;">${t.hash.substring(0, 16)}…</a>
                                     </p>`).join('')}
                                     <p style="margin:4px 0 0;color:#0e7490;font-size:0.85rem;"><strong>Итого ушло:</strong> $${total.toFixed(2)}</p>
                                 </div>`;
@@ -5933,7 +5933,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                             <p><strong>Метод:</strong> ${getPayoutMethodLabel(deal.payout_method)}</p>
                             <p><strong>Источник:</strong> ${getPayoutSourceLabel(deal.payout_source)} ${selectedWalletLabel ? `(${selectedWalletLabel})` : ''}</p>
                             ${deal.payout_source === 'binance' ? `
-                                <div style="background: #f1f5f9; padding: 0.5rem; border-radius: 6px; margin-bottom: 0.5rem;">
+                                <div class="deal-detail-panel" style="background: #f1f5f9; padding: 0.5rem; border-radius: 6px; margin-bottom: 0.5rem;">
                                     <label style="font-size: 0.8rem; color: #666;">Кошелек списания:</label>
                                     <select class="form-control form-control-sm" id="modalPayoutWalletId" onchange="updateDealWallet(${deal.id}, this.value)">
                                         <option value="">-- Выберите кошелек --</option>
@@ -5945,14 +5945,14 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                             <p><strong>Стоимость USDT:</strong> ${deal.payout_amount_usdt != null ? '$' + deal.payout_amount_usdt.toFixed(2) : '<span style="color: #f59e0b;">Ожидает возмещения</span>'}</p>
                             ${deal.cash_batch_rate ? `<p><strong>Курс:</strong> ${deal.cash_batch_rate}</p>` : ''}
                             ${deal.payout_founder_name ? `<p><strong>Фаундер:</strong> ${escapeHtml(deal.payout_founder_name)}</p>` : ''}
-                            ${deal.payout_no_conversion ? `<p style="background:#fef3c7;padding:6px 8px;border-radius:6px;color:#92400e;">
+                            ${deal.payout_no_conversion ? `<p class="deal-detail-panel deal-detail-warning" style="background:#fef3c7;padding:6px 8px;border-radius:6px;color:#92400e;">
                                 Выдано своими батами — конвертации не было, хеша выдачи нет</p>` : ''}
                             ${deal.reimbursement_id ? `
-                                <div style="background: #d1fae5; padding: 0.5rem; border-radius: 6px; margin-top: 0.5rem;">
+                                <div class="deal-detail-panel deal-detail-confirmed" style="background: #d1fae5; padding: 0.5rem; border-radius: 6px; margin-top: 0.5rem;">
                                     <strong>Возмещение:</strong> #${deal.reimbursement_id} ✅
                                     ${deal.reimbursement?.kind && deal.reimbursement.kind !== 'manual'
-                                        ? `<span style="background:#fef3c7;color:#92400e;border-radius:10px;padding:1px 8px;font-size:0.8rem;margin-left:4px;">${KIND_LABEL[deal.reimbursement.kind] || deal.reimbursement.kind}</span>` : ''}
-                                    ${deal.reimbursement?.tx_hash ? `<br><strong>Хэш возмещения:</strong> <a href="https://tronscan.org/#/transaction/${deal.reimbursement.tx_hash}" target="_blank" style="font-family: monospace; font-size: 0.8rem; text-decoration: none; color: #065f46;">${deal.reimbursement.tx_hash.substring(0, 20)}...</a> <span onclick="copyHash('${deal.reimbursement.tx_hash}')" style="cursor: pointer;">${icoCopy()}</span>` : ''}
+                                        ? `<span class="deal-detail-warning" style="background:#fef3c7;color:#92400e;border-radius:10px;padding:1px 8px;font-size:0.8rem;margin-left:4px;">${KIND_LABEL[deal.reimbursement.kind] || deal.reimbursement.kind}</span>` : ''}
+                                    ${deal.reimbursement?.tx_hash ? `<br><strong>Хэш возмещения:</strong> <a class="deal-detail-hash" href="https://tronscan.org/#/transaction/${deal.reimbursement.tx_hash}" target="_blank" style="font-family: monospace; font-size: 0.8rem; text-decoration: none; color: #065f46;">${deal.reimbursement.tx_hash.substring(0, 20)}...</a> <span onclick="copyHash('${deal.reimbursement.tx_hash}')" style="cursor: pointer;">${icoCopy()}</span>` : ''}
                                     ${renderReimbursementBreakdown(deal)}
                                 </div>
                             ` : ''}
@@ -5975,16 +5975,16 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                                     const gross = crypto + fee;
                                     const pct = deal.payout_amount_usdt ? gross / deal.payout_amount_usdt * 100 : 0;
                                     return `<span style="color: #10b981;">$${gross.toFixed(2)}</span> (${pct.toFixed(1)}%)
-                                        <br><span style="color:#9ca3af;font-size:0.85rem;">в крипте $${crypto.toFixed(2)} · в компании ${formatNumber(deal.company_fee_thb || 0)} ฿ ($${fee.toFixed(2)})</span>`;
+                                        <br><span class="deal-detail-meta" style="color:#9ca3af;font-size:0.85rem;">в крипте $${crypto.toFixed(2)} · в компании ${formatNumber(deal.company_fee_thb || 0)} ฿ ($${fee.toFixed(2)})</span>`;
                                 })()
                                 : `<span style="color: #10b981;">$${(deal.profit_usdt || 0).toFixed(2)}</span> (${(deal.profit_percent || 0).toFixed(1)}%)`
                                + ((deal.deal_kind === 'mf_freehold' || deal.deal_kind === 'mf_auto')
-                                    ? '<br><span style="color:#9ca3af;font-size:0.85rem;">после расходов на перевод</span>' : ''))
+                                    ? '<br><span class="deal-detail-meta" style="color:#9ca3af;font-size:0.85rem;">после расходов на перевод</span>' : ''))
                         }
                         </p>
                         
                         ${(deal.agents && deal.agents.length) ? `
-                            <div style="background: #fffbeb; padding: 0.5rem; border-radius: 6px; border: 1px solid #fef3c7; margin: 0.5rem 0;">
+                            <div class="deal-detail-panel deal-detail-partners" style="background: #fffbeb; padding: 0.5rem; border-radius: 6px; border: 1px solid #fef3c7; margin: 0.5rem 0;">
                                 ${(() => {
                                     const multiTier = new Set(deal.agents.map(a => a.tier || 1)).size > 1;
                                     return deal.agents.map(a => {
@@ -5994,9 +5994,9 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                                                 ? '<span style="color:#0ea5e9;font-weight:600;">fixed $' + (a.fixed_usdt || 0) + '</span>'
                                                 : '<span style="color:#0ea5e9;font-weight:600;">revshare ' + (a.percent || 0) + '%</span>';
                                         const paid = a.paid
-                                            ? '<span style="color:#10b981;margin-left:6px;">✓ выплачено' + (a.paid_at ? ' ' + new Date(a.paid_at).toLocaleDateString('ru-RU') : '') + (a.paid_note ? ' · ' + escapeHtml(a.paid_note) : '') + '</span>'
-                                            : '<span style="color:#ef4444;margin-left:6px;">● не выплачено</span>';
-                                        const tier = multiTier ? ` <span style="color:#9ca3af;font-size:0.8rem;">ур.${a.tier || 1}</span>` : '';
+                                            ? '<span class="deal-detail-paid" style="color:#10b981;margin-left:6px;">✓ выплачено' + (a.paid_at ? ' ' + new Date(a.paid_at).toLocaleDateString('ru-RU') : '') + (a.paid_note ? ' · ' + escapeHtml(a.paid_note) : '') + '</span>'
+                                            : '<span class="deal-detail-unpaid" style="color:#ef4444;margin-left:6px;">● не выплачено</span>';
+                                        const tier = multiTier ? ` <span class="deal-detail-meta" style="color:#9ca3af;font-size:0.8rem;">ур.${a.tier || 1}</span>` : '';
                                         return `<p style="margin: 0 0 4px;"><strong>Партнёр:</strong> ${escapeHtml(a.name || '—')}${tier} · ${model}
                                                 <span style="color: #f59e0b;font-weight:600;"> · -$${(a.payout_usdt || 0).toFixed(2)}</span>${paid}</p>`;
                                     }).join('');
@@ -6004,7 +6004,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                                 ${deal.agents.length > 1 ? `<p style="margin: 4px 0 0; color: #92400e; font-size: 0.85rem;"><strong>Итого партнёрам:</strong> -$${(deal.referrer_payout_usdt || 0).toFixed(2)}</p>` : ''}
                             </div>
                         ` : (deal.referrer_name ? `
-                            <div style="background: #fffbeb; padding: 0.5rem; border-radius: 6px; border: 1px solid #fef3c7; margin: 0.5rem 0;">
+                            <div class="deal-detail-panel deal-detail-partners" style="background: #fffbeb; padding: 0.5rem; border-radius: 6px; border: 1px solid #fef3c7; margin: 0.5rem 0;">
                                 <p style="margin: 0;"><strong>Партнёр:</strong> ${escapeHtml(deal.referrer_name)} · ${
                                     deal.referrer_comp_model === 'markup'
                                         ? '<span style="color:#7c3aed;font-weight:600;">markup +' + (deal.referrer_markup_percent || 0) + '%</span>'
@@ -6014,8 +6014,8 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                                 }</p>
                                 <p style="margin: 0; color: #f59e0b;"><strong>Выплата:</strong> -$${(deal.referrer_payout_usdt || 0).toFixed(2)}
                                     ${deal.referrer_paid
-                                        ? '<span style="color:#10b981;margin-left:8px;">✓ выплачено' + (deal.referrer_paid_at ? ' ' + new Date(deal.referrer_paid_at).toLocaleDateString('ru-RU') : '') + '</span>'
-                                        : '<span style="color:#ef4444;margin-left:8px;">● не выплачено</span>'
+                                        ? '<span class="deal-detail-paid" style="color:#10b981;margin-left:8px;">✓ выплачено' + (deal.referrer_paid_at ? ' ' + new Date(deal.referrer_paid_at).toLocaleDateString('ru-RU') : '') + '</span>'
+                                        : '<span class="deal-detail-unpaid" style="color:#ef4444;margin-left:8px;">● не выплачено</span>'
                                     }</p>
                             </div>
                         ` : '')}
