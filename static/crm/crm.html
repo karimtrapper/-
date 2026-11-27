@@ -7470,6 +7470,8 @@ select.period-btn:hover:not(.active) { color: var(--text); }
             if (_createFormLoading) return _createFormLoading;
             _createFormLoading = (async () => {
                 try {
+                    // Install the controls before asynchronous directory updates.
+                    upgradeAllSelects();
                     // Все справочники независимы — грузим параллельно
                     // (раньше 6 запросов шли по очереди, форма открывалась ~3 сек)
                     // Списка входящих переводов ждать незачем: он только наполняет
@@ -7486,9 +7488,6 @@ select.period-btn:hover:not(.active) { color: var(--text); }
 
                     // Trigger payin method change to show correct fields
                     document.getElementById('payinMethod').dispatchEvent(new Event('change'));
-
-                    // Апгрейд нативных select → кастомные dropdown
-                    setTimeout(upgradeAllSelects, 50);
                 } finally {
                     _createFormLoading = null;
                 }
