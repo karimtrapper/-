@@ -20948,7 +20948,7 @@ def _bank_conversion_coverage(session, deal, sources, *, strict_fee=False):
                       for inc in incomes)
                   or bool(missing_uuids)
                   or (bank_net is None and
-                      (strict_fee or 'fee_unknown' not in issues))
+                      (strict_fee or not {'fee_unknown', 'shares_missing'}.intersection(issues)))
                   or (bank_net is not None and bank_net > required + 1.0
                       and 'fee_unknown' not in issues))
     return {'incomplete': incomplete, 'taken_rub': taken,
@@ -22081,7 +22081,6 @@ def conversion_distribution(db, conv):
     # fixes the deal's total USDT because every source in this conversion has
     # the same effective rate. Keep the remainder unattributed; its owner is
     # not determined by claimed_deal_id. No per-income split is guessed here.
-    known_remainder = 0.0
     for deal_id, full_share in list(per_deal.items()):
         deal = db.query(Deal).get(deal_id)
         if not deal:
@@ -22099,7 +22098,6 @@ def conversion_distribution(db, conv):
         assigned = round(full_share * min(bank_net / linked_rub, 1), 2)
         remainder = round(full_share - assigned, 2)
         if remainder > 0.01:
-            known_remainder += remainder
             per_deal[deal_id] = assigned
             unassigned_incomes.append({
                 'sber_income_id': None, 'partial_deal_id': deal_id,
@@ -22136,6 +22134,8 @@ def conversion_distribution(db, conv):
         bank_net = _deal_bank_net_rub(deal, linked_incomes, strict_fee=strict_fee,
                                       issues=bank_issues)
         required_rub = max(linked_rub, bank_net or 0)
+        has_debt = (deal.payout_source == PayOutSource.FOUNDER_PERSONAL
+                    and deal.needs_reimbursement is not False)
         if bank_net is None:
             reason = ('не заданы доли по поступлениям'
                       if 'shares_missing' in bank_issues else
@@ -22151,7 +22151,8 @@ def conversion_distribution(db, conv):
                 unmatched_allocation = True
                 unassigned_incomes.append({'sber_income_id': None, 'partial_deal_id': deal.id,
                     'amount_rub': source_rub, 'operation_date': None, 'share_usdt': share})
-                continue
+                if not has_debt:
+                    continue
         elif required_rub - source_rub > 0.01:
             missing_rub = round(required_rub - source_rub, 2)
             reason = (f'В эту конвертацию вошло {source_rub:.2f} ₽ из '
@@ -22164,8 +22165,6 @@ def conversion_distribution(db, conv):
                                   'missing_rub': missing_rub,
                                   'reason': reason})
             needs_input = True
-        has_debt = (deal.payout_source == PayOutSource.FOUNDER_PERSONAL
-                    and deal.needs_reimbursement is not False)
         if not has_debt:
             if not row.get('blocked_reason'):
                 no_return += share
@@ -22234,7 +22233,7 @@ def conversion_distribution(db, conv):
 
     wl_share_total = round(sum(r['share_usdt'] for r in wl_rows), 2)
     unassigned = round(received - sum(per_deal.values()) - wl_share_total, 2)
-    if unassigned - known_remainder > 0.01:
+    if unassigned > 0.01:
         needs_input = True  # положительный приход без сделки нельзя объявлять нашей маржой
     stays = round(received - obligations - wl_to_pay, 2)
     balanced = (not needs_input
