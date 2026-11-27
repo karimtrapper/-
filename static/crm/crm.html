@@ -15219,6 +15219,14 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                 }
             }
 
+            if (data.deal_kind === 'mf_freehold' &&
+                Number.isFinite(data.transfer_fee_percent) && data.transfer_fee_percent >= 0 &&
+                data.transfer_fee_percent <= 100 &&
+                Number.isFinite(data.transfer_fee_fixed_usd) && data.transfer_fee_fixed_usd >= 0) {
+                document.getElementById('fhFeePercent').value = data.transfer_fee_percent;
+                document.getElementById('fhFeeFixed').value = data.transfer_fee_fixed_usd;
+            }
+
             // Метод Pay-In
             if (data.payin_method) {
                 const payinMethod = form.querySelector('[name="payin_method"]');

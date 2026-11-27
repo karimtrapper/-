@@ -164,6 +164,59 @@ def stand_ui(chromium, crm_server, monkeypatch):
     context.close()
 
 
+def test_freehold_calculator_custom_transfer_tariff(stand_ui):
+    page, errors = stand_ui
+    base = page.url.split('/crm', 1)[0]
+
+    def quote(route):
+        data = route.request.post_data_json
+        amount = data['amount']
+        result = dict(scenario='RUB → USDT', direction=data['direction'], rub_usdt_rate=80,
+                      final_rate=80, profit_usdt=100)
+        if data['direction'] == 'target':
+            result.update(rub_to_pay=amount * 80, usdt_target=amount)
+        else:
+            result.update(rub_paid=amount, usdt_received=amount / 80)
+        route.fulfill(json=result)
+
+    page.route('**/api/calculate', quote)
+    page.goto(f'{base}/?cat=property_freehold&method=custom&scenario=rub-to-usdt&dir=target&rub_usdt=80')
+    custom = page.get_by_role('button', name='Свой тариф', exact=True)
+    custom.click()
+    expect(custom).to_have_attribute('aria-pressed', 'true')
+    percent = page.get_by_label('Комиссия, %', exact=True)
+    fixed = page.get_by_label('Фиксированная комиссия, USD')
+    percent.fill('0,4')
+    expect(page.locator('#createDealBtn')).to_be_disabled()
+    fixed.fill('50')
+    page.locator('#amount').fill('10000')
+    expect(page.locator('#resultValue')).to_have_text(re.compile(r'807\s200(?:[,.]00)?\s₽'))
+    expect(page.locator('#detailsContent')).to_contain_text('0.40% + $50')
+
+    with page.expect_popup() as crm:
+        page.locator('#createDealBtn').click()
+    deal_form = crm.value
+    expect(deal_form.locator('#fhFeePercent')).to_have_value('0.4')
+    expect(deal_form.locator('#fhFeeFixed')).to_have_value('50')
+    deal_form.close()
+
+    page.get_by_role('button', name='Вношу сумму').click()
+    page.locator('#amount').fill('807200')
+    expect(page.locator('#resultValue')).to_have_text(re.compile(r'10\s000(?:[,.]00)?\sUSDT'))
+    fixed.fill('20000')
+    expect(page.locator('#propFeeHint')).to_contain_text('покрывает комиссию')
+    expect(page.locator('#createDealBtn')).to_be_disabled()
+    expect(page.locator('#b2CopyClient')).to_be_disabled()
+
+    page.get_by_role('button', name=re.compile('^Банк')).click()
+    expect(percent).to_be_hidden()
+    expect(page.locator('#createDealBtn')).to_be_enabled()
+    expect(page.locator('#detailsContent')).to_contain_text('0.80% + $50')
+    page.get_by_role('button', name='Оплата авто', exact=True).click()
+    expect(custom).to_be_hidden()
+    assert not errors, errors
+
+
 def test_crm_task_filter_and_backlink(stand_ui):
     page, errors = stand_ui
     test_case = Path(A.app.static_folder) / 'stand/walkthrough/leasehold-rub/01.json'

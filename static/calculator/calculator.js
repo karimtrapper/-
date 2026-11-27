@@ -204,7 +204,7 @@ function refreshVisibleRates() {
 }
 
 // Очистка результатов при изменении ввода
-function hideResults() {
+function hideResults(recalculate = true) {
     if (!document.body.classList.contains('calc-b2')) {
         document.getElementById('resultsSection').style.display = 'none';
         return;
@@ -225,7 +225,7 @@ function hideResults() {
     document.body.classList.remove('b2-result-ready');
     const resultMain = document.querySelector('.result-main');
     if (resultMain) resultMain.classList.toggle('is-empty', getAmount() <= 0);
-    scheduleB2Calculate();
+    if (recalculate) scheduleB2Calculate();
 }
 
 // Переключение метода
@@ -917,6 +917,8 @@ async function calculate() {
         return;
     }
 
+    if (isCustomPropTariff() && !readCustomPropTariff()) return;
+
     // Блокируем расчёт в режиме брокера/кастома без курса RUB-USDT (только для RUB-сценариев)
     if ((state.method === 'broker' || state.method === 'custom') && !state.customRubUsdt && scenarioNeedsRubRate(state.scenario)) {
         const customInput = document.getElementById('customRubUsdt');
@@ -976,7 +978,7 @@ async function calculate() {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({deal_category: 'property_auto', scenario: 'rub-to-usdt',
                     direction: state.direction, amount, custom_rub_usdt: state.customRubUsdt,
-                    tariff: document.querySelector('#propTariffChips .commission-btn.active')?.dataset.tariff || 'bank',
+                    tariff: state.propTariff,
                     profit_margin: effectiveProfit(amount)})
             });
             const result = await response.json();
@@ -1496,16 +1498,17 @@ function applyPropertyFee(result) {
     result.__prop_fee_applied = false;
     if (state.dealCategory !== 'property_freehold') return result;
 
-    const pct = parseFloat(document.getElementById('propFeePercent')?.value) || 0;
-    const fixed = parseFloat(document.getElementById('propFeeFixed')?.value) || 0;
-    if (pct <= 0 && fixed <= 0) return result;
+    const custom = isCustomPropTariff();
+    const tariff = custom ? readCustomPropTariff() : PROP_TARIFFS[state.propTariff];
+    if (!tariff) return null;
+    const {percent: pct, fixed} = tariff;
     const p = pct / 100;
 
     const s = result.scenario;
     // Расход задан в USD — для THB-сценариев переводим его через курс USDT/THB
     const outIsThb = (s === 'RUB → THB' || s === 'THB ← RUB' || s === 'USDT → THB');
     const usdtThb = result.usdt_thb_rate || state.rates.usdt_thb || 0;
-    if (outIsThb && !usdtThb) return result;   // без курса пересчитать нечем
+    if (outIsThb && !usdtThb) return custom ? null : result;
 
     // Курс USDT→THB считается как out/in, остальные — как in/out: направление,
     // в которое «ухудшение» двигает число, у них противоположное
@@ -1518,13 +1521,13 @@ function applyPropertyFee(result) {
         // Клиент хочет, чтобы застройщик получил X — отправить надо X·(1+p) + F,
         // значит клиент вносит больше в той же пропорции
         const target = getAmount();
-        if (!target) return result;
+        if (!target) return custom ? null : result;
         const targetUsdt = outIsThb ? target / usdtThb : target;
         const sendUsdt = targetUsdt * (1 + p) + fixed;
-        if (!(sendUsdt > 0)) return result;
+        if (!(sendUsdt > 0)) return custom ? null : result;
         const feeUsdt = sendUsdt - targetUsdt;
         const k = sendUsdt / targetUsdt;
-        if (!isFinite(k) || k <= 0) return result;
+        if (!Number.isFinite(k) || k <= 0) return custom ? null : result;
 
         ['rub_to_pay', 'thb_to_pay', 'usdt_to_pay', 'rub_amount'].forEach(f => {
             if (typeof result[f] === 'number') result[f] *= k;
@@ -1539,11 +1542,11 @@ function applyPropertyFee(result) {
         // Клиент вносит сумму — она и есть отправляемая, комиссия сидит внутри неё
         const outField = ['usdt_received', 'thb_received', 'usdt_amount']
             .find(f => typeof result[f] === 'number' && result[f] > 0);
-        if (!outField) return result;
+        if (!outField) return custom ? null : result;
         const out = result[outField];
         const sendUsdt = outIsThb ? out / usdtThb : out;
         const arriveUsdt = (sendUsdt - fixed) / (1 + p);
-        if (!(arriveUsdt > 0)) return result;   // расход съел всю сумму — не калечим расчёт
+        if (!(arriveUsdt > 0)) return custom ? null : result;
         const k = arriveUsdt / sendUsdt;
 
         result[outField] = out * k;
@@ -1556,6 +1559,7 @@ function applyPropertyFee(result) {
     }
 
     result.__prop_fee_applied = true;
+    result.__prop_custom_tariff = custom;
     result.__prop_fee_pct = pct;
     result.__prop_fee_fixed = fixed;
     return result;
@@ -1567,7 +1571,13 @@ function displayResult(result) {
     applyPartnerMarkup(result);
     // Расход на перевод — последним: комиссия банка снимается с суммы, которая
     // реально уходит, а она уже уменьшена на наценку партнёра
-    applyPropertyFee(result);
+    if (!applyPropertyFee(result)) {
+        hideResults(false);
+        document.getElementById('propFeeHint').textContent =
+            'Проверьте, что сумма перевода покрывает комиссию и указан курс.';
+        return;
+    }
+    if (result.__prop_custom_tariff) document.getElementById('propFeeHint').textContent = '';
 
     // Сохраняем результат в state для дальнейшего использования (например, создания платежа)
     state.lastResult = result;
@@ -2310,6 +2320,11 @@ function createDealFromCalc() {
         bonus_usdt: r.bonus_usdt || null
     };
 
+    if (r.__prop_custom_tariff) {
+        dealData.transfer_fee_percent = r.__prop_fee_pct;
+        dealData.transfer_fee_fixed_usd = r.__prop_fee_fixed;
+    }
+
     // Партнер
     const hasPartner = document.getElementById('hasPartner')?.checked;
     if (hasPartner) {
@@ -2335,6 +2350,7 @@ function createDealFromCalc() {
 
 // Расширяем состояние
 state.dealCategory = 'exchange';          // exchange | property_freehold | property_leasehold | property_auto | other
+state.propTariff = 'bank';
 state.rateSource = 'bitazza';             // bitazza | binance
 state.propProfit = 2.0;                   // прибыль Grusha по недвижимости, %
 
@@ -2394,6 +2410,7 @@ function switchDealCategory(cat) {
         document.getElementById('propInvoiceTitle').textContent = cat === 'property_auto' ? 'Счёт продавца' : 'Инвойс застройщика';
         document.getElementById('propInvUsdHint').textContent = cat === 'property_auto' ? 'Сумма, которую получит продавец в USD.' : 'Сумма, которую должен получить застройщик.';
         document.getElementById('propInvCurChips').style.display = cat === 'property_auto' ? 'none' : '';
+        document.getElementById('propTariffLabel').textContent = cat === 'property_auto' ? 'Тариф IPPS' : 'Тариф перевода';
         // Тариф по умолчанию — банк; инвойс — в USD (обычный ввод суммы ниже)
         setPropTariff('bank');
         setPropInvoiceCur('usd');
@@ -2436,14 +2453,9 @@ function setRateSource(src) {
 // ==========================================
 // ФРИХОЛД: ТАРИФ IPPS И ИНВОЙС В ฿
 // ==========================================
-// Расход на перевод — один из двух тарифов IPPS (как IPPS_TARIFFS в задачнике):
-// банк 0,8% + 50$ или софт-счёт 1,5% + 50$. Свободных полей нет: значения кладутся
-// в скрытые propFeePercent/propFeeFixed, откуда их читает applyPropertyFee().
-// Инвойс в ฿: $ к отправке = ฿ / курс, дальше расчёт идёт от этих $ как «хочу
-// получить X USDT» (в applyPropertyFee X — то, что должно дойти до застройщика).
 const PROP_TARIFFS = {
-    bank: { percent: '0.8', fixed: '50' },
-    soft: { percent: '1.5', fixed: '50' }
+    bank: { percent: 0.8, fixed: 50 },
+    soft: { percent: 1.5, fixed: 50 }
 };
 const PROP_REFERENCE_BANKS = ['Kasikornbank', 'SCB', 'Bangkok Bank'];
 const PROP_FX_BANKS = PROP_REFERENCE_BANKS.concat(['Другой банк', 'Не знаю']);
@@ -2457,15 +2469,38 @@ const propInv = {
     wantBank: null, wantRate: null, dealRate: null   // что пришло в ссылке из сделки
 };
 
-function setPropTariff(key) {
-    const t = PROP_TARIFFS[key];
-    if (!t) return;
-    document.getElementById('propFeePercent').value = t.percent;
-    document.getElementById('propFeeFixed').value = t.fixed;
-    document.querySelectorAll('#propTariffChips .commission-btn').forEach(btn => {
-        btn.classList.toggle('active', btn.dataset.tariff === key);
-    });
+function isCustomPropTariff() {
+    return state.dealCategory === 'property_freehold' && state.propTariff === 'custom';
+}
+
+function readCustomPropTariff() {
+    const percentText = document.getElementById('propFeePercent').value.trim().replace(',', '.');
+    const fixedText = document.getElementById('propFeeFixed').value.trim().replace(',', '.');
+    if (!/^(?:\d+(?:\.\d+)?|\.\d+)$/.test(percentText) ||
+        !/^(?:\d+(?:\.\d{1,2})?|\.\d{1,2})$/.test(fixedText)) return null;
+    const percent = Number(percentText);
+    const fixed = Number(fixedText);
+    if (percent > 100 || !Number.isSafeInteger(Math.round(fixed * 100))) return null;
+    return {percent, fixed};
+}
+
+function onPropTariffInput() {
+    document.getElementById('propFeeHint').textContent = isCustomPropTariff() && !readCustomPropTariff()
+        ? 'Укажите процент от 0 до 100 и фиксированную сумму в USD.'
+        : '';
     hideResults();
+}
+
+function setPropTariff(key) {
+    if (!Object.hasOwn(PROP_TARIFFS, key) && !(key === 'custom' && state.dealCategory === 'property_freehold')) return;
+    state.propTariff = key;
+    document.getElementById('propCustomTariff').hidden = !isCustomPropTariff();
+    document.querySelectorAll('#propTariffChips .commission-btn').forEach(btn => {
+        const active = btn.dataset.tariff === key;
+        btn.classList.toggle('active', active);
+        btn.setAttribute('aria-pressed', String(active));
+    });
+    onPropTariffInput();
 }
 
 // Разбор суммы с разделителями тысяч — как parseFlexibleAmount в задачнике:
@@ -2779,6 +2814,7 @@ let b2CalculateTimer = null;
 function scheduleB2Calculate() {
     if (!b2Ready) return;
     clearTimeout(b2CalculateTimer);
+    if (isCustomPropTariff() && !readCustomPropTariff()) return;
     const amount = getAmount();
     if (!(amount > 0)) return;
     if ((state.method === 'broker' || state.method === 'custom') &&
