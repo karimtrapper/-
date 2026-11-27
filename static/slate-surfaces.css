@@ -405,6 +405,36 @@ html.slate-console body.nav-shell-crm #balance .balance-subtab-btn.active {
 html.slate-console body.nav-shell-crm #balance #walletHistorySection {
   background-color: var(--card) !important;
 }
+html.slate-console body.nav-shell-crm #balance .balance-operation {
+  background-color: var(--surface-panel) !important;
+  border-color: var(--border) !important;
+}
+html.slate-console body.nav-shell-crm #balance .balance-operation-amount {
+  color: var(--foreground) !important;
+  font-weight: 600 !important;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+html.slate-console body.nav-shell-crm #balance :is(.balance-operations-title, .balance-operation-meta) {
+  color: var(--muted-foreground) !important;
+  font-size: .8125rem !important;
+}
+html.slate-console body.nav-shell-crm #balance .balance-operation .balance-operation-remove {
+  flex: none;
+  min-inline-size: 34px;
+  background-color: var(--surface-bad) !important;
+  border-color: var(--surface-bad-line) !important;
+  color: var(--surface-bad-ink) !important;
+  font-size: 1.125rem !important;
+}
+html.slate-console body.nav-shell-crm #balance .balance-operation-remove:hover {
+  background-color: color-mix(in oklab, var(--surface-bad) 87%, var(--destructive)) !important;
+}
+@media (pointer: coarse) {
+  html.slate-console body.nav-shell-crm #balance .balance-operation-remove {
+    min-inline-size: 44px;
+  }
+}
 html.slate-console body.nav-shell-crm #dashboard #buyersBlock :is(#buyersNew, #buyersOld, #buyersTotal) {
   font: 600 1.75rem/1.3 var(--font-sans) !important;
   letter-spacing: -.03em;
