@@ -2957,7 +2957,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
             <div id="managerReferrers" class="card" hidden>
                 <div class="crm-section-head">
                     <h1>Рефереры</h1>
-                    <button type="button" class="btn btn-primary" onclick="openManagerReferrer()">Добавить реферера</button>
+                    <button type="button" class="btn btn-primary" id="addManagerReferrer" onclick="openManagerReferrer()">Добавить реферера</button>
                 </div>
                 <input type="search" class="form-control" id="managerReferrerSearch" placeholder="Поиск реферера"
                     aria-label="Поиск по имени, коду или Telegram" oninput="renderManagerReferrers()">
@@ -17288,8 +17288,10 @@ ${Math.abs(c.debits_delta_rub) < 0.01
         }
 
         function closeManagerReferrer() {
-            document.getElementById('managerReferrerModal').classList.remove('active');
-            managerReferrerOpener?.focus();
+            const modal = document.getElementById('managerReferrerModal');
+            if (modal.querySelector('[type="submit"]').disabled) return;
+            modal.classList.remove('active');
+            (managerReferrerOpener?.isConnected ? managerReferrerOpener : document.getElementById('addManagerReferrer')).focus();
         }
 
         async function saveManagerReferrer(event) {
@@ -17334,12 +17336,12 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                 managerReferrers = [...managerReferrers.filter(item => item.id !== result.referrer.id), result.referrer]
                     .sort((a, b) => a.name.localeCompare(b.name, 'ru'));
                 if (!row) document.getElementById('managerReferrerSearch').value = '';
-                closeManagerReferrer();
                 renderManagerReferrers();
+                save.disabled = false;
+                closeManagerReferrer();
                 showToast(accessChanged ? 'Настройки сохранены. Скопируйте актуальную ссылку на кабинет.'
                     : row ? 'Настройки кабинета сохранены' : 'Реферер добавлен');
-                await _agentDirectoryRequest;
-                await loadReferrerDropdowns();
+                Promise.resolve(_agentDirectoryRequest).then(loadReferrerDropdowns);
             } catch (error) {
                 setManagerReferrerError('Не удалось сохранить реферера. Проверьте подключение и повторите попытку.');
             } finally {
