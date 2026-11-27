@@ -1156,7 +1156,8 @@
             const fieldRect = field.getBoundingClientRect();
             const footer = field.closest('form')?.querySelector('.modal-actions');
             const top = dialogRect.top + 8;
-            const bottom = Math.min(dialogRect.bottom, footer?.getBoundingClientRect().top ?? dialogRect.bottom) - 8;
+            // The footer can become sticky after this scroll. Reserve its height before it moves.
+            const bottom = dialogRect.top + modal.clientTop + modal.clientHeight - (footer?.offsetHeight ?? 0) - 8;
             if (fieldRect.top < top) modal.scrollTop += fieldRect.top - top;
             else if (fieldRect.bottom > bottom) modal.scrollTop += fieldRect.bottom - bottom;
         }
