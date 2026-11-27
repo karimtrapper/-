@@ -924,3 +924,38 @@ html.slate-console body.nav-shell-crm #dealModalContent .deal-detail-copy {
 html.slate-console body.nav-shell-crm #dealModalContent .deal-detail-copy:hover {
   background-color: var(--accent) !important;
 }
+
+/* The creation form still embeds legacy colors on nested cards. */
+html.slate-console body.nav-shell-crm #createDealForm :is(
+  #payin1Card, div:has(> :is(#agentsBlockStd, #agentsBlockCustom))
+) {
+  background-color: var(--surface-panel) !important;
+  border-color: var(--border) !important;
+  color: var(--foreground);
+}
+html.slate-console body.nav-shell-crm #createDealForm :is(#agentsBlockStd, #agentsBlockCustom) > div,
+html.slate-console body.nav-shell-crm #createDealForm :is(#agentsBlockStd, #agentsBlockCustom) + button {
+  background-color: var(--card) !important;
+  border-color: var(--border-strong) !important;
+  color: var(--foreground) !important;
+}
+html.slate-console body.nav-shell-crm #createDealForm :is(#agentsBlockStd, #agentsBlockCustom) + button:hover {
+  background-color: var(--accent) !important;
+}
+html.slate-console body.nav-shell-crm #createDealForm :is(#agentsBlockStd, #agentsBlockCustom) > div > div:first-child > button {
+  color: var(--muted-foreground) !important;
+}
+html.slate-console body.nav-shell-crm #createDealForm :is(#agentsBlockStd, #agentsBlockCustom) > div > div:first-child > span {
+  background-color: var(--surface-info) !important;
+  color: var(--surface-link) !important;
+}
+html.slate-console body.nav-shell-crm #createDealForm :is(#agentsBlockStd, #agentsBlockCustom) > div > div:first-child > span > button {
+  background-color: var(--card) !important;
+  color: inherit !important;
+}
+html.slate-console body.nav-shell-crm #createDealForm div:has(> :is(#agentsBlockStd, #agentsBlockCustom)) > div:first-child > strong {
+  color: var(--foreground) !important;
+}
+html.slate-console body.nav-shell-crm #createDealForm :is(#agentsBlockStdNet, #agentsBlockCustomNet, [id^="saPay"], [id^="caPay"]) {
+  color: var(--surface-good-ink) !important;
+}
