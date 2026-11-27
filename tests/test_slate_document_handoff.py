@@ -52,16 +52,46 @@ def test_document_handoff_recognises_as_operator_and_preserves_edits(chromium, c
         page.locator('#d_sum').fill('15500')
         page.get_by_role('button', name='Курс знаю — сам').click()
         page.wait_for_load_state('networkidle')
+        held = []
+        dropped = []
+
+        def delay_then_drop_save(route):
+            if not state_write(route.request):
+                route.continue_()
+            elif not held:
+                held.append(route)
+            elif not dropped:
+                dropped.append(route.request)
+                route.abort('failed')
+            else:
+                route.continue_()
+
+        page.route('**/api/stand/state', delay_then_drop_save)
+        page.get_by_role('button', name='Нет, спросить операциониста').click()
+        page.get_by_role('button', name='Курс знаю — заполню сам').click()
         page.locator('#m1').fill('92.5')
         page.locator('#m2').fill('34.5')
-        with page.expect_response(lambda response: state_write(response.request)) as rates:
-            page.get_by_role('button', name='Курс проставлен — считать клиенту').click()
-        assert rates.value.ok
-        assert rates.value.json()['data']['deals'][0]['step'] == 's6'
+        page.get_by_role('button', name='Курс проставлен — считать клиенту').click()
         page.locator('#r3').fill('2.8')
         expect(page.locator('#r4')).to_have_value('43 400')
         page.get_by_role('button', name='Клиент согласен').click()
+        expect(page.get_by_text('Сохраняем курсы. Дождитесь подтверждения и повторите.', exact=True)).to_be_visible()
+        assert len(held) == 1
+        with page.expect_event('requestfailed', predicate=state_write):
+            held[0].continue_()
+        expect(page.get_by_text('Не сохранилось — проверьте связь', exact=True)).to_be_visible()
+        expect(page.locator('#r3')).to_have_value('2.8')
+        with page.expect_response(lambda response: state_write(response.request)) as retry:
+            page.get_by_role('button', name='Клиент согласен').click()
+        assert retry.value.ok, retry.value.json()
+        assert retry.value.json()['data']['deals'][0]['step'] == 's6'
+        expect(page.locator('#r3')).to_have_value('2.8')
+        with page.expect_response(lambda response: state_write(response.request)) as agreed:
+            page.get_by_role('button', name='Клиент согласен').click()
+        assert agreed.value.ok, agreed.value.json()
+        assert agreed.value.json()['data']['deals'][0]['step'] == 's8'
         expect(page.get_by_role('button', name='Передать операционисту')).to_be_visible()
+        page.unroute('**/api/stand/state', delay_then_drop_save)
 
         for caption, name in (('Загранпаспорт', 'qa-passport.pdf'), ('Инвойс', 'qa-invoice.pdf')):
             row = page.locator('.li').filter(has=page.get_by_text(caption, exact=True))
@@ -72,7 +102,7 @@ def test_document_handoff_recognises_as_operator_and_preserves_edits(chromium, c
                                          'buffer': b'%PDF-1.4\n1 0 obj << /Type /Catalog >> endobj\n%%EOF'})
             assert uploaded.value.ok, uploaded.value.json()
             expect(row.get_by_text(name, exact=False).first).to_be_visible()
-        page.wait_for_load_state('networkidle')
+        assert page.evaluate('standWaitSaved()')['ok']
 
         writes, recognition = [], []
         page.on('request', lambda request: writes.append(request) if state_write(request) else None)

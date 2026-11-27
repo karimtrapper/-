@@ -14669,6 +14669,14 @@ function stepCard(d){
 async function act(id,step){
   let d=deal(id);
   if(!d||d.closed||(d.step!==step&&!(d.prepay&&d.prepay.brokerStep===step))){toast('Шаг уже изменился — откройте текущую задачу');return;}
+  // A queued save can still contain s4/s5 while the calculation is already visible.
+  // Keep the current form until the server has recorded s6 as a separate transition.
+  if(STAND&&!SCREEN&&!SNAP&&step==='s6'&&
+      !(standBase?.deals||[]).some(saved=>saved.id===id&&saved.step==='s6')){
+    if(!standBusy&&!standPush&&!standSaveScheduled)save();
+    toast('Сохраняем курсы. Дождитесь подтверждения и повторите.');
+    return;
+  }
   if(['s22','s23','s24'].includes(step)&&prepayWalletUnavailable(d)){
     toast('Не удалось сверить кошелёк отправки с реестром');return;
   }
