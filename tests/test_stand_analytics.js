@@ -90,7 +90,7 @@ const data = stand.analyticsData(deals, filters, period);
 assert.equal(data.rows.length, 4);
 assert.equal(data.unknownDates, 1);
 const summary = stand.analyticsSummary(data.rows);
-assert.deepEqual(Object.values(summary), [4, 1, 2, 1, 45000.25, 1]);
+assert.deepEqual({...summary}, {all:4,open:1,won:1,lost:2,unknown:0,rateLost:1,turnover:45000.25});
 assert.equal(data.reasons.get('Не устроил курс')[0].d.id, 1);
 assert.equal(stand.analyticsData(deals, {...filters,inquiry:'unknown'}, period).rows.length, 2);
 assert.equal(stand.analyticsData(deals, {...filters,basis:'closed'}, period).rows.length, 2);
@@ -145,4 +145,54 @@ assert.match(report, /<option value="agent">Агент<\/option>/);
 assert.match(report, /<option value="client">Клиент<\/option>/);
 assert.match(report, /<option value="unknown">Не указано<\/option>/);
 assert.doesNotMatch(report, /saveStandChatType|setDealInquiryType|<img/);
+
+const manualDeals = [
+  {id:10, manual:true, closed:false, createdAt:'2026-11-21', source:'tg', inquiryType:'client', amountRub:900},
+  {id:11, originMode:'manual', createdAt:'2026-11-21', closedAt:'2026-11-22',
+    closeReason:' не устроил  курс ', source:'tg', inquiryType:'agent', amountRub:600},
+  {id:12, step:'manual', createdAt:'2026-11-21', closeReason:'Успешно завершена',
+    log:[{text:'Закрыта: Успешно завершена',at:eventAt}], source:'wa', inquiryType:'client', amountRub:500},
+  {id:13, manual:true, manualNew:true, createdAt:'2026-11-21', closedAt:'2026-11-22',
+    closeReason:'Успешно завершена', source:'wa', inquiryType:'client', amountRub:1500},
+  {id:14, manual:true, closed:true, createdAt:'2026-11-21', closedAt:'2026-11-22',
+    closeReason:'Комментарий менеджера', source:'tg', inquiryType:'client', amountRub:1500},
+  {id:15, isTask:true, step:'manual', createdAt:'2026-11-21', source:'tg', inquiryType:'client'},
+  {id:16, closed:true, createdAt:'2026-11-21', closedAt:'2026-11-22', source:'tg', inquiryType:'agent'},
+];
+const manualData = stand.analyticsData(manualDeals, filters, period);
+assert.deepEqual({...stand.analyticsSummary(manualData.rows)},
+  {all:6,open:1,won:1,lost:2,unknown:2,rateLost:1,turnover:500});
+assert.equal(manualData.reasons.get('Не устроил курс')[0].d.id, 11);
+assert.equal(manualData.reasons.get('')[0].d.id, 16, 'previous behavior for ordinary closed records');
+assert.equal(manualData.reasons.has('Комментарий менеджера'), false);
+assert.equal(stand.analyticsDealDate(manualDeals[0], 'closed'), '', 'creation date is not a closing date');
+assert.equal(stand.analyticsDealDate(manualDeals[2], 'closed'), '2026-11-22');
+assert.deepEqual({...stand.analyticsSummary(
+  stand.analyticsData(manualDeals, {...filters,source:'tg',inquiry:'client'}, period).rows)},
+  {all:3,open:1,won:0,lost:0,unknown:2,rateLost:0,turnover:0});
+const closedFilters = {...filters,basis:'closed'};
+const manualClosedWindow = stand.analyticsData(manualDeals, closedFilters, period);
+assert.equal(manualClosedWindow.unknownDates, 1);
+assert.deepEqual({...stand.analyticsSummary(manualClosedWindow.rows)},
+  {all:4,open:0,won:1,lost:2,unknown:1,rateLost:1,turnover:500});
+const manualClosedAll = stand.analyticsData(manualDeals, closedFilters, {from:'',to:''});
+assert.equal(manualClosedAll.unknownDates, 1);
+assert.deepEqual({...stand.analyticsSummary(manualClosedAll.rows)},
+  {all:5,open:0,won:1,lost:2,unknown:2,rateLost:1,turnover:500});
+
+stand.S.deals = manualDeals;
+vm.runInContext("Object.assign(analyticsFilters,{period:'all',basis:'created'})", stand);
+const renderedManual = stand.viewAnalytics();
+assert.match(renderedManual, /Закрыто всего<\/div><div class="stat-value num">5<\/div>/);
+assert.match(renderedManual, /data-outcome="unknown"[^>]+>Итог не указан · 2<\/button>/);
+assert.match(renderedManual, /1 из 3 закрытых с известным итогом/);
+assert.match(renderedManual, /Итог не указан">2<\/td>/);
+vm.runInContext("analyticsFilters.reason=ANALYTICS_UNKNOWN_OUTCOME", stand);
+const unknownResults = stand.viewAnalytics();
+assert.match(unknownResults, /Сделки без указанного итога/);
+assert.deepEqual([...unknownResults.matchAll(/data-deal="(\d+)"/g)].map(match => match[1]), ['14', '10']);
+vm.runInContext("Object.assign(analyticsFilters,{period:'custom',basis:'closed',from:'2026-11-20',to:'2026-11-22'})", stand);
+assert.match(stand.viewAnalytics(), /Исключено из периода: 1 сделка без точной даты закрытия/);
+vm.runInContext("analyticsFilters.period='all'", stand);
+assert.match(stand.viewAnalytics(), /Учтено за всё время: 1 сделка без точной даты закрытия/);
 console.log('PASS analytics calendar, filters, metrics, escaping, and exact conversation links');
