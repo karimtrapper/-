@@ -29,6 +29,7 @@ def test_enter_full_deal_opens_themed_crm_form(chromium, crm_server, monkeypatch
         page.on('dialog', lambda dialog: dialog.accept())
         page.goto(base + '/tasks')
         page.get_by_role('button', name='+ Новая задача').click()
+        page.locator('#draftSourceCard').get_by_text('Telegram', exact=True).click()
         page.locator('#cq').fill('QA Synthetic Client')
         page.get_by_role('button', name='Создать нового клиента «QA Synthetic Client»').click()
         page.locator('#d_manager').select_option(label='QA Draft Manager')
@@ -40,6 +41,27 @@ def test_enter_full_deal_opens_themed_crm_form(chromium, crm_server, monkeypatch
         editor = page.locator('#crmDraftHost')
         client = editor.locator('#clientSearchInput')
         expect(client).to_have_value('QA Synthetic Client')
+        source = page.locator('#crmDraftSource')
+        reference = page.locator('#crmDraftSourceRef')
+        error = page.locator('#crmDraftSourceError')
+        expect(source).to_have_value('tg')
+        expect(reference).to_have_value('')
+        expect(reference).to_have_attribute('required', '')
+        page.evaluate('standWaitSaved()')
+        saves = []
+        page.on('request', lambda request: saves.append(request)
+                if request.method == 'PUT' and request.url.endswith('/api/stand/state') else None)
+        page.locator('#crmDraftSave').click()
+        expect(error).to_have_text('Укажите чат.')
+        expect(reference).to_be_focused()
+        assert not saves
+
+        source.select_option('none')
+        expect(reference).not_to_have_attribute('required', '')
+        expect(error).to_be_hidden()
+        source.select_option('wa')
+        reference.fill('QA Manual WhatsApp Source')
+        expect(reference).to_have_attribute('required', '')
         root = page.locator('html')
         expect(root).to_have_class('slate-console')
         expect(editor.locator('#managerSelect')).to_have_attribute('data-upgraded', 'true')
@@ -77,6 +99,7 @@ def test_enter_full_deal_opens_themed_crm_form(chromium, crm_server, monkeypatch
         expect(editor.locator('#managerSelect')).to_have_attribute('data-upgraded', 'true')
         expect(invoice).to_have_value('16000')
         expect(agent).to_have_value('15')
+        expect(reference).to_have_value('QA Manual WhatsApp Source')
         button.click()
         expect(menu).to_be_visible()
         button.press('Escape')
@@ -108,4 +131,12 @@ def test_enter_full_deal_opens_themed_crm_form(chromium, crm_server, monkeypatch
         # The form remains wired to its original fields after changing appearance.
         expect(editor.locator('#dealKindSelect')).to_have_value('mf_realty')
         expect(client).to_have_value('QA Synthetic Client')
+        with page.expect_response(lambda response: response.request.method == 'PUT'
+                                  and response.url.endswith('/api/stand/state')) as published:
+            page.locator('#crmDraftSave').click()
+        assert published.value.ok, published.value.json()
+        [card] = published.value.json()['data']['deals']
+        assert card['client'] == 'QA Synthetic Client'
+        assert (card['source'], card['sourceRef'], card['srefOther']) == (
+            'wa', 'QA Manual WhatsApp Source', True)
         assert not errors

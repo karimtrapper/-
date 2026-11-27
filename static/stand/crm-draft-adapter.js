@@ -663,6 +663,9 @@ function crmDraftSourceChoices() {
   const ref=document.getElementById('crmDraftSourceRef');
   const list=document.getElementById('crmDraftSourceChoices');
   if(!ref||!list)return;
+  const required=globalThis.workingTasks&&deal(crmDraftActive?.id)?.manualNew&&workingTaskNeedsSource(source);
+  ref.toggleAttribute('required',!!required);
+  document.getElementById('crmDraftSourceHelp').hidden=!required;
   const label=ref.closest('.fg')?.querySelector('label');
   if(label)label.textContent=source==='bitrix'?'Карточка в Битриксе':
     source==='none'?'Телефон / офис / рекомендация':'Чат / источник';
@@ -743,7 +746,13 @@ function crmDraftWire(active) {
     select.dispatchEvent(new Event('change',{bubbles:true}));
     wrap.classList.add('open');
   });
+  function clearSourceError(){
+    document.getElementById('crmDraftSourceError').hidden=true;
+    document.getElementById('crmDraftSourceRef').removeAttribute('aria-invalid');
+  }
+  document.getElementById('crmDraftSourceRef')?.addEventListener('input',clearSourceError);
   document.getElementById('crmDraftSource')?.addEventListener('change',()=>{
+    clearSourceError();
     // Legacy editSrcSet cleared a chat/Bitrix ref when its channel changed.
     // Keep the change in the draft until the user explicitly saves it.
     crmDraftValue(document,'crmDraftSourceRef','');

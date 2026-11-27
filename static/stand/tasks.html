@@ -7884,13 +7884,16 @@ function ensureClient(D){
   if (!S.chatClientMap) S.chatClientMap = {};
   if (D.sourceRef && D.source !== 'none' && !D.srefOther) S.chatClientMap[D.source+':'+D.sourceRef] = id;
 }
-function draftValid(){
+function workingTaskNeedsSource(source){
+  return ['tg','wa','bitrix'].includes(source);
+}
+function draftValid({openingEditor=false}={}){
   const D=S.draft;
   if(!validInquiryType(D.inquiryType)){toast('Выберите тип сделки');return false;}
   if(STAND&&standMe==='admin'&&!STAND_EMPLOYEES.some(e=>e.role==='manager'&&!e.login_disabled&&String(e.id)===String(D.managerUserId))){
     D.createError='Выберите менеджера сделки';render();return false;
   }
-  if(globalThis.workingTasks&&['tg','wa','bitrix'].includes(D.source)){
+  if(!openingEditor&&globalThis.workingTasks&&workingTaskNeedsSource(D.source)){
     const ref=String(D.sourceRef||'').trim();
     const valid=ref&&(D.srefOther===true||getChatObj(D.source,ref)?.key===ref);
     if(!valid){
@@ -8024,7 +8027,7 @@ async function createTask(mode){
 /* Полная форма открывается как черновик. Сделку добавляет на доску её сохранение. */
 async function createFull(){
   const D=S.draft;
-  if(!D||D.creating||!draftValid())return;
+  if(!D||D.creating||!draftValid({openingEditor:true}))return;
   if(STAND&&(standBusy||standPush||standSaveScheduled)){
     D.creating=true;render();
     try{await standWaitSaved();}
@@ -8040,6 +8043,7 @@ async function createFull(){
   if(!STAND)ensureClient(D);
   D.isOld=D.clientId?!!(clientById(D.clientId)||{}).docs:false;
   const d=newDeal({...D,step:'manual',manual:true,manualNew:STAND,...draftAmounts(D),noSave:true});
+  if(globalThis.workingTasks&&D.clientManual)d.clientPinned=true;
   if(key)d.creationKey=key;
   S.draft=null;S.edit=d.id;S.manualCreateError=null;
   if(!STAND){
@@ -11215,12 +11219,14 @@ function viewEdit(){
             ${canSetInquiryType()?`<button type="button" class="btn btn-outline btn-sm"
               ${pendingInquiryTypes.has(d.id)?'disabled':''} onclick="setDealInquiryType(${d.id},val('editDealInquiryType${d.id}'))">Сохранить тип</button>`:''}
           </div>`}</div>
-      <div class="fg"><label class="fl">Откуда обращение</label>
+      <div class="fg"><label class="fl" for="crmDraftSource">Откуда обращение</label>
         <select class="fc" id="crmDraftSource">${Object.keys(SOURCES).map(k=>
           `<option value="${k}"${d.source===k?' selected':''}>${SOURCES[k]}</option>`).join('')}</select></div>
       <div class="fg"><label class="fl" for="crmDraftSourceRef">${d.source==='bitrix'?'Карточка в Битриксе':'Чат / источник'}</label>
-        <input class="fc" id="crmDraftSourceRef" list="crmDraftSourceChoices" aria-describedby="crmDraftSourceName" value="${htmlText(d.sourceRef||'')}">
+        <input class="fc" id="crmDraftSourceRef" list="crmDraftSourceChoices" aria-describedby="crmDraftSourceName crmDraftSourceHelp crmDraftSourceError" value="${htmlText(d.sourceRef||'')}">
         <p class="fh" id="crmDraftSourceName" hidden></p>
+        <p class="fh" id="crmDraftSourceHelp" hidden>Выберите источник из списка или впишите его вручную.</p>
+        <p class="create-error-alert" id="crmDraftSourceError" role="alert" hidden></p>
         <datalist id="crmDraftSourceChoices"></datalist></div>
       <div class="fg" id="crmDraftRealtySubtypeBox" style="display:${kind==='mf_realty'?'block':'none'}"><label class="fl">Вид недвижимости</label>
         <select class="fc" id="crmDraftRealtySubtype"><option value="Лизхолд"${d.kind==='Аренда'?'':' selected'}>Лизхолд</option>
@@ -11350,6 +11356,18 @@ async function editSave(id){
   if(isNew&&!validInquiryType(document.getElementById('crmDraftInquiryType')?.value)){
     toast('Выберите тип сделки');return;
   }
+  const sourceField=document.getElementById('crmDraftSourceRef');
+  const source=document.getElementById('crmDraftSource')?.value;
+  const needsSource=isNew&&globalThis.workingTasks&&workingTaskNeedsSource(source);
+  const sourceRef=needsSource?sourceField?.value.trim():'';
+  if(needsSource&&!sourceRef){
+    const error=document.getElementById('crmDraftSourceError');
+    error.hidden=false;
+    error.textContent=source==='bitrix'?'Укажите сделку в Битриксе.':'Укажите чат.';
+    sourceField.setAttribute('aria-invalid','true');
+    sourceField.focus();
+    return;
+  }
   const nextType=val('editDealInquiryType'+id);
   const typeChanged=!isNew&&validInquiryType(nextType)&&nextType!==d.inquiryType;
   if(typeChanged){
@@ -11363,6 +11381,12 @@ async function editSave(id){
   if(ch===false)return;
   if(STAND&&isNew&&!d.managerUserId){toast('Выберите менеджера сделки');return;}
   if(isNew){
+    if(needsSource){
+      d.sourceRef=sourceRef;
+      d.srefOther=!chatList(source).some(chat=>chat.key===sourceRef);
+    }else if(globalThis.workingTasks){
+      delete d.srefOther;
+    }
     if(STAND){await standSaveManualCreation(d);return;}
     d.manualNew=false;
     d.log=[];
