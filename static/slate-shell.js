@@ -105,6 +105,8 @@
   }
 
   function mount(state, sections, options) {
+    if (window.settleSlatePrepaint && !['slate-shell.css', 'slate-surfaces.css'].every(file =>
+      document.querySelector('link[href^="/static/' + file + '"]')?.sheet)) return;
     const {panelAvailable, roleLabel} = options;
     const headings = ['Обзор', 'Работа'];
     const panelLink = panelAvailable ? '/panel' : '/crm?section=dashboard';
@@ -322,6 +324,7 @@
       }
     });
     update(state);
+    window.settleSlatePrepaint?.(true);
   }
 
   function update(state) {

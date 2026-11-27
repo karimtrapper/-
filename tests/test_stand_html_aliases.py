@@ -11,11 +11,12 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 
 
-@pytest.mark.parametrize('mode', ['0', '1'])
+@pytest.mark.parametrize('mode', ['0', '1', 'working'])
 def test_served_html_file_aliases_and_ranges(tmp_path, mode):
     # Import app in a fresh, synthetic process because STAND_MODE is import-time.
     env = {'PATH': os.environ.get('PATH', ''), 'PYTHONPATH': str(ROOT),
-           'STAND_MODE': mode, 'DATABASE_URL': 'sqlite:///' + str(tmp_path / 'fixture.db'),
+           'STAND_MODE': str(int(mode == '1')), 'TASKS_ENABLED': str(int(mode == 'working')),
+           'DATABASE_URL': 'sqlite:///' + str(tmp_path / 'fixture.db'),
            'SECRET_KEY': 'synthetic-alias-test', 'STAND_PASSWORD': 'synthetic-pass',
            'LOCAL_NO_AUTH': '0', 'REESTR_SYNC_ENABLED': '0',
            'PAYMENT_POLL_ENABLED': '0', 'PAYIN_ADDR_BACKFILL': '0',
@@ -37,7 +38,7 @@ with client.session_transaction() as sess:
     sess['user_id'] = 1
 
 paths = {
-    'calculator': ('/', '/static/calculator/index.html',
+    'calculator': ('/', '/calculator/index.html', '/static/calculator/index.html',
                    '/static/calculator/index.html/', '/static/calculator/./index.html'),
     'crm': ('/crm', '/static/crm/crm.html', '/static/crm/crm.html/',
             '/static/crm/./crm.html', '/static/crm//crm.html',
@@ -59,6 +60,9 @@ paths = {
                     '/static/stand/walkthrough/leasehold-rub.html/',
                     '/tasks/walkthrough/../walkthrough/leasehold-rub.html'),
 }
+if app.TASKS_ENABLED:
+    paths['crm'] += ('/panel',)
+    paths['tasks'] += ('/tasks/tasks.html',)
 conditional = ({'If-Modified-Since': 'Wed, 21 Oct 2037 07:28:00 GMT'},
                {'If-None-Match': '*'}, {'Range': 'bytes=0-400'},
                {'Range': 'bytes=0-400', 'If-Range': 'Wed, 21 Oct 2037 07:28:00 GMT'})
@@ -69,7 +73,7 @@ for kind, urls in paths.items():
         for headers in ({}, *conditional):
             for method in ('GET', 'HEAD'):
                 response = client.open(url + '?fixture=1', method=method, headers=headers)
-                if not app.STAND_MODE and url.startswith('/tasks'):
+                if not app.tasks_enabled() and url.startswith('/tasks'):
                     assert response.status_code in (302, 404), (url, method, headers)
                     continue
                 if response.status_code in (302, 404):
@@ -85,6 +89,17 @@ for kind, urls in paths.items():
                                    ('Content-Range', 'ETag', 'Last-Modified'))
                     assert response.content_length == len(transformed)
                     assert response.data == (b'' if method == 'HEAD' else transformed)
+                elif app.TASKS_ENABLED and kind in ('calculator', 'crm', 'tasks'):
+                    assert response.status_code == 200, (url, method, headers)
+                    assert response.headers['Cache-Control'] == 'private, no-store'
+                    assert 'Cookie' in response.vary
+                    assert not any(h in response.headers for h in
+                                   ('Content-Range', 'ETag', 'Last-Modified'))
+                    if method == 'HEAD':
+                        assert not response.data
+                    else:
+                        assert response.data.index(b'slate-pending') < response.data.index(b'</head>')
+                        assert b'id="slate-loading" hidden' in response.data
                 else:
                     assert 'Content-Security-Policy' not in response.headers
                     if response.status_code == 200:
@@ -95,6 +110,16 @@ for kind, urls in paths.items():
                     else:
                         assert response.status_code == 304, (url, method, headers)
                         assert response.data == b''
+
+if app.TASKS_ENABLED:
+    snapshot = client.get('/tasks?screen=sample')
+    assert b'id="slate-loading"' not in snapshot.data
+    with client.session_transaction() as sess:
+        sess.clear()
+    public = client.get('/static/calculator/index.html')
+    assert public.status_code == 200
+    assert public.data == Path(PAGE_SOURCES['calculator']).read_bytes()
+    assert 'Cookie' in public.vary
 
 if app.STAND_MODE:
     with client.session_transaction() as sess:

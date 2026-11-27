@@ -227,7 +227,8 @@
         const countData=await countResponse.json();
         if (countData.success) update({count:countData.count,notifications:countData.notifications || 0});
       } catch (error) { /* Navigation remains usable if the count cannot load. */ }
-    } catch (error) { /* Keep the existing production navigation on auth failure. */ }
+    } catch (error) { /* Keep the existing navigation on auth failure. */ }
+    finally { window.settleSlatePrepaint?.(false); }
   }
   window.NavShell={mount,update,boot};
 })();

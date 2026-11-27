@@ -1590,3 +1590,54 @@ def test_saved_shared_payin_hydration_preserves_editor_values(ui, monkeypatch, w
         assert snapshot(db, deal_id) == before
     assert not errors, errors
     assert not server_errors, server_errors
+
+
+@pytest.mark.parametrize('path', ['/crm', '/panel', '/tasks', '/calculator/index.html'])
+def test_working_slate_first_render_before_auth(chromium, crm_server, monkeypatch, path):
+    monkeypatch.setattr(A, 'TASKS_ENABLED', True)
+    base, cookie = crm_server
+    with chromium.new_context(viewport={'width': 390, 'height': 844}) as context:
+        context.add_cookies([{'name': 'session', 'value': cookie, 'url': base}])
+        context.add_init_script("""localStorage.setItem('calccrm:slate-preferences',
+            JSON.stringify({mode: 'light', preset: 'tangerine'}));""")
+        context.route('**/*', lambda route: route.continue_()
+                      if urlsplit(route.request.url).hostname == '127.0.0.1'
+                      else route.abort())
+        page = context.new_page()
+        auth = []
+        page.route('**/api/auth/me', lambda route: auth.append(route))
+        page.goto(base + path, wait_until='domcontentloaded')
+
+        expect(page.locator('html')).to_have_class(re.compile(r'\bslate-pending\b'))
+        expect(page.locator('html')).to_have_attribute('data-mode', 'light')
+        expect(page.locator('html')).to_have_attribute('data-preset', 'tangerine')
+        expect(page.locator('#slate-loading')).to_be_visible()
+        expect(page.locator('.top-nav')).to_be_hidden()
+
+        if path == '/crm':
+            expect(page.get_by_role('link', name='Обновить страницу')).to_be_visible(timeout=9000)
+            expect(page.locator('.top-nav')).to_be_hidden()
+
+        page.unroute('**/api/auth/me')
+        for route in auth:
+            route.continue_()
+        expect(page.locator('.slate-topbar')).to_be_visible()
+        expect(page.locator('#slate-loading')).to_be_hidden()
+
+
+@pytest.mark.parametrize('path', ['/crm', '/tasks'])
+def test_working_document_remains_visible_with_javascript_disabled(chromium, crm_server, monkeypatch, path):
+    monkeypatch.setattr(A, 'TASKS_ENABLED', True)
+    base, cookie = crm_server
+    with chromium.new_context(java_script_enabled=False) as context:
+        context.add_cookies([{'name': 'session', 'value': cookie, 'url': base}])
+        context.route('**/*', lambda route: route.continue_()
+                      if urlsplit(route.request.url).hostname == '127.0.0.1'
+                      else route.abort())
+        page = context.new_page()
+        page.goto(base + path)
+        expect(page.locator('.top-nav')).to_be_visible()
+        expect(page.locator('#slate-loading')).to_be_hidden()
+        if path == '/tasks':
+            expect(page.get_by_text('Для работы задачника включите JavaScript.')).to_be_visible()
+            expect(page.locator('#app')).to_be_hidden()

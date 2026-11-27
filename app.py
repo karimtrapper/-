@@ -142,6 +142,51 @@ def stand_referrer_policy(response):
             response.headers['Content-Security-Policy'] = STAND_CSP
     return response
 
+
+@app.after_request
+def working_slate_prepaint(response):
+    """Select the working shell before HTML can render on any supported alias."""
+    if (STAND_MODE or not TASKS_ENABLED or request.method not in ('GET', 'HEAD')
+            or response.status_code not in (200, 206, 304) or response.mimetype != 'text/html'):
+        return response
+
+    from pathlib import Path
+    from stand_browser import PAGE_SOURCES, served_page_kind
+
+    kind = ('crm' if request.endpoint == 'panel_index' else
+            served_page_kind(request.endpoint, request.view_args, app.root_path))
+    if kind not in ('calculator', 'crm', 'tasks'):
+        return response
+    response.vary.add('Cookie')
+    if current_role() not in STAND_ROLES:
+        return response
+    if kind == 'tasks' and (request.args.get('snap') or request.args.get('screen')):
+        return response
+
+    root = Path(app.root_path)
+    html = (root / PAGE_SOURCES[kind]).read_text(encoding='utf-8')
+    prepaint_css = (root / 'static/slate-prepaint.css').read_text(encoding='utf-8')
+    prepaint_js = (root / 'static/slate-prepaint.js').read_text(encoding='utf-8')
+    html = html.replace('<meta charset="UTF-8">',
+                        f'<meta charset="UTF-8"><style>{prepaint_css}</style><script>{prepaint_js}</script>', 1)
+    body_end = html.index('>', html.index('<body')) + 1
+    loading = ('<div id="slate-loading" hidden><div>'
+               '<p class="slate-loading-message" role="status">Загрузка…</p>'
+               '<div class="slate-loading-error"><p role="alert">Интерфейс ещё не загрузился</p>'
+               '<a href="">Обновить страницу</a></div></div></div>')
+    if kind == 'tasks':
+        loading += ('<style>html.slate-console #slate-task-noscript, '
+                    'html:not(.slate-console) #app{display:none}</style>'
+                    '<p id="slate-task-noscript">Для работы задачника включите JavaScript.</p>')
+    response.direct_passthrough = False
+    response.status_code = 200
+    response.set_data(html[:body_end] + loading + html[body_end:])
+    for validator in ('Content-Range', 'Accept-Ranges', 'ETag', 'Last-Modified'):
+        response.headers.pop(validator, None)
+    response.headers['Cache-Control'] = 'private, no-store'
+    return response
+
+
 # Rate limiting
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address

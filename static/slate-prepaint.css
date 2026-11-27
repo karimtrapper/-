@@ -1,0 +1,85 @@
+/* Visible during the authenticated shell handshake, including a slow auth response. */
+
+html.slate-pending {
+  --slate-loading-sidebar: oklch(0.968 0.005 262);
+  --slate-loading-background: oklch(0.993 0.002 262);
+  --slate-loading-text: oklch(0.5 0.016 262);
+  color-scheme: light;
+}
+html.slate-pending[data-preset="tangerine"] {
+  --slate-loading-sidebar: oklch(0.925 0.008 255);
+  --slate-loading-background: oklch(0.975 0.004 250);
+  --slate-loading-text: oklch(0.52 0.025 260);
+}
+html.slate-pending[data-mode="dark"] {
+  --slate-loading-sidebar: oklch(0.172 0.008 266);
+  --slate-loading-background: oklch(0.198 0.009 266);
+  --slate-loading-text: oklch(0.71 0.012 262);
+  color-scheme: dark;
+}
+html.slate-pending[data-mode="dark"][data-preset="tangerine"] {
+  --slate-loading-sidebar: oklch(0.22 0.028 264);
+  --slate-loading-background: oklch(0.25 0.03 264);
+  --slate-loading-text: oklch(0.75 0.02 258);
+}
+html.slate-pending,
+html.slate-pending body {
+  background: var(--slate-loading-background) !important;
+}
+
+html.slate-pending body > :not(#slate-loading) {
+  visibility: hidden;
+}
+
+html.slate-pending #slate-loading {
+  position: fixed;
+  inset: 0;
+  z-index: 1300;
+  visibility: visible;
+  display: grid;
+  grid-template-columns: 16.5rem 1fr;
+  gap: 8px;
+  padding: 8px 8px 8px 0;
+  color: var(--slate-loading-text);
+  background: var(--slate-loading-sidebar);
+  font: 14px/1.45 "Geist", system-ui, sans-serif;
+}
+
+#slate-loading::before {
+  content: '';
+  align-self: start;
+  height: 128px;
+  margin: 14px 20px;
+  border-radius: 10px;
+  background: repeating-linear-gradient(
+    to bottom,
+    color-mix(in oklab, var(--slate-loading-text) 14%, var(--slate-loading-sidebar)) 0 14px,
+    transparent 14px 32px
+  );
+}
+
+#slate-loading > div {
+  padding: 17px 22px;
+  border: 1px solid color-mix(in oklab, var(--slate-loading-text) 16%, transparent);
+  border-radius: 14px;
+  background: var(--slate-loading-background);
+}
+
+#slate-loading p { margin: 0; }
+#slate-loading .slate-loading-error,
+html.slate-failed #slate-loading .slate-loading-message { display: none; }
+html.slate-failed #slate-loading .slate-loading-error { display: block; }
+#slate-loading a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  margin-top: 8px;
+  color: var(--slate-loading-text);
+}
+#slate-loading a:focus-visible { outline: 2px solid var(--slate-loading-text); outline-offset: 2px; }
+
+@media (max-width: 767px) {
+  html.slate-pending #slate-loading { display: block; padding: 0; background: var(--slate-loading-background); }
+  #slate-loading::before { display: none; }
+  #slate-loading > div { display: block; border-width: 0 0 1px; border-radius: 0; }
+}
