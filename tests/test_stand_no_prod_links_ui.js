@@ -27,10 +27,12 @@ function extractIndented(src, name, prefix = 'function') {
 
 const crmHtml = fs.readFileSync(path.join(__dirname, '../static/crm/crm.html'), 'utf8');
 const refHtml = fs.readFileSync(path.join(__dirname, '../static/referrer/index.html'), 'utf8');
+const renderReferrersSrc = ['escapeHtml', 'standLinkState', 'renderReferrers']
+  .map(name => extractIndented(crmHtml, name)).join('\n');
 
 // ---------- FAIL №4/№7: static/crm/crm.html — renderReferrers() ----------
 {
-  const source = extractIndented(crmHtml, 'standLinkState') + '\n' + extractIndented(crmHtml, 'renderReferrers');
+  const source = renderReferrersSrc;
   const referrer = {
     id: 1, name: 'QA', code: 'QA', active: true, token: 'x',
     bot_link: 'https://t.me/Grushath_bot?start=ref__QA',
@@ -163,7 +165,7 @@ const refHtml = fs.readFileSync(path.join(__dirname, '../static/referrer/index.h
 // «не удалось проверить окружение» на проде — после ответа список обязан
 // перерисоваться сам, без перезагрузки страницы ----------
 (async () => {
-  const renderSrc = extractIndented(crmHtml, 'standLinkState') + '\n' + extractIndented(crmHtml, 'renderReferrers');
+  const renderSrc = renderReferrersSrc;
   const authSrc = extractIndented(crmHtml, 'loadAuthStand', 'async function');
   const refreshSrc = extractIndented(crmHtml, 'refreshStandDependentLinks');
   const referrer = {

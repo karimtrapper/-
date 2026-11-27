@@ -485,6 +485,22 @@ html.slate-console body :is(.toast, #toast) {
   background-color: var(--foreground);
   color: var(--background);
 }
+html.slate-console body.nav-shell-crm .toast-container .toast {
+  background-color: var(--toast-fill, var(--foreground)) !important;
+  color: var(--toast-ink, var(--background)) !important;
+}
+html.slate-console body.nav-shell-crm .toast.success {
+  --toast-fill: var(--surface-good);
+  --toast-ink: var(--surface-good-ink);
+}
+html.slate-console body.nav-shell-crm .toast.warning {
+  --toast-fill: var(--surface-warn);
+  --toast-ink: var(--surface-warn-ink);
+}
+html.slate-console body.nav-shell-crm .toast.error {
+  --toast-fill: var(--surface-bad);
+  --toast-ink: var(--surface-bad-ink);
+}
 
 /* Task queue, record, and history. */
 html.slate-console body.nav-shell-tasks .task-list {

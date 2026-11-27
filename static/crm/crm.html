@@ -424,6 +424,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
 .toast.success { background: var(--green-dark); }
 .toast.error { background: var(--red); }
 .toast.info { background: var(--blue); }
+.toast.warning { background: var(--amber-light); color: #78350f; }
 @keyframes toastIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
 .form-row {
     display: grid;
@@ -929,7 +930,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
     <link rel="stylesheet" href="/static/design-layer.css?v=6">
     <link rel="stylesheet" href="/static/fonts/slate/fonts.css">
     <link rel="stylesheet" href="/static/slate-shell.css?v=2">
-    <link rel="stylesheet" href="/static/slate-surfaces.css?v=7">
+    <link rel="stylesheet" href="/static/slate-surfaces.css?v=8">
     <link rel="stylesheet" href="/static/slate-crm-form.css?v=1">
 </head>
 
@@ -17373,6 +17374,22 @@ ${Math.abs(c.debits_delta_rub) < 0.01
             }
         }
 
+        async function copyReferrerLink(input) {
+            const url = input.dataset.copyValue || input.value;
+            try {
+                await navigator.clipboard.writeText(url);
+                showToast('Ссылка скопирована');
+            } catch (error) {
+                requestAnimationFrame(() => {
+                    if (!input.closest('#referrers.active') || !input.getClientRects().length) return;
+                    input.value = url;
+                    input.focus({preventScroll: true});
+                    input.select();
+                    showToast('Автокопирование недоступно. Скопируйте выделенную ссылку.', 'warning');
+                });
+            }
+        }
+
         // Отрисовка списка с фильтрами: поиск, порог долга, сортировка.
         // Данные не перезапрашиваем — фильтруем кэш.
         function renderReferrers() {
@@ -17422,30 +17439,27 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                Если /api/auth/me вообще не ответил — окружение не проверено, и ссылки на
                реальных людей всё равно не рисуем (fail-closed). */
             const {isStand, unverified} = standLinkState();
-            const linkCell = (real, label) => {
-                if (isStand) return {value: 'на стенде выключено',
-                    onclick: `showToast('На стенде ссылка ${label} выключена')`};
-                if (unverified) return {value: 'не удалось проверить окружение',
-                    onclick: `showToast('Не удалось проверить окружение — ссылка ${label} скрыта')`};
-                return null;
+            const externalLinkStatus = isStand ? 'на стенде выключено' : unverified ? 'не удалось проверить окружение' : '';
+            const linkField = (value, title, tint, status = '', label = '') => {
+                const copyable = value && !status;
+                return `<input type="text" readonly value="${escapeHtml(status || (value && (label || value)))}" title="${title}" aria-label="${title}"
+                    style="flex:1;font-size:11px;padding:4px 8px;border:1px solid #e2e8f0;border-radius:6px;color:#475569;background:${tint};${copyable ? 'cursor:copy;' : ''}"
+                    ${copyable && label ? `data-copy-value="${escapeHtml(value)}"` : ''}
+                    ${copyable ? `onclick="copyReferrerLink(this)" onkeydown="if (event.key === 'Enter') copyReferrerLink(this)"` : ''}>`;
             };
             list.innerHTML = rows.map(r => {
-                const site = linkCell(r.referral_link, 'на сайт') ||
-                    {value: r.referral_link, onclick: "this.select();navigator.clipboard.writeText(this.value);showToast('Ссылка сайт скопирована')"};
-                const bot = linkCell(r.bot_link, 'на бота') ||
-                    {value: r.bot_link, onclick: "this.select();navigator.clipboard.writeText(this.value);showToast('Ссылка TG скопирована')"};
-                const wa = linkCell(r.wa_link, 'WhatsApp') ||
-                    {value: r.wa_link ? 'WhatsApp ↗' : '', onclick: `navigator.clipboard.writeText('${r.wa_link || ''}');showToast('Ссылка WA скопирована')`};
+                const id = Number(r.id);
+                const name = escapeHtml(r.name);
                 return `
-                    <div class="referrer-row crm-directory-row" data-active="${r.active}" style="display:flex;justify-content:space-between;align-items:flex-start;padding:0.75rem 1rem;border:1px solid ${r.active ? '#e5e7eb' : '#fee2e2'};border-radius:8px;margin-bottom:0.5rem;${r.active ? '' : 'opacity:0.5;'}">
+                    <div class="referrer-row crm-directory-row" data-active="${!!r.active}" data-referrer-name="${name}" style="display:flex;justify-content:space-between;align-items:flex-start;padding:0.75rem 1rem;border:1px solid ${r.active ? '#e5e7eb' : '#fee2e2'};border-radius:8px;margin-bottom:0.5rem;${r.active ? '' : 'opacity:0.5;'}">
                         <div class="referrer-main" style="flex:1;min-width:0;">
-                            <div class="referrer-name" style="font-weight:600;font-size:14px;">${r.name} <span class="crm-secondary-text" style="font-size:12px;color:#64748b;font-weight:400;">${r.code}</span> <span title="Язык кабинета" style="font-size:11px;">${r.lang === 'en' ? '🇬🇧 EN' : '🇷🇺 RU'}</span></div>
+                            <div class="referrer-name" style="font-weight:600;font-size:14px;">${name} <span class="crm-secondary-text" style="font-size:12px;color:#64748b;font-weight:400;">${escapeHtml(r.code)}</span> <span title="Язык кабинета" style="font-size:11px;">${r.lang === 'en' ? '🇬🇧 EN' : '🇷🇺 RU'}</span></div>
                             <div class="referrer-meta crm-secondary-text" style="font-size:12px;color:#64748b;margin-top:2px;">
                                 ${r.comp_model === 'markup'
                                     ? `<span data-tone="info" style="color:#7c3aed;font-weight:600;">Markup +${r.markup_percent || 0}%</span> к курсу`
                                     : `<span data-tone="info" style="color:#0ea5e9;font-weight:600;">Revshare ${r.default_percent}%</span> от прибыли`}
-                                · Выплата: ${r.payout_currency || 'USDT'} · Клиентов: ${r.total_referred_clients || 0} · Сделок: ${r.total_deals || 0}
-                                ${r.telegram ? ' · TG: ' + r.telegram : ''}
+                                · Выплата: ${escapeHtml(r.payout_currency || 'USDT')} · Клиентов: ${r.total_referred_clients || 0} · Сделок: ${r.total_deals || 0}
+                                ${r.telegram ? ' · TG: ' + escapeHtml(r.telegram) : ''}
                                 ${r.active ? '' : ' · <span data-tone="bad" style="color:#ef4444;">Неактивен</span>'}
                             </div>
                             <div class="referrer-money" style="display:flex;gap:12px;margin-top:4px;font-size:13px;">
@@ -17454,36 +17468,28 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                                 <span class="crm-secondary-text" style="color:#64748b;">Выплачено: $${(r.total_paid_usdt || 0).toFixed(2)}</span>
                             </div>
                             <div class="referrer-links" style="display:flex;gap:8px;margin-top:6px;">
-                                <input type="text" readonly value="${site.value}" title="Сайт"
-                                    style="flex:1;font-size:11px;padding:4px 8px;border:1px solid #e2e8f0;border-radius:6px;color:#475569;background:#f0fdf4;"
-                                    onclick="${site.onclick}">
-                                <input type="text" readonly value="${bot.value}" title="Telegram"
-                                    style="flex:1;font-size:11px;padding:4px 8px;border:1px solid #e2e8f0;border-radius:6px;color:#475569;background:#eff6ff;"
-                                    onclick="${bot.onclick}">
+                                ${linkField(r.referral_link, 'Сайт', '#f0fdf4', externalLinkStatus)}
+                                ${linkField(r.bot_link, 'Telegram', '#eff6ff', externalLinkStatus)}
                             </div>
                             <div class="referrer-links" style="display:flex;gap:8px;margin-top:4px;">
-                                <input type="text" readonly value="${baseUrl}/ref/${r.token}" title="Статистика"
-                                    style="flex:1;font-size:11px;padding:4px 8px;border:1px solid #e2e8f0;border-radius:6px;color:#475569;background:#f8fafc;"
-                                    onclick="this.select();navigator.clipboard.writeText(this.value);showToast('Ссылка статистики скопирована')">
-                                <input type="text" readonly value="${wa.value}" title="WhatsApp"
-                                    style="flex:1;font-size:11px;padding:4px 8px;border:1px solid #e2e8f0;border-radius:6px;color:#475569;background:#f0fdf4;cursor:pointer;"
-                                    onclick="${wa.onclick}">
+                                ${linkField(r.token ? baseUrl + '/ref/' + r.token : '', 'Статистика', '#f8fafc')}
+                                ${linkField(r.wa_link, 'WhatsApp', '#f0fdf4', externalLinkStatus, 'WhatsApp')}
                             </div>
                         </div>
                         ${r.pending_usdt > 0 ? `<button type="button" class="btn btn-secondary referrer-pay-btn"
-                            onclick="payReferrer(${r.id},'${r.name.replace(/'/g,"\\'")}',${r.pending_usdt})">Выплатить</button>` : ''}
+                            onclick="payReferrer(${id}, this.closest('.referrer-row').dataset.referrerName)">Выплатить</button>` : ''}
                         <details class="referrer-actions">
                             <summary aria-label="Действия с реферером">⋯</summary>
                             <div class="referrer-actions-menu">
-                            ${STAND_ROLES ? `<button class="btn btn-sm" style="background:#e0f2fe;color:#0369a1;border:none;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:12px;" onclick="window.open('/api/stand/ref-preview/${r.id}', '_blank', 'noopener')">Кабинет ↗</button>` : ''}
+                            ${STAND_ROLES ? `<button class="btn btn-sm" style="background:#e0f2fe;color:#0369a1;border:none;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:12px;" onclick="window.open('/api/stand/ref-preview/${id}', '_blank', 'noopener')">Кабинет ↗</button>` : ''}
                             <button class="btn btn-sm" style="background:#eff6ff;color:#3b82f6;border:none;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:12px;"
-                                onclick="editReferrer(${r.id})">Изм.</button>
+                                onclick="editReferrer(${id})">Изм.</button>
                             <button class="btn btn-sm" style="background:#f5f3ff;color:#7c3aed;border:none;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:12px;"
-                                onclick="showReferrerDeals(${r.id},'${r.name.replace(/'/g,"\\'")}')">Сделки</button>
+                                onclick="showReferrerDeals(${id}, this.closest('.referrer-row').dataset.referrerName)">Сделки</button>
                             <button class="btn btn-sm" style="background:#fff7ed;color:#9a3412;border:none;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:12px;"
-                                onclick="showReferrerPayoutRequests(${r.id},'${r.name.replace(/'/g,"\\'")}')">Заявки</button>
+                                onclick="showReferrerPayoutRequests(${id}, this.closest('.referrer-row').dataset.referrerName)">Заявки</button>
                             <button class="btn btn-sm" style="background:${r.active ? '#fef3c7' : '#f0fdf4'};color:${r.active ? '#d97706' : '#16a34a'};border:none;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:12px;"
-                                onclick="toggleReferrer(${r.id},${!r.active})">${r.active ? 'Откл.' : 'Вкл.'}</button>
+                                onclick="toggleReferrer(${id},${!r.active})">${r.active ? 'Откл.' : 'Вкл.'}</button>
                             </div>
                         </details>
                     </div>
@@ -17670,7 +17676,8 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                     <input type="text" class="form-control" id="payNoteInput" placeholder="Напр.: Оплачено по SCB / хэш транзакции">
                 </div>
                 <div id="payModalTotal" style="font-weight:700;margin:10px 0;color:#16a34a;"></div>
-                <button class="btn btn-success" onclick="payReferrerSelected(${id}, '${name.replace(/'/g, "\\'")}')">Выплатить выбранные</button>
+                <button class="btn btn-success" data-referrer-name="${escapeHtml(name)}"
+                    onclick="payReferrerSelected(${id}, this.dataset.referrerName)">Выплатить выбранные</button>
             `;
             modal.classList.add('active');
             payModalRecalc();
