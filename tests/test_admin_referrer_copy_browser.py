@@ -49,6 +49,9 @@ def test_admin_referrer_link_copy(monkeypatch, pytestconfig, mode):
         if url.path == '/api/rates':
             route.fulfill(json={'success': False})
             return
+        if url.path == '/api/stand/nav-count':
+            route.fulfill(json={'success': True, 'count': 0})
+            return
         response = client.open(url.path, query_string=url.query, method=request.method)
         route.fulfill(status=response.status_code, content_type=response.content_type, body=response.get_data())
 
@@ -101,7 +104,7 @@ def test_admin_referrer_link_copy(monkeypatch, pytestconfig, mode):
                     field.press('Enter')
                 else:
                     field.click()
-                page.wait_for_function('window.finishClipboard')
+                page.wait_for_function("typeof window.finishClipboard === 'function'", timeout=5000)
                 expect(success).to_have_count(0)
                 page.evaluate('window.finishClipboard(); delete window.finishClipboard;')
                 expect(success).to_be_visible()
