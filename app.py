@@ -6931,9 +6931,7 @@ def _crm_client_for_source_chat(db, chat):
         return client
 
     board = db.get(StandState, 1)
-    if not board:
-        return None
-    state = json.loads(board.data or '{}')
+    state = json.loads(board.data or '{}') if board else {}
     ref = f'{chat.account}:{chat.chat_id}'
     client_key = (state.get('chatClientMap') or {}).get(f'{chat.channel}:{ref}')
     if isinstance(client_key, str) and re.fullmatch(r'crm:[1-9][0-9]*', client_key):
@@ -6944,10 +6942,24 @@ def _crm_client_for_source_chat(db, chat):
                if card.get('source') == chat.channel and card.get('sourceRef') == ref
                and not card.get('srefOther') and card.get('crmDealId')]
     if crm_ids:
-        return db.query(Client).join(Deal, Deal.client_id == Client.id).filter(
+        client = db.query(Client).join(Deal, Deal.client_id == Client.id).filter(
             Deal.id.in_(crm_ids), Client.is_test.isnot(True), Deal.is_test.isnot(True),
         ).order_by(Deal.id.desc()).first()
-    return None
+        if client:
+            return client
+
+    clients = db.query(Client).filter(Client.is_test.isnot(True))
+    if chat.channel == 'tg':
+        matches = clients.filter(Client.telegram.in_((chat.chat_id, ref))).limit(2).all()
+    elif chat.channel == 'wa':
+        phone = re.fullmatch(r'(?:\+)?([1-9][0-9]{6,14})(?:@(?:c\.us|s\.whatsapp\.net))?', chat.chat_id)
+        if not phone:
+            return None
+        matches = [client for client in clients.filter(Client.phone.isnot(None))
+                   if re.sub(r'\D', '', client.phone) == phone[1]]
+    else:
+        return None
+    return matches[0] if len(matches) == 1 else None
 
 
 @app.route('/api/stand/channels/client', methods=['GET'])
@@ -23201,7 +23213,18 @@ def _create_deal_impl(session=None, *, data=None, defer_commit=False, skip_flow_
     try:
         data = dict(request.get_json() if data is None else data)
         source_chat = None
-        if data.get('source_chat'):
+        chat = None
+        source_note = data.get('source_chat_note')
+        if source_note is not None:
+            if not isinstance(source_note, str) or len(source_note.strip()) > 255:
+                return jsonify({'success': False, 'error': 'Укажите источник длиной до 255 символов'}), 400
+            source_note = source_note.strip()
+        if source_note:
+            channel = CRM_CHAT_CHANNELS.get(str(data.get('source_channel', '')))
+            if not STAND_MODE or not channel or data.get('source_chat'):
+                return jsonify({'success': False, 'error': 'Выберите один источник для сделки'}), 400
+            source_chat = {'channel': channel, 'name': source_note, 'manual': True}
+        elif data.get('source_chat'):
             try:
                 key = json.loads(data['source_chat'])
                 if not isinstance(key, list) or len(key) != 2 or not all(
@@ -23299,7 +23322,29 @@ def _create_deal_impl(session=None, *, data=None, defer_commit=False, skip_flow_
         # Автоматически создаём клиента если указано имя и такого клиента ещё нет
         client_id = data.get('client_id')
         client_name = data.get('client_name')
-        if source_chat and not client_id:
+        client_choice = data.get('client_choice')
+        if client_choice is not None:
+            if not STAND_MODE or client_choice not in ('existing', 'new'):
+                return jsonify({'success': False, 'error': 'Некорректный выбор клиента'}), 400
+            if client_choice == 'existing':
+                if type(client_id) is not int or client_id <= 0:
+                    return jsonify({'success': False, 'error': 'Выберите клиента из CRM'}), 400
+                selected_client = session.get(Client, client_id)
+                if not selected_client or selected_client.is_test:
+                    return jsonify({'success': False, 'error': 'Клиент не найден в CRM'}), 400
+                client_name = selected_client.name
+            else:
+                if client_id or not isinstance(client_name, str) or not client_name.strip() or len(client_name.strip()) > 100:
+                    return jsonify({'success': False, 'error': 'Укажите имя нового клиента'}), 400
+                client_name = client_name.strip()
+                if session.bind.dialect.name == 'postgresql':
+                    session.execute(text("SELECT pg_advisory_xact_lock(hashtext('crm_client_name'), hashtext(:name))"),
+                                    {'name': client_name.lower()})
+                if session.query(Client.id).filter(
+                        func.lower(func.trim(Client.name)) == client_name.lower(),
+                        Client.is_test.isnot(True)).first():
+                    return jsonify({'success': False, 'error': 'Клиент с таким именем уже есть. Выберите его из CRM.'}), 409
+        if client_choice is None and chat and not client_id:
             suggested_name = (chat.name.strip() or chat.chat_id)[:100]
             if not client_name or client_name == suggested_name:
                 known_client = _crm_client_for_source_chat(session, chat)

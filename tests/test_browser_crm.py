@@ -197,10 +197,10 @@ def test_manual_crm_deal_selects_channel_conversation(stand_ui, custom):
     client_input = page.locator('#clientSearchInput')
     channel.select_option('telegram')
     options.select_option(label='QA Telegram · Sales')
-    expect(client_input).to_have_value('QA Telegram')
+    expect(client_input).to_have_value('')
     channel.select_option('bitrix')
     options.select_option(label='QA Bitrix · Grusha')
-    expect(client_input).to_have_value('QA Bitrix')
+    expect(client_input).to_have_value('')
     channel.select_option('whatsapp')
     page.locator('#dealChatSearch').fill('66000000001')
     options.select_option(label='QA WhatsApp · Sales · 66000000001@c.us')
@@ -210,6 +210,7 @@ def test_manual_crm_deal_selects_channel_conversation(stand_ui, custom):
     if custom:
         channel.select_option('telegram')
         options.select_option(label='QA Telegram · Sales')
+        page.get_by_role('button', name='Новый клиент', exact=True).click()
         expect(client_input).to_have_value('QA Telegram')
         client_input.fill('QA Confirmed Telegram')
         choose(page, '#dealProductSelect', 'Кастомная — нестандартные валюты')
@@ -245,6 +246,60 @@ def test_manual_crm_deal_selects_channel_conversation(stand_ui, custom):
     assert page.request.post(f'{base}/api/deals', data={
         'source_channel': 'telegram', 'source_chat': '["Sales","66000000001@c.us"]',
     }).status == 400
+    assert not errors, errors
+
+
+def test_manual_crm_deal_uses_existing_client_and_old_source(stand_ui):
+    page, errors = stand_ui
+    base = page.url.split('/crm', 1)[0]
+    db = A.get_session()
+    client = A.Client(name='QA Historical Client', phone='+66 80 123 4567')
+    db.add(client)
+    db.commit()
+    client_id = client.id
+    db.close()
+
+    page.locator('.nav-create-btn').click()
+    page.locator('#dealSourceChannel').select_option('whatsapp')
+    page.get_by_role('button', name='Указать старый источник').click()
+    source = page.get_by_label('Старый источник')
+    source.fill('Архивный чат +66 80 123 4567')
+    page.get_by_role('button', name='Найти в CRM').click()
+    client_input = page.get_by_label('Клиент', exact=True)
+    client_input.fill('66801234567')
+    match = page.get_by_role('button', name=re.compile(r'^QA Historical Client'))
+    expect(match).to_be_visible()
+    assert not page.locator('#clientDropdown .client-dropdown-create').count()
+
+    for width in (320, 375, 414, 768):
+        page.set_viewport_size({'width': width, 'height': 900})
+        box = page.locator('#dealClientModes').bounding_box()
+        assert box['x'] >= 0 and box['x'] + box['width'] <= width
+        target = client_input.bounding_box()
+        menu = page.locator('#clientDropdown').bounding_box()
+        assert abs(menu['y'] - (target['y'] + target['height'])) <= 2
+    page.set_viewport_size({'width': 1440, 'height': 900})
+
+    match.click()
+    expect(client_input).to_have_value('QA Historical Client')
+    expect(page.locator('#dealClientStatus')).to_have_text('Клиент из CRM')
+    page.locator('#payinMethod').select_option('crypto_direct', force=True)
+    page.locator('#createDealForm [name="payin_amount_usdt"]').fill('100')
+    page.locator('#payoutAmountThb').fill('3000')
+    with page.expect_response(lambda r: urlsplit(r.url).path == '/api/deals'
+                              and r.request.method == 'POST' and r.status == 201) as saved:
+        page.locator('#createDealForm button[type=submit]').click()
+        page.get_by_role('button', name='Да, продолжить').click()
+    deal_id = saved.value.json()['deal']['id']
+    deal = page.request.get(f'{base}/api/deals/{deal_id}').json()['deal']
+    assert deal['client_id'] == client_id
+    assert deal['source_chat'] == {'channel': 'wa', 'name': 'Архивный чат +66 80 123 4567', 'manual': True}
+
+    duplicate = page.request.post(f'{base}/api/deals', data={
+        'source_channel': 'whatsapp', 'source_chat_note': 'История',
+        'client_choice': 'new', 'client_name': 'qa historical client',
+    })
+    assert duplicate.status == 409, duplicate.text()
     assert not errors, errors
 
 
