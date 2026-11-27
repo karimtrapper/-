@@ -1029,3 +1029,80 @@ body {
 /* Фрихолд: чипы выбора тарифа IPPS, валюты инвойса и курса ฿/$ */
 .prop-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .prop-chips .commission-btn { flex: 1 1 auto; padding: 10px 12px; }
+
+/* Calculator feedback stays readable independent of the workspace theme. */
+#toast-container {
+    --calc-toast-ink: #fff;
+    --calc-toast-info: #1e3a8a;
+    --calc-toast-success: #14532d;
+    --calc-toast-warning: #78350f;
+    --calc-toast-error: #991b1b;
+    position: fixed;
+    inset-block-start: max(12px, env(safe-area-inset-top));
+    inset-inline: 0;
+    z-index: 10000;
+    box-sizing: border-box;
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    width: min(calc(100% - 24px), 28rem);
+    max-height: calc(100dvh - 24px);
+    margin: 0 auto;
+    padding: 4px;
+    overflow-y: auto;
+    color: var(--calc-toast-ink);
+    background: var(--calc-toast-info);
+    border-radius: var(--r);
+    box-shadow: var(--shadow-lg);
+    font-size: 14px;
+    line-height: 1.45;
+}
+#toast-container[data-type="success"] { background: var(--calc-toast-success); }
+#toast-container[data-type="warning"] { background: var(--calc-toast-warning); }
+#toast-container[data-type="error"] { background: var(--calc-toast-error); }
+#toast-container .calc-toast-message {
+    flex: 1;
+    min-width: 0;
+    padding: 10px 0 10px 12px;
+    white-space: pre-line;
+    overflow-wrap: anywhere;
+}
+#toast-container .calc-toast-close {
+    flex: none;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    border: 0;
+    border-radius: var(--r-sm);
+    color: inherit;
+    background: transparent;
+    font: inherit;
+    font-size: 21px;
+    cursor: pointer;
+}
+#toast-container .calc-toast-close:hover { background: color-mix(in oklab, currentColor 16%, transparent); }
+#toast-container .calc-toast-close:focus-visible { outline: 2px solid currentColor; outline-offset: -4px; }
+
+#detailsContent .detail-hint .detail-label {
+    color: var(--muted-foreground, var(--navy-600)) !important;
+    font-size: 0.8rem;
+}
+html.slate-console #detailsContent .commission-indicator.level-high {
+    background: var(--surface-warn);
+    border-color: var(--surface-warn-line);
+    color: var(--surface-warn-ink);
+}
+html.slate-console #detailsContent .commission-indicator.level-medium {
+    background: var(--surface-info);
+    border-color: var(--surface-info-line);
+    color: var(--surface-link);
+}
+html.slate-console #detailsContent .commission-indicator.level-low {
+    background: var(--surface-good);
+    border-color: var(--surface-good-line);
+    color: var(--surface-good-ink);
+}
+#detailsContent .commission-indicator :is(.indicator-title, .indicator-subtitle) {
+    color: inherit !important;
+    opacity: 1;
+}

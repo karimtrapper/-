@@ -6,17 +6,29 @@ const API_URL = '/api';
 
 // Toast-уведомления вместо системных alert/confirm
 function showToast(message, type = 'info', duration = 3000) {
-    const existing = document.getElementById('toast-container');
-    if (existing) existing.remove();
+    document.getElementById('toast-container')?.remove();
     const container = document.createElement('div');
     container.id = 'toast-container';
-    const colors = { success: '#22c55e', error: '#ef4444', info: '#3b82f6', warning: '#f59e0b' };
-    container.innerHTML = `<div style="position:fixed;top:20px;left:50%;transform:translateX(-50%);z-index:10000;
-        background:${colors[type] || colors.info};color:#fff;padding:12px 24px;border-radius:12px;
-        font-size:14px;font-weight:500;box-shadow:0 4px 20px rgba(0,0,0,0.15);max-width:90vw;text-align:center;
-        animation:toastIn .3s ease">${message.replace(/\n/g, '<br>')}</div>`;
+    container.dataset.type = ['success', 'error', 'warning'].includes(type) ? type : 'info';
+
+    const text = document.createElement('div');
+    text.className = 'calc-toast-message';
+    text.setAttribute('role', type === 'error' ? 'alert' : 'status');
+    text.textContent = message;
+
+    const close = document.createElement('button');
+    close.type = 'button';
+    close.className = 'calc-toast-close';
+    close.setAttribute('aria-label', 'Закрыть уведомление');
+    close.textContent = '×';
+    container.append(text, close);
     document.body.appendChild(container);
-    setTimeout(() => container.remove(), duration);
+
+    const timer = setTimeout(() => container.remove(), duration);
+    close.addEventListener('click', () => {
+        clearTimeout(timer);
+        container.remove();
+    });
 }
 
 function showConfirm(message) {
@@ -1825,7 +1837,7 @@ function displayDetailedSteps(result) {
     // Курс продажи RUB-USDT (базовый курс + комиссия)
     if (result.rub_usdt_rate_sell !== undefined) {
         html += `<div class="detail-row"><span class="detail-label">Курс продажи RUB-USDT:</span><span class="detail-value highlight">${result.rub_usdt_rate_sell.toFixed(4)} ₽</span></div>`;
-        html += `<div class="detail-row detail-hint"><span class="detail-label" style="font-size:0.8rem;color:#888;">= базовый курс + ${result.rub_usdt_commission !== undefined ? result.rub_usdt_commission.toFixed(2) + '% комиссия' : 'комиссия'}</span></div>`;
+        html += `<div class="detail-row detail-hint"><span class="detail-label">= базовый курс + ${result.rub_usdt_commission !== undefined ? result.rub_usdt_commission.toFixed(2) + '% комиссия' : 'комиссия'}</span></div>`;
     }
 
     // Сумма USDT
@@ -1882,7 +1894,7 @@ function displayDetailedSteps(result) {
     else if (result.scenario === 'RUB → USDT') finalRateLabel = 'Итоговый курс RUB-USDT:';
     
     html += `<div class="detail-row"><span class="detail-label">${finalRateLabel}</span><span class="detail-value highlight-final">${result.final_rate.toFixed(4)}</span></div>`;
-    html += `<div class="detail-row detail-hint"><span class="detail-label" style="font-size:0.8rem;color:#888;">= курс продажи + withdrawal fee (размазан по сумме)</span></div>`;
+    html += `<div class="detail-row detail-hint"><span class="detail-label">= курс продажи + withdrawal fee (размазан по сумме)</span></div>`;
     
     html += `</div>`;
     
