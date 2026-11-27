@@ -5710,7 +5710,8 @@ function newDeal(o){
   const staff=typeof STAND_EMPLOYEES==='undefined'?[]:STAND_EMPLOYEES;
   const d={id:S.seq,code:'СД-'+S.seq,createdAt:now(),step:o.step,closed:false,
     manual:!!o.manual,manualNew:!!o.manualNew,rubIsNet:true,log:[],
-    source:o.source,sourceRef:o.sourceRef,bitrixCloseProof:o.bitrixCloseProof||null,client:o.client,type:o.type,
+    source:o.source,sourceRef:o.sourceRef,...(o.srefOther===true?{srefOther:true}:{}),
+    bitrixCloseProof:o.bitrixCloseProof||null,client:o.client,type:o.type,
     ...(validInquiryType(o.inquiryType)?{inquiryType:o.inquiryType}:{}),
     pair:(o.type==='Обмен валюты'?(o.pair||(o.payType==='Крипта'?'USDT → THB':'RUB → THB')):null),
     direction:o.direction||o.pair||'RUB → THB',
@@ -7301,7 +7302,7 @@ function srcManualBlock(D){
     <button class="btn btn-outline btn-sm" onclick="draftSet('srefManual',true)">Чата нет в списке — вписать вручную</button></div>`;
   return `<div class="fr" style="margin-top:10px">
     <div class="fg w2"><label class="fl">${D.source==='bitrix'?'Сделка в Битриксе':'Чат'} вручную<span class="rq">*</span></label>
-      <input class="fc" id="sref_m" value="${(D.srefManualV||'').replace(/"/g,'&quot;')}"
+      <input class="fc" id="sref_m" value="${htmlText(D.srefManualV)}"
         placeholder="${D.source==='wa'?'номер телефона в WhatsApp':'имя чата, как он подписан'}"
         oninput="rememberFocus();draftSet('srefManualV',this.value,true)">
       <p class="fh">запишется в сделку как источник — по нему потом узнают клиента</p></div>
@@ -7346,13 +7347,15 @@ function draftTakeChat(v){
   D.source=(isKnownRef('wa', v))?'wa':(isKnownRef('bitrix', v))?'bitrix':(isKnownRef('tg', v))?'tg':D.source;
   const selected=getChatObj(D.source,v);
   D.bitrixCloseProof=D.source==='bitrix'&&selected?selected.close_proof||null:null;
-  D.sourceRef=v;D.q='';D.srcEdit=false;D.srcPrev=null;D.srefOther=!(isKnownRef('tg', v)||isKnownRef('wa', v)||isKnownRef('bitrix', v));
+  D.sourceRef=globalThis.workingTasks&&selected?selected.key:v;D.q='';D.srcEdit=false;D.srcPrev=null;
+  D.sourceError='';
+  D.srefOther=globalThis.workingTasks?!selected:!(isKnownRef('tg', v)||isKnownRef('wa', v)||isKnownRef('bitrix', v));
   save();render();toast('Источник: '+SOURCES[D.source]+' · '+v);
 }
 function draftSrefManual(){
   const D=S.draft, v=(D.srefManualV||'').trim();
   if(!v){toast('Впишите чат или номер');return;}
-  D.sourceRef=v;D.bitrixCloseProof=null;D.srefOther=true;D.srefManual=false;D.srefManualV='';D.srcEdit=false;D.srcPrev=null;
+  D.sourceRef=v;D.sourceError='';D.bitrixCloseProof=null;D.srefOther=true;D.srefManual=false;D.srefManualV='';D.srcEdit=false;D.srcPrev=null;
   /* если клиента уже выбрали руками — не перетираем его тем, что найдётся по чату */
   if(D.clientManual){save();render();}
   else draftResolve();
@@ -7376,8 +7379,9 @@ function viewCreate(){
           D.source==='none'?' — переписки нет, клиента ищем по имени':(D.srefOther?' — чат вписан вручную':(D.client?' — по этому чату узнали клиента':' — клиента выберите ниже'))}</div></div>
       <button class="btn btn-outline btn-sm" style="white-space:nowrap" onclick="draftSrcEdit()">Сменить источник</button>
     </div>${warn}</div>`);
-  const srcCard=`<div class="card" style="margin-bottom:14px">
-    <div class="card-title">Откуда клиент<span class="sub">Выберите канал и чат или найдите его поиском</span></div>
+  const srcCard=`<div class="card" id="draftSourceCard" tabindex="-1" style="margin-bottom:14px">
+    <div class="card-title">Откуда клиент<span class="sub">${globalThis.workingTasks?'Выберите канал и укажите источник':'Выберите канал и чат или найдите его поиском'}</span></div>
+    ${D.sourceError?`<p class="create-error-alert" role="alert">${htmlText(D.sourceError)}</p>`:''}
     <div class="chips" style="margin-bottom:14px">${Object.keys(SOURCES).map(k=>
       `<span class="chip ${D.source===k?'on':''}" onclick="draftSet('source','${k}')">${SOURCES[k]}</span>`).join('')}</div>
     ${all.length?`<div class="fl">${D.source==='bitrix'?'Сделка в Битриксе':'Чат'}</div>
@@ -7393,7 +7397,9 @@ function viewCreate(){
     `<div class="alert a-warn" style="margin-top:4px"><div>Ничего не нашлось по «${htmlText(D.q)}». Проверьте написание или выберите «Без переписки».</div></div>`}`:
     (D.source==='none'
       ?`<div class="alert create-neutral-info"><div>Без переписки найдите клиента в справочнике или добавьте нового.</div></div>`
-      :`<div class="alert create-neutral-info"><div>Список чатов ${SOURCES[D.source]} сюда пока не подтягивается. Впишите чат вручную или создавайте задачу без привязки — чат необязателен, канал запишется.</div></div>`)}
+      :`<div class="alert create-neutral-info"><div>Список ${SOURCES[D.source]} недоступен. ${globalThis.workingTasks
+        ? 'Укажите источник вручную или выберите «Без переписки».'
+        : 'На стенде можно вписать источник вручную или сохранить только канал.'}</div></div>`)}
     ${srcManualBlock(D)}
     ${(D.srcPrev&&D.srcPrev.sourceRef)?`<div class="row" style="margin-top:10px">
       <button class="btn btn-outline btn-sm" onclick="draftSrcCancel()">Оставить как было — ${SOURCES[D.srcPrev.source]}${D.srcPrev.sourceRef?' · '+(getChatObj(D.srcPrev.source, D.srcPrev.sourceRef)?htmlText(getChatObj(D.srcPrev.source, D.srcPrev.sourceRef).name):D.srcPrev.sourceRef):''}</button></div>`:''}
@@ -7417,7 +7423,7 @@ function draftSrcCancel(){
     bitrixCloseProof:p.bitrixCloseProof||null,
     clientId:p.clientId,client:p.client,clientManual:p.clientManual,
     refId:p.refId,refKnown:p.refKnown,refSrc:p.refSrc,agents:(p.agents||[]).map(x=>Object.assign({},x))});
-  D.srcEdit=false;D.srcPrev=null;D.q='';D.srefManual=false;D.pickOther=false;
+  D.srcEdit=false;D.srcPrev=null;D.q='';D.srefManual=false;D.pickOther=false;D.sourceError='';
   save();render();toast('Источник оставили как был');
 }
 function viewCreateBody(D,srcCard){
@@ -7755,7 +7761,8 @@ function draftRefSel(v){
 function draftSet(k,v,silent){
   if(k==='source'){
     const D=S.draft;
-    D.q='';D.sourceRef='';D.bitrixCloseProof=null;D.allChats=false;D.srcEdit=(v!=='none');D.searchCrm=false;
+    D.q='';D.sourceRef='';D.sourceError='';D.srefOther=false;D.srefManual=false;D.srefManualV='';
+    D.bitrixCloseProof=null;D.allChats=false;D.srcEdit=(v!=='none');D.searchCrm=false;
     /* клиента узнавали по прошлому чату — с новым каналом это знание недействительно.
        Выбранного руками не трогаем. */
     if(!D.clientManual){
@@ -7797,6 +7804,7 @@ function draftSet(k,v,silent){
   if(k==='sourceRef'&&v){
     const chat=getChatObj(S.draft.source,v);
     S.draft.bitrixCloseProof=S.draft.source==='bitrix'&&chat?chat.close_proof||null:null;
+    S.draft.sourceError='';S.draft.srefOther=false;S.draft.srefManual=false;S.draft.srefManualV='';
     S.draft.srcEdit=false;S.draft.srcPrev=null;S.draft.allChats=false;draftResolve();return;
   }
   save();if(!silent)render();
@@ -7882,8 +7890,19 @@ function draftValid(){
   if(STAND&&standMe==='admin'&&!STAND_EMPLOYEES.some(e=>e.role==='manager'&&!e.login_disabled&&String(e.id)===String(D.managerUserId))){
     D.createError='Выберите менеджера сделки';render();return false;
   }
-  /* Чат не обязателен: на стенде списка чатов нет, а задача без привязки — обычное
-     дело (Карим, 25.09). Канал записываем, чат можно вписать позже. */
+  if(globalThis.workingTasks&&['tg','wa','bitrix'].includes(D.source)){
+    const ref=String(D.sourceRef||'').trim();
+    const valid=ref&&(D.srefOther===true||getChatObj(D.source,ref)?.key===ref);
+    if(!valid){
+      D.sourceError=D.source==='bitrix'
+        ? 'Выберите сделку в Битриксе, укажите источник вручную или выберите «Без переписки».'
+        : 'Выберите чат, укажите его вручную или выберите «Без переписки».';
+      D.srcEdit=true;
+      render();
+      document.getElementById('draftSourceCard')?.focus();
+      return false;
+    }
+  }
   if(!D.clientId&&!D.client){toast('Выберите клиента из справочника или создайте нового');return false;}
   if(D.type==='Оплата недвижимости'&&!D.kind){toast('Уточните тип сделки — лизхолд, фрихолд или аренда');return false;}
   if(!D.payType){toast('Уточните, как клиент платит');return false;}
