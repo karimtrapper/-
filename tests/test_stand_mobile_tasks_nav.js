@@ -109,9 +109,14 @@ async function main() {
       const rows = page.locator('.task-list-panel[data-section="mine"] .task-list-row');
       await rows.first().waitFor();
       assert.equal(await rows.count(), 9);
-      const shell = width <= 700 ? '.site-shell-mobile-head' : '.site-shell-top';
-      const profile = page.locator(shell + ' .site-shell-profile');
-      await profile.locator('summary').click();
+      const profile = page.locator('.slate-user');
+      const drawer = page.locator('.slate-drawer');
+      const drawerTrigger = page.locator('[data-slate-sidebar]');
+      async function openProfile() {
+        if (width < 768) await drawerTrigger.click();
+        await profile.locator('summary').click();
+      }
+      await openProfile();
       assert.equal(await profile.locator('[data-shell-admin-tools]').count(), 0);
       await profile.getByRole('button', {name: 'Менеджер'}).click();
       assert.match(await page.locator('.task-preview-status').innerText(), /Менеджер/);
@@ -120,32 +125,76 @@ async function main() {
       await rows.first().click();
       await page.locator('.deal-head').waitFor();
       assert.equal(await page.locator('.deal-screen .btn[onclick]:not(.task-card-nav button, .branch-tabs button)').count(), 0);
-      await profile.locator('summary').click();
+      await openProfile();
       await profile.getByRole('button', {name: 'Операционист'}).click();
       await page.getByText('Просмотр · Операционист').waitFor();
       assert.equal(await rows.count(), 0);
-      await profile.locator('summary').click();
+      await openProfile();
       await profile.getByRole('button', {name: /Все задачи/}).click();
       assert.equal(await page.locator('.task-preview-status').count(), 0);
       assert.equal(await rows.count(), 9);
-      assert.equal(await page.locator('.site-shell-count:visible').innerText(), '9');
+      if (width < 768) await drawerTrigger.click();
+      assert.equal(await page.locator('.slate-side-nav .site-shell-count').innerText(), '9');
+      assert.equal(await page.locator('.slate-side-nav [role="group"]').count(), 2);
+      assert.equal(await page.locator('.slate-side-nav a').count(), 8);
+      if (width < 768) {
+        await page.keyboard.press('Escape');
+        assert.equal(await drawer.isVisible(), false);
+        assert.equal(await drawerTrigger.evaluate(el => document.activeElement === el), true);
+      }
 
       await page.goto(`${base}/crm?section=documents`);
-      const active = page.locator('.site-shell-sections [aria-current="page"]');
-      await active.waitFor();
-      assert.equal(await active.getAttribute('data-shell-section'), 'documents');
+      const active = page.locator('.slate-side-nav [aria-current="page"]');
+      await page.locator('.slate-topbar [aria-current="page"]').waitFor();
+      assert.equal(await active.getAttribute('data-slate-route'), 'documents');
       const colors = await active.evaluate(el => ({
         color: getComputedStyle(el).color, background: getComputedStyle(el).backgroundColor,
       }));
       assert.notEqual(colors.color, colors.background);
+      await page.keyboard.press('Control+k');
+      const palette = page.locator('.slate-palette');
+      const search = palette.getByRole('searchbox');
+      await search.waitFor();
+      assert.equal(await search.evaluate(el => document.activeElement === el), true);
       for (const key of ['dashboard','analytics','payoutRequests','admins']) {
-        assert.equal(await page.locator(`.site-shell-sections [data-shell-section="${key}"]`).count(), 1);
+        assert.equal(await palette.locator(`[data-slate-route="${key}"]`).count(), 1);
       }
+      await search.fill('сверка');
+      await search.press('ArrowDown');
+      await page.keyboard.press('Enter');
+      await page.locator('#verification.active').waitFor();
+      assert.equal(await palette.isVisible(), false);
+      const openSearch = page.locator('[data-slate-search]');
+      await openSearch.click();
+      await search.fill('Раздел, которого нет');
+      await palette.getByText('Ничего не найдено', {exact:true}).first().waitFor();
+      await search.press('Escape');
+      await palette.waitFor({state:'hidden'});
+      await page.waitForFunction(() => document.activeElement.matches('[data-slate-search]'));
+
+      if (width >= 768) {
+        await drawerTrigger.click();
+        assert.equal(await page.locator('html').getAttribute('data-sidebar'), 'rail');
+      }
+      const mode = page.locator('[data-slate-mode]');
+      const initialMode = await page.locator('html').getAttribute('data-mode');
+      await mode.click();
+      const selectedMode = initialMode === 'dark' ? 'light' : 'dark';
+      assert.equal(await page.locator('html').getAttribute('data-mode'), selectedMode);
+      await page.getByLabel('Цветовая схема', { exact:true }).first().click();
+      await page.getByRole('button',{name:'Tangerine'}).click();
+      await page.reload();
+      await page.locator('.slate-topbar').waitFor();
+      assert.equal(await page.locator('html').getAttribute('data-mode'), selectedMode);
+      assert.equal(await page.locator('html').getAttribute('data-preset'), 'tangerine');
+      if (width >= 768) assert.equal(await page.locator('html').getAttribute('data-sidebar'), 'rail');
     }
     sessionRole = 'manager';
     await page.goto(`${base}/tasks`);
     await page.locator('.task-list-row').first().waitFor();
     assert.equal(await page.locator('[data-shell-roles]').count(), 0);
+    assert.equal(await page.locator('.slate-side-nav [data-slate-route="dashboard"]').getAttribute('href'),
+      '/crm?section=dashboard');
     sessionRole = 'admin';
     apiMode = 'stand';
 

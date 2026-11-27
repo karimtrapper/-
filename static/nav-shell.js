@@ -73,6 +73,10 @@
     state = {...options};
     document.body.classList.add('nav-shell-on','nav-shell-'+state.page);
     document.body.classList.toggle('nav-shell-panel',state.active === 'panel');
+    if (state.tasks && !state.stand && window.SlateShell) {
+      SlateShell.mount(state, sections, {roleLabel:labels[state.role],panelAvailable:panelRoles.has(state.role)});
+      return;
+    }
     if (state.page === 'crm') {
       document.querySelectorAll('.nav-tabs .nav-tab[data-shell-label]').forEach(tab => {
         const label = tab.dataset.shellLabel;
@@ -147,6 +151,11 @@
   function update(changes) {
     if (!state) return;
     Object.assign(state,changes);
+    if (state.tasks && !state.stand && window.SlateShell) {
+      document.body.classList.toggle('nav-shell-panel',state.active === 'panel');
+      SlateShell.update(state);
+      return;
+    }
     if (changes.section) activateSection(changes.section);
     if (state.page === 'tasks' && changes.section) {
       const title=document.querySelector('.site-shell-mobile-head>span');
