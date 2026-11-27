@@ -16322,7 +16322,7 @@ async function standBoot(){
       return;
     }
   }catch(e){}
-  finally { window.settleSlatePrepaint?.(false); }
+  finally { globalThis.settleSlatePrepaint?.(false); }
   await fetchChannels();
   await fetchCrmClients();
   await fetchDealFlowConfig();
