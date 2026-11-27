@@ -292,7 +292,7 @@ for role in ('admin','manager','operator','findir','teodor'):
     db.add(user); db.flush(); people[role]=user.id
 row=m._stand_row(db)
 row.data=json.dumps({'deals':[{'id':1,'step':'s6','closed':False},
-                             {'id':2,'step':'s5','closed':False},
+                             {'id':2,'step':'s5','closed':False,'prepay':{'brokerStep':'s18'}},
                              {'id':3,'step':'s6','closed':True}],
                      'notes':[{'role':'manager','read':False},
                               {'role':'operator','read':True}]})
@@ -309,6 +309,6 @@ with m.app.test_client() as client:
             assert panel.status_code == 302 and panel.location.endswith('/crm')
         count=client.get('/api/stand/nav-count')
         assert count.status_code == 200, (role,count.json)
-        assert count.json['count'] == (1 if role in ('manager','operator') else 0)
+        assert count.json['count'] == (3 if role == 'admin' else 1 if role in ('manager','operator') else 0)
         assert count.json['notifications'] == (1 if role == 'manager' else 0)
 ''', tmp_path)

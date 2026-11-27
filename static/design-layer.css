@@ -388,7 +388,7 @@ body.wave4a :is(.alert-error, .signal-blocker) {
 }
 
 /* The shared shell is part of both pages. */
-body.wave4a :is(.site-shell-top, .site-shell-top *, .site-shell-section-list a.on,
+body.wave4a :is(.site-shell-top, .site-shell-top :not(.site-shell-menu, .site-shell-menu *), .site-shell-section-list a.on,
                 .site-shell-section-list a.on *) { color: var(--surface-white) !important; }
 body.wave4a .site-shell-top { background: var(--ink-navy) !important; border-radius: 0 !important; }
 body.wave4a :is(.site-shell-sections, .site-shell-mobile-head, .site-shell-bottom, .site-shell-menu) {

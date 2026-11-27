@@ -6572,12 +6572,7 @@ def stand_nav_count():
     finally:
         db.close()
 
-    def has_task(deal):
-        if deal.get('closed') or deal.get('taskArchived') is True:
-            return False
-        step = deal.get('step')
-        if step in _STAND_STEP_ROLE and _stand_current_step_role(state, deal) == role:
-            return True
+    def has_conversion_task(deal, role):
         prepay = deal.get('prepay') or {}
         if prepay:
             if role == 'operator' and prepay.get('brokerStep') != 'done':
@@ -6592,6 +6587,12 @@ def stand_nav_count():
                     refund_role = 'findir' if wallet.get('multisig') else wallet.get('role', 'teodor')
                     if role == refund_role:
                         return True
+        return False
+
+    def has_payment_task(deal, role, step_owner):
+        step = deal.get('step')
+        if step_owner == role:
+            return True
         if role == 'manager':
             if deal.get('reqTask') == 'open':
                 return True
@@ -6622,6 +6623,15 @@ def stand_nav_count():
                 return True
         return False
 
+    def task_count(deal):
+        if deal.get('closed') or deal.get('taskArchived') is True:
+            return 0
+        step_owner = _stand_current_step_role(state, deal) if deal.get('step') in _STAND_STEP_ROLE else None
+        if role == 'admin':
+            return (int(any(has_payment_task(deal, owner, step_owner) for owner in STAND_ROLES)) +
+                    int(any(has_conversion_task(deal, owner) for owner in STAND_ROLES)))
+        return int(has_payment_task(deal, role, step_owner) or has_conversion_task(deal, role))
+
     archived_ids = {str(deal['id']) for deal in state.get('deals', [])
                     if deal.get('taskArchived') is True}
     from stand_workflow import can_read_notice
@@ -6631,7 +6641,7 @@ def stand_nav_count():
                  and can_read_notice(note, role, actor_id)
                  for note in state.get('notes', []))
     return jsonify({'success': True,
-                    'count': sum(has_task(d) for d in state.get('deals', [])),
+                    'count': sum(task_count(d) for d in state.get('deals', [])),
                     'notifications': unread})
 
 

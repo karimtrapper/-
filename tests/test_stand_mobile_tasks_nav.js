@@ -31,6 +31,13 @@ async function main() {
   const browserType = process.env.BROWSER === 'webkit' ? webkit : chromium;
   const browser = await browserType.launch({ headless: true, executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH||undefined });
   let apiMode = 'prod';
+  let sessionRole = 'admin';
+  const snapshot = JSON.parse(fs.readFileSync(path.join(root, 'static/stand/walkthrough/leasehold-rub/01.json'), 'utf8')).state;
+  const fixture = { ...snapshot, deals: Array.from({length: 9}, (_, index) => ({
+    ...snapshot.deals[0], id: 1500 + index, code: 'СД-' + (1500 + index),
+    step: 's4', client: 'Тестовый клиент ' + (index + 1),
+    manager: index % 2 ? 'Марина' : 'Ирина',
+  })) };
   const writes = [];
   try {
     const context = await browser.newContext({ ...devices['iPhone 13'], isMobile:true, hasTouch:true });
@@ -47,11 +54,11 @@ async function main() {
       if (url.pathname === '/api/stand/crm-preview') { await route.abort(); return; }
       let status = 404, data = { success: false };
       if (url.pathname === '/api/auth/me') {
-        status = 200; data = { success: true, user: { stand: apiMode === 'stand', role: 'admin' } };
+        status = 200; data = { success: true, user: { stand: apiMode === 'stand', tasks_enabled: apiMode === 'working', role: sessionRole } };
       } else if (url.pathname === '/api/stand/roles' && apiMode === 'stand') {
         status = 200; data = { success: true, roles: { manager: 'Менеджер', operator: 'Операционист' } };
       } else if (url.pathname === '/api/stand/state') {
-        status = 200; data = { success: true, version: 1, data: {} };
+        status = 200; data = { success: true, version: 1, role: sessionRole, data: apiMode === 'working' ? fixture : {} };
       }
       await route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(data) });
     });
@@ -95,6 +102,53 @@ async function main() {
       page.locator('.site-shell-bottom [data-shell-link="tasks"]').tap(),
     ]);
     assert.equal(new URL(page.url()).search, '');
+    apiMode = 'working';
+    for (const width of [390, 1440]) {
+      await page.setViewportSize({width, height: 844});
+      await page.goto(`${base}/tasks`);
+      const rows = page.locator('.task-list-panel[data-section="mine"] .task-list-row');
+      await rows.first().waitFor();
+      assert.equal(await rows.count(), 9);
+      const shell = width <= 700 ? '.site-shell-mobile-head' : '.site-shell-top';
+      const profile = page.locator(shell + ' .site-shell-profile');
+      await profile.locator('summary').click();
+      assert.equal(await profile.locator('[data-shell-admin-tools]').count(), 0);
+      await profile.getByRole('button', {name: 'Менеджер'}).click();
+      assert.match(await page.locator('.task-preview-status').innerText(), /Менеджер/);
+      assert.equal(await rows.count(), 9);
+      assert.equal(await page.locator('.task-list-create').count(), 0);
+      await rows.first().click();
+      await page.locator('.deal-head').waitFor();
+      assert.equal(await page.locator('.deal-screen .btn[onclick]:not(.task-card-nav button, .branch-tabs button)').count(), 0);
+      await profile.locator('summary').click();
+      await profile.getByRole('button', {name: 'Операционист'}).click();
+      await page.getByText('Просмотр · Операционист').waitFor();
+      assert.equal(await rows.count(), 0);
+      await profile.locator('summary').click();
+      await profile.getByRole('button', {name: /Все задачи/}).click();
+      assert.equal(await page.locator('.task-preview-status').count(), 0);
+      assert.equal(await rows.count(), 9);
+      assert.equal(await page.locator('.site-shell-count:visible').innerText(), '9');
+
+      await page.goto(`${base}/crm?section=documents`);
+      const active = page.locator('.site-shell-sections [aria-current="page"]');
+      await active.waitFor();
+      assert.equal(await active.getAttribute('data-shell-section'), 'documents');
+      const colors = await active.evaluate(el => ({
+        color: getComputedStyle(el).color, background: getComputedStyle(el).backgroundColor,
+      }));
+      assert.notEqual(colors.color, colors.background);
+      for (const key of ['dashboard','analytics','payoutRequests','admins']) {
+        assert.equal(await page.locator(`.site-shell-sections [data-shell-section="${key}"]`).count(), 1);
+      }
+    }
+    sessionRole = 'manager';
+    await page.goto(`${base}/tasks`);
+    await page.locator('.task-list-row').first().waitFor();
+    assert.equal(await page.locator('[data-shell-roles]').count(), 0);
+    sessionRole = 'admin';
+    apiMode = 'stand';
+
     // Synthetic mode keeps actual role switching local: save() is disabled and
     // every server request remains read-only while exercising the real handlers.
     await page.goto(`${base}/tasks?snap=walkthrough/leasehold-rub/01.json`);

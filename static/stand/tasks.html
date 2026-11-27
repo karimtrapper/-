@@ -1035,7 +1035,7 @@ body.deal-task-mode .top-nav .who{border:0;color:var(--navy-300);font-size:var(-
   .task-grid .waiting-section .li>button{grid-column:2;justify-self:start}
   .task-grid.mine-empty .waiting-section{order:-1}}
 </style>
-<link rel="stylesheet" href="/static/nav-shell.css?v=6">
+<link rel="stylesheet" href="/static/nav-shell.css?v=8">
 <link rel="stylesheet" href="/static/task-list.css?v=6">
 </head>
 <body>
@@ -1063,7 +1063,7 @@ body.deal-task-mode .top-nav .who{border:0;color:var(--navy-300);font-size:var(-
 <script src="/tasks/screens-data.js?v=2609241212"></script>
 <script src="/tasks/crm-draft-core.js?v=4"></script>
 <script src="/tasks/crm-draft-adapter.js?v=10"></script>
-<script src="/static/nav-shell.js?v=9"></script>
+<script src="/static/nav-shell.js?v=10"></script>
 <script src="/static/stand/task-history.js"></script>
 <script>
 const KEY='grusha_proto_v2';
@@ -1280,6 +1280,7 @@ async function standStateRequestPayload(snapshot=standSnapshot()){
 }
 async function standSave(){
   standSaveScheduled=false;
+  if(rolePreview())return;
   if(standBusy){standPush=true;standLastSaveResult={ok:false,pending:true};return;}
   standLastSaveResult={ok:false,pending:true};
   standBusy=true; standPush=false;
@@ -2972,7 +2973,7 @@ function walletAddressPair(d,w,review=false){
   return `<div class="policy-wallet-route" data-wallet-route>${walletSourceLine(w)}${walletDestinationLines(d,w,review)}</div>`;
 }
 const transferClaimPending=new Set();
-function transferPolicyActor(){return typeof standMe!=='undefined'&&standMe==='admin'?{actorRole:S.role}:{};}
+function transferPolicyActor(){return !globalThis.workingTasks&&typeof standMe!=='undefined'&&standMe==='admin'?{actorRole:S.role}:{};}
 async function transferClaim(id){
   if(transferClaimPending.has(id))return;
   transferClaimPending.add(id);
@@ -3359,6 +3360,7 @@ function transferMode(id,mode){
 /* DEMO доступен только автотестам при явном разрешении сервера. */
 function transferModeBlock(d){return '';}
 async function standAction(path,payload){
+  if(rolePreview())return null;
   if(standBusy||standPush){toast('Дождитесь сохранения и повторите');return null;}
   standBusy=true;
   try{
@@ -3855,10 +3857,11 @@ function notesFor(role){
 }
 function notesUnread(role){ return notesFor(role).filter(n=>!n.read).length; }
 function notesOpen(){ S.notesOpen=!S.notesOpen; save(); render(); }
-function notesRead(){ notesFor(S.role).forEach(n=>n.read=true); save(); render(); }
+function notesRead(){ if(rolePreview())return;notesFor(S.role).forEach(n=>n.read=true); save(); render(); }
 function noteGo(id){
   const n=notes().find(x=>String(x.id)===String(id)); if(!n)return;
-  n.read=true; S.notesOpen=false;
+  if(!rolePreview())n.read=true;
+  S.notesOpen=false;
   if(n.dealId&&deal(n.dealId)){
     const d=deal(n.dealId);
     S.open=n.dealId; S.view=myTasks(S.role).some(x=>x.id===d.id)?'task':'deal';
@@ -3872,7 +3875,7 @@ function bellHtml(){
       <span class="bl">Уведомления</span>${u?`<span class="c">${u}</span>`:''}</button>
     ${S.notesOpen?`<div class="notebox">
       <div class="noteh">Уведомления · ${ROLES[S.role]?ROLES[S.role].t:''}
-        ${list.length?`<button class="btn btn-outline btn-sm" onclick="notesRead()">Отметить прочитанными</button>`:''}</div>
+        ${list.length&&!rolePreview()?`<button class="btn btn-outline btn-sm" onclick="notesRead()">Отметить прочитанными</button>`:''}</div>
       ${list.length?list.map(n=>`<div class="notei ${n.read?'':'new'}" onclick="noteGo(${htmlText(JSON.stringify(String(n.id)))})">
           <div class="t">${htmlText(n.text)}</div><div class="s">${ago(n.at)}${n.dealId&&deal(n.dealId)?' · '+deal(n.dealId).code:''}</div>
         </div>`).join('')
@@ -5157,14 +5160,19 @@ function stepWho(d,step){
   if(step==='s23'&&d){const w=dealWallet(d); if(w&&!w.multisig) return w.role||'teodor';}
   return STEPS[step]?STEPS[step].who:null;
 }
-function taskBranchesForRole(d,role){
+function taskBranchesForRole(d,role,board=false){
   if(d.closed)return [];
   const policyWallet=dealWallet(d);
   const policySend=d.step==='s23'&&hasPolicy(policyWallet)&&!d.outgoingReview?.requestedAt;
   const policyConfirm=d.step==='s24'&&hasPolicy(policyWallet);
+  const sendOwner=board&&policySend&&d.transferClaim&&!d.transferSentReport
+    ?(d.transferClaim.role||stepWho(d))===role
+    :policySend&&policyOwnsSend(d,policyWallet,role);
+  const confirmOwner=board&&policyConfirm
+    ?(d.transferSentReport?role==='operator':policySignRole(d,policyWallet)===role)
+    :policyConfirm&&policyOwnsVerification(d,policyWallet,role);
   const ownsPayment=!!STEPS[d.step]&&((!policySend&&!policyConfirm&&stepWho(d)===role)||
-    (policySend&&policyOwnsSend(d,policyWallet,role))||
-    (policyConfirm&&policyOwnsVerification(d,policyWallet,role))||
+    sendOwner||confirmOwner||
     (role==='teodor'&&policyWallet?.owner_can_alone&&
       (policySend||policyConfirm)&&!!d.transferClaim&&!d.transferSentReport));
   const sidePayment=(role==='manager'&&(reqOpen(d)||needsPayConfirm(d)))||
@@ -5176,7 +5184,21 @@ function taskBranchesForRole(d,role){
   return [...(conversion?['conversion']:[]),...(ownsPayment||sidePayment?['payment']:[])];
 }
 function myTasks(role){return S.deals.filter(d=>d.taskArchived!==true&&taskBranchesForRole(d,role).length);}
-function myTaskCount(role){return myTasks(role).reduce((count,d)=>count+taskBranchesForRole(d,role).length,0);}
+function taskRows(role){
+  const roles=role==='admin'?Object.keys(ROLES):[role];
+  const board=role==='admin'||rolePreview();
+  return S.deals.filter(d=>d.taskArchived!==true).flatMap(deal=>{
+    const branches=new Map();
+    for(const owner of roles){
+      for(const branch of taskBranchesForRole(deal,owner,board)){
+        if(!branches.has(branch))branches.set(branch,[]);
+        branches.get(branch).push(owner);
+      }
+    }
+    return Array.from(branches,([branch,owners])=>({deal,branch,owners}));
+  });
+}
+function myTaskCount(role){return taskRows(role).length;}
 /* Подтверждение реквизитов перед оплатой (Карим, T34 п.3): прямо перед тем, как
    операционист заплатит (s26) или для фрихолда отправит заявку в IPPS (s25),
    менеджер жмёт «Реквизиты верны — можно платить» на актуальном снимке payTo.
@@ -6505,15 +6527,15 @@ function render(){
   const canSwitch=canSwitchRole();
   document.getElementById('roles').innerHTML=canSwitch?Object.keys(ROLES).map(r=>{
     const c=myTaskCount(r);
-    return `<button class="rolebtn ${S.role===r?'on':''}" onclick="setRole('${r}')">${ROLES[r].t}${c?`<span class="c">${c}</span>`:''}</button>`;
+    return `<button class="rolebtn ${S.role===r?'on':''}" aria-pressed="${S.role===r}" onclick="setRole('${r}')">${r==='admin'?'Все задачи':ROLES[r].t}${c?`<span class="c">${c}</span>`:''}</button>`;
   }).join(' '):`<button class="rolebtn on">${ROLES[S.role].t}${myTaskCount(S.role)?`<span class="c">${myTaskCount(S.role)}</span>`:''}</button>`;
   /* Сброс доски и засев примеров общие для всех — их прячем от коллег,
      иначе один человек посреди прогона снесёт работу остальным. */
   const at=document.getElementById('admintools');
-  if(at) at.innerHTML=canSwitchRole()
+  if(at) at.innerHTML=canUseTestRole()
     ? `<button class="ghost" onclick="refsSync()">Рефереры из базы</button> <button class="ghost" onclick="resetAll()">Сбросить всё</button>` : '';
   document.getElementById('bell').innerHTML=bellHtml();
-  if(window.NavShell) NavShell.update({count:myTaskCount(S.role),viewRole:S.role,section:S.tab==='analytics'?'analytics':'tasks',active:S.tab==='analytics'?'crm':'tasks'});
+  if(window.NavShell) NavShell.update({count:myTaskCount(S.role),section:S.tab==='analytics'?'analytics':'tasks',active:S.tab==='analytics'?'crm':'tasks'});
   syncTaskHeaderLink();
   const app=document.getElementById('app');
   let main;
@@ -6528,7 +6550,21 @@ function render(){
   else main=(VIEWS[S.tab]||VIEWS.tasks)();
   if(S.edit) crmDraftCapture();
   else crmDraftActive=null;
-  app.innerHTML=main+(S.modal?viewModal():'')+(S.doc?viewDoc():'')+(S.cnv?viewCnv():'')+(S.refEdit?viewRefEdit():'')+(S.takeoverAsk?takeoverAskView():'');
+  app.innerHTML=(rolePreview()?'<p class="task-preview-status" role="status">Просмотр · '+htmlText(roleTitle)+'</p>':'')+main+(S.modal?viewModal():'')+(S.doc?viewDoc():'')+(S.cnv?viewCnv():'')+(S.refEdit?viewRefEdit():'')+(S.takeoverAsk?takeoverAskView():'');
+  if(rolePreview()&&S.open){
+    // Leave the card's navigation and native disclosure controls usable.
+    app.querySelectorAll('.deal-screen [onclick], .deal-screen input, .deal-screen select, .deal-screen textarea, .deal-screen a')
+      .forEach(el=>{
+        if(el.closest('.task-card-nav, .vtabs, .branch-tabs'))return;
+        el.removeAttribute('onclick');
+        el.removeAttribute('href');
+        if('disabled' in el)el.disabled=true;
+        else if(el.hasAttribute('tabindex'))el.tabIndex=-1;
+      });
+    app.querySelectorAll('[ondragover], [ondrop]').forEach(el=>{
+      el.removeAttribute('ondragover');el.removeAttribute('ondrop');
+    });
+  }
   if(S.open&&S.manualCloseDraft[S.open])mcPreviewUpdate(S.open);
   if(taskUsesThbRates()) ensureThbRates();
   document.body.classList?.toggle?.('deal-task-mode',!!S.open&&S.view==='task');
@@ -6538,7 +6574,7 @@ function render(){
   if(S.edit) crmDraftMount(S.edit);
   const active=S.open&&S.view==='task'&&deal(S.open),activeConv=active&&convOf(active);
   const incomingKey=activeConv&&cnvIncomingKey(activeConv);
-  if(STAND&&activeConv?.status==='sent'&&!(demoAllowed()&&active.demoTransfers)
+  if(STAND&&!rolePreview()&&activeConv?.status==='sent'&&!(demoAllowed()&&active.demoTransfers)
       &&['operator','admin'].includes(S.role)&&S.incomingLoadFor!==incomingKey){
     S.incomingLoadFor=incomingKey;
     setTimeout(()=>cnvTxLoad(active.id),0);
@@ -6555,7 +6591,24 @@ function polishDealActions(){
   });
 }
 function saveUi(){if(!STAND)save();}
-function setRole(r){if(!canSwitchRole())return;S.role=r;S.draft=null;S.modal=null;S.taskBranch=null;S.tab='tasks';saveUi();render();}
+function setRole(r){
+  if(!canSwitchRole()||!Object.hasOwn(ROLES,r)||S.role===r)return;
+  if(globalThis.workingTasks){
+    if(standBusy||standPush||standSaveScheduled||standClosing){toast('Дождитесь сохранения и повторите');return;}
+    if(S.tab==='analytics')history.replaceState(null,'','/tasks');
+    if(S.open)closeTaskView();
+    S.notesOpen=false;
+    S.edit=null;
+    S.doc=null;
+    S.cnv=null;
+    S.refEdit=null;
+    S.takeoverAsk=null;
+    taskListSection=null;
+  }
+  S.role=r;S.draft=null;S.modal=null;S.taskBranch=null;S.tab='tasks';
+  document.querySelectorAll('.site-shell-profile[open]').forEach(menu=>{menu.open=false;});
+  saveUi();render();
+}
 function setTab(t){
   S.tab=t;S.open=null;S.draft=null;S.modal=null;saveUi();render();
   if(t==='analytics')loadAnalyticsHistory();
@@ -6717,8 +6770,10 @@ function restoreFocus(){if(!FOCUS)return;const e=document.getElementById(FOCUS.i
 /* ---------- модалка телеграма ---------- */
 function closeModal(){S.modal=null;save();render();}
 /* Роль меняется только у админа: остальным её даёт логин */
-function canSwitchRole(){ return !STAND||(standMe==='admin'&&Boolean(standSandbox||SCREEN||SNAP)); }
-function modalGo(){const m=S.modal;S.modal=null;S.role=m.to;S.open=m.id;S.view='task';S.tab='tasks';save();render();}
+function canUseTestRole(){return !STAND||(standMe==='admin'&&Boolean(standSandbox||SCREEN||SNAP));}
+function canSwitchRole(){return canUseTestRole()||(standMe==='admin'&&globalThis.workingTasks===true);}
+function rolePreview(){return globalThis.workingTasks===true&&standMe==='admin'&&S.role!=='admin';}
+function modalGo(){if(!canUseTestRole())return;const m=S.modal;S.modal=null;S.role=m.to;S.open=m.id;S.view='task';S.tab='tasks';save();render();}
 function modalLater(){S.modal=null;save();render();toast('Напомним через 15 минут');}
 /* у каждого шага своя главная информация — общий шаблон бесполезен */
 function tgLines(d,step){
@@ -6937,8 +6992,8 @@ function viewModal(){
           <b>${htmlText(d.prepay?prepayBranchStatus(d,'payment'):stepTitle(d))}</b> — ${d.client} · ${d.code}<br>
           ${lines.map(l=>l.b?`<b>${l.t}</b>`:`<span class="dim">${l.t}</span>`).join('<br>')}
           <div class="tgbtns">
-            <button class="tgbtn" onclick="${canSwitchRole()?'modalGo()':'closeModal()'}">Открыть задачу</button>
-            <button class="tgbtn" onclick="${canSwitchRole()?'modalGo()':'closeModal()'}">Взять в работу</button>
+            <button class="tgbtn" onclick="${canUseTestRole()?'modalGo()':'closeModal()'}">Открыть задачу</button>
+            <button class="tgbtn" onclick="${canUseTestRole()?'modalGo()':'closeModal()'}">Взять в работу</button>
             <button class="tgbtn" onclick="modalLater()">Напомнить через 15 минут</button>
           </div>
           <div class="tgtime">${(now().split(', ')[1])||''}</div>
@@ -6946,7 +7001,7 @@ function viewModal(){
       </div>
       ${tgPayBlock(d,m.step)}
       <div class="row" style="margin-top:16px">
-        ${canSwitchRole()
+        ${canUseTestRole()
           ? `<button class="btn btn-primary" onclick="modalGo()">Перейти как ${ROLES[m.to].t.toLowerCase()}</button>
              <button class="btn btn-outline" onclick="closeModal()">Остаться здесь</button>`
           /* Чужой ролью на стенде не поработаешь: у каждого свой логин. Кнопка
@@ -6989,20 +7044,20 @@ function showTaskListSection(section){
 function viewTasks(){
   if(standLoadError)return `<div class="task-list"><div class="card task-list-empty"><strong>Задачи не загрузились</strong><p>Проверьте соединение и повторите загрузку.</p><button class="btn btn-primary" onclick="standPull(true)">Повторить загрузку</button></div></div>`;
   const role=S.role;
-  const mine=role==='admin'?S.deals.filter(d=>d.taskArchived!==true&&!d.closed&&STEPS[d.step]&&stepWho(d)):myTasks(role);
+  const rows=taskRows(role);
   const others=role==='admin'?[]:waitingOn(role);
-  const section=taskListSection||(mine.length?'mine':others.length?'wait':'mine');
-  const mineTotal=role==='admin'?mine.length:myTaskCount(role);
+  const section=taskListSection||(rows.length?'mine':others.length?'wait':'mine');
+  const mineTotal=rows.length;
   const mineCount=mineTotal?`<span class="task-list-count mine">${mineTotal}</span>`:'';
   const waitCount=others.length?`<span class="task-list-count">${others.length}</span>`:'';
   let h=`<div class="task-list"><div class="task-list-head"><h1>Задачник</h1>
-    ${S.role==='manager'||S.role==='admin'?`<div class="task-list-create-bar"><button class="btn btn-primary task-list-create" onclick="startCreate()">+ Новая задача</button></div>`:''}</div>
+    ${!rolePreview()&&(role==='manager'||role==='admin')?`<div class="task-list-create-bar"><button class="btn btn-primary task-list-create" onclick="startCreate()">+ Новая задача</button></div>`:''}</div>
     ${role==='operator'||role==='admin'?`<p style="margin:0 0 16px"><a class="btn btn-outline btn-sm" href="/tasks/instructions/">Инструкции для операциониста</a>
     ${standMe==='admin'?'<a class="btn btn-outline btn-sm" href="/tasks?section=history">Архив</a>':''}</p>`:''}
     `;
   const pend=pendingEx(null);
   if(pend.length&&role==='operator'){
-    const conv=mine.filter(d=>d.step==='s18');
+    const conv=rows.filter(row=>row.branch!=='payment'&&row.deal.step==='s18').map(row=>row.deal);
     h+=`<div class="card task-list-pending" style="margin-bottom:16px">
       <div class="card-title">Ждут конвертации
         <span class="sub">${pend.length} ${plural(pend.length,'мелкий обмен','мелких обмена','мелких обменов')} · ${money(exSum(pend),'₽')} · наценка ≈ ${money(exMargin(pend),'₽')}</span>
@@ -7016,42 +7071,40 @@ function viewTasks(){
         'Никуда не денутся: следующая конвертация сама предложит их добрать.'}</p></div>`;
   }
   h+=`<nav class="task-list-seg" aria-label="Разделы задачника">
-    <button type="button" data-section="mine" class="${section==='mine'?'on':''}" aria-pressed="${section==='mine'}" onclick="showTaskListSection('mine')">На мне ${mineCount}</button>
+    <button type="button" data-section="mine" class="${section==='mine'?'on':''}" aria-pressed="${section==='mine'}" onclick="showTaskListSection('mine')">${role==='admin'?'Все задачи':'На мне'} ${mineCount}</button>
     <button type="button" data-section="wait" class="${section==='wait'?'on':''}" aria-pressed="${section==='wait'}" onclick="showTaskListSection('wait')">Жду других ${waitCount}</button>
     <button type="button" data-section="all" class="${section==='all'?'on':''}" aria-pressed="${section==='all'}" onclick="showTaskListSection('all')">Все сделки</button>
   </nav><div class="task-list-cols"><section class="card task-list-panel ${section==='mine'?'on':''}" data-section="mine">
     <div class="task-list-panel-head"><h2>${role==='admin'?'Все задачи':'На мне сейчас'}</h2>${mineCount}</div>`;
-  if(!mine.length){
-    h+=`<div class="task-list-empty"><strong>Задач на вас нет</strong>
-      ${role==='manager'
+  if(!rows.length){
+    h+=`<div class="task-list-empty"><strong>${role==='admin'?'Активных задач нет':'Задач на вас нет'}</strong>
+      ${role==='admin'||rolePreview()?'':role==='manager'
       ?'Нажмите «+ Новая задача» — заявка сразу уйдёт операционисту за курсом.'
       :(STAND&&!canSwitchRole()
         ?'Задачи прилетают, когда предыдущая роль передаёт работу. Как только менеджер доведёт сделку до вас, уведомление придёт в чат.'
         :'Задачи прилетают, когда предыдущая роль передаёт работу. Переключитесь на менеджера и проведите сделку дальше.')}</div>`;
   }else{
-    h+=mine.map(d=>{
+    h+=rows.map(({deal:d,branch,owners})=>{
       const a=approx(d);
       const stepRole=stepWho(d);
-      const side=role==='manager'&&stepRole!=='manager';
-      const taskTitle=cashPartnerWalletTask(d,role)?'Выбрать кошелёк для USDT от партнёра':side?(needsPayConfirm(d)?'Ваша задача: подтвердить реквизиты перед оплатой':
+      const owner=owners.includes(stepRole)?stepRole:owners[0];
+      const side=owner==='manager'&&stepRole!=='manager';
+      const taskTitle=cashPartnerWalletTask(d,owner)?'Выбрать кошелёк для USDT от партнёра':side?(needsPayConfirm(d)?'Ваша задача: подтвердить реквизиты перед оплатой':
         reqOpen(d)?'Ваша параллельная задача: реквизиты для оплаты':stepTitle(d)):stepTitle(d);
-      const branches=role==='admin'&&stepRole==='operator'?[d.prepay?'payment':null]:taskBranchesForRole(d,role);
-      return branches.map(branch=>{
-        const title=branch==='conversion'?'Конвертация · '+(prepayRefundRole(d)===role?'возместить оплату':(STEPS[d.prepay.brokerStep]?.title||'ждём USDT').replace(/^./,s=>s.toLowerCase())):
-          branch==='payment'&&role==='operator'&&d.step==='s27'&&stepWho(d)!==role?'Подтвердить оплату инвойса':
-          branch==='payment'?'Оплата застройщику · '+(d.step==='s23'&&d.outgoingReview?.requestedAt&&!d.serverTransferComplete?'засчитать перевод':(STEPS[d.step]?.title||'проверить оплату').replace(/^./,s=>s.toLowerCase())):taskTitle;
-        const path=dealTaskPath(d,branch);
-        const amount=branch==='conversion'&&prepayRefundRole(d)===role?moneyKop(d.payout?.usdt||0,'USDT'):
-          branch==='conversion'?moneyKop(d.amountRub||d.incomeAmount||0,'₽'):
-          d.prepay?usd(d.prepay.amount):apMoney(a,'pay');
-        return `<button type="button" class="task-list-row" data-task-id="${d.id}" data-task-branch="${branch||''}" title="шаг ${path.index+1} из ${path.steps.length}"
-          onclick="openTask(${d.id},${branch?`'${branch}'`:'null'})">
-          <span class="task-list-row-main"><strong>${role==='admin'?htmlText(stepRole==='operator'?operatorTaskName(d.assigneeAdminId):ROLES[stepRole]?.n||'Сотрудник')+' · ':''}${htmlText(title)}</strong>
-            <span class="task-list-meta">${htmlText(d.code)} · ${htmlText(d.client)} · ${d.prepay?'Оплата наперёд · ':''}${htmlText(['ИППС','Личный счёт'].includes(d.kind)?dealDisplayKind(d):d.autoPayment===true?'Оплата авто':d.kind||d.type)}</span>
-            ${side&&!branch?`<span class="task-list-meta">Параллельно: ${stepTitle(d)} · ${(ROLES[stepWho(d)]||{}).t||'—'}</span>`:''}</span>
-          <span class="task-list-amount num">${amount==='посчитаем после курса'?apMoney(a,'thb'):amount}</span>
-          <span class="task-list-arrow" aria-hidden="true">›</span></button>`;
-      }).join('');
+      const title=branch==='conversion'?'Конвертация · '+(prepayRefundRole(d)===owner?'возместить оплату':(STEPS[d.prepay.brokerStep]?.title||'ждём USDT').replace(/^./,s=>s.toLowerCase())):
+        branch==='payment'&&owner==='operator'&&d.step==='s27'&&stepRole!==owner?'Подтвердить оплату инвойса':
+        branch==='payment'?'Оплата застройщику · '+(d.step==='s23'&&d.outgoingReview?.requestedAt&&!d.serverTransferComplete?'засчитать перевод':taskTitle.replace(/^./,s=>s.toLowerCase())):taskTitle;
+      const path=dealTaskPath(d,branch);
+      const amount=branch==='conversion'&&prepayRefundRole(d)===owner?moneyKop(d.payout?.usdt||0,'USDT'):
+        branch==='conversion'?moneyKop(d.amountRub||d.incomeAmount||0,'₽'):
+        d.prepay?usd(d.prepay.amount):apMoney(a,'pay');
+      return `<button type="button" class="task-list-row" data-task-id="${d.id}" data-task-branch="${branch||''}" title="шаг ${path.index+1} из ${path.steps.length}"
+        onclick="openTask(${d.id},${branch?`'${branch}'`:'null'})">
+        <span class="task-list-row-main"><strong>${role==='admin'?htmlText(owners.map(r=>r==='operator'?operatorTaskName(branch!=='conversion'&&stepRole===r?d.assigneeAdminId:null):r==='manager'?d.manager||ROLES[r].t:ROLES[r].t).join(' / '))+' · ':''}${htmlText(title)}</strong>
+          <span class="task-list-meta">${htmlText(d.code)} · ${htmlText(d.client)} · ${d.prepay?'Оплата наперёд · ':''}${htmlText(['ИППС','Личный счёт'].includes(d.kind)?dealDisplayKind(d):d.autoPayment===true?'Оплата авто':d.kind||d.type)}</span>
+          ${side&&!branch?`<span class="task-list-meta">Параллельно: ${stepTitle(d)} · ${(ROLES[stepWho(d)]||{}).t||'—'}</span>`:''}</span>
+        <span class="task-list-amount num">${amount==='посчитаем после курса'?apMoney(a,'thb'):amount}</span>
+        <span class="task-list-arrow" aria-hidden="true">›</span></button>`;
     }).join('');
   }
   h+=`</section><section class="card task-list-panel ${section==='wait'?'on':''}" data-section="wait">
@@ -7068,7 +7121,7 @@ function viewTasks(){
       h+=`<div class="task-list-person"><span class="task-list-avatar">${htmlText(name.charAt(0))}</span>${htmlText(name)}<span class="task-list-person-count">· ${group.length}</span></div>`;
       h+=group.map(d=>{
         const a=approx(d),pay=apMoney(a,'pay');
-        const canRemind=role==='manager'&&d.step==='s14';
+        const canRemind=!rolePreview()&&role==='manager'&&d.step==='s14';
         return `<div class="task-list-row task-list-wait-row${canRemind?' task-list-wait-row-remind':''}" data-task-id="${d.id}" data-task-view="deal" role="button" tabindex="0"
             onclick="openDeal(${d.id})" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openDeal(${d.id})}">
           <span class="task-list-row-main"><strong>${htmlText(d.prepay?prepayBranchStatus(d,'payment'):stepTitle(d))}</strong>
@@ -13273,7 +13326,7 @@ function sendBlock(x,edit,multi,policy){
   const displayNeed=plannedDestination(x).amount||0;
   const displayLeft=Math.max(0,Math.round((displayNeed-sum)*100)/100),displayOk=displayNeed>0&&sum>=displayNeed-0.005;
   const status={pending:'Ждём подтверждения',confirmed:'Подтверждено',failed:'Ошибка перевода',mismatch:'Не совпали реквизиты / сумма',error:'Сеть недоступна — повторим проверку'};
-  const canDemo=demoAllowed()&&x.demoTransfers&&(canSwitchRole()||S.role==='teodor'||(!multi&&S.role===stepWho(x,'s23')));
+  const canDemo=demoAllowed()&&x.demoTransfers&&(canUseTestRole()||S.role==='teodor'||(!multi&&S.role===stepWho(x,'s23')));
   const rows=l.map((t,i)=>{const hash=String(t.hash||t.ref||'');
     const explorerLink=policy&&/^(?:0x)?[a-fA-F0-9]{64}$/.test(hash)&&!x.demoTransfers
       ?`<a class="btn btn-outline btn-sm" href="${htmlText(explorer(hash,t.net||'TRC20'))}" target="_blank" rel="noopener noreferrer">${(t.net||'TRC20').toUpperCase().replace('-','')==='ERC20'?'Etherscan':'TronScan'}</a>`:'';
@@ -15872,7 +15925,7 @@ function seedCnv(o){
    не создаём заранее — её надо пройти из задачи вместе с мелким обменом. */
 function seedLeaseholdTest(){
   if(!demoAllowed()){toast('Примеры доступны только в автотестовом окружении');return;}
-  if(!canSwitchRole()){toast('Добавить тест может только админ');return;}
+  if(!canUseTestRole()){toast('Добавить тест может только админ');return;}
   const managers=STAND_EMPLOYEES.filter(e=>e.role==='manager'&&!e.login_disabled);
   const choice=prompt('Выберите менеджера учебных сделок:\n'+managers.map((e,i)=>(i+1)+'. '+(e.display_name||e.account||e.username)).join('\n'));
   const demoManager=managers[Number(choice)-1];
@@ -16235,8 +16288,9 @@ async function standBoot(){
     analyticsHistoryEnabled=globalThis.workingTasks;
     standMeId=me.user.id||null;
     standMeNames=[me.user.display_name,me.user.username];
-    if(!canSwitchRole())S.role=standMe;
-    const analyticsView=new URLSearchParams(location.search).get('section')==='analytics';
+    if(!canUseTestRole())S.role=standMe;
+    const requestedSection=new URLSearchParams(location.search).get('section');
+    const analyticsView=requestedSection==='analytics';
     if(analyticsView){S.tab='analytics';S.open=null;S.draft=null;S.edit=null;}
     try{
       const staff=await (await fetch(standMe==='admin'?'/api/admins':'/api/stand/employees',
@@ -16244,9 +16298,9 @@ async function standBoot(){
       if(staff.success) STAND_EMPLOYEES=staff.admins||staff.employees||[];
     }catch(e){}
     const name=employeeName(standMeId)||standMeNames.find(Boolean);
-    NavShell.mount({stand:standSandbox,tasks:true,page:'tasks',active:analyticsView?'crm':'tasks',role:standMe,name,count:0});
+    NavShell.mount({stand:standSandbox,tasks:true,page:'tasks',rolePreview:requestedSection!=='history'&&canSwitchRole(),active:analyticsView?'crm':'tasks',role:standMe,name,count:0});
     document.querySelector('.proto .lab').textContent=standSandbox?'Тестовый стенд':'Задачник';
-    if(new URLSearchParams(location.search).get('section')==='history'){
+    if(requestedSection==='history'){
       const host=document.getElementById('app');
       if(window.StandTaskHistory) window.StandTaskHistory.mount(host,standMe);
       else host.textContent='Не удалось открыть архив';

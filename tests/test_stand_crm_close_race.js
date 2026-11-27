@@ -66,6 +66,7 @@ async function main() {
   vm.runInContext([
     source('standSnapshot'), source('standApply'), source('standPull', true),
     source('standStateRequestPayload', true),
+    html.match(/^function rolePreview\([^\n]*/m)[0],
     source('standSave', true), source('standWaitSaved', true),
     source('standSaveError'), source('standRequireSaved', true),
     source('sentToggle'), source('crmPushClose', true),

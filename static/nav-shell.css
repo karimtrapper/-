@@ -112,3 +112,15 @@ body.nav-shell-on.nav-shell-crm #deals > .card:first-child > .btn-primary {
 body.nav-shell-on.nav-shell-crm #deals > .card:first-child > .btn-primary:hover {
   background:#F1F5F9; border-color:#94A3B8;
 }
+
+body.wave4a .site-shell-section-list #payoutRequestsBadge { color:#fff !important; }
+body.wave4a:not(.nav-shell-on) .nav .nav-tab.active {
+  background:#0F172A !important;
+  color:#fff !important;
+}
+.task-preview-status {
+  margin:0 0 12px;
+  color:#475569;
+  font-size:14px;
+  font-weight:600;
+}

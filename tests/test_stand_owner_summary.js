@@ -209,7 +209,7 @@ assert.match(html, /<details class="card fold-card"><summary>Деньги по �
 assert.match(html, /view==='deal'&&\['teodor','findir','admin'\]\.includes\(S\.role\)\?ownerSummary\(d\)/);
 const switchSource = html.match(/^function canSwitchRole\([^\n]*/m);
 assert.ok(switchSource, 'role availability function');
-vm.runInContext(switchSource[0], ctx);
+vm.runInContext(html.match(/^function canUseTestRole\([^\n]*/m)[0]+'\n'+switchSource[0], ctx);
 const bootSource = html.match(/^async function standBoot\([^]*?^}/m);
 assert.ok(bootSource, 'загрузка задачника найдена');
 vm.runInContext(bootSource[0], ctx);

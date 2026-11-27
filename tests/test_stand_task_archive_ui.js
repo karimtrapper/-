@@ -23,7 +23,7 @@ const notes = [{id: 'archived', dealId: '201', role: 'operator'},
   {id: 'active', dealId: 202, role: 'operator'}, {id: 'general', role: 'operator'}];
 const context = vm.createContext({
   S: {deals, notes, role: 'operator', convs: [{id: 8, status: 'sent'}]},
-  STAND_SHARED: ['deals','convs','notes'], STEPS: {s18w: {}}, ROLES: {operator: {t: 'Операционист'}},
+  STAND_SHARED: ['deals','convs','notes'], STEPS: {s18w: {}}, ROLES: {admin: {t: 'Админ'}, operator: {t: 'Операционист'}, manager: {t: 'Менеджер'}},
   STAND_EMPLOYEES: [{id: 41, display_name: 'Настя', role: 'operator', login_disabled: true},
     {id: 42, display_name: 'Ирина <тест>', role: 'operator'}],
   standMe: 'admin', standMeId: 1, standMeNames: ['Карим'],
@@ -41,7 +41,7 @@ const context = vm.createContext({
   taskDealFilter: 'all',
 });
 vm.runInContext(['isNativeCashPartner', 'cashPartnerWalletTask', 'standSnapshot', 'deal', 'notes', 'notesFor', 'notesUnread', 'myTasks',
-  'myTaskCount', 'waitingOn', 'pendingEx', 'taskDealsHtml', 'viewDeals',
+  'rolePreview', 'taskRows', 'myTaskCount', 'waitingOn', 'pendingEx', 'taskDealsHtml', 'viewDeals',
   'htmlText', 'employeeName', 'soleActiveEmployeeName', 'operatorTaskName', 'operatorViewerName', 'policyStepAssignee',
   'dealStatusLabel', 'dealProfit', 'nextTaskIndex', 'viewTasks', 'matchesCrmLink', 'standOpenFromLink'].map(source).join('\n'), context);
 

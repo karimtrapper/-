@@ -28,7 +28,8 @@ const ctx = {S, STAND_SHARED: ['deals', 'convs'], standVer: 1, standBase: {deals
 };
 vm.createContext(ctx);
 vm.runInContext(['standSnapshot', 'standStateRequestPayload', 'standSave']
-  .map(name => source(name, name !== 'standSnapshot')).join('\n'), ctx);
+  .map(name => source(name, name !== 'standSnapshot'))
+  .concat(html.match(/^function rolePreview\([^\n]*/m)[0]).join('\n'), ctx);
 (async () => {
   const firstSave = ctx.standSave();
   await Promise.resolve();

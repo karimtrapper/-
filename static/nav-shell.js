@@ -14,7 +14,7 @@
   let state = null;
   const esc = value => String(value || '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
 
-  function links(mobile) {
+  function links() {
     const items = [
       ['panel','Панель','/panel'],['calc','Калькулятор','/'],
       ['tasks','Задачник','/tasks'],['crm','CRM','/crm']
@@ -26,7 +26,7 @@
     const name = esc(state.name || 'Пользователь');
     const role = esc(labels[state.role] || state.role);
     const initial = esc((state.name || '?').trim().charAt(0).toUpperCase());
-    return `<details class="site-shell-profile"><summary aria-label="Профиль: ${name} · ${role}"><span class="site-shell-avatar">${initial}</span><span class="site-shell-profile-name">${name} · ${role}</span>${svg('down')}</summary><div class="site-shell-menu">${state.stand && state.role === 'admin' && state.page === 'tasks' ? '<div class="site-shell-menu-title">Смотреть как…</div><div data-shell-roles></div><div data-shell-admin-tools></div>' : ''}<a href="/docs/instruction.html" target="_blank" rel="noopener">Инструкция</a><button type="button" data-shell-logout>Выйти</button></div></details>`;
+    return `<details class="site-shell-profile"><summary aria-label="Профиль: ${name} · ${role}"><span class="site-shell-avatar">${initial}</span><span class="site-shell-profile-name">${name} · ${role}</span>${svg('down')}</summary><div class="site-shell-menu">${state.rolePreview && state.role === 'admin' && state.page === 'tasks' ? '<div class="site-shell-menu-title">Смотреть как…</div><div data-shell-roles></div>' + (state.stand?'<div data-shell-admin-tools></div>':'') : ''}<a href="/docs/instruction.html" target="_blank" rel="noopener">Инструкция</a><button type="button" data-shell-logout>Выйти</button></div></details>`;
   }
 
   function bell() {
@@ -34,6 +34,7 @@
   }
   const sections = [
     ['deals','Сделки','/crm?section=deals'],
+    ['dashboard','Дашборд','/crm?section=dashboard'],
     ['documents','Документы','/crm?section=documents'],['closing','Закрытие','/crm?section=closing'],
     ['exchangers','Обменники','/crm?section=exchangers'],['balance','Баланс','/crm?section=balance'],
     ['incomes','Поступления','/crm?section=incomes'],['conversions','Конвертации','/crm?section=conversions'],
@@ -41,10 +42,11 @@
     ['managers','Менеджеры','/crm?section=managers'],['verification','Сверка','/crm?section=verification'],
     ['kyc','KYC','/crm?section=kyc'],['partners','Партнёры','/crm?section=partners'],
     ['referrers','Рефереры','/crm?section=referrers'],['payoutRequests','Заявки на выплату','/crm?section=payoutRequests'],
-    ['admins','Админы','/crm?section=admins'],['analytics','Аналитика','/tasks?section=analytics']
+    ['admins','Сотрудники','/crm?section=admins'],['myTelegram','Мой Telegram','/crm?section=myTelegram'],
+    ['analytics','Аналитика','/tasks?section=analytics']
   ];
   function sectionNav() {
-    return `<nav class="site-shell-sections" aria-label="Разделы работы"><button type="button" class="site-shell-scroll" data-shell-scroll="-1" aria-label="Предыдущие разделы">‹</button><div class="site-shell-section-list">${sections.map(([key,label,href])=>`<a href="${href}" data-shell-section="${key}">${label}</a>`).join('')}</div><button type="button" class="site-shell-scroll" data-shell-scroll="1" aria-label="Следующие разделы">›</button></nav>`;
+    return `<nav class="site-shell-sections" aria-label="Разделы работы"><button type="button" class="site-shell-scroll" data-shell-scroll="-1" aria-label="Предыдущие разделы">‹</button><div class="site-shell-section-list">${sections.filter(([key])=>key!=='myTelegram'||state.stand).map(([key,label,href])=>`<a href="${href}" data-shell-section="${key}">${label}</a>`).join('')}</div><button type="button" class="site-shell-scroll" data-shell-scroll="1" aria-label="Следующие разделы">›</button></nav>`;
   }
   function updateSectionArrows() {
     const list=document.querySelector('.site-shell-section-list');
@@ -81,7 +83,7 @@
     }
     const top = document.createElement('header');
     top.className = 'site-shell site-shell-top';
-    top.innerHTML = `<div class="site-shell-brand"><i></i><span>Grusha</span></div><nav class="site-shell-links" aria-label="Разделы">${links(false)}</nav><div class="site-shell-right">${bell()}${profile()}</div>`;
+    top.innerHTML = `<div class="site-shell-brand"><i></i><span>Grusha</span></div><nav class="site-shell-links" aria-label="Разделы">${links()}</nav><div class="site-shell-right">${bell()}${profile()}</div>`;
     const mobile = document.createElement('div');
     mobile.className = 'site-shell site-shell-mobile-head';
     mobile.innerHTML = `<span>${state.page === 'panel' ? 'Панель' : state.page === 'calc' ? 'Калькулятор' : state.page === 'tasks' ? (state.active === 'crm' ? 'Аналитика' : 'Задачник') : 'CRM'}</span>${bell()}${profile()}`;
@@ -89,11 +91,8 @@
     bottom.className = 'site-shell site-shell-bottom';
     bottom.setAttribute('aria-label','Разделы');
     bottom.style.setProperty('--shell-columns',panelRoles.has(state.role) ? 4 : 3);
-    bottom.innerHTML = links(true);
-    // Секционные вкладки (17 разделов CRM + «Аналитика» задачника) — только
-    // внутри CRM и задачника (там живёт раздел «Аналитика»). На Калькуляторе
-    // и Панели секций нет: ряд протекал туда и был виден/кликабелен без
-    // смысла (находка №14 аудита ui-2026-10-17, открытый вопрос №11 DESIGN.md).
+    bottom.innerHTML = links();
+    // CRM and the task board share the section links.
     const showSectionStrip = state.page === 'crm' || state.page === 'tasks';
     document.body.prepend(top,mobile);
     if (showSectionStrip) {
@@ -102,6 +101,9 @@
       document.body.insertBefore(strip.firstElementChild, mobile.nextSibling);
     }
     document.body.append(bottom);
+    const payoutBadge=document.getElementById('payoutRequestsBadge');
+    const payoutLink=document.querySelector('[data-shell-section="payoutRequests"]');
+    if(payoutBadge&&payoutLink)payoutLink.append(payoutBadge);
     const sectionList=document.querySelector('.site-shell-section-list');
     if (sectionList) {
       document.querySelectorAll('[data-shell-scroll]').forEach(button=>button.addEventListener('click',()=>{
@@ -112,9 +114,10 @@
       updateSectionArrows();
     }
     document.querySelectorAll('[data-shell-section]').forEach(link=>link.addEventListener('click',event=>{
+      if(event.button!==0||event.metaKey||event.ctrlKey||event.shiftKey||event.altKey)return;
       const section=link.dataset.shellSection;
       if (state.page==='crm' && section!=='analytics' && typeof showSection==='function') {
-        event.preventDefault();showSection(section);history.replaceState(null,'','/crm?section='+encodeURIComponent(section));activateSection(section);
+        event.preventDefault();history.replaceState(null,'',link.href);showSection(section);
       } else if(state.page==='tasks' && section==='analytics' && typeof setTab==='function') {
         event.preventDefault();setTab('analytics');history.replaceState(null,'','/tasks?section=analytics');activateSection('analytics');
       }
@@ -124,9 +127,11 @@
       const roles = document.getElementById('roles');
       const tools = document.getElementById('admintools');
       const taskBell = document.getElementById('bell');
-      if (state.stand && state.role === 'admin') {
+      if (state.rolePreview && state.role === 'admin' && roles) {
         top.querySelector('[data-shell-roles]').append(roles);
-        top.querySelector('[data-shell-admin-tools]').append(tools);
+      }
+      if (state.stand && state.role === 'admin' && tools) {
+        top.querySelector('[data-shell-admin-tools]')?.append(tools);
       }
       if (taskBell) {
         top.querySelector('[data-shell-bell]').replaceChildren(taskBell);
@@ -147,12 +152,12 @@
       if (title) title.textContent=changes.section==='analytics'?'Аналитика':'Задачник';
     }
     document.body.classList.toggle('nav-shell-panel',state.active === 'panel');
-    if (state.page === 'tasks' && state.stand && state.role === 'admin') {
+    if (state.page === 'tasks' && state.rolePreview && state.role === 'admin') {
       const source=document.getElementById('roles');
       const mobile=document.querySelector('.site-shell-mobile-head [data-shell-roles]');
       if (source && mobile) mobile.innerHTML=source.innerHTML;
       const tools=document.getElementById('admintools');
-      const mobileTools=document.querySelector('.site-shell-mobile-head [data-shell-admin-tools]');
+      const mobileTools=state.stand&&document.querySelector('.site-shell-mobile-head [data-shell-admin-tools]');
       if (tools && mobileTools) mobileTools.innerHTML=tools.innerHTML;
     }
     if (state.page === 'tasks') {
@@ -198,13 +203,9 @@
       const active=page === 'crm' && location.pathname === '/panel' ? 'panel' : page;
       if (page === 'crm' && (stand || tasks)) {
         const requested = new URLSearchParams(location.search).get('section');
-        const section = requested && document.getElementById(requested)?.classList.contains('section')
-          ? requested : active === 'panel' ? 'dashboard' : stand ? 'deals' : '';
-        if (!stand) {
-          if (section && !location.hash && typeof showSection === 'function') showSection(section);
-          return;
-        }
-        mount({stand,tasks,page,active,role,name:data.user.display_name || data.user.username,count:0});
+        const section = requested && document.getElementById(requested)?.classList.contains('section') &&
+          (requested!=='myTelegram'||stand) ? requested : active === 'panel' ? 'dashboard' : 'deals';
+        mount({stand,tasks,page,active,role,section,name:data.user.display_name || data.user.username,count:0});
         if (section && !location.hash && typeof showSection === 'function') showSection(section);
       } else if (stand || tasks) {
         mount({stand,tasks,page,active,role,name:data.user.display_name || data.user.username,count:0});
