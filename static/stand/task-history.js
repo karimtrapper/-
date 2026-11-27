@@ -144,6 +144,7 @@
   }
 
   async function mount(container, role) {
+    container.classList.add('task-history-view');
     const query = new URLSearchParams(window.location.search);
     const views = {archive: 'Архив', review: 'На сверке', agreements: 'Договоры'};
     const view = Object.hasOwn(views, query.get('view')) ? query.get('view') : 'archive';

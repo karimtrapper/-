@@ -63,9 +63,13 @@
   border-radius: var(--radius-md);
   font: 550 .8125rem/1.4 var(--font-sans);
 }
-.btn-primary {
+form .btn-primary {
   background: var(--primary);
-  color: var(--surface-primary-ink, var(--primary-foreground));
+  color: var(--surface-primary-ink, var(--primary-foreground)) !important;
+}
+form .btn-secondary {
+  background-color: var(--muted);
+  color: var(--foreground) !important;
 }
 .btn-success { background: var(--surface-good); color: var(--surface-good-ink); }
 .btn-danger { background: var(--surface-bad); color: var(--surface-bad-ink); }

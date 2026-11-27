@@ -1,0 +1,148 @@
+/* Working task screens use the same colors as the Slate shell. */
+html.slate-console body.nav-shell-tasks #app .deal-main-button:not(:disabled) {
+  background-color: var(--primary) !important;
+  color: var(--surface-primary-ink, var(--primary-foreground)) !important;
+  border-color: var(--primary) !important;
+}
+html.slate-console body.nav-shell-tasks #app .deal-main-button:hover:not(:disabled) {
+  background-color: var(--action-coral-hover) !important;
+}
+html.slate-console body.nav-shell-tasks #app .btn-success:not(.deal-main-button) {
+  background-color: var(--surface-good);
+  color: var(--surface-good-ink);
+  border-color: var(--surface-good-line);
+}
+html.slate-console body.nav-shell-tasks #app :is(.sberbox, .box-blue, .agbox) {
+  background-color: var(--surface-panel);
+  color: var(--foreground);
+  border-color: var(--border);
+}
+html.slate-console body.nav-shell-tasks #app .task-preview-status {
+  color: var(--muted-foreground);
+}
+html.slate-console body.nav-shell-tasks #app :is(.box-red, .outgoing-status-summary.failed) {
+  background-color: var(--surface-bad);
+  border-color: var(--surface-bad-line);
+  color: var(--surface-bad-ink);
+}
+html.slate-console body.nav-shell-tasks #app .box-amber {
+  background-color: var(--surface-warn);
+  border-color: var(--surface-warn-line);
+  color: var(--surface-warn-ink);
+}
+html.slate-console body.nav-shell-tasks #app .box-green {
+  background-color: var(--surface-good);
+  border-color: var(--surface-good-line);
+  color: var(--surface-good-ink);
+}
+html.slate-console body.nav-shell-tasks #app .neg {
+  color: var(--surface-bad-ink);
+}
+html.slate-console body.nav-shell-tasks #app :is(.sec.po, .sec.snd, .psec.psnd, .psec.pcalc, .sim .h, .sim p) {
+  color: var(--surface-link);
+}
+html.slate-console body.nav-shell-tasks #app .psec.pin {
+  color: var(--surface-good-ink);
+}
+html.slate-console body.nav-shell-tasks #app .psec.pout {
+  color: var(--surface-bad-ink);
+}
+html.slate-console body.nav-shell-tasks #app :is(.psec.pref, [style*="color:#B45309" i]) {
+  color: var(--surface-warn-ink) !important;
+}
+html.slate-console body.nav-shell-tasks #app :is(.preset button, .tier, .hash) {
+  background-color: var(--surface-info);
+  color: var(--surface-link);
+  border-color: var(--surface-info-line);
+}
+html.slate-console body.nav-shell-tasks #app :is(.preset button.on, .preset button:hover, a.hash:hover, .tier button) {
+  background-color: var(--accent);
+  color: var(--foreground);
+  border-color: var(--border-strong);
+}
+html.slate-console body.nav-shell-tasks #app .tier button {
+  inline-size: 24px;
+  block-size: 24px;
+}
+html.slate-console body.nav-shell-tasks #app .tgbot .av {
+  color: var(--surface-primary-ink, var(--primary-foreground));
+}
+html.slate-console body.nav-shell-tasks #app .tgtime {
+  color: #93a3b5;
+}
+html.slate-console body.nav-shell-tasks #app .deal-detail {
+  min-inline-size: 0;
+  max-inline-size: 100%;
+}
+html.slate-console body.nav-shell-tasks #app .deal-detail > span.addr {
+  display: block;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+html.slate-console body.nav-shell-tasks #app .analytics-stat-link {
+  display: inline-flex;
+  align-items: center;
+  min-block-size: 24px;
+}
+html.slate-console body.nav-shell-tasks #app .analytics-controls {
+  grid-template-columns: minmax(0, 1.25fr) minmax(29.75rem, 1fr);
+}
+html.slate-console body.nav-shell-tasks #app .analytics-selects {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 9.5rem), 1fr));
+}
+html.slate-console body.nav-shell-tasks #app .analytics-selects select {
+  padding-inline: .625rem;
+}
+html.slate-console body.nav-shell-tasks #app.task-history-view :is(.card, .task-toolbar) {
+  margin-block-end: 1rem;
+}
+html.slate-console body.nav-shell-tasks #app.task-history-view .task-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .375rem;
+}
+html.slate-console body.nav-shell-tasks #app.task-history-view :is(.card h2, .card h3) {
+  font-size: 1rem;
+  line-height: 1.4;
+}
+html.slate-console body.nav-shell-tasks #app.task-history-view .card h3 {
+  margin-block-start: .875rem;
+}
+html.slate-console body.nav-shell-tasks #app.task-history-view .card :is(ul, p, a) + h2 {
+  margin-block-start: .875rem;
+}
+html.slate-console body.nav-shell-tasks #app.task-history-view .card :is(p, li) {
+  margin-block-start: .375rem;
+}
+html.slate-console body.nav-shell-tasks #app.task-history-view :is(ul.card, .card ul) {
+  list-style-position: outside;
+  padding-inline-start: 1.25rem;
+}
+html.slate-console body.nav-shell-tasks #app.task-history-view .card a {
+  color: var(--surface-link);
+  overflow-wrap: anywhere;
+}
+html.slate-console body.nav-shell-tasks #toast {
+  background-color: var(--popover);
+  border: 1px solid var(--border-strong);
+  color: var(--popover-foreground);
+}
+html.slate-console body.nav-shell-tasks #toast.error {
+  background-color: var(--surface-bad);
+  border-color: var(--surface-bad-line);
+  color: var(--surface-bad-ink);
+}
+
+@media (max-width: 1080px) {
+  html.slate-console body.nav-shell-tasks #app .analytics-controls {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 700px) {
+  html.slate-console body.nav-shell-tasks #app .card > :is(.row:last-child, .row.mainrow):has(> :is(.btn-primary, .btn-success)) {
+    background-color: var(--ds-glass);
+  }
+  html.slate-console body.nav-shell-tasks #toast {
+    inset-block-start: calc(var(--header-h) + .5rem);
+  }
+}

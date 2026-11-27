@@ -449,8 +449,14 @@ async function crmDraftMount(id) {
     if(globalThis.workingTasks){
       const theme=document.createElement('link');
       theme.rel='stylesheet';
-      theme.href='/static/stand/crm-draft-slate.css?v=1';
+      theme.href='/static/stand/crm-draft-slate.css?v=2';
+      const themeReady=new Promise(resolve=>{
+        theme.addEventListener('load',resolve,{once:true});
+        theme.addEventListener('error',resolve,{once:true});
+      });
       shadow.append(theme);
+      await themeReady;
+      if(S.edit!==id||document.getElementById('crmDraftHost')!==host)return;
     }
     const form=page.querySelector('#createDealForm').cloneNode(true);
     form.querySelector('#dealSourceChannelGroup')?.remove();
