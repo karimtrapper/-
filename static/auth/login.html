@@ -104,6 +104,22 @@
             text-align: center;
         }
         .error-msg.visible { display: block; }
+        .error-msg { overflow-wrap: anywhere; }
+        .password-toggle {
+            min-height: 44px;
+            padding: 0 8px;
+            background: transparent;
+            border: 0;
+            border-radius: 6px;
+            color: #475569;
+            font: 600 13px 'Inter', sans-serif;
+            text-decoration: underline;
+            cursor: pointer;
+        }
+        .password-toggle:focus-visible {
+            outline: 2px solid #1E40AF;
+            outline-offset: 2px;
+        }
 
         /* Setup mode */
         .setup-note {
@@ -129,18 +145,18 @@
             <h1 class="login-title">Создание аккаунта</h1>
             <p class="login-subtitle">Первый вход — создайте администратора</p>
             <div class="setup-note">Это одноразовая настройка. После создания аккаунта вход будет по логину и паролю.</div>
-            <div class="error-msg" id="setupError"></div>
+            <div class="error-msg" id="setupError" role="alert"></div>
             <form onsubmit="doSetup(event)">
                 <div class="form-group">
-                    <label>Имя</label>
+                    <label for="setupName">Имя</label>
                     <input type="text" id="setupName" placeholder="Как вас зовут" autocomplete="name" required>
                 </div>
                 <div class="form-group">
-                    <label>Логин</label>
+                    <label for="setupUsername">Логин</label>
                     <input type="text" id="setupUsername" placeholder="Придумайте логин" autocomplete="username" required>
                 </div>
                 <div class="form-group">
-                    <label>Пароль</label>
+                    <label for="setupPassword">Пароль</label>
                     <input type="password" id="setupPassword" placeholder="Минимум 4 символа" autocomplete="new-password" required minlength="4">
                 </div>
                 <button class="btn-login" type="submit" id="setupBtn">Создать аккаунт</button>
@@ -151,7 +167,7 @@
         <div id="loginMode">
             <h1 class="login-title">Вход в CRM</h1>
             <p class="login-subtitle">Grusha Exchange</p>
-            <div class="error-msg" id="loginError"></div>
+            <div class="error-msg" id="loginError" role="alert"></div>
             <div id="tgControls" style="display:none;">
             <button class="btn-login" id="tgLoginBtn" style="display:flex;align-items:center;justify-content:center;gap:9px;">
                 <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M9.78 18.65l.28-4.23 7.68-6.92c.34-.31-.07-.46-.52-.19L7.74 13.3 3.64 12c-.88-.25-.89-.86.2-1.3l15.97-6.16c.73-.33 1.43.18 1.15 1.3l-2.72 12.81c-.19.91-.74 1.13-1.5.71L12.6 16.3l-1.99 1.93c-.23.23-.42.42-.83.42z"/></svg>
@@ -160,18 +176,18 @@
             <button class="btn-login" id="tgBotLoginBtn" style="display:flex;align-items:center;justify-content:center;gap:9px;margin-top:10px;background:#fff;color:#1E293B;border:1.5px solid #E2E8F0;">
                 📱 Через приложение Telegram
             </button>
-            <div id="botLoginStatus" style="display:none;margin-top:12px;font-size:13px;color:#475569;text-align:center;line-height:1.5;"></div>
+            <div id="botLoginStatus" role="status" style="display:none;margin-top:12px;font-size:13px;color:#475569;text-align:center;line-height:1.5;"></div>
             <div style="text-align:center;margin-top:16px;">
-                <a href="#" id="pwToggle" style="font-size:12px;color:#94A3B8;text-decoration:none;">Вход по паролю</a>
+                <button type="button" id="pwToggle" class="password-toggle" aria-controls="pwForm" aria-expanded="false">Вход по паролю</button>
             </div>
             </div>
             <form onsubmit="doLogin(event)" id="pwForm" style="display:block;margin-top:16px;">
                 <div class="form-group">
-                    <label>Логин</label>
+                    <label for="loginUsername">Логин</label>
                     <input type="text" id="loginUsername" placeholder="Введите логин" autocomplete="username">
                 </div>
                 <div class="form-group">
-                    <label>Пароль</label>
+                    <label for="loginPassword">Пароль</label>
                     <input type="password" id="loginPassword" placeholder="Введите пароль" autocomplete="current-password">
                 </div>
                 <button class="btn-login" type="submit" id="loginBtn">Войти</button>
@@ -242,6 +258,7 @@
                     !document.getElementById('loginPassword').value) {
                     form.style.display = 'none';
                 }
+                document.getElementById('pwToggle').ariaExpanded = String(form.style.display !== 'none');
                 document.getElementById('tgControls').style.display = 'block';
                 initTg();
             }
@@ -370,7 +387,9 @@
             if (tgl) tgl.addEventListener('click', function (e) {
                 e.preventDefault();
                 const f = document.getElementById('pwForm');
-                f.style.display = f.style.display === 'none' ? 'block' : 'none';
+                const expanded = f.style.display === 'none';
+                f.style.display = expanded ? 'block' : 'none';
+                tgl.ariaExpanded = String(expanded);
             });
 
             // Вход через бота: обходит кэш-сессию виджета — аккаунт выбирается
