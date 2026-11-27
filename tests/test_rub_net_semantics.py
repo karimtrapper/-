@@ -196,10 +196,15 @@ def test_distribution_assigns_only_known_partial_shares(monkeypatch):
         lambda conv, expected_if_pending: {row.id: 612.24 for row in rows})
     try:
         result = m.conversion_distribution(db, Batch())
-        assert sorted(r['share_usdt'] for r in result['no_return_deals']) == [306.12, 306.12]
+        shares = sorted(r['share_usdt'] for r in result['no_return_deals'])
+        assert shares == [306.12, 306.12]
         assert result['unassigned_usdt'] == 612.24
-        assert result['needs_input'] is False
-        assert result['balanced'] is True
+        assert sum(shares) + result['unassigned_usdt'] == result['received_usdt'] == 1224.48
+        # The figures reconcile arithmetically, but an unassigned receipt
+        # cannot be treated as final margin or a ready distribution.
+        assert result['needs_input'] is True
+        assert result['balanced'] is False
+        assert result['margin_usdt'] is None and result['stays_usdt'] is None
     finally:
         db.rollback(); db.close()
 

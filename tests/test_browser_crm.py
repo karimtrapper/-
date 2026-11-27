@@ -1404,7 +1404,7 @@ def test_exchange_deal_details_and_editor_use_all_transfers(ui, width, tmp_path)
     serialized_proofs = page.evaluate("serializeStandardDeal(document.getElementById('createDealForm')).payout_tx_hashes")
     assert [(tx['hash'], tx['network']) for tx in serialized_proofs] == [(tx['hash'], tx['network']) for tx in outgoing]
     page.locator('#pe-0-usdt').fill('125')
-    expect(page.locator('#payinExtraSummary')).to_contain_text('$925.00')
+    expect(page.locator('#payinExtraSummary')).to_contain_text(re.compile(r'\$925[.,]00'))
     expect(profit).to_have_value('123.94')
     payouts.get_by_title('сколько из перевода идёт в эту сделку').last.fill('5.33')
     expect(cost).to_have_value('$802.07')

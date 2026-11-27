@@ -23,6 +23,7 @@ def world(monkeypatch):
     monkeypatch.setattr(m, 'TASKS_ENABLED', False)
     m.Base.metadata.create_all(m.engine)
     monkeypatch.setattr(m, '_stand_tronscan_get', lambda *args, **kwargs: None)
+    monkeypatch.setattr(m, '_tron_tx_info', lambda *_: {})
     # These tests isolate wallet policy for exchange routes. Stage now admits
     # only verified flows; make these two synthetic routes verified locally,
     # without bypassing the gate or changing production VERIFIED_FLOWS.
