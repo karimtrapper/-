@@ -5922,7 +5922,7 @@ function docDownload(id,k,ext){
     if(f && f.data === '__detached__') {
        const url = fileUrl(id, k, typeof ext==='number'?ext:0) + '&download=1';
        const a=document.createElement('a');
-       a.href=url;a.download=f.file||'document';a.style.display='none';
+       a.href=url;a.download='';a.style.display='none';
        document.body.appendChild(a);a.click();a.remove();
        log(d,'Скачан файл: '+(DOCT[k]||k)+' · '+f.file);save();return;
     }
@@ -5954,11 +5954,28 @@ function docFileOf(d,k){
 }
 function docExt(f){const m=String((f&&(f.mime||f.file))||'').toLowerCase();
   return m.includes('pdf')?'PDF':(m.includes('word')||m.endsWith('.docx')||m.endsWith('.doc'))?'DOCX':'файл';}
+function sgbDownloadButton(d,k,f,index){
+  if(!STAND||!['application/pdf','image/png'].includes(f.mime)||
+     Number(f.bytes??f.size)<1000000)return '';
+  return `<button class="btn btn-outline btn-sm" onclick="sgbDownload(${d.id},'${k}',${index==null?'null':index})">Для СГБ</button>`;
+}
+function sgbDownload(id,k,index){
+  const entry=index==null?docFileOf(deal(id),k):null;
+  if(index==null&&!entry){toast('Документ уже недоступен');return;}
+  const url=entry?'/api/docs/file/'+entry.docId+'?standDealId='+id:fileUrl(id,k,index);
+  return docFetch(url+'&sgb=1');
+}
 async function docFetch(url,name,d,text){
   try{
     const r=await fetch(url,{credentials:'same-origin'});
     if(!r.ok){let j={};try{j=await r.json();}catch(e){}toast(j.error||('Файл не отдался: '+r.status));return;}
     const blob=await r.blob(), u=URL.createObjectURL(blob), a=document.createElement('a');
+    if(!name){
+      const disposition=r.headers.get('Content-Disposition')||'';
+      const headerName=disposition.match(/filename="?([A-Za-z0-9_.-]+)/);
+      name=headerName?.[1];
+      if(name?.endsWith('.zip'))toast('Распакуйте архив и приложите к письму PDF из архива');
+    }
     a.href=u;a.download=name||'document';a.style.display='none';
     document.body.appendChild(a);a.click();a.remove();
     setTimeout(()=>URL.revokeObjectURL(u),60000);
@@ -9769,7 +9786,7 @@ function docAdditionalRows(d,small){
     <div><div class="t1"${fs}>${htmlText(DOCT[f.documentType]||'Документ')}</div>
       <div class="t2" style="word-break:break-all">${docFileNameHtml(f.file)}</div></div>
     <span class="t3"><button class="btn btn-outline btn-sm" onclick="docOpen(${d.id},'additional',${i})">Открыть</button>
-      <button class="btn btn-outline btn-sm" onclick="docDownload(${d.id},'additional',${i})">Скачать</button>${docFileButton(d,'additional',f,'delete')}</span></div>`);
+      <button class="btn btn-outline btn-sm" onclick="docDownload(${d.id},'additional',${i})">Скачать</button>${sgbDownloadButton(d,'additional',f,i)}${docFileButton(d,'additional',f,'delete')}</span></div>`);
 }
 /* Строки документов сделки: сначала выпущенный пакет, потом файлы клиента */
 function docListRows(d,small){
@@ -9779,7 +9796,7 @@ function docListRows(d,small){
     `<div class="li" style="cursor:default"><span class="av">${{dog:'Д',app:'П',bill:'С'}[k]}</span>
       <div><div class="t1"${fs}>${docIssuedTitle(d,k)}${f.own?' <span class="badge b-done">свой файл</span>':''}</div>
         <div class="t2" style="word-break:break-all">${docFileNameHtml(f.file)}</div></div>
-      <span class="t3"><button class="btn btn-outline btn-sm" onclick="docDownload(${d.id},'${k}','file')">${docExt(f)}</button>
+      <span class="t3"><button class="btn btn-outline btn-sm" onclick="docDownload(${d.id},'${k}','file')">${docExt(f)}</button>${sgbDownloadButton(d,k,f)}
       ${!STAND||['manager','operator','admin'].includes(standMe)?`<button class="btn btn-outline btn-sm" onclick="docIssuedAction(${d.id},${f.docId})">Удалить</button>`:''}</span></div>`);
   const client=[];
   ['pass','inv','spa','vehicle_contract','ipds'].filter(k=>d.docs[k]||filesOf(d,k).length).forEach(k=>{
@@ -9789,23 +9806,26 @@ function docListRows(d,small){
     files.forEach((f,i)=>client.push(`<div class="li" style="cursor:default"><span class="av">${doctOf(d,k)[0]}</span>
       <div><div class="t1"${fs}>${doctOf(d,k)}${files.length>1?' · '+(i+1):''}</div><div class="t2" style="word-break:break-all">${docFileNameHtml(f.file)}</div></div>
       <span class="t3" style="white-space:nowrap"><button class="btn btn-outline btn-sm" onclick="docOpen(${d.id},'${k}',${i})">Открыть</button>
-        <button class="btn btn-outline btn-sm" onclick="docDownload(${d.id},'${k}',${i})">Скачать</button>${deleteButton(k,f)}</span></div>`));
+        <button class="btn btn-outline btn-sm" onclick="docDownload(${d.id},'${k}',${i})">Скачать</button>${sgbDownloadButton(d,k,f,i)}${deleteButton(k,f)}</span></div>`));
   });
   ['payment_order','receipt'].forEach(k=>filesOf(d,k).forEach((f,i)=>client.push(`<div class="li" style="cursor:default"><span class="av">${k==='payment_order'?'П':'Ч'}</span>
     <div><div class="t1"${fs}>${k==='payment_order'?'Платёжное поручение IPPS':d.kind==='Фрихолд'?'SWIFT / MT103':'Чек банка об оплате'}</div>
       <div class="t2" style="word-break:break-all">${docFileNameHtml(f.file)}</div></div>
     <span class="t3"><button class="btn btn-outline btn-sm" onclick="docOpen(${d.id},'${k}',${i})">Открыть</button>
-      <button class="btn btn-outline btn-sm" onclick="docDownload(${d.id},'${k}',${i})">Скачать</button>${deleteButton(k,f)}</span></div>`)));
+      <button class="btn btn-outline btn-sm" onclick="docDownload(${d.id},'${k}',${i})">Скачать</button>${sgbDownloadButton(d,k,f,i)}${deleteButton(k,f)}</span></div>`)));
   filesOf(d,'clientPayinReceipt').forEach((f,i)=>client.push(`<div class="li" style="cursor:default"><span class="av">Ч</span>
     <div><div class="t1"${fs}>Чек клиента об оплате${i?' · '+(i+1):''}</div>
       <div class="t2" style="word-break:break-all">${docFileNameHtml(f.file)} · ${htmlText(f.uploadedBy||'сотрудник')}${f.note?' · '+htmlText(f.note):''}</div></div>
     <span class="t3" style="white-space:nowrap"><button class="btn btn-outline btn-sm" onclick="docOpen(${d.id},'clientPayinReceipt',${i})">Открыть</button>
-      <button class="btn btn-outline btn-sm" onclick="docDownload(${d.id},'clientPayinReceipt',${i})">Скачать</button>${deleteButton('clientPayinReceipt',f)}</span></div>`));
+      <button class="btn btn-outline btn-sm" onclick="docDownload(${d.id},'clientPayinReceipt',${i})">Скачать</button>${sgbDownloadButton(d,'clientPayinReceipt',f,i)}${deleteButton('clientPayinReceipt',f)}</span></div>`));
   filesOf(d,'bankCreditEvidence').forEach((f,i)=>client.push(`<div class="li" style="cursor:default"><span class="av">В</span>
     <div><div class="t1"${fs}>Выписка / подтверждение зачисления${i?' · '+(i+1):''}</div>
       <div class="t2" style="word-break:break-all">${docFileNameHtml(f.file)} · ${htmlText(f.uploadedBy||'операционист')}</div></div>
     <span class="t3" style="white-space:nowrap"><button class="btn btn-outline btn-sm" onclick="docOpen(${d.id},'bankCreditEvidence',${i})">Открыть</button>
-      <button class="btn btn-outline btn-sm" onclick="docDownload(${d.id},'bankCreditEvidence',${i})">Скачать</button>${deleteButton('bankCreditEvidence',f)}</span></div>`));
+      <button class="btn btn-outline btn-sm" onclick="docDownload(${d.id},'bankCreditEvidence',${i})">Скачать</button>${sgbDownloadButton(d,'bankCreditEvidence',f,i)}${deleteButton('bankCreditEvidence',f)}</span></div>`));
+  if(d.closed)filesOf(d,'signed').forEach((f,i)=>client.push(`<div class="li" style="cursor:default"><span class="av">✓</span>
+    <div><div class="t1"${fs}>Подписанный договор</div><div class="t2">${docFileNameHtml(f.file)}</div></div>
+    <span class="t3"><button class="btn btn-outline btn-sm" onclick="docDownload(${d.id},'signed',${i})">Скачать</button>${sgbDownloadButton(d,'signed',f,i)}</span></div>`));
   client.push(...docAdditionalRows(d,small));
   return {issued,client};
 }
@@ -9821,7 +9841,7 @@ function signedBlock(d,small){
   return `<div class="list doc-list" style="margin-top:10px" ondragover="dzOver(event)" ondragleave="dzLeave(event)" ondrop="fileDrop(event,${d.id},'signed')">
     ${l.map((f,i)=>`<div class="li on" style="cursor:default"><span class="av">✓</span>
       <div><div class="t1"${fs}>Подписанный договор · версия ${htmlText(f.docVersion==null?1:f.docVersion)}${l.length>1?' · '+(i+1):''}</div><div class="t2" style="word-break:break-all">${docFileNameHtml(f.file)} · ${htmlText(f.at||'')}</div></div>
-      <span class="t3"><button class="btn btn-outline btn-sm" onclick="docOpen(${d.id},'signed',${i})">Открыть</button>${docFileButton(d,'signed',f,'delete')}</span></div>`).join('')}
+      <span class="t3"><button class="btn btn-outline btn-sm" onclick="docOpen(${d.id},'signed',${i})">Открыть</button>${sgbDownloadButton(d,'signed',f,i)}${docFileButton(d,'signed',f,'delete')}</span></div>`).join('')}
     <div class="li" style="cursor:default"><span class="av">+</span>
       <div><div class="t1"${fs}>${l.length?'Ещё подписанный файл':'Подписанный договор от клиента'}</div><div class="t2">можно на любом шаге — путь не ждёт</div></div>
       <span class="t3"><button class="btn btn-secondary btn-sm" onclick="fileAdd(${d.id},'signed')">Загрузить подписанный договор</button></span></div></div>`;
@@ -11797,10 +11817,9 @@ function fileSync(d,k){
 /* Проверка и добавление одного настоящего File — общий путь для выбора через диалог
    и для перетаскивания файла в зону (Карим, 25.09): раньше это жило только внутри
    input.onchange, и drop пришлось бы дублировать логику заново. */
-/* Уменьшаем только изображения; PDF остаётся байт в байт. Белый фон сохраняет
-   читаемость прозрачных скриншотов. Мелкие картинки не увеличиваем. */
+/* PDF и PNG обрабатывает сервер. Здесь уменьшаем JPEG и WebP. */
 async function fileOptimizeImage(file){
-  if(!['image/png','image/jpeg','image/webp'].includes(file.type))return file;
+  if(!['image/jpeg','image/webp'].includes(file.type))return file;
   const bitmap=await createImageBitmap(file);
   try{
     const ratio=Math.min(1,2400/Math.max(bitmap.width,bitmap.height));
@@ -11833,7 +11852,7 @@ async function fileUploadServer(id,k,file,extraType){
     const merged=standMerge(base,standSnapshot(),j.data);
     standVer=j.version;standBase=standClone(j.data);standApply(merged.data);
     if(!jeq(merged.data,j.data))standPush=true;
-    render();toast(j.duplicate?'Файл уже загружен':'Файл сохранён');
+    render();toast(j.sgbOversize?'Файл сохранён. Для отправки используйте «Для СГБ»':j.duplicate?'Файл уже загружен':'Файл сохранён');
   }finally{
     standBusy=false;
     if(standPush)standSave();
@@ -12014,7 +12033,7 @@ function fileBlock(d,k,label,hint){
       <div><div class="t1">${safe(f.file)}${f.demo?' · DEMO':''}</div><div class="t2">${safe(f.size)} · ${safe(f.at)}</div></div>
       <span class="t3" style="white-space:nowrap">
         <button class="btn btn-outline btn-sm" onclick="docOpen(${d.id},'${k}',${i})">Открыть</button>
-        <button class="btn btn-outline btn-sm" onclick="docDownload(${d.id},'${k}',${i})">Скачать</button>
+        <button class="btn btn-outline btn-sm" onclick="docDownload(${d.id},'${k}',${i})">Скачать</button>${sgbDownloadButton(d,k,f,i)}
         <button class="btn btn-outline btn-sm" onclick="fileDel(${d.id},'${k}',${i})">Удалить</button></span></div>`).join('')
     :`<div class="li" style="cursor:default"><span class="av">+</span>
       <div><div class="t1">${label}</div><div class="t2">${hint}${hint?' · ':''}можно перетащить файл сюда</div></div>

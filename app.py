@@ -22,6 +22,7 @@ import secrets
 import base64
 import stand_file_storage
 import stand_object_store
+import stand_sgb_files
 import binascii
 import stand_notify
 from sber_acquiring import parse_sber_acquiring
@@ -6408,6 +6409,7 @@ def stand_file_upload():
                     'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}.get(
                         name.rsplit('.', 1)[-1].lower(), mime)
         stand_file_storage.validate(raw, mime, name, kind)
+        raw, name = stand_sgb_files.prepare(raw, mime, name)
     except (TypeError, ValueError) as exc:
         return jsonify(success=False, error=str(exc)), 400
     db = get_session()
@@ -6496,7 +6498,8 @@ def stand_file_upload():
                 _stand_deliver_notes()
             except Exception:
                 app.logger.exception('IPPS document notification delivery failed')
-        return jsonify(success=True, version=row.version, data=_stand_strip_files(state))
+        return jsonify(success=True, version=row.version, data=_stand_strip_files(state),
+                       sgbOversize=mime in stand_sgb_files.EXTENSIONS and len(raw) > stand_sgb_files.FILE_LIMIT)
     except ValueError as exc:
         db.rollback()
         return jsonify(success=False, error=str(exc)), 400
@@ -6639,6 +6642,13 @@ def stand_file_get(deal_id, kind, index):
                 return 'Invalid MIME type', 400
             from urllib.parse import quote
             disposition = 'attachment' if request.args.get('download') else 'inline'
+            filename = stand_sgb_files.filename(f.get('file') or stored.filename, stored.mime)
+            if request.args.get('sgb') == '1':
+                try:
+                    raw = stand_object_store.read_verified(stored.object_key, stored.size, stored.sha256)
+                except (OSError, ValueError):
+                    return jsonify(success=False, error='Хранилище файлов недоступно'), 503
+                return _stand_sgb_download(raw, stored.mime, filename)
             try:
                 stream = stand_object_store.storage().open(stored.object_key)
             except (ValueError, OSError):
@@ -6654,7 +6664,7 @@ def stand_file_get(deal_id, kind, index):
                     stream.close()
             response = app.response_class(chunks(), mimetype=stored.mime, headers={
                 'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'private, no-store',
-                'Content-Disposition': disposition + "; filename*=UTF-8''" + quote(f.get('file') or stored.filename)})
+                'Content-Disposition': disposition + "; filename*=UTF-8''" + quote(filename)})
             response.call_on_close(stream.close)
             return response
         if not isinstance(f, dict) or not f.get('data'):
@@ -6673,11 +6683,13 @@ def stand_file_get(deal_id, kind, index):
                 import base64
                 try:
                     b = base64.b64decode(content)
+                    filename = stand_sgb_files.filename(f.get('file') or 'file', mime)
+                    if request.args.get('sgb') == '1':
+                        return _stand_sgb_download(b, mime, filename)
                     is_dl = request.args.get('download')
                     headers = {'X-Content-Type-Options': 'nosniff'}
                     if is_dl:
                         from urllib.parse import quote
-                        filename = f.get('file', 'file')
                         headers['Content-Disposition'] = f"attachment; filename*=UTF-8''{quote(filename)}"
                     return app.response_class(b, mimetype=mime, headers=headers)
                 except Exception as e:
@@ -6685,6 +6697,17 @@ def stand_file_get(deal_id, kind, index):
         return "Invalid file format", 400
     finally:
         db.close()
+
+
+def _stand_sgb_download(raw, mime, filename):
+    try:
+        data, mime, name = stand_sgb_files.bank_download(raw, mime, filename)
+    except ValueError as exc:
+        return jsonify(success=False, error=str(exc)), 422
+    response = send_file(io.BytesIO(data), mimetype=mime, as_attachment=True, download_name=name)
+    response.headers['Cache-Control'] = 'private, no-store'
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    return response
 
 import hmac
 
@@ -19073,8 +19096,8 @@ def stand_docs_upload():
                          STAND_UPLOAD_EXT[ext])
         db.flush()
         doc_id, filename = doc.id, doc.filename
-        size = f'{len(raw) / 1024:.0f} КБ' if len(raw) < 1024 * 1024 else f'{len(raw) / 1048576:.1f} МБ'
-        deal.setdefault('issued', {})[kind] = {'file': filename, 'size': size, 'docId': doc_id,
+        size = f'{doc.size / 1024:.0f} КБ' if doc.size < 1024 * 1024 else f'{doc.size / 1048576:.1f} МБ'
+        deal.setdefault('issued', {})[kind] = {'file': filename, 'size': size, 'bytes': doc.size, 'docId': doc_id,
                                                'mime': STAND_UPLOAD_EXT[ext],
                                                'at': stand_now().strftime('%d.%m, %H:%M')}
         deal['docVersion'] = int(deal.get('docVersion') or 0) + 1
@@ -33468,6 +33491,8 @@ def _docs_openrouter_key():
 
 
 def _docs_save(db, agreement_id, kind, number, seq, filename, data, mime):
+    if STAND_MODE:
+        data, filename = stand_sgb_files.prepare(data, mime, filename)
     doc = AgreementDoc(agreement_id=agreement_id, kind=kind, number=number, seq=seq,
                        filename=filename, mime=mime, size=len(data), data=data)
     db.add(doc)
@@ -34199,10 +34224,13 @@ def docs_download(doc_id):
                 return jsonify(success=False, error='Сначала перевыпустите документы с новым курсом'), 409
             if doc_id not in _stand_doc_pack_items(deal).values():
                 return jsonify(success=False, error='В этом пакете выпущена другая версия документа'), 409
+        if STAND_MODE and request.args.get('sgb') == '1':
+            return _stand_sgb_download(d.data, d.mime, d.filename)
+        name = stand_sgb_files.filename(d.filename, d.mime) if STAND_MODE else d.filename
         from flask import Response
         from urllib.parse import quote
         return Response(d.data, mimetype=d.mime, headers={
-            'Content-Disposition': f"attachment; filename*=UTF-8''{quote(d.filename)}"})
+            'Content-Disposition': f"attachment; filename*=UTF-8''{quote(name)}"})
     finally:
         db.close()
 

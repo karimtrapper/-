@@ -3,8 +3,12 @@ import base64
 import copy
 import io
 import json
+import random
+import struct
 import zipfile
+import zlib
 
+import pymupdf
 import pytest
 import app as m
 import stand_file_storage as storage
@@ -121,6 +125,94 @@ def test_15mb_pdf_upload_download_metadata_only_and_dedup(api):
         assert row.sha256 == storage.digest(raw) and row.size == len(raw)
         assert 'data' not in m.StandFile.__table__.columns
         assert row.uploaded_by and row.uploaded_at
+
+
+@pytest.mark.parametrize('mime,extension', [('application/pdf', 'pdf'), ('image/png', 'png')])
+def test_sgb_upload_reduces_real_documents_and_uses_latin_filename(api, mime, extension):
+    api[1][0] = 'manager'
+    seed(board())
+    pix = pymupdf.Pixmap(pymupdf.csGRAY, 3300, 880, random.Random(4).randbytes(3300 * 880), False)
+    if extension == 'pdf':
+        with pymupdf.open() as doc:
+            page = doc.new_page(width=595, height=842)
+            page.insert_text((35, 45), 'Invoice 124')
+            page.insert_image(pymupdf.Rect(35, 80, 565, 230), pixmap=pix)
+            raw = doc.tobytes()
+    else:
+        raw = pix.tobytes('png')
+    assert len(raw) > 1_000_000
+
+    response = upload(api, raw, name=f'Счёт № 124 ({extension}).{extension.upper()}', mime=mime)
+    assert response.status_code == 200, response.json
+    item = read_db()[1]['deals'][0]['files']['inv'][0]
+    name = f'Schyot_No_124_{extension}.{extension}'
+    assert item['file'] == name and item['bytes'] < 1_000_000
+    assert response.json['sgbOversize'] is False
+
+    download = api[0].get('/api/stand/file/1473/inv/0?sgb=1')
+    assert download.status_code == 200
+    assert download.mimetype == mime and f'filename={name}' in download.headers['Content-Disposition']
+    assert len(download.data) == item['bytes']
+    assert download.headers['Cache-Control'] == 'private, no-store'
+    if extension == 'pdf':
+        with pymupdf.open(stream=download.data, filetype='pdf') as doc:
+            assert doc[0].get_text().strip() == 'Invoice 124'
+            assert tuple(doc[0].rect) == (0, 0, 595, 842)
+    else:
+        image = pymupdf.Pixmap(download.data)
+        assert image.width > 1000 and image.height > 250
+    assert upload(api, raw, name=f'Повтор.{extension}', mime=mime).json['duplicate']
+
+
+def test_sgb_download_splits_pdf_into_ordered_parts_and_preserves_original(api):
+    api[1][0] = 'manager'
+    seed(board())
+    rng = random.Random(5)
+    width, height = 2304, 2432
+
+    def chunk(kind, data):
+        return struct.pack('>I', len(data)) + kind + data + struct.pack('>I', zlib.crc32(kind + data))
+
+    with pymupdf.open() as doc:
+        for i in range(3):
+            page = doc.new_page()
+            page.insert_text((40, 40), f'Page {i + 1}')
+            pixels = b''.join(b'\x00' + rng.randbytes(width // 8) for _ in range(height))
+            png = (b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('>IIBBBBB', width, height, 1, 0, 0, 0, 0))
+                   + chunk(b'IDAT', zlib.compress(pixels)) + chunk(b'IEND', b''))
+            page.insert_image(pymupdf.Rect(30, 90, 560, 650), stream=png)
+        raw = doc.tobytes(deflate=True, garbage=4, no_new_id=True)
+    assert len(raw) > 1_000_000
+    response = upload(api, raw, name='Договор о продаже.pdf')
+    assert response.json['sgbOversize'] is True
+
+    bank = api[0].get('/api/stand/file/1473/inv/0?sgb=1')
+    assert bank.status_code == 200, bank.json
+    assert bank.mimetype == 'application/zip'
+    with zipfile.ZipFile(io.BytesIO(bank.data)) as archive:
+        assert archive.namelist() == [f'Dogovor_o_prodazhe_part_{i:03d}.pdf' for i in range(1, 4)]
+        for i, name in enumerate(archive.namelist(), 1):
+            data = archive.read(name)
+            assert len(data) < 1_000_000
+            with pymupdf.open(stream=data, filetype='pdf') as doc:
+                assert len(doc) == 1 and doc[0].get_text().strip() == f'Page {i}'
+
+    original = api[0].get('/api/stand/file/1473/inv/0?download=1')
+    with pymupdf.open(stream=original.data, filetype='pdf') as doc:
+        assert [page.get_text().strip() for page in doc] == ['Page 1', 'Page 2', 'Page 3']
+
+
+def test_sgb_download_keeps_protected_pdf_unchanged(api):
+    api[1][0] = 'manager'
+    seed(board())
+    with pymupdf.open() as doc:
+        doc.new_page().insert_text((40, 40), 'Protected')
+        doc.embfile_add('data', random.Random(6).randbytes(1_000_000))
+        raw = doc.tobytes(encryption=pymupdf.PDF_ENCRYPT_AES_256, owner_pw='owner', user_pw='user')
+    assert upload(api, raw, name='Подписанный.pdf').json['sgbOversize'] is True
+    result = api[0].get('/api/stand/file/1473/inv/0?sgb=1')
+    assert result.status_code == 422 and 'защищён' in result.json['error']
+    assert api[0].get('/api/stand/file/1473/inv/0?download=1').data == raw
 
 
 def test_no_configuration_rejects_upload_no_inline_fallback(api, monkeypatch):
