@@ -1,9 +1,8 @@
-"""Схема кандидата при запуске без стенда совпадает с таблицами main."""
+"""Проверка базовой схемы CRM и таблиц стенда."""
 
 import json
 import os
 from pathlib import Path
-import re
 import sqlite3
 import subprocess
 import sys
@@ -20,18 +19,54 @@ STAND_TABLES = {
 }
 
 
-def _main_tables():
-    source = subprocess.check_output(
-        ['git', 'show', 'origin/main:app.py'], cwd=ROOT, text=True,
-    )
-    return set(re.findall(r"__tablename__\s*=\s*['\"]([^'\"]+)", source))
+# Базовые таблицы CRM из app.py на 0e28991.
+PROD_TABLES = {
+    'admin_users',
+    'agreement_docs',
+    'agreements',
+    'bank_cards',
+    'card_allocations',
+    'card_topups',
+    'cash_allocations',
+    'cash_batches',
+    'channel_traffic',
+    'clients',
+    'conversion_debits',
+    'conversion_sources',
+    'conversion_txs',
+    'conversions',
+    'deal_agents',
+    'deals',
+    'kyc_files',
+    'kyc_requests',
+    'login_nonces',
+    'managers',
+    'partners',
+    'payin_tx_uses',
+    'payin_txs',
+    'payment_link_orders',
+    'payout_requests',
+    'payout_tx_uses',
+    'payout_txs',
+    'reestr_inflows',
+    'reestr_snapshots',
+    'referrers',
+    'reimbursement_tx_uses',
+    'reimbursement_txs',
+    'reimbursements',
+    'sber_debits',
+    'sber_incomes',
+    'transactions',
+    'wallet_operations',
+    'wallets',
+}
 
 
 def _start(database, mode, database_url=None):
     env = {key: value for key, value in os.environ.items()
            if not key.startswith(('STAND_', 'TELEGRAM_', 'BITRIX_', 'SBER_',
                                   'SERVICE_', 'TRON', 'ETHERSCAN_', 'GOOGLE_'))
-           and key not in {'DATABASE_URL', 'SECRET_KEY', 'LOCAL_NO_AUTH'}}
+           and key not in {'DATABASE_URL', 'SECRET_KEY', 'LOCAL_NO_AUTH', 'TASKS_ENABLED'}}
     env.update(DATABASE_URL=database_url or f'sqlite:///{database}', SECRET_KEY='schema-test-secret',
                LOCAL_NO_AUTH='0', REESTR_SYNC_ENABLED='0', PAYMENT_POLL_ENABLED='0',
                PAYIN_ADDR_BACKFILL='0', KYC_RETENTION_ENABLED='0')
@@ -78,10 +113,9 @@ def test_schema_mode_and_repeated_start(tmp_path, mode):
     tables = set(first['tables'])
     assert {'login_disabled', 'notify_enabled'} <= set(first['columns'])
     if mode == '1':
-        assert {'stand_state', 'stand_deleted_deals'} <= tables
-        assert tables - _main_tables() <= STAND_TABLES
+        assert tables == PROD_TABLES | STAND_TABLES
     else:
-        assert tables == _main_tables()
+        assert tables == PROD_TABLES
         assert not tables & STAND_TABLES
 
 
@@ -103,7 +137,7 @@ def test_admin_flags_are_additive_on_existing_table(tmp_path):
 
 @pytest.mark.skipif(not Path('/opt/homebrew/opt/postgresql@17/bin/initdb').exists(),
                     reason='Локальный PostgreSQL 17 не установлен')
-def test_postgres_prod_schema_matches_main(tmp_path):
+def test_postgres_prod_schema_matches_baseline(tmp_path):
     """Временный кластер проверяет prod-схему и повторный старт на PostgreSQL."""
     binaries = Path('/opt/homebrew/opt/postgresql@17/bin')
     data = tmp_path / 'pgdata'
@@ -125,7 +159,7 @@ def test_postgres_prod_schema_matches_main(tmp_path):
             first = _start(None, None, url)
             second = _start(None, None, url)
             assert first == second
-            assert set(first['tables']) == _main_tables()
+            assert set(first['tables']) == PROD_TABLES
             assert not set(first['tables']) & STAND_TABLES
             assert {'login_disabled', 'notify_enabled'} <= set(first['columns'])
         finally:

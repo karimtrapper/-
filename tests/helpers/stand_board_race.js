@@ -11,7 +11,7 @@ const adminCookie=process.env.BOARD_RACE_ADMIN_COOKIE||cookies[0];
 function source(name,async=false){const m=html.match(new RegExp('^'+(async?'async ':'')+'function '+name+'\\([^]*?^}','m'));assert.ok(m,name);return m[0];}
 function barrier(){let resolve;const promise=new Promise(r=>resolve=r);return {promise,resolve};}
 function tab(role,cookie){
- const ctx={S:{role,deals:[],notes:[],seq:1471},STAND_SHARED:['deals','notes','seq'],
+ const ctx={S:{role,deals:[],notes:[],seq:1471},workingTasks:false,standMe:cookie===adminCookie?'admin':role,STAND_SHARED:['deals','notes','seq'],
   standBusy:false,standPullPending:false,standGetEtag:null,standPush:false,standSaveScheduled:false,standClosing:false,standLastSaveResult:{ok:true},
   standVer:null,standBase:null,lastPointer:0,brokerSentSubmitPointer:false,location:{},Date,setTimeout,clearTimeout,
   load:()=>({deals:[],notes:[],seq:1471}),migrate:s=>s,standTyping:()=>false,render:()=>{},
@@ -25,7 +25,12 @@ function tab(role,cookie){
    return {status:response.status,headers:response.headers,json:async()=>data};
   }};
  vm.createContext(ctx);
- vm.runInContext(['standClone','jeq','standMerge','standSnapshot','standApply'].map(n=>source(n)).concat(['standPull','standStateRequestPayload','standSave','standWaitSaved'].map(n=>source(n,true))).join('\n'),ctx);
+ const preview=html.match(/^function rolePreview\([^\n]*/m);
+ assert.ok(preview,'rolePreview');
+ vm.runInContext([preview[0],
+  ...['standClone','jeq','standMerge','standSnapshot','standApply'].map(n=>source(n)),
+  ...['standPull','standStateRequestPayload','standSave','standWaitSaved'].map(n=>source(n,true))
+ ].join('\n'),ctx);
  return ctx;
 }
 const newDeal=()=>({id:1472,code:'СД-1472',client:'Concurrency synthetic',type:'Обмен валюты',
