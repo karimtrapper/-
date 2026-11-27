@@ -416,3 +416,42 @@
 @media (prefers-reduced-motion: reduce) {
     .referrer-console :is(button, .ref-nav a):active { transform: none; }
 }
+
+.bank-picker-field { position: relative; }
+.bank-picker-field input { padding-inline-end: 48px; }
+.bank-picker-toggle {
+    position: absolute;
+    inset: 1px 1px 1px auto;
+    min-height: 0 !important;
+    border-color: transparent;
+    border-start-start-radius: 0;
+    border-end-start-radius: 0;
+    background: transparent;
+}
+.bank-picker-toggle .ref-i { transform: rotate(90deg); }
+.bank-picker-toggle[aria-expanded="true"] .ref-i { transform: rotate(-90deg); }
+.bank-picker-list {
+    display: grid;
+    max-height: min(188px, 30dvh);
+    overflow: auto;
+    overscroll-behavior: contain;
+    margin-top: 5px;
+    padding: 4px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--popover);
+}
+.bank-picker-list button {
+    min-height: 36px;
+    padding: 6px 9px;
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--foreground);
+    text-align: start;
+}
+.bank-picker-list button:is(:hover, [aria-selected="true"]) { background: var(--accent); }
+.referrer-console .bank-picker-empty { margin-top: 5px; color: var(--muted-foreground); font-size: .82rem; }
+@media (pointer: coarse) {
+    .bank-picker-field input { min-height: 46px; }
+}

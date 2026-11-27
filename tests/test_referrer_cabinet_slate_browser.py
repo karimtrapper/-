@@ -89,7 +89,7 @@ def test_withdrawal_refreshes_in_place_and_can_be_repeated(
         expect(modal).not_to_be_visible()
         request_ids = []
 
-        for _ in range(2):
+        for attempt in range(2):
             request_button.click()
             expect(modal.locator('#payoutAmount')).to_have_text(re.compile(r'\$80\.00|80,00\s*\$'))
             if method == 'thb':
@@ -101,7 +101,22 @@ def test_withdrawal_refreshes_in_place_and_can_be_repeated(
                 submit = modal.locator('#pmSubmit')
             else:
                 expect(modal.locator('#thbBigAmount')).to_contain_text('฿')
-                modal.locator('#pmThbBank').fill('Synthetic Bank')
+                bank = modal.get_by_role('combobox', name='Bank', exact=True)
+                options = modal.get_by_role('listbox')
+                if attempt == 0:
+                    bank.click()
+                    expect(options).to_be_visible()
+                    expect(options.get_by_role('option', name='Bangkok Bank', exact=True)).to_be_visible()
+                    bank.fill('kbank')
+                    expect(options.get_by_role('option')).to_have_count(1)
+                    selected_bank = 'Kasikorn (KBank)'
+                    options.get_by_role('option', name=selected_bank, exact=True).click()
+                    expect(options).not_to_be_visible()
+                else:
+                    selected_bank = 'Synthetic Bank'
+                    bank.fill(selected_bank)
+                    expect(options.get_by_role('option')).to_have_count(0)
+                expect(bank).to_have_value(selected_bank)
                 modal.locator('#pmThbAccName').fill('Synthetic Recipient')
                 modal.locator('#pmThbAccNum').fill('000-0-00000-0')
                 modal.locator('#pmThbContact').fill('@synthetic_contact')
@@ -112,9 +127,12 @@ def test_withdrawal_refreshes_in_place_and_can_be_repeated(
             assert submitted.value.ok
             payout = submitted.value.json()['request']
             assert payout['payout_method'] == method and payout['amount_usdt'] == 80.0
+            request_id = payout['id']
             if method == 'thb':
                 assert payout['thb_amount'] == 2773
-            request_id = payout['id']
+                assert submitted.value.request.post_data_json['bank_name'] == selected_bank
+                with A.get_session() as db:
+                    assert db.get(A.PayoutRequest, request_id).bank_name == selected_bank
             request_ids.append(request_id)
             expect(modal.locator('#payoutSuccessBox')).to_be_visible()
             modal.get_by_role('button', name=done_label, exact=True).click()
