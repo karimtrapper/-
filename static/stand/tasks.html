@@ -11851,6 +11851,7 @@ async function docParse(id,quiet,expectedStep){
   }
   fd.append('deal_type',d.autoPayment===true?'auto':d.kind==='Фрихолд'?'freehold':(d.kind==='Аренда'?'rental':'leasehold'));
   d.docParseState='идёт';
+  if(expectedStep&&S.open===id)rememberFocus();
   render();
   const progress=setInterval(()=>{
     const el=document.getElementById('docParseTimer-'+id);
@@ -11885,11 +11886,12 @@ async function docParse(id,quiet,expectedStep){
     if(dd.autoPayment!==true&&!String(dd.object||'').trim()&&obj){dd.object=obj;log(dd,'Объект из инвойса: '+obj);}
     /* поля пакета, которые ещё не правили руками, пересобираются из распознанного */
     const issued=docHasIssued(dd);
-    if(dd.docFields&&!issued){const keep=dd.docFields;dd.docFields=null;const auto=docFields(dd);
+    if(dd.docFields&&!issued&&!expectedStep){const keep=dd.docFields;dd.docFields=null;const auto=docFields(dd);
       dd.docFields=Object.assign({},auto,Object.fromEntries(Object.entries(keep).filter(([k,v])=>String(v||'').trim()&&v!==auto[k]&&!['fio','fioLat','passNo','passIss','passOrg','born','dev','invNo','invDate','object'].includes(k))));}
     log(dd,'Документы распознаны: '+Object.keys(dd.docParse.fields).length+' полей'+(dd.docParse.warnings.length?' · замечаний '+dd.docParse.warnings.length:''));
     /* свежий результат распознавания важнее недописанного руками в полях пакета */
-    if(!issued)docClearFieldDrafts(id);
+    if(!issued&&!expectedStep)docClearFieldDrafts(id);
+    if(expectedStep&&S.open===id)rememberFocus();
     save();render();if(!quiet)toast(dd.docParse.failed.length?'Часть документов распознана — проверьте результат':'Документы распознаны');
   }catch(e){const dd=deal(id);if(dd&&(!expectedStep||dd.step===expectedStep)){dd.docParseState='ошибка сети';save();render();if(!quiet)toast('Распознавание недоступно');}}
   finally{clearInterval(progress);DOC_PARSE_STARTED.delete(id);}
@@ -11925,7 +11927,7 @@ function managerDraftPublishDocs(d){
 const DOC_PARSE_STARTED=new Map();
 const DOC_PARSE_AUTO_ATTEMPTED=new Set();
 function autoParseReceivedDocuments(d){
-  if(!globalThis.workingTasks||standMe!=='operator'||d.step!=='s11'||d.closed||
+  if(!globalThis.workingTasks||SCREEN||SNAP||rolePreview()||standMe!=='operator'||d.step!=='s11'||d.closed||
       DOC_PARSE_AVAILABLE!==true||d.docParse||d.docParseState||DOC_PARSE_AUTO_ATTEMPTED.has(d.id)||
       (d.assigneeAdminId&&String(d.assigneeAdminId)!==String(standMeId))||!filesOf(d,'inv').length||
       !navigator.locks)return;
@@ -14753,7 +14755,7 @@ async function act(id,step){
         'Документы сохранены и переданы операционисту на доске; доставка Telegram не подтверждена.');
     }else toast('Ушло операционисту');
     // In the working contour the assignee analyses the published attachments.
-    if(!d.docParse&&!globalThis.workingTasks)docParse(d.id,true);return;}
+    if(!d.docParse&&!globalThis.workingTasks&&!SCREEN&&!SNAP)docParse(d.id,true);return;}
   if(step==='s11'){
     const cash=isNativeCashPartner(d);
     if(cash&&!cashPartnerReady(d.cashPartner)){toast('Для выпуска нужны данные встречи от менеджера');return;}
