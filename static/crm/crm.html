@@ -7471,31 +7471,69 @@ select.period-btn:hover:not(.active) { color: var(--text); }
             return _createFormLoading;
         }
 
-        // Загрузка рефереров в дропдауны формы сделки.
-        // _referrersCache (объявлен в loadReferrers ниже) — полный список,
-        // тут только обновляем дропдауны активными.
+        // The deal form needs assignment defaults, separate from the admin finance list.
         let _referrersCache = [];
-        async function loadReferrerDropdowns() {
-            try {
-                const res = await fetch(`${API_URL}/api/referrers`);
-                const data = await res.json();
-                if (!data.success) return;
-                _referrersCache = data.referrers || [];
-                const active = _referrersCache.filter(r => r.active);
-                const opts = '<option value="">— Без партнёра —</option>' +
-                    active.map(r => {
-                        const label = r.comp_model === 'markup'
-                            ? `${r.name} (markup +${r.markup_percent || 0}%)`
-                            : r.comp_model === 'fixed'
-                                ? `${r.name} (fixed USDT)`
-                                : `${r.name} (${r.default_percent}%)`;
-                        return `<option value="${r.id}" data-percent="${r.default_percent}" data-name="${r.name}" data-code="${r.code}" data-model="${r.comp_model || 'revshare'}" data-markup="${r.markup_percent || 0}">${label}</option>`;
-                    }).join('');
-                const sel1 = document.getElementById('referrerSelect');
-                const sel2 = document.getElementById('customReferrerSelect');
-                if (sel1) sel1.innerHTML = opts;
-                if (sel2) sel2.innerHTML = opts;
-            } catch(e) { console.error('Ошибка загрузки рефереров:', e); }
+        let _agentReferrersCache = null;
+        let _agentDirectoryRequest = null;
+        function loadReferrerDropdowns() {
+            if (_agentDirectoryRequest) return _agentDirectoryRequest;
+            _agentDirectoryRequest = (async () => {
+                try {
+                    let res = await fetch(`${API_URL}/api/stand/referrers`);
+                    let data = await res.json();
+                    // Legacy CRM installations without Tasks still expose their existing list.
+                    if (res.status === 404 && data.error === 'stand_only') {
+                        res = await fetch(`${API_URL}/api/referrers`);
+                        data = await res.json();
+                    }
+                    if (!res.ok || !data.success) return;
+                    _agentReferrersCache = (data.referrers || []).filter(r => r.active);
+                    const opts = '<option value="">— Без партнёра —</option>' +
+                        _agentReferrersCache.map(r => {
+                            const label = r.comp_model === 'markup'
+                                ? `${r.name} (markup +${r.markup_percent || 0}%)`
+                                : r.comp_model === 'fixed'
+                                    ? `${r.name} (fixed USDT)`
+                                    : `${r.name} (${r.default_percent}%)`;
+                            return `<option value="${escapeHtml(r.id)}" data-percent="${escapeHtml(r.default_percent)}" data-name="${escapeHtml(r.name)}" data-code="${escapeHtml(r.code)}" data-model="${escapeHtml(r.comp_model || 'revshare')}" data-markup="${escapeHtml(r.markup_percent || 0)}">${escapeHtml(label)}</option>`;
+                        }).join('');
+                    for (const id of ['referrerSelect', 'customReferrerSelect']) {
+                        const select = document.getElementById(id);
+                        if (!select) continue;
+                        const selected = select.value;
+                        const savedOption = select.selectedOptions[0];
+                        select.innerHTML = opts;
+                        if (selected && ![...select.options].some(option => option.value === selected)) {
+                            select.append(savedOption);
+                        }
+                        select.value = selected;
+                    }
+                    for (const [id, agents] of [['agentsBlockStd', stdAgents], ['agentsBlockCustom', customAgents]]) {
+                        document.querySelectorAll(`#${id} select[data-agent-directory]`).forEach((select, index) => {
+                            if (agents[index]) select.innerHTML = agentOptions(agents[index]);
+                        });
+                    }
+                } catch (error) {
+                    console.error('Ошибка загрузки справочника агентов:', error);
+                } finally {
+                    _agentDirectoryRequest = null;
+                }
+            })();
+            return _agentDirectoryRequest;
+        }
+
+        function agentOptions(agent) {
+            const directory = _agentReferrersCache || [];
+            const selected = String(agent.referrer_id ?? '');
+            let options = '<option value="">— выбрать агента —</option>';
+            if (selected && !directory.some(referrer => String(referrer.id) === selected)) {
+                options += `<option value="${escapeHtml(selected)}" selected>${escapeHtml(agent.name || '#' + selected)}</option>`;
+            } else if (!selected && agent.name) {
+                options = `<option value="" selected>${escapeHtml(agent.name)} (вручную)</option>`;
+            }
+            return options + directory.map(referrer =>
+                `<option value="${escapeHtml(referrer.id)}" ${String(referrer.id) === selected ? 'selected' : ''}>${escapeHtml(referrer.name)}</option>`
+            ).join('');
         }
 
         // Обработчик выбора реферера (обычная форма)
@@ -10122,6 +10160,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
 
         function customAgentsAdd() {
             const nextTier = customAgentsMode === 'flat' ? 1 : (customAgents.reduce((m, a) => Math.max(m, a.tier || 1), 0) + 1);
+            if (!_agentReferrersCache) loadReferrerDropdowns();
             customAgents.push({ referrer_id: null, name: '', tier: nextTier, comp_model: 'revshare', percent: 10, fixed_usdt: 0 });
             renderCustomAgents();
             calcCustomProfit();
@@ -10132,7 +10171,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
             if (k === 'percent' || k === 'fixed_usdt') v = parseFloat(v) || 0;
             customAgents[i][k] = v;
             if (k === 'referrer_id') {
-                const r = (_referrersCache || []).find(x => String(x.id) === String(v));
+                const r = (_agentReferrersCache || []).find(x => String(x.id) === String(v));
                 if (r) {
                     customAgents[i].name = r.name;
                     customAgents[i].comp_model = r.comp_model || 'revshare';
@@ -10149,10 +10188,8 @@ select.period-btn:hover:not(.active) { color: var(--text); }
         function renderCustomAgents() {
             const box = document.getElementById('agentsBlockCustom');
             if (!box) return;
-            const refs = (_referrersCache || []).filter(r => r.active);
             box.innerHTML = customAgents.map((a, i) => {
-                const opts = '<option value="">— выбрать агента —</option>' + refs.map(r =>
-                    `<option value="${r.id}" ${String(r.id) === String(a.referrer_id) ? 'selected' : ''}>${r.name}</option>`).join('');
+                const opts = agentOptions(a);
                 const valField = a.comp_model === 'fixed'
                     ? `<input type="number" step="any" class="form-control" value="${a.fixed_usdt || 0}" oninput="customAgentsField(${i},'fixed_usdt',this.value)" placeholder="$" style="width:90px;">`
                     : `<input type="number" step="any" class="form-control" value="${a.percent || 0}" oninput="customAgentsField(${i},'percent',this.value)" placeholder="%" style="width:90px;">`;
@@ -10164,7 +10201,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                             Ур.${a.tier || 1}
                             <button type="button" onclick="customAgentsTier(${i},1)" style="border:none;background:rgba(255,255,255,.25);color:white;border-radius:50%;width:18px;height:18px;cursor:pointer;">+</button>
                         </span>
-                        <select class="form-control" onchange="customAgentsField(${i},'referrer_id',this.value)" style="flex:1;">${opts}</select>
+                        <select class="form-control" data-agent-directory onchange="customAgentsField(${i},'referrer_id',this.value)" style="flex:1;">${opts}</select>
                         <button type="button" onclick="customAgentsRemove(${i})" style="border:none;background:transparent;color:#94a3b8;font-size:16px;cursor:pointer;">🗑</button>
                     </div>
                     <div style="display:flex;align-items:center;gap:8px;">
@@ -10222,16 +10259,16 @@ select.period-btn:hover:not(.active) { color: var(--text); }
         let _stdGross = { profit: 0, volume: 0 };
         function _stdProfitVolume() { return _stdGross; }
         function stdAgentsPreset(mode){ stdAgentsMode=mode; if(mode==='cascade') stdAgents.forEach((a,i)=>a.tier=i+1); else stdAgents.forEach(a=>a.tier=1); renderStdAgents(); calculateProfit(); }
-        function stdAgentsAdd(){ const t=stdAgentsMode==='flat'?1:(stdAgents.reduce((m,a)=>Math.max(m,a.tier||1),0)+1); stdAgents.push({referrer_id:null,name:'',tier:t,comp_model:'revshare',percent:10,fixed_usdt:0}); renderStdAgents(); calculateProfit(); }
+        function stdAgentsAdd(){ if(!_agentReferrersCache)loadReferrerDropdowns(); const t=stdAgentsMode==='flat'?1:(stdAgents.reduce((m,a)=>Math.max(m,a.tier||1),0)+1); stdAgents.push({referrer_id:null,name:'',tier:t,comp_model:'revshare',percent:10,fixed_usdt:0}); renderStdAgents(); calculateProfit(); }
         function stdAgentsRemove(i){ stdAgents.splice(i,1); renderStdAgents(); calculateProfit(); }
         function stdAgentsTier(i,d){ stdAgents[i].tier=Math.max(1,(stdAgents[i].tier||1)+d); stdAgentsMode=null; renderStdAgents(); calculateProfit(); }
-        function stdAgentsField(i,k,v){ if(k==='percent'||k==='fixed_usdt') v=parseFloat(v)||0; stdAgents[i][k]=v; if(k==='referrer_id'){ const r=(_referrersCache||[]).find(x=>String(x.id)===String(v)); if(r){ stdAgents[i].name=r.name; stdAgents[i].comp_model=r.comp_model||'revshare'; stdAgents[i].percent=r.comp_model==='markup'?(r.markup_percent||0):(r.default_percent||0);} } if(k==='comp_model'||k==='referrer_id') renderStdAgents(); calculateProfit(); if(document.getElementById('mfDealToggle')?.checked) mfRecalc(); if(document.getElementById('fhDealToggle')?.checked) fhRecalc(); }
+        function stdAgentsField(i,k,v){ if(k==='percent'||k==='fixed_usdt') v=parseFloat(v)||0; stdAgents[i][k]=v; if(k==='referrer_id'){ const r=(_agentReferrersCache||[]).find(x=>String(x.id)===String(v)); if(r){ stdAgents[i].name=r.name; stdAgents[i].comp_model=r.comp_model||'revshare'; stdAgents[i].percent=r.comp_model==='markup'?(r.markup_percent||0):(r.default_percent||0);} } if(k==='comp_model'||k==='referrer_id') renderStdAgents(); calculateProfit(); if(document.getElementById('mfDealToggle')?.checked) mfRecalc(); if(document.getElementById('fhDealToggle')?.checked) fhRecalc(); }
         // Тот же паттерн текста, что в agentsBlock() задачника (static/stand/tasks.html):
         // «N-й уровень» вместо «Ур.N», текст «Убрать» вместо иконки-эмодзи, подписи
         // моделей комиссии без смешанного англ/рус (revshare/markup/fixed — внутренние
         // ключи, не для экрана), $ → USDT в выплате агента (доп. находка координатора
         // к аудиту ui-2026-10-17).
-        function renderStdAgents(){ const box=document.getElementById('agentsBlockStd'); if(!box) return; const refs=(_referrersCache||[]).filter(r=>r.active); box.innerHTML=stdAgents.map((a,i)=>{ const placeholder=(!a.referrer_id&&a.name)?`<option value="" selected>${escapeHtml(a.name)} (вручную)</option>`:'<option value="">— выбрать агента —</option>'; const opts=placeholder+refs.map(r=>`<option value="${r.id}" ${String(r.id)===String(a.referrer_id)?'selected':''}>${r.name}</option>`).join(''); const valField=a.comp_model==='fixed'?`<input type="number" step="any" class="form-control" value="${a.fixed_usdt||0}" oninput="stdAgentsField(${i},'fixed_usdt',this.value)" placeholder="USDT" style="width:90px;">`:`<input type="number" step="any" class="form-control" value="${a.percent||0}" oninput="stdAgentsField(${i},'percent',this.value)" placeholder="%" style="width:90px;">`; return `<div style="background:white;border:1px solid #d1fae5;border-radius:8px;padding:10px;margin-bottom:8px;"><div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;"><span style="display:inline-flex;align-items:center;gap:4px;background:#6366f1;color:white;border-radius:999px;padding:3px 6px 3px 10px;font-size:12px;font-weight:700;"><button type="button" onclick="stdAgentsTier(${i},-1)" style="border:none;background:rgba(255,255,255,.25);color:white;border-radius:50%;width:18px;height:18px;cursor:pointer;">−</button>${a.tier||1}-й уровень<button type="button" onclick="stdAgentsTier(${i},1)" style="border:none;background:rgba(255,255,255,.25);color:white;border-radius:50%;width:18px;height:18px;cursor:pointer;">+</button></span><select class="form-control" onchange="stdAgentsField(${i},'referrer_id',this.value)" style="flex:1;">${opts}</select><button type="button" onclick="stdAgentsRemove(${i})" style="border:none;background:transparent;color:#94a3b8;font-size:13px;cursor:pointer;text-decoration:underline;">Убрать</button></div><div style="display:flex;align-items:center;gap:8px;"><select class="form-control" onchange="stdAgentsField(${i},'comp_model',this.value)" style="flex:1;"><option value="revshare" ${a.comp_model==='revshare'?'selected':''}>% от прибыли</option><option value="markup" ${a.comp_model==='markup'?'selected':''}>Наценка к курсу (% от объёма)</option><option value="fixed" ${a.comp_model==='fixed'?'selected':''}>Фикс USDT</option><option value="crypto_share" ${a.comp_model==='crypto_share'?'selected':''}>% от прибыли в крипте (MF Corp)</option></select>${valField}<span style="min-width:90px;text-align:right;font-weight:700;color:#16a34a;" id="saPay${i}">0 USDT</span></div></div>`; }).join(''); document.getElementById('saPreCascade')?.classList.toggle('active',stdAgentsMode==='cascade'); document.getElementById('saPreFlat')?.classList.toggle('active',stdAgentsMode==='flat'); }
+        function renderStdAgents(){ const box=document.getElementById('agentsBlockStd'); if(!box) return; box.innerHTML=stdAgents.map((a,i)=>{ const opts=agentOptions(a); const valField=a.comp_model==='fixed'?`<input type="number" step="any" class="form-control" value="${a.fixed_usdt||0}" oninput="stdAgentsField(${i},'fixed_usdt',this.value)" placeholder="USDT" style="width:90px;">`:`<input type="number" step="any" class="form-control" value="${a.percent||0}" oninput="stdAgentsField(${i},'percent',this.value)" placeholder="%" style="width:90px;">`; return `<div style="background:white;border:1px solid #d1fae5;border-radius:8px;padding:10px;margin-bottom:8px;"><div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;"><span style="display:inline-flex;align-items:center;gap:4px;background:#6366f1;color:white;border-radius:999px;padding:3px 6px 3px 10px;font-size:12px;font-weight:700;"><button type="button" onclick="stdAgentsTier(${i},-1)" style="border:none;background:rgba(255,255,255,.25);color:white;border-radius:50%;width:18px;height:18px;cursor:pointer;">−</button>${a.tier||1}-й уровень<button type="button" onclick="stdAgentsTier(${i},1)" style="border:none;background:rgba(255,255,255,.25);color:white;border-radius:50%;width:18px;height:18px;cursor:pointer;">+</button></span><select class="form-control" data-agent-directory onchange="stdAgentsField(${i},'referrer_id',this.value)" style="flex:1;">${opts}</select><button type="button" onclick="stdAgentsRemove(${i})" style="border:none;background:transparent;color:#94a3b8;font-size:13px;cursor:pointer;text-decoration:underline;">Убрать</button></div><div style="display:flex;align-items:center;gap:8px;"><select class="form-control" onchange="stdAgentsField(${i},'comp_model',this.value)" style="flex:1;"><option value="revshare" ${a.comp_model==='revshare'?'selected':''}>% от прибыли</option><option value="markup" ${a.comp_model==='markup'?'selected':''}>Наценка к курсу (% от объёма)</option><option value="fixed" ${a.comp_model==='fixed'?'selected':''}>Фикс USDT</option><option value="crypto_share" ${a.comp_model==='crypto_share'?'selected':''}>% от прибыли в крипте (MF Corp)</option></select>${valField}<span style="min-width:90px;text-align:right;font-weight:700;color:#16a34a;" id="saPay${i}">0 USDT</span></div></div>`; }).join(''); document.getElementById('saPreCascade')?.classList.toggle('active',stdAgentsMode==='cascade'); document.getElementById('saPreFlat')?.classList.toggle('active',stdAgentsMode==='flat'); }
         function stdAgentsRecalc(){
             // Недвижимость через MF Corp считается по своим формулам (два кармана).
             // Обычный каскад тут дал бы неверные числа: он не знает про комиссию,
