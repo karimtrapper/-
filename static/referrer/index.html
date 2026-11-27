@@ -491,6 +491,7 @@
         saveAppearance();
     });
     navMenu.addEventListener('click', () => {
+        navMenu.focus({preventScroll: true});
         navDialog.showModal();
         navMenu.setAttribute('aria-expanded', 'true');
     });
@@ -746,7 +747,7 @@
                                     fmtUsd(activeReq.amount_usdt), t(activeReq.status === 'in_progress' ? 'req_progress' : 'req_pending'))
                                 : t('balance_sub_terms', fmtUsd(20, 0))}</div>
                         </div>
-                        <button type="button" class="cta-btn" onclick="openPayoutModal()" ${canRequest ? '' : 'disabled'}>${activeReq ? t('cta_sent') : t('cta_request')}</button>
+                        <button type="button" class="cta-btn" onclick="openPayoutModal(this)" ${canRequest ? '' : 'disabled'}>${activeReq ? t('cta_sent') : t('cta_request')}</button>
                     </div>
                     ${recentPaid ? `
                     <div class="banner banner-success">
@@ -820,7 +821,7 @@
                             <div class="cond-row"><dt>${t('cond_model')}</dt><dd>${d.comp_model === 'markup'
                                 ? esc(t('model_markup', d.markup_percent || 0))
                                 : esc(t('model_revshare', d.default_percent))}</dd></div>
-                            <div class="cond-row"><dt>${t('cond_currency')}</dt><dd>${esc(d.payout_currency || 'USDT')} (TRC-20)</dd></div>
+                            <div class="cond-row"><dt>${t('cond_currency')}</dt><dd>${esc(d.payout_currency || 'USDT')}${(d.payout_currency || 'USDT') === 'USDT' ? ' (TRC-20)' : ''}</dd></div>
                             <div class="cond-row"><dt>${t('cond_min')}</dt><dd>${fmtUsd(20, 0)}</dd></div>
                             <div class="cond-row"><dt>${t('cond_payout')}</dt><dd>${t('cond_payout_val')}</dd></div>
                         </dl>
@@ -1047,6 +1048,7 @@
     let _thbQuote = null;
     let payoutQuoteGeneration = 0;
     let payoutSubmitting = false;
+    let payoutTrigger;
     const _fmtThb = n => fmtInt(n);
 
     function _showPayoutStage(id) {
@@ -1061,11 +1063,12 @@
         }
     }
 
-    function openPayoutModal() {
+    function openPayoutModal(trigger = document.activeElement) {
         const available = statsData?.available_for_withdraw ?? statsData?.pending_usdt ?? 0;
         if (!statsData || statsData.active_request || available < 20) return;
         const modal = document.getElementById('payoutModal');
         if (modal.open) return;
+        payoutTrigger = trigger;
         const tg = statsData.telegram || '';
         const pending = available;
         for (const id of ['pmSubmit', 'pmSubmitThb']) {
@@ -1164,7 +1167,13 @@
         const modal = document.getElementById('payoutModal');
         if (modal.dataset.submitted === 'true') {
             delete modal.dataset.submitted;
-            loadStats();
+            loadStats().then(() => {
+                if (!location.hash || location.hash === '#overview') {
+                    document.getElementById('refPageTitle')?.focus({preventScroll: true});
+                }
+            });
+        } else if (payoutTrigger?.isConnected) {
+            payoutTrigger.focus({preventScroll: true});
         }
     }
     function setContactMethod(method) {
