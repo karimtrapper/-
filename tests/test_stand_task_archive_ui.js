@@ -23,7 +23,10 @@ const notes = [{id: 'archived', dealId: '201', role: 'operator'},
   {id: 'active', dealId: 202, role: 'operator'}, {id: 'general', role: 'operator'}];
 const context = vm.createContext({
   S: {deals, notes, role: 'operator', convs: [{id: 8, status: 'sent'}]},
-  STAND_SHARED: ['deals','convs','notes'], STEPS: {s18w: {}}, ROLES: {operator: {n: 'Operator'}},
+  STAND_SHARED: ['deals','convs','notes'], STEPS: {s18w: {}}, ROLES: {operator: {t: 'Операционист'}},
+  STAND_EMPLOYEES: [{id: 41, display_name: 'Настя', role: 'operator', login_disabled: true},
+    {id: 42, display_name: 'Ирина <тест>', role: 'operator'}],
+  standMe: 'admin', standMeId: 1, standMeNames: ['Карим'],
   usd: String, money: String, plural: () => '', exSum: () => 0, exMargin: () => 0, since: () => '',
   STAND: true, canSwitchRole: () => false, standLoadError: false, taskListSection: null,
   URLSearchParams, location: {search: '?deal=201', pathname: '/tasks'},
@@ -32,13 +35,14 @@ const context = vm.createContext({
   taskBranchesForRole: (d, role) => d.step==='s18w'&&role==='operator'?[null]:[],
   isCrypto: () => false, hasPolicy: () => false, dealWallet: () => null,
   approx: () => ({}), apMoney: () => 'Amount', refs: () => [], econ: () => ({}),
-  htmlText: String, stepTitle: () => 'Step', dealDisplayKind: () => 'Flow',
-  dealTaskPath: () => ({index: 0, steps: [1]}), policyStepAssignee: () => 'Operator',
+  stepTitle: () => 'Step', dealDisplayKind: () => 'Flow',
+  dealTaskPath: () => ({index: 0, steps: [1]}),
   taskListEntries: [{id: 202}, {id: 201}, {id: 204}], taskListCursor: 0,
   taskDealFilter: 'all',
 });
 vm.runInContext(['isNativeCashPartner', 'cashPartnerWalletTask', 'standSnapshot', 'deal', 'notes', 'notesFor', 'notesUnread', 'myTasks',
   'myTaskCount', 'waitingOn', 'pendingEx', 'taskDealsHtml', 'viewDeals',
+  'htmlText', 'employeeName', 'soleActiveEmployeeName', 'operatorTaskName', 'operatorViewerName', 'policyStepAssignee',
   'dealStatusLabel', 'dealProfit', 'nextTaskIndex', 'viewTasks', 'standOpenFromLink'].map(source).join('\n'), context);
 
 assert.deepEqual(Array.from(context.myTasks('operator'), d => d.id), [202]);
@@ -65,3 +69,25 @@ assert.equal(context.S.open, undefined);
 assert.equal(context.deal(201).cnvId, 8);
 for (const key of ['deals','notes','convs'])
   assert.equal(JSON.stringify(context.standSnapshot()[key]), JSON.stringify(context.S[key]));
+
+const waiting = deals.find(d => d.id === 202);
+assert.match(context.viewTasks(), /Ирина &lt;тест&gt;<span class="task-list-person-count"/);
+assert.match(context.taskDealsHtml('manager'), /class="task-deal-who">Ирина &lt;тест&gt;</);
+assert.doesNotMatch(context.viewTasks(), /Настя|Ирина <тест>/);
+context.S.role = 'admin';
+assert.match(context.viewTasks(), /<strong>Ирина &lt;тест&gt; · Step<\/strong>/);
+context.STAND_EMPLOYEES.push({id: 43, display_name: 'Мария', role: 'operator'});
+assert.match(context.viewTasks(), /<strong>Операционист · Step<\/strong>/);
+waiting.assigneeAdminId = 42;
+assert.match(context.viewTasks(), /<strong>Ирина &lt;тест&gt; · Step<\/strong>/);
+context.S.role = 'manager';
+assert.match(context.viewTasks(), /Ирина &lt;тест&gt;<span class="task-list-person-count"/);
+waiting.assigneeAdminId = 41;
+assert.match(context.viewTasks(), /Операционист<span class="task-list-person-count"/);
+assert.doesNotMatch(context.viewTasks(), /Настя/);
+context.standMe = 'operator';
+context.standMeId = 43;
+assert.equal(context.operatorViewerName(), 'Мария');
+context.STAND_EMPLOYEES = [];
+context.standMeNames = ['Мария из сессии'];
+assert.equal(context.operatorViewerName(), 'Мария из сессии');

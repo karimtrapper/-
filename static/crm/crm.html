@@ -6386,10 +6386,10 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
                         ? 'сейчас уведомления получает только Карим'
                         : 'уведомления включены для сотрудников с галкой');
                 box.innerHTML = data.admins.map(a => `
-                    <div class="admin-row" style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border:1px solid #E2E8F0;border-radius:10px;margin-bottom:8px;gap:12px;flex-wrap:wrap;">
+                    <div class="admin-row" data-telegram="${escapeHtml(a.telegram)}" style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border:1px solid #E2E8F0;border-radius:10px;margin-bottom:8px;gap:12px;flex-wrap:wrap;">
                         <div>
-                            <div style="font-weight:600;">${a.display_name}
-                                ${STAND_ROLES ? `<span class="pill" style="font-size:12px;font-weight:600;color:#C2410C;background:#FFF7ED;border-radius:999px;padding:2px 8px;margin-left:6px;">${STAND_ROLES[a.role] || a.role || 'admin'}</span>` : ''}</div>
+                            <div style="font-weight:600;"><span class="admin-name">${escapeHtml(a.display_name)}</span>
+                                ${STAND_ROLES ? `<span class="pill" style="font-size:12px;font-weight:600;color:#C2410C;background:#FFF7ED;border-radius:999px;padding:2px 8px;margin-left:6px;">${escapeHtml(STAND_ROLES[a.role] || a.role || 'admin')}</span>` : ''}</div>
                             <div style="font-size:12px;color:#64748b;">${STAND_ROLES ? 'логин <b>' + escapeHtml(a.username) + '</b> · ' : ''}${escapeHtml(a.telegram || '—')} ${STAND_ROLES ? (a.bound ? '· Telegram ID задан' : '· Telegram ID не задан') : (a.bound ? '· привязан' : '· ждёт входа')}</div>
                         </div>
                         <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
@@ -6401,9 +6401,10 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
                                      onchange="setAdminTelegramId(${a.id}, this.value)">
                               <label style="font-size:12px;white-space:nowrap;"><input type="checkbox" ${employees.get(a.id)?.notify_enabled ? 'checked' : ''} onchange="setAdminNotify(${a.id}, this.checked)"> Получает уведомления</label>
                               <button class="btn btn-secondary" style="padding:6px 12px;" onclick="testAdminNotify(${a.id})">Тест</button>
-                              <button class="btn btn-secondary" style="padding:6px 12px;" onclick="setAdminPassword(${a.id}, '${(a.display_name||'').replace(/'/g,"\\'")}')">Новый пароль</button>` : ''}
-                            ${STAND_ROLES ? '' : `<button class="btn btn-primary" style="padding:6px 12px;" onclick="copyAdminInvite('${(a.display_name||'').replace(/'/g,"\\'")}', '${(a.telegram||'').replace(/'/g,"\\'")}')">📋 Приглашение</button>`}
-                            <button class="btn btn-secondary" style="padding:6px 12px;" onclick="deleteAdmin(${a.id}, '${(a.display_name||'').replace(/'/g,"\\'")}')">Удалить</button>
+                              ${a.role==='operator'&&!a.login_disabled ? `<button type="button" class="btn btn-secondary" style="padding:6px 12px;" onclick="setAdminName(${a.id}, adminRowName(this))">Изменить имя</button>` : ''}
+                              <button class="btn btn-secondary" style="padding:6px 12px;" onclick="setAdminPassword(${a.id}, adminRowName(this))">Новый пароль</button>` : ''}
+                            ${STAND_ROLES ? '' : `<button class="btn btn-primary" style="padding:6px 12px;" onclick="copyAdminInvite(adminRowName(this), this.closest('.admin-row').dataset.telegram)">📋 Приглашение</button>`}
+                            <button class="btn btn-secondary" style="padding:6px 12px;" onclick="deleteAdmin(${a.id}, adminRowName(this))">Удалить</button>
                         </div>
                     </div>`).join('') || '<p style="color:#94a3b8">Пока нет админов</p>';
             } catch (e) { box.innerHTML = '<p style="color:#94a3b8">Ошибка сети</p>'; }
@@ -6576,6 +6577,28 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
                 const data = await res.json();
                 const label = {sent:'Отправлено', suppressed:'Подавлено политикой', failed:'Ошибка Telegram'};
                 showToast(label[data.status] || data.error || 'Ошибка', data.status === 'sent' ? 'success' : 'error');
+            } catch (e) { showToast('Ошибка сети', 'error'); }
+        }
+
+        function adminRowName(button) {
+            return button.closest('.admin-row').querySelector('.admin-name').textContent;
+        }
+
+        async function setAdminName(id, name) {
+            const displayName = prompt('Имя операциониста', name)?.trim();
+            if (!displayName || displayName === name) return;
+            if ([...displayName].length > 100) {
+                showToast('Имя должно быть не длиннее 100 символов', 'error');
+                return;
+            }
+            try {
+                const res = await fetch(`${API_URL}/api/admins/${id}`, {
+                    method: 'PUT', headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({display_name: displayName})
+                });
+                const data = await res.json();
+                if (data.success) { showToast('Имя обновлено'); loadAdmins(); }
+                else showToast(data.error || 'Ошибка', 'error');
             } catch (e) { showToast('Ошибка сети', 'error'); }
         }
 

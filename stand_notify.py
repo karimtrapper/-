@@ -203,12 +203,14 @@ def process_update(update):
     return True
 
 
-def _format_note(note, deals, stand_label=False):
+def _format_note(note, deals, stand_label=False, *, operator_name=None):
     """`stand_label` — метка «СТЕНД» перед текстом (T14, профиль lk_send_only):
     тот же бот доставляет и боевые задания, поэтому сообщение со стенда
     обязано быть невозможно спутать с продовым."""
+    role = note.get('role')
     who = ('Отправка с кошелька' if isinstance(note.get('recipientRoles'), list)
-           else _app.STAND_ROLE_PEOPLE.get(note.get('role'), note.get('role') or ''))
+           else (operator_name if role == 'operator' and operator_name
+                 else _app.STAND_ROLE_PEOPLE.get(role, role or '')))
     deal = deals.get(str(note.get('dealId'))) or {}
     tail = ''
     if deal:
@@ -285,6 +287,8 @@ def deliver():
                 except (TypeError, ValueError, KeyError, AttributeError):
                     continue
             users = db.query(_app.AdminUser).all()
+            active_operators = [u for u in users if u.role == 'operator' and not u.login_disabled]
+            sole_operator = active_operators[0] if len(active_operators) == 1 else None
             # One indexed read for this delivery cycle. The advisory lock above
             # serializes workers, and each changed slot is kept in the map after
             # its own commit so a later note in this cycle sees the new status.
@@ -365,6 +369,13 @@ def deliver():
                 suppress_only = (stale_payto_note or assignee_broken or assignee_missing_or_disabled
                                  or specific_target_wrong_role)
                 fallback_to_role = ((not has_assignee_field) or assignee_role_mismatch) and not specific_target
+                operator_note = note.get('role') == 'operator' and queue_roles is None
+                operator_assignee = None
+                if operator_note and not suppress_only:
+                    if not fallback_to_role:
+                        operator_assignee = assignee_user
+                    elif not has_assignee_field:
+                        operator_assignee = sole_operator
                 for user in users:
                     # Слот конкретного исполнителя ведёт свой дедуп-ключ: у нового
                     # адресата после переназначения нет истории под этим ключом,
@@ -418,7 +429,12 @@ def deliver():
                     if allowed:
                         attempts += 1
                         try:
-                            text_body = _format_note(note, deals, stand_label=(profile == 'lk_send_only'))
+                            heading_user = operator_assignee
+                            if operator_note and fallback_to_role and user.role == 'operator':
+                                heading_user = user
+                            operator_name = _app._stand_user_name(heading_user) if heading_user else None
+                            text_body = _format_note(note, deals, stand_label=(profile == 'lk_send_only'),
+                                                     operator_name=operator_name)
                             payload = {'chat_id': chat_id, 'text': text_body,
                                        'parse_mode': 'HTML', 'disable_web_page_preview': True}
                             if profile == 'lk_send_only':

@@ -101,6 +101,65 @@ def test_shared_queue_and_operator_notifications_use_role_headings(dm, monkeypat
     assert appmod.STAND_ROLE_PEOPLE['operator'] not in shared
 
 
+@pytest.fixture
+def dm_operator_directory(dm):
+    """Keep the operator roster deterministic when earlier tests leave accounts in SQLite."""
+    _, ids, _ = dm
+    user = appmod.AdminUser
+    with appmod.SessionLocal() as db:
+        others = db.query(user).filter(user.role == 'operator', user.id != ids['operator'],
+                                       user.login_disabled.is_not(True)).all()
+        original_flags = {account.id: account.login_disabled for account in others}
+        for account in others:
+            account.login_disabled = True
+        db.commit()
+    try:
+        yield dm
+    finally:
+        with appmod.SessionLocal() as db:
+            for account_id, disabled in original_flags.items():
+                db.get(user, account_id).login_disabled = disabled
+            db.commit()
+
+
+def test_operator_headings_follow_active_account_and_assignment(dm_operator_directory):
+    calls, ids, board = dm_operator_directory
+    db = appmod.SessionLocal()
+    operator = db.get(appmod.AdminUser, ids['operator'])
+    operator.display_name = 'Ирина <сверка>'
+    second = appmod.AdminUser(username='dm_test_previous', display_name='Настя', role='operator',
+                              notify_enabled=True, login_disabled=True, telegram_user_id=106,
+                              password_hash='unused')
+    db.add(second)
+    db.commit()
+    ids['previous'] = second.id
+    db.close()
+
+    def headings(event):
+        calls.clear()
+        board([event])
+        notify.deliver()
+        return {payload['chat_id']: payload['text'].splitlines()[0] for payload in sends(calls)}
+
+    irina = '🔔 <b>Ирина &lt;сверка&gt;</b>'
+    role = '🔔 <b>Операционист</b>'
+    assert headings(note(92, 'operator')) == {101: irina, 103: irina, 104: irina}
+    assert headings({**note(93, 'operator'), 'recipientAdminId': ids['previous']}) == {101: role, 104: role}
+
+    db = appmod.SessionLocal()
+    second = db.get(appmod.AdminUser, ids['previous'])
+    second.display_name = 'Мария'
+    second.login_disabled = False
+    db.commit()
+    db.close()
+
+    maria = '🔔 <b>Мария</b>'
+    assert headings(note(94, 'operator')) == {101: role, 103: irina, 104: role, 106: maria}
+    assert headings({**note(95, 'operator'), 'recipientAdminId': ids['previous']}) == {
+        101: maria, 104: maria, 106: maria,
+    }
+
+
 def test_roles_admin_and_dedup_after_double_delivery(dm):
     calls, ids, board = dm
     board([note(1), note(2, 'operator')])

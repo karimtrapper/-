@@ -1399,7 +1399,7 @@ const SNAP=(function(){const v=(new URLSearchParams(location.search)).get('snap'
   return /^walkthrough\/[\w\-\/]+\.json$/.test(v)?v:null;})();
 const ROLES={
   manager:{t:'Менеджер',n:'Елизавета'},
-  operator:{t:'Операционист',n:'Настя'},
+  operator:{t:'Операционист'},
   findir:{t:'Фин дир',n:'Виталий'},
   teodor:{t:'Теодор',n:'Теодор'},
   admin:{t:'Админ',n:'Карим'}
@@ -4734,7 +4734,7 @@ let BX_DEALS=[];
 /* ============ операции ============ */
 function log(d,text){
   const entry={ts:now(),at:Date.now(),role:S.role,text};
-  if(standMeId)entry.by=employeeName(standMeId)||undefined;
+  if(standMeId)entry.by=employeeName(standMeId)||standMeNames.find(Boolean)||undefined;
   d.log.push(entry);
 }
 function logWhen(entry){
@@ -4750,8 +4750,20 @@ function logWhen(entry){
     ?new Date(parsed).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})
     :'время неизвестно';
 }
+function logAuthor(entry,fallback){
+  if(entry.byName)return entry.byName;
+  if(typeof entry.by==='string'&&entry.by.trim()&&!/^\d+$/.test(entry.by))return entry.by;
+  const authorId=entry.byId??entry.actorId??entry.by;
+  if(authorId!=null&&/^\d+$/.test(String(authorId))){
+    const author=employeeName(authorId);
+    if(author)return author;
+  }
+  if(fallback)return fallback;
+  if(entry.role==='system'||!entry.role)return 'Система';
+  return ROLES[entry.role]?.n||ROLES[entry.role]?.t||'Сотрудник';
+}
 function logMeta(entry){
-  const author=entry.role?(ROLES[entry.role]?.n||'Сотрудник'):'Система';
+  const author=logAuthor(entry);
   return htmlText((entry.role?'от ':'')+author+' · '+logWhen(entry)+' · '+(entry.text||''));
 }
 /* сколько прошло между событиями — «сколько простояли на этом статусе» */
@@ -4886,7 +4898,7 @@ function prepayRefundCard(d){
   const address=(label,value)=>`<div><span class="k">${label}</span><span class="v addr-value">
     <span title="${htmlText(value)}" onclick="this.textContent=this.title;this.classList.add('full')">${htmlText(txShort(value))}</span>
     <button class="btn btn-outline btn-sm" onclick="copyAsk(${jsLiteralAttr(value)})">Копировать адрес</button></span></div>`;
-  return `<div class="card"><p class="fl">${htmlText(ROLES[S.role]?.n||'Владелец кошелька')}, сейчас ваш шаг</p>
+  return `<div class="card"><p class="fl">${htmlText(S.role==='operator'?operatorViewerName():ROLES[S.role]?.n||'Владелец кошелька')}, сейчас ваш шаг</p>
     <div class="goalt">Возместите оплату с кошелька</div>
     <p class="prepay-notice">Оплата наперёд · USDT брокера получены, верните сумму на кошелёк оплаты IPPS.</p>
     <div class="goalnums"><div><span class="k">К возврату</span><span class="v big">${moneyKop(due,'USDT')}</span></div>
@@ -5280,7 +5292,7 @@ function dealSummaryBlock(d){
       const hit=(d.log||[]).slice().reverse().find(l=>String(l.text||'').startsWith('Расхождения приняты вручную:'));
       if(!hit)return null;
       const reason=String(hit.text).split('Причина:')[1]?.trim()||hit.text;
-      const who=hit.by||ROLES[hit.role]?.n||'сотрудник';
+      const who=hit.role==='operator'?logAuthor(hit):hit.by||ROLES[hit.role]?.n||'сотрудник';
       return {gap:Math.round((expected-paid.rub)*100)/100,reason,who,when:logWhen(hit)};
     })();
     inRows.push(row('Клиент заплатил',paid.rub!=null
@@ -5504,7 +5516,9 @@ function policyStepAssignee(d,step){
     const w=dealWallet(d);
     if(hasPolicy(w))return policyRoleNames(policyInitiators(w).concat(w.owner_can_alone?['teodor']:[]));
   }
-  return (ROLES[stepWho(d,step)]||{}).n||'—';
+  const role=stepWho(d,step);
+  if(role==='operator')return step===d.step&&!d.closed?operatorTaskName(d.assigneeAdminId):ROLES.operator.t;
+  return ROLES[role]?.n||'—';
 }
 function sentToggle(id){
   const d=deal(id);
@@ -6355,7 +6369,9 @@ function render(){
     }
   }
   document.body.classList.toggle('shell-deal-open',!!S.open);
-  document.getElementById('who').textContent=ROLES[S.role].n+' · '+ROLES[S.role].t.toLowerCase();
+  const roleTitle=ROLES[S.role].t;
+  const viewerName=S.role==='operator'?operatorViewerName():ROLES[S.role].n;
+  document.getElementById('who').textContent=viewerName===roleTitle?roleTitle:viewerName+' · '+roleTitle.toLowerCase();
   /* На стенде роль даёт логин. Переключатель оставлен админу — Кариму нужно
      смотреть чужими глазами, остальным подменять себя незачем. */
   const canSwitch=!STAND||standMe==='admin';
@@ -6775,11 +6791,13 @@ function viewModal(){
   if(!d||!st)return '';
   const lines=tgLines(d,m.step);
   const deliveryText=notificationDeliveryText(m);
+  const roleTitle=ROLES[m.to].t;
+  const recipient=m.to==='operator'?operatorTaskName(d.assigneeAdminId):ROLES[m.to].n;
   const modalTitle=m.delivery==='pending'?'Передача задачи · предпросмотр':
     m.delivery==='save_failed'?'Не удалось сохранить задачу':'Задача сохранена';
   return `<div class="ov" onclick="if(event.target===this)closeModal()"><div class="modal">
     <div class="modal-h"><div class="t">${modalTitle}</div>
-      <div class="s">Адресат: <b>${ROLES[m.to].n} · ${ROLES[m.to].t.toLowerCase()}</b>. ${deliveryText}</div></div>
+      <div class="s">Адресат: <b>${htmlText(recipient===roleTitle?roleTitle:recipient+' · '+roleTitle.toLowerCase())}</b>. ${deliveryText}</div></div>
     <div class="modal-b">
       <div class="tgwrap">
         <div class="tgbot"><span class="av">GR</span><span class="nm">Grusha Задачник</span></div>
@@ -6803,7 +6821,7 @@ function viewModal(){
           /* Чужой ролью на стенде не поработаешь: у каждого свой логин. Кнопка
              «перейти как» обещала бы доступ, которого нет. */
           : `<button class="btn btn-primary" onclick="closeModal()">Понятно</button>
-             <span class="sub2" style="align-self:center">Ответственный: ${ROLES[m.to].n}.</span>`}
+             <span class="sub2" style="align-self:center">Ответственный: ${htmlText(recipient)}.</span>`}
       </div>
     </div></div></div>`;
 }
@@ -6881,10 +6899,11 @@ function viewTasks(){
   }else{
     h+=mine.map(d=>{
       const a=approx(d);
-      const side=role==='manager'&&stepWho(d)!=='manager';
+      const stepRole=stepWho(d);
+      const side=role==='manager'&&stepRole!=='manager';
       const taskTitle=cashPartnerWalletTask(d,role)?'Выбрать кошелёк для USDT от партнёра':side?(needsPayConfirm(d)?'Ваша задача: подтвердить реквизиты перед оплатой':
         reqOpen(d)?'Ваша параллельная задача: реквизиты для оплаты':stepTitle(d)):stepTitle(d);
-      const branches=taskBranchesForRole(d,role);
+      const branches=role==='admin'&&stepRole==='operator'?[d.prepay?'payment':null]:taskBranchesForRole(d,role);
       return branches.map(branch=>{
         const title=branch==='conversion'?'Конвертация · '+(prepayRefundRole(d)===role?'возместить оплату':(STEPS[d.prepay.brokerStep]?.title||'ждём USDT').replace(/^./,s=>s.toLowerCase())):
           branch==='payment'&&role==='operator'&&d.step==='s27'&&stepWho(d)!==role?'Подтвердить оплату инвойса':
@@ -6895,7 +6914,7 @@ function viewTasks(){
           d.prepay?usd(d.prepay.amount):apMoney(a,'pay');
         return `<button type="button" class="task-list-row" data-task-id="${d.id}" data-task-branch="${branch||''}" title="шаг ${path.index+1} из ${path.steps.length}"
           onclick="openTask(${d.id},${branch?`'${branch}'`:'null'})">
-          <span class="task-list-row-main"><strong>${role==='admin'?htmlText((ROLES[stepWho(d)]||{}).n||'Сотрудник')+' · ':''}${htmlText(title)}</strong>
+          <span class="task-list-row-main"><strong>${role==='admin'?htmlText(stepRole==='operator'?operatorTaskName(d.assigneeAdminId):ROLES[stepRole]?.n||'Сотрудник')+' · ':''}${htmlText(title)}</strong>
             <span class="task-list-meta">${htmlText(d.code)} · ${htmlText(d.client)} · ${d.prepay?'Оплата наперёд · ':''}${htmlText(['ИППС','Личный счёт'].includes(d.kind)?dealDisplayKind(d):d.autoPayment===true?'Оплата авто':d.kind||d.type)}</span>
             ${side&&!branch?`<span class="task-list-meta">Параллельно: ${stepTitle(d)} · ${(ROLES[stepWho(d)]||{}).t||'—'}</span>`:''}</span>
           <span class="task-list-amount num">${amount==='посчитаем после курса'?apMoney(a,'thb'):amount}</span>
@@ -6907,21 +6926,27 @@ function viewTasks(){
     <div class="task-list-panel-head"><h2>Жду других</h2>${waitCount}</div>`;
   if(!others.length) h+=`<div class="task-list-empty"><strong>Ожиданий нет</strong>Задачи других участников появятся здесь.</div>`;
   else Object.keys(ROLES).forEach(waitRole=>{
-    const group=others.filter(d=>stepWho(d)===waitRole);
-    if(!group.length)return;
-    h+=`<div class="task-list-person"><span class="task-list-avatar">${ROLES[waitRole].n.charAt(0)}</span>${ROLES[waitRole].n}<span class="task-list-person-count">· ${group.length}</span></div>`;
-    h+=group.map(d=>{
-      const a=approx(d),pay=apMoney(a,'pay');
-      const canRemind=role==='manager'&&d.step==='s14';
-      return `<div class="task-list-row task-list-wait-row${canRemind?' task-list-wait-row-remind':''}" data-task-id="${d.id}" data-task-view="deal" role="button" tabindex="0"
-          onclick="openDeal(${d.id})" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openDeal(${d.id})}">
-        <span class="task-list-row-main"><strong>${htmlText(d.prepay?prepayBranchStatus(d,'payment'):stepTitle(d))}</strong>
-          <span class="task-list-meta">${htmlText(d.code)} · ${htmlText(d.client)} · ${htmlText(dealDisplayKind(d))}</span></span>
-        <span class="task-list-amount num">${pay==='посчитаем после курса'?apMoney(a,'thb'):pay}</span>
-        ${canRemind
-          ?`<button type="button" class="btn btn-outline btn-sm task-list-remind" onclick="event.stopPropagation();s14Ping(${d.id})">Напомнить</button>`
-          :`<span class="task-list-arrow" aria-hidden="true">›</span>`}</div>`;
-    }).join('');
+    const groups=new Map();
+    for(const d of others.filter(d=>stepWho(d)===waitRole)){
+      const name=waitRole==='operator'?operatorTaskName(d.assigneeAdminId):ROLES[waitRole].n;
+      if(!groups.has(name))groups.set(name,[]);
+      groups.get(name).push(d);
+    }
+    for(const [name,group] of groups){
+      h+=`<div class="task-list-person"><span class="task-list-avatar">${htmlText(name.charAt(0))}</span>${htmlText(name)}<span class="task-list-person-count">· ${group.length}</span></div>`;
+      h+=group.map(d=>{
+        const a=approx(d),pay=apMoney(a,'pay');
+        const canRemind=role==='manager'&&d.step==='s14';
+        return `<div class="task-list-row task-list-wait-row${canRemind?' task-list-wait-row-remind':''}" data-task-id="${d.id}" data-task-view="deal" role="button" tabindex="0"
+            onclick="openDeal(${d.id})" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openDeal(${d.id})}">
+          <span class="task-list-row-main"><strong>${htmlText(d.prepay?prepayBranchStatus(d,'payment'):stepTitle(d))}</strong>
+            <span class="task-list-meta">${htmlText(d.code)} · ${htmlText(d.client)} · ${htmlText(dealDisplayKind(d))}</span></span>
+          <span class="task-list-amount num">${pay==='посчитаем после курса'?apMoney(a,'thb'):pay}</span>
+          ${canRemind
+            ?`<button type="button" class="btn btn-outline btn-sm task-list-remind" onclick="event.stopPropagation();s14Ping(${d.id})">Напомнить</button>`
+            :`<span class="task-list-arrow" aria-hidden="true">›</span>`}</div>`;
+      }).join('');
+    }
   });
   h+=`</section><section class="card task-list-panel task-list-all ${section==='all'?'on':''}" data-section="all">
     <button type="button" class="task-list-panel-head task-list-all-toggle" aria-expanded="${section==='all'}" onclick="showTaskListSection(taskListSection==='all'?'mine':'all')"><h2>Все сделки</h2><span aria-hidden="true">${section==='all'?'⌃':'›'}</span></button>
@@ -7797,8 +7822,23 @@ function createClosed(){
    Сервер (app.py, _stand_check_assignee) перепроверяет то же самое при
    сохранении — эта разметка только UX, не источник доверия. */
 function employeeName(id){
-  const e=STAND_EMPLOYEES.find(x=>String(x.id)===String(id));
-  return e?(e.display_name||e.username):null;
+  const employee=STAND_EMPLOYEES.find(e=>String(e.id)===String(id));
+  return employee?.display_name||employee?.username||employee?.account||null;
+}
+function soleActiveEmployeeName(role){
+  const staff=STAND_EMPLOYEES.filter(e=>e.role===role&&!e.login_disabled);
+  return staff.length===1?employeeName(staff[0].id):null;
+}
+function operatorTaskName(assigneeId){
+  if(assigneeId==null)return soleActiveEmployeeName('operator')||ROLES.operator.t;
+  const assignee=STAND_EMPLOYEES.find(e=>String(e.id)===String(assigneeId)&&!e.login_disabled&&
+    (e.role==='operator'||e.role==='admin'));
+  return (assignee&&employeeName(assignee.id))||ROLES.operator.t;
+}
+function operatorViewerName(){
+  if(standMe==='operator')
+    return employeeName(standMeId)||standMeNames.find(Boolean)||ROLES.operator.t;
+  return operatorTaskName();
 }
 function setAssignee(dealId,adminId){
   const d=deal(dealId); if(!d)return;
@@ -7862,12 +7902,12 @@ function prepayBranchAssignee(d,branch){
     if(hasPolicy(w))return policyStepAssignee(d,'s23');
   }
   const role=branch==='conversion'?(prepayRefundRole(d)||'operator'):stepWho(d);
+  if(role==='operator')return operatorTaskName(branch==='payment'?d.assigneeAdminId:null);
   const assigned=STAND_EMPLOYEES.find(e=>String(e.id)===String(d.assigneeAdminId)&&
     (e.role===role||(branch==='payment'&&e.role==='admin')));
   if(assigned)return assigned.display_name||assigned.username;
   if(role==='manager'&&d.manager)return d.manager;
-  const staff=STAND_EMPLOYEES.filter(e=>e.role===role&&!e.login_disabled);
-  return staff.length===1?(staff[0].display_name||staff[0].username):(ROLES[role]?.t||'Исполнитель не назначен');
+  return soleActiveEmployeeName(role)||ROLES[role]?.t||'Исполнитель не назначен';
 }
 function prepayBranchStatus(d,branch){
   const step=branch==='conversion'?d.prepay.brokerStep:d.step;
@@ -8052,7 +8092,10 @@ function viewDeal(d,inquiryField=''){
     else if(!mine){
       const policyInfo=(d.step==='s23'||d.step==='s24')&&hasPolicy(dealWallet(d))?
         `<div class="card" style="margin-bottom:12px">${policyStatusLine(d)}</div>${policyActions(d)}`:'';
-      const status=(d.prepay?'':`<div class="card" style="margin-bottom:12px">Сейчас задача ${(who&&ROLES[who])?ROLES[who].t:'—'}${d.assigneeAdminId?' · исполнитель '+htmlText(employeeName(d.assigneeAdminId)||'ID '+d.assigneeAdminId):''}: ${stepTitle(d)}</div>`)+policyInfo+
+      const operatorName=who==='operator'?operatorTaskName(d.assigneeAdminId):'';
+      const assignee=who==='operator'?(operatorName===ROLES.operator.t?'':operatorName):
+        d.assigneeAdminId?(employeeName(d.assigneeAdminId)||'ID '+d.assigneeAdminId):'';
+      const status=(d.prepay?'':`<div class="card" style="margin-bottom:12px">Сейчас задача ${ROLES[who]?.t||'—'}${assignee?' · исполнитель '+htmlText(assignee):''}: ${stepTitle(d)}</div>`)+policyInfo+
         (S.role==='manager'&&d.step==='s23'&&d.reqTask==='done'&&!needsPayConfirm(d)?`<div class="alert a-info"><div><b>Сейчас отправка с кошелька — от вас ничего не нужно.</b> Правка реквизитов остановит отправку и потребует нового поручения IPPS.</div></div>`:'')+
         (d.step==='s22'&&d.kind==='Фрихолд'?`<div class="alert a-warn"><div>Менеджер подтверждает реквизиты застройщика, затем операционист согласует с IPPS сеть и адрес перевода. До сохранённого поручения подписант кошелька не получает задачу отправки.</div></div>`:'');
       const managerSide=S.role==='manager'&&d.type==='Оплата недвижимости'&&!(d.pay||{}).invoicePaid;
@@ -8174,6 +8217,7 @@ function overview(d,st,mine,p,wh){
       :`<div class="comment-fold-text">${htmlText(text)}</div>`}</td></tr>`;
   };
   const started=d.log.length&&d.log[0].at, last=d.log.length&&d.log[d.log.length-1].at;
+  const operatorName=!d.closed&&!branch&&wh==='operator'?operatorTaskName(d.assigneeAdminId):'';
   return `${d.closed
     ?`<div class="card" style="margin-bottom:16px"><div class="alert ${d.closeReason==='Успешно завершена'?'a-ok':'a-warn'}" style="margin:0">
        <div>Сделка закрыта ${d.closedAt} — <b>${d.closeReason}</b>${started&&last?`. Заняла ${dur(last-started)}`:''}.</div></div></div>`
@@ -8182,7 +8226,8 @@ function overview(d,st,mine,p,wh){
         <span class="av">${p.i}</span>
         <div><div class="t1">${htmlText(branch?prepayBranchStatus(d,branch):stepTitle(d))}</div>
         <div class="t2">${branch?(activeMine?'на вас':'у '+htmlText(prepayBranchAssignee(d,branch))):
-          d.assigneeAdminId?(String(d.assigneeAdminId)===String(standMeId)?'на вас':'у '+htmlText(employeeName(d.assigneeAdminId)||'сотрудника ID '+d.assigneeAdminId)):(mine?'на вас':'у роли «'+((wh&&ROLES[wh])?ROLES[wh].t:'—')+'»')}${last?' · '+dur(Date.now()-last)+' на этом шаге':''}</div></div>
+          operatorName?(activeMine?'на вас':operatorName===ROLES.operator.t?'у роли «'+ROLES.operator.t+'»':'у '+htmlText(operatorName)):
+          d.assigneeAdminId?(String(d.assigneeAdminId)===String(standMeId)?'на вас':'у '+htmlText(employeeName(d.assigneeAdminId)||'сотрудника ID '+d.assigneeAdminId)):(mine?'на вас':'у роли «'+(ROLES[wh]?.t||'—')+'»')}${last?' · '+dur(Date.now()-last)+' на этом шаге':''}</div></div>
         <button class="btn ${activeMine?'btn-primary':'btn-outline'} btn-sm" onclick="setView('task')">${activeMine?'Открыть задачу':'Посмотреть шаг'}</button>
       </div></div>`}
 
@@ -8413,7 +8458,7 @@ function pathCard(d){
       const idx=flowOf(d).indexOf(k), cur=flowOf(d).indexOf(d.step);
       const st=d.prepay?(k==='s24'&&!d.prepay.wallet.multisig?'не требуется':prepayStepDone(d,k)?'внесено':([d.step,d.prepay.brokerStep].includes(k)?'сейчас':'ещё нет')):d.closed?'внесено':(cur<0?'—':(idx<cur?'внесено':(idx===cur?'сейчас':'ещё нет')));
       return `<li class="flow-item"${st==='сейчас'&&!d.closed?' style="background:var(--coral-light)"':''}>
-        <div class="flow-item-meta"><span>${STEPS[k].n}. ${k==='s22'&&d.kind==='Фрихолд'?'Согласовать заявку IPPS':(k==='s25'&&d.kind==='Фрихолд'?'Ожидать MT103':stepTitle(d,k))}</span><span class="flow-item-who">${policyStepAssignee(d,k)}</span>
+        <div class="flow-item-meta"><span>${STEPS[k].n}. ${k==='s22'&&d.kind==='Фрихолд'?'Согласовать заявку IPPS':(k==='s25'&&d.kind==='Фрихолд'?'Ожидать MT103':stepTitle(d,k))}</span><span class="flow-item-who">${htmlText(policyStepAssignee(d,k))}</span>
         <span class="flow-item-status">${st==='внесено'?'<span class="badge b-done">внесено</span>':(st==='сейчас'?'<span class="badge b-new">сейчас</span>':`<span class="badge b-wait">${st}</span>`)}</span></div>
         <div class="flow-item-body"><b>${f.b}</b> — ${d.prepay&&k==='s22'?'согласованная операционистом заявка IPPS для параллельной оплаты':
           k==='s14'&&isNativeCashPartner(d)?'курс партнёра и сверка полученных USDT по хешам':f.w}</div></li>`;}).join('')}
@@ -8421,7 +8466,7 @@ function pathCard(d){
     <div class="card-title" style="font-size:14px;margin:18px 0 10px">Хронология</div>
     <div class="hist-feed">
     ${rows.map(r=>`<div class="hist-item"${r.open?' style="background:var(--coral-light)"':''}>
-      <div class="hist-meta">${logWhen(r.l)} · ${ROLES[r.l.role]?ROLES[r.l.role].t:'—'}${r.ms!=null?' · '+dur(r.ms)+(r.open?' · идёт':''):''}</div>
+      <div class="hist-meta">${logWhen(r.l)} · ${htmlText(logAuthor(r.l,ROLES[r.l.role]?.t||'—'))}${r.ms!=null?' · '+dur(r.ms)+(r.open?' · идёт':''):''}</div>
       <div class="hist-text">${htmlText(r.l.text)}</div></div>`).join('')}
     </div>
     ${Object.keys(byRole).length>1?`<div class="card-title" style="font-size:14px;margin:20px 0 11px">Сколько времени сделка провела у каждой роли</div>
@@ -9501,7 +9546,7 @@ function ctxCard(d){
         ?(d.selfRate?'проставил менеджер сам':(isNativeCashPartner(d)?'расчётный RUB→USDT: ':'брокер RUB→USDT: ')+(d.rates.rubUsdt||'—'))
         :(d.selfRate?'проставил менеджер сам · ':'')+(isCrypto(d)?'USDT→THB: '+(d.rates.usdtThb||'—')+' · рублей в сделке нет':'контрагенты: '+(d.rates.rubUsdt||'—')+' / '+(d.rates.usdtThb||'—')))}
     ${fact('Документы',all.length?all.map(k=>doctOf(d,k)).join(', '):(d.type==='Оплата недвижимости'?'ещё не приложены':'по обмену не нужны'),all.length?all.length+' шт.':(d.type==='Оплата недвижимости'?'собирает менеджер на шаге 8':'договор и паспорт — только у недвижимости'))}
-    ${last?fact('Последнее действие',(ROLES[last.role]?ROLES[last.role].n:'Система')+' · '+logWhen(last),htmlText(last.text)):''}
+    ${last?fact('Последнее действие',htmlText(logAuthor(last,ROLES[last.role]?.n||ROLES[last.role]?.t||'Система'))+' · '+logWhen(last),htmlText(last.text)):''}
   </div>
   ${d.reRequest?`<div class="alert a-warn" style="margin:16px 0 0"><div>Курс запрашивали заново ${d.reRequest} раз${d.reRequest>1?'а':''} — клиент возвращался. Прошлые цифры в истории справа.</div></div>`:''}
   </details>`;
@@ -11841,7 +11886,7 @@ async function fileAppend(id,k,f){
     f.id='cpr_'+crypto.randomUUID().replace(/-/g,'');
     f.uploadedById=standMeId;
     const employee=STAND_EMPLOYEES.find(x=>x.id===standMeId)||{};
-    f.uploadedBy=employee.display_name||employee.username||ROLES[S.role]?.n||S.role;
+    f.uploadedBy=employee.display_name||employee.username||ROLES[S.role]?.n||ROLES[S.role]?.t||S.role;
     f.note='';
   }
   if(k==='bankCreditEvidence'){
@@ -11850,7 +11895,7 @@ async function fileAppend(id,k,f){
     f.id='bce_'+crypto.randomUUID().replace(/-/g,'');
     f.uploadedById=standMeId;
     const employee=STAND_EMPLOYEES.find(x=>x.id===standMeId)||{};
-    f.uploadedBy=employee.display_name||employee.username||ROLES[S.role]?.n||S.role;
+    f.uploadedBy=employee.display_name||employee.username||ROLES[S.role]?.n||ROLES[S.role]?.t||S.role;
   }
   l.push(f);fileSync(d,k);
   if(!managerDraftDocTarget(d,k))
@@ -15835,14 +15880,14 @@ async function standBoot(){
     if(standMe!=='admin')S.role=standMe;
     const analyticsView=new URLSearchParams(location.search).get('section')==='analytics';
     if(analyticsView){S.tab='analytics';S.open=null;S.draft=null;S.edit=null;}
-    NavShell.mount({stand:true,page:'tasks',active:analyticsView?'crm':'tasks',role:standMe,
-      name:me.user.display_name||me.user.username,count:0});
-    document.querySelector('.proto .lab').textContent='Тестовый стенд · '+(me.user.display_name||'');
     try{
       const staff=await (await fetch(standMe==='admin'?'/api/admins':'/api/stand/employees',
         {credentials:'same-origin'})).json();
       if(staff.success) STAND_EMPLOYEES=staff.admins||staff.employees||[];
     }catch(e){}
+    const name=employeeName(standMeId)||standMeNames.find(Boolean);
+    NavShell.mount({stand:true,page:'tasks',active:analyticsView?'crm':'tasks',role:standMe,name,count:0});
+    document.querySelector('.proto .lab').textContent='Тестовый стенд · '+(name||'');
   }catch(e){}
   await fetchChannels();
   await fetchCrmClients();

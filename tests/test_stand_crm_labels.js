@@ -13,7 +13,10 @@ const start = html.indexOf('async function loadAdmins() {');
 const end = html.indexOf('/* Роли живут только на стенде:', start);
 assert.ok(start > 0 && end > start, 'функция списка админов найдена');
 const source = html.slice(start, end);
-async function render(bound, stand) {
+const escapeStart = html.indexOf('function escapeHtml(value) {');
+const escapeEnd = html.indexOf('\n        }', escapeStart);
+const escapeHtml = html.slice(escapeStart, escapeEnd + '\n        }'.length);
+async function render(bound, stand, employee = {}) {
     const box = {innerHTML: ''};
     const calls = [];
     const context = {
@@ -23,17 +26,16 @@ async function render(bound, stand) {
             calls.push(url);
             if (url === '/api/admins') return {ok: true, json: async () => ({success: true, admins: [{
                 id: 1, display_name: 'Сотрудник', username: 'user', telegram: '@user',
-                telegram_user_id: '12345', role: 'admin', bound,
+                telegram_user_id: '12345', role: 'admin', bound, ...employee,
             }]})};
             if (url === '/api/stand/tg-status') return {ok: true, json: async () => ({
                 profile: 'stand_bot', employees: [{id: 1, notify_enabled: true}],
             })};
             throw new Error(`unexpected fetch: ${url}`);
         },
-        escapeHtml: value => value,
     };
-    const roles = stand ? '{admin: "Админ"}' : 'null';
-    await vm.runInNewContext(`let STAND_ROLES = ${roles}; ${source}\nloadAdmins()`, context);
+    const roles = stand ? '{admin: "Админ", operator: "Операционист"}' : 'null';
+    await vm.runInNewContext(`let STAND_ROLES = ${roles}; ${escapeHtml} ${source}\nloadAdmins()`, context);
     return {html: box.innerHTML, calls};
 }
 
@@ -52,7 +54,33 @@ async function render(bound, stand) {
                 assert.equal(rendered.includes(marker), stand, `${marker}: bound=${bound}, stand=${stand}`);
             }
             assert.equal(rendered.includes('copyAdminInvite('), !stand);
+            assert.doesNotMatch(rendered, /Изменить имя/);
         }
     }
-    console.log('crm admin labels and stand controls: PASS (4 rendered fixtures)');
+    const operator = {role: 'operator', display_name: 'Ирина <img src=x onerror=alert(1)>', telegram: '"test"'};
+    const active = await render(true, true, operator);
+    assert.match(active.html, /Изменить имя/);
+    assert.match(active.html, /Ирина &lt;img src=x onerror=alert\(1\)&gt;/);
+    assert.doesNotMatch(active.html, /<img/);
+    const disabled = await render(true, true, {...operator, login_disabled: true});
+    assert.doesNotMatch(disabled.html, /Изменить имя/);
+    const prod = await render(true, false, operator);
+    assert.doesNotMatch(prod.html, /Изменить имя/);
+
+    const renameStart = html.indexOf('async function setAdminName(id, name) {');
+    const renameEnd = html.indexOf('async function setAdminPassword', renameStart);
+    const updateCalls = [];
+    const rename = {
+        API_URL: '',
+        prompt: () => '  Ирина Петрова  ',
+        fetch: async (url, options) => {
+            updateCalls.push([url, options.method, JSON.parse(options.body)]);
+            return {json: async () => ({success: true})};
+        },
+        showToast: () => {},
+        loadAdmins: () => {},
+    };
+    await vm.runInNewContext(html.slice(renameStart, renameEnd) + 'setAdminName(42, "Ирина")', rename);
+    assert.deepEqual(updateCalls, [['/api/admins/42', 'PUT', {display_name: 'Ирина Петрова'}]]);
+    console.log('crm employee labels, stand controls and name update: PASS');
 })().catch(error => { console.error(error); process.exitCode = 1; });

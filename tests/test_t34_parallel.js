@@ -99,6 +99,7 @@ function run(names, context) {
     STEPS: {s11: {title: 'Подготовить договор', n: 11, who: 'operator'}},
     ROLES: {manager: {t: 'Менеджер'}, operator: {t: 'Операционист'}},
     SOURCES: {test: 'Тест'}, stepWho: () => 'operator',
+    operatorTaskName: () => 'Операционист',
     stepTitle: () => 'Подготовить договор', progress: () => ({i: 4, n: 12}),
     stepCard: () => 'REQ_FORM', goalCard: () => 'MANAGER_GOAL',
     managerEarlyDocsBlock: () => 'DOC_FORM',

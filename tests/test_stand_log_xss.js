@@ -4,7 +4,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 
 const html = fs.readFileSync(path.join(__dirname, '../static/stand/tasks.html'), 'utf8');
-const source = ['isNativeCashPartner', 'htmlText', 'logWhen', 'logMeta', 'viewDeal', 'pathCard', 'ctxCard', 'prepayCloseReason', 'sourceRefLabel'].map(name => {
+const source = ['isNativeCashPartner', 'htmlText', 'logWhen', 'logAuthor', 'logMeta', 'viewDeal', 'pathCard', 'ctxCard', 'prepayCloseReason', 'sourceRefLabel'].map(name => {
   const found = html.match(new RegExp(`^function ${name}\\([^]*?^}`, 'm'));
   assert.ok(found, name);
   return found[0];
@@ -35,6 +35,7 @@ function escaped(label, rendered) {
   assert.ok(!rendered.includes(payload), label + ': executable HTML present');
 }
 escaped('список задач', ctx.logMeta(entry));
+escaped('имя автора в журнале', ctx.logMeta({...entry, by: payload, text: 'Сверка'}));
 assert.ok(!ctx.viewDeal(deal).includes(payload), 'Карточка сделки: executable HTML present');
 const pathHtml = ctx.pathCard(deal);
 escaped('Хронология и Весь путь', pathHtml);
