@@ -154,7 +154,7 @@
         <div class="guide-nav-body" id="guide-nav-body">
           <nav class="contents" aria-label="Оглавление">
             <p class="contents-title" aria-hidden="true">Оглавление</p>
-            <a href="#rate">Запрос курса</a><a href="#ipds">ИПДС</a><a href="#contract">Договор</a><a href="#receipt">Приход в СГБ</a><a href="#sber">Приход в Сбер</a><a href="#broker">Брокер и USDT</a><a href="#send-sber">Отправка из Сбера</a><a href="#send-sgb">Платёжное поручение СГБ</a><a href="#sgb-broker-documents">Письма и документы для СГБ</a><a href="#wallet-signing">Кошельки и подписи</a><a href="#coins">Coins и баты на SCB</a><a href="#scb-payout">Оплата со SCB</a><a href="#ipps-payout">IPPS / SWIFT</a><a href="#prepay">Оплата наперёд</a><a href="#exceptions">Нестандартные ситуации</a>
+            <a href="#rate">Запрос курса</a><a href="#ipds">ИПДС</a><a href="#ipds-sgb-approval">Согласование ИПДС с СГБ</a><a href="#contract">Договор</a><a href="#receipt">Приход в СГБ</a><a href="#sber">Приход в Сбер</a><a href="#broker">Брокер и USDT</a><a href="#send-sber">Отправка из Сбера</a><a href="#send-sgb">Платёжное поручение СГБ</a><a href="#sgb-broker-documents">Письма и документы для СГБ</a><a href="#wallet-signing">Кошельки и подписи</a><a href="#coins">Coins и баты на SCB</a><a href="#scb-payout">Оплата со SCB</a><a href="#ipps-payout">IPPS / SWIFT</a><a href="#prepay">Оплата наперёд</a><a href="#exceptions">Нестандартные ситуации</a>
           </nav>
           <a class="guide-reset" href="#route-picker" hidden>Изменить маршрут</a>
         </div>
@@ -334,12 +334,40 @@
           Менеджер нажимает <strong>«Передать операционисту»</strong>. Откройте вернувшуюся задачу и сверьте новые файлы.
         </li>
       </ol>
-      <p>Если источники смешанные, плательщик отличается от покупателя или движение денег нельзя проследить по выпискам, уточните у банка, достаточно ли пакета, в рабочем чате <a href="https://t.me/c/4387135684/388">«СГБ- Флоу Соле»</a>.</p>
+      <p data-for-account="sgb">После проверки документов <a href="#ipds-sgb-approval">отправьте пакет на предварительное согласование в СГБ</a>.</p>
+    </section>
+
+    <section id="ipds-sgb-approval" aria-labelledby="ipds-sgb-approval-title">
+      <h2 id="ipds-sgb-approval-title">Предварительно согласовать ИПДС с СГБ</h2>
+      <p>Если для сделки через Flow Sole нужен ИПДС, получите подтверждение банка <strong>до согласования агентского договора с клиентом</strong>.</p>
+      <ol class="steps">
+        <li><strong>Соберите вложения из Задачника</strong>
+          <p>Приложите подтверждения источника средств и выписки, по которым видно движение денег до счёта оплаты и остаток. Добавьте основание платежа: договор покупки или аренды, инвойс при наличии. Если платит родственник, приложите подтверждение родства и документы об источнике денег плательщика.</p>
+        </li>
+        <li><strong>Отправьте пакет Анастасии Фадеевой</strong>
+          <p>Отправьте письмо на <a href="mailto:fadeeva_an@severgazbank.ru">fadeeva_an@severgazbank.ru</a>. Укажите плательщика, суммы, получателя, цель оплаты и путь денег по счетам. Сообщите об отправке в Telegram-чате <a href="https://t.me/c/4387135684/640">«СГБ- Флоу Соле»</a>.</p>
+          <div class="copy-field">
+            <label for="ipds-sgb-letter">Письмо для предварительного согласования</label>
+            <textarea id="ipds-sgb-letter" readonly rows="10">Тема: Flow Sole — предварительное согласование ИПДС — [ФИО плательщика]
+
+Анастасия, добрый день!
+
+Просим предварительно согласовать приём [сумма] ₽ от [ФИО плательщика] на счёт Flow Sole для оплаты [цель, объект] по [договору или инвойсу]. Получатель — [имя или компания], сумма к перечислению — [сумма и валюта].
+
+Источник средств — [источник]. [Дата] поступило [сумма] на счёт в [банк]. Далее [переводы между счетами, если были]. Клиент планирует оплатить со счёта [банк и последние 4 цифры], остаток на [дата] — [сумма].
+
+Прилагаем [перечень документов]. Подскажите, достаточно ли пакета для согласования и какие документы нужно добавить.</textarea>
+          </div>
+        </li>
+        <li><strong>Дождитесь ответа банка</strong>
+          <p>Если СГБ запросит дополнения, получите их у менеджера, добавьте в документы сделки и дошлите в той же цепочке писем. Когда банк подтвердит, что документов достаточно, передайте ответ менеджеру для согласования договора с клиентом.</p>
+        </li>
+      </ol>
     </section>
 
     <section id="contract" aria-labelledby="contract-title">
       <h2 id="contract-title">3. Подготовить договор и передать менеджеру</h2>
-      <p>Когда менеджер приложил документы и передал заявку, откройте задачу <strong>«Подготовить договор»</strong>. Если по сделке нужен ИПДС, сначала проверьте пакет по предыдущему шагу.</p>
+      <p>Когда менеджер приложил документы и передал заявку, откройте задачу <strong>«Подготовить договор»</strong>. Если по сделке нужен ИПДС, сначала <a href="#ipds">проверьте пакет</a>. <span data-for-account="sgb">До согласования договора с клиентом <a href="#ipds-sgb-approval">получите подтверждение СГБ по ИПДС</a>.</span></p>
       <ol class="steps">
         <li><strong>Распознайте документы</strong>
           <figure class="step-screen">
@@ -1167,8 +1195,8 @@
       ['auto', { label: 'Оплата авто', object: 'auto', payout: 'usd' }],
     ]);
     const accounts = new Map([
-      ['sgb', { label: 'Flow Sole · СГБ', incoming: 'receipt', documents: ['sgb-broker-documents'], outgoing: 'send-sgb' }],
-      ['sber', { label: 'MF Corporation · Сбер', incoming: 'sber', documents: [], outgoing: 'send-sber' }],
+      ['sgb', { label: 'Flow Sole · СГБ', ipdsApproval: ['ipds-sgb-approval'], incoming: 'receipt', documents: ['sgb-broker-documents'], outgoing: 'send-sgb' }],
+      ['sber', { label: 'MF Corporation · Сбер', ipdsApproval: [], incoming: 'sber', documents: [], outgoing: 'send-sber' }],
     ]);
     const payouts = {
       usd: { label: 'Выплата через IPPS / SWIFT в USD', sections: ['ipps-payout', 'prepay'] },
@@ -1252,7 +1280,7 @@
       const account = route ? accounts.get(route.account) : null;
       const payout = payment ? payouts[payment.payout] : null;
       const ids = route
-        ? ['rate', 'ipds', 'contract', account.incoming, 'broker', account.outgoing, ...account.documents,
+        ? ['rate', 'ipds', ...account.ipdsApproval, 'contract', account.incoming, 'broker', account.outgoing, ...account.documents,
           'wallet-signing', ...payout.sections, 'exceptions']
         : [sectionId];
       const visibleIds = new Set(ids);
