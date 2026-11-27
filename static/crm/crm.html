@@ -1239,6 +1239,23 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
                                 <!-- Загружается динамически -->
                             </select>
                         </div>
+                        <div class="form-group" id="dealSourceChannelGroup">
+                            <label class="form-label" for="dealSourceChannel">Канал обращения</label>
+                            <select class="form-control" name="source_channel" id="dealSourceChannel" required>
+                                <option value="">Выберите канал</option>
+                                <option value="whatsapp">WhatsApp</option>
+                                <option value="telegram">Telegram</option>
+                                <option value="bitrix">Битрикс</option>
+                            </select>
+                            <div id="dealChatPicker" hidden style="margin-top: 12px;">
+                                <label class="form-label" id="dealChatLabel" for="dealChatSearch">Переписка</label>
+                                <input class="form-control" id="dealChatSearch" type="search" autocomplete="off" placeholder="Поиск по имени или номеру">
+                                <select class="form-control" id="dealSourceChat" name="source_chat" aria-labelledby="dealChatLabel" disabled>
+                                    <option value="">Выберите из списка</option>
+                                </select>
+                                <small class="form-hint" id="dealChatStatus" role="status"></small>
+                            </div>
+                        </div>
                         <div class="form-group" style="position:relative;">
                             <label class="form-label">Клиент</label>
                             <input type="hidden" name="client_id" id="clientIdHidden">
@@ -1247,15 +1264,6 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
                             <!-- Старый select скрыт для совместимости -->
                             <select class="form-control" name="_client_id_old" id="clientSelect" style="display:none;">
                                 <option value="">Выберите или введите ниже</option>
-                            </select>
-                        </div>
-                        <div class="form-group" id="dealSourceChannelGroup">
-                            <label class="form-label" for="dealSourceChannel">Канал обращения</label>
-                            <select class="form-control" name="source_channel" id="dealSourceChannel" required>
-                                <option value="">Выберите канал</option>
-                                <option value="whatsapp">WhatsApp</option>
-                                <option value="telegram">Telegram</option>
-                                <option value="bitrix">Битрикс</option>
                             </select>
                         </div>
                         <div class="form-group">
@@ -4167,7 +4175,7 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
         }
 
         function upgradeAllSelects() {
-            document.querySelectorAll('select.form-control:not(#dealSourceChannel)').forEach(upgradeSelect);
+            document.querySelectorAll('select.form-control:not(#dealSourceChannel, #dealSourceChat)').forEach(upgradeSelect);
         }
 
         // ==================== HTML escape (защита от XSS) ====================
@@ -4320,18 +4328,18 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
             ) : allClients;
 
             let html = filtered.slice(0, 30).map(c => `
-                <div class="client-dropdown-item" data-id="${c.id}" data-name="${c.name}" onclick="selectClient(${c.id}, '${(c.name||'').replace(/'/g, "\\'")}')">
+                <div class="client-dropdown-item" data-id="${Number(c.id)}" data-name="${escapeHtml(c.name)}" onclick="selectClient(${Number(c.id)}, ${escapeHtml(JSON.stringify(c.name || ''))})">
                     <div>
-                        <div class="client-name">${c.name || 'Без имени'}</div>
-                        ${c.telegram || c.phone ? `<div class="client-meta">${c.telegram || c.phone || ''}</div>` : ''}
+                        <div class="client-name">${escapeHtml(c.name || 'Без имени')}</div>
+                        ${c.telegram || c.phone ? `<div class="client-meta">${escapeHtml(c.telegram || c.phone)}</div>` : ''}
                     </div>
-                    <button class="client-delete" onclick="event.stopPropagation(); deleteClient(${c.id}, '${(c.name||'').replace(/'/g, "\\'")}')" title="Удалить">✕</button>
+                    <button class="client-delete" onclick="event.stopPropagation(); deleteClient(${Number(c.id)}, ${escapeHtml(JSON.stringify(c.name || ''))})" title="Удалить">✕</button>
                 </div>
             `).join('');
 
             if (q && !filtered.some(c => (c.name || '').toLowerCase() === q)) {
-                html += `<div class="client-dropdown-create" onclick="selectNewClient('${q.replace(/'/g, "\\'")}')">
-                    <span>+</span> Создать «${filter.trim()}»
+                html += `<div class="client-dropdown-create" onclick="selectNewClient(${escapeHtml(JSON.stringify(q))})">
+                    <span>+</span> Создать «${escapeHtml(filter.trim())}»
                 </div>`;
             }
 
@@ -4349,6 +4357,116 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
             document.getElementById('clientIdHidden').value = '';
             document.getElementById('clientSearchInput').value = name;
             document.getElementById('clientDropdown').style.display = 'none';
+        }
+
+        const dealChatChannels = {
+            whatsapp: ['wa', 'Чат WhatsApp'],
+            telegram: ['tg', 'Чат Telegram'],
+            bitrix: ['bitrix', 'Карточка Битрикса']
+        };
+        let dealChatRows = [];
+        let dealChatLoadVersion = 0;
+        let dealChatPickVersion = 0;
+        let dealChatAutoClient = null;
+
+        function resetDealChatPicker() {
+            dealChatLoadVersion++;
+            dealChatPickVersion++;
+            dealChatRows = [];
+            dealChatAutoClient = null;
+            document.getElementById('dealChatPicker').hidden = true;
+            document.getElementById('dealChatSearch').value = '';
+            const select = document.getElementById('dealSourceChat');
+            select.replaceChildren(new Option('Выберите из списка', ''));
+            select.disabled = true;
+            document.getElementById('dealChatStatus').textContent = '';
+        }
+
+        function clearDealChatClient() {
+            const client = document.getElementById('clientSearchInput');
+            const id = document.getElementById('clientIdHidden');
+            if (dealChatAutoClient && client.value === dealChatAutoClient.name && id.value === dealChatAutoClient.id) {
+                selectNewClient('');
+            }
+            dealChatAutoClient = null;
+        }
+
+        function renderDealChatChoices() {
+            const search = document.getElementById('dealChatSearch').value.trim().toLowerCase();
+            const select = document.getElementById('dealSourceChat');
+            const selected = dealChatRows.find(row => row.key === select.value);
+            const matches = dealChatRows.filter(row =>
+                [row.name, row.account, row.id].some(value => String(value).toLowerCase().includes(search)));
+            const visible = matches.filter(row => row !== selected).slice(0, 50);
+            if (selected) visible.unshift(selected);
+            select.replaceChildren(new Option('Выберите из списка', ''), ...visible.map(row =>
+                new Option(row.label, row.key)));
+            select.value = selected?.key || '';
+            select.disabled = visible.length === 0;
+            document.getElementById('dealChatStatus').textContent = matches.length > 50
+                ? 'Показаны недавние записи. Уточните поиск, чтобы увидеть остальные.'
+                : matches.length ? '' : 'Записи не найдены. Можно ввести имя клиента вручную.';
+        }
+
+        async function loadDealChatChoices() {
+            clearDealChatClient();
+            resetDealChatPicker();
+            const source = document.getElementById('dealSourceChannel').value;
+            if (!source || !standLinkState().isStand) return;
+            const [channel, label] = dealChatChannels[source];
+            const version = dealChatLoadVersion;
+            const status = document.getElementById('dealChatStatus');
+            document.getElementById('dealChatLabel').textContent = label;
+            document.getElementById('dealChatPicker').hidden = false;
+            status.textContent = 'Загружаем список…';
+            try {
+                const response = await fetch(`${API_URL}/api/stand/channels?channel=${channel}`);
+                const result = await response.json();
+                if (version !== dealChatLoadVersion) return;
+                if (!response.ok || !result.success) throw new Error('Chat list unavailable');
+                const entries = result.data[channel] || [];
+                const labels = new Map();
+                dealChatRows = entries.map(row => {
+                    const label = [row.name || row.id, row.account].filter(Boolean).join(' · ');
+                    labels.set(label, (labels.get(label) || 0) + 1);
+                    return {...row, label, key: JSON.stringify([row.account, row.id])};
+                });
+                for (const row of dealChatRows) {
+                    if (labels.get(row.label) > 1) row.label += ' · ' + row.id;
+                }
+                renderDealChatChoices();
+            } catch {
+                if (version === dealChatLoadVersion) {
+                    status.textContent = 'Список недоступен. Можно ввести имя клиента вручную.';
+                }
+            }
+        }
+
+        async function pickDealChat() {
+            const version = ++dealChatPickVersion;
+            const select = document.getElementById('dealSourceChat');
+            const chat = dealChatRows.find(row => row.key === select.value);
+            if (!chat) {
+                clearDealChatClient();
+                return;
+            }
+            const source = document.getElementById('dealSourceChannel').value;
+            const name = (chat.name || chat.id).trim().slice(0, 100);
+            selectNewClient(name);
+            dealChatAutoClient = {name, id: ''};
+            const params = new URLSearchParams({source, account: chat.account, id: chat.id});
+            try {
+                const response = await fetch(`${API_URL}/api/stand/channels/client?${params}`);
+                const {client} = await response.json();
+                if (response.ok && client && version === dealChatPickVersion &&
+                    document.getElementById('clientSearchInput').value === name &&
+                    !document.getElementById('clientIdHidden').value) {
+                    selectClient(client.id, client.name);
+                    dealChatAutoClient = {name: client.name, id: String(client.id)};
+                }
+            } catch {
+                // The selected chat still supplies the name.
+            }
         }
 
         async function deleteClient(clientId, clientName) {
@@ -4371,6 +4489,9 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
             const input = document.getElementById('clientSearchInput');
             const dropdown = document.getElementById('clientDropdown');
             if (!input) return;
+            document.getElementById('dealSourceChannel').addEventListener('change', loadDealChatChoices);
+            document.getElementById('dealChatSearch').addEventListener('input', renderDealChatChoices);
+            document.getElementById('dealSourceChat').addEventListener('change', pickDealChat);
 
             input.addEventListener('focus', () => { loadClientCombobox().then(() => renderClientDropdown(input.value)); });
             input.addEventListener('input', () => {
@@ -5270,6 +5391,10 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
                         </div>
                         <hr style="margin: 1rem 0;">
                         
+                        ${deal.source_chat ? `<p>
+                            <strong>${escapeHtml(deal.source_chat.channel === 'bitrix' ? 'Карточка Битрикса' :
+                                deal.source_chat.channel === 'wa' ? 'Чат WhatsApp' : 'Чат Telegram')}</strong>
+                            ${escapeHtml(deal.source_chat.name || deal.source_chat.id)} · ${escapeHtml(deal.source_chat.account)}</p>` : ''}
                         <h4 style="color: #10b981; margin-bottom: 0.5rem;">Pay-In</h4>
                         ${deal.is_custom ? `
                             ${deal.payin_method ? `<p><strong>Метод:</strong> ${getPayinMethodLabel(deal.payin_method)}</p>` : ''}
@@ -6200,6 +6325,7 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
             editingDealId = null;
             document.getElementById('dealSourceChannelGroup').hidden = false;
             document.getElementById('dealSourceChannel').disabled = false;
+            resetDealChatPicker();
             leaseholdReclassification = null;
             document.getElementById('createDealForm').inert = false;
             editingPayinRubIsNet = true;
@@ -9674,11 +9800,12 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
 
             // Получаем данные менеджера и клиента из формы
             const managerName = selectedManagerIdentity().name;
-            const clientId = document.getElementById('clientSelect').value;
+            const clientId = document.getElementById('clientIdHidden').value;
             const clientName = document.querySelector('[name="client_name"]').value;
 
             const data = {
                 source_channel: channel.value,
+                source_chat: document.getElementById('dealSourceChat').value || undefined,
                 deal_type: 'pay_in',
                 status: payinMethod === 'flow_sole_reqs' ? 'pending' : 'completed',
                 manager_name: managerName,
@@ -9763,6 +9890,7 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
 
                     // Очистка формы
                     channel.value = '';
+                    resetDealChatPicker();
                     document.getElementById('customPayinAmount').value = '';
                     delete document.getElementById('customPayinUsdt').dataset.flowDraftTyped;
                     document.getElementById('customPayoutAmount').value = '';
@@ -10286,6 +10414,7 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
                     // сделку сохранили, но цифру надо перепроверить
                     if (result.warning) showToast(result.warning, 'error', 10000);
                     this.reset();
+                    resetDealChatPicker();
                     if (data.deal_kind === 'personal_realty') {
                         delete document.getElementById('payoutSettledByPayin').dataset.touched;
                         payoutTxPool = [];

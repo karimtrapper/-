@@ -417,7 +417,7 @@ def invalidate_tronscan_cache():
     TRONSCAN_CACHE['balances'] = {}
 
 # ==================== MODELS ====================
-from sqlalchemy import Column, Integer, BigInteger, String, Float, DateTime, Boolean, Text, LargeBinary, ForeignKey, Enum as SQLEnum, or_, and_, UniqueConstraint, Index, CheckConstraint
+from sqlalchemy import JSON, func, Column, Integer, BigInteger, String, Float, DateTime, Boolean, Text, LargeBinary, ForeignKey, Enum as SQLEnum, or_, and_, UniqueConstraint, Index, CheckConstraint
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, deferred
 from enum import Enum
@@ -1828,6 +1828,7 @@ class Deal(Base):
     # Канал привлечения из /start-парама бота: 'insta', 'site', 'ref:GR-XXX'…
     # Пишет DealCloser (utm_source__/ref__ из первого сообщения Bitrix-чата)
     source_channel = Column(String(50), nullable=True)
+    source_chat = Column(JSON, nullable=True)
     revived_by_deal_id = Column(Integer, ForeignKey('deals.id'), nullable=True)  # WON, забравший этот LOSE
     # ── Недвижимость через MF Corporation (leasehold) ────────────────────────
     # Спека: docs/specs/2026-08-04-mf-corp-leasehold.md
@@ -3437,9 +3438,12 @@ try:
     with engine.connect() as conn:
         if 'postgresql' in DATABASE_URL:
             conn.execute(text("ALTER TABLE deals ADD COLUMN IF NOT EXISTS source_channel VARCHAR(50)"))
+            conn.execute(text("ALTER TABLE deals ADD COLUMN IF NOT EXISTS source_chat JSON"))
         else:
-            try: conn.execute(text("ALTER TABLE deals ADD COLUMN source_channel VARCHAR(50)"))
-            except: pass
+            for ddl in ("ALTER TABLE deals ADD COLUMN source_channel VARCHAR(50)",
+                        "ALTER TABLE deals ADD COLUMN source_chat JSON"):
+                try: conn.execute(text(ddl))
+                except: pass
         conn.commit()
 except Exception as e:
     print(f"ℹ️ source_channel migration: {e}")
@@ -6881,7 +6885,13 @@ def stand_channels_get():
         return jsonify({'success': False, 'error': 'unauthorized'}), 401
     db = get_session()
     try:
-        rows = db.query(StandChannel).order_by(StandChannel.last_active.desc()).all()
+        channel = request.args.get('channel')
+        if channel and channel not in ('tg', 'wa', 'bitrix'):
+            return jsonify({'success': False, 'error': 'Некорректный канал'}), 400
+        query = db.query(StandChannel)
+        if channel:
+            query = query.filter_by(channel=channel)
+        rows = query.order_by(StandChannel.last_active.desc(), StandChannel.id.desc()).all()
         res = {'tg': [], 'wa': [], 'bitrix': []}
         for r in rows:
             if r.channel not in res:
@@ -6896,6 +6906,63 @@ def stand_channels_get():
                 entry['close_proof'] = _stand_bitrix_close_proof(r.chat_id)
             res[r.channel].append(entry)
         return jsonify({'success': True, 'data': res})
+    finally:
+        db.close()
+
+
+CRM_CHAT_CHANNELS = {'whatsapp': 'wa', 'telegram': 'tg', 'bitrix': 'bitrix'}
+
+
+def _crm_source_chat(db, source, account, chat_id):
+    channel = CRM_CHAT_CHANNELS.get(source) if isinstance(source, str) else None
+    if not STAND_MODE or not channel or not account or not chat_id:
+        return None
+    return db.query(StandChannel).filter_by(channel=channel, account=account, chat_id=chat_id).first()
+
+
+def _crm_client_for_source_chat(db, chat):
+    client = db.query(Client).join(Deal, Deal.client_id == Client.id).filter(
+        Deal.source_chat['channel'].as_string() == chat.channel,
+        Deal.source_chat['account'].as_string() == chat.account,
+        Deal.source_chat['id'].as_string() == chat.chat_id,
+        Client.is_test.isnot(True), Deal.is_test.isnot(True),
+    ).order_by(Deal.id.desc()).first()
+    if client:
+        return client
+
+    board = db.get(StandState, 1)
+    if not board:
+        return None
+    state = json.loads(board.data or '{}')
+    ref = f'{chat.account}:{chat.chat_id}'
+    client_key = (state.get('chatClientMap') or {}).get(f'{chat.channel}:{ref}')
+    if isinstance(client_key, str) and re.fullmatch(r'crm:[1-9][0-9]*', client_key):
+        linked = db.get(Client, int(client_key[4:]))
+        if linked and not linked.is_test:
+            return linked
+    crm_ids = [card['crmDealId'] for card in state.get('deals', [])
+               if card.get('source') == chat.channel and card.get('sourceRef') == ref
+               and not card.get('srefOther') and card.get('crmDealId')]
+    if crm_ids:
+        return db.query(Client).join(Deal, Deal.client_id == Client.id).filter(
+            Deal.id.in_(crm_ids), Client.is_test.isnot(True), Deal.is_test.isnot(True),
+        ).order_by(Deal.id.desc()).first()
+    return None
+
+
+@app.route('/api/stand/channels/client', methods=['GET'])
+def stand_channel_client():
+    if not STAND_MODE:
+        return jsonify({'success': False, 'error': 'stand_only'}), 404
+    db = get_session()
+    try:
+        chat = _crm_source_chat(db, request.args.get('source'), request.args.get('account'),
+                                request.args.get('id'))
+        if not chat:
+            return jsonify({'success': False, 'error': 'Чат больше не найден'}), 404
+        client = _crm_client_for_source_chat(db, chat)
+        return jsonify({'success': True, 'client': {'id': client.id, 'name': client.name}
+                        if client else None})
     finally:
         db.close()
 
@@ -19737,6 +19804,7 @@ def get_deal(deal_id):
             return jsonify({'success': False, 'error': 'Сделка не найдена'}), 404
         row = deal.to_dict()
         if STAND_MODE:
+            row['source_chat'] = deal.source_chat
             task_board_card = _crm_task_board_card(session, deal_id)
             if task_board_card is not None:
                 row['task_board'] = task_board_card
@@ -23132,6 +23200,21 @@ def _create_deal_impl(session=None, *, data=None, defer_commit=False, skip_flow_
         session = get_session()
     try:
         data = dict(request.get_json() if data is None else data)
+        source_chat = None
+        if data.get('source_chat'):
+            try:
+                key = json.loads(data['source_chat'])
+                if not isinstance(key, list) or len(key) != 2 or not all(
+                        isinstance(value, str) and 0 < len(value) <= 100 for value in key):
+                    raise ValueError
+                account, chat_id = key
+            except (TypeError, ValueError):
+                return jsonify({'success': False, 'error': 'Некорректная переписка'}), 400
+            chat = _crm_source_chat(session, data.get('source_channel'), account, chat_id)
+            if not chat:
+                return jsonify({'success': False, 'error': 'Переписка недоступна в этом канале'}), 400
+            source_chat = {'channel': chat.channel, 'account': chat.account,
+                           'id': chat.chat_id, 'name': chat.name}
         payout_problem = _prepare_ipps_payout(session, data) or _prepare_personal_payout(session, data)
         if payout_problem:
             return jsonify(success=False, error=payout_problem), 400
@@ -23216,12 +23299,28 @@ def _create_deal_impl(session=None, *, data=None, defer_commit=False, skip_flow_
         # Автоматически создаём клиента если указано имя и такого клиента ещё нет
         client_id = data.get('client_id')
         client_name = data.get('client_name')
+        if source_chat and not client_id:
+            suggested_name = (chat.name.strip() or chat.chat_id)[:100]
+            if not client_name or client_name == suggested_name:
+                known_client = _crm_client_for_source_chat(session, chat)
+                if known_client:
+                    client_id, client_name = known_client.id, known_client.name
+                else:
+                    client_name = suggested_name
 
         if not client_id and client_name:
             # Нормализуем имя: trim + регистронезависимый поиск, иначе «Иван»,
             # «иван » и «ИВАН» создавали 3 разных клиента и размазывали статистику.
             client_name = client_name.strip()
-            existing_client = session.query(Client).filter(Client.name.ilike(client_name)).first()
+            if source_chat:
+                candidates = session.query(Client).filter(
+                    func.lower(Client.name) == client_name.lower(), Client.is_test.isnot(True),
+                ).limit(2).all()
+                if len(candidates) > 1:
+                    return jsonify({'success': False, 'error': 'Выберите нужного клиента из справочника'}), 400
+                existing_client = candidates[0] if candidates else None
+            else:
+                existing_client = session.query(Client).filter(Client.name.ilike(client_name)).first()
             if not existing_client:
                 # Для отказа и «не обращения» клиента НЕ создаём (замусорит базу
                 # непокупателями), матчинг revive идёт по client_name.
@@ -23364,6 +23463,7 @@ def _create_deal_impl(session=None, *, data=None, defer_commit=False, skip_flow_
             lose_reason=(data.get('lose_reason') or None),
             bitrix_deal_id=int(data['bitrix_deal_id']) if data.get('bitrix_deal_id') else None,
             source_channel=(data.get('source_channel') or '').strip()[:50] or None,
+            source_chat=source_chat,
             notes=data.get('notes')
         )
         # Приход крипты частями: несколько хэшей на одну сделку

@@ -569,7 +569,7 @@ window.createCrmDraftCore = function createCrmDraftCore(root, adapters) {
         }
 
         function upgradeAllSelects() {
-            document.querySelectorAll('select.form-control:not(#dealSourceChannel)').forEach(upgradeSelect);
+            document.querySelectorAll('select.form-control:not(#dealSourceChannel, #dealSourceChat)').forEach(upgradeSelect);
         }
 
         function formatDate(dateStr) {

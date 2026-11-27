@@ -164,6 +164,90 @@ def stand_ui(chromium, crm_server, monkeypatch):
     context.close()
 
 
+@pytest.mark.parametrize('custom', [False, True], ids=['standard', 'custom'])
+def test_manual_crm_deal_selects_channel_conversation(stand_ui, custom):
+    page, errors = stand_ui
+    base = page.url.split('/crm', 1)[0]
+    with A.get_session() as db:
+        client = A.Client(name='QA Existing Contact')
+        db.add(client)
+        db.flush()
+        client_id = client.id
+        state = db.get(A.StandState, 1) or A.StandState(id=1, version=1)
+        state.data = json.dumps({
+            **A._stand_initial_state(),
+            'chatClientMap': {'wa:Sales:66000000001@c.us': f'crm:{client_id}'},
+        })
+        db.add(state)
+        db.add_all([
+            A.StandChannel(channel='wa', account='Sales', chat_id='66000000001@c.us',
+                           name='QA WhatsApp', last_active=2),
+            A.StandChannel(channel='wa', account='Sales', chat_id='66000000002@c.us',
+                           name='QA WhatsApp', last_active=1),
+            A.StandChannel(channel='tg', account='Sales', chat_id='101',
+                           name='QA Telegram', last_active=1),
+            A.StandChannel(channel='bitrix', account='Grusha', chat_id='201',
+                           name='QA Bitrix', last_active=1),
+        ])
+        db.commit()
+
+    page.locator('.nav-create-btn').click()
+    channel = page.locator('#dealSourceChannel')
+    options = page.locator('#dealSourceChat')
+    client_input = page.locator('#clientSearchInput')
+    channel.select_option('telegram')
+    options.select_option(label='QA Telegram · Sales')
+    expect(client_input).to_have_value('QA Telegram')
+    channel.select_option('bitrix')
+    options.select_option(label='QA Bitrix · Grusha')
+    expect(client_input).to_have_value('QA Bitrix')
+    channel.select_option('whatsapp')
+    page.locator('#dealChatSearch').fill('66000000001')
+    options.select_option(label='QA WhatsApp · Sales · 66000000001@c.us')
+    expect(client_input).to_have_value('QA Existing Contact')
+    expect(page.locator('#clientIdHidden')).to_have_value(str(client_id))
+
+    if custom:
+        channel.select_option('telegram')
+        options.select_option(label='QA Telegram · Sales')
+        expect(client_input).to_have_value('QA Telegram')
+        client_input.fill('QA Confirmed Telegram')
+        choose(page, '#dealProductSelect', 'Кастомная — нестандартные валюты')
+        page.locator('#customPayinAmount').fill('100')
+        choose(page, '#customPayoutCurrency', 'USDT')
+        page.locator('#customPayoutAmount').fill('90')
+        submit = page.locator('#customDealSubmit')
+    else:
+        page.locator('#payinMethod').select_option('crypto_direct', force=True)
+        page.locator('#createDealForm [name="payin_amount_usdt"]').fill('100')
+        page.locator('#payoutAmountThb').fill('3000')
+        submit = page.locator('#createDealForm button[type=submit]')
+    with page.expect_response(lambda r: urlsplit(r.url).path == '/api/deals'
+                              and r.request.method == 'POST' and r.status == 201) as saved:
+        submit.click()
+        page.get_by_role('button', name='Да, продолжить').click()
+    deal_id = saved.value.json()['deal']['id']
+    deal = page.request.get(f'{base}/api/deals/{deal_id}').json()['deal']
+    if custom:
+        assert deal['client_id'] > 0 and deal['client_id'] != client_id
+        assert deal['client_name'] == 'QA Confirmed Telegram'
+        assert deal['source_channel'] == 'telegram'
+        assert deal['source_chat'] == {'channel': 'tg', 'account': 'Sales',
+                                      'id': '101', 'name': 'QA Telegram'}
+        owner = page.request.get(f'{base}/api/stand/channels/client?source=telegram&account=Sales&id=101')
+        assert owner.json()['client'] == {'id': deal['client_id'], 'name': 'QA Confirmed Telegram'}
+    else:
+        assert deal['client_id'] == client_id
+        assert deal['source_channel'] == 'whatsapp'
+        assert deal['source_chat'] == {'channel': 'wa', 'account': 'Sales',
+                                      'id': '66000000001@c.us', 'name': 'QA WhatsApp'}
+    assert not deal['bitrix_deal_id']
+    assert page.request.post(f'{base}/api/deals', data={
+        'source_channel': 'telegram', 'source_chat': '["Sales","66000000001@c.us"]',
+    }).status == 400
+    assert not errors, errors
+
+
 def test_freehold_calculator_custom_transfer_tariff(stand_ui):
     page, errors = stand_ui
     base = page.url.split('/crm', 1)[0]
