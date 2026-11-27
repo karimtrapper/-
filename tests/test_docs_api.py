@@ -376,6 +376,26 @@ def docs_admin(client):
 @pytest.fixture
 def docs_board_schema():
     crm.Base.metadata.create_all(crm.engine, tables=[crm.StandState.__table__])
+    # SQLite может повторно выдать ID договора после clean_agreements.
+    # Ссылки из предыдущих тестов задачника не относятся к новому договору.
+    with get_session() as db:
+        board = db.get(crm.StandState, 1)
+        original_data = board.data if board is not None else None
+        had_board = board is not None
+        if had_board:
+            board.data = '{}'
+            db.commit()
+    try:
+        yield
+    finally:
+        with get_session() as db:
+            board = db.get(crm.StandState, 1)
+            if board is not None:
+                if had_board:
+                    board.data = original_data
+                else:
+                    db.delete(board)
+                db.commit()
 
 
 @pytest.fixture
