@@ -913,7 +913,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
     <link rel="stylesheet" href="/static/design-layer.css?v=6">
     <link rel="stylesheet" href="/static/fonts/slate/fonts.css">
     <link rel="stylesheet" href="/static/slate-shell.css?v=1">
-    <link rel="stylesheet" href="/static/slate-surfaces.css?v=2">
+    <link rel="stylesheet" href="/static/slate-surfaces.css?v=3">
 </head>
 
 <body class="wave4a">
@@ -2921,16 +2921,16 @@ select.period-btn:hover:not(.active) { color: var(--text); }
             <div class="card">
                 <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
                     <span>Заявки на выплату</span>
-                    <div style="display:flex;gap:6px;flex-wrap:wrap;">
-                        <button class="btn btn-sm btn-light payout-filter-btn active" data-status="" onclick="filterPayoutRequests('')">Все</button>
-                        <button class="btn btn-sm btn-light payout-filter-btn" data-status="new" onclick="filterPayoutRequests('new')">Новые</button>
-                        <button class="btn btn-sm btn-light payout-filter-btn" data-status="in_progress" onclick="filterPayoutRequests('in_progress')">В работе</button>
-                        <button class="btn btn-sm btn-light payout-filter-btn" data-status="paid" onclick="filterPayoutRequests('paid')">Выплачено</button>
-                        <button class="btn btn-sm btn-light payout-filter-btn" data-status="cancelled" onclick="filterPayoutRequests('cancelled')">Отменено</button>
+                    <div class="payout-filters" style="display:flex;gap:6px;flex-wrap:wrap;">
+                        <button class="btn btn-sm btn-light payout-filter-btn active" aria-pressed="true" data-status="" onclick="filterPayoutRequests('')">Все</button>
+                        <button class="btn btn-sm btn-light payout-filter-btn" aria-pressed="false" data-status="new" onclick="filterPayoutRequests('new')">Новые</button>
+                        <button class="btn btn-sm btn-light payout-filter-btn" aria-pressed="false" data-status="in_progress" onclick="filterPayoutRequests('in_progress')">В работе</button>
+                        <button class="btn btn-sm btn-light payout-filter-btn" aria-pressed="false" data-status="paid" onclick="filterPayoutRequests('paid')">Выплачено</button>
+                        <button class="btn btn-sm btn-light payout-filter-btn" aria-pressed="false" data-status="cancelled" onclick="filterPayoutRequests('cancelled')">Отменено</button>
                     </div>
                 </div>
                 <div id="payoutRequestsList" style="margin-top:1rem;">
-                    <div style="color:#999;font-style:italic;padding:1rem;text-align:center;">Загрузка...</div>
+                    <div class="payout-request-message" style="color:#999;font-style:italic;padding:1rem;text-align:center;">Загрузка...</div>
                 </div>
             </div>
         </section>
@@ -16868,7 +16868,9 @@ ${Math.abs(c.debits_delta_rub) < 0.01
         function filterPayoutRequests(status) {
             _payoutFilter = status;
             document.querySelectorAll('.payout-filter-btn').forEach(b => {
-                b.classList.toggle('active', b.dataset.status === status);
+                const active = b.dataset.status === status;
+                b.classList.toggle('active', active);
+                b.setAttribute('aria-pressed', String(active));
             });
             loadPayoutRequests();
         }
@@ -16881,7 +16883,7 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                 const data = await res.json();
                 if (data.success) updatePayoutAttention(data);
                 if (!data.success || !data.requests || data.requests.length === 0) {
-                    list.innerHTML = '<div style="color:#999;font-style:italic;padding:1rem;text-align:center;">Заявок нет</div>';
+                    list.innerHTML = '<div class="payout-request-message" style="color:#999;font-style:italic;padding:1rem;text-align:center;">Заявок нет</div>';
                     return;
                 }
                 list.innerHTML = data.requests.map(r => {
@@ -16895,51 +16897,51 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                     // Батовая заявка закрывается загрузкой чека, USDT — хешем транзакции
                     const paidBlock = isThb
                         ? `<div class="payout-request-paid-entry" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
-                                <input type="file" id="payout-receipt-${r.id}" accept="image/*,.pdf"
+                                <input type="file" id="payout-receipt-${r.id}" accept="image/*,.pdf" aria-label="Чек выплаты"
                                        style="flex:1;min-width:200px;font-size:12px;padding:6px;border:1px dashed #CBD5E1;border-radius:6px;background:#F8FAFC;color:#475569;">
-                                <button class="btn btn-sm btn-success" onclick="payThbReceipt(${r.id})">Выплачено (чек)</button>
+                                <button class="btn btn-sm btn-success payout-request-complete" onclick="payThbReceipt(${r.id})">Выплачено (чек)</button>
                            </div>`
                         : `<div class="payout-request-paid-entry" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
                                 <input type="text" id="payout-tx-${r.id}" placeholder="Хеш TRC-20" aria-label="Хеш транзакции TRC-20 для выплаты"
                                        style="flex:1;min-width:200px;padding:7px 10px;border:1px solid #CBD5E1;border-radius:6px;font-size:12px;font-family:monospace;">
-                                <button class="btn btn-sm btn-success" onclick="setPayoutStatus(${r.id}, 'paid')">Выплачено</button>
+                                <button class="btn btn-sm btn-success payout-request-complete" onclick="setPayoutStatus(${r.id}, 'paid')">Выплачено</button>
                            </div>`;
                     const actions = isFinal ? '' : `
                         <div class="payout-request-actions" style="margin-top:10px;display:flex;flex-direction:column;gap:8px;">
                             ${paidBlock}
                             <div style="display:flex;gap:6px;flex-wrap:wrap;">
                                 ${r.status === 'new' ? `<button class="btn btn-sm btn-light" onclick="setPayoutStatus(${r.id}, 'in_progress')">В работу</button>` : ''}
-                                <button class="btn btn-sm btn-light" onclick="setPayoutStatus(${r.id}, 'cancelled')">Отменить</button>
+                                <button class="btn btn-sm btn-light payout-request-cancel" onclick="setPayoutStatus(${r.id}, 'cancelled')">Отменить</button>
                             </div>
                         </div>`;
                     const amountHtml = isThb
                         ? `<div class="payout-request-amount" style="text-align:right;white-space:nowrap;">
-                               <div style="font-size:18px;font-weight:800;color:#2563EB;">${fmtThb(r.thb_amount || 0)} ฿</div>
-                               <div style="font-size:11px;color:#94A3B8;">возместить $${(r.amount_usdt || 0).toFixed(2)}</div>
+                               <div class="payout-request-total" style="font-size:18px;font-weight:800;color:#2563EB;">${fmtThb(r.thb_amount || 0)} ฿</div>
+                               <div class="payout-request-meta" style="font-size:11px;color:#94A3B8;">возместить $${(r.amount_usdt || 0).toFixed(2)}</div>
                            </div>`
-                        : `<div class="payout-request-amount" style="font-size:18px;font-weight:800;color:#16A34A;white-space:nowrap;">$${(r.amount_usdt || 0).toFixed(2)}</div>`;
+                        : `<div class="payout-request-amount payout-request-total" style="font-size:18px;font-weight:800;color:#16A34A;white-space:nowrap;">$${(r.amount_usdt || 0).toFixed(2)}</div>`;
                     const details = isThb
-                        ? `<div><span style="color:#94A3B8;">Курс клиенту:</span> <strong>${r.client_rate ?? '—'}</strong> · откуп по <strong>${r.bitazza_rate ?? '—'}</strong> <span style="color:#94A3B8;">(Bitazza VWAP)</span></div>
-                           <div><span style="color:#94A3B8;">Банк:</span> <strong>${escapeHtml(r.bank_name || '—')}</strong></div>
-                           <div><span style="color:#94A3B8;">Имя:</span> <strong>${escapeHtml(r.account_name || '—')}</strong></div>
-                           <div><span style="color:#94A3B8;">Счёт:</span> <code style="background:#F1F5F9;padding:2px 6px;border-radius:4px;font-size:12px;">${escapeHtml(r.account_number || '—')}</code></div>
-                           <div><span style="color:#94A3B8;">${contactIcon} ${contactLabel}:</span> <strong>${escapeHtml(r.contact_value)}</strong></div>
-                           ${r.has_receipt ? `<div style="color:#16A34A;font-weight:600;">📄 Чек отправлен</div>` : ''}`
-                        : `<div><span style="color:#94A3B8;">Кошелёк:</span> <code style="background:#F1F5F9;padding:2px 6px;border-radius:4px;font-size:12px;word-break:break-all;">${escapeHtml(r.wallet)}</code></div>
-                           <div><span style="color:#94A3B8;">${contactIcon} ${contactLabel}:</span> <strong>${escapeHtml(r.contact_value)}</strong></div>
-                           ${r.notes ? `<div><span style="color:#94A3B8;">Комментарий:</span> ${escapeHtml(r.notes)}</div>` : ''}
-                           ${r.tx_hash ? `<div><span style="color:#94A3B8;">TX:</span> <code style="background:#F0FDF4;color:#16A34A;padding:2px 6px;border-radius:4px;font-size:11px;word-break:break-all;">${escapeHtml(r.tx_hash)}</code></div>` : ''}`;
+                        ? `<div><span class="payout-request-meta" style="color:#94A3B8;">Курс клиенту:</span> <strong>${r.client_rate ?? '—'}</strong> · откуп по <strong>${r.bitazza_rate ?? '—'}</strong> <span class="payout-request-meta" style="color:#94A3B8;">(Bitazza VWAP)</span></div>
+                           <div><span class="payout-request-meta" style="color:#94A3B8;">Банк:</span> <strong>${escapeHtml(r.bank_name || '—')}</strong></div>
+                           <div><span class="payout-request-meta" style="color:#94A3B8;">Имя:</span> <strong>${escapeHtml(r.account_name || '—')}</strong></div>
+                           <div><span class="payout-request-meta" style="color:#94A3B8;">Счёт:</span> <code class="payout-request-reference" style="background:#F1F5F9;padding:2px 6px;border-radius:4px;font-size:12px;">${escapeHtml(r.account_number || '—')}</code></div>
+                           <div><span class="payout-request-meta" style="color:#94A3B8;">${contactIcon} ${contactLabel}:</span> <strong>${escapeHtml(r.contact_value)}</strong></div>
+                           ${r.has_receipt ? `<div class="payout-request-receipt" style="color:#16A34A;font-weight:600;">📄 Чек отправлен</div>` : ''}`
+                        : `<div><span class="payout-request-meta" style="color:#94A3B8;">Кошелёк:</span> <code class="payout-request-reference" style="background:#F1F5F9;padding:2px 6px;border-radius:4px;font-size:12px;word-break:break-all;">${escapeHtml(r.wallet)}</code></div>
+                           <div><span class="payout-request-meta" style="color:#94A3B8;">${contactIcon} ${contactLabel}:</span> <strong>${escapeHtml(r.contact_value)}</strong></div>
+                           ${r.notes ? `<div><span class="payout-request-meta" style="color:#94A3B8;">Комментарий:</span> ${escapeHtml(r.notes)}</div>` : ''}
+                           ${r.tx_hash ? `<div><span class="payout-request-meta" style="color:#94A3B8;">TX:</span> <code class="payout-request-reference payout-request-tx" style="background:#F0FDF4;color:#16A34A;padding:2px 6px;border-radius:4px;font-size:11px;word-break:break-all;">${escapeHtml(r.tx_hash)}</code></div>` : ''}`;
                     return `
                     <div class="payout-request-card" style="border:1px solid #E2E8F0;border-radius:12px;padding:14px;margin-bottom:10px;background:white;">
                         <div class="payout-request-head" style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;">
                             <div style="flex:1;min-width:0;">
                                 <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px;">
-                                    <strong style="font-size:15px;">${escapeHtml(r.referrer_name || '—')}</strong>
-                                    <span style="color:#94A3B8;font-size:12px;">${escapeHtml(r.referrer_code || '')}</span>
-                                    <span class="payout-request-status pill ${r.status === 'paid' ? 'pill-money' : ''}" style="background:${meta.bg};color:${meta.color};padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600;">${meta.label}</span>
+                                    <strong class="payout-request-name" style="font-size:15px;">${escapeHtml(r.referrer_name || '—')}</strong>
+                                    <span class="payout-request-meta" style="color:#94A3B8;font-size:12px;">${escapeHtml(r.referrer_code || '')}</span>
+                                    <span class="payout-request-status pill ${r.status === 'paid' ? 'pill-money' : ''}" data-status="${escapeHtml(r.status)}" style="background:${meta.bg};color:${meta.color};padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600;">${meta.label}</span>
                                     ${isThb ? `<span class="payout-request-thb pill" style="background:#EFF6FF;color:#2563EB;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600;">Баты</span>` : ''}
                                 </div>
-                                <div style="font-size:12px;color:#64748B;">#${r.id} · ${date}</div>
+                                <div class="payout-request-meta" style="font-size:12px;color:#64748B;">#${r.id} · ${date}</div>
                             </div>
                             ${amountHtml}
                         </div>
@@ -16950,7 +16952,7 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                     </div>`;
                 }).join('');
             } catch (e) {
-                list.innerHTML = '<div style="color:#DC2626;padding:1rem;text-align:center;">Ошибка загрузки</div>';
+                list.innerHTML = '<div class="payout-request-message payout-request-error" style="color:#DC2626;padding:1rem;text-align:center;">Ошибка загрузки</div>';
             }
         }
 
