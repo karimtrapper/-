@@ -827,7 +827,7 @@ console.log('test_stand_freehold.js: OK');
     p_acc:'SYNTH-ACCOUNT',p_swift:'SYNTHXX1',p_purp:'Synthetic purpose',
     p_inv:'',p_branch:'',p_bankaddr:''};
   const ctx=run(['addrValid','standSaveError','freeholdIpPsConfirmedAmount','freeholdFee'],['ADDR_RE'],{
-    STAND:true,S:{role:'operator',modal:{id:1473}},standBusy:false,
+    STAND:true,SCREEN:null,SNAP:null,S:{role:'operator',modal:{id:1473}},standBusy:false,
     standPush:false,standSaveScheduled:false,deal:()=>d,document:{getElementById:id=>
       id==='fh_order_ack'?{checked:true}:null},saveNote:()=>{},val:id=>values[id]||'',
     prepayWalletUnavailable:()=>false,prepayWalletUnavailableCard:()=>'',

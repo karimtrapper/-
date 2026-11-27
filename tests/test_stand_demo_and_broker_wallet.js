@@ -5,7 +5,7 @@ function fn(name){
   const one=html.match(new RegExp(`^(?:async )?function ${name}\\([^\\n]*\\)\\{[^\\n]*\\}$`,'m'));
   return (one||html.match(new RegExp(`^(?:async )?function ${name}\\([^]*?^}`,'m')))[0];
 }
-const ctx={S:{role:'operator',convs:[],deals:[]},DRAFTS:{},STAND:true,standDemoEnabled:false,standVer:7,
+const ctx={S:{role:'operator',convs:[],deals:[]},DRAFTS:{},STAND:true,SCREEN:null,SNAP:null,standDemoEnabled:false,standVer:7,
   document:{getElementById:()=>null},saveNote:()=>{},toast:()=>{},save:()=>{},render:()=>{},
   deal:id=>ctx.S.deals.find(d=>d.id===id),need:()=>false,val:id=>({b0:'Broker',b1:'80',b2:'company',b_sent_time:'2026-10-13T12:00:00'}[id]),
   cleanNum:String,num:Number,rubBatchReady:()=>true,now:()=> '13.10, 12:00',
