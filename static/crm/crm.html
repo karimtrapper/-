@@ -490,6 +490,11 @@ select.period-btn:hover:not(.active) { color: var(--text); }
 .btn-warning { background: var(--amber); color: white; }
 .btn-warning:hover { background: #D97706; }
 .btn-sm { padding: 8px 14px; font-size: 13px; min-height: 36px; }
+#dealModal .deal-cabinet-copy {
+    min-height: 44px; max-width: 100%; margin: 0 0 8px; white-space: normal;
+}
+#dealModal .deal-cabinet-copy:disabled { opacity: .6; cursor: wait; }
+#dealModal .deal-cabinet-link-input { display: block; width: 100%; margin-bottom: 8px; }
 .btn-outline {
     background: none; border: 1.5px solid var(--border);
     color: var(--text-sec);
@@ -5664,6 +5669,51 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                 ${status}</span>`;
         }
 
+        async function copyDealCabinetLink(button, dealId, referrerId) {
+            button.disabled = true;
+            const oldInput = button.nextElementSibling;
+            if (oldInput?.classList.contains('deal-cabinet-link-input')) oldInput.remove();
+            const link = fetch(`${API_URL}/api/deals/${dealId}/referrers/${referrerId}/cabinet-link`, {
+                cache: 'no-store',
+            }).then(async response => {
+                if (!response.ok) throw new Error();
+                const data = await response.json();
+                if (data.success !== true || typeof data.url !== 'string' || !/^\/ref\/[A-Za-z0-9_-]+$/.test(data.url)) {
+                    throw new Error();
+                }
+                return new URL(data.url, location.origin).href;
+            });
+            try {
+                if (typeof navigator.clipboard?.write === 'function' && typeof ClipboardItem === 'function') {
+                    const text = link.then(url => new Blob([url], {type: 'text/plain'}));
+                    // WebKit требует вызвать write внутри жеста пользователя, до ожидания сети.
+                    // Clipboard API может отклонить запись до получения ответа сервера.
+                    text.catch(() => {});
+                    try {
+                        await navigator.clipboard.write([new ClipboardItem({'text/plain': text})]);
+                        showToast('Ссылка на кабинет скопирована');
+                        return;
+                    } catch (error) { /* Предлагаем скопировать подтверждённую ссылку вручную. */ }
+                }
+                const url = await link;
+                if (!button.closest('#dealModal.active')) return;
+                const input = document.createElement('input');
+                input.type = 'text';
+                input.className = 'form-control deal-cabinet-link-input';
+                input.readOnly = true;
+                input.value = url;
+                input.setAttribute('aria-label', 'Ссылка на кабинет для ручного копирования');
+                button.after(input);
+                input.focus();
+                input.select();
+                showToast('Скопируйте ссылку из поля', 'warning');
+            } catch (error) {
+                showToast('Не удалось получить ссылку на кабинет', 'error');
+            } finally {
+                button.disabled = false;
+            }
+        }
+
         async function showDealDetails(dealId, btnEl) {
             if (btnEl) { btnEl.textContent = '...'; btnEl.disabled = true; }
             try {
@@ -5758,6 +5808,12 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                     ` : '';
 
                     const task = deal.task_board;
+                    const {isStand} = standLinkState();
+                    const cabinetLinkIds = new Set(isStand ? [] : (deal.cabinet_link_referrer_ids || []));
+                    const cabinetLinkButton = (referrerId, name) => cabinetLinkIds.delete(referrerId) ? `
+                        <button type="button" class="btn btn-secondary btn-sm deal-cabinet-copy"
+                            aria-label="Скопировать ссылку на кабинет — ${escapeHtml(name || 'партнёр')}"
+                            onclick="copyDealCabinetLink(this, ${deal.id}, ${referrerId})">Скопировать ссылку на кабинет</button>` : '';
                     document.getElementById('dealModalContent').innerHTML = `
                         <div class="form-row">
                             <div><strong>ID:</strong> #${deal.id}</div>
@@ -5999,15 +6055,18 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                                             ? '<span class="deal-detail-paid" style="color:#10b981;margin-left:6px;">✓ выплачено' + (a.paid_at ? ' ' + new Date(a.paid_at).toLocaleDateString('ru-RU') : '') + (a.paid_note ? ' · ' + escapeHtml(a.paid_note) : '') + '</span>'
                                             : '<span class="deal-detail-unpaid" style="color:#ef4444;margin-left:6px;">● не выплачено</span>';
                                         const tier = multiTier ? ` <span class="deal-detail-meta" style="color:#9ca3af;font-size:0.8rem;">ур.${a.tier || 1}</span>` : '';
-                                        return `<p style="margin: 0 0 4px;"><strong>Партнёр:</strong> ${escapeHtml(a.name || '—')}${tier} · ${model}
-                                                <span style="color: #f59e0b;font-weight:600;"> · -$${(a.payout_usdt || 0).toFixed(2)}</span>${paid}</p>`;
+                                        return `<div><p style="margin: 0 0 4px;"><strong>Партнёр:</strong> ${escapeHtml(a.name || '—')}${tier} · ${model}
+                                                <span style="color: #f59e0b;font-weight:600;"> · -$${(a.payout_usdt || 0).toFixed(2)}</span>${paid}</p>
+                                            ${cabinetLinkButton(a.referrer_id, a.name)}</div>`;
                                     }).join('');
                                 })()}
                                 ${deal.agents.length > 1 ? `<p style="margin: 4px 0 0; color: #92400e; font-size: 0.85rem;"><strong>Итого партнёрам:</strong> -$${(deal.referrer_payout_usdt || 0).toFixed(2)}</p>` : ''}
+                                ${cabinetLinkIds.has(deal.referrer_id) ? `<p><strong>Партнёр:</strong> ${escapeHtml(deal.referrer_name || '—')}</p>
+                                    ${cabinetLinkButton(deal.referrer_id, deal.referrer_name)}` : ''}
                             </div>
-                        ` : (deal.referrer_name ? `
+                        ` : (deal.referrer_name || cabinetLinkIds.has(deal.referrer_id) ? `
                             <div class="deal-detail-panel deal-detail-partners" style="background: #fffbeb; padding: 0.5rem; border-radius: 6px; border: 1px solid #fef3c7; margin: 0.5rem 0;">
-                                <p style="margin: 0;"><strong>Партнёр:</strong> ${escapeHtml(deal.referrer_name)} · ${
+                                <p style="margin: 0;"><strong>Партнёр:</strong> ${escapeHtml(deal.referrer_name || '—')} · ${
                                     deal.referrer_comp_model === 'markup'
                                         ? '<span style="color:#7c3aed;font-weight:600;">markup +' + (deal.referrer_markup_percent || 0) + '%</span>'
                                         : deal.referrer_comp_model === 'fixed'
@@ -6019,6 +6078,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                                         ? '<span class="deal-detail-paid" style="color:#10b981;margin-left:8px;">✓ выплачено' + (deal.referrer_paid_at ? ' ' + new Date(deal.referrer_paid_at).toLocaleDateString('ru-RU') : '') + '</span>'
                                         : '<span class="deal-detail-unpaid" style="color:#ef4444;margin-left:8px;">● не выплачено</span>'
                                     }</p>
+                                ${cabinetLinkButton(deal.referrer_id, deal.referrer_name)}
                             </div>
                         ` : '')}
 
@@ -6160,6 +6220,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
         function closeModal() {
             const m = document.getElementById('dealModal');
             m.classList.remove('active');
+            m.querySelectorAll('.deal-cabinet-link-input').forEach(input => input.remove());
             m.style.display = '';  // часть открывашек ставила inline display — без сброса модалка остаётся на экране
         }
 

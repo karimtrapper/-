@@ -3,7 +3,7 @@ Unified Service: Calculator + CRM
 Объединённый сервис калькулятора и CRM для Railway
 """
 
-from flask import Flask, jsonify, make_response, request, send_from_directory, send_file, redirect, session as flask_session, g
+from flask import Flask, jsonify, make_response, request, send_from_directory, send_file, redirect, session as flask_session, g, url_for
 from flask_cors import CORS
 from datetime import datetime, timedelta, date
 import os
@@ -20468,6 +20468,54 @@ def _crm_task_board_card(session, crm_deal_id):
     return {}
 
 
+def _deal_cabinet_links_enabled():
+    return TASKS_ENABLED and not STAND_MODE and not flask_session.get('stand_ref_preview')
+
+
+def _can_copy_deal_cabinet_links(deal, role):
+    uid = flask_session.get('user_id')
+    return (_deal_cabinet_links_enabled() and role == 'manager'
+            and type(uid) is int and uid > 0 and deal.manager_user_id == uid
+            and not deal.is_test)
+
+
+def _deal_cabinet_referrers(session, deal):
+    ids = {deal.referrer_id, *(agent.referrer_id for agent in deal.agents)}
+    return session.query(Referrer.id, Referrer.telegram_user_id, Referrer.telegram).filter(
+        Referrer.id.in_(ids - {None}), Referrer.active.is_(True),
+        Referrer.is_test.isnot(True), Referrer.auth_mode == 'telegram',
+        Referrer.token != '')
+
+
+def _has_cabinet_telegram_identity(referrer):
+    # Match the normalization in apply_referrer_tg_binding. An invalid stored
+    # ID cannot fall back to a username because Telegram login uses the ID first.
+    if referrer.telegram_user_id:
+        return referrer.telegram_user_id > 0
+    username = (referrer.telegram or '').lstrip('@').strip()
+    return bool(re.fullmatch(r'[A-Za-z][A-Za-z0-9_]{4,31}', username))
+
+
+@app.route('/api/deals/<int:deal_id>/referrers/<int:referrer_id>/cabinet-link', methods=['GET'])
+def get_deal_referrer_cabinet_link(deal_id, referrer_id):
+    if not _deal_cabinet_links_enabled():
+        return jsonify(success=False, error='not_found'), 404
+    role = current_role()
+    if role != 'manager':
+        return jsonify(success=False, error='forbidden'), 403
+    with get_session() as session:
+        deal = session.get(Deal, deal_id)
+        if not deal or not _can_copy_deal_cabinet_links(deal, role):
+            return jsonify(success=False, error='not_found'), 404
+        referrer = _deal_cabinet_referrers(session, deal).add_columns(Referrer.token).filter(
+            Referrer.id == referrer_id).first()
+        if not referrer or not _has_cabinet_telegram_identity(referrer):
+            return jsonify(success=False, error='not_found'), 404
+        response = jsonify(success=True, url=url_for('referrer_page', token=referrer.token))
+        response.headers['Cache-Control'] = 'private, no-store'
+        return response
+
+
 @app.route('/api/deals/<int:deal_id>', methods=['GET'])
 def get_deal(deal_id):
     session = get_session()
@@ -20477,7 +20525,8 @@ def get_deal(deal_id):
         if not deal:
             return jsonify({'success': False, 'error': 'Сделка не найдена'}), 404
         row = deal.to_dict()
-        if tasks_enabled() and current_role() in STAND_ROLES:
+        role = current_role() if tasks_enabled() else None
+        if role in STAND_ROLES:
             row['source_chat'] = deal.source_chat
             task_board_card = _crm_task_board_card(session, deal_id)
             if task_board_card is not None:
@@ -20494,6 +20543,13 @@ def get_deal(deal_id):
             conv = _converted_payin_usdt(session, [deal.id]).get(deal.id)
             if conv:
                 row['payin_usdt_converted'] = conv
+        if _can_copy_deal_cabinet_links(deal, role):
+            row['cabinet_link_referrer_ids'] = sorted(
+                referrer.id for referrer in _deal_cabinet_referrers(session, deal)
+                if _has_cabinet_telegram_identity(referrer))
+            response = jsonify(success=True, deal=row)
+            response.headers['Cache-Control'] = 'private, no-store'
+            return response
         return jsonify({'success': True, 'deal': row})
     finally:
         session.close()
