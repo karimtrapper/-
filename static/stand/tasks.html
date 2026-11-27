@@ -15068,7 +15068,8 @@ const ANALYTICS_LEGACY_CLOCK=new Intl.DateTimeFormat('ru-RU',{
 const ANALYTICS_WINDOWS={week:'Эта неделя',last7:'7 дней',last30:'30 дней',month:'Этот месяц',all:'Всё время',custom:'Свой период'};
 const ANALYTICS_RATE_REASON='Не устроил курс';
 const ANALYTICS_WON='Успешно завершена';
-const ANALYTICS_OUTCOME_FILTERS={all:Symbol('all'),open:Symbol('open'),won:Symbol('won'),unknown:Symbol('unknown')};
+const ANALYTICS_OUTCOME_FILTERS={all:Symbol('all'),open:Symbol('open'),awaitingClose:Symbol('awaitingClose'),
+  won:Symbol('won'),unknown:Symbol('unknown')};
 const analyticsFilters={period:'week',basis:'activity',inquiry:'all',source:'all',from:'',to:'',reason:null,limit:25};
 const ANALYTICS_TYPES={...INQUIRY_TYPES,unknown:'Не указано'};
 const ANALYTICS_CURRENCIES={RUB:'RUB',THB:'THB',USDT:'USDT',USD:'USD'};
@@ -15134,8 +15135,9 @@ function analyticsDealDate(d,basis){
       legacyStamp===ANALYTICS_LEGACY_CLOCK.format(first.at).replace(',','');
     return legacyHandoff?date:'';
   }
-  const outcome=analyticsOutcome(d);
-  if(outcome==='open')return '';
+  return analyticsOutcome(d)==='open'?'':analyticsRecordedCloseDate(d);
+}
+function analyticsRecordedCloseDate(d){
   const saved=analyticsDateKey(d.closedAt)||analyticsDateKey(d.closedTs);
   if(saved)return saved;
   const events=Array.isArray(d.log)?d.log:[];
@@ -15144,7 +15146,7 @@ function analyticsDealDate(d,basis){
     const text=typeof entry?.text==='string'&&entry.kind!=='comment'?entry.text:'';
     const closeEntry=typeof d.closeReason==='string'&&d.closeReason.trim()&&
       (text==='Закрыта: '+d.closeReason||text==='Закрыта сразу: '+d.closeReason);
-    const transferEntry=d.serverSettled===true&&d.closeReason===ANALYTICS_WON&&
+    const transferEntry=d.closed===true&&d.serverSettled===true&&d.closeReason===ANALYTICS_WON&&
       (text.startsWith('Закрыта: перевод подтверждён — ')||
        (entry?.role==='system'&&text.startsWith('Проверка отправки завершена')));
     if((closeEntry||transferEntry)&&(!entry.ts||entry.ts===d.closedAt||!d.closedAt)){
@@ -15152,11 +15154,10 @@ function analyticsDealDate(d,basis){
       if(date)return date;
     }
   }
-  return outcome==='won'?analyticsDateKey(d.analyticsSettledTs):'';
+  return '';
 }
-function analyticsHasTransferCloseDate(d,date){
-  return !!date&&date===analyticsDateKey(d.analyticsSettledTs)&&
-    !analyticsDateKey(d.closedAt)&&!analyticsDateKey(d.closedTs);
+function analyticsAwaitingClose({d,outcome}){
+  return outcome==='open'&&!!analyticsDateKey(d.analyticsSettledTs);
 }
 function analyticsPeriod(filters,today=analyticsDateKey(Date.now())){
   if(filters.period==='all')return {from:'',to:''};
@@ -15189,11 +15190,6 @@ function analyticsReason(d){
   const value=typeof d.closeReason==='string'?d.closeReason.trim().replace(/\s+/g,' '):'';
   return CLOSE_REASONS.find(reason=>reason.toLocaleLowerCase('ru-RU')===value.toLocaleLowerCase('ru-RU'))||value;
 }
-function analyticsHasRecordedTransfer(transfers){
-  return Array.isArray(transfers)&&transfers.some(t=>
-    typeof t?.hash==='string'&&t.hash.trim()&&Number.isFinite(Number(t.amount))&&Number(t.amount)>0
-  );
-}
 function analyticsOutcome(d){
   // Before manual/originMode were stored, only manual entry used this step.
   const manual=d.manual===true||d.originMode==='manual'||(d.step==='manual'&&!d.isTask);
@@ -15201,13 +15197,11 @@ function analyticsOutcome(d){
     if(!d.closed)return 'open';
     return d.closeReason===ANALYTICS_WON?'won':'lost';
   }
+  if(d.closed!==true&&!analyticsRecordedCloseDate(d))return 'open';
   const reason=analyticsReason(d);
   if(reason.toLocaleLowerCase('ru-RU')===ANALYTICS_WON.toLocaleLowerCase('ru-RU'))return 'won';
   if(CLOSE_REASONS.includes(reason))return 'lost';
-  // A manually recorded trade can carry both transfers before the CRM status is set.
-  if(!reason&&analyticsHasRecordedTransfer(d.payinHashes)&&
-     (analyticsHasRecordedTransfer(d.payout?.hashes)||analyticsHasRecordedTransfer(d.mfPayout)))return 'won';
-  return d.closed===true||analyticsDateKey(d.closedAt)||analyticsDateKey(d.closedTs)?'unknown':'open';
+  return 'unknown';
 }
 function analyticsPayin(d){
   const custom=d.custom&&d.customData;
@@ -15397,9 +15391,11 @@ function analyticsReasonDeals(reasons,reason,filteredRows=[]){
   if(reason===null)return '';
   const outcome=Object.keys(ANALYTICS_OUTCOME_FILTERS).find(key=>ANALYTICS_OUTCOME_FILTERS[key]===reason);
   const title=outcome==='all'?'Все сделки за период':outcome==='open'?'Открытые сделки':outcome==='won'?'Успешно закрытые сделки':
+    outcome==='awaitingClose'?'Сделки, ожидающие закрытия':
     outcome==='unknown'?'Сделки без указанного итога':
     reason||'Причина не указана';
-  const selected=outcome==='all'?filteredRows:outcome?filteredRows.filter(row=>
+  const selected=outcome==='all'?filteredRows:outcome==='awaitingClose'?filteredRows.filter(analyticsAwaitingClose):
+    outcome?filteredRows.filter(row=>
     row.outcome===outcome&&(outcome==='open'||row.closedInPeriod!==false)):(reasons.get(reason)||[]);
   const rows=selected.map(row=>{
     const closing=analyticsDealDate(row.d,'closed');
@@ -15408,7 +15404,8 @@ function analyticsReasonDeals(reasons,reason,filteredRows=[]){
     return {...row,closing,opened,date};
   })
     .sort((a,b)=>b.date.localeCompare(a.date)||Number(b.d.id)-Number(a.d.id));
-  const cards=rows.slice(0,analyticsFilters.limit).map(({d,closing,opened,outcome:result})=>{
+  const cards=rows.slice(0,analyticsFilters.limit).map(row=>{
+    const {d,closing,opened,outcome:result}=row;
     const code=htmlText(d.code||'СД-'+d.id);
     const link=Number.isSafeInteger(d.id)&&d.id>0
       ?'<a class="analytics-link" data-deal="'+d.id+'" href="'+analyticsDealUrl(d.id)+'" onclick="analyticsOpenDeal(event)">'+code+'</a>'
@@ -15417,9 +15414,9 @@ function analyticsReasonDeals(reasons,reason,filteredRows=[]){
     const source=[SOURCES[analyticsSource(d)]||'Источник не указан',chat?.name||d.sourceRef,chat?.account]
       .filter(Boolean).join(' · ');
     const created=analyticsDealDate(d,'created');
-    const closingLabel=analyticsHasTransferCloseDate(d,closing)?'Проведена по переводам ':'Закрыта ';
+    const openLabel=analyticsAwaitingClose(row)?'Переводы подтверждены · ждёт закрытия':'Открыта';
     const dates=[created?'Создана '+analyticsDateLabel(created):'Дата создания неизвестна',
-      opened?'Открыта':closing?closingLabel+analyticsDateLabel(closing):'Дата закрытия неизвестна',
+      opened?openLabel:closing?'Закрыта '+analyticsDateLabel(closing):'Дата закрытия неизвестна',
       outcome==='all'?{won:'Успешно',lost:'Отказ',unknown:'Итог не указан'}[result]:''].filter(Boolean).join(' · ');
     return '<li class="analytics-deal"><div><div class="analytics-deal-title">'+link+
       '<strong>'+htmlText(d.client||'Клиент не указан')+'</strong></div><div class="analytics-muted">'+
@@ -15446,11 +15443,10 @@ function viewAnalytics(){
   const outcomeLink=(outcome,label)=>'<button type="button" class="analytics-stat-link analytics-link" data-outcome="'+outcome+'" '+
     'aria-pressed="'+(f.reason===ANALYTICS_OUTCOME_FILTERS[outcome])+'" onclick="analyticsPickReason(this)">'+label+'</button>';
   const unknownDetails=m.unknown?outcomeLink('unknown','Итог не указан · '+m.unknown):'';
-  const withTransferDate=rows.filter(row=>row.outcome==='won'&&row.closedInPeriod!==false&&
-    row.d.analyticsSettledTs&&analyticsHasTransferCloseDate(row.d,analyticsDealDate(row.d,'closed'))).length;
-  const wonDetails=m.won?outcomeLink('won','Показать успешные сделки')+
-    (withTransferDate?'<div>По подтверждённым переводам · '+withTransferDate+'</div>':''):'';
-  const openDetails=m.open?outcomeLink('open','Показать открытые сделки'):'';
+  const wonDetails=m.won?outcomeLink('won','Показать успешные сделки'):'';
+  const awaitingClose=rows.filter(analyticsAwaitingClose).length;
+  const openDetails=m.open?outcomeLink('open','Показать открытые сделки')+
+    (awaitingClose?'<div>'+outcomeLink('awaitingClose','Ждут закрытия · '+awaitingClose)+'</div>':''):'';
   const allDetails=m.all?outcomeLink('all','Показать все сделки'):'';
   const created=activity?rows.filter(row=>row.createdInPeriod).length:0;
   const undatedClosures=activity&&p.from?rows.filter(row=>row.outcome!=='open'&&!row.closedDate).length:0;

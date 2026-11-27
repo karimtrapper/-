@@ -182,20 +182,22 @@ const recordedExchange = {
   createdAt:'2026-11-26', amountRub:56749.48, amountUsdt:631,
   payinHashes:[{hash:'incoming',amount:631}], payout:{usdt:619.24,hashes:[{hash:'outgoing',amount:619.24}]},
 };
-assert.equal(stand.analyticsOutcome(recordedExchange), 'won');
-assert.equal(stand.analyticsOutcome({...recordedExchange,closeReason:'Ушёл к конкуренту'}), 'lost');
+assert.equal(stand.analyticsOutcome(recordedExchange), 'open');
+assert.equal(stand.analyticsOutcome({...recordedExchange,closeReason:'Ушёл к конкуренту'}), 'open');
+assert.equal(stand.analyticsOutcome({...recordedExchange,closed:true,closeReason:'Ушёл к конкуренту'}), 'lost');
 assert.equal(stand.analyticsOutcome({...recordedExchange,payout:{usdt:619.24}}), 'open');
 assert.equal(stand.analyticsOutcome({...recordedExchange,payinHashes:[{hash:'incoming',amount:null}]}), 'open');
 assert.equal(stand.analyticsOutcome({...recordedExchange,manual:false,originMode:null,step:'s4'}), 'open');
 assert.equal(stand.analyticsDealDate(recordedExchange, 'closed'), '');
 const transferDate=Date.parse('2026-11-24T18:30:00Z');
 const checkedExchange={...recordedExchange,analyticsSettledTs:transferDate};
-assert.equal(stand.analyticsDealDate(checkedExchange,'closed'),'2026-11-25');
-assert.equal(stand.analyticsDealDate({...checkedExchange,closedAt:'2026-11-26'},'closed'),'2026-11-26');
-assert.equal(stand.analyticsDealDate({...checkedExchange,payinHashes:[]},'closed'),'');
+assert.equal(stand.analyticsDealDate(checkedExchange,'closed'),'');
+const closedExchange={...checkedExchange,closed:true,closeReason:'Успешно завершена',closedAt:'2026-11-26'};
+assert.equal(stand.analyticsDealDate(closedExchange,'closed'),'2026-11-26');
+assert.equal(stand.analyticsOutcome(closedExchange),'won');
 const recordedRows = stand.analyticsData([recordedExchange,{...recordedExchange,manualNew:true}], filters, {from:'',to:''});
 assert.deepEqual(totals(recordedRows.rows),
-  {all:1,open:0,won:1,lost:0,unknown:0,rateLost:0,turnover:{RUB:56749.48}});
+  {all:1,open:1,won:0,lost:0,unknown:0,rateLost:0,turnover:{}});
 assert.deepEqual(totals(
   stand.analyticsData(manualDeals, {...filters,source:'tg',inquiry:'client'}, period).rows),
   {all:3,open:2,won:0,lost:0,unknown:1,rateLost:0,turnover:{}});
@@ -230,7 +232,8 @@ stand.S.deals = [...manualDeals,recordedExchange];
 vm.runInContext("analyticsFilters.reason=ANALYTICS_OUTCOME_FILTERS.won", stand);
 const wonResults = stand.viewAnalytics();
 assert.match(wonResults, /Успешно закрытые сделки/);
-assert.deepEqual([...wonResults.matchAll(/data-deal="(\d+)"/g)].map(match => match[1]), ['12', '1556']);
+assert.deepEqual([...wonResults.matchAll(/data-deal="(\d+)"/g)].map(match => match[1]), ['12']);
+stand.S.deals=[...manualDeals,{...closedExchange,closedAt:null}];
 vm.runInContext("Object.assign(analyticsFilters,{period:'custom',basis:'closed',from:'2026-11-20',to:'2026-11-22'})", stand);
 assert.match(stand.viewAnalytics(), /Исключено из периода: 1 сделка без точной даты закрытия/);
 vm.runInContext("analyticsFilters.period='all'", stand);
@@ -294,7 +297,16 @@ vm.runInContext("analyticsFilters.reason=ANALYTICS_OUTCOME_FILTERS.won", stand);
 assert.deepEqual([...stand.viewAnalytics().matchAll(/data-deal="(\d+)"/g)].map(match=>match[1]), ['29','28','22','21']);
 stand.S.deals.push(checkedExchange);
 const checkedReport=stand.viewAnalytics();
-assert.match(checkedReport,/Успешно закрыто<\/div><div class="stat-value num">5<\/div>/);
-assert.match(checkedReport,/По подтверждённым переводам · 1/);
-assert.match(checkedReport,/Проведена по переводам 25\.11\.2026/);
+assert.match(checkedReport,/Успешно закрыто<\/div><div class="stat-value num">4<\/div>/);
+assert.match(checkedReport,/Ждут закрытия · 1/);
+assert.doesNotMatch(checkedReport,/data-deal="1556"/);
+vm.runInContext("analyticsFilters.reason=ANALYTICS_OUTCOME_FILTERS.awaitingClose", stand);
+const waitingReport=stand.viewAnalytics();
+assert.match(waitingReport,/Сделки, ожидающие закрытия/);
+assert.match(waitingReport,/Переводы подтверждены · ждёт закрытия/);
+assert.deepEqual([...waitingReport.matchAll(/data-deal="(\d+)"/g)].map(match=>match[1]), ['1556']);
+assert.equal(stand.analyticsData([checkedExchange],closedFilters,weekPeriod).rows.length,0);
+const closedChecked=stand.analyticsData([closedExchange],closedFilters,weekPeriod);
+assert.equal(closedChecked.rows[0].date,'2026-11-26');
+assert.equal(stand.analyticsAwaitingClose(closedChecked.rows[0]),false);
 console.log('PASS analytics calendar, filters, metrics, escaping, and exact conversation links');

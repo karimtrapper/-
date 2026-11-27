@@ -8749,7 +8749,7 @@ def stand_state_put():
                 deal['closedTs'] = before['closedTs']
             else:
                 deal.pop('closedTs', None)
-            # Backfilled report dates belong to the exact transfers and amounts
+            # Verified transfer timestamps belong to the exact transfers and amounts
             # reviewed on the server. Browser edits cannot create or carry them over.
             if (before and before.get('analyticsSettledTs')
                     and all(deal.get(key) == before.get(key) for key in (
