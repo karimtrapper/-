@@ -885,7 +885,7 @@ def test_storage_egress_opens_only_exact_host_in_scope(monkeypatch):
         with guard.storage_connection('other.t3.storageapi.dev'): pass
 
 
-def test_large_image_browser_compression_and_pdf_untouched():
+def test_browser_compresses_jpeg_and_leaves_png_and_pdf_for_server():
     import re
     from pathlib import Path
     from playwright.sync_api import sync_playwright
@@ -911,20 +911,23 @@ def test_large_image_browser_compression_and_pdf_untouched():
           x.fillStyle='black';x.font='16px Arial';
           for(let i=0;i<14;i++)x.fillText('Выписка: 13.10.2026  Поступление 123 456,78 RUB  Счёт 40702810900000123456',30,30+i*30);
           const png=await new Promise(r=>c.toBlob(r,'image/png'));
-          const original=new File([png],'statement.png',{type:'image/png'});
+          const jpeg=await new Promise(r=>c.toBlob(r,'image/jpeg',0.98));
+          const pngFile=new File([png],'statement.png',{type:'image/png'});
+          const original=new File([jpeg],'statement.jpg',{type:'image/jpeg'});
           const out=await fileOptimizeImage(original), decoded=await createImageBitmap(out);
           const shown=document.createElement('canvas');shown.width=1200;shown.height=450;
           shown.getContext('2d').drawImage(decoded,0,0);document.body.appendChild(shown);
           const pdf=new File(['%PDF-1.4'],'invoice.pdf',{type:'application/pdf'});
           return {input:original.size,output:out.size,width:decoded.width,height:decoded.height,
+                  pngUntouched:(await fileOptimizeImage(pngFile))===pngFile,
                   mime:out.type,pdfUntouched:(await fileOptimizeImage(pdf))===pdf};
         }''')
         page.screenshot(path='/tmp/calccrm-files-compressed-text.png')
         browser.close()
-    assert 6*1024*1024 < result['input'] < 20*1024*1024
-    assert result['output'] < result['input'] / 2
+    assert 1024*1024 < result['input'] < 20*1024*1024
+    assert result['output'] < result['input']
     assert max(result['width'], result['height']) == 2400
-    assert result['mime'] == 'image/webp' and result['pdfUntouched']
+    assert result['mime'] == 'image/webp' and result['pdfUntouched'] and result['pngUntouched']
     Path('/tmp/calccrm-files-compression.json').write_text(json.dumps(result))
     print('IMAGE_COMPRESSION',result)
 
