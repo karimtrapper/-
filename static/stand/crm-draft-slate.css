@@ -1,0 +1,184 @@
+/* The working Tasks editor inherits live Slate tokens across its shadow boundary. */
+:host {
+  --navy-900: var(--foreground);
+  --navy-800: var(--foreground);
+  --navy-700: var(--muted-foreground);
+  --navy-600: var(--muted-foreground);
+  --navy-500: var(--muted-foreground);
+  --navy-400: var(--muted-foreground);
+  --navy-300: var(--input);
+  --navy-200: var(--input);
+  --navy-100: var(--muted);
+  --navy-50: var(--surface-panel);
+  --coral: var(--primary);
+  --coral-hover: var(--action-coral-hover);
+  --coral-light: var(--surface-info);
+  --green: var(--surface-good-ink);
+  --green-light: var(--surface-good);
+  --green-dark: var(--surface-good-ink);
+  --green-darker: var(--surface-good-ink);
+  --blue: var(--surface-link);
+  --blue-light: var(--surface-info);
+  --indigo: var(--surface-link);
+  --indigo-light: var(--surface-info);
+  --red: var(--surface-bad-ink);
+  --red-light: var(--surface-bad);
+  --amber: var(--surface-warn-ink);
+  --amber-light: var(--surface-warn);
+  --bg: var(--card);
+  --bg-page: var(--background);
+  --text: var(--foreground);
+  --text-sec: var(--muted-foreground);
+  --text-muted: var(--muted-foreground);
+  --field-focus: var(--ring);
+  --r: var(--radius);
+  --r-sm: var(--radius-md);
+  --r-lg: var(--radius-panel);
+  color: var(--foreground);
+  font: 400 .875rem/1.5 var(--font-sans);
+  font-variant-numeric: tabular-nums;
+}
+
+.form-row > *, .form-group { min-inline-size: 0; }
+.form-label { font-size: .8125rem; }
+.form-control, .custom-select-btn, select:not(.form-control) {
+  min-block-size: 44px;
+  max-inline-size: 100%;
+  font: 450 .875rem/1.4 var(--font-sans);
+}
+.form-control::placeholder { color: var(--muted-foreground); }
+.custom-select-list {
+  background: var(--popover);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  color: var(--foreground);
+}
+.custom-select-opt { font-size: .875rem; }
+.custom-select-opt:hover { background-color: var(--accent); }
+.custom-select-opt.selected { background-color: var(--surface-info); }
+.custom-select-opt.disabled { opacity: .7; }
+
+.btn {
+  border-radius: var(--radius-md);
+  font: 550 .8125rem/1.4 var(--font-sans);
+}
+.btn-primary {
+  background: var(--primary);
+  color: var(--surface-primary-ink, var(--primary-foreground));
+}
+.btn-success { background: var(--surface-good); color: var(--surface-good-ink); }
+.btn-danger { background: var(--surface-bad); color: var(--surface-bad-ink); }
+.btn-info { background: var(--surface-info); color: var(--surface-link); }
+.btn-warning { background: var(--surface-warn); color: var(--surface-warn-ink); }
+.btn:is(.btn-success, .btn-danger, .btn-info, .btn-warning):hover {
+  background: var(--accent);
+  color: var(--foreground);
+}
+:is(button, input, select, textarea):focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+/* The imported form and the embedded renderer still supply legacy inline
+   colors for several dynamic rows. Re-theme those values within this editor. */
+form :where([style*="background:white"], [style*="background: white"], [style*="background:#fff;"],
+  [style*="background: #fff;"], [style*="background:#fafafa"], [style*="background:#f8fafc"],
+  [style*="background: #f8fafc"], [style*="background:#f1f5f9"], [style*="background: #f1f5f9"]) {
+  background: var(--surface-panel) !important;
+  border-color: var(--input) !important;
+}
+form :where([style*="background:#f0f9ff"], [style*="background: #f0f9ff"], [style*="background:#eff6ff"],
+  [style*="background: #eff6ff"], [style*="background:#faf5ff"], [style*="background: #faf5ff"],
+  [style*="background:#f5f3ff"], [style*="background: #f5f3ff"], [style*="background:#ecfeff"],
+  [style*="background: #ecfeff"], [style*="background:#e0f2fe"], [style*="background: #e0f2fe"],
+  [style*="background:#dbeafe"], [style*="background: #dbeafe"]) {
+  background: var(--surface-info) !important;
+  border-color: var(--surface-info-line) !important;
+}
+form :where([style*="background:#f0fdf4"], [style*="background: #f0fdf4"], [style*="background:#ecfdf5"],
+  [style*="background: #ecfdf5"], [style*="background:#dcfce7"], [style*="background: #dcfce7"]) {
+  background: var(--surface-good) !important;
+  border-color: var(--surface-good-line) !important;
+}
+form :where([style*="background:#fffbeb"], [style*="background: #fffbeb"],
+  [style*="background:#fef3c7"], [style*="background: #fef3c7"]) {
+  background: var(--surface-warn) !important;
+  border-color: var(--surface-warn-line) !important;
+}
+form :where([style*="background:#fef2f2"], [style*="background: #fef2f2"], [style*="background:#fee2e2"],
+  [style*="background: #fee2e2"]) {
+  background: var(--surface-bad) !important;
+  border-color: var(--surface-bad-line) !important;
+}
+form :where([style*="color:#64748b"], [style*="color: #64748b"], [style*="color:#6b7280"],
+  [style*="color: #6b7280"], [style*="color:#94a3b8"], [style*="color: #94a3b8"],
+  [style*="color:#9ca3af"], [style*="color: #9ca3af"], [style*="color:#666"], [style*="color: #666"],
+  [style*="color:#334155"], [style*="color: #334155"], [style*="color:#475569"], [style*="color: #475569"]) {
+  color: var(--muted-foreground) !important;
+}
+form :where([style*="color:#0369a1"], [style*="color: #0369a1"], [style*="color:#1e40af"],
+  [style*="color:#6d28d9"], [style*="color:#7c3aed"], [style*="color: #7c3aed"], [style*="color:#1d4ed8"],
+  [style*="color:#0e7490"], [style*="color: #0e7490"], [style*="color: #155e75"], [style*="color:#5b21b6"],
+  [style*="color: #5b21b6"], [style*="color:#667eea"]) { color: var(--surface-link) !important; }
+form :where([style*="color:#166534"], [style*="color: #166534"], [style*="color:#15803d"], [style*="color:#16a34a"],
+  [style*="color:#059669"], [style*="color:#065f46"], [style*="color:#10b981"], [style*="color: #10b981"]) {
+  color: var(--surface-good-ink) !important;
+}
+form :where([style*="color:#b45309"], [style*="color: #b45309"], [style*="color:#92400e" i],
+  [style*="color: #92400e" i], [style*="color: #f59e0b"]) { color: var(--surface-warn-ink) !important; }
+form :where([style*="color:#dc2626"], [style*="color: #dc2626"], [style*="color:#ef4444"],
+  [style*="color: #ef4444"], [style*="color:#b91c1c"], [style*="color: #b91c1c"], [style*="color:#7f1d1d"]) {
+  color: var(--surface-bad-ink) !important;
+}
+
+.ca-preset {
+  background: var(--card);
+  border-color: var(--input);
+  color: var(--foreground);
+}
+.ca-preset.active {
+  background: var(--surface-info);
+  border-color: var(--surface-info-line);
+  color: var(--surface-link);
+}
+:is(#agentsBlockStd, #agentsBlockCustom) > div > div { flex-wrap: wrap; }
+:is(#agentsBlockStd, #agentsBlockCustom) span:has(> [data-crm-action$="-tier"]) {
+  background: var(--surface-info) !important;
+  color: var(--surface-link) !important;
+}
+:is(#agentsBlockStd, #agentsBlockCustom) [data-crm-action$="-tier"] {
+  background: var(--card) !important;
+  color: inherit !important;
+}
+:is(#agentsBlockStd, #agentsBlockCustom) [data-crm-action$="-remove"] {
+  color: var(--surface-bad-ink) !important;
+}
+:is(#agentsBlockStd, #agentsBlockCustom) [data-key="referrer_id"] { min-inline-size: min(150px, 100%); }
+:is(#agentsBlockStd, #agentsBlockCustom) [data-key="comp_model"] { min-inline-size: min(160px, 100%); }
+
+@media (pointer: coarse) {
+  .btn { min-block-size: 44px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; }
+}
+
+/* The adapter toggles these panels through CSSOM, which serializes inline colors. */
+form hr { border-top-color: var(--border-strong) !important; }
+:where(#mfDealHint, #fhDealHint, #sberReqsGroup, #sberReqsGroupC) {
+  background: var(--surface-info) !important;
+  border-color: var(--surface-info-line) !important;
+  color: var(--surface-link) !important;
+}
+:where(#customDealSection, #payinTxWarn, #mfPayoutTxWarn, #payoutTxWarn) {
+  background: var(--surface-warn) !important;
+  border-color: var(--surface-warn-line) !important;
+}
+:where(#payinTxWarn, #mfPayoutTxWarn, #payoutTxWarn) {
+  color: var(--surface-warn-ink) !important;
+}
+:where(#mfPayoutPicker, #mfPayoutManual, #noConversionBox) {
+  background: var(--surface-panel) !important;
+  border-color: var(--input) !important;
+}

@@ -1067,7 +1067,7 @@ body.deal-task-mode .top-nav .who{border:0;color:var(--navy-300);font-size:var(-
 
 <script src="/tasks/screens-data.js?v=2609241212"></script>
 <script src="/tasks/crm-draft-core.js?v=4"></script>
-<script src="/tasks/crm-draft-adapter.js?v=10"></script>
+<script src="/tasks/crm-draft-adapter.js?v=11"></script>
 <script src="/static/slate-shell.js?v=2"></script>
 <script src="/static/nav-shell.js?v=13"></script>
 <script src="/static/stand/task-history.js"></script>
@@ -1222,6 +1222,10 @@ function standSnapshot(){
 }
 function standApply(data){
   if(!data||typeof data!=='object')return;
+  // A response may predate opening the unsaved manual editor. Keep its local
+  // row while applying the rest of the server snapshot.
+  const editing=S.edit?S.deals?.find(d=>d.id===S.edit):null;
+  const localDraft=editing?.manualNew&&editing.originMode!=='manual'&&!S.manualSaving?editing:null;
   /* Снимок применяем целиком, а не только присутствующие ключи. Иначе сброс
      доски (сервер отдаёт пустой объект) ничего не очищал: старые сделки
      оставались в памяти у всех открытых вкладок и возвращались первым же
@@ -1229,6 +1233,31 @@ function standApply(data){
   const blank=load();
   STAND_SHARED.forEach(k=>{ S[k]=(data[k]!==undefined)?data[k]:blank[k]; });
   S=migrate(S);
+  if(!localDraft)return;
+  const oldId=localDraft.id;
+  const confirmed=localDraft.creationKey
+    ? S.deals.find(d=>d.creationKey===localDraft.creationKey)
+    : null;
+  const collides=S.deals.some(d=>d.id===oldId);
+  const nextId=confirmed?.id??(collides
+    ?Math.max(S.seq,...S.deals.map(d=>Number(d.id)||0))+1:oldId);
+  if(nextId!==oldId){
+    if(crmDraftActive?.id===oldId){
+      crmDraftCapture();
+      crmDraftActive=null;
+    }
+    if(crmDraftLive.has(oldId)){
+      crmDraftLive.set(nextId,crmDraftLive.get(oldId));
+      crmDraftLive.delete(oldId);
+    }
+    S.edit=nextId;
+  }
+  if(!confirmed){
+    localDraft.id=nextId;
+    localDraft.code='СД-'+nextId;
+    S.seq=Math.max(S.seq,nextId);
+    S.deals.unshift(localDraft);
+  }
 }
 function standTyping(){
   const a=document.activeElement?.shadowRoot?.activeElement||document.activeElement;

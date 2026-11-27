@@ -10,7 +10,7 @@ function crmDraftSource() {
       if (!r.ok) throw new Error('CRM form unavailable');
       const page = new DOMParser().parseFromString(await r.text(), 'text/html');
       const form = page.querySelector('#createDealForm');
-      if (!form || !form.querySelector('#sberReqsGroup') ||
+      if (!page.getElementById('crm-form-base-styles') || !form || !form.querySelector('#sberReqsGroup') ||
           !form.querySelector('#realtyPayoutTxBlock') || !form.querySelector('#fhDealSection'))
         throw new Error('CRM form structure changed');
       return page;
@@ -441,10 +441,17 @@ async function crmDraftMount(id) {
     const page=await crmDraftSource();
     if(S.edit!==id||document.getElementById('crmDraftHost')!==host)return;
     const shadow=host.attachShadow({mode:'open'});
-    const css=page.querySelector('head style')?.textContent||'';
+    // Working CRM injects prepaint CSS before the stylesheet used by the form.
+    const css=page.getElementById('crm-form-base-styles').textContent;
     const style=document.createElement('style');
     style.textContent=css.replace(/:root\s*\{/g,':host {')+'\n:host{display:block;font-family:Inter,sans-serif;color:#0f172a}';
     shadow.append(style);
+    if(globalThis.workingTasks){
+      const theme=document.createElement('link');
+      theme.rel='stylesheet';
+      theme.href='/static/stand/crm-draft-slate.css?v=1';
+      shadow.append(theme);
+    }
     const form=page.querySelector('#createDealForm').cloneNode(true);
     form.querySelector('#dealSourceChannelGroup')?.remove();
     form.querySelector('#dealClientModes')?.remove();

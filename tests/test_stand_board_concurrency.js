@@ -50,3 +50,22 @@ assert.deepEqual(r.conflicts,[]);
   assert.equal(savedBoth.data.incomes[1].dealId,3);
 }
 console.log('board merge: independent edits, append-only log, atomic conflicts PASS');
+
+vm.runInContext(source('standApply'), ctx);
+ctx.load = () => ({deals:[], seq:0, notes:[], incomes:[]});
+ctx.migrate = data => data;
+ctx.crmDraftActive = null;
+ctx.crmDraftLive = new Map([[7, {values:{mfInvoiceThb:'16000'}}]]);
+const localDraft = {id:7, code:'СД-7', manualNew:true, creationKey:'draft-key'};
+ctx.S = {edit:7, deals:[localDraft], seq:7};
+ctx.standApply({deals:[{id:7, creationKey:'other-key'}], seq:8, notes:[{text:'server note'}]});
+assert.equal(ctx.S.edit, 9);
+assert.equal(ctx.S.deals[0], localDraft);
+assert.equal(ctx.S.deals[1].creationKey, 'other-key');
+assert.equal(ctx.S.notes[0].text, 'server note');
+assert.deepEqual(ctx.crmDraftLive.get(9), {values:{mfInvoiceThb:'16000'}});
+ctx.standApply({deals:[{id:10, creationKey:'draft-key', originMode:'manual'}], seq:10});
+assert.equal(ctx.S.edit, 10);
+assert.equal(ctx.S.deals.length, 1);
+assert.equal(ctx.S.deals[0].originMode, 'manual');
+assert.deepEqual(ctx.crmDraftLive.get(10), {values:{mfInvoiceThb:'16000'}});
