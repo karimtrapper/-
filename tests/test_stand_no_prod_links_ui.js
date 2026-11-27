@@ -177,6 +177,7 @@ const refHtml = fs.readFileSync(path.join(__dirname, '../static/referrer/index.h
     const list = {innerHTML: ''};
     const ctx = { applyStandMobileNav: () => {}, refreshPayoutWalletPolicy: () => {},
       updateDealClientMode: () => {}, applyFlowGateOptions: () => {},
+      syncCustomDealManager: () => {},
       _referrersCache: [referrer],
       STAND_ROLES: null, AUTH_STAND: null,
       API_URL: '',

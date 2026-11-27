@@ -61,6 +61,7 @@ const refHtml = fs.readFileSync(path.join(__dirname, '../static/referrer/index.h
     const ctx = { applyStandMobileNav: () => {}, refreshPayoutWalletPolicy: () => {},
       API_URL: '', AUTH_STAND: null, document: {querySelectorAll: () => []},
       updateDealClientMode: () => {}, applyFlowGateOptions: () => {},
+      syncCustomDealManager: () => {},
       fetch: async () => ({json: async () => ({success: true, user: {id: 1}})}), // поля stand нет
     };
     vm.createContext(ctx);
