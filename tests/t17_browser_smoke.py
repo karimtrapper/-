@@ -632,7 +632,10 @@ with sync_playwright() as playwright:
     crm_mf.locator('#mfSellRate').fill('31.5')
     crm_mf.locator('#mfPurpose').fill('leasehold fixture')
     crm_mf.wait_for_function('document.querySelector("#mfPayoutPickerBtn")?.textContent.includes("200 исходящих")',timeout=20000)
+    # The embedded editor reads outgoing transfers when the user opens the picker.
+    host.locator('#mfPayoutPickerBtn').click()
     page.wait_for_function('document.querySelector("#crmDraftHost")?.shadowRoot?.getElementById("mfPayoutPickerBtn")?.textContent.includes("200 исходящих")',timeout=20000)
+    host.locator('#mfPayoutPickerBtn').click()
     # The same endpoint limit applies to both 250 cached rows and a 126-row
     # counterexample. Compare exact IDs and order, not only button counts.
     outgoing_count[0]=126

@@ -520,7 +520,7 @@ async function crmDraftMount(id) {
     active.core.renderPayinTxPool();
     active.core.renderMfPayoutTxPool();
     active.core.renderPayoutTxPool();
-    await Promise.all([active.core.sberLoadIncomes(),active.core.loadMfPayoutTx(),
+    await Promise.all([active.core.sberLoadIncomes(),
       active.core.loadCashBatchesForSelect(),active.core.loadBankCardsForSelect(),
       crmDraftLoadPayinTx(active),crmDraftLoadLists(active),crmDraftLoadWallets(active),crmDraftLoadRate(active)]);
     if(crmDraftActive!==active)return;
@@ -677,6 +677,21 @@ function crmDraftSourceResolveClient(active) {
   const crmClient=(active.clients||[]).find(c=>c.name===(client?.name||client?.client));
   crmDraftValue(active.root,'clientIdHidden',crmClient?.id||'');
 }
+function crmDraftToggleMfPayoutPicker(active) {
+  const {root,core}=active;
+  const picker=root.getElementById('mfPayoutPicker');
+  if(!picker)return;
+  core.toggleMfPayoutPicker();
+  if(picker.style.display==='none')return;
+  const list=root.getElementById('mfPayoutPickerList');
+  if(list&&!core.mfPayoutVisible().length)list.textContent='Читаем исходящие переводы…';
+  if(active.mfPayoutLoading)return;
+  active.mfPayoutLoading=true;
+  core.loadMfPayoutTx().finally(()=>{
+    active.mfPayoutLoading=false;
+    if(crmDraftActive===active)core.renderMfPayoutPicker();
+  });
+}
 function crmDraftWire(active) {
   const {root,form}=active;
   // A type-only save must not serialize defaults from the financial editor.
@@ -817,7 +832,7 @@ function crmDraftWire(active) {
       const actions={
     'sberLoadIncomes()':()=>core.sberLoadIncomes(),
         'sberAddManual()':()=>core.sberAddManual(),
-        'toggleMfPayoutPicker()':()=>core.toggleMfPayoutPicker(),
+        'toggleMfPayoutPicker()':()=>crmDraftToggleMfPayoutPicker(active),
         'mfPayoutCheckAll(true)':()=>core.mfPayoutCheckAll(true),
         'mfPayoutCheckAll(false)':()=>core.mfPayoutCheckAll(false),
         'addMfPayoutChecked()':()=>core.addMfPayoutChecked(),
