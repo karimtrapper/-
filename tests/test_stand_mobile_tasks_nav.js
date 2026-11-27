@@ -7,11 +7,43 @@ const path = require('node:path');
 const { chromium, webkit, devices } = require('playwright');
 
 const root = path.resolve(__dirname, '..');
+let apiMode = 'prod';
+let sessionRole = 'admin';
+const snapshot = JSON.parse(fs.readFileSync(path.join(root, 'static/stand/walkthrough/leasehold-rub/01.json'), 'utf8')).state;
+const fixture = { ...snapshot, deals: Array.from({length: 9}, (_, index) => ({
+  ...snapshot.deals[0], id: 1500 + index, code: 'СД-' + (1500 + index),
+  step: 's4', client: 'Тестовый клиент ' + (index + 1),
+  manager: index % 2 ? 'Марина' : 'Ирина',
+})) };
+const writes = [];
+
 // Shared navigation now loads external CSS; browsers reject octet-stream stylesheets.
 const mime = { '.html': 'text/html; charset=utf-8', '.json': 'application/json; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8' };
 const server = http.createServer((req, res) => {
   const pathname = new URL(req.url, 'http://localhost').pathname;
+  // The old page may cancel API requests during a navigation. Reply on HTTP
+  // rather than trying to fulfill a Chromium interception that no longer exists.
+  if (pathname.startsWith('/api/')) {
+    // CRM preview is a read-only calculation and this fixture leaves it offline.
+    if (pathname === '/api/stand/crm-preview') { res.destroy(); return; }
+    if (req.method !== 'GET' && req.method !== 'HEAD') {
+      writes.push(`${req.method} ${req.url}`);
+      res.destroy();
+      return;
+    }
+    let status = 404, data = { success: false };
+    if (pathname === '/api/auth/me') {
+      status = 200; data = { success: true, user: { stand: apiMode === 'stand', tasks_enabled: apiMode === 'working', role: sessionRole } };
+    } else if (pathname === '/api/stand/roles' && apiMode === 'stand') {
+      status = 200; data = { success: true, roles: { manager: 'Менеджер', operator: 'Операционист' } };
+    } else if (pathname === '/api/stand/state') {
+      status = 200; data = { success: true, version: 1, role: sessionRole, data: apiMode === 'working' ? fixture : {} };
+    }
+    res.writeHead(status, { 'content-type': mime['.json'], 'cache-control': 'no-store' });
+    res.end(JSON.stringify(data));
+    return;
+  }
   const target = pathname === '/tasks' ? 'static/stand/tasks.html'
     : pathname === '/crm' ? 'static/crm/crm.html'
       : pathname.startsWith('/tasks/') ? `static/stand/${pathname.slice('/tasks/'.length)}`
@@ -30,42 +62,15 @@ async function main() {
   const base = `http://127.0.0.1:${server.address().port}`;
   const browserType = process.env.BROWSER === 'webkit' ? webkit : chromium;
   const browser = await browserType.launch({ headless: true, executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH||undefined });
-  let apiMode = 'prod';
-  let sessionRole = 'admin';
-  const snapshot = JSON.parse(fs.readFileSync(path.join(root, 'static/stand/walkthrough/leasehold-rub/01.json'), 'utf8')).state;
-  const fixture = { ...snapshot, deals: Array.from({length: 9}, (_, index) => ({
-    ...snapshot.deals[0], id: 1500 + index, code: 'СД-' + (1500 + index),
-    step: 's4', client: 'Тестовый клиент ' + (index + 1),
-    manager: index % 2 ? 'Марина' : 'Ирина',
-  })) };
-  const writes = [];
   try {
     const context = await browser.newContext({ ...devices['iPhone 13'], isMobile:true, hasTouch:true });
     const page = await context.newPage();
-    await page.route('**/*', route => new URL(route.request().url()).origin === base ? route.continue() : route.abort());
+    await context.route(url => url.origin !== base, route => route.abort());
     await page.setViewportSize({ width: 375, height: 812 });
-    await page.route('**/api/**', async route => {
-      const req = route.request();
-      const url = new URL(req.url());
-      // crm-preview uses POST for a read-only calculation; still abort it locally.
-      if (req.method() !== 'GET' && req.method() !== 'HEAD' && url.pathname !== '/api/stand/crm-preview') {
-        writes.push(`${req.method()} ${req.url()}`); await route.abort(); return;
-      }
-      if (url.pathname === '/api/stand/crm-preview') { await route.abort(); return; }
-      let status = 404, data = { success: false };
-      if (url.pathname === '/api/auth/me') {
-        status = 200; data = { success: true, user: { stand: apiMode === 'stand', tasks_enabled: apiMode === 'working', role: sessionRole } };
-      } else if (url.pathname === '/api/stand/roles' && apiMode === 'stand') {
-        status = 200; data = { success: true, roles: { manager: 'Менеджер', operator: 'Операционист' } };
-      } else if (url.pathname === '/api/stand/state') {
-        status = 200; data = { success: true, version: 1, role: sessionRole, data: apiMode === 'working' ? fixture : {} };
-      }
-      await route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(data) });
-    });
 
     // Production keeps Dashboard and does not expose the stand task link.
     await page.goto(`${base}/crm`);
-    await page.waitForTimeout(150);
+    await page.waitForFunction(() => AUTH_STAND === false);
     let nav = await page.evaluate(() => ({
       visible: [...document.querySelectorAll('#bottomNav .bottom-nav-item')]
         .filter(el => getComputedStyle(el).display !== 'none').length,
