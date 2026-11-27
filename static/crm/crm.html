@@ -914,6 +914,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
     <link rel="stylesheet" href="/static/fonts/slate/fonts.css">
     <link rel="stylesheet" href="/static/slate-shell.css?v=2">
     <link rel="stylesheet" href="/static/slate-surfaces.css?v=6">
+    <link rel="stylesheet" href="/static/slate-crm-form.css?v=1">
 </head>
 
 <body class="wave4a">
@@ -4213,6 +4214,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
             function renderOptions() {
                 const opts = Array.from(select.options);
                 btn.textContent = select.selectedOptions[0]?.text || 'Выберите...';
+                if (select.form?.id === 'createDealForm') btn.title = btn.textContent;
                 btn.disabled = select.disabled;
                 if (select.disabled) wrap.classList.remove('open');
                 list.replaceChildren();
@@ -9600,7 +9602,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
             const factLine = mfPayoutTxPool.length ? `
                 <div style="display:flex;justify-content:space-between;"><span style="color:#9ca3af;padding-left:12px;">— по факту ${mfPayoutTxPool.length} перевод(а/ов), по курсу ${money(r.computed_cost_usdt)}</span><span style="color:${Math.abs(diff) > 1 ? '#b45309' : '#9ca3af'};">${diff > 0 ? '+' : ''}${money(diff)}</span></div>` : '';
             box.innerHTML = `
-              <div style="background:#faf5ff;border:1px solid #e9d5ff;border-radius:8px;padding:0.75rem;">
+              <div class="deal-form-preview" style="background:#faf5ff;border:1px solid #e9d5ff;border-radius:8px;padding:0.75rem;">
                 <div style="display:flex;justify-content:space-between;"><span style="color:#6b7280;">Приход от клиента</span><strong>${money(r.payin_usdt)}</strong></div>
                 <div style="display:flex;justify-content:space-between;"><span style="color:#6b7280;">Отправлено в компанию ${baht(r.company_sent_thb)}</span><strong>−${money(r.cost_usdt)}</strong></div>
                 <div style="display:flex;justify-content:space-between;"><span style="color:#9ca3af;padding-left:12px;">— инвойс застройщику ${baht(invoiceThb)}</span><span style="color:#6b7280;">${money(r.invoice_cost_usdt)}</span></div>
@@ -9783,7 +9785,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
             // закладывает). Не заложили — она съедает нашу прибыль, и это видно.
             const markupAgent = (r.agents || []).some(a => a.comp_model === 'markup');
             box.innerHTML = `
-              <div style="background:#ecfeff;border:1px solid #a5f3fc;border-radius:8px;padding:0.75rem;">
+              <div class="deal-form-preview" style="background:#ecfeff;border:1px solid #a5f3fc;border-radius:8px;padding:0.75rem;">
                 <div style="display:flex;justify-content:space-between;"><span style="color:#6b7280;">Приход от клиента</span><strong>${money(r.payin_usdt)}</strong></div>
                 <div style="display:flex;justify-content:space-between;"><span style="color:#6b7280;">Отправлено ${isAutoDeal() ? 'продавцу' : 'застройщику'}</span><strong>−${money(r.sent_usd)}</strong></div>
                 <div style="display:flex;justify-content:space-between;"><span style="color:#9ca3af;padding-left:12px;">— комиссия за перевод (${(r.fee_percent || 0).toFixed(2)}% + ${money(r.fee_fixed_usd)})</span><span style="color:#6b7280;">${money(r.fee_usd)}</span></div>

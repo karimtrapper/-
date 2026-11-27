@@ -1,0 +1,108 @@
+/* Working CRM deal editor. Keep nested panels on the same palette as the shell. */
+html.slate-console body.nav-shell-crm #createDealForm :is(
+  #customDealSection, #cashBalanceInfo, #mfPayoutPicker, #mfPayoutManual,
+  #sberReqsGroup, #sberReqsGroupC, .founder-payout-fields > label,
+  #mfSummary > .deal-form-preview, #fhSummary > .deal-form-preview
+) {
+  background: var(--surface-panel) !important;
+  border-color: var(--border) !important;
+}
+
+html.slate-console body.nav-shell-crm #createDealForm .form-row:has(#customProfitUsdt) {
+  background: var(--card) !important;
+  border: 1px solid var(--border);
+}
+
+html.slate-console body.nav-shell-crm #createDealForm :is(#mfDealHint, #fhDealHint, #noConvRateInfo) {
+  background: var(--surface-info) !important;
+  border-color: var(--border) !important;
+  color: var(--foreground) !important;
+}
+
+html.slate-console body.nav-shell-crm #createDealForm :is(
+  #payoutFounderTxInfo, #payinTxWarn, #mfPayoutTxWarn, #payoutTxWarn
+) {
+  background: var(--surface-warn) !important;
+  border-color: var(--surface-warn-line) !important;
+  color: var(--surface-warn-ink) !important;
+}
+
+html.slate-console body.nav-shell-crm #createDealForm .ca-preset {
+  min-height: 36px;
+  background: var(--card) !important;
+  border-color: var(--border-strong) !important;
+  color: var(--foreground) !important;
+}
+html.slate-console body.nav-shell-crm #createDealForm .ca-preset.active {
+  background: var(--foreground) !important;
+  border-color: var(--foreground) !important;
+  color: var(--background) !important;
+}
+
+html.slate-console body.nav-shell-crm #createDealForm > .form-row:first-child {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+}
+html.slate-console body.nav-shell-crm #createDealForm .form-group {
+  min-width: 0;
+}
+html.slate-console body.nav-shell-crm #createDealForm .custom-select-btn {
+  min-width: 0;
+  max-width: 100%;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
+}
+html.slate-console body.nav-shell-crm #createDealForm .custom-select-opt {
+  overflow-wrap: anywhere;
+}
+
+html.slate-console body.nav-shell-crm #createDealForm .deal-form-preview > div {
+  gap: 8px;
+}
+html.slate-console body.nav-shell-crm #createDealForm .deal-form-preview > div > :first-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+html.slate-console body.nav-shell-crm #createDealForm .deal-form-preview > div > :nth-child(2) {
+  flex: none;
+  white-space: nowrap;
+}
+
+@media (max-width: 767px) {
+  html.slate-console body.nav-shell-crm #createDealForm :is(#mfDealSection, #fhDealSection) .form-row > .form-group {
+    grid-column: 1 / -1 !important;
+  }
+  html.slate-console body.nav-shell-crm #createDealForm .ca-preset {
+    min-height: 44px;
+  }
+}
+
+html.slate-console body.nav-shell-crm #customDealSubmit:not(:disabled) {
+  background: var(--primary) !important;
+  border-color: var(--primary) !important;
+  color: var(--primary-foreground) !important;
+}
+html.slate-console body.nav-shell-crm #customDealSubmit:not(:disabled):hover {
+  background: var(--action-coral-hover) !important;
+}
+html.slate-console body.nav-shell-crm #createDealForm :is(
+  .custom-select-btn:disabled, #payoutTxSelect + .custom-select-btn
+) {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 767px) {
+  html.slate-console body.nav-shell-crm #createDealForm :is(#agentsBlockStd, #agentsBlockCustom) > div > div {
+    flex-wrap: wrap;
+  }
+  html.slate-console body.nav-shell-crm #createDealForm :is(#agentsBlockStd, #agentsBlockCustom) > div > div > select {
+    flex: 0 0 100% !important;
+  }
+  html.slate-console body.nav-shell-crm #createDealForm :is(#agentsBlockStd, #agentsBlockCustom) > div > div:first-child > select {
+    order: 1;
+  }
+  html.slate-console body.nav-shell-crm #createDealForm :is(#agentsBlockStd, #agentsBlockCustom) > div > div:first-child > button {
+    margin-inline-start: auto;
+    min-height: 44px;
+  }
+}

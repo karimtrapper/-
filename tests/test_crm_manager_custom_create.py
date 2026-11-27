@@ -1,4 +1,6 @@
 """Role enforcement for the working custom deal form and its existing endpoint."""
+import os
+from pathlib import Path
 from urllib.parse import urlsplit
 
 import pytest
@@ -9,7 +11,8 @@ from tests.test_browser_crm import choose, chromium, crm_server  # noqa: F401
 
 
 @pytest.mark.browser
-def test_working_manager_can_create_own_custom_deal(chromium, crm_server, monkeypatch):
+@pytest.mark.parametrize('width', [390, 1440])
+def test_working_manager_can_create_own_custom_deal(chromium, crm_server, monkeypatch, width):
     monkeypatch.setattr(A, 'TASKS_ENABLED', True)
     monkeypatch.setattr(A, 'STAND_MODE', False)
     monkeypatch.setitem(A.app.config, 'SESSION_COOKIE_SECURE', False)
@@ -34,7 +37,7 @@ def test_working_manager_can_create_own_custom_deal(chromium, crm_server, monkey
     base, admin_cookie = crm_server
     endpoint = base + '/api/deals'
     tracked = (A.Deal, A.Client, A.DealAgent, A.WalletOperation, A.StandState)
-    with chromium.new_context(viewport={'width': 1440, 'height': 900}) as context:
+    with chromium.new_context(viewport={'width': width, 'height': 900}) as context:
         assert context.request.post(base + '/api/auth/login', data={
             'username': 'qa_custom_manager', 'password': password,
         }).ok
@@ -43,7 +46,6 @@ def test_working_manager_can_create_own_custom_deal(chromium, crm_server, monkey
         page = context.new_page()
         page.set_default_timeout(7000)
         page.goto(base + '/crm?section=deals')
-        page.locator('.slate-link[data-slate-route="deals"]').click()
         page.locator('#deals .nav-create-btn').click()
         choose(page, '#dealProductSelect', 'Кастомная — нестандартные валюты')
         select = page.locator('#managerSelect')
@@ -63,6 +65,14 @@ def test_working_manager_can_create_own_custom_deal(chromium, crm_server, monkey
         page.locator('#customDealSection').get_by_role('button', name='Добавить агента').click()
         choose(page, '#agentsBlockCustom select[data-agent-directory]', agent.name)
         expect(page.locator('#agentsBlockCustom input[type=number]')).to_have_value('10')
+        for theme in ('dark', 'light'):
+            if page.locator('html').get_attribute('data-mode') != theme:
+                page.locator('[data-slate-mode]').click()
+            expect(page.locator('html')).to_have_attribute('data-mode', theme)
+            page.locator('#customDealSubmit').click(trial=True)
+            if report := os.environ.get('CALCCRM_FORM_AUDIT_DIR'):
+                page.evaluate('window.scrollTo(0, 0)')
+                page.screenshot(path=str(Path(report) / f'manager-custom-{theme}-{width}.png'), full_page=True)
 
         with page.expect_response(lambda res: res.url == endpoint and res.request.method == 'POST') as result:
             page.locator('#customDealSubmit').click()
@@ -73,7 +83,7 @@ def test_working_manager_can_create_own_custom_deal(chromium, crm_server, monkey
         assert payload['payin_method'] == payload['payout_method'] == ''
         deal_id = response.json()['deal']['id']
 
-        with chromium.new_context() as admin:
+        with chromium.new_context(viewport={'width': width, 'height': 900}) as admin:
             admin.add_cookies([{'name': 'session', 'value': admin_cookie, 'url': base}])
             baseline = admin.request.post(endpoint, data={
                 **payload, 'client_name': 'QA Admin Baseline',
@@ -81,6 +91,26 @@ def test_working_manager_can_create_own_custom_deal(chromium, crm_server, monkey
             })
             assert baseline.ok, baseline.json()
             baseline_deal_id = baseline.json()['deal']['id']
+            admin.route('**/*', lambda route: route.continue_()
+                        if urlsplit(route.request.url).hostname == '127.0.0.1' else route.abort())
+            editor = admin.new_page()
+            editor.goto(base + '/crm?section=deals')
+            row = editor.locator('#dealsTable tr').filter(has_text='QA Custom Client')
+            row.click()
+            edit_button = editor.locator('#dealModal').get_by_role('button', name='Редактировать', exact=True)
+            edit_button.click()
+            expect(editor.locator('#customPayoutAmount')).to_have_value('4933')
+            editor.locator('#customNotes').fill('QA note from editor')
+            with editor.expect_response(lambda res: res.url == endpoint + f'/{deal_id}'
+                                        and res.request.method == 'PUT') as revised:
+                editor.locator('#customDealSubmit').click()
+            assert revised.value.ok, revised.value.text()
+            editor.goto(base + '/crm?section=deals')
+            row.click()
+            edit_button.click()
+            expect(editor.locator('#customNotes')).to_have_value('QA note from editor')
+            expect(editor.locator('#customPayoutAmount')).to_have_value('4933')
+
 
         implicit_identity = {key: value for key, value in payload.items()
                              if key not in ('manager_user_id', 'manager_name')}
