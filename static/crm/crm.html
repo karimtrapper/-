@@ -490,11 +490,22 @@ select.period-btn:hover:not(.active) { color: var(--text); }
 .btn-warning { background: var(--amber); color: white; }
 .btn-warning:hover { background: #D97706; }
 .btn-sm { padding: 8px 14px; font-size: 13px; min-height: 36px; }
-#dealModal .deal-cabinet-copy {
+:is(#dealModal, #managerReferrers) .deal-cabinet-copy {
     min-height: 44px; max-width: 100%; margin: 0 0 8px; white-space: normal;
 }
-#dealModal .deal-cabinet-copy:disabled { opacity: .6; cursor: wait; }
-#dealModal .deal-cabinet-link-input { display: block; width: 100%; margin-bottom: 8px; }
+:is(#dealModal, #managerReferrers) .deal-cabinet-copy:disabled { opacity: .6; cursor: wait; }
+:is(#dealModal, #managerReferrers) .deal-cabinet-link-input { display: block; width: 100%; margin-bottom: 8px; }
+#managerReferrers .crm-section-head { flex-wrap: wrap; }
+#referrers > [hidden], #managerReferrerForm [hidden] { display: none; }
+.manager-referrer-row {
+    display: flex; flex-wrap: wrap; justify-content: space-between; align-items: start;
+    gap: 8px 16px; padding: 12px 0; border-bottom: 1px solid var(--border);
+}
+.manager-referrer-row > * { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
+.manager-referrer-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+#managerReferrers .manager-referrer-actions .btn { min-height: 44px; margin: 0; }
+#managerReferrerForm .form-group { margin-bottom: 1rem; }
+#managerReferrerError { color: var(--red); margin-bottom: 8px; }
 .btn-outline {
     background: none; border: 1.5px solid var(--border);
     color: var(--text-sec);
@@ -2943,7 +2954,17 @@ select.period-btn:hover:not(.active) { color: var(--text); }
 
         <!-- Referrers Section -->
         <section id="referrers" class="section">
-            <div class="card">
+            <div id="managerReferrers" class="card" hidden>
+                <div class="crm-section-head">
+                    <h1>Рефереры</h1>
+                    <button type="button" class="btn btn-primary" onclick="openManagerReferrer()">Добавить реферера</button>
+                </div>
+                <input type="search" class="form-control" id="managerReferrerSearch" placeholder="Поиск реферера"
+                    aria-label="Поиск по имени, коду или Telegram" oninput="renderManagerReferrers()">
+                <p id="managerReferrerStatus" role="status"></p>
+                <div id="managerReferrerList"></div>
+            </div>
+            <div id="adminReferrers" class="card" hidden>
                 <div class="card-title" style="display: flex; justify-content: space-between; align-items: center;">
                     <span>Рефереры</span>
                     <button class="btn btn-primary" onclick="openReferrerModal()" style="font-size: 0.9rem;">
@@ -3625,6 +3646,45 @@ select.period-btn:hover:not(.active) { color: var(--text); }
         </div>
     </div>
 
+    <div id="managerReferrerModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="managerReferrerTitle"
+        onkeydown="if (event.key === 'Escape') closeManagerReferrer()">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title" id="managerReferrerTitle"></h3>
+                <button type="button" class="modal-close" aria-label="Закрыть" onclick="closeManagerReferrer()">&times;</button>
+            </div>
+            <form id="managerReferrerForm" onsubmit="saveManagerReferrer(event)">
+                <div class="form-group">
+                    <label class="form-label" for="managerReferrerName">Имя реферера</label>
+                    <input class="form-control" id="managerReferrerName" name="name" maxlength="100" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="managerReferrerCode">Код (необязательно)</label>
+                    <input class="form-control" id="managerReferrerCode" name="code" maxlength="20" autocapitalize="characters" spellcheck="false">
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="managerReferrerLang">Язык кабинета</label>
+                    <select id="managerReferrerLang" name="lang" class="form-control" data-native-select>
+                        <option value="ru">Русский</option><option value="en">English</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="managerReferrerAuthMode">Вход в кабинет</label>
+                    <select id="managerReferrerAuthMode" name="auth_mode" class="form-control" data-native-select onchange="syncManagerReferrerAuth()">
+                        <option value="link">По ссылке</option><option value="telegram">Через Telegram</option>
+                    </select>
+                    <small id="managerReferrerAccess">Кабинет доступен всем, у кого есть ссылка.</small>
+                </div>
+                <div class="form-group" id="managerReferrerTelegramGroup" hidden>
+                    <label class="form-label" for="managerReferrerTelegram">Имя пользователя в Telegram</label>
+                    <input class="form-control" id="managerReferrerTelegram" name="telegram" placeholder="@username" maxlength="33" spellcheck="false" autocapitalize="none">
+                </div>
+                <p id="managerReferrerError" role="alert" hidden></p>
+                <button type="submit" class="btn btn-primary">Сохранить</button>
+            </form>
+        </div>
+    </div>
+
     <!-- Modal for deal details -->
     <div class="modal" id="dealModal">
         <div class="modal-content">
@@ -4289,7 +4349,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
         }
 
         function upgradeAllSelects() {
-            document.querySelectorAll('select.form-control:not(#dealSourceChannel, #dealSourceChat)').forEach(upgradeSelect);
+            document.querySelectorAll('select.form-control:not(#dealSourceChannel, #dealSourceChat, [data-native-select])').forEach(upgradeSelect);
         }
 
         // ==================== HTML escape (защита от XSS) ====================
@@ -5669,11 +5729,15 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                 ${status}</span>`;
         }
 
-        async function copyDealCabinetLink(button, dealId, referrerId) {
+        function copyDealCabinetLink(button, dealId, referrerId) {
+            return copyCabinetLink(button, `/api/deals/${dealId}/referrers/${referrerId}/cabinet-link`);
+        }
+
+        async function copyCabinetLink(button, endpoint) {
             button.disabled = true;
             const oldInput = button.nextElementSibling;
             if (oldInput?.classList.contains('deal-cabinet-link-input')) oldInput.remove();
-            const link = fetch(`${API_URL}/api/deals/${dealId}/referrers/${referrerId}/cabinet-link`, {
+            const link = fetch(`${API_URL}${endpoint}`, {
                 cache: 'no-store',
             }).then(async response => {
                 if (!response.ok) throw new Error();
@@ -5696,7 +5760,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                     } catch (error) { /* Предлагаем скопировать подтверждённую ссылку вручную. */ }
                 }
                 const url = await link;
-                if (!button.closest('#dealModal.active')) return;
+                if (!button.closest('#dealModal.active, #referrers.active')) return;
                 const input = document.createElement('input');
                 input.type = 'text';
                 input.className = 'form-control deal-cabinet-link-input';
@@ -7096,6 +7160,11 @@ select.period-btn:hover:not(.active) { color: var(--text); }
         let CRM_ROLE = null;
         let AUTH_ROLE = null;
         let AUTH_USER = null;
+        let crmAuthRequest;
+
+        function crmAuthReady() {
+            return crmAuthRequest ??= loadAuthStand();
+        }
 
         function tasksAvailable() {
             return AUTH_TASKS || AUTH_STAND === true;
@@ -7171,7 +7240,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
         // Ссылку на задачник показываем при загрузке: она нужна с первого экрана,
         // а не после захода в «Аккаунты».
         document.addEventListener('DOMContentLoaded', async () => {
-            await loadAuthStand();
+            await crmAuthReady();
             renderNewWalletRolesForm();
             if (tasksAvailable()) {
                 await loadStandRoles();
@@ -7386,6 +7455,9 @@ select.period-btn:hover:not(.active) { color: var(--text); }
 
         // Программное переключение секции
         function showSection(sectionName) {
+            if (sectionName !== 'referrers') {
+                document.querySelectorAll('#managerReferrers .deal-cabinet-link-input').forEach(input => input.remove());
+            }
             localStorage.setItem('crm_section', sectionName);
             document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
             document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
@@ -17130,7 +17202,157 @@ ${Math.abs(c.debits_delta_rub) < 0.01
             } catch (e) { alert('Сетевая ошибка'); }
         }
 
+        let managerReferrers = [];
+        let managerReferrerLoadStatus = '';
+        let managerReferrerRequest;
+        let editingManagerReferrer;
+        let managerReferrerOpener;
+
+        function renderManagerReferrers() {
+            const query = document.getElementById('managerReferrerSearch').value.trim().toLowerCase();
+            const rows = managerReferrers.filter(row => [row.name, row.code, row.telegram]
+                .some(value => (value || '').toLowerCase().includes(query)));
+            document.getElementById('managerReferrerStatus').textContent = managerReferrerLoadStatus ||
+                (rows.length ? '' : query ? 'Ничего не найдено' : 'Активных рефереров пока нет');
+            document.getElementById('managerReferrerList').innerHTML = rows.map(row => `
+                <div class="manager-referrer-row">
+                    <div><strong>${escapeHtml(row.name)}</strong>
+                        <div>${[row.code, row.telegram, row.lang === 'en' ? 'English' : 'Русский',
+                            row.auth_mode === 'telegram' ? 'Через Telegram' : 'По ссылке']
+                            .filter(Boolean).map(escapeHtml).join(' · ')}</div>
+                    </div>
+                    ${row.can_manage === true ? `<div>
+                        <div class="manager-referrer-actions">
+                            <button type="button" class="btn btn-secondary btn-sm" aria-label="Настроить кабинет — ${escapeHtml(row.name)}"
+                                onclick="openManagerReferrer(${Number(row.id)}, this)">Настроить кабинет</button>
+                            ${row.can_copy_cabinet_link === false ? '' : `<div><button type="button" class="btn btn-secondary btn-sm deal-cabinet-copy"
+                                aria-label="Скопировать ссылку на кабинет — ${escapeHtml(row.name)}"
+                                onclick="copyCabinetLink(this, '/api/manager/referrers/${Number(row.id)}/cabinet-link')">Скопировать ссылку на кабинет</button></div>`}
+                        </div>
+                        ${row.can_copy_cabinet_link === false ? '<small>Укажите имя пользователя Telegram в настройках кабинета.</small>' : ''}
+                    </div>` : ''}
+                </div>`).join('');
+        }
+
+        function loadManagerReferrers() {
+            return managerReferrerRequest ??= (async () => {
+                managerReferrerLoadStatus = 'Загрузка…';
+                renderManagerReferrers();
+                try {
+                    const response = await fetch(`${API_URL}/api/manager/referrers`, {cache: 'no-store'});
+                    const data = await response.json();
+                    if (!response.ok || !data.success || !Array.isArray(data.referrers)) throw new Error();
+                    managerReferrers = data.referrers;
+                    managerReferrerLoadStatus = '';
+                } catch (error) {
+                    managerReferrers = [];
+                    managerReferrerLoadStatus = 'Не удалось загрузить рефереров. Откройте раздел ещё раз.';
+                } finally {
+                    managerReferrerRequest = null;
+                    renderManagerReferrers();
+                }
+            })();
+        }
+
+        function syncManagerReferrerAuth() {
+            const form = document.getElementById('managerReferrerForm');
+            const telegram = form.elements.auth_mode.value === 'telegram';
+            document.getElementById('managerReferrerTelegramGroup').hidden = !telegram;
+            form.elements.telegram.required = telegram && editingManagerReferrer?.auth_mode !== 'telegram';
+            document.getElementById('managerReferrerAccess').textContent = telegram
+                ? 'Войти сможет только указанный аккаунт Telegram.' : 'Кабинет доступен всем, у кого есть ссылка.';
+        }
+
+        function setManagerReferrerError(message = '') {
+            const error = document.getElementById('managerReferrerError');
+            error.textContent = message;
+            error.hidden = !message;
+        }
+
+        function openManagerReferrer(id, opener = document.activeElement) {
+            editingManagerReferrer = id ? managerReferrers.find(row => row.id === id && row.can_manage === true) : null;
+            if (id && !editingManagerReferrer) return;
+            managerReferrerOpener = opener;
+            const row = editingManagerReferrer;
+            const form = document.getElementById('managerReferrerForm');
+            form.elements.name.value = row?.name || '';
+            form.elements.code.value = row?.code || '';
+            form.elements.lang.value = row?.lang || 'ru';
+            form.elements.auth_mode.value = row?.auth_mode || 'link';
+            form.elements.telegram.value = row?.telegram || '';
+            document.getElementById('managerReferrerTitle').textContent = row ? 'Настроить кабинет' : 'Добавить реферера';
+            setManagerReferrerError();
+            syncManagerReferrerAuth();
+            document.getElementById('managerReferrerModal').classList.add('active');
+            form.elements.name.focus();
+        }
+
+        function closeManagerReferrer() {
+            document.getElementById('managerReferrerModal').classList.remove('active');
+            managerReferrerOpener?.focus();
+        }
+
+        async function saveManagerReferrer(event) {
+            event.preventDefault();
+            const form = event.currentTarget;
+            const save = form.querySelector('button[type="submit"]');
+            if (save.disabled) return;
+            const row = editingManagerReferrer;
+            const data = Object.fromEntries(new FormData(form));
+            for (const key of ['name', 'code', 'telegram']) data[key] = data[key].trim();
+            data.code = data.code || row?.code || '';
+            if (data.auth_mode === 'link') data.telegram = row?.telegram || '';
+            const telegramIdentity = value => value.trim().replace(/^@/, '').trim().toLowerCase();
+            const oldTelegram = telegramIdentity(row?.telegram || '');
+            const newTelegram = telegramIdentity(data.telegram);
+            const accessChanged = row && (row.auth_mode !== data.auth_mode ||
+                (data.auth_mode === 'telegram' && oldTelegram !== newTelegram));
+            setManagerReferrerError();
+            if (data.auth_mode === 'telegram' && (!row || accessChanged) && !/^@?[a-z][a-z0-9_]{4,31}$/i.test(data.telegram)) {
+                setManagerReferrerError('Укажите имя пользователя Telegram в формате @username.');
+                form.elements.telegram.focus();
+                return;
+            }
+            if (row?.cabinet_has_payment_links && accessChanged && !confirm(
+                'Прежняя ссылка на кабинет перестанет работать. Чтобы реферер снова мог выпускать платёжные ссылки, администратору потребуется разрешить выпуск. Сохранить изменения?'
+            )) return;
+            save.disabled = true;
+            try {
+                const fields = row ? Object.fromEntries(Object.entries(data).filter(([key, value]) =>
+                    key === 'telegram' ? oldTelegram !== newTelegram : value !== (row[key] || '').trim())) : data;
+                const response = await fetch(`${API_URL}/api/manager/referrers${row ? `/${row.id}` : ''}`, {
+                    method: row ? 'PUT' : 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(fields),
+                });
+                const result = await response.json();
+                if (!response.ok || !result.success || !result.referrer) {
+                    setManagerReferrerError(response.status === 403 || response.status === 404
+                        ? 'Реферер недоступен для редактирования.'
+                        : typeof result.error === 'string' && [400, 409].includes(response.status) ? result.error : 'Не удалось сохранить реферера.');
+                    return;
+                }
+                await managerReferrerRequest;
+                managerReferrers = [...managerReferrers.filter(item => item.id !== result.referrer.id), result.referrer]
+                    .sort((a, b) => a.name.localeCompare(b.name, 'ru'));
+                if (!row) document.getElementById('managerReferrerSearch').value = '';
+                closeManagerReferrer();
+                renderManagerReferrers();
+                showToast(accessChanged ? 'Настройки сохранены. Скопируйте актуальную ссылку на кабинет.'
+                    : row ? 'Настройки кабинета сохранены' : 'Реферер добавлен');
+                await _agentDirectoryRequest;
+                await loadReferrerDropdowns();
+            } catch (error) {
+                setManagerReferrerError('Не удалось сохранить реферера. Проверьте подключение и повторите попытку.');
+            } finally {
+                save.disabled = false;
+            }
+        }
+
         async function loadReferrers() {
+            await crmAuthReady();
+            const manager = AUTH_TASKS && AUTH_STAND === false && AUTH_ROLE === 'manager';
+            document.getElementById('managerReferrers').hidden = !manager;
+            document.getElementById('adminReferrers').hidden = manager;
+            if (manager) return loadManagerReferrers();
             try {
                 const res = await fetch(`${API_URL}/api/referrers`);
                 const data = await res.json();
@@ -18225,7 +18447,7 @@ ${Math.abs(c.debits_delta_rub) < 0.01
         <button class="bottom-nav-item" data-nav-section="kyc" onclick="showSection('kyc')"><span class="icon">🛡</span><span>KYC</span></button>
         <button class="bottom-nav-item" onclick="toggleMorePanel()" id="moreBtn"><span class="icon">⋯</span><span>Ещё</span></button>
     </nav>
-    <script src="/static/slate-shell.js?v=2"></script>
+    <script src="/static/slate-shell.js?v=3"></script>
     <script src="/static/nav-shell.js?v=13"></script>
     <script>NavShell.boot('crm');</script>
     <script src="/static/crm/mobile-layout.js?v=1"></script>

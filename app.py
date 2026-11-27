@@ -452,7 +452,7 @@ def check_auth():
             return jsonify(success=False, error='forbidden'), 403
 
 # ==================== DATABASE ====================
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import sessionmaker, scoped_session
 
@@ -6026,6 +6026,7 @@ TASKS_STAFF_WRITE_ENDPOINTS = frozenset({
     'preview_mf_freehold', 'preview_mf_realty', 'preview_ipps_realty',
     'preview_personal_realty', 'docs_parse', 'docs_change_file',
     'add_wallet', 'update_wallet', 'create_manual_rub_income',
+    'manager_referrers', 'manager_update_referrer',
 })
 
 
@@ -20494,8 +20495,7 @@ def _cabinet_link_can_be_shared(referrer):
     # ID cannot fall back to a username because Telegram login uses the ID first.
     if referrer.telegram_user_id:
         return referrer.telegram_user_id > 0
-    username = (referrer.telegram or '').lstrip('@').strip()
-    return bool(re.fullmatch(r'[A-Za-z][A-Za-z0-9_]{4,31}', username))
+    return bool(re.fullmatch(r'[a-z][a-z0-9_]{4,31}', _referrer_telegram_identity(referrer.telegram)))
 
 
 @app.route('/api/deals/<int:deal_id>/referrers/<int:referrer_id>/cabinet-link', methods=['GET'])
@@ -24228,6 +24228,10 @@ def _apply_payin_tx_hashes(deal, raw):
         deal.payin_tx_hash = None
 
 
+def _normalized_referrer_code(code):
+    return re.sub(r'[^A-Z0-9]', '', (code or '').upper())
+
+
 def _find_referrer_by_code(db, code):
     """Ищет активного реферера по коду. Нормализует: GRED и GR-ED → один реферер.
 
@@ -24240,11 +24244,11 @@ def _find_referrer_by_code(db, code):
     referrer = db.query(Referrer).filter(Referrer.code == code, Referrer.active == True).first()
     if referrer:
         return referrer
-    normalized = re.sub(r'[^A-Z0-9]', '', code)
+    normalized = _normalized_referrer_code(code)
     if not normalized:
         return None
     for r in db.query(Referrer).filter(Referrer.active == True).all():
-        if re.sub(r'[^A-Z0-9]', '', r.code.upper()) == normalized:
+        if _normalized_referrer_code(r.code) == normalized:
             return r
     return None
 
@@ -32146,34 +32150,56 @@ def verify_telegram_auth(data: dict, bot_token: str, max_age_sec: int = 86400) -
         return False
     return True
 
-def apply_referrer_tg_binding(referrer, tg_id, tg_username):
+def _referrer_telegram_identity(username):
+    return (username or '').lstrip('@').strip().lower()
+
+
+def _begin_referrer_auth_write(db):
+    if db.get_bind().dialect.name == 'sqlite':
+        db.execute(text('BEGIN IMMEDIATE'))
+
+
+def _locked_referrer(db, **filters):
+    return db.query(Referrer).filter_by(**filters).with_for_update().first()
+
+
+def apply_referrer_tg_binding(referrer, tg_id, tg_username, *, db=None):
     """
-    Привязка TG-аккаунта к рефереру (trust-on-first-login). Коммитит id при первом входе.
+    Привязка TG-аккаунта к рефереру. При передаче db вызывающий держит
+    блокировку реферера и коммитит привязку вместе с остальными изменениями.
     Возвращает (ok: bool, error: str|None).
     - есть telegram_user_id → пришедший id обязан совпасть;
     - иначе задан referrer.telegram (@username) → сверка username, совпал → биндим id;
     - иначе → биндим первый вошедший id.
     """
-    tg_id = int(tg_id)
+    if db is None:
+        with get_session() as session:
+            _begin_referrer_auth_write(session)
+            current = _locked_referrer(session, id=referrer.id, token=referrer.token, active=True)
+            if not current:
+                return False, 'Кабинет не найден'
+            result = apply_referrer_tg_binding(current, tg_id, tg_username, db=session)
+            if result[0]:
+                session.commit()
+            return result
+    try:
+        tg_id = int(tg_id)
+        if tg_id <= 0:
+            raise ValueError
+    except (ValueError, TypeError):
+        return False, 'Не удалось подтвердить Telegram-аккаунт'
     if referrer.telegram_user_id:
         if int(referrer.telegram_user_id) != tg_id:
             return False, 'Этот Telegram-аккаунт не привязан к кабинету'
         return True, None
 
-    expected = (referrer.telegram or '').lstrip('@').strip().lower()
+    expected = _referrer_telegram_identity(referrer.telegram)
     if expected:
-        got = (tg_username or '').lstrip('@').strip().lower()
+        got = _referrer_telegram_identity(tg_username)
         if got != expected:
             return False, 'Ваш Telegram не совпадает с указанным для этого реферера'
 
-    # Биндим id (совпал username, либо username не задан → первый вошедший)
-    s = get_session()
-    try:
-        r = s.query(Referrer).get(referrer.id)
-        r.telegram_user_id = tg_id
-        s.commit()
-    finally:
-        s.close()
+    referrer.telegram_user_id = tg_id
     return True, None
 
 def ref_session_authorized(referrer, token) -> bool:
@@ -32410,18 +32436,21 @@ def lk_bot_webhook():
         token = get_login_bot_token()
         db = get_session()
         try:
+            _begin_referrer_auth_write(db)
             ln = db.query(LoginNonce).get(nonce)
             fresh = ln and not ln.used and not ln.admin_id and not ln.tg_id and (
                 (datetime.utcnow() - (ln.created_at or datetime.utcnow())).total_seconds() <= LOGIN_NONCE_TTL_SEC)
             if not fresh:
                 reply = '⏰ Код входа устарел. Вернитесь на страницу входа и нажмите кнопку ещё раз.'
             elif ln.referrer_id:
-                # Вход в кабинет реферера: те же правила привязки, что и у виджета
-                referrer = db.query(Referrer).filter_by(id=ln.referrer_id, active=True).first()
-                ok, err = (apply_referrer_tg_binding(referrer, frm.get('id'), frm.get('username'))
+                # The manager can invalidate the nonce while we wait for
+                # the referrer lock. Re-read it before binding the account.
+                referrer = _locked_referrer(db, id=ln.referrer_id, active=True)
+                ln = db.query(LoginNonce).filter_by(nonce=nonce).populate_existing().first()
+                if not ln or ln.used or ln.denied or ln.tg_id:
+                    return jsonify(ok=True)
+                ok, err = (apply_referrer_tg_binding(referrer, frm.get('id'), frm.get('username'), db=db)
                            if referrer else (False, 'Кабинет не найден'))
-                # apply_referrer_tg_binding закрывает scoped-сессию → ln отцепился; перечитываем
-                ln = db.query(LoginNonce).get(nonce)
                 if ok:
                     ln.tg_id = int(frm.get('id'))
                     db.commit()
@@ -33733,21 +33762,17 @@ def referrer_page(token):
 def referrer_tg_login(token):
     """Вход реферера в кабинет через Telegram Login Widget."""
     data = request.get_json(silent=True) or {}
-    db = get_session()
-    try:
-        referrer = db.query(Referrer).filter(Referrer.token == token, Referrer.active == True).first()
-    finally:
-        db.close()
-    if not referrer:
-        return jsonify({'success': False, 'error': 'Реферер не найден'}), 404
-
-    bot_token = get_login_bot_token()
-    if not verify_telegram_auth(data, bot_token):
-        return jsonify({'success': False, 'error': 'Подпись Telegram недействительна или устарела'}), 403
-
-    ok, err = apply_referrer_tg_binding(referrer, data.get('id'), data.get('username'))
-    if not ok:
-        return jsonify({'success': False, 'error': err}), 403
+    with get_session() as db:
+        _begin_referrer_auth_write(db)
+        referrer = _locked_referrer(db, token=token, active=True)
+        if not referrer:
+            return jsonify({'success': False, 'error': 'Реферер не найден'}), 404
+        if not verify_telegram_auth(data, get_login_bot_token()):
+            return jsonify({'success': False, 'error': 'Подпись Telegram недействительна или устарела'}), 403
+        ok, err = apply_referrer_tg_binding(referrer, data.get('id'), data.get('username'), db=db)
+        if not ok:
+            return jsonify({'success': False, 'error': err}), 403
+        db.commit()
 
     flask_session.permanent = True
     auth = dict(flask_session.get('ref_auth') or {})
@@ -33797,7 +33822,8 @@ def referrer_tg_start(token):
     import secrets as _secrets
     db = get_session()
     try:
-        referrer = db.query(Referrer).filter_by(token=token, active=True).first()
+        _begin_referrer_auth_write(db)
+        referrer = _locked_referrer(db, token=token, active=True)
         if not referrer:
             return jsonify({'success': False, 'error': 'Реферер не найден'}), 404
         nonce = _secrets.token_urlsafe(24)
@@ -33823,7 +33849,8 @@ def referrer_tg_poll(token):
         return jsonify({'success': False, 'error': 'nonce required'}), 400
     db = get_session()
     try:
-        referrer = db.query(Referrer).filter_by(token=token, active=True).first()
+        _begin_referrer_auth_write(db)
+        referrer = _locked_referrer(db, token=token, active=True)
         ln = db.query(LoginNonce).get(nonce)
         if not referrer or not ln or ln.used or ln.referrer_id != referrer.id:
             return jsonify({'success': False, 'status': 'invalid'}), 404
@@ -33834,6 +33861,8 @@ def referrer_tg_poll(token):
                             'error': 'Ваш Telegram не совпадает с указанным для этого кабинета'})
         if not ln.tg_id:
             return jsonify({'success': False, 'status': 'pending'})
+        if ln.tg_id != referrer.telegram_user_id:
+            return jsonify({'success': False, 'status': 'invalid'}), 404
         ln.used = True
         db.commit()
         rid, bound_tg = referrer.id, int(ln.tg_id)
@@ -34650,6 +34679,176 @@ def get_referrers():
         db.close()
 
 
+_MANAGER_REFERRER_FIELDS = frozenset({'name', 'code', 'telegram', 'auth_mode', 'lang'})
+
+
+def _manager_referrer_fields(payload, *, creating=False):
+    if not isinstance(payload, dict) or set(payload) - _MANAGER_REFERRER_FIELDS:
+        raise ValueError('Недопустимые поля реферера')
+    if any(not isinstance(value, str) for value in payload.values()):
+        raise ValueError('Поля реферера должны быть строками')
+    fields = {key: value.strip() for key, value in payload.items()}
+    if creating or 'name' in fields:
+        name = fields.get('name', '')
+        if not 1 <= len(name) <= 100:
+            raise ValueError('Укажите имя длиной до 100 символов')
+    if 'code' in fields:
+        fields['code'] = fields['code'].upper()
+        if not (creating and not fields['code']) and (
+                not re.fullmatch(r'[A-Z0-9-]{1,20}', fields['code'])
+                or not _normalized_referrer_code(fields['code'])):
+            raise ValueError('В коде можно использовать латинские буквы, цифры и дефис')
+    if 'auth_mode' in fields and fields['auth_mode'] not in ('link', 'telegram'):
+        raise ValueError('Выберите способ входа в кабинет')
+    if 'lang' in fields and fields['lang'] not in ('ru', 'en'):
+        raise ValueError('Выберите язык кабинета')
+    return fields
+
+
+def _manager_referrer_telegram(username, *, required=False):
+    if not username and not required:
+        return ''
+    handle = username.removeprefix('@')
+    if not re.fullmatch(r'[A-Za-z][A-Za-z0-9_]{4,31}', handle):
+        raise ValueError('Укажите Telegram в формате @username')
+    return '@' + handle.lower()
+
+
+def _referrer_code_taken(db, code, excluding_id=None):
+    normalized = _normalized_referrer_code(code)
+    if db.get_bind().dialect.name == 'postgresql':
+        db.execute(text("SELECT pg_advisory_xact_lock(hashtext('crm_referrer_code'), hashtext(:code))"),
+                   {'code': normalized})
+    codes = db.query(Referrer.code)
+    if excluding_id is not None:
+        codes = codes.filter(Referrer.id != excluding_id)
+    if not normalized:
+        return codes.filter(Referrer.code == code).first() is not None
+    return any(_normalized_referrer_code(row.code) == normalized for row in codes)
+
+
+def _manager_referrers_error():
+    if not _deal_cabinet_links_enabled():
+        return jsonify(success=False, error='not_found'), 404
+    uid = flask_session.get('user_id')
+    if type(uid) is not int or uid <= 0 or current_role() != 'manager':
+        return jsonify(success=False, error='forbidden'), 403
+    return None
+
+
+def _manager_referrer_catalog(db):
+    return db.query(Referrer).filter(Referrer.active.is_(True), Referrer.is_test.isnot(True))
+
+
+def _manager_referrer_dict(referrer):
+    data = {
+        'id': referrer.id, 'name': referrer.name, 'code': referrer.code,
+        'telegram': referrer.telegram or '', 'lang': referrer.lang or 'ru',
+        'auth_mode': referrer.auth_mode or 'link', 'can_manage': True,
+        'can_copy_cabinet_link': bool(referrer.token and _cabinet_link_can_be_shared(referrer)),
+    }
+    if referrer.can_create_links:
+        data['cabinet_has_payment_links'] = True
+    return data
+
+
+def _manager_referrers_response(**data):
+    response = jsonify(success=True, **data)
+    response.headers['Cache-Control'] = 'private, no-store'
+    return response
+
+
+@app.route('/api/manager/referrers', methods=['GET', 'POST'])
+def manager_referrers():
+    denied = _manager_referrers_error()
+    if denied:
+        return denied
+    with get_session() as db:
+        if request.method in ('GET', 'HEAD'):
+            rows = _manager_referrer_catalog(db).order_by(func.lower(Referrer.name), Referrer.id)
+            return _manager_referrers_response(referrers=[_manager_referrer_dict(row) for row in rows])
+        try:
+            fields = _manager_referrer_fields(request.get_json(silent=True), creating=True)
+            fields['telegram'] = _manager_referrer_telegram(
+                fields.get('telegram', ''), required=fields.get('auth_mode') == 'telegram')
+        except ValueError as exc:
+            return jsonify(success=False, error=str(exc)), 400
+        fields['code'] = fields.get('code') or f'GR-{secrets.token_hex(5).upper()}'
+        _begin_referrer_auth_write(db)
+        if _referrer_code_taken(db, fields['code']):
+            return jsonify(success=False, error='Такой код реферера уже занят'), 409
+        referrer = Referrer(token=secrets.token_hex(16), **fields)
+        db.add(referrer)
+        try:
+            db.commit()
+        except IntegrityError:
+            return jsonify(success=False, error='Такой код реферера уже занят'), 409
+        return _manager_referrers_response(referrer=_manager_referrer_dict(referrer)), 201
+
+
+@app.route('/api/manager/referrers/<int:referrer_id>', methods=['PUT'])
+def manager_update_referrer(referrer_id):
+    denied = _manager_referrers_error()
+    if denied:
+        return denied
+    try:
+        fields = _manager_referrer_fields(request.get_json(silent=True))
+    except ValueError as exc:
+        return jsonify(success=False, error=str(exc)), 400
+    with get_session() as db:
+        _begin_referrer_auth_write(db)
+        referrer = _manager_referrer_catalog(db).filter_by(id=referrer_id).with_for_update().first()
+        if not referrer:
+            return jsonify(success=False, error='not_found'), 404
+        old_mode = referrer.auth_mode or 'link'
+        mode = fields.get('auth_mode', old_mode)
+        username = _referrer_telegram_identity(fields.get('telegram', referrer.telegram))
+        changes_identity = username != _referrer_telegram_identity(referrer.telegram)
+        changes_auth = mode != old_mode or (mode == 'telegram' and changes_identity)
+        try:
+            if changes_identity or (mode == 'telegram' and changes_auth):
+                fields['telegram'] = _manager_referrer_telegram(
+                    fields.get('telegram', referrer.telegram or ''), required=mode == 'telegram')
+            else:
+                fields.pop('telegram', None)
+        except ValueError as exc:
+            return jsonify(success=False, error=str(exc)), 400
+        if fields.get('code', referrer.code) != referrer.code and _referrer_code_taken(
+                db, fields['code'], excluding_id=referrer.id):
+            return jsonify(success=False, error='Такой код реферера уже занят'), 409
+        if changes_auth:
+            referrer.telegram_user_id = None
+            referrer.token = secrets.token_hex(16)
+            # Changing mode or identity revokes financial link creation until
+            # an administrator explicitly authorizes it for the new login.
+            referrer.can_create_links = False
+            db.query(LoginNonce).filter_by(referrer_id=referrer.id).delete()
+        elif mode == 'link' and changes_identity:
+            # The contact is not an identity in link mode. Clear any old TG
+            # binding used by notifications without revoking a working link.
+            referrer.telegram_user_id = None
+            db.query(LoginNonce).filter_by(referrer_id=referrer.id).delete()
+        for field, value in fields.items():
+            setattr(referrer, field, value)
+        try:
+            db.commit()
+        except IntegrityError:
+            return jsonify(success=False, error='Такой код реферера уже занят'), 409
+        return _manager_referrers_response(referrer=_manager_referrer_dict(referrer))
+
+
+@app.route('/api/manager/referrers/<int:referrer_id>/cabinet-link', methods=['GET'])
+def manager_referrer_cabinet_link(referrer_id):
+    denied = _manager_referrers_error()
+    if denied:
+        return denied
+    with get_session() as db:
+        referrer = _manager_referrer_catalog(db).filter_by(id=referrer_id).first()
+        if not referrer or not referrer.token or not _cabinet_link_can_be_shared(referrer):
+            return jsonify(success=False, error='not_found'), 404
+        return _manager_referrers_response(url=url_for('referrer_page', token=referrer.token))
+
+
 @app.route('/api/referrers', methods=['POST'])
 def create_referrer():
     """Создать реферера"""
@@ -34675,6 +34874,7 @@ def create_referrer():
 
     db = get_session()
     try:
+        _begin_referrer_auth_write(db)
         # Генерируем код если не задан
         if not code:
             # GR-ИМЯ (транслит первых 5 букв)
@@ -34683,8 +34883,7 @@ def create_referrer():
             code = f'GR-{slug}' if slug else f'GR-{secrets.token_hex(3).upper()}'
 
         # Проверяем уникальность кода
-        existing = db.query(Referrer).filter(Referrer.code == code).first()
-        if existing:
+        if _referrer_code_taken(db, code):
             return jsonify({'success': False, 'error': f'Код {code} уже занят'}), 400
 
         token = secrets.token_hex(16)  # 32 символа
@@ -34713,7 +34912,8 @@ def update_referrer(referrer_id):
     data = request.get_json() or {}
     db = get_session()
     try:
-        referrer = db.query(Referrer).get(referrer_id)
+        _begin_referrer_auth_write(db)
+        referrer = _locked_referrer(db, id=referrer_id)
         if not referrer:
             return jsonify({'success': False, 'error': 'Реферер не найден'}), 404
 
@@ -34722,8 +34922,7 @@ def update_referrer(referrer_id):
         if 'code' in data:
             new_code = data['code'].strip().upper()
             if new_code and new_code != referrer.code:
-                existing = db.query(Referrer).filter(Referrer.code == new_code, Referrer.id != referrer.id).first()
-                if existing:
+                if _referrer_code_taken(db, new_code, excluding_id=referrer.id):
                     return jsonify({'success': False, 'error': f'Код {new_code} уже занят'}), 400
                 referrer.code = new_code
         if 'default_percent' in data:
