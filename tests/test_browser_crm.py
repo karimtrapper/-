@@ -363,6 +363,31 @@ def test_selected_acquiring_keeps_client_paid_hint_in_main_and_extra(ui):
     assert not errors, errors
 
 
+@pytest.mark.parametrize('label, expected', [('Telegram', 'telegram'), ('Битрикс', 'bitrix')])
+def test_standard_manual_deal_saves_channel(ui, label, expected):
+    page, errors, _, base = ui
+    page.locator('.nav-create-btn').click()
+    expect(page.locator('#create')).to_be_visible()
+    page.wait_for_load_state('networkidle')
+    page.locator('#clientSearchInput').fill('QA Manual Client')
+    page.locator('#payinMethod').select_option('crypto_direct', force=True)
+    page.locator('#createDealForm [name="payin_amount_usdt"]').fill('100')
+    page.locator('#payoutAmountThb').fill('3000')
+
+    channel = page.get_by_label('Канал обращения')
+    submit = page.locator('#createDealForm button[type=submit]')
+    submit.click()
+    expect(channel).to_be_focused()
+    channel.select_option(label=label)
+    with page.expect_response(lambda r: urlsplit(r.url).path == '/api/deals'
+                              and r.request.method == 'POST') as saved:
+        submit.click()
+    assert saved.value.status == 201, saved.value.text()
+    deal_id = saved.value.json()['deal']['id']
+    assert page.request.get(f'{base}/api/deals/{deal_id}').json()['deal']['source_channel'] == expected
+    assert not errors, errors
+
+
 def test_custom_deal_create_edit_reload_preserves_money(ui):
     page, errors, _, base = ui
     page.locator('.nav-create-btn').click()
@@ -374,6 +399,10 @@ def test_custom_deal_create_edit_reload_preserves_money(ui):
     page.locator('#customPayinAmount').fill('1000')
     choose(page, '#customPayoutCurrency', 'USDT')
     page.locator('#customPayoutAmount').fill('970')
+    channel = page.get_by_label('Канал обращения')
+    page.locator('#customDealSubmit').click()
+    expect(channel).to_be_focused()
+    channel.select_option(label='WhatsApp')
     with page.expect_response(lambda r: urlsplit(r.url).path == '/api/deals'
                               and r.request.method == 'POST') as saved:
         page.locator('#customDealSubmit').click()
@@ -381,6 +410,8 @@ def test_custom_deal_create_edit_reload_preserves_money(ui):
     assert saved.value.status == 201, result
     deal = result['deal']
     assert deal['profit_usdt'] == 30
+    assert deal['source_channel'] == 'whatsapp'
+    expect(channel).to_have_value('')
     assert deal['client_name'] == 'QA Browser Client'
     page.locator('.nav-tab[data-section="deals"]').click()
     page.wait_for_load_state('networkidle')
@@ -399,6 +430,7 @@ def test_custom_deal_create_edit_reload_preserves_money(ui):
     state = page.request.get(base + f'/api/deals/{deal["id"]}').json()['deal']
     assert state['profit_usdt'] == 40
     assert state['custom_payout_amount'] == 960
+    assert state['source_channel'] == 'whatsapp'
     db = A.get_session()
     try:
         assert db.query(A.Deal).filter_by(client_name='QA Browser Client').count() == 1
