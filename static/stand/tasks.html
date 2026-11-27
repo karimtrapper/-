@@ -805,8 +805,6 @@ input[type="checkbox"]:disabled{opacity:.5;cursor:not-allowed}
 .analytics-stats{grid-template-columns:repeat(4,minmax(0,1fr))}
 .analytics-stats .stat-card{min-width:0}
 .analytics-view .analytics-stats .stat-value{font-size:clamp(20px,2.15vw,29px);margin:4px 0}
-.analytics-stats .stat-card.info{grid-column:span 2}
-.analytics-stats .stat-card.info .stat-value{white-space:nowrap}
 .analytics-reasons,.analytics-deals{list-style:none;padding:0;margin:0}
 .analytics-reasons li+li,.analytics-deal+.analytics-deal{border-top:1px solid var(--border)}
 .analytics-reason{display:grid;grid-template-columns:minmax(0,1fr) 3ch 7ch 12px;align-items:center;gap:12px;width:100%;min-height:44px;border:0;background:none;padding:8px 10px;color:var(--navy-700);font:inherit;text-align:left;cursor:pointer}
@@ -15067,12 +15065,13 @@ const ANALYTICS_DATE=new Intl.DateTimeFormat('sv-SE',{timeZone:ANALYTICS_ZONE,ye
 const ANALYTICS_LEGACY_CLOCK=new Intl.DateTimeFormat('ru-RU',{
   timeZone:ANALYTICS_ZONE,day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23',
 });
-const ANALYTICS_WINDOWS={last7:'7 дней',last30:'30 дней',month:'Этот месяц',all:'Всё время',custom:'Свой период'};
+const ANALYTICS_WINDOWS={week:'Эта неделя',last7:'7 дней',last30:'30 дней',month:'Этот месяц',all:'Всё время',custom:'Свой период'};
 const ANALYTICS_RATE_REASON='Не устроил курс';
 const ANALYTICS_WON='Успешно завершена';
-const ANALYTICS_OUTCOME_FILTERS={open:Symbol('open'),won:Symbol('won'),unknown:Symbol('unknown')};
-const analyticsFilters={period:'last30',basis:'created',inquiry:'all',source:'all',from:'',to:'',reason:null,limit:25};
+const ANALYTICS_OUTCOME_FILTERS={all:Symbol('all'),open:Symbol('open'),won:Symbol('won'),unknown:Symbol('unknown')};
+const analyticsFilters={period:'week',basis:'activity',inquiry:'all',source:'all',from:'',to:'',reason:null,limit:25};
 const ANALYTICS_TYPES={...INQUIRY_TYPES,unknown:'Не указано'};
+const ANALYTICS_CURRENCIES={RUB:'RUB',THB:'THB',USDT:'USDT',USD:'USD'};
 let analyticsChannels=new Map();
 let analyticsReturnScroll=null;
 
@@ -15159,6 +15158,11 @@ function analyticsPeriod(filters,today=analyticsDateKey(Date.now())){
   if(filters.period==='custom')return {from:filters.from,to:filters.to,
     invalid:!analyticsDateKey(filters.from)||!analyticsDateKey(filters.to)||filters.from>filters.to};
   if(filters.period==='month')return {from:today.slice(0,7)+'-01',to:today};
+  if(filters.period==='week'){
+    const monday=new Date(today+'T00:00:00Z');
+    monday.setUTCDate(monday.getUTCDate()-(monday.getUTCDay()+6)%7);
+    return {from:monday.toISOString().slice(0,10),to:today};
+  }
   const days=filters.period==='last7'?7:30;
   const start=new Date(Date.parse(today+'T00:00:00Z')-(days-1)*86400000);
   return {from:start.toISOString().slice(0,10),to:today};
@@ -15200,13 +15204,26 @@ function analyticsOutcome(d){
      (analyticsHasRecordedTransfer(d.payout?.hashes)||analyticsHasRecordedTransfer(d.mfPayout)))return 'won';
   return d.closed===true||analyticsDateKey(d.closedAt)||analyticsDateKey(d.closedTs)?'unknown':'open';
 }
+function analyticsPayin(d){
+  const custom=d.custom&&d.customData;
+  if(Object.hasOwn(ANALYTICS_CURRENCIES,custom?.payinCurrency)){
+    return {currency:custom.payinCurrency,amount:custom.payinAmount};
+  }
+  const exchange=d.type==='Обмен валюты'?exchangeSpec(d):null;
+  if(d.type==='Обмен валюты'&&!exchange)return {};
+  const currency=exchange?.input||payCur(d);
+  const amount=currency==='usdt'?d.amountUsdt:
+    (currency==='rub'?d.cashPartnerReceipt?.amountRub:null)||d.incomeAmount||d[amountField(currency)];
+  return {currency:currency.toUpperCase(),amount};
+}
 function analyticsSummary(rows){
-  const totals={all:rows.length,open:0,won:0,lost:0,unknown:0,rateLost:0,turnover:0};
-  for(const {d,outcome} of rows){
+  const totals={all:rows.length,open:0,won:0,lost:0,unknown:0,rateLost:0,turnover:{}};
+  for(const {d,outcome,closedInPeriod} of rows){
+    if(outcome!=='open'&&closedInPeriod===false)continue;
     totals[outcome]++;
     if(outcome==='won'){
-      const rub=Number(d.amountRub);
-      if(Number.isFinite(rub))totals.turnover+=rub;
+      const {currency,amount}=analyticsPayin(d),value=Number(amount);
+      if(currency&&Number.isFinite(value)&&value>0)totals.turnover[currency]=(totals.turnover[currency]||0)+value;
     }else if(outcome==='lost'&&analyticsReason(d)===ANALYTICS_RATE_REASON){
       totals.rateLost++;
     }
@@ -15214,18 +15231,29 @@ function analyticsSummary(rows){
   return totals;
 }
 function analyticsData(deals,filters,period){
+  const activity=filters.basis==='activity';
+  const inPeriod=date=>!!date&&(!period.from||date>=period.from&&date<=period.to);
   const base=deals.filter(d=>!d.manualNew)
     .filter(d=>filters.inquiry==='all'||analyticsInquiry(d)===filters.inquiry)
     .filter(d=>!filters.source||filters.source==='all'||analyticsSource(d)===filters.source)
     .map(d=>({d,outcome:analyticsOutcome(d)}))
     .filter(({outcome})=>filters.basis!=='closed'||outcome!=='open')
-    .map(row=>({...row,date:!period.invalid?analyticsDealDate(row.d,filters.basis):''}));
-  const unknownDates=period.invalid?0:base.filter(row=>!row.date).length;
+    .map(row=>{
+      if(period.invalid)return {...row,date:''};
+      if(!activity)return {...row,date:analyticsDealDate(row.d,filters.basis)};
+      const created=analyticsDealDate(row.d,'created'),closed=analyticsDealDate(row.d,'closed');
+      const createdInPeriod=inPeriod(created),closedInPeriod=row.outcome!=='open'&&(!period.from||inPeriod(closed));
+      const date=inPeriod(closed)&&(!createdInPeriod||closed>created)?closed:createdInPeriod?created:'';
+      return {...row,date,createdInPeriod,closedInPeriod,createdDate:created,closedDate:closed,
+        missingDate:!created||row.outcome!=='open'&&!closed};
+    });
+  const unknownDates=period.invalid?0:base.filter(row=>!row.date&&(!activity||row.missingDate)).length;
   const rows=period.invalid?[]:base.filter(({date})=>!period.from||(date>=period.from&&date<=period.to));
-  const availableDates=rows.map(row=>row.date).filter(Boolean).sort();
+  const availableDates=(activity?rows.flatMap(row=>[row.createdDate,row.closedDate]):rows.map(row=>row.date))
+    .filter(inPeriod).sort();
   const reasons=new Map();
   rows.forEach(row=>{
-    if(row.outcome==='lost'){
+    if(row.outcome==='lost'&&row.closedInPeriod!==false){
       const reason=analyticsReason(row.d);
       if(!reasons.has(reason))reasons.set(reason,[]);
       reasons.get(reason).push(row);
@@ -15302,17 +15330,47 @@ function analyticsCardFromURL(){
   S.view='deal';S.taskBranch=null;S.draft=null;S.edit=null;
   if(ref&&S.open===null)toast('Сделка не найдена');
 }
+function analyticsTurnover(turnover){
+  const signs={RUB:'₽',THB:'฿',USDT:'USDT',USD:'USD'};
+  return Object.keys(ANALYTICS_CURRENCIES)
+    .filter(currency=>turnover[currency])
+    .map(currency=>moneyKop(turnover[currency],signs[currency])).join('<br>')||'—';
+}
 function analyticsGroupTable(rows,groups,groupFor,label){
-  const columns=['Сделок','Открыто','Успешно закрыто','Закрыто отказом','Итог не указан','Оборот'];
+  const columns=['Сделок','Открыто сейчас','Успешно закрыто','Закрыто отказом','Итог не указан','Оборот успешных'];
   return '<div class="analytics-table-wrap" tabindex="0" role="region" aria-label="'+label+
     '"><table class="analytics-source-table"><thead><tr><th>'+label+'</th>'+
     columns.map(column=>'<th>'+column+'</th>').join('')+'</tr></thead><tbody>'+
     Object.entries(groups).map(([key,name])=>{
       const m=analyticsSummary(rows.filter(({d})=>groupFor(d)===key));
-      const values=[m.all,m.open,m.won,m.lost,m.unknown,moneyKop(m.turnover,'₽')];
+      const values=[m.all,m.open,m.won,m.lost,m.unknown,analyticsTurnover(m.turnover)];
       return '<tr><td><b>'+name+'</b></td>'+
         columns.map((column,i)=>'<td class="num" data-label="'+column+'">'+values[i]+'</td>').join('')+'</tr>';
     }).join('')+'</tbody></table></div>';
+}
+function analyticsDailyTable(rows){
+  const days=new Map();
+  const day=date=>{
+    if(!days.has(date))days.set(date,{created:0,closed:[]});
+    return days.get(date);
+  };
+  for(const row of rows){
+    if(row.createdInPeriod)day(row.createdDate).created++;
+    if(row.closedInPeriod&&row.closedDate)day(row.closedDate).closed.push(row);
+  }
+  if(!days.size)return '';
+  const currencies=Object.keys(ANALYTICS_CURRENCIES);
+  const columns=['Создано','Закрыто',...currencies.map(currency=>'Оборот '+currency)];
+  return '<section class="card"><h2 class="card-title">По дням</h2>'+
+    '<div class="analytics-table-wrap" tabindex="0" role="region" aria-label="По дням">'+
+    '<table class="analytics-source-table"><thead><tr><th>Дата</th>'+
+    columns.map(column=>'<th>'+column+'</th>').join('')+'</tr></thead><tbody>'+
+    [...days.keys()].sort().map(date=>{
+      const {created,closed}=days.get(date),{turnover}=analyticsSummary(closed);
+      const values=[created,closed.length,...currencies.map(currency=>moneyKop(turnover[currency],''))];
+      return '<tr><td><b>'+analyticsDateLabel(date)+'</b></td>'+
+        columns.map((column,i)=>'<td class="num" data-label="'+column+'">'+values[i]+'</td>').join('')+'</tr>';
+    }).join('')+'</tbody></table></div></section>';
 }
 function analyticsDealFacts(d){
   const product=d.autoPayment?'Оплата авто':d.type==='Обмен валюты'&&PAIRS.includes(d.pair)
@@ -15333,13 +15391,19 @@ function analyticsDealFacts(d){
 function analyticsReasonDeals(reasons,reason,filteredRows=[]){
   if(reason===null)return '';
   const outcome=Object.keys(ANALYTICS_OUTCOME_FILTERS).find(key=>ANALYTICS_OUTCOME_FILTERS[key]===reason);
-  const title=outcome==='open'?'Открытые сделки':outcome==='won'?'Успешно закрытые сделки':
+  const title=outcome==='all'?'Все сделки за период':outcome==='open'?'Открытые сделки':outcome==='won'?'Успешно закрытые сделки':
     outcome==='unknown'?'Сделки без указанного итога':
     reason||'Причина не указана';
-  const selected=outcome?filteredRows.filter(row=>row.outcome===outcome):(reasons.get(reason)||[]);
-  const rows=selected.map(({d})=>({d,date:analyticsDealDate(d,outcome==='open'?'created':'closed')}))
+  const selected=outcome==='all'?filteredRows:outcome?filteredRows.filter(row=>
+    row.outcome===outcome&&(outcome==='open'||row.closedInPeriod!==false)):(reasons.get(reason)||[]);
+  const rows=selected.map(row=>{
+    const closing=analyticsDealDate(row.d,'closed');
+    const opened=row.outcome==='open'||outcome==='open';
+    const date=outcome==='all'?row.date:opened?analyticsDealDate(row.d,'created'):closing;
+    return {...row,closing,opened,date};
+  })
     .sort((a,b)=>b.date.localeCompare(a.date)||Number(b.d.id)-Number(a.d.id));
-  const cards=rows.slice(0,analyticsFilters.limit).map(({d,date})=>{
+  const cards=rows.slice(0,analyticsFilters.limit).map(({d,closing,opened,outcome:result})=>{
     const code=htmlText(d.code||'СД-'+d.id);
     const link=Number.isSafeInteger(d.id)&&d.id>0
       ?'<a class="analytics-link" data-deal="'+d.id+'" href="'+analyticsDealUrl(d.id)+'" onclick="analyticsOpenDeal(event)">'+code+'</a>'
@@ -15349,7 +15413,8 @@ function analyticsReasonDeals(reasons,reason,filteredRows=[]){
       .filter(Boolean).join(' · ');
     const created=analyticsDealDate(d,'created');
     const dates=[created?'Создана '+analyticsDateLabel(created):'Дата создания неизвестна',
-      outcome==='open'?'Открыта':date?'Закрыта '+analyticsDateLabel(date):'Дата закрытия неизвестна'].join(' · ');
+      opened?'Открыта':closing?'Закрыта '+analyticsDateLabel(closing):'Дата закрытия неизвестна',
+      outcome==='all'?{won:'Успешно',lost:'Отказ',unknown:'Итог не указан'}[result]:''].filter(Boolean).join(' · ');
     return '<li class="analytics-deal"><div><div class="analytics-deal-title">'+link+
       '<strong>'+htmlText(d.client||'Клиент не указан')+'</strong></div><div class="analytics-muted">'+
       htmlText(dates)+'</div><div class="analytics-muted">'+
@@ -15368,6 +15433,7 @@ function viewAnalytics(){
     '<div class="card empty"><p>Не удалось загрузить сделки.</p>'+
     '<button type="button" class="btn btn-outline" onclick="standPull(true)">Повторить загрузку</button></div></div>';
   const f=analyticsFilters,p=analyticsPeriod(f);
+  const activity=f.basis==='activity';
   const {rows,reasons,unknownDates,firstDate,lastDate}=analyticsData(S.deals,f,p);
   const m=analyticsSummary(rows),known=m.won+m.lost,closed=known+m.unknown;
   const conversionDetails=m.won+' из '+known+' закрытых'+(m.unknown?' с известным итогом':'');
@@ -15376,6 +15442,11 @@ function viewAnalytics(){
   const unknownDetails=m.unknown?outcomeLink('unknown','Итог не указан · '+m.unknown):'';
   const wonDetails=m.won?outcomeLink('won','Показать успешные сделки'):'';
   const openDetails=m.open?outcomeLink('open','Показать открытые сделки'):'';
+  const allDetails=m.all?outcomeLink('all','Показать все сделки'):'';
+  const created=activity?rows.filter(row=>row.createdInPeriod).length:0;
+  const undatedClosures=activity&&p.from?rows.filter(row=>row.outcome!=='open'&&!row.closedDate).length:0;
+  const currencyGroups=rows.some(({d})=>!analyticsPayin(d).currency)
+    ?{...ANALYTICS_CURRENCIES,unknown:'Не указана'}:ANALYTICS_CURRENCIES;
   const dateRange=(from,to)=>analyticsDateLabel(from)+' — '+analyticsDateLabel(to)+' · время Таиланда';
   const periodLabel=p.invalid?'Укажите корректный диапазон дат.':p.from?dateRange(p.from,p.to):
     firstDate?'Всё время · '+dateRange(firstDate,lastDate):'Всё время · время Таиланда';
@@ -15403,24 +15474,29 @@ function viewAnalytics(){
     (f.period==='custom'?'<div class="analytics-dates">'+dateField('from','С')+dateField('to','По')+'</div>':'')+
     '<p class="analytics-period" role="status">'+periodLabel+'</p></div>'+
     '<div class="analytics-selects"><label for="analytics-basis">Считать по дате<select id="analytics-basis" class="fc" onchange="analyticsSetFilter(\'basis\',this.value)">'+
-    '<option value="created">Создания</option><option value="closed"'+(f.basis==='closed'?' selected':'')+'>Закрытия</option></select></label>'+
+    '<option value="activity"'+(activity?' selected':'')+'>Обе даты</option><option value="created"'+(f.basis==='created'?' selected':'')+'>Создания</option>'+
+    '<option value="closed"'+(f.basis==='closed'?' selected':'')+'>Закрытия</option></select></label>'+
     '<label for="analytics-inquiry">Тип сделки<select id="analytics-inquiry" class="fc" onchange="analyticsSetFilter(\'inquiry\',this.value)">'+
     filterChoices(ANALYTICS_TYPES,f.inquiry,'Все типы')+'</select></label>'+
     '<label for="analytics-source">Источник<select id="analytics-source" class="fc" onchange="analyticsSetFilter(\'source\',this.value)">'+
     filterChoices(sources,f.source,'Все источники')+'</select></label></div></section>'+
     (unknownDates?'<p class="analytics-date-missing">'+(p.from?'Исключено из периода: ':'Учтено за всё время: ')+
       unknownDates+' '+plural(unknownDates,'сделка','сделки','сделок')+
-      ' без точной даты '+(f.basis==='closed'?'закрытия':'создания')+'.</p>':'')+
-    (p.invalid?'':'<div class="stats-grid analytics-stats">'+stat('Сделок в задачнике',m.all)+
-      (f.basis==='created'?stat('Открыто сейчас',m.open,openDetails):'')+
-      stat('Закрыто всего',closed,unknownDetails)+stat('Успешно закрыто',m.won,wonDetails,'success')+
+      ' без точной даты '+(activity?'для отбора':f.basis==='closed'?'закрытия':'создания')+'.</p>':'')+
+    (undatedClosures?'<p class="analytics-date-missing">Закрыты без даты: '+undatedClosures+'.</p>':'')+
+    (p.invalid?'':'<div class="stats-grid analytics-stats">'+stat(activity?'Сделок за период':'Сделок в задачнике',m.all,allDetails)+
+      (activity?stat(p.from?'Создано за период':'Создано',created):'')+
+      (f.basis!=='closed'?stat('Открыто сейчас',m.open,openDetails):'')+
+      stat(activity&&p.from?'Закрыто за период':'Закрыто всего',closed,unknownDetails)+stat('Успешно закрыто',m.won,wonDetails,'success')+
       stat('Закрыто отказом',m.lost,'','danger')+stat('Конверсия закрытых',analyticsPercent(m.won,known),conversionDetails)+
-      stat('Отказы из-за курса',analyticsPercent(m.rateLost,m.lost),m.rateLost+' из '+m.lost+' отказов')+
-      stat('Оборот успешных',moneyKop(m.turnover,'₽'),'','info')+'</div>'+
+      stat('Отказы из-за курса',analyticsPercent(m.rateLost,m.lost),m.rateLost+' из '+m.lost+' отказов')+'</div>'+
       (!rows.length?'<p class="card empty">В выбранном периоде по этому фильтру сделок нет.</p>':'')+
+      (activity&&p.from?analyticsDailyTable(rows):'')+
       '<section class="card"><h2 class="card-title">Причины отказов</h2>'+
       (reasonRows?'<ul class="analytics-reasons" aria-label="Причины отказов">'+reasonRows+'</ul>':'<p class="empty">За выбранный период отказов нет.</p>')+'</section>'+
       analyticsReasonDeals(reasons,f.reason,rows)+
+      '<section class="card"><h2 class="card-title">По валюте прихода</h2>'+
+      analyticsGroupTable(rows,currencyGroups,d=>analyticsPayin(d).currency||'unknown','Валюта прихода')+'</section>'+
       '<section class="card"><h2 class="card-title">По типу сделки</h2>'+
       analyticsGroupTable(rows,ANALYTICS_TYPES,analyticsInquiry,'Тип сделки')+'</section>'+
       '<section class="card"><h2 class="card-title">По источникам</h2>'+

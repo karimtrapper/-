@@ -21,7 +21,7 @@ const stand = {
   PAIRS: ['RUB → THB'],
   chatList: channel => channels[channel] || [],
   dealDisplayKind: d => d.type,
-  moneyKop: (number, currency) => number + ' ' + currency,
+  moneyKop: (number, currency) => number==null?'—':[number,currency].filter(value=>value!=='').join(' '),
   plural: (count, one, two, many) => count === 1 ? one : count === 2 ? two : many,
   htmlText: vm.runInNewContext(html.match(/^function htmlText.+$/m)[0] + '\nhtmlText'),
   STAND: false,
@@ -29,7 +29,12 @@ const stand = {
   S: {deals: [], role:'manager'},
 };
 vm.createContext(stand);
-vm.runInContext(functions, stand);
+const payinFunctions = html.slice(html.indexOf('function exchangeSpec('), html.indexOf('function quoteDirs('))
+  + '\n' + html.match(/^function payCur.+$/m)[0];
+vm.runInContext(payinFunctions + '\n' + functions, stand);
+function totals(rows) {
+  return JSON.parse(JSON.stringify(stand.analyticsSummary(rows)));
+}
 stand.analyticsIndexChannels();
 
 assert.equal(stand.analyticsDateKey('2026-11-22T17:00:00'), '2026-11-23', 'naive server ISO is UTC');
@@ -89,8 +94,8 @@ const period = {from:'2026-11-20',to:'2026-11-22'};
 const data = stand.analyticsData(deals, filters, period);
 assert.equal(data.rows.length, 4);
 assert.equal(data.unknownDates, 1);
-const summary = stand.analyticsSummary(data.rows);
-assert.deepEqual({...summary}, {all:4,open:1,won:1,lost:2,unknown:0,rateLost:1,turnover:45000.25});
+const summary = totals(data.rows);
+assert.deepEqual({...summary}, {all:4,open:1,won:1,lost:2,unknown:0,rateLost:1,turnover:{RUB:45000.25}});
 assert.equal(data.reasons.get('Не устроил курс')[0].d.id, 1);
 assert.equal(stand.analyticsData(deals, {...filters,inquiry:'unknown'}, period).rows.length, 2);
 assert.equal(stand.analyticsData(deals, {...filters,basis:'closed'}, period).rows.length, 2);
@@ -137,7 +142,9 @@ assert.equal(stand.standDealConversation({source:'tg',sourceRef:'Один:два
 
 stand.S.deals = deals;
 const report = stand.viewAnalytics();
-assert.match(report, /Сделок в задачнике/);
+assert.match(report, /Сделок за период/);
+assert.match(report, /value="activity" selected>Обе даты/);
+assert.match(report, /aria-pressed="true"[^>]*>Эта неделя/);
 assert.match(report, /Конверсия закрытых/);
 assert.match(report, /Отказы из-за курса/);
 assert.match(report, /время Таиланда/);
@@ -160,8 +167,8 @@ const manualDeals = [
   {id:16, closed:true, createdAt:'2026-11-21', closedAt:'2026-11-22', source:'tg', inquiryType:'agent'},
 ];
 const manualData = stand.analyticsData(manualDeals, filters, period);
-assert.deepEqual({...stand.analyticsSummary(manualData.rows)},
-  {all:6,open:2,won:1,lost:2,unknown:1,rateLost:1,turnover:500});
+assert.deepEqual(totals(manualData.rows),
+  {all:6,open:2,won:1,lost:2,unknown:1,rateLost:1,turnover:{RUB:500}});
 assert.equal(stand.analyticsOutcome(manualDeals[0]), 'open');
 assert.equal(stand.analyticsOutcome({...manualDeals[0],closed:true}), 'unknown');
 assert.equal(stand.analyticsOutcome({...manualDeals[0],closedTs:eventAt}), 'unknown');
@@ -182,20 +189,20 @@ assert.equal(stand.analyticsOutcome({...recordedExchange,payinHashes:[{hash:'inc
 assert.equal(stand.analyticsOutcome({...recordedExchange,manual:false,originMode:null,step:'s4'}), 'open');
 assert.equal(stand.analyticsDealDate(recordedExchange, 'closed'), '');
 const recordedRows = stand.analyticsData([recordedExchange,{...recordedExchange,manualNew:true}], filters, {from:'',to:''});
-assert.deepEqual({...stand.analyticsSummary(recordedRows.rows)},
-  {all:1,open:0,won:1,lost:0,unknown:0,rateLost:0,turnover:56749.48});
-assert.deepEqual({...stand.analyticsSummary(
-  stand.analyticsData(manualDeals, {...filters,source:'tg',inquiry:'client'}, period).rows)},
-  {all:3,open:2,won:0,lost:0,unknown:1,rateLost:0,turnover:0});
+assert.deepEqual(totals(recordedRows.rows),
+  {all:1,open:0,won:1,lost:0,unknown:0,rateLost:0,turnover:{RUB:56749.48}});
+assert.deepEqual(totals(
+  stand.analyticsData(manualDeals, {...filters,source:'tg',inquiry:'client'}, period).rows),
+  {all:3,open:2,won:0,lost:0,unknown:1,rateLost:0,turnover:{}});
 const closedFilters = {...filters,basis:'closed'};
 const manualClosedWindow = stand.analyticsData(manualDeals, closedFilters, period);
 assert.equal(manualClosedWindow.unknownDates, 0);
-assert.deepEqual({...stand.analyticsSummary(manualClosedWindow.rows)},
-  {all:4,open:0,won:1,lost:2,unknown:1,rateLost:1,turnover:500});
+assert.deepEqual(totals(manualClosedWindow.rows),
+  {all:4,open:0,won:1,lost:2,unknown:1,rateLost:1,turnover:{RUB:500}});
 const manualClosedAll = stand.analyticsData(manualDeals, closedFilters, {from:'',to:''});
 assert.equal(manualClosedAll.unknownDates, 0);
-assert.deepEqual({...stand.analyticsSummary(manualClosedAll.rows)},
-  {all:4,open:0,won:1,lost:2,unknown:1,rateLost:1,turnover:500});
+assert.deepEqual(totals(manualClosedAll.rows),
+  {all:4,open:0,won:1,lost:2,unknown:1,rateLost:1,turnover:{RUB:500}});
 
 stand.S.deals = manualDeals;
 vm.runInContext("Object.assign(analyticsFilters,{period:'all',basis:'created'})", stand);
@@ -223,4 +230,61 @@ vm.runInContext("Object.assign(analyticsFilters,{period:'custom',basis:'closed',
 assert.match(stand.viewAnalytics(), /Исключено из периода: 1 сделка без точной даты закрытия/);
 vm.runInContext("analyticsFilters.period='all'", stand);
 assert.match(stand.viewAnalytics(), /Учтено за всё время: 1 сделка без точной даты закрытия/);
+
+assert.equal(stand.analyticsPeriod({period:'week'}, '2026-01-01').from, '2025-12-29');
+assert.equal(stand.analyticsPeriod({period:'week'}, '2026-11-23').from, '2026-11-23');
+assert.equal(stand.analyticsPeriod({period:'week'}, '2026-11-29').from, '2026-11-23');
+assert.equal(stand.analyticsPeriod({period:'week'}, '2026-11-27').to, '2026-11-27');
+const won = {closed:true,closeReason:'Успешно завершена'};
+const weekDeals = [
+  {id:21, ...won, createdAt:'2026-11-20',closedAt:'2026-11-23',type:'Обмен валюты',
+    pair:'THB → RUB',curBase:'rub',amountThb:8500,amountRub:23000},
+  {id:22, ...won, createdAt:'2026-11-24',closedAt:'2026-11-25',type:'Обмен валюты',
+    pair:'USDT → THB',curBase:'thb',amountUsdt:500,amountRub:45000,amountThb:17000},
+  {id:23, closed:false, createdAt:'2026-11-23',type:'Обмен валюты',pair:'RUB → USDT',amountRub:25000},
+  {id:24, ...won, createdAt:'2026-11-26',closedAt:'2026-11-30',amountRub:33000},
+  {id:25, closed:true,closeReason:'Не устроил курс',createdAt:'2026-11-19',closedAt:'2026-11-20'},
+  {id:26, closed:false,createdAt:'2026-11-19'},
+  {id:27, ...won, createdAt:'2026-11-25',amountRub:1100},
+  {id:28, ...won, createdAt:'2026-11-24',closedAt:'2026-11-26',
+    custom:true,customData:{payinCurrency:'USD',payinAmount:700,payoutCurrency:'THB',payoutAmount:25000}},
+  {id:29, ...won, createdAt:'2026-11-24',closedAt:'2026-11-26',
+    type:'Обмен валюты',pair:'RUB → USDT',incomeAmount:31500,amountRub:32000,amountUsdt:350},
+  {id:30, closed:true,closeReason:'Не устроил курс',createdAt:'2026-11-20',closedAt:'2026-11-27'},
+];
+const weekPeriod=stand.analyticsPeriod({period:'week'},'2026-11-27');
+const week=stand.analyticsData(weekDeals,{...filters,basis:'activity'},weekPeriod);
+assert.deepEqual(Array.from(week.rows, row=>row.d.id), [21,22,23,24,27,28,29,30]);
+assert.equal(week.rows.filter(r=>r.createdInPeriod).length,6);
+assert.equal(week.rows.filter(r=>r.closedInPeriod).length,5);
+assert.equal(week.unknownDates,0);
+assert.deepEqual(totals(week.rows), {
+  all:8,open:1,won:4,lost:1,unknown:0,rateLost:1,turnover:{THB:8500,USDT:500,USD:700,RUB:31500},
+});
+assert.deepEqual(Array.from(week.reasons.get('Не устроил курс'), row=>row.d.id), [30]);
+assert.equal(week.rows.find(row=>row.d.id===24).date,'2026-11-26');
+const weekAll=stand.analyticsData(weekDeals,{...filters,basis:'activity'},{from:'',to:''});
+assert.equal(weekAll.firstDate,'2026-11-19');
+assert.equal(weekAll.lastDate,'2026-11-30');
+
+stand.S.deals=weekDeals;
+vm.runInContext("Object.assign(analyticsFilters,{period:'custom',basis:'activity',from:'2026-11-23',to:'2026-11-27',reason:ANALYTICS_OUTCOME_FILTERS.all})", stand);
+const weekReport=stand.viewAnalytics();
+assert.match(weekReport, /Сделок за период<\/div><div class="stat-value num">8<\/div>/);
+assert.match(weekReport, /Создано за период<\/div><div class="stat-value num">6<\/div>/);
+assert.match(weekReport, /Закрыто за период<\/div><div class="stat-value num">5<\/div>/);
+assert.match(weekReport, /Закрыты без даты: 1/);
+assert.match(weekReport, /Все сделки за период/);
+assert.match(weekReport, /Создана 23\.11\.2026 · Открыта/);
+assert.match(weekReport, /По валюте прихода/);
+assert.match(weekReport, /По дням/);
+assert.match(weekReport, /<b>23\.11\.2026<\/b><\/td><td class="num" data-label="Создано">1<\/td><td class="num" data-label="Закрыто">1<\/td>/);
+assert.match(weekReport, /data-label="Оборот THB">8500<\/td>/);
+assert.match(weekReport, /31500 ₽/);
+assert.match(weekReport, /8500 ฿/);
+assert.match(weekReport, /500 USDT/);
+assert.match(weekReport, /700 USD/);
+assert.doesNotMatch(weekReport.slice(weekReport.indexOf('По валюте прихода')), /33000 ₽|32000 ₽|45000 ₽|1100 ₽/);
+vm.runInContext("analyticsFilters.reason=ANALYTICS_OUTCOME_FILTERS.won", stand);
+assert.deepEqual([...stand.viewAnalytics().matchAll(/data-deal="(\d+)"/g)].map(match=>match[1]), ['29','28','22','21']);
 console.log('PASS analytics calendar, filters, metrics, escaping, and exact conversation links');
