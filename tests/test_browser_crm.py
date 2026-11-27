@@ -164,6 +164,62 @@ def stand_ui(chromium, crm_server, monkeypatch):
     context.close()
 
 
+def test_crm_task_filter_and_backlink(stand_ui):
+    page, errors = stand_ui
+    test_case = Path(A.app.static_folder) / 'stand/walkthrough/leasehold-rub/01.json'
+    card = json.loads(test_case.read_text())['state']['deals'][0]
+    with A.get_session() as db:
+        linked = A.Deal(client_name='QA linked task', deal_type=A.DealType.PAY_IN,
+                        status=A.DealStatus.COMPLETED)
+        archived = A.Deal(client_name='QA archived task', deal_type=A.DealType.PAY_IN,
+                          status=A.DealStatus.LOSE)
+        stale = A.Deal(client_name='QA old board', deal_type=A.DealType.PAY_IN,
+                       status=A.DealStatus.COMPLETED)
+        manual = A.Deal(client_name='QA manual CRM', deal_type=A.DealType.PAY_IN,
+                        status=A.DealStatus.COMPLETED, notes='Из задачника стенда: СД-1502')
+        db.add_all([linked, archived, stale, manual])
+        db.flush()
+        linked_id, archived_id, stale_id, manual_id = linked.id, archived.id, stale.id, manual.id
+        board = db.get(A.StandState, 1) or A.StandState(id=1, version=1)
+        board.generation = '1' * 32
+        done = dict(card, id=1502, code='СД-1502', client='QA linked task', closed=True,
+                    step='done', crmDealId=linked_id)
+        archived_card = dict(done, id=1503, code='СД-1503', client='QA archived task',
+                             crmDealId=archived_id, taskArchived=True)
+        board.data = json.dumps(dict(A._stand_initial_state(), deals=[done, archived_card]))
+        db.add(board)
+        db.add_all([
+            A.StandCrmLink(origin=f'{board.generation}:1502', crm_deal_id=linked_id),
+            A.StandCrmLink(origin=f'{board.generation}:1503', crm_deal_id=archived_id),
+            A.StandCrmLink(origin=f'{"2" * 32}:1502', crm_deal_id=stale_id),
+        ])
+        db.commit()
+
+    base = page.url.split('/crm', 1)[0]
+    assert 'task_board' not in page.request.get(f'{base}/api/deals/{manual_id}').json()['deal']
+    assert page.request.get(f'{base}/api/deals/{stale_id}').json()['deal']['task_board'] == {}
+    archived_link = page.request.get(f'{base}/api/deals/{archived_id}').json()['deal']['task_board']
+    assert archived_link['url'] == f'/tasks?section=analytics&deal=1503&crm_deal={archived_id}'
+
+    choose(page, '#filterCloseSource', 'Через задачник')
+    with page.expect_response(lambda response: 'closed_via_tasks=1' in response.url) as filtered:
+        page.get_by_role('button', name='Применить', exact=True).click()
+    assert {d['id'] for d in filtered.value.json()['deals']} == {linked_id, archived_id, stale_id}
+    page.locator('#dealsTable tr').filter(has_text='QA linked task').click()
+    link = page.get_by_role('link', name='Открыть СД-1502 в задачнике')
+    expect(link).to_have_attribute('href', f'/tasks?deal=1502&crm_deal={linked_id}')
+    link.click()
+    expect(page.locator('.deal-head')).to_contain_text('QA linked task')
+
+    page.goto(f'{base}{archived_link["url"]}')
+    expect(page.locator('.deal-head')).to_contain_text('QA archived task')
+
+    page.goto(f'{base}/tasks?deal=1502&crm_deal={stale_id}')
+    expect(page.get_by_text('Сделка 1502 не найдена', exact=False)).to_be_visible()
+    expect(page.locator('.deal-head')).to_have_count(0)
+    assert not errors, errors
+
+
 @pytest.mark.parametrize('section,loader,rendered', SHELL_SECTIONS)
 def test_shared_section_click_loads_and_renders(stand_ui, section, loader, rendered):
     page, errors = stand_ui

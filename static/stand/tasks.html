@@ -15278,8 +15278,8 @@ function analyticsCloseDeal(){
   render();
 }
 function analyticsCardFromURL(){
-  const ref=new URLSearchParams(location.search).get('deal');
-  S.open=S.deals.find(d=>String(d.id)===ref)?.id??null;
+  const query=new URLSearchParams(location.search),ref=query.get('deal');
+  S.open=S.deals.find(d=>String(d.id)===ref&&matchesCrmLink(d,query))?.id??null;
   S.view='deal';S.taskBranch=null;S.draft=null;S.edit=null;
   if(ref&&S.open===null)toast('Сделка не найдена');
 }
@@ -15933,6 +15933,9 @@ async function standBoot(){
 }
 /* Переход из уведомления: ?deal=<id|код> открывает ту самую задачу.
    Без этого ссылка вела на общий список и человек искал сделку глазами. */
+function matchesCrmLink(d,query){
+  return !query.has('crm_deal')||(d.closed===true&&String(d.crmDealId)===query.get('crm_deal'));
+}
 function standOpenFromLink(){
   const q=new URLSearchParams(location.search), ref=q.get('deal');
   if(q.get('section')==='analytics'){
@@ -15940,7 +15943,7 @@ function standOpenFromLink(){
     return;
   }
   if(!ref)return;
-  const d=S.deals.find(x=>String(x.id)===String(ref)||x.code===ref);
+  const d=S.deals.find(x=>(String(x.id)===ref||x.code===ref)&&matchesCrmLink(x,q));
   if(!d){toast('Сделка '+ref+' не найдена — возможно, доску сбросили');return;}
   if(d.taskArchived===true){
     history.replaceState(null,'',location.pathname);

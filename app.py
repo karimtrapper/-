@@ -19623,10 +19623,13 @@ def get_deals():
         query = session.query(Deal).options(
             joinedload(Deal.client), joinedload(Deal.reimbursement), selectinload(Deal.agents)
         ).order_by(Deal.created_at.desc(), Deal.id.desc())
+        closed_via_tasks = request.args.get('closed_via_tasks') == '1'
+        if closed_via_tasks:
+            query = query.join(StandCrmLink, StandCrmLink.crm_deal_id == Deal.id)
         status = request.args.get('status')
         if status:
             query = query.filter(Deal.status == DealStatus(status))
-        elif request.args.get('include_lose') != '1':
+        elif not closed_via_tasks and request.args.get('include_lose') != '1':
             # LOSE и «не обращение» — аналитические записи, в основном списке
             # сделок не показываем (достать можно фильтром по статусу)
             query = query.filter(Deal.status.notin_(NON_DEAL_STATUSES))
@@ -19705,6 +19708,25 @@ def get_deals():
     finally:
         session.close()
 
+def _crm_task_board_card(session, crm_deal_id):
+    origin = session.query(StandCrmLink.origin).filter_by(crm_deal_id=crm_deal_id).scalar()
+    if not origin:
+        return None
+    generation, _, task_id = origin.partition(':')
+    if not generation or not re.fullmatch(r'[1-9][0-9]*', task_id):
+        return {}
+    board = session.get(StandState, 1)
+    if not board or board.generation != generation:
+        return {}
+    task_id = int(task_id)
+    for card in json.loads(board.data or '{}').get('deals', []):
+        if card.get('id') == task_id and card.get('crmDealId') == crm_deal_id and card.get('closed'):
+            section = 'section=analytics&' if card.get('taskArchived') is True else ''
+            return {'code': card.get('code') or f'СД-{task_id}',
+                    'url': f'/tasks?{section}deal={task_id}&crm_deal={crm_deal_id}'}
+    return {}
+
+
 @app.route('/api/deals/<int:deal_id>', methods=['GET'])
 def get_deal(deal_id):
     session = get_session()
@@ -19714,6 +19736,10 @@ def get_deal(deal_id):
         if not deal:
             return jsonify({'success': False, 'error': 'Сделка не найдена'}), 404
         row = deal.to_dict()
+        if STAND_MODE:
+            task_board_card = _crm_task_board_card(session, deal_id)
+            if task_board_card is not None:
+                row['task_board'] = task_board_card
         target = _leasehold_reclassification_target(session, deal)
         if target:
             row['reclassification_target'] = target

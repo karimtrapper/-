@@ -43,7 +43,7 @@ const context = vm.createContext({
 vm.runInContext(['isNativeCashPartner', 'cashPartnerWalletTask', 'standSnapshot', 'deal', 'notes', 'notesFor', 'notesUnread', 'myTasks',
   'myTaskCount', 'waitingOn', 'pendingEx', 'taskDealsHtml', 'viewDeals',
   'htmlText', 'employeeName', 'soleActiveEmployeeName', 'operatorTaskName', 'operatorViewerName', 'policyStepAssignee',
-  'dealStatusLabel', 'dealProfit', 'nextTaskIndex', 'viewTasks', 'standOpenFromLink'].map(source).join('\n'), context);
+  'dealStatusLabel', 'dealProfit', 'nextTaskIndex', 'viewTasks', 'matchesCrmLink', 'standOpenFromLink'].map(source).join('\n'), context);
 
 assert.deepEqual(Array.from(context.myTasks('operator'), d => d.id), [202]);
 assert.equal(context.myTaskCount('operator'), 1);
