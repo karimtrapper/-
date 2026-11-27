@@ -11169,7 +11169,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                 box.innerHTML = d.deals.map(x => `
                     <div class="list-row" style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #eef2f7;">
                         <div>
-                            <strong>#${x.ID}</strong> ${x.TITLE || 'без названия'}
+                            <strong>#${x.ID}</strong> ${escapeHtml(x.TITLE || 'без названия')}
                             <div style="color:#64748b;font-size:0.85rem;">${x.STAGE_ID} · ${(x.DATE_CREATE||'').slice(0,10)}</div>
                         </div>
                         <button class="btn btn-primary" onclick="analyzeBitrixDeal(${x.ID})">Разобрать</button>
@@ -18007,7 +18007,7 @@ ${Math.abs(c.debits_delta_rub) < 0.01
             <button class="more-panel-item" onclick="showSection('verification'); closeMorePanel();"><span class="icon">✅</span><span>Сверка</span></button>
             <button class="more-panel-item" onclick="showSection('partners'); closeMorePanel();"><span class="icon">🤝</span><span>Партнёры</span></button>
             <button class="more-panel-item" onclick="showSection('exchangers'); closeMorePanel();"><span class="icon">🔁</span><span>Обменники</span></button>
-            <button class="more-panel-item" onclick="window.location.href='/'; closeMorePanel();"><span class="icon">🚪</span><span>Выйти</span></button>
+            <button class="more-panel-item" onclick="closeMorePanel(); logout();"><span class="icon">🚪</span><span>Выйти</span></button>
         </div>
     </div>
     <!-- Bottom Nav -->

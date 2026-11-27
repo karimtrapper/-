@@ -137,6 +137,11 @@ def db_snapshot():
     удаляется, чтобы старые тесты не видели чужих строк (и не ловили повторное использование id)."""
     from sqlalchemy import func, inspect, select
     existing = set(inspect(m.engine).get_table_names())
+    optional_tables = m.STAND_ONLY_TABLES | m.TASK_BOARD_TABLES
+    if m.STAND_MODE:
+        optional_tables -= m.STAND_ONLY_TABLES
+    if m.TASKS_ENABLED:
+        optional_tables -= m.TASK_BOARD_TABLES
     db = m.get_session()
     try:
         maxima, keys = {}, {}
@@ -144,9 +149,7 @@ def db_snapshot():
             if table.name in _SKIP_TABLES:
                 continue
             if table.name not in existing:
-                # Отсутствовать может только стенд-таблица (её создаёт _stand_migrate, а CRM-файл
-                # может запускаться отдельно). Нехватка бизнес-таблицы — ошибка окружения, не повод молчать.
-                assert table.name in m.STAND_ONLY_TABLES, f'в тестовой БД нет бизнес-таблицы {table.name}'
+                assert table.name in optional_tables, f'в тестовой БД нет нужной таблицы {table.name}'
                 continue
             if 'id' in table.c:
                 maxima[table.name] = db.execute(select(func.max(table.c.id))).scalar()

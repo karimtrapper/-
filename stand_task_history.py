@@ -87,6 +87,14 @@ def _can_read_document(row, document, role, user_id):
                    item.get('documentType') in ('pass', 'ipds', 'kyc') for item in additional)
 
 
+def _decision_evidence(report):
+    return {
+        'reason': text_for_history(report.get('reason')),
+        'evidence': [text for value in report.get('evidence') or [] if (text := text_for_history(value))],
+        'details': [text for value in report.get('details') or [] if (text := text_for_history(value))],
+    }
+
+
 def _history_entry(row, role, user_id, *, details):
     card = row['snapshot']
     report = row['report_row']
@@ -122,11 +130,12 @@ def _history_entry(row, role, user_id, *, details):
             for index, document in enumerate(row['documents'])
             if _can_read_document(row, document, role, user_id)
         ]
-        if role == 'admin' and row['decision'] == 'review':
-            item['candidates'] = [candidate['id'] for candidate in report.get('candidates', [])]
-            item['review'] = {'reason': text_for_history(report.get('reason')),
-                              'evidence': [text_for_history(value) for value in (report.get('evidence') or [])
-                                           if isinstance(value, str)]}
+        if role == 'admin':
+            if row['decision'] == 'attach':
+                item['attachment'] = _decision_evidence(report)
+            elif row['decision'] == 'review':
+                item['candidates'] = [candidate['id'] for candidate in report.get('candidates', [])]
+                item['review'] = _decision_evidence(report)
     return item
 
 

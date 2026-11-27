@@ -6190,7 +6190,7 @@ def _stand_project_private_drafts(response):
         if isinstance(projected.get('notes'), list):
             uid = flask_session.get('user_id')
             projected['notes'] = [note for note in projected['notes'] if can_read_notice(note, role, uid)]
-        if projected != original:
+        if projected != original or role not in ('manager', 'admin'):
             body['data'] = projected
             response.set_data(json.dumps(body, ensure_ascii=False))
     return response
@@ -8046,14 +8046,10 @@ def stand_transfer_claim():
         alone = actor == wallet_policy.OWNER and bool(wallet.owner_can_alone)
         if not alone and not wallet_policy.default_sign_role(wallet.confirmer_roles, actor):
             return jsonify(success=False, error='Для этой роли в кошельке не задан подписант'), 409
-        if wallet.limit_usd is not None and policy['amount'] > Decimal(str(wallet.limit_usd)):
-            if not _stand_policy_approval_valid(main, policy):
-                return jsonify(success=False, error=_EXCHANGE_APPROVAL_ERROR), 400
-            approval = main['transferOwnerApproval']
-            approver = db.get(AdminUser, approval['byId'])
-            if (not approver or approver.login_disabled or approver.role not in ('findir', 'teodor')
-                    or approver.role != approval.get('role') or approver.id == actor_id):
-                return jsonify(success=False, error='Отправку должен согласовать другой действующий сотрудник'), 403
+        approval_problem = _stand_policy_approval_problem(db, main, policy, actor_id)
+        if approval_problem:
+            message, status = approval_problem
+            return jsonify(success=False, error=message), status
         claim = {'byId': user.id, 'byName': _stand_user_name(user),
                  'role': actor, 'at': int(time.time() * 1000),
                  'walletId': policy['walletId'], 'amount': _stand_policy_amount_text(policy['amount']),
@@ -8142,6 +8138,10 @@ def stand_transfer_handoff():
                     return _stand_stale_response(row, state)
                 if main.get('transferSentReport') or main.get('transferFound'):
                     return jsonify(success=False, error='Перевод уже отмечен или найден в сети'), 409
+                approval_problem = _stand_policy_approval_problem(db, main, policy, actor_id, claim.get('byId'))
+                if approval_problem:
+                    message, status = approval_problem
+                    return jsonify(success=False, error=message), status
                 main['signHandoff'] = {'role': 'teodor', 'byId': user.id,
                     'byName': actor_name, 'byRole': actor, 'at': now_ms,
                     'claimFingerprint': claim['fingerprint'], 'takeover': True}
@@ -10255,20 +10255,19 @@ def _stand_close_policy_approval(db, state, stand_deal, crm_data):
     if crm_amount is None or crm_amount <= Decimal(str(policy['wallet'].limit_usd)):
         return None, None
     claim = main.get('transferClaim') or {}
-    approval = main.get('transferOwnerApproval') or {}
     # Решение Карима 28.10: проверенный в сети перевод мультисига = подписано;
     # отдельная отметка подписанта для закрытия в CRM не нужна.
-    if (not _stand_policy_approval_valid(main, policy) or
-            (claim and claim.get('fingerprint') != policy['fingerprint']) or
+    handoff = main.get('signHandoff') or {}
+    owner_executor = (handoff.get('byId') if handoff.get('takeover') is True
+                      and handoff.get('claimFingerprint') == policy['fingerprint'] else None)
+    if ((claim and claim.get('fingerprint') != policy['fingerprint']) or
             not main.get('serverTransferComplete') or
             not stand_deal.get('serverTransferComplete') or
-            not _stand_send_complete(stand_deal)):
+            not _stand_send_complete(stand_deal) or
+            _stand_policy_approval_problem(db, main, policy, claim.get('byId'), owner_executor,
+                                           amount=crm_amount)):
         return None, _EXCHANGE_APPROVAL_ERROR
-    approver = db.query(AdminUser).filter_by(id=approval.get('byId')).first()
-    if (not approver or approver.login_disabled or approver.role not in ('findir', 'teodor')
-            or approver.role != approval.get('role') or approver.id == claim.get('byId')):
-        return None, _EXCHANGE_APPROVAL_ERROR
-    return approval, None
+    return main['transferOwnerApproval'], None
 
 
 _STAND_CLOSE_MESSAGES = {
@@ -11364,6 +11363,21 @@ def _stand_policy_approval_valid(main, policy):
     return bool(approval.get('byId') and approval.get('fingerprint') == policy['fingerprint']
                 and approval.get('walletId') == policy['walletId']
                 and approval.get('amount') == _stand_policy_amount_text(policy['amount']))
+
+
+def _stand_policy_approval_problem(db, main, policy, *executor_ids, amount=None):
+    limit = policy['wallet'].limit_usd
+    amount = policy['amount'] if amount is None else amount
+    if limit is None or amount <= Decimal(str(limit)):
+        return None
+    if not _stand_policy_approval_valid(main, policy):
+        return _EXCHANGE_APPROVAL_ERROR, 400
+    approval = main['transferOwnerApproval']
+    approver = db.get(AdminUser, approval['byId'])
+    if (not approver or approver.login_disabled or approver.role not in ('findir', 'teodor')
+            or approver.role != approval.get('role') or approver.id in executor_ids):
+        return 'Отправку должен согласовать другой действующий сотрудник', 403
+    return None
 
 
 def _bkk_hhmm(ms):

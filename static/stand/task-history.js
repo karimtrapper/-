@@ -42,7 +42,22 @@
     if (list) parent.append(element('h2', 'Документы'), list);
   }
 
-  function showCard(container, card) {
+  function showDecisionEvidence(parent, title, decision) {
+    if (!decision) return;
+    const facts = [...(decision.evidence || []), ...(decision.details || [])];
+    if (!decision.reason && !facts.length) return;
+    const section = element('section');
+    section.append(element('h3', title));
+    if (decision.reason) section.append(element('p', decision.reason));
+    if (facts.length) {
+      const list = element('ul');
+      for (const fact of facts) list.append(element('li', fact));
+      section.append(list);
+    }
+    parent.append(section);
+  }
+
+  function showCard(container, card, role) {
     const section = element('section', '', 'card');
     section.append(element('h2', [card.code, card.client].filter(Boolean).join(' · ')));
     const summary = [card.type, card.created_at, card.source_status].filter(Boolean);
@@ -63,16 +78,11 @@
         section.append(element('p', `Выплата по сделке — ${amount} ${payout.currency}`));
       }
     }
-    if (card.review?.reason || card.review?.evidence?.length) {
-      section.append(element('h3', 'Основание для сверки'));
-      if (card.review.reason) section.append(element('p', card.review.reason));
-      if (card.review.evidence?.length) {
-        const evidence = element('ul');
-        for (const fact of card.review.evidence) evidence.append(element('li', fact));
-        section.append(evidence);
-      }
+    if (role === 'admin') {
+      showDecisionEvidence(section, 'Основание привязки', card.attachment);
+      showDecisionEvidence(section, 'Основание для сверки', card.review);
     }
-    if (card.candidates?.length) {
+    if (role === 'admin' && card.candidates?.length) {
       const candidates = element('ul');
       for (const value of card.candidates) {
         const id = parseId(value);
@@ -167,7 +177,7 @@
       }
       const data = await response.json();
       status.remove();
-      if (detail) showCard(container, data.card);
+      if (detail) showCard(container, data.card, role);
       else if (view === 'agreements') showAgreements(container, data.agreements, data.unattached_files);
       else showCards(container, data.cards, view);
     } catch (_) {

@@ -528,19 +528,18 @@ def test_reload_restores_tab_and_fetches_its_data(ui, section, path):
     assert path in requests, (section, requests)
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError,
-                   reason='UI-02: мобильная кнопка Выйти не отзывает сессию')
 def test_mobile_logout_revokes_session(ui):
     page, _, _, base = ui
     page.set_viewport_size({'width': 390, 'height': 844})
     page.locator('#moreBtn').click()
     page.locator('#morePanel').get_by_role('button', name='Выйти').click()
+    dialog = page.get_by_role('dialog').filter(has_text='Выйти из CRM?')
+    dialog.get_by_role('button', name='Подтвердить', exact=True).click()
+    expect(page).to_have_url(base + '/login')
     page.wait_for_load_state('networkidle')
     assert page.request.get(base + '/api/deals').status == 401
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError,
-                   reason='SEC-XSS: Bitrix TITLE вставляется в innerHTML без escape')
 def test_bitrix_title_is_text_not_executable_markup(ui):
     page, _, _, _ = ui
     payload = '<img src="/missing-qa-image" onerror="document.body.dataset.qaXss=1">'
