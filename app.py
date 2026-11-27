@@ -443,8 +443,12 @@ def check_auth():
             return jsonify(success=False, error='forbidden'), 403
         # Board actions carry role and approval checks. A legacy CRM write
         # endpoint must not give employees a second path around those checks.
+        manager_custom_create = (
+            staff.role == 'manager' and not STAND_MODE and request.endpoint == 'create_deal'
+            and request.method == 'POST' and _is_custom_deal_request(request.get_json(silent=True))
+        )
         if (request.method not in ('GET', 'HEAD', 'OPTIONS')
-                and request.endpoint not in TASKS_STAFF_WRITE_ENDPOINTS):
+                and request.endpoint not in TASKS_STAFF_WRITE_ENDPOINTS and not manager_custom_create):
             return jsonify(success=False, error='forbidden'), 403
 
 # ==================== DATABASE ====================
@@ -24285,7 +24289,142 @@ def preview_ipps_realty():
 
 @app.route('/api/deals', methods=['POST'])
 def create_deal():
+    if getattr(g, 'crm_task_staff_role', None) == 'manager':
+        return _create_manager_custom_deal()
     return _create_deal_impl()
+
+
+def _is_custom_deal_request(data):
+    return isinstance(data, dict) and data.get('is_custom') is True
+
+
+_MANAGER_CUSTOM_DEAL_FIELDS = frozenset({
+    'is_custom', 'source_channel', 'source_chat', 'source_chat_note',
+    'client_choice', 'client_id', 'client_name', 'created_at', 'notes',
+    'payin_method', 'payin_account_key', 'payin_tx_hash', 'payin_tx_hashes', 'payin_parts',
+    'payin_amount_usdt', 'payin_amount_rub', 'payin_rate_rub_usdt', 'payin_rub_is_net',
+    'payout_method', 'payout_source', 'payout_amount_usdt', 'payout_amount_thb',
+    'manager_user_id', 'manager_name', 'status', 'deal_type', 'payin_extra',
+    'profit_usdt', 'profit_percent', 'net_profit_usdt',
+    'custom_payin_currency', 'custom_payin_amount', 'custom_payin_rate',
+    'custom_payout_currency', 'custom_payout_amount', 'custom_payout_rate', 'agents',
+})
+_MANAGER_CUSTOM_DEAL_ROWS = {
+    'payin_tx_hashes': frozenset({'hash', 'network', 'amount_usdt'}),
+    'payin_parts': frozenset({'uuid', 'amount_rub', 'payer', 'date', 'note', 'kind',
+                             'fee_rub', 'net_rub', 'rub_is_net', 'payin_rub_is_net'}),
+    'agents': frozenset({'referrer_id', 'name', 'tier', 'comp_model', 'percent', 'fixed_usdt'}),
+}
+
+
+def _custom_deal_number(value, *, allow_zero=False):
+    return (type(value) in (int, float) and math.isfinite(value)
+            and (value >= 0 if allow_zero else value > 0))
+
+
+def _manager_custom_deal_data(data):
+    if not _is_custom_deal_request(data) or data.keys() - _MANAGER_CUSTOM_DEAL_FIELDS:
+        raise ValueError('Некорректные поля кастомной сделки')
+    for key, fields in _MANAGER_CUSTOM_DEAL_ROWS.items():
+        rows = data.get(key, [])
+        if not isinstance(rows, list) or any(not isinstance(row, dict) or row.keys() - fields for row in rows):
+            raise ValueError('Некорректные поля в разделе ' + key)
+
+    if data.get('source_channel') not in tuple(CRM_CHAT_CHANNELS):
+        raise ValueError('Укажите источник и выберите клиента')
+    method = data.get('payin_method')
+    account = data.get('payin_account_key')
+    is_flow_sole = account == FLOW_SOLE_PAYIN_KEY
+    if method not in (None, '') and method not in tuple(PAYIN_METHOD_LABELS.keys() - {FLOW_SOLE_METHOD_CODE}):
+        raise ValueError('Укажите метод Pay-In')
+    if account not in (None, FLOW_SOLE_PAYIN_KEY) or is_flow_sole and method != PayInMethod.SBER_REQS.value:
+        raise ValueError('Некорректный счёт Pay-In')
+    if data.get('payout_method') not in (None, '') and data.get('payout_method') not in tuple(PAYOUT_METHOD_LABELS):
+        raise ValueError('Укажите метод выдачи')
+    if data.get('payin_parts') and (is_flow_sole or method not in ('sber_wl', 'sber_reqs')):
+        raise ValueError('Этот метод Pay-In не использует приход из выписки Сбера')
+    if data.get('payin_tx_hashes') and not is_flow_sole:
+        raise ValueError('Укажите хэш Pay-In в поле формы')
+
+    payin = data.get('custom_payin_currency')
+    payout = data.get('custom_payout_currency')
+    currencies = ('RUB', 'USDT', 'THB', 'USD', 'EUR')
+    if payin not in currencies or payout not in currencies or is_flow_sole and payin != 'RUB':
+        raise ValueError('Некорректная валюта сделки')
+    in_amount, out_amount = data.get('custom_payin_amount'), data.get('custom_payout_amount')
+    in_rate, out_rate = data.get('custom_payin_rate'), data.get('custom_payout_rate')
+    payin_usdt = data.get('payin_amount_usdt')
+    if not _custom_deal_number(in_amount) or not _custom_deal_number(out_amount):
+        raise ValueError('Укажите положительные суммы Pay-In и Pay-Out')
+    if not _custom_deal_number(payin_usdt, allow_zero=is_flow_sole):
+        raise ValueError('Некорректная сумма Pay-In в USDT')
+    if payin != 'USDT' and not _custom_deal_number(in_rate, allow_zero=is_flow_sole):
+        raise ValueError('Укажите курс Pay-In к USDT')
+    if payout != 'USDT' and not _custom_deal_number(out_rate):
+        raise ValueError('Укажите курс Pay-Out к USDT')
+
+    payout_usdt = data.get('payout_amount_usdt')
+    if not _custom_deal_number(payout_usdt) or payout == 'USDT' and payout_usdt != out_amount:
+        raise ValueError('Некорректная сумма выдачи в USDT')
+    if payin == 'USDT' and payin_usdt != in_amount:
+        raise ValueError('Некорректная сумма Pay-In в USDT')
+    status = DealStatus.PENDING.value if is_flow_sole else DealStatus.COMPLETED.value
+    if (data.get('deal_type', DealType.PAY_IN.value) != DealType.PAY_IN.value
+            or data.get('status', status) != status
+            or data.get('payout_source', PayOutSource.BINANCE.value) != PayOutSource.BINANCE.value
+            or data.get('payin_rub_is_net', True) is not True
+            or data.get('payin_extra') not in (None, [])):
+        raise ValueError('Некорректные параметры кастомной сделки')
+    # Older open forms include previews. The common create path calculates the
+    # actual financial results from the exact USDT amounts entered in the form.
+    for key in ('profit_usdt', 'profit_percent', 'net_profit_usdt', 'payin_extra'):
+        data.pop(key, None)
+    return {
+        **data,
+        'deal_type': DealType.PAY_IN.value,
+        'status': status,
+        'payin_rub_is_net': True,
+        'payin_amount_rub': in_amount if payin == 'RUB' else None,
+        'payin_rate_rub_usdt': in_rate if payin == 'RUB' else None,
+        'payout_source': PayOutSource.BINANCE.value,
+        'payout_amount_thb': out_amount if payout == 'THB' else None,
+    }
+
+
+def _create_manager_custom_deal():
+    if not TASKS_ENABLED or STAND_MODE:
+        return jsonify(success=False, error='forbidden'), 403
+    session = get_session()
+    try:
+        manager = session.query(AdminUser).filter_by(
+            id=flask_session.get('user_id'), role='manager', login_disabled=False).first()
+        if not manager:
+            return jsonify(success=False, error='forbidden'), 403
+        try:
+            data = _manager_custom_deal_data(request.get_json(silent=True))
+            selected_id = data.get('manager_user_id')
+            selected_name = data.get('manager_name')
+            if ((selected_id is not None and (type(selected_id) is not int or selected_id != manager.id))
+                    or selected_name not in (None, '', manager.display_name or manager.username)):
+                return jsonify(success=False, error='Выберите себя в поле «Менеджер»'), 403
+            for agent in data.get('agents', []):
+                referrer_id = agent.get('referrer_id')
+                if (type(referrer_id) is not int or referrer_id <= 0
+                        or agent.get('comp_model') not in ('revshare', 'markup', 'fixed')
+                        or type(agent.get('tier')) is not int or agent['tier'] <= 0
+                        or not all(_custom_deal_number(agent.get(key, 0), allow_zero=True)
+                                   for key in ('percent', 'fixed_usdt'))):
+                    raise ValueError('Некорректные данные агента')
+                referrer = session.query(Referrer).filter(
+                    Referrer.id == referrer_id, Referrer.active.is_(True), Referrer.is_test.isnot(True)).first()
+                if not referrer:
+                    raise ValueError('Агент не найден в справочнике')
+                agent['name'] = referrer.name
+        except (ValueError, OverflowError) as error:
+            return jsonify(success=False, error=str(error)), 400
+        return _create_deal_impl(session=session, data={**data, 'manager_user_id': manager.id})
+    finally:
+        session.close()
 
 
 _EXCHANGE_APPROVAL_ERROR = 'Для отправки свыше 10 000 USDT требуется подтверждение владельца'

@@ -7032,6 +7032,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
         let AUTH_TASKS = false;
         let CRM_ROLE = null;
         let AUTH_ROLE = null;
+        let AUTH_USER = null;
 
         function tasksAvailable() {
             return AUTH_TASKS || AUTH_STAND === true;
@@ -7045,13 +7046,16 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                 AUTH_STAND = typeof user?.stand === 'boolean' ? user.stand : null;
                 AUTH_TASKS = user?.tasks_enabled === true;
                 AUTH_ROLE = user?.role || null;
+                AUTH_USER = user;
                 CRM_ROLE = user ? AUTH_ROLE || 'admin' : null;
             } catch (error) {
                 AUTH_STAND = null;
                 AUTH_TASKS = false;
                 CRM_ROLE = null;
                 AUTH_ROLE = null;
+                AUTH_USER = null;
             }
+            syncCustomDealManager();
             document.querySelectorAll('.tasks-only').forEach(el => {
                 el.style.display = tasksAvailable() ? '' : 'none';
             });
@@ -7380,10 +7384,29 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                         if (m.user_id) option.dataset.userId = m.user_id;
                         return option;
                     }));
+                    syncCustomDealManager();
                 }
             } catch (error) {
                 console.error('Error loading managers:', error);
             }
+        }
+
+        function syncCustomDealManager() {
+            const select = document.getElementById('managerSelect');
+            const ownDeal = AUTH_TASKS && AUTH_STAND === false && AUTH_ROLE === 'manager' &&
+                AUTH_USER?.id && editingDealId === null && document.getElementById('customDealToggle').checked;
+            if (ownDeal) {
+                const value = `user:${AUTH_USER.id}`;
+                if (![...select.options].some(option => option.value === value)) {
+                    const name = AUTH_USER.display_name || AUTH_USER.username;
+                    const option = new Option(name, value);
+                    option.dataset.name = name;
+                    option.dataset.userId = AUTH_USER.id;
+                    select.appendChild(option);
+                }
+                select.value = value;
+            }
+            select.disabled = Boolean(ownDeal);
         }
 
         function selectedManagerIdentity() {
@@ -10110,6 +10133,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
             });
 
             syncDealKindSelect();
+            syncCustomDealManager();
             if (isCustom) { calcCustomProfit(); onCustomPayinMethodChange(); }
         }
 
