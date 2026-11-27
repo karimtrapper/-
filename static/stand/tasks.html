@@ -6609,6 +6609,7 @@ function render(){
   restoreFocus();
   if(S.edit) crmDraftMount(S.edit);
   const active=S.open&&S.view==='task'&&deal(S.open),activeConv=active&&convOf(active);
+  if(active) autoParseReceivedDocuments(active);
   const incomingKey=activeConv&&cnvIncomingKey(activeConv);
   if(STAND&&!rolePreview()&&activeConv?.status==='sent'&&!(demoAllowed()&&active.demoTransfers)
       &&['operator','admin'].includes(S.role)&&S.incomingLoadFor!==incomingKey){
@@ -11818,8 +11819,9 @@ function dataUrlBlob(u){
   const b=new Uint8Array(raw.length);for(let i=0;i<raw.length;i++)b[i]=raw.charCodeAt(i);
   return new Blob([b],{type:m[1]||'application/octet-stream'});
 }
-async function docParse(id,quiet){
-  const d=deal(id); if(!d)return;
+async function docParse(id,quiet,expectedStep){
+  const d=deal(id); if(!d||DOC_PARSE_STARTED.has(id))return;
+  DOC_PARSE_STARTED.set(id,Date.now());
   const fd=new FormData(); let n=0;
   try{
     for(const k of Object.keys(PARSE_SLOT)){
@@ -11837,11 +11839,19 @@ async function docParse(id,quiet){
         fd.append(k==='inv'&&d.autoPayment===true?'auto_invoice':PARSE_SLOT[k],blob,f.file||(k+'.pdf'));n++;
       }
     }
-  }catch(e){d.docParseState='ошибка: '+e.message;save();render();if(!quiet)toast('Не удалось прочитать файл: '+e.message);return;}
-  if(!n){if(!quiet)toast('Нет загруженных паспорта или инвойса — распознавать нечего');return;}
+  }catch(e){
+    DOC_PARSE_STARTED.delete(id);
+    if(!expectedStep||deal(id)?.step===expectedStep){d.docParseState='ошибка: '+e.message;save();render();if(!quiet)toast('Не удалось прочитать файл: '+e.message);}
+    return;
+  }
+  if(!n||(expectedStep&&deal(id)?.step!==expectedStep)){
+    DOC_PARSE_STARTED.delete(id);
+    if(!n&&!quiet)toast('Нет загруженных паспорта или инвойса — распознавать нечего');
+    return;
+  }
   fd.append('deal_type',d.autoPayment===true?'auto':d.kind==='Фрихолд'?'freehold':(d.kind==='Аренда'?'rental':'leasehold'));
   d.docParseState='идёт';
-  DOC_PARSE_STARTED.set(id,Date.now());render();
+  render();
   const progress=setInterval(()=>{
     const el=document.getElementById('docParseTimer-'+id);
     if(el)el.textContent=docParseElapsed(id);
@@ -11850,6 +11860,7 @@ async function docParse(id,quiet){
     const r=await fetch('/api/docs/parse',{method:'POST',credentials:'same-origin',body:fd});
     const j=await r.json();
     const dd=deal(id);
+    if(!dd||(expectedStep&&(dd.step!==expectedStep||dd.docParse)))return;
     if(!j.success){
       /* На стенде распознавание документов выключено сервером (403 stand_blocked) —
          паспорт и инвойс не уходят в OpenRouter. Показываем честную причину, а не
@@ -11880,7 +11891,7 @@ async function docParse(id,quiet){
     /* свежий результат распознавания важнее недописанного руками в полях пакета */
     if(!issued)docClearFieldDrafts(id);
     save();render();if(!quiet)toast(dd.docParse.failed.length?'Часть документов распознана — проверьте результат':'Документы распознаны');
-  }catch(e){const dd=deal(id);dd.docParseState='ошибка сети';save();render();if(!quiet)toast('Распознавание недоступно');}
+  }catch(e){const dd=deal(id);if(dd&&(!expectedStep||dd.step===expectedStep)){dd.docParseState='ошибка сети';save();render();if(!quiet)toast('Распознавание недоступно');}}
   finally{clearInterval(progress);DOC_PARSE_STARTED.delete(id);}
 }
 function parsed(d,k){return ((d.docParse||{}).fields||{})[k]||'';}
@@ -11912,6 +11923,29 @@ function managerDraftPublishDocs(d){
   delete draft.files;delete draft.docs;delete draft.docMeta;delete draft.comment;
 }
 const DOC_PARSE_STARTED=new Map();
+const DOC_PARSE_AUTO_ATTEMPTED=new Set();
+function autoParseReceivedDocuments(d){
+  if(!globalThis.workingTasks||standMe!=='operator'||d.step!=='s11'||d.closed||
+      DOC_PARSE_AVAILABLE!==true||d.docParse||d.docParseState||DOC_PARSE_AUTO_ATTEMPTED.has(d.id)||
+      (d.assigneeAdminId&&String(d.assigneeAdminId)!==String(standMeId))||!filesOf(d,'inv').length||
+      !navigator.locks)return;
+  DOC_PARSE_AUTO_ATTEMPTED.add(d.id);
+  navigator.locks.request('calccrm:doc-parse:'+d.id,async()=>{
+    // Another open card may already have completed the same analysis.
+    const response=await fetch('/api/stand/state',{credentials:'same-origin',cache:'no-store'});
+    if(!response.ok)return;
+    const snapshot=await response.json();
+    const current=snapshot.data?.deals?.find(x=>x.id===d.id);
+    if(S.open!==d.id||S.view!=='task'||!current||current.step!=='s11'||current.docParse||
+        current.docParseState||(current.assigneeAdminId&&String(current.assigneeAdminId)!==String(standMeId)))return;
+    if(standTyping()||standBusy||standSaveScheduled){
+      DOC_PARSE_AUTO_ATTEMPTED.delete(d.id);
+      return;
+    }
+    await docParse(d.id,true,'s11');
+    await standWaitSaved();
+  }).catch(()=>{});
+}
 const DOC_PARSE_SLOT_LABEL={passport:'Паспорт',invoice:'Инвойс',auto_invoice:'Инвойс автомобиля',spa:'SPA',vehicle_contract:'ДКП автомобиля'};
 function docParseErrorText(code){
   return code==='timeout'?'Модель не успела за 90 секунд — попробуйте ещё раз или заполните поля вручную':'Распознать не удалось — заполните поля вручную';
@@ -14718,7 +14752,8 @@ async function act(id,step){
       toast(notificationDeliveryText(S.modal)||
         'Документы сохранены и переданы операционисту на доске; доставка Telegram не подтверждена.');
     }else toast('Ушло операционисту');
-    if(!d.docParse)docParse(d.id,true);return;}
+    // In the working contour the assignee analyses the published attachments.
+    if(!d.docParse&&!globalThis.workingTasks)docParse(d.id,true);return;}
   if(step==='s11'){
     const cash=isNativeCashPartner(d);
     if(cash&&!cashPartnerReady(d.cashPartner)){toast('Для выпуска нужны данные встречи от менеджера');return;}
