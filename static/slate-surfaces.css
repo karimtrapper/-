@@ -959,3 +959,167 @@ html.slate-console body.nav-shell-crm #createDealForm div:has(> :is(#agentsBlock
 html.slate-console body.nav-shell-crm #createDealForm :is(#agentsBlockStdNet, #agentsBlockCustomNet, [id^="saPay"], [id^="caPay"]) {
   color: var(--surface-good-ink) !important;
 }
+
+/* Directory rows and reconciliation states rendered by CRM APIs. */
+html.slate-console body.nav-shell-crm :is(#verification, #kyc, #partners, #referrers, #dealModal, #kycReviewModal, #historyModal) [data-tone="info"] {
+  --crm-tone-text: var(--surface-link);
+  --crm-tone-fill: var(--surface-info);
+  --crm-tone-line: var(--surface-info-line);
+}
+html.slate-console body.nav-shell-crm :is(#verification, #kyc, #partners, #referrers, #dealModal, #kycReviewModal, #historyModal) [data-tone="good"] {
+  --crm-tone-text: var(--surface-good-ink);
+  --crm-tone-fill: var(--surface-good);
+  --crm-tone-line: var(--surface-good-line);
+}
+html.slate-console body.nav-shell-crm :is(#verification, #kyc, #partners, #referrers, #dealModal, #kycReviewModal, #historyModal) [data-tone="warn"] {
+  --crm-tone-text: var(--surface-warn-ink);
+  --crm-tone-fill: var(--surface-warn);
+  --crm-tone-line: var(--surface-warn-line);
+}
+html.slate-console body.nav-shell-crm :is(#verification, #kyc, #partners, #referrers, #dealModal, #kycReviewModal, #historyModal) [data-tone="bad"] {
+  --crm-tone-text: var(--surface-bad-ink);
+  --crm-tone-fill: var(--surface-bad);
+  --crm-tone-line: var(--surface-bad-line);
+}
+html.slate-console body.nav-shell-crm :is(#verification, #kyc, #partners, #referrers, #dealModal, #kycReviewModal, #historyModal) :is([data-tone], [data-tone] .stat-value) {
+  color: var(--crm-tone-text, var(--foreground)) !important;
+}
+html.slate-console body.nav-shell-crm :is(#verification, #kyc, #partners, #referrers, #dealModal, #kycReviewModal, #historyModal) .crm-secondary-text {
+  color: var(--muted-foreground) !important;
+}
+html.slate-console body.nav-shell-crm :is(#kyc, #partners, #referrers) .crm-directory-row {
+  gap: 12px;
+  color: var(--foreground) !important;
+  background: var(--crm-tone-fill, var(--card)) !important;
+  border-color: var(--crm-tone-line, var(--border)) !important;
+  opacity: 1 !important;
+  overflow-wrap: anywhere;
+}
+html.slate-console body.nav-shell-crm :is(#partners, #referrers) .crm-directory-row[data-active="false"] {
+  border-color: var(--surface-bad-line) !important;
+}
+html.slate-console body.nav-shell-crm :is(#kyc, #partners) .btn[data-tone] {
+  background: var(--crm-tone-fill) !important;
+  border: 1px solid var(--crm-tone-line) !important;
+}
+html.slate-console body.nav-shell-crm :is(#kyc, #partners) .btn[data-tone]:hover {
+  background: color-mix(in oklab, var(--crm-tone-fill) 70%, var(--accent)) !important;
+}
+html.slate-console body.nav-shell-crm :is(#partners, #referrers) .crm-directory-row input[readonly],
+html.slate-console body.nav-shell-crm #referrerModal #bitrixSearchResults {
+  min-inline-size: 0;
+  min-block-size: 32px;
+  color: var(--foreground) !important;
+  background: var(--surface-panel) !important;
+  border-color: var(--border) !important;
+}
+html.slate-console body.nav-shell-crm #verification .stat-card[data-tone] {
+  border-inline-start-color: var(--crm-tone-line) !important;
+}
+html.slate-console body.nav-shell-crm #referrers .referrer-money {
+  flex-wrap: wrap;
+  row-gap: 4px !important;
+}
+@media (max-width: 600px) {
+  html.slate-console body.nav-shell-crm :is(#kyc, #partners) .crm-directory-row,
+  html.slate-console body.nav-shell-crm :is(#kyc, #partners) .crm-directory-actions {
+    flex-wrap: wrap;
+  }
+  html.slate-console body.nav-shell-crm #partners .crm-directory-row > div:first-child {
+    flex-basis: 100% !important;
+  }
+  html.slate-console body.nav-shell-crm #partners .crm-directory-actions {
+    margin-inline-start: 0 !important;
+  }
+}
+
+html.slate-console body.nav-shell-crm .modal .modal-dismiss {
+  display: inline-grid;
+  place-items: center;
+  inline-size: 36px;
+  min-block-size: 36px;
+  padding: 0;
+  background: var(--muted);
+  color: var(--foreground);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+html.slate-console body.nav-shell-crm .modal .modal-dismiss:hover {
+  background: var(--accent);
+}
+html.slate-console body.nav-shell-crm :is(.modal .modal-dismiss, #dashboard .dashboard-deals-link):focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+html.slate-console body.nav-shell-crm .modal .crm-modal-note {
+  color: var(--muted-foreground) !important;
+}
+html.slate-console body.nav-shell-crm #dashboard .dashboard-deals-link {
+  display: inline-flex !important;
+  align-items: center;
+  min-block-size: 28px;
+}
+@media (max-width: 600px) {
+  html.slate-console body.nav-shell-crm #incomes .crm-mobile-details.crm-mobile-chevron {
+    min-inline-size: 44px !important;
+  }
+  html.slate-console body.nav-shell-crm :is(.modal .modal-dismiss, #dashboard .dashboard-deals-link) {
+    min-inline-size: 44px;
+    min-block-size: 44px;
+  }
+}
+
+html.slate-console body.nav-shell-crm :is(#dealModal, #kycReviewModal) .crm-tone-block {
+  background: var(--crm-tone-fill) !important;
+  border-color: var(--crm-tone-line) !important;
+}
+html.slate-console body.nav-shell-crm #dealModal .ref-card-record {
+  flex-wrap: wrap;
+  overflow-wrap: anywhere;
+  border-color: var(--border) !important;
+}
+html.slate-console body.nav-shell-crm #dealModal .ref-card-amount {
+  color: var(--foreground) !important;
+}
+html.slate-console body.nav-shell-crm #dealModal :is(.ref-card-tab, .ref-card-action) {
+  min-block-size: 34px;
+  border: 1px solid var(--crm-tone-line, var(--border)) !important;
+  background: var(--crm-tone-fill, var(--card)) !important;
+  color: var(--crm-tone-text, var(--foreground)) !important;
+}
+html.slate-console body.nav-shell-crm #dealModal .ref-card-tab[aria-pressed="true"] {
+  box-shadow: inset 0 -2px var(--chart-1);
+  border-color: var(--border-strong) !important;
+}
+html.slate-console body.nav-shell-crm #dealModal :is(.ref-card-tab, .ref-card-action):hover {
+  background: color-mix(in oklab, var(--crm-tone-fill, var(--card)) 65%, var(--accent)) !important;
+}
+html.slate-console body.nav-shell-crm #kycReviewModal :is(.kyc-missing-photo, .kyc-review-warning, .kyc-statement-script) {
+  color: var(--muted-foreground) !important;
+  background: var(--surface-panel) !important;
+  border-color: var(--border) !important;
+}
+html.slate-console body.nav-shell-crm #kycReviewModal :is(.kyc-review-meta, .kyc-review-photo-label) {
+  color: var(--muted-foreground) !important;
+}
+html.slate-console body.nav-shell-crm #kycReviewModal .kyc-dl {
+  color: var(--surface-link) !important;
+}
+@media (max-width: 600px) {
+  html.slate-console body.nav-shell-crm #dealModal :is(.ref-card-tab, .ref-card-action) {
+    min-block-size: 44px;
+  }
+}
+
+html.slate-console body.nav-shell-crm #historyModal .history-summary {
+  background: var(--surface-panel) !important;
+  border: 1px solid var(--border);
+  overflow-wrap: anywhere;
+}
+html.slate-console body.nav-shell-crm #historyModal .history-record {
+  flex-wrap: wrap;
+  gap: 8px;
+  overflow-wrap: anywhere;
+  border-color: var(--border) !important;
+}

@@ -913,7 +913,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
     <link rel="stylesheet" href="/static/design-layer.css?v=6">
     <link rel="stylesheet" href="/static/fonts/slate/fonts.css">
     <link rel="stylesheet" href="/static/slate-shell.css?v=2">
-    <link rel="stylesheet" href="/static/slate-surfaces.css?v=6">
+    <link rel="stylesheet" href="/static/slate-surfaces.css?v=7">
     <link rel="stylesheet" href="/static/slate-crm-form.css?v=1">
 </head>
 
@@ -1176,7 +1176,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                         <tbody id="recentDealsTable"></tbody>
                     </table>
                 </div>
-                <a href="#" onclick="showSection('deals');return false" style="display:inline-block;margin-top:12px;font-size:14px">Показать все →</a>
+                <a class="dashboard-deals-link" href="#" onclick="showSection('deals');return false" style="display:inline-block;margin-top:12px;font-size:14px">Показать все →</a>
             </div>
         </section>
 
@@ -2702,7 +2702,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
             <!-- Webhook Configuration -->
             <div class="card" style="margin-top: 1.5rem;">
                 <div class="card-title">Webhook интеграция (n8n / Zapier / Make)</div>
-                <p style="color: #666; margin-bottom: 1rem;">
+                <p class="crm-secondary-text" style="color: #666; margin-bottom: 1rem;">
                     При завершении сделки (статус "Завершена") данные автоматически отправляются на указанный URL.
                 </p>
 
@@ -2718,7 +2718,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                     </div>
                 </div>
 
-                <div id="webhookStatus" style="margin-top: 0.5rem; font-size: 0.9rem;"></div>
+                <div id="webhookStatus" role="status" style="margin-top: 0.5rem; font-size: 0.9rem;"></div>
             </div>
         </section>
 
@@ -3517,7 +3517,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
         <div class="modal-content">
             <div class="modal-header">
                 <h3 class="modal-title" id="partnerModalTitle">Добавить партнёра</h3>
-                <button class="modal-close" onclick="closePartnerModal()">&times;</button>
+                <button type="button" class="modal-close" aria-label="Закрыть" onclick="closePartnerModal()">&times;</button>
             </div>
             <form id="partnerForm" onsubmit="savePartner(event)">
                 <input type="hidden" id="partnerEditId">
@@ -3542,7 +3542,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
         <div class="modal-content">
             <div class="modal-header">
                 <h3 class="modal-title" id="referrerModalTitle">Добавить реферера</h3>
-                <button class="modal-close" onclick="closeReferrerModal()">&times;</button>
+                <button type="button" class="modal-close" aria-label="Закрыть" onclick="closeReferrerModal()">&times;</button>
             </div>
             <form id="referrerForm" onsubmit="saveReferrer(event)">
                 <input type="hidden" id="referrerEditId">
@@ -3625,7 +3625,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
         <div class="modal-content">
             <div class="modal-header">
                 <h3 class="modal-title">Детали сделки</h3>
-                <button class="modal-close" onclick="closeModal()">&times;</button>
+                <button type="button" class="modal-close" aria-label="Закрыть" onclick="closeModal()">&times;</button>
             </div>
             <div id="dealModalContent">
                 <!-- Deal details will be loaded here -->
@@ -3638,7 +3638,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
         <div class="modal-content" style="max-width: 700px;">
             <div class="modal-header">
                 <h3 class="modal-title" id="historyModalTitle">История операций</h3>
-                <button class="modal-close" onclick="closeHistoryModal()">&times;</button>
+                <button type="button" class="modal-close" aria-label="Закрыть" onclick="closeHistoryModal()">&times;</button>
             </div>
             <div id="historyModalContent">
                 <!-- History will be loaded here -->
@@ -3650,14 +3650,14 @@ select.period-btn:hover:not(.active) { color: var(--text); }
     <!-- Конвертация: создание пачки и её карточка -->
     <div id="conversionModal" class="modal">
         <div class="modal-content" style="max-width:820px;">
-            <span class="close" onclick="document.getElementById('conversionModal').classList.remove('active')">&times;</span>
+            <button type="button" class="close modal-dismiss" aria-label="Закрыть" onclick="document.getElementById('conversionModal').classList.remove('active')">&times;</button>
             <div id="conversionModalBody"></div>
         </div>
     </div>
 
     <div id="addWalletModal" class="modal">
         <div class="modal-content">
-            <span class="close" onclick="closeAddWalletModal()">&times;</span>
+            <button type="button" class="close modal-dismiss" aria-label="Закрыть" onclick="closeAddWalletModal()">&times;</button>
             <div class="card-title">Добавить кошелек</div>
             <form id="addWalletFormBalance">
                 <div class="form-group" style="margin-bottom: 1rem;">
@@ -3688,7 +3688,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
     <!-- Topup Modal -->
     <div id="topupModal" class="modal">
         <div class="modal-content">
-            <span class="close" onclick="closeTopupModal()">&times;</span>
+            <button type="button" class="close modal-dismiss" aria-label="Закрыть" onclick="closeTopupModal()">&times;</button>
             <div class="card-title">Пополнение кошелька</div>
             <form id="topupForm">
                 <input type="hidden" id="topupWalletId">
@@ -3728,7 +3728,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
     <!-- Withdraw Modal -->
     <div id="withdrawModal" class="modal">
         <div class="modal-content">
-            <span class="close" onclick="closeWithdrawModal()">&times;</span>
+            <button type="button" class="close modal-dismiss" aria-label="Закрыть" onclick="closeWithdrawModal()">&times;</button>
             <div class="card-title">Списание (прочее)</div>
             <form id="withdrawForm">
                 <input type="hidden" id="withdrawWalletId">
@@ -3748,9 +3748,9 @@ select.period-btn:hover:not(.active) { color: var(--text); }
     <!-- Add Card Modal -->
     <div id="addCardModal" class="modal">
         <div class="modal-content">
-            <span class="close" onclick="closeAddCardModal()">&times;</span>
+            <button type="button" class="close modal-dismiss" aria-label="Закрыть" onclick="closeAddCardModal()">&times;</button>
             <div class="card-title">Создать новую карту</div>
-            <p style="color: #666; margin-bottom: 1rem; font-size: 0.9rem;">Карта создается пустой. После создания
+            <p class="crm-modal-note" style="color: #666; margin-bottom: 1rem; font-size: 0.9rem;">Карта создается пустой. После создания
                 пополните ее.</p>
             <form id="addCardForm">
                 <div class="form-group" style="margin-bottom: 1rem;">
@@ -3790,7 +3790,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
     <!-- Topup Card Modal -->
     <div id="topupCardModal" class="modal">
         <div class="modal-content">
-            <span class="close" onclick="closeTopupCardModal()">&times;</span>
+            <button type="button" class="close modal-dismiss" aria-label="Закрыть" onclick="closeTopupCardModal()">&times;</button>
             <div class="card-title">Пополнение карты</div>
             <p style="color: #666; margin-bottom: 1rem; font-size: 0.9rem;">Пополните из кассы (курс авто) или отдельной
                 закупкой.</p>
@@ -3900,7 +3900,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
         <div class="modal-content">
             <div class="modal-header">
                 <h3 class="modal-title">Запросить KYC</h3>
-                <button class="modal-close" onclick="closeKYCGenerateModal()">&times;</button>
+                <button type="button" class="modal-close" aria-label="Закрыть" onclick="closeKYCGenerateModal()">&times;</button>
             </div>
             <form id="kycGenerateForm" onsubmit="event.preventDefault(); generateKYCLink();">
                 <div class="form-group" style="margin-bottom: 1rem;">
@@ -3961,7 +3961,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
         <div class="modal-content" style="max-width: 700px;">
             <div class="modal-header">
                 <h3 class="modal-title">Проверка KYC</h3>
-                <button class="modal-close" onclick="closeKYCReviewModal()">&times;</button>
+                <button type="button" class="modal-close" aria-label="Закрыть" onclick="closeKYCReviewModal()">&times;</button>
             </div>
             <div id="kycReviewContent">
                 <!-- KYC review content loaded dynamically -->
@@ -7703,7 +7703,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
             const modal = document.getElementById('dealModal');
             modal.querySelector('.modal-title').textContent = 'Реферер: ' + referrerName;
             document.getElementById('dealModalContent').innerHTML =
-                '<div style="text-align:center;color:#999;padding:1rem;">Загрузка…</div>';
+                '<div class="crm-secondary-text" style="text-align:center;color:#999;padding:1rem;">Загрузка…</div>';
             modal.classList.add('active');
             const [dRes, pRes] = await Promise.all([
                 fetch(`${API_URL}/api/referrers/${referrerId}/deals`).then(r => r.json()).catch(() => ({})),
@@ -7725,21 +7725,21 @@ select.period-btn:hover:not(.active) { color: var(--text); }
             const totalPayout = deals.reduce((s, d) => s + (d.payout_usdt || 0), 0);
             const unpaid = deals.filter(d => !d.paid).reduce((s, d) => s + (d.payout_usdt || 0), 0);
             const volume = deals.reduce((s, d) => s + (d.volume_usdt || 0), 0);
-            const tabBtn = (key, label) => `<button onclick="refCardTab('${key}')" style="background:${_refCard.tab === key ? '#1e293b' : '#f1f5f9'};color:${_refCard.tab === key ? '#fff' : '#475569'};border:none;padding:6px 14px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;">${label}</button>`;
+            const tabBtn = (key, label) => `<button type="button" class="ref-card-tab" aria-pressed="${_refCard.tab === key}" onclick="refCardTab('${key}')" style="background:${_refCard.tab === key ? '#1e293b' : '#f1f5f9'};color:${_refCard.tab === key ? '#fff' : '#475569'};border:none;padding:6px 14px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;">${label}</button>`;
 
             const body = _refCard.tab === 'requests' ? refCardRequestsHtml() : `
                 <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
-                    <input id="refCardSearch" placeholder="Поиск: №, клиент, куда отправили" oninput="renderRefCardRows()"
+                    <input class="form-control" id="refCardSearch" aria-label="Поиск сделок" placeholder="Поиск: №, клиент, куда отправили" oninput="renderRefCardRows()"
                         style="flex:1;min-width:180px;padding:6px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:13px;">
-                    <input id="refCardMin" type="number" placeholder="Комиссия от $" oninput="renderRefCardRows()"
+                    <input id="refCardMin" aria-label="Минимальная комиссия в USDT" type="number" placeholder="Комиссия от $" oninput="renderRefCardRows()"
                         style="width:130px;padding:6px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:13px;">
-                    <select id="refCardPaid" onchange="renderRefCardRows()"
+                    <select id="refCardPaid" aria-label="Статус выплаты" onchange="renderRefCardRows()"
                         style="padding:0 40px 0 12px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;">
                         <option value="">Все выплаты</option>
                         <option value="unpaid">Только должны</option>
                         <option value="paid">Только выплаченные</option>
                     </select>
-                    <select id="refCardSort" onchange="renderRefCardRows()"
+                    <select id="refCardSort" aria-label="Порядок сделок" onchange="renderRefCardRows()"
                         style="padding:0 40px 0 12px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;">
                         <option value="date">Сначала новые</option>
                         <option value="payout">По комиссии ↓</option>
@@ -7753,10 +7753,10 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                     ${tabBtn('deals', `Сделки (${deals.length})`)}
                     ${tabBtn('requests', `Заявки (${_refCard.requests.length})`)}
                 </div>
-                <div style="display:flex;gap:14px;flex-wrap:wrap;font-size:13px;background:#f8fafc;border-radius:8px;padding:8px 12px;margin-bottom:12px;">
-                    <span style="color:#64748b;">Объём: <b style="color:#0f172a;">$${Number(volume).toLocaleString('ru-RU', {maximumFractionDigits: 0})}</b></span>
-                    <span style="color:#64748b;">Комиссия всего: <b style="color:#22c55e;">$${totalPayout.toFixed(2)}</b></span>
-                    <span style="color:#64748b;">Должны: <b style="color:#c2410c;">$${unpaid.toFixed(2)}</b></span>
+                <div class="deal-detail-panel ref-card-summary" style="display:flex;gap:14px;flex-wrap:wrap;font-size:13px;background:#f8fafc;border-radius:8px;padding:8px 12px;margin-bottom:12px;">
+                    <span class="crm-secondary-text" style="color:#64748b;">Объём: <b class="ref-card-amount" style="color:#0f172a;">$${Number(volume).toLocaleString('ru-RU', {maximumFractionDigits: 0})}</b></span>
+                    <span class="crm-secondary-text" style="color:#64748b;">Комиссия всего: <b data-tone="good" style="color:#22c55e;">$${totalPayout.toFixed(2)}</b></span>
+                    <span class="crm-secondary-text" style="color:#64748b;">Должны: <b data-tone="warn" style="color:#c2410c;">$${unpaid.toFixed(2)}</b></span>
                 </div>
                 ${body}`;
             if (_refCard.tab === 'deals') renderRefCardRows();
@@ -7784,28 +7784,28 @@ select.period-btn:hover:not(.active) { color: var(--text); }
             else if (sort === 'volume') rows.sort((a, b) => (b.volume_usdt || 0) - (a.volume_usdt || 0));
 
             if (!rows.length) {
-                box.innerHTML = '<div style="text-align:center;color:#999;padding:1rem;">Ничего не найдено</div>';
+                box.innerHTML = '<div class="crm-secondary-text" style="text-align:center;color:#999;padding:1rem;">Ничего не найдено</div>';
                 return;
             }
             const sum = rows.reduce((s, d) => s + (d.payout_usdt || 0), 0);
-            box.innerHTML = `<div style="font-size:12px;color:#64748b;margin-bottom:6px;">Показано ${rows.length} сделок · комиссия $${sum.toFixed(2)}</div>` +
+            box.innerHTML = `<div class="crm-secondary-text" style="font-size:12px;color:#64748b;margin-bottom:6px;">Показано ${rows.length} сделок · комиссия $${sum.toFixed(2)}</div>` +
                 rows.map(d => {
                     const date = d.date ? d.date.split('T')[0] : '—';
                     const paidAt = d.paid_at ? d.paid_at.split('T')[0] : '';
                     const badge = d.paid
-                        ? `<span style="background:#f0fdf4;color:#16a34a;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600;">Выплачено${paidAt ? ' ' + paidAt : ''}</span>`
-                        : `<span style="background:#fff7ed;color:#9a3412;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600;">Должны</span>`;
+                        ? `<span class="crm-tone-block" data-tone="good" style="background:#f0fdf4;color:#16a34a;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600;">Выплачено${paidAt ? ' ' + paidAt : ''}</span>`
+                        : `<span class="crm-tone-block" data-tone="warn" style="background:#fff7ed;color:#9a3412;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600;">Должны</span>`;
                     return `
-                    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 12px;border:1px solid #e5e7eb;border-radius:8px;margin-bottom:6px;">
+                    <div class="ref-card-record" style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 12px;border:1px solid #e5e7eb;border-radius:8px;margin-bottom:6px;">
                         <div style="min-width:0;">
-                            <div style="font-size:13px;font-weight:600;">#${d.deal_id} · ${escapeHtml(d.client_name || '—')} ${badge}${d.tier > 1 ? ` <span style="font-size:11px;color:#7c3aed;">ур.${d.tier}</span>` : ''}</div>
-                            <div style="font-size:11px;color:#64748b;">${date} · Объём: $${(d.volume_usdt || 0).toFixed(0)} · Комиссия: <b style="color:#16a34a;">$${(d.payout_usdt || 0).toFixed(2)}</b></div>
-                            ${d.paid_note ? `<div style="font-size:11px;color:#64748b;">Куда отправили: ${escapeHtml(d.paid_note)}</div>` : ''}
+                            <div style="font-size:13px;font-weight:600;">#${d.deal_id} · ${escapeHtml(d.client_name || '—')} ${badge}${d.tier > 1 ? ` <span data-tone="info" style="font-size:11px;color:#7c3aed;">ур.${d.tier}</span>` : ''}</div>
+                            <div class="crm-secondary-text" style="font-size:11px;color:#64748b;">${date} · Объём: $${(d.volume_usdt || 0).toFixed(0)} · Комиссия: <b data-tone="good" style="color:#16a34a;">$${(d.payout_usdt || 0).toFixed(2)}</b></div>
+                            ${d.paid_note ? `<div class="crm-secondary-text" style="font-size:11px;color:#64748b;">Куда отправили: ${escapeHtml(d.paid_note)}</div>` : ''}
                         </div>
                         <div style="display:flex;gap:4px;flex-shrink:0;">
-                            <button onclick="openDealFromRefCard(${d.deal_id})"
+                            <button type="button" class="crm-tone-block ref-card-action" data-tone="info" onclick="openDealFromRefCard(${d.deal_id})"
                                 style="background:#eff6ff;color:#3b82f6;border:none;padding:5px 10px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;">Детали</button>
-                            <button onclick="deleteReferrerDeal(${d.deal_id})"
+                            <button type="button" class="crm-tone-block ref-card-action" data-tone="bad" onclick="deleteReferrerDeal(${d.deal_id})"
                                 style="background:#fef2f2;color:#ef4444;border:none;padding:5px 10px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;">Удалить</button>
                         </div>
                     </div>`;
@@ -7814,24 +7814,24 @@ select.period-btn:hover:not(.active) { color: var(--text); }
 
         function refCardRequestsHtml() {
             const items = _refCard.requests;
-            if (!items.length) return '<div style="text-align:center;color:#999;padding:1rem;">Нет заявок на выплату</div>';
+            if (!items.length) return '<div class="crm-secondary-text" style="text-align:center;color:#999;padding:1rem;">Нет заявок на выплату</div>';
             return items.map(r => {
                 const meta = (typeof PAYOUT_STATUS_LABELS !== 'undefined' && PAYOUT_STATUS_LABELS[r.status]) || { label: r.status, color: '#64748B', bg: '#F1F5F9' };
                 const date = r.created_at ? new Date(r.created_at).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—';
                 const contactLabel = r.contact_method === 'whatsapp' ? 'WhatsApp' : 'Telegram';
                 return `
-                    <div style="border:1px solid #e5e7eb;border-radius:8px;padding:10px 12px;margin-bottom:6px;">
+                    <div class="ref-card-record" style="border:1px solid #e5e7eb;border-radius:8px;padding:10px 12px;margin-bottom:6px;">
                         <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
                             <div style="font-size:13px;">
                                 <strong>#${r.id}</strong> · ${date}
-                                <span style="background:${meta.bg};color:${meta.color};padding:1px 6px;border-radius:999px;font-size:11px;font-weight:600;margin-left:6px;">${meta.label}</span>
+                                <span class="crm-tone-block" data-tone="${({new: 'warn', in_progress: 'info', paid: 'good', cancelled: 'bad'})[r.status] || 'info'}" style="background:${meta.bg};color:${meta.color};padding:1px 6px;border-radius:999px;font-size:11px;font-weight:600;margin-left:6px;">${meta.label}</span>
                             </div>
-                            <strong style="color:#16A34A;">$${(r.amount_usdt || 0).toFixed(2)}</strong>
+                            <strong data-tone="good" style="color:#16A34A;">$${(r.amount_usdt || 0).toFixed(2)}</strong>
                         </div>
-                        <div style="font-size:12px;color:#64748b;margin-top:4px;">
+                        <div class="crm-secondary-text" style="font-size:12px;color:#64748b;margin-top:4px;">
                             ${contactLabel}: ${escapeHtml(r.contact_value)} · Кошелёк: <code style="font-size:11px;">${escapeHtml(r.wallet)}</code>
                         </div>
-                        ${r.notes ? `<div style="font-size:12px;color:#64748b;margin-top:2px;">«${escapeHtml(r.notes)}»</div>` : ''}
+                        ${r.notes ? `<div class="crm-secondary-text" style="font-size:12px;color:#64748b;margin-top:2px;">«${escapeHtml(r.notes)}»</div>` : ''}
                     </div>`;
             }).join('');
         }
@@ -7843,7 +7843,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
             const modal = document.getElementById('dealModal');
             modal.querySelector('.modal-title').textContent = 'Сделка #' + dealId;
             document.getElementById('dealModalContent').insertAdjacentHTML('afterbegin',
-                `<button onclick="showReferrerCard(_refCard.id, _refCard.name, '${backTab}')"
+                `<button type="button" class="ref-card-action" onclick="showReferrerCard(_refCard.id, _refCard.name, '${backTab}')"
                     style="background:#f1f5f9;color:#475569;border:none;padding:5px 12px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;margin-bottom:10px;">← К рефереру</button>`);
         }
 
@@ -12656,7 +12656,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                         `История партии #${batchId} - ${info.founder_name || 'Неизвестно'}`;
 
                     let html = `
-                        <div style="background: #f0fdf4; padding: 1rem; border-radius: 8px; margin-bottom: 1rem;">
+                        <div class="history-summary" style="background: #f0fdf4; padding: 1rem; border-radius: 8px; margin-bottom: 1rem;">
                             <div style="display: flex; justify-content: space-between; flex-wrap: wrap; gap: 1rem;">
                                 <div>
                                     <strong>Начальная сумма:</strong> ${formatNumber(info.amount_thb)} THB<br>
@@ -12664,16 +12664,16 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                                     <strong>Курс закупки:</strong> ${formatThbUsdRate(info.purchase_rate)} THB/USDT
                                 </div>
                                 <div style="text-align: right;">
-                                    <span style="color: #666;">Сделок: ${summary.total_deals}</span><br>
-                                    <span style="color: #666;">Карт: ${summary.total_card_topups}</span><br>
-                                    <span style="color: #666;">Корректировок: ${summary.total_adjustments}</span>
+                                    <span class="crm-secondary-text" style="color: #666;">Сделок: ${summary.total_deals}</span><br>
+                                    <span class="crm-secondary-text" style="color: #666;">Карт: ${summary.total_card_topups}</span><br>
+                                    <span class="crm-secondary-text" style="color: #666;">Корректировок: ${summary.total_adjustments}</span>
                                 </div>
                             </div>
                         </div>
                     `;
 
                     if (data.history.length === 0) {
-                        html += '<p style="color: #888; text-align: center;">Нет операций</p>';
+                        html += '<p class="crm-secondary-text" style="color: #888; text-align: center;">Нет операций</p>';
                     } else {
                         html += '<div style="max-height: 400px; overflow-y: auto;">';
                         data.history.forEach(item => {
@@ -12682,18 +12682,18 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                             const sign = isPositive ? '+' : '';
 
                             html += `
-                                <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.75rem; border-bottom: 1px solid #eee;">
+                                <div class="history-record" style="display: flex; justify-content: space-between; align-items: center; padding: 0.75rem; border-bottom: 1px solid #eee;">
                                     <div>
                                         <span style="font-size: 1.2rem; margin-right: 0.5rem;">${item.icon}</span>
                                         <strong>${item.description}</strong>
                                         <br>
-                                        <small style="color: #888;">${formatDate(item.date)}</small>
+                                        <small class="crm-secondary-text" style="color: #888;">${formatDate(item.date)}</small>
                                     </div>
                                     <div style="text-align: right;">
-                                        <div style="color: ${color}; font-weight: bold;">
+                                        <div data-tone="${isPositive ? 'good' : 'bad'}" style="color: ${color}; font-weight: bold;">
                                             ${sign}${formatNumber(item.amount_thb)} THB
                                         </div>
-                                        <small style="color: #888;">~$${item.amount_usdt?.toFixed(2) || '0'}</small>
+                                        <small class="crm-secondary-text" style="color: #888;">~$${item.amount_usdt?.toFixed(2) || '0'}</small>
                                     </div>
                                 </div>
                             `;
@@ -12758,20 +12758,20 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                         `История карты: ${info.bank_name} - ${info.card_name || ''}`;
 
                     let html = `
-                        <div style="background: #eff6ff; padding: 1rem; border-radius: 8px; margin-bottom: 1rem;">
+                        <div class="history-summary" style="background: #eff6ff; padding: 1rem; border-radius: 8px; margin-bottom: 1rem;">
                             <div style="display: flex; justify-content: space-between; flex-wrap: wrap; gap: 1rem;">
                                 <div>
                                     <strong>Банк:</strong> ${info.bank_name}<br>
                                     <strong>Баланс:</strong>
-                                    <span style="color:${info.balance_thb < 0 ? '#ef4444' : 'inherit'};font-weight:${info.balance_thb < 0 ? '700' : '400'};">
+                                    <span data-tone="${info.balance_thb < 0 ? 'bad' : 'neutral'}" style="color:${info.balance_thb < 0 ? '#ef4444' : 'inherit'};font-weight:${info.balance_thb < 0 ? '700' : '400'};">
                                         ${formatThbAmount(info.balance_thb)} THB
                                     </span>
                                 </div>
                                 <div style="text-align: right;">
-                                    <span style="color: #10b981;">Закупки: ${purchases.length} · +${formatThbAmount(totalPurchases)} THB</span><br>
-                                    <span style="color: #f59e0b;">Списания: ${writeoffs.length} · −${formatThbAmount(totalWriteoffs)} THB</span><br>
-                                    ${(transfersOut.length || transfersIn.length) ? `<span style="color:#2563eb;">Переводы: ${transfersOut.length ? `−${formatThbAmount(totalTransfersOut)}` : '0'} / ${transfersIn.length ? `+${formatThbAmount(totalTransfersIn)}` : '0'} THB</span><br>` : ''}
-                                    <span style="color: #ef4444;">Выдачи: ${allocations.length} · −${formatThbAmount(totalSpent)} THB</span>
+                                    <span data-tone="good" style="color: #10b981;">Закупки: ${purchases.length} · +${formatThbAmount(totalPurchases)} THB</span><br>
+                                    <span data-tone="warn" style="color: #f59e0b;">Списания: ${writeoffs.length} · −${formatThbAmount(totalWriteoffs)} THB</span><br>
+                                    ${(transfersOut.length || transfersIn.length) ? `<span data-tone="info" style="color:#2563eb;">Переводы: ${transfersOut.length ? `−${formatThbAmount(totalTransfersOut)}` : '0'} / ${transfersIn.length ? `+${formatThbAmount(totalTransfersIn)}` : '0'} THB</span><br>` : ''}
+                                    <span data-tone="bad" style="color: #ef4444;">Выдачи: ${allocations.length} · −${formatThbAmount(totalSpent)} THB</span>
                                 </div>
                             </div>
                             <div style="margin-top: 0.75rem; display: flex; gap: 0.5rem; flex-wrap: wrap;">
@@ -12783,7 +12783,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                     `;
 
                     if (feed.length === 0) {
-                        html += '<p style="color: #888; text-align: center;">Операций нет</p>';
+                        html += '<p class="crm-secondary-text" style="color: #888; text-align: center;">Операций нет</p>';
                     } else {
                         html += '<div style="max-height: 460px; overflow-y: auto;">';
                         feed.forEach(row => {
@@ -12792,7 +12792,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
 
                             if (row.kind === 'allocation') {
                                 icon = '🏧';
-                                title = `Сделка #${it.deal_id} <span style="color:#4a5568;font-weight:400;">${it.client_name || ''}</span>`;
+                                title = `Сделка #${it.deal_id} <span class="crm-secondary-text" style="color:#4a5568;font-weight:400;">${it.client_name || ''}</span>`;
                                 amount = Math.abs(it.amount_thb || 0);
                                 sign = '−'; color = '#ef4444';
                                 rateLine = `~$${(it.cost_usdt || 0).toFixed(2)} @ ${(it.card_rate || 0).toFixed(2)}`;
@@ -12851,20 +12851,20 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                             }
 
                             html += `
-                                <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; padding: 0.75rem; border-bottom: 1px solid #eee;">
+                                <div class="history-record" style="display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; padding: 0.75rem; border-bottom: 1px solid #eee;">
                                     <div style="min-width: 0;">
                                         <span style="font-size: 1.2rem; margin-right: 0.5rem;">${icon}</span>
                                         <strong>${title}</strong>
                                         <br>
-                                        <small style="color: #888;">${formatDate(row.at)}</small>
-                                        ${note ? `<br><small style="color:#888;">${escapeHtml(note)}</small>` : ''}
-                                        ${it.reference ? `<br><small style="color:#888;word-break:break-all;">${escapeHtml(it.reference)}</small>` : ''}
+                                        <small class="crm-secondary-text" style="color: #888;">${formatDate(row.at)}</small>
+                                        ${note ? `<br><small class="crm-secondary-text" style="color:#888;">${escapeHtml(note)}</small>` : ''}
+                                        ${it.reference ? `<br><small class="crm-secondary-text" style="color:#888;word-break:break-all;">${escapeHtml(it.reference)}</small>` : ''}
                                     </div>
                                     <div style="text-align: right; white-space: nowrap;">
-                                        <div style="color: ${color}; font-weight: bold;">
+                                        <div data-tone="${amount > 0 ? 'good' : 'bad'}" style="color: ${color}; font-weight: bold;">
                                             ${sign}${formatThbAmount(amount)} THB
                                         </div>
-                                        <small style="color: #888;">${rateLine}</small>
+                                        <small class="crm-secondary-text" style="color: #888;">${rateLine}</small>
                                     </div>
                                     <div>${actions}</div>
                                 </div>
@@ -15747,15 +15747,15 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                                 <div class="stat-value">${stats.total}</div>
                                 <div class="stat-label">Всего сделок</div>
                             </div>
-                            <div class="stat-card" style="border-left: 4px solid #fef3c7;">
+                            <div class="stat-card" data-tone="warn" style="border-left: 4px solid #fef3c7;">
                                 <div class="stat-value" style="color: #f59e0b;">${stats.pending}</div>
                                 <div class="stat-label">Ожидают</div>
                             </div>
-                            <div class="stat-card" style="border-left: 4px solid #d1fae5;">
+                            <div class="stat-card" data-tone="good" style="border-left: 4px solid #d1fae5;">
                                 <div class="stat-value" style="color: #10b981;">${stats.completed}</div>
                                 <div class="stat-label">Завершены</div>
                             </div>
-                            <div class="stat-card" style="border-left: 4px solid #dbeafe;">
+                            <div class="stat-card" data-tone="info" style="border-left: 4px solid #dbeafe;">
                                 <div class="stat-value" style="color: #3b82f6;">${stats.verified}</div>
                                 <div class="stat-label">Проверены</div>
                             </div>
@@ -15821,9 +15821,9 @@ ${Math.abs(c.debits_delta_rub) < 0.01
         function updateWebhookStatus(isConfigured) {
             const statusEl = document.getElementById('webhookStatus');
             if (isConfigured) {
-                statusEl.innerHTML = '<span style="color: #10b981;">✓ Webhook активен</span>';
+                statusEl.innerHTML = '<span data-tone="good" style="color: #10b981;">✓ Webhook активен</span>';
             } else {
-                statusEl.innerHTML = '<span style="color: #f59e0b;">⚠ Webhook не настроен</span>';
+                statusEl.innerHTML = '<span data-tone="warn" style="color: #f59e0b;">⚠ Webhook не настроен</span>';
             }
         }
 
@@ -15852,7 +15852,7 @@ ${Math.abs(c.debits_delta_rub) < 0.01
 
         async function testWebhook() {
             const statusEl = document.getElementById('webhookStatus');
-            statusEl.innerHTML = '<span style="color: #666;">⏳ Отправка тестового сообщения...</span>';
+            statusEl.innerHTML = '<span class="crm-secondary-text" style="color: #666;">⏳ Отправка тестового сообщения...</span>';
 
             try {
                 const response = await fetch(`${API_URL}/api/webhook/test`, {
@@ -15862,13 +15862,13 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                 const data = await response.json();
 
                 if (data.success) {
-                    statusEl.innerHTML = `<span style="color: #10b981;">✓ ${data.message}</span>`;
+                    statusEl.innerHTML = `<span data-tone="good" style="color: #10b981;">✓ ${data.message}</span>`;
                 } else {
-                    statusEl.innerHTML = `<span style="color: #ef4444;">✗ ${data.error}</span>`;
+                    statusEl.innerHTML = `<span data-tone="bad" style="color: #ef4444;">✗ ${data.error}</span>`;
                 }
             } catch (error) {
                 console.error('Error testing webhook:', error);
-                statusEl.innerHTML = '<span style="color: #ef4444;">✗ Ошибка отправки</span>';
+                statusEl.innerHTML = '<span data-tone="bad" style="color: #ef4444;">✗ Ошибка отправки</span>';
             }
         }
 
@@ -16508,7 +16508,7 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                 const createdDate = new Date(kyc.created_at).toLocaleDateString('ru-RU');
                 const createdTime = new Date(kyc.created_at).toLocaleTimeString('ru-RU', {hour:'2-digit', minute:'2-digit'});
 
-                const noFile = '<div style="background:#f3f4f6;border-radius:8px;aspect-ratio:3/2;display:flex;align-items:center;justify-content:center;color:#999;">Нет фото</div>';
+                const noFile = '<div class="kyc-missing-photo" style="background:#f3f4f6;border-radius:8px;aspect-ratio:3/2;display:flex;align-items:center;justify-content:center;color:#999;">Нет фото</div>';
                 const dl = (slot, label) => `<a class="kyc-dl" href="${API_URL}/api/kyc/photo/${token}/${slot}?download=1" download>${label}</a>`;
                 const livenessCount = kyc.liveness_count || 5;
 
@@ -16523,7 +16523,7 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                     decided ? 'Документы клиента' : 'Проверка KYC';
 
                 const decisionBlock = `
-                    <div style="margin-top:1rem;padding:0.75rem 1rem;border-radius:8px;font-size:0.85rem;${kyc.status === 'approved'
+                    <div class="crm-tone-block" data-tone="${kyc.status === 'approved' ? 'good' : 'bad'}" style="margin-top:1rem;padding:0.75rem 1rem;border-radius:8px;font-size:0.85rem;${kyc.status === 'approved'
                         ? 'background:#f0fdf4;border:1px solid #86efac;color:#15803d;'
                         : 'background:#fef2f2;border:1px solid #fecaca;color:#b91c1c;'}">
                         <strong>${kyc.status === 'approved' ? '✓ Верификация одобрена' : '✕ Верификация отклонена'}</strong>${reviewedInfo ? ' — ' + reviewedInfo : ''}
@@ -16599,8 +16599,8 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                         ${kyc.has_statement
                             ? `<video src="${API_URL}/api/kyc/photo/${token}/statement" controls playsinline
                                    style="width:100%;max-height:320px;border-radius:8px;border:1px solid #e5e7eb;background:#000;"></video>
-                               <div style="font-size:0.78rem;color:#666;margin-top:0.4rem;">Сверьте: тот же человек, что на документе, и текст произнесён целиком.</div>`
-                            : '<div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:0.75rem;color:#9a3412;font-size:0.85rem;">Видео запрошено, но клиент его не записал</div>'}
+                               <div class="crm-secondary-text" style="font-size:0.78rem;color:#666;margin-top:0.4rem;">Сверьте: тот же человек, что на документе, и текст произнесён целиком.</div>`
+                            : '<div class="crm-tone-block" data-tone="warn" style="background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:0.75rem;color:#9a3412;font-size:0.85rem;">Видео запрошено, но клиент его не записал</div>'}
                     </div>
                     ` : ''}
 
@@ -16718,19 +16718,19 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                         const safeToken = escapeHtml(k.token);
                         const safeNameAttr = escapeHtml((k.client_name || '').replace(/'/g, "\\'"));
                         return `
-                        <div style="display:flex;justify-content:space-between;align-items:center;padding:0.75rem 1rem;border:1px solid #e5e7eb;border-radius:8px;margin-bottom:0.5rem;">
+                        <div class="crm-directory-row" style="display:flex;justify-content:space-between;align-items:center;padding:0.75rem 1rem;border:1px solid #e5e7eb;border-radius:8px;margin-bottom:0.5rem;">
                             <div>
                                 <strong>${safeName}</strong>
-                                <div style="font-size:0.8rem;color:#999;">${new Date(k.created_at).toLocaleDateString('ru-RU')} — ${k.has_doc ? '📄' : ''}${k.has_selfie ? '🤳' : ''}${k.has_liveness ? '🎥' : ''} ${k.has_doc ? 'Файлы загружены' : 'Ожидание загрузки'}</div>
+                                <div class="crm-secondary-text" style="font-size:0.8rem;color:#999;">${new Date(k.created_at).toLocaleDateString('ru-RU')} — ${k.has_doc ? '📄' : ''}${k.has_selfie ? '🤳' : ''}${k.has_liveness ? '🎥' : ''} ${k.has_doc ? 'Файлы загружены' : 'Ожидание загрузки'}</div>
                             </div>
-                            <div style="display:flex;gap:8px;align-items:center;">
-                                ${k.has_doc ? `<button class="btn btn-primary btn-sm" onclick="openKYCReview('${safeToken}')">Проверить</button>` : '<span style="color:#f59e0b;font-size:0.8rem;">Ждём файлы</span>'}
-                                <button class="btn btn-sm" style="background:#fee2e2;color:#dc2626;border:none;padding:4px 10px;border-radius:6px;font-size:0.78rem;cursor:pointer;" onclick="cancelKYC('${safeToken}','${safeNameAttr}')">Отменить</button>
+                            <div class="crm-directory-actions" style="display:flex;gap:8px;align-items:center;">
+                                ${k.has_doc ? `<button class="btn btn-primary btn-sm" onclick="openKYCReview('${safeToken}')">Проверить</button>` : '<span data-tone="warn" style="color:#f59e0b;font-size:0.8rem;">Ждём файлы</span>'}
+                                <button class="btn btn-sm" data-tone="bad" style="background:#fee2e2;color:#dc2626;border:none;padding:4px 10px;border-radius:6px;font-size:0.78rem;cursor:pointer;" onclick="cancelKYC('${safeToken}','${safeNameAttr}')">Отменить</button>
                             </div>
                         </div>
                     `;}).join('');
                 } else {
-                    pendingList.innerHTML = '<div style="color:#999;font-style:italic;padding:1rem;text-align:center;">Нет ожидающих проверок</div>';
+                    pendingList.innerHTML = '<div class="crm-secondary-text" style="color:#999;font-style:italic;padding:1rem;text-align:center;">Нет ожидающих проверок</div>';
                 }
 
                 // Загружаем одобренные
@@ -16748,20 +16748,20 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                             ? `🗑 документы стёрты по сроку хранения ${new Date(k.files_purged_at).toLocaleDateString('ru-RU')}`
                             : `${icons} документы сохранены`;
                         return `
-                        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:0.5rem 1rem;border:1px solid #d1fae5;border-radius:8px;margin-bottom:0.5rem;background:#f0fdf4;">
+                        <div class="crm-directory-row" data-tone="good" style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:0.5rem 1rem;border:1px solid #d1fae5;border-radius:8px;margin-bottom:0.5rem;background:#f0fdf4;">
                             <div style="min-width:0;">
                                 <strong>${escapeHtml(k.client_name || 'Клиент #' + k.id)}</strong>
-                                <span style="color:#16a34a;margin-left:0.5rem;">✓</span>
-                                <div style="font-size:0.78rem;color:#4d7c0f;margin-top:2px;">${subtitle}</div>
+                                <span data-tone="good" style="color:#16a34a;margin-left:0.5rem;">✓</span>
+                                <div data-tone="good" style="font-size:0.78rem;color:#4d7c0f;margin-top:2px;">${subtitle}</div>
                             </div>
-                            <div style="display:flex;align-items:center;gap:10px;flex-shrink:0;">
-                                <span style="font-size:0.8rem;color:#999;">${k.reviewed_at ? new Date(k.reviewed_at).toLocaleDateString('ru-RU') : ''}</span>
-                                <button class="btn btn-sm" style="background:#dcfce7;color:#15803d;border:1px solid #86efac;padding:5px 12px;border-radius:6px;font-size:0.78rem;cursor:pointer;" onclick="openKYCReview('${safeToken}')">Документы</button>
+                            <div class="crm-directory-actions" style="display:flex;align-items:center;gap:10px;flex-shrink:0;">
+                                <span class="crm-secondary-text" style="font-size:0.8rem;color:#999;">${k.reviewed_at ? new Date(k.reviewed_at).toLocaleDateString('ru-RU') : ''}</span>
+                                <button class="btn btn-sm" data-tone="good" style="background:#dcfce7;color:#15803d;border:1px solid #86efac;padding:5px 12px;border-radius:6px;font-size:0.78rem;cursor:pointer;" onclick="openKYCReview('${safeToken}')">Документы</button>
                             </div>
                         </div>
                     `;}).join('');
                 } else {
-                    verifiedList.innerHTML = '<div style="color:#999;font-style:italic;padding:1rem;text-align:center;">Пока нет верифицированных клиентов</div>';
+                    verifiedList.innerHTML = '<div class="crm-secondary-text" style="color:#999;font-style:italic;padding:1rem;text-align:center;">Пока нет верифицированных клиентов</div>';
                 }
             } catch (e) {
                 console.error('Ошибка загрузки KYC:', e);
@@ -16777,26 +16777,26 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                 const list = document.getElementById('partnersList');
 
                 if (!data.success || data.partners.length === 0) {
-                    list.innerHTML = '<div style="color:#999;font-style:italic;padding:1rem;text-align:center;">Нет партнёров. Нажмите «+ Добавить партнёра»</div>';
+                    list.innerHTML = '<div class="crm-secondary-text" style="color:#999;font-style:italic;padding:1rem;text-align:center;">Нет партнёров. Нажмите «+ Добавить партнёра»</div>';
                     return;
                 }
 
                 const baseUrl = window.location.origin;
                 list.innerHTML = data.partners.map(p => `
-                    <div style="display:flex;justify-content:space-between;align-items:center;padding:0.75rem 1rem;border:1px solid ${p.active ? '#e5e7eb' : '#fee2e2'};border-radius:8px;margin-bottom:0.5rem;${p.active ? '' : 'opacity:0.5;'}">
+                    <div class="crm-directory-row" data-active="${p.active}" style="display:flex;justify-content:space-between;align-items:center;padding:0.75rem 1rem;border:1px solid ${p.active ? '#e5e7eb' : '#fee2e2'};border-radius:8px;margin-bottom:0.5rem;${p.active ? '' : 'opacity:0.5;'}">
                         <div style="flex:1;min-width:0;">
                             <div style="font-weight:600;font-size:14px;">${p.name}</div>
-                            <div style="font-size:12px;color:#64748b;margin-top:2px;">Наценка: ${p.markup_percent}%${p.active ? '' : ' · Неактивен'}</div>
+                            <div class="crm-secondary-text" style="font-size:12px;color:#64748b;margin-top:2px;">Наценка: ${p.markup_percent}%${p.active ? '' : ' · Неактивен'}</div>
                             <div style="margin-top:6px;">
                                 <input type="text" readonly value="${baseUrl}/partner/${p.token}"
                                     style="width:100%;font-size:12px;padding:4px 8px;border:1px solid #e2e8f0;border-radius:6px;color:#475569;background:#f8fafc;"
                                     onclick="this.select();navigator.clipboard.writeText(this.value);showToast('Ссылка скопирована')">
                             </div>
                         </div>
-                        <div style="display:flex;gap:6px;margin-left:12px;flex-shrink:0;">
-                            <button class="btn btn-sm" style="background:#eff6ff;color:#3b82f6;border:none;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:12px;"
+                        <div class="crm-directory-actions" style="display:flex;gap:6px;margin-left:12px;flex-shrink:0;">
+                            <button class="btn btn-sm" data-tone="info" style="background:#eff6ff;color:#3b82f6;border:none;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:12px;"
                                 onclick="editPartner(${p.id},'${p.name.replace(/'/g,"\\'")}',${p.markup_percent})">Изм.</button>
-                            <button class="btn btn-sm" style="background:${p.active ? '#fef3c7' : '#f0fdf4'};color:${p.active ? '#d97706' : '#16a34a'};border:none;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:12px;"
+                            <button class="btn btn-sm" data-tone="${p.active ? 'warn' : 'good'}" style="background:${p.active ? '#fef3c7' : '#f0fdf4'};color:${p.active ? '#d97706' : '#16a34a'};border:none;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:12px;"
                                 onclick="togglePartner(${p.id},${!p.active})">${p.active ? 'Откл.' : 'Вкл.'}</button>
                         </div>
                     </div>
@@ -17122,7 +17122,7 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                 sumEl.textContent = `Показано ${rows.length} из ${_referrersCache.length} · к выплате по ним: $${debt.toFixed(2)}`;
             }
             if (!rows.length) {
-                list.innerHTML = '<div style="color:#999;font-style:italic;padding:1rem;text-align:center;">Никто не подошёл под фильтры</div>';
+                list.innerHTML = '<div class="crm-secondary-text" style="color:#999;font-style:italic;padding:1rem;text-align:center;">Никто не подошёл под фильтры</div>';
                 return;
             }
 
@@ -17153,21 +17153,21 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                 const wa = linkCell(r.wa_link, 'WhatsApp') ||
                     {value: r.wa_link ? 'WhatsApp ↗' : '', onclick: `navigator.clipboard.writeText('${r.wa_link || ''}');showToast('Ссылка WA скопирована')`};
                 return `
-                    <div class="referrer-row" style="display:flex;justify-content:space-between;align-items:flex-start;padding:0.75rem 1rem;border:1px solid ${r.active ? '#e5e7eb' : '#fee2e2'};border-radius:8px;margin-bottom:0.5rem;${r.active ? '' : 'opacity:0.5;'}">
+                    <div class="referrer-row crm-directory-row" data-active="${r.active}" style="display:flex;justify-content:space-between;align-items:flex-start;padding:0.75rem 1rem;border:1px solid ${r.active ? '#e5e7eb' : '#fee2e2'};border-radius:8px;margin-bottom:0.5rem;${r.active ? '' : 'opacity:0.5;'}">
                         <div class="referrer-main" style="flex:1;min-width:0;">
-                            <div class="referrer-name" style="font-weight:600;font-size:14px;">${r.name} <span style="font-size:12px;color:#64748b;font-weight:400;">${r.code}</span> <span title="Язык кабинета" style="font-size:11px;">${r.lang === 'en' ? '🇬🇧 EN' : '🇷🇺 RU'}</span></div>
-                            <div class="referrer-meta" style="font-size:12px;color:#64748b;margin-top:2px;">
+                            <div class="referrer-name" style="font-weight:600;font-size:14px;">${r.name} <span class="crm-secondary-text" style="font-size:12px;color:#64748b;font-weight:400;">${r.code}</span> <span title="Язык кабинета" style="font-size:11px;">${r.lang === 'en' ? '🇬🇧 EN' : '🇷🇺 RU'}</span></div>
+                            <div class="referrer-meta crm-secondary-text" style="font-size:12px;color:#64748b;margin-top:2px;">
                                 ${r.comp_model === 'markup'
-                                    ? `<span style="color:#7c3aed;font-weight:600;">Markup +${r.markup_percent || 0}%</span> к курсу`
-                                    : `<span style="color:#0ea5e9;font-weight:600;">Revshare ${r.default_percent}%</span> от прибыли`}
+                                    ? `<span data-tone="info" style="color:#7c3aed;font-weight:600;">Markup +${r.markup_percent || 0}%</span> к курсу`
+                                    : `<span data-tone="info" style="color:#0ea5e9;font-weight:600;">Revshare ${r.default_percent}%</span> от прибыли`}
                                 · Выплата: ${r.payout_currency || 'USDT'} · Клиентов: ${r.total_referred_clients || 0} · Сделок: ${r.total_deals || 0}
                                 ${r.telegram ? ' · TG: ' + r.telegram : ''}
-                                ${r.active ? '' : ' · <span style="color:#ef4444;">Неактивен</span>'}
+                                ${r.active ? '' : ' · <span data-tone="bad" style="color:#ef4444;">Неактивен</span>'}
                             </div>
                             <div class="referrer-money" style="display:flex;gap:12px;margin-top:4px;font-size:13px;">
-                                <span style="color:#22c55e;">Заработал: $${(r.total_earned_usdt || 0).toFixed(2)}</span>
-                                <span style="color:#c2410c;">К выплате: $${(r.pending_usdt || 0).toFixed(2)}</span>
-                                <span style="color:#64748b;">Выплачено: $${(r.total_paid_usdt || 0).toFixed(2)}</span>
+                                <span data-tone="good" style="color:#22c55e;">Заработал: $${(r.total_earned_usdt || 0).toFixed(2)}</span>
+                                <span data-tone="warn" style="color:#c2410c;">К выплате: $${(r.pending_usdt || 0).toFixed(2)}</span>
+                                <span class="crm-secondary-text" style="color:#64748b;">Выплачено: $${(r.total_paid_usdt || 0).toFixed(2)}</span>
                             </div>
                             <div class="referrer-links" style="display:flex;gap:8px;margin-top:6px;">
                                 <input type="text" readonly value="${site.value}" title="Сайт"
