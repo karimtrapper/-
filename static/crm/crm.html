@@ -1242,6 +1242,15 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
                                 <option value="">Выберите или введите ниже</option>
                             </select>
                         </div>
+                        <div class="form-group" id="dealSourceChannelGroup">
+                            <label class="form-label" for="dealSourceChannel">Канал обращения</label>
+                            <select class="form-control" name="source_channel" id="dealSourceChannel" required>
+                                <option value="">Выберите канал</option>
+                                <option value="whatsapp">WhatsApp</option>
+                                <option value="telegram">Telegram</option>
+                                <option value="bitrix">Битрикс</option>
+                            </select>
+                        </div>
                         <div class="form-group">
                             <label class="form-label" for="dealProductSelect">Тип сделки</label>
                             <select class="form-control" id="dealProductSelect" onchange="changeDealProduct()">
@@ -4151,7 +4160,7 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
         }
 
         function upgradeAllSelects() {
-            document.querySelectorAll('select.form-control').forEach(upgradeSelect);
+            document.querySelectorAll('select.form-control:not(#dealSourceChannel)').forEach(upgradeSelect);
         }
 
         // ==================== HTML escape (защита от XSS) ====================
@@ -5862,6 +5871,8 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
                 cancelEditMode();
                 // editingDealId ставим ДО loadCreateForm — форма не должна сбросить режим редактирования
                 editingDealId = dealId;
+                document.getElementById('dealSourceChannelGroup').hidden = true;
+                document.getElementById('dealSourceChannel').disabled = true;
 
                 // Сразу переключаемся на форму (мгновенный отклик),
                 // сделка и справочники формы грузятся параллельно
@@ -6173,6 +6184,8 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
 
         function cancelEditMode() {
             editingDealId = null;
+            document.getElementById('dealSourceChannelGroup').hidden = false;
+            document.getElementById('dealSourceChannel').disabled = false;
             leaseholdReclassification = null;
             document.getElementById('createDealForm').inert = false;
             editingPayinRubIsNet = true;
@@ -9579,6 +9592,8 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
         async function createCustomDeal() {
             // Защита от дублей: повторный вызов (двойной клик) игнорируется до ответа.
             if (_customDealSubmitting) return;
+            const channel = document.getElementById('dealSourceChannel');
+            if (!channel.reportValidity()) return;
             const payinAmount = parseFloat(document.getElementById('customPayinAmount').value) || 0;
             const payinCurrency = document.getElementById('customPayinCurrency').value;
             const payinRate = parseFloat(document.getElementById('customPayinRate').value) || 0;
@@ -9626,6 +9641,7 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
             const clientName = document.querySelector('[name="client_name"]').value;
 
             const data = {
+                source_channel: channel.value,
                 deal_type: 'pay_in',
                 status: payinMethod === 'flow_sole_reqs' ? 'pending' : 'completed',
                 manager_name: managerName,
@@ -9684,12 +9700,19 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
 
             _customDealSubmitting = true;
             try {
-                const response = await fetch(`${API_URL}/api/deals`, {
+                const save = () => fetch(`${API_URL}/api/deals`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(data)
                 });
-                const result = await response.json();
+                let response = await save();
+                let result = await response.json();
+                if (response.status === 409 && result.requires_confirmation && result.unverified_flow) {
+                    if (!await showConfirm('Непроверенный флоу, продолжить?', 'Да, продолжить')) return;
+                    data.unverified_confirmed = true;
+                    response = await save();
+                    result = await response.json();
+                }
 
                 if (result.success) {
                     let msg = `Кастомная сделка создана!\n\nPayIn: $${payinUsdt.toFixed(2)}\nPayOut: $${payoutUsdt.toFixed(2)}\nВаловая прибыль: $${profit.toFixed(2)}`;
@@ -9702,6 +9725,7 @@ select:disabled, .custom-select-btn:disabled { background-color: #F1F5F9; color:
                     showToast(msg);
 
                     // Очистка формы
+                    channel.value = '';
                     document.getElementById('customPayinAmount').value = '';
                     delete document.getElementById('customPayinUsdt').dataset.flowDraftTyped;
                     document.getElementById('customPayoutAmount').value = '';

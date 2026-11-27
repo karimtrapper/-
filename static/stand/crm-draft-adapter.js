@@ -433,6 +433,7 @@ async function crmDraftMount(id) {
     style.textContent=css.replace(/:root\s*\{/g,':host {')+'\n:host{display:block;font-family:Inter,sans-serif;color:#0f172a}';
     shadow.append(style);
     const form=page.querySelector('#createDealForm').cloneNode(true);
+    form.querySelector('#dealSourceChannelGroup')?.remove();
     crmDraftSanitize(form);
     const productLabel=form.querySelector('label[for="dealProductSelect"]');
     if(productLabel)productLabel.textContent='Продукт';
