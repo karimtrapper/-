@@ -717,6 +717,48 @@ html.slate-console body.calc-b2 :is(#createDealBtn, #createPaymentBtn, .refresh-
   }
 }
 
+html.slate-console body.nav-shell-crm #closing .bitrix-analysis-summary {
+  background-color: var(--surface-panel) !important;
+  border: 1px solid var(--border) !important;
+  overflow-wrap: anywhere;
+}
+html.slate-console body.nav-shell-crm #closing .bitrix-analysis-text {
+  line-height: 1.5;
+}
+html.slate-console body.nav-shell-crm #closing .bitrix-analysis-meta {
+  color: var(--muted-foreground) !important;
+  font-size: .8125rem !important;
+}
+html.slate-console body.nav-shell-crm #closing .bitrix-analysis-verdict {
+  color: var(--surface-warn-ink) !important;
+  font-weight: 650 !important;
+}
+html.slate-console body.nav-shell-crm #closing :is(.bitrix-analysis-verdict[data-verdict="WON"], #bxWonBtn) {
+  color: var(--surface-good-ink) !important;
+}
+html.slate-console body.nav-shell-crm #closing :is(.bitrix-analysis-verdict[data-verdict="LOSE"], .bitrix-close-rejected) {
+  color: var(--surface-bad-ink) !important;
+}
+html.slate-console body.nav-shell-crm #closing .bitrix-analysis-error {
+  --badge-fill: var(--surface-bad);
+  --badge-line: var(--surface-bad-line);
+  --badge-ink: var(--surface-bad-ink);
+}
+html.slate-console body.nav-shell-crm #closing #bxWonBtn {
+  background-color: var(--surface-good) !important;
+  border-color: var(--surface-good-line) !important;
+}
+html.slate-console body.nav-shell-crm #closing .bitrix-close-rejected {
+  background-color: var(--surface-bad) !important;
+  border-color: var(--surface-bad-line) !important;
+}
+html.slate-console body.nav-shell-crm #closing #bxWonBtn:hover:not(:disabled) {
+  background-color: color-mix(in oklab, var(--surface-good) 91%, var(--success)) !important;
+}
+html.slate-console body.nav-shell-crm #closing .bitrix-close-rejected:hover:not(:disabled) {
+  background-color: color-mix(in oklab, var(--surface-bad) 91%, var(--destructive)) !important;
+}
+
 /* Payout cards share the CRM surface and status palette. */
 html.slate-console body.nav-shell-crm #payoutRequests .payout-request-card {
   background-color: var(--surface-panel) !important;

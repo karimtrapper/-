@@ -5,6 +5,7 @@ import pytest
 from playwright.sync_api import expect
 
 import app as A
+from tests.helpers.slate_contrast import TEXT_CONTRAST_FAILURES
 from tests.test_browser_crm import chromium, crm_server, stand_ui  # noqa: F401
 
 
@@ -42,25 +43,6 @@ def test_populated_payout_requests_follow_slate_colors(stand_ui, monkeypatch):
     cards = section.locator('.payout-request-card')
     expect(cards).to_have_count(8)
 
-    # Composite the computed CSS colors so transparent labels use the card fill.
-    contrast_checks = '''els => {
-      const ctx = document.createElement('canvas').getContext('2d', {willReadFrequently: true});
-      const luminance = () => [...ctx.getImageData(0, 0, 1, 1).data].slice(0, 3)
-        .map(v => v / 255).map(v => v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4)
-        .reduce((total, v, i) => total + v * [.2126, .7152, .0722][i], 0);
-      const fill = color => { ctx.fillStyle = color; ctx.fillRect(0, 0, 1, 1); };
-      return els.map(el => {
-        const layers = [];
-        for (let node = el; node; node = node.parentElement) layers.unshift(getComputedStyle(node));
-        ctx.clearRect(0, 0, 1, 1);
-        layers.forEach(style => fill(style.backgroundColor));
-        const paper = luminance();
-        fill(getComputedStyle(el).color);
-        const ink = luminance();
-        return {text: (el.textContent || el.getAttribute('aria-label') || '').trim(),
-          ratio: (Math.max(paper, ink) + .05) / (Math.min(paper, ink) + .05)};
-      }).filter(item => item.ratio < 4.5);
-    }'''
     text = section.locator(''' .payout-request-name, .payout-request-total, .payout-request-meta,
         .payout-request-status, .payout-request-thb, .payout-request-reference, .payout-request-receipt,
         .payout-request-details strong, .payout-request-paid-entry input, .payout-request-actions button,
@@ -73,7 +55,7 @@ def test_populated_payout_requests_follow_slate_colors(stand_ui, monkeypatch):
                               [preset, mode])
                 expect(cards.first).to_be_visible()
                 assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
-                failures = text.evaluate_all(contrast_checks)
+                failures = text.evaluate_all(TEXT_CONTRAST_FAILURES)
                 assert not failures, (width, preset, mode, failures)
                 assert cards.first.evaluate(
                     '(el) => getComputedStyle(el).backgroundColor !== "rgb(255, 255, 255)"'
