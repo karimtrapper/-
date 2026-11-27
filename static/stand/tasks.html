@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, shrink-to-fit=no">
 <title>Задачник CalcCRM</title>
 <link href="/static/stand/vendor/inter-v20/font.css" rel="stylesheet">
+<link rel="stylesheet" href="/static/stand/task-analytics-chart.css">
+<script defer src="/static/stand/task-analytics-chart.js"></script>
 <style>
 :root{
   --navy-900:#0F172A; --navy-800:#1E293B; --navy-700:#334155; --navy-600:#475569;
@@ -15625,7 +15627,7 @@ function analyticsGroupTable(rows,groups,groupFor,label){
         columns.map((column,i)=>'<td class="num" data-label="'+column+'">'+values[i]+'</td>').join('')+'</tr>';
     }).join('')+'</tbody></table></div>';
 }
-function analyticsDailyTable(rows){
+function analyticsDailyActivity(rows){
   const days=new Map();
   const day=date=>{
     if(!days.has(date))days.set(date,{created:0,closed:[]});
@@ -15635,15 +15637,18 @@ function analyticsDailyTable(rows){
     if(row.createdInPeriod)day(row.createdDate).created++;
     if(row.closedInPeriod&&row.closedDate)day(row.closedDate).closed.push(row);
   }
-  if(!days.size)return '';
+  return [...days.entries()].sort(([left],[right])=>left.localeCompare(right));
+}
+function analyticsDailyTable(days){
+  if(!days.length)return '';
   const currencies=Object.keys(ANALYTICS_CURRENCIES);
   const columns=['Создано','Закрыто',...currencies.map(currency=>'Оборот '+currency)];
   return '<section class="card"><h2 class="card-title">По дням</h2>'+
     '<div class="analytics-table-wrap" tabindex="0" role="region" aria-label="По дням">'+
     '<table class="analytics-source-table"><thead><tr><th>Дата</th>'+
     columns.map(column=>'<th>'+column+'</th>').join('')+'</tr></thead><tbody>'+
-    [...days.keys()].sort().map(date=>{
-      const {created,closed}=days.get(date),{turnover}=analyticsSummary(closed);
+    days.map(([date,{created,closed}])=>{
+      const {turnover}=analyticsSummary(closed);
       const values=[created,closed.length,...currencies.map(currency=>moneyKop(turnover[currency],''))];
       return '<tr><td><b>'+analyticsDateLabel(date)+'</b></td>'+
         columns.map((column,i)=>'<td class="num" data-label="'+column+'">'+values[i]+'</td>').join('')+'</tr>';
@@ -15725,6 +15730,12 @@ function viewAnalytics(){
   const activity=f.basis==='activity';
   const deals=analyticsDeals();
   const {rows,reasons,unknownDates,firstDate,lastDate}=analyticsData(deals,f,p);
+  const slate=activity&&globalThis.document?.documentElement.classList.contains('slate-console');
+  const days=activity&&(p.from||slate)?analyticsDailyActivity(rows):[];
+  const chart=slate&&days.length
+    ?'<task-analytics-chart class="card" data-days="'+htmlText(JSON.stringify(
+      days.map(([date,{created,closed}])=>[date,created,closed.length])))+'"></task-analytics-chart>':'';
+
   const m=analyticsSummary(rows),known=m.won+m.lost,closed=known+m.unknown+(m.notLead||0);
   const conversionDetails=m.won+' из '+known+' закрытых'+(m.notLead?' с результатом сделки':m.unknown?' с известным итогом':'');
   const outcomeLink=(outcome,label)=>'<button type="button" class="analytics-stat-link analytics-link" data-outcome="'+outcome+'" '+
@@ -15788,7 +15799,7 @@ function viewAnalytics(){
       stat('Закрыто отказом',m.lost,'','danger')+stat('Конверсия закрытых',analyticsPercent(m.won,known),conversionDetails)+
       stat('Отказы из-за курса',analyticsPercent(m.rateLost,m.lost),m.rateLost+' из '+m.lost+' отказов')+'</div>'+
       (!rows.length?'<p class="card empty">В выбранном периоде по этому фильтру сделок нет.</p>':'')+
-      (activity&&p.from?analyticsDailyTable(rows):'')+
+      chart+(activity&&p.from?analyticsDailyTable(days):'')+
       '<section class="card"><h2 class="card-title">Причины отказов</h2>'+
       (reasonRows?'<ul class="analytics-reasons" aria-label="Причины отказов">'+reasonRows+'</ul>':'<p class="empty">За выбранный период отказов нет.</p>')+'</section>'+
       analyticsReasonDeals(reasons,f.reason,rows)+

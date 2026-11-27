@@ -27,6 +27,7 @@ import stand_sgb_files
 import binascii
 import stand_notify
 import stand_task_history
+from stand_browser import CHART_JS
 from sber_acquiring import parse_sber_acquiring
 from stand_funding import (account_identity, income_account_identity, incoming_shares,
                            legacy_account_identity, sgb_broker_quote)
@@ -297,6 +298,10 @@ def check_auth():
                 or path in {'/api/stand/reset', '/api/stand/egress-status'}):
             if current_role() != 'admin':
                 return jsonify({'success': False, 'error': 'only_admin'}), 403
+        return None
+
+    # The pinned chart bundle is shared with CRM even when Tasks are disabled.
+    if request.endpoint == 'static' and path == CHART_JS:
         return None
 
     board_page = (path == '/tasks' or path.startswith('/tasks/')

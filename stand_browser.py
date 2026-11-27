@@ -55,7 +55,6 @@ STAND_CSP = (
 
 _FONT_LINK = re.compile(r'<link\b[^>]*\bhref="https://fonts\.googleapis\.com/css2\?family=([^"&]+)[^"]*"[^>]*>', re.I)
 _PRECONNECT = re.compile(r'<link\b[^>]*\brel="preconnect"[^>]*\bhref="https://fonts\.(?:googleapis|gstatic)\.com"[^>]*>\s*', re.I)
-_CHART_LINK = '<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>'
 _LOGIN_WIDGET_CONDITION = 'if (!(window.Telegram && window.Telegram.Login)) {'
 
 
@@ -140,9 +139,8 @@ def transform_html(kind, html):
     if font_count != 1:
         raise ValueError(f'{kind}: expected one registered font link, got {font_count}')
     if kind == 'crm':
-        if html.count(_CHART_LINK) != 1:
+        if html.count('<script src="' + CHART_JS + '"></script>') != 1:
             raise ValueError('crm: Chart.js source changed')
-        html = html.replace(_CHART_LINK, '<script src="' + CHART_JS + '"></script>')
         html = html.replace('</body>', '<script src="' + STATUS_JS + '"></script>\n</body>', 1)
     if kind == 'login':
         if html.count(_LOGIN_WIDGET_CONDITION) != 1:

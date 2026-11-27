@@ -160,6 +160,9 @@ if app.STAND_MODE:
                  '/static/stand/vendor/chartjs-4.4.7/chart.umd.min.js',
                  '/static/stand/vendor/inter-v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa0ZL7W0Q5n-wU.woff2'):
         assert client.get(path).status_code == 200, path
+chart = client.get('/static/stand/vendor/chartjs-4.4.7/chart.umd.min.js')
+assert chart.status_code == 200, chart.status_code
+assert 'javascript' in chart.content_type, chart.content_type
 for path, source in paths.items():
     if path == '/':
         with client.session_transaction() as sess: sess['user_id'] = 1

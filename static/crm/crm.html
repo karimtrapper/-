@@ -7,7 +7,7 @@
     <title>CRM - Учет сделок</title>
     <link rel="icon" type="image/png" href="/static/kyc/grusha-logo.png">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+    <script src="/static/stand/vendor/chartjs-4.4.7/chart.umd.min.js"></script>
     <style>
 /* ==========================================
    CLEAN NAVY THEME — CRM
@@ -5247,6 +5247,62 @@ select.period-btn:hover:not(.active) { color: var(--text); }
 
         // ==================== Charts ====================
         let chartInstances = {};
+        const dashboardChartMedia = matchMedia('(prefers-reduced-motion: reduce)');
+        function applyDashboardChartTheme() {
+            const root = document.documentElement;
+            if (!root.classList.contains('slate-console') || !Object.keys(chartInstances).length) return;
+            const style = getComputedStyle(root);
+            const pixel = document.createElement('canvas');
+            pixel.width = pixel.height = 1;
+            const resolver = pixel.getContext('2d', { willReadFrequently: true });
+            // Chart.js uses sRGB for its canvas colors and hover color calculations.
+            const color = (name, alpha) => {
+                resolver.clearRect(0, 0, 1, 1);
+                resolver.fillStyle = style.getPropertyValue(name).trim();
+                resolver.fillRect(0, 0, 1, 1);
+                const [r, g, b, a] = resolver.getImageData(0, 0, 1, 1).data;
+                return `rgba(${r}, ${g}, ${b}, ${alpha ?? a / 255})`;
+            };
+            const palette = [1, 2, 3, 4, 5].map(series => color('--chart-' + series));
+            const text = color('--muted-foreground');
+            const grid = color('--border');
+            const border = color('--border-strong');
+            const popover = color('--popover');
+            const tooltipText = color('--popover-foreground');
+            const font = { family: style.getPropertyValue('--font-sans').trim(), size: 12 };
+
+            for (const [name, chart] of Object.entries(chartInstances)) {
+                const options = chart.config.options;
+                const dataset = chart.data.datasets[0];
+                const tooltip = options.plugins.tooltip ??= {};
+                Object.assign(tooltip, {
+                    backgroundColor: popover, titleColor: tooltipText, bodyColor: tooltipText,
+                    borderColor: border, borderWidth: 1, titleFont: font, bodyFont: font
+                });
+                options.animation = dashboardChartMedia.matches ? false : undefined;
+                if (name === 'methods') {
+                    dataset.backgroundColor = dataset.data.map((_, i) => palette[i % palette.length]);
+                    Object.assign(options.plugins.legend.labels, { color: text, font });
+                } else {
+                    for (const axis of Object.values(options.scales)) {
+                        Object.assign(axis.ticks, { color: text, font });
+                        axis.border = { color: border };
+                    }
+                    options.scales.y.grid.color = grid;
+                    dataset.backgroundColor = name === 'profit' ? palette[0] : color('--chart-2', 0.22);
+                    if (name === 'deals') {
+                        dataset.borderColor = palette[1];
+                        dataset.pointBackgroundColor = palette[1];
+                    }
+                }
+                chart.update('none');
+            }
+        }
+        const dashboardChartThemeObserver = new MutationObserver(applyDashboardChartTheme);
+        dashboardChartThemeObserver.observe(document.documentElement, {
+            attributes: true, attributeFilter: ['data-mode', 'data-preset']
+        });
+        dashboardChartMedia.addEventListener('change', applyDashboardChartTheme);
         const METHOD_NAMES = {'spp_doverka': 'СБП (Доверка)', 'partner_cash': 'Партнёры', 'crypto_direct': 'Крипта', 'sber_wl': 'СБП', 'sber_reqs': 'Сбер реквизиты', 'flow_sole_reqs': 'Flow Sole (СГБ, реквизиты)', 'custom': 'Кастомная', 'unknown': 'Другое'};
         let currentPeriod = '30d';
         let dashRange = null; // {from:'YYYY-MM-DD', to:'YYYY-MM-DD', label} — кастомный диапазон или месяц
@@ -5315,10 +5371,11 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                     },
                     options: {
                         responsive: true, maintainAspectRatio: false,
+                        animation: dashboardChartMedia.matches ? false : undefined,
                         plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => formatDisplayMoney(ctx.raw, '$') } } },
                         scales: {
                             x: { grid: { display: false }, ticks: { font: chartFont, maxRotation: 0, autoSkip: true, maxTicksLimit: 8 } },
-                            y: { grid: { color: gridColor }, ticks: { font: chartFont, callback: v => formatDisplayMoney(v, '$', 0) } }
+                            y: { grid: { color: gridColor }, ticks: { font: chartFont, precision: 0, callback: v => formatDisplayMoney(v, '$', 0) } }
                         }
                     }
                 });
@@ -5338,6 +5395,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                     },
                     options: {
                         responsive: true, maintainAspectRatio: false,
+                        animation: dashboardChartMedia.matches ? false : undefined,
                         plugins: { legend: { display: false } },
                         scales: {
                             x: { grid: { display: false }, ticks: { font: chartFont, maxRotation: 0, autoSkip: true, maxTicksLimit: 6 } },
@@ -5363,11 +5421,14 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                     },
                     options: {
                         responsive: true, maintainAspectRatio: false, cutout: '60%',
+                        animation: dashboardChartMedia.matches ? false : undefined,
                         plugins: { legend: { position: 'bottom', labels: { font: chartFont, padding: 12, usePointStyle: true, pointStyle: 'circle' } } }
                     }
                 });
                 document.getElementById('methodsLegend').innerHTML = '';
             }
+
+            applyDashboardChartTheme();
 
             // Buyers
             if (charts.buyers) {

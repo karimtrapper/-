@@ -288,6 +288,21 @@ assert.match(weekReport, /По валюте прихода/);
 assert.match(weekReport, /По дням/);
 assert.match(weekReport, /<b>23\.11\.2026<\/b><\/td><td class="num" data-label="Создано">1<\/td><td class="num" data-label="Закрыто">1<\/td>/);
 assert.match(weekReport, /data-label="Оборот THB">8500<\/td>/);
+assert.doesNotMatch(weekReport, /<task-analytics-chart/);
+stand.document = {documentElement:{classList:{contains:name=>name==='slate-console'}}};
+const slateWeekReport = stand.viewAnalytics();
+const chartDays = JSON.parse(slateWeekReport.match(/<task-analytics-chart class="card" data-days="([^"]+)"/)[1]
+  .replaceAll('&quot;', '"'));
+const tableDays = Array.from(slateWeekReport.matchAll(
+  /<b>(\d{2}\.\d{2}\.\d{4})<\/b><\/td><td class="num" data-label="Создано">(\d+)<\/td><td class="num" data-label="Закрыто">(\d+)<\/td>/g
+), ([,date,created,closed]) => [date.split('.').reverse().join('-'), Number(created), Number(closed)]);
+assert.deepEqual(chartDays, tableDays);
+vm.runInContext("analyticsFilters.period='all'", stand);
+assert.match(stand.viewAnalytics(), /<task-analytics-chart/);
+assert.doesNotMatch(stand.viewAnalytics(), /По дням/);
+vm.runInContext("analyticsFilters.period='custom'", stand);
+delete stand.document;
+
 assert.match(weekReport, /31500 ₽/);
 assert.match(weekReport, /8500 ฿/);
 assert.match(weekReport, /500 USDT/);

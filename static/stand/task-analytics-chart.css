@@ -1,0 +1,104 @@
+html.slate-console task-analytics-chart {
+  display: block;
+  min-inline-size: 0;
+  color: var(--foreground, var(--ds-ink));
+}
+.slate-console .task-activity-header,
+.slate-console .task-activity-footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px 16px;
+}
+.slate-console .task-activity-header .card-title { margin: 0; }
+.slate-console .task-activity-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.slate-console .task-activity-controls[hidden] { display: none; }
+.slate-console .task-activity-controls button {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  min-block-size: 32px;
+  padding: 4px 8px;
+  border: 1px solid transparent;
+  border-radius: var(--radius, 6px);
+  background: transparent;
+  color: var(--muted-foreground, var(--ds-muted));
+  font: inherit;
+  cursor: pointer;
+}
+.slate-console .task-activity-pagination button {
+  border-color: var(--border, var(--ds-border));
+}
+.slate-console .task-activity-controls button:hover:not(:disabled):not([aria-disabled="true"]) {
+  background: var(--muted, var(--navy-50));
+  color: var(--foreground, var(--ds-ink));
+}
+.slate-console .task-activity-controls button:disabled,
+.slate-console .task-activity-controls button[aria-disabled="true"] { cursor: default; }
+.slate-console .task-activity-controls button:disabled,
+.slate-console .task-activity-controls button[aria-pressed="false"] { opacity: 0.6; }
+.slate-console .task-activity-controls button[aria-pressed="false"] .task-activity-swatch {
+  background: transparent;
+  border: 1px solid currentColor;
+}
+.slate-console .task-activity-swatch {
+  display: inline-block;
+  inline-size: 9px;
+  block-size: 9px;
+  border-radius: 2px;
+  background: currentColor;
+}
+.slate-console task-analytics-chart .series-0 { color: var(--chart-1, var(--navy-700)); }
+.slate-console task-analytics-chart .series-1 { color: var(--chart-2, var(--navy-300)); }
+.slate-console .task-activity-plot {
+  margin: 8px 0;
+  border-radius: var(--radius, 6px);
+}
+.slate-console .task-activity-plot:focus-visible,
+.slate-console .task-activity-controls button:focus-visible {
+  outline: 2px solid var(--ring, var(--navy-500));
+  outline-offset: 2px;
+}
+.slate-console .task-activity-plot svg {
+  display: block;
+  inline-size: 100%;
+}
+.slate-console .task-activity-grid {
+  fill: none;
+  stroke: var(--border, var(--ds-border));
+  vector-effect: non-scaling-stroke;
+}
+.slate-console .task-activity-grid.base {
+  stroke: var(--border-strong, var(--ds-muted));
+}
+.slate-console .task-activity-axis {
+  fill: var(--muted-foreground, var(--ds-muted));
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+.slate-console .task-activity-band { fill: transparent; }
+.slate-console .task-activity-plot .is-selected .task-activity-band {
+  fill: var(--muted, var(--navy-50));
+}
+.slate-console .task-activity-bar { fill: currentColor; }
+.slate-console .task-activity-detail,
+.slate-console .task-activity-detail span {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  font-variant-numeric: tabular-nums;
+}
+.slate-console .task-activity-detail span { gap: 5px; }
+@media (pointer: coarse) {
+  .slate-console .task-activity-controls button { min-block-size: 44px; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .slate-console .task-activity-controls button { transition: background-color 140ms ease; }
+}
