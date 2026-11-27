@@ -244,8 +244,9 @@ def pages_to_png(data: bytes, mime: str, max_pages: int = 3, dpi: int = 150,
     if 'pdf' not in (mime or '').lower() and not data[:5].startswith(b'%PDF'):
         return [data]
     import pymupdf  # noqa: PLC0415 — тяжёлый импорт, только для PDF
+    from stand_sgb_files import PDF_LOCK
     out = []
-    with pymupdf.open(stream=data, filetype='pdf') as doc:
+    with PDF_LOCK, pymupdf.open(stream=data, filetype='pdf') as doc:
         for page_no in range(min(len(doc), max_pages)):
             if stand:
                 import stand_egress

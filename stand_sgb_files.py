@@ -2,6 +2,7 @@
 from io import BytesIO
 import re
 import struct
+from threading import Lock
 import unicodedata
 from zipfile import ZIP_DEFLATED, ZipFile
 
@@ -10,6 +11,8 @@ import pymupdf
 
 FILE_LIMIT = 999_999
 EXTENSIONS = {'application/pdf': 'pdf', 'image/png': 'png'}
+# MuPDF operations share a process, including document recognition requests.
+PDF_LOCK = Lock()
 _RUSSIAN = dict(zip('абвгдеёжзийклмнопрстуфхцчшщъыьэюя',
                     'a b v g d e yo zh z i y k l m n o p r s t u f kh ts ch sh shch - y - e yu ya'.split()))
 _TRANSLITERATION = str.maketrans({**_RUSSIAN, **{c.upper(): value.capitalize()
@@ -118,7 +121,8 @@ def prepare(raw, mime, name):
     if mime not in EXTENSIONS or len(raw) <= FILE_LIMIT:
         return raw, safe
     try:
-        return (_pdf(raw) if mime == 'application/pdf' else _png(raw)), safe
+        with PDF_LOCK:
+            return (_pdf(raw) if mime == 'application/pdf' else _png(raw)), safe
     except (pymupdf.mupdf.FzErrorBase, RuntimeError, ValueError):
         # Keep the uploaded bytes when a codec cannot safely process the document.
         return raw, safe
@@ -135,24 +139,25 @@ def _pdf_parts(raw):
         parts = []
         position = 0
         while position < original.page_count:
-            low, high = position, original.page_count - 1
-            best = None
-            best_end = position
-            # Find the largest contiguous range that fits without further reducing quality.
-            while low <= high:
-                end = (low + high) // 2
+            remaining = original.page_count - position
+            best, best_count = None, 0
+            count, first_oversized = 1, remaining + 1
+            # Grow from the first page so long scanned PDFs do not get copied in half
+            # for each part. Once a range exceeds the limit, search the remaining gap.
+            while best_count < count < first_oversized:
                 with pymupdf.open() as part:
-                    part.insert_pdf(original, from_page=position, to_page=end)
+                    part.insert_pdf(original, from_page=position, to_page=position + count - 1)
                     candidate = _pdf_bytes(part)
                 if len(candidate) <= FILE_LIMIT:
-                    best, best_end = candidate, end
-                    low = end + 1
+                    best, best_count = candidate, count
                 else:
-                    high = end - 1
+                    first_oversized = count
+                count = (min(remaining, count * 2) if first_oversized == remaining + 1
+                         else (best_count + first_oversized) // 2)
             if best is None:
                 raise ValueError(f'Страница {position + 1} занимает больше 1 МБ. Загрузите скан меньшего размера.')
             parts.append(best)
-            position = best_end + 1
+            position += best_count
         return parts
 
 
@@ -165,7 +170,8 @@ def bank_download(raw, mime, name):
     if mime == 'image/png':
         raise ValueError('Изображение больше 1 МБ. Загрузите PNG меньшего размера.')
     try:
-        parts = _pdf_parts(raw)
+        with PDF_LOCK:
+            parts = _pdf_parts(raw)
     except (pymupdf.mupdf.FzErrorBase, RuntimeError) as exc:
         raise ValueError('Не удалось подготовить PDF. Загрузите части меньше 1 МБ.') from exc
     if len(parts) == 1:
