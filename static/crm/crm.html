@@ -430,6 +430,17 @@ select.period-btn:hover:not(.active) { color: var(--text); }
     grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
     gap: 12px;
 }
+#founderGroup > .form-group { min-width: 0; }
+#founderGroup .founder-payout-fields { grid-column: span 2; }
+#payoutTransfersBox .custom-select-wrap { flex: 1; min-width: 0; }
+.payout-tx-edit-row { display: flex; align-items: center; gap: 0.5rem; }
+.payout-tx-edit-row :is(input, code) { min-width: 0; }
+.payout-tx-edit-row button { flex-shrink: 0; }
+@media (max-width: 767px) {
+    #founderGroup { grid-template-columns: minmax(0, 1fr); }
+    #founderGroup .founder-payout-fields { grid-column: 1 / -1; }
+    #payoutTxPoolBox button { min-width: 44px; }
+}
 .crm-wallet-address {
     display: flex; align-items: flex-start; gap: 8px; min-width: 0;
     margin-top: 8px; color: var(--navy-600); font-size: 12px;
@@ -2069,7 +2080,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                                     <option value="Теодор">Теодор</option>
                                 </select>
                             </div>
-                            <div class="form-group" style="grid-column: span 2;">
+                            <div class="form-group founder-payout-fields">
                                 <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:0.75rem;
                                               padding:8px 10px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;">
                                     <input type="checkbox" id="payoutNoConversion" onchange="toggleNoConversion()">
@@ -9024,7 +9035,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
                 refreshPayoutWalletPolicy();
                 loadOutgoingTxForBinance();
             } else if (this.value === 'founder_personal') {
-                founderGroup.style.display = 'flex';
+                founderGroup.style.display = 'grid';
                 toggleNoConversion();       // вернуть блоки в состояние галки
                 if (!noConversionOn()) loadOutgoingTxForSelect();
             }
@@ -12806,7 +12817,7 @@ select.period-btn:hover:not(.active) { color: var(--text); }
             }
             box.innerHTML = payoutTxPool.map((t, i) => `
                 <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:4px 8px;margin-bottom:4px;font-size:0.85rem;">
-                    <div style="display:flex;align-items:center;gap:0.5rem;">
+                    <div class="payout-tx-edit-row">
                         <span style="color:#dc2626;font-weight:700;">−$</span>
                         <input type="text" inputmode="decimal" class="form-control"
                             style="max-width:120px;padding:2px 6px;height:auto;font-size:0.85rem;"

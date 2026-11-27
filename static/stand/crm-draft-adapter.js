@@ -222,7 +222,7 @@ function crmDraftLayout(active) {
   const src=crmDraftRead(root,'payoutSource');
   for(const [id,value] of [['cashBatchGroup','cash_batch'],['bankCardGroup','bank_card'],
       ['binanceGroup','binance'],['binanceGroup2','binance'],['founderGroup','founder_personal']]) {
-    const el=root.getElementById(id);if(el)el.style.display=src===value?'flex':'none';
+    const el=root.getElementById(id);if(el)el.style.display=src===value?(id==='founderGroup'?'grid':'flex'):'none';
   }
   const noConv=root.getElementById('noConversionBox');
   if(noConv)noConv.style.display=root.getElementById('payoutNoConversion')?.checked?'block':'none';
