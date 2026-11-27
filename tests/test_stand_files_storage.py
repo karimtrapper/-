@@ -8,6 +8,7 @@ import struct
 import zipfile
 import zlib
 
+from PIL import Image
 import pymupdf
 import pytest
 import app as m
@@ -162,6 +163,28 @@ def test_sgb_upload_reduces_real_documents_and_uses_latin_filename(api, mime, ex
         image = pymupdf.Pixmap(download.data)
         assert image.width > 1000 and image.height > 250
     assert upload(api, raw, name=f'Повтор.{extension}', mime=mime).json['duplicate']
+
+
+def test_sgb_compresses_transparent_png_at_original_resolution(api):
+    api[1][0] = 'manager'
+    seed(board())
+    width, height = 1050, 980
+    image = Image.frombytes('RGB', (width, height), random.Random(9).randbytes(width * height * 3))
+    alpha = Image.new('L', image.size, color=255)
+    alpha.paste(0, (0, 0, 20, height))
+    image.putalpha(alpha)
+    output = io.BytesIO()
+    image.save(output, format='PNG')
+    assert len(output.getvalue()) > 1_000_000
+
+    response = upload(api, output.getvalue(), name='Паспорт.png', mime='image/png')
+    assert response.status_code == 200 and response.json['sgbOversize'] is False
+    result = api[0].get('/api/stand/file/1473/inv/0?sgb=1')
+    with Image.open(io.BytesIO(result.data)) as compressed:
+        assert compressed.size == (width, height) and len(result.data) < 1_000_000
+        opacity = compressed.convert('RGBA').getchannel('A')
+        assert opacity.getpixel((10, 10)) == 0
+        assert opacity.getpixel((50, 10)) == 255
 
 
 def test_sgb_download_splits_pdf_into_ordered_parts_and_preserves_original(api):

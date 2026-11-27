@@ -1,11 +1,11 @@
 """Prepare task attachments for the SGB per-file limit."""
 from io import BytesIO
 import re
-import struct
 from threading import Lock
 import unicodedata
 from zipfile import ZIP_DEFLATED, ZipFile
 
+from PIL import Image
 import pymupdf
 
 
@@ -52,18 +52,28 @@ def _scan_pdf(raw, best_size):
                 or any(page.get_text().strip() or not page.get_images() or page.first_annot
                        or page.first_link for page in original)):
             return None
-        for dpi, quality in ((180, 83), (155, 78)):
-            if any(page.rect.get_area() * (dpi / 72) ** 2 > 20_000_000 for page in original):
-                return None
+        best = best_parts = None
+        for dpi, quality, max_side in ((180, 83, 2600), (165, 80, 2300), (155, 78, 2100), (145, 75, 1900)):
+            largest_image = 0
             with pymupdf.open() as result:
                 for page in original:
-                    pix = page.get_pixmap(dpi=dpi, alpha=False)
+                    ratio = min(dpi / 72, max_side / max(1, page.rect.width, page.rect.height))
+                    pix = page.get_pixmap(matrix=pymupdf.Matrix(ratio, ratio), alpha=False)
+                    jpg = pix.tobytes('jpeg', jpg_quality=quality)
+                    largest_image = max(largest_image, len(jpg))
                     copied = result.new_page(width=page.rect.width, height=page.rect.height)
-                    copied.insert_image(copied.rect, stream=pix.tobytes('jpeg', jpg_quality=quality))
+                    copied.insert_image(copied.rect, stream=jpg)
                 candidate = _pdf_bytes(result)
-            if len(candidate) <= FILE_LIMIT or len(candidate) <= best_size * 0.7:
+            if len(candidate) <= FILE_LIMIT:
                 return candidate
-    return None
+            if len(candidate) <= best_size * 0.7:
+                if best is None:
+                    best = candidate
+                if largest_image <= FILE_LIMIT - 32 * 1024 and best_parts is None:
+                    if original.page_count > 2:
+                        return candidate
+                    best_parts = candidate
+        return best_parts or best
 
 
 def _pdf(raw):
@@ -96,23 +106,37 @@ def _pdf(raw):
     return best
 
 
+def _png_bytes(image):
+    out = BytesIO()
+    image.save(out, format='PNG', optimize=True)
+    return out.getvalue()
+
+
 def _png(raw):
-    if len(raw) < 33 or raw[12:16] != b'IHDR' or b'acTL' in raw:
-        return raw
-    width, height = struct.unpack_from('>II', raw, 16)
-    if not width or not height or width * height > 25_000_000:
-        return raw
-    original = pymupdf.Pixmap(raw)
-    best = min((raw, original.tobytes('png')), key=len)
-    for side in (2200, 1900, 1600, 1450):
+    with Image.open(BytesIO(raw), formats=['PNG']) as original:
+        width, height = original.size
+        if width * height > 25_000_000 or original.is_animated:
+            return raw
+        best = min((raw, _png_bytes(original)), key=len)
         if len(best) <= FILE_LIMIT:
-            break
-        ratio = side / max(width, height)
-        if ratio < 1:
-            scaled = pymupdf.Pixmap(original, max(1, round(width * ratio)),
-                                    max(1, round(height * ratio)))
-            best = min((best, scaled.tobytes('png')), key=len)
-    return best
+            return best
+        mode = 'RGBA' if 'A' in original.getbands() or 'transparency' in original.info else 'RGB'
+        image = original.convert(mode)
+        if width * height <= 2_000_000:
+            # Try an indexed PNG at full resolution before discarding pixels.
+            indexed = image.quantize(colors=256)
+            best = min((best, _png_bytes(indexed)), key=len)
+        for side in (2200, 1900, 1600, 1450):
+            if len(best) <= FILE_LIMIT:
+                break
+            ratio = side / max(width, height)
+            if ratio < 1:
+                scaled = image.resize((max(1, round(width * ratio)), max(1, round(height * ratio))),
+                                      Image.Resampling.LANCZOS)
+                best = min((best, _png_bytes(scaled)), key=len)
+                if len(best) > FILE_LIMIT and scaled.width * scaled.height <= 2_000_000:
+                    best = min((best, _png_bytes(scaled.quantize(colors=256))), key=len)
+        return best
 
 
 def prepare(raw, mime, name):
@@ -121,9 +145,11 @@ def prepare(raw, mime, name):
     if mime not in EXTENSIONS or len(raw) <= FILE_LIMIT:
         return raw, safe
     try:
+        if mime == 'image/png':
+            return _png(raw), safe
         with PDF_LOCK:
-            return (_pdf(raw) if mime == 'application/pdf' else _png(raw)), safe
-    except (pymupdf.mupdf.FzErrorBase, RuntimeError, ValueError):
+            return _pdf(raw), safe
+    except (pymupdf.mupdf.FzErrorBase, Image.DecompressionBombError, OSError, RuntimeError, ValueError):
         # Keep the uploaded bytes when a codec cannot safely process the document.
         return raw, safe
 
