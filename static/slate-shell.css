@@ -485,10 +485,12 @@ html.slate-console body.nav-shell-on {
 .slate-console body .slate-results small { color: var(--muted-foreground) !important; font-size: 12px !important; }
 .slate-console .slate-results p { padding: 4px 10px; }
 .slate-console .slate-only-mobile, .slate-console .slate-drawer-close { display: none; }
-.slate-console[data-sidebar="rail"] .slate-side { padding-inline: 8px; }
-.slate-console[data-sidebar="rail"] .slate-side :is(.slate-identity, .slate-group-label, .slate-link-label, .slate-user summary > .slate-icon) { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
-.slate-console[data-sidebar="rail"] :is(.slate-workspace, .slate-user summary, .slate-link) { justify-content: center; padding-inline: 0; }
-.slate-console[data-sidebar="rail"] .slate-link :is(.slate-count, #payoutRequestsBadge) { position: absolute; top: -3px; right: -3px; font-size: 9px !important; padding-inline: 2px; min-width: 14px; }
+/* Rail styling applies to the sidebar in the desktop grid. Opening the
+   mobile drawer reparents that same sidebar outside the grid. */
+.slate-console[data-sidebar="rail"] .slate-app > .slate-side { padding-inline: 8px; }
+.slate-console[data-sidebar="rail"] .slate-app > .slate-side :is(.slate-identity, .slate-group-label, .slate-link-label, .slate-user summary > .slate-icon) { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.slate-console[data-sidebar="rail"] .slate-app > .slate-side :is(.slate-workspace, .slate-user summary, .slate-link) { justify-content: center; padding-inline: 0; }
+.slate-console[data-sidebar="rail"] .slate-app > .slate-side .slate-link :is(.slate-count, #payoutRequestsBadge) { position: absolute; top: -3px; right: -3px; font-size: 9px !important; padding-inline: 2px; min-width: 14px; }
 @media (max-width: 767px) {
   .slate-console body .slate-app { display: block; }
   .slate-console .slate-app > .slate-side { display: none; }
@@ -501,9 +503,6 @@ html.slate-console body.nav-shell-on {
   .slate-console body .slate-drawer { inset: 0 auto 0 0; margin: 0; height: 100dvh; max-height: 100dvh; width: min(86vw, 300px); max-width: none; border: 0 !important; border-radius: 0 !important; }
   .slate-console .slate-drawer .slate-side { position: relative; height: 100%; }
   .slate-console .slate-drawer-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-  .slate-console[data-sidebar="rail"] .slate-drawer .slate-side :is(.slate-identity, .slate-group-label, .slate-link-label) { position: static; width: auto; height: auto; overflow: hidden; clip-path: none; }
-  .slate-console[data-sidebar="rail"] .slate-drawer :is(.slate-workspace, .slate-user summary, .slate-link) { justify-content: flex-start; padding-inline: 8px; }
-  .slate-console[data-sidebar="rail"] .slate-drawer .slate-link :is(.slate-count, #payoutRequestsBadge) { position: static; font-size: 11px !important; padding-inline: 5px; }
   .slate-console .slate-notifications .notebox { position: fixed; top: calc(var(--header-h) + 3px); right: 8px; }
 }
 @media (pointer: coarse) {
