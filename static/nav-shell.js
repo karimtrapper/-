@@ -42,11 +42,11 @@
     ['managers','Менеджеры','/crm?section=managers'],['verification','Сверка','/crm?section=verification'],
     ['kyc','KYC','/crm?section=kyc'],['partners','Партнёры','/crm?section=partners'],
     ['referrers','Рефереры','/crm?section=referrers'],['payoutRequests','Заявки на выплату','/crm?section=payoutRequests'],
-    ['admins','Сотрудники','/crm?section=admins'],['myTelegram','Мой Telegram','/crm?section=myTelegram'],
+    ['admins','Админы','/crm?section=admins'],
     ['analytics','Аналитика','/tasks?section=analytics']
   ];
   function sectionNav() {
-    return `<nav class="site-shell-sections" aria-label="Разделы работы"><button type="button" class="site-shell-scroll" data-shell-scroll="-1" aria-label="Предыдущие разделы">‹</button><div class="site-shell-section-list">${sections.filter(([key])=>key!=='myTelegram'||state.stand).map(([key,label,href])=>`<a href="${href}" data-shell-section="${key}">${label}</a>`).join('')}</div><button type="button" class="site-shell-scroll" data-shell-scroll="1" aria-label="Следующие разделы">›</button></nav>`;
+    return `<nav class="site-shell-sections" aria-label="Разделы работы"><button type="button" class="site-shell-scroll" data-shell-scroll="-1" aria-label="Предыдущие разделы">‹</button><div class="site-shell-section-list">${sections.filter(([key])=>!state.stand||key!=='dashboard').map(([key,label,href])=>`<a href="${href}" data-shell-section="${key}">${label}</a>`).join('')}</div><button type="button" class="site-shell-scroll" data-shell-scroll="1" aria-label="Следующие разделы">›</button></nav>`;
   }
   function updateSectionArrows() {
     const list=document.querySelector('.site-shell-section-list');
@@ -117,7 +117,8 @@
       if(event.button!==0||event.metaKey||event.ctrlKey||event.shiftKey||event.altKey)return;
       const section=link.dataset.shellSection;
       if (state.page==='crm' && section!=='analytics' && typeof showSection==='function') {
-        event.preventDefault();history.replaceState(null,'',link.href);showSection(section);
+        event.preventDefault();showSection(section);history.replaceState(null,'',link.href);
+        if(state.active==='panel')update({active:'crm'});
       } else if(state.page==='tasks' && section==='analytics' && typeof setTab==='function') {
         event.preventDefault();setTab('analytics');history.replaceState(null,'','/tasks?section=analytics');activateSection('analytics');
       }
