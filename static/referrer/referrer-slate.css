@@ -34,7 +34,7 @@
     z-index: 20;
     padding: 8px 14px;
     border-radius: var(--radius-md);
-    color: var(--primary-foreground);
+    color: var(--surface-primary-ink, var(--primary-foreground));
     background: var(--primary);
     transform: translateY(-200%);
 }
@@ -148,7 +148,7 @@
     min-height: 42px;
     padding-inline: 14px;
     background: var(--primary);
-    color: var(--primary-foreground);
+    color: var(--surface-primary-ink, var(--primary-foreground));
     border-color: transparent;
 }
 .cta-btn:disabled, .link-btn:disabled, .pm-option:disabled {
