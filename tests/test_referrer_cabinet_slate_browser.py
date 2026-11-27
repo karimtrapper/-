@@ -152,3 +152,67 @@ def test_withdrawal_refreshes_in_place_and_can_be_repeated(
         assert len(navigations) == 1
         assert not errors
         browser.close()
+
+
+@pytest.mark.browser
+def test_mobile_payout_stays_visible_when_keyboard_changes_only_the_visual_viewport(
+        cabinet_server, funded_cabinet, pytestconfig):
+    from playwright.sync_api import expect, sync_playwright
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(
+            headless=True, executable_path=pytestconfig.getoption('--chromium-executable'))
+        context = browser.new_context(viewport={'width': 390, 'height': 844}, is_mobile=True,
+                                      has_touch=True, service_workers='block')
+        context.route('**/*', lambda route: route.continue_()
+                      if route.request.url.startswith(cabinet_server + '/') else route.abort())
+        # A headless browser has no system keyboard. Keep its real layout
+        # viewport intact while delivering iOS-like visual viewport updates.
+        context.add_init_script("""
+            const viewport = Object.assign(new EventTarget(), {
+                width: 390, height: 844, offsetTop: 0, offsetLeft: 0,
+                pageTop: 0, pageLeft: 0, scale: 1,
+            });
+            Object.defineProperty(window, 'visualViewport', {value: viewport});
+            window.__setKeyboardViewport = ({height, top, event}) => {
+                Object.assign(viewport, {height, offsetTop: top, pageTop: scrollY + top});
+                viewport.dispatchEvent(new Event(event));
+            };
+        """)
+        page = context.new_page()
+        page.goto(f'{cabinet_server}/ref/{funded_cabinet.token}')
+        page.get_by_role('button', name='Запросить выплату', exact=True).click()
+        modal = page.locator('#payoutModal')
+        modal.get_by_role('button', name=re.compile('Батами на банк')).click()
+        contact = modal.locator('#pmThbContact')
+        contact.focus()
+        expect(contact).to_be_focused()
+        layout_height = page.evaluate('document.documentElement.clientHeight')
+
+        def set_visual_viewport(height, top, event):
+            page.evaluate('update => window.__setKeyboardViewport(update)',
+                          {'height': height, 'top': top, 'event': event})
+            assert page.evaluate('document.documentElement.clientHeight') == layout_height
+
+        def wait_for_visible_dialog_and_contact():
+            page.wait_for_function("""
+                () => {
+                    const modal = document.querySelector('#payoutModal');
+                    const contact = document.querySelector('#pmThbContact');
+                    const top = visualViewport.offsetTop;
+                    const bottom = top + visualViewport.height;
+                    const frame = modal.getBoundingClientRect();
+                    const field = contact.getBoundingClientRect();
+                    return modal.open && document.activeElement === contact &&
+                        frame.top >= top - 1 && frame.bottom <= bottom + 1 &&
+                        field.top >= frame.top - 1 && field.bottom <= frame.bottom + 1;
+                }
+            """, timeout=3000)
+
+        set_visual_viewport(height=335, top=116, event='resize')
+        wait_for_visible_dialog_and_contact()
+        set_visual_viewport(height=335, top=168, event='scroll')
+        wait_for_visible_dialog_and_contact()
+        set_visual_viewport(height=844, top=0, event='resize')
+        wait_for_visible_dialog_and_contact()
+        browser.close()

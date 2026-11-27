@@ -455,3 +455,30 @@
 @media (pointer: coarse) {
     .bank-picker-field input { min-height: 46px; }
 }
+
+@media (max-width: 767px), (pointer: coarse) {
+    #payoutModal[open] {
+        --payout-view-gutter: 12px;
+        --payout-view-top-margin: max(8px, env(safe-area-inset-top));
+        --payout-view-bottom-margin: max(12px, env(safe-area-inset-bottom));
+        position: fixed;
+        inset: auto;
+        top: calc(var(--payout-view-top, 0px) + (var(--payout-view-height, 100dvh) + var(--payout-view-top-margin) - var(--payout-view-bottom-margin)) / 2);
+        left: calc(var(--payout-view-left, 0px) + max(var(--payout-view-gutter), (var(--payout-view-width, 100vw) - 510px) / 2));
+        width: min(510px, var(--payout-view-width, 100vw) - 2 * var(--payout-view-gutter));
+        max-height: max(0px, var(--payout-view-height, 100dvh) - var(--payout-view-top-margin) - var(--payout-view-bottom-margin));
+        margin: 0;
+        transform: translateY(-50%);
+        overflow: auto;
+        scroll-padding-block: 8px 64px;
+    }
+    #payoutModal :is(input, textarea, select) { font-size: 16px; }
+    #payoutModal form .modal-actions {
+        position: sticky;
+        bottom: 0;
+        z-index: 1;
+        padding-block: 8px;
+        background: var(--popover);
+        border-top: 1px solid var(--border);
+    }
+}

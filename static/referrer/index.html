@@ -17,7 +17,7 @@
     <link rel="stylesheet" href="/static/fonts/slate/fonts.css">
     <link rel="stylesheet" href="/static/slate-shell.css?v=2">
     <link rel="stylesheet" href="/static/slate-surfaces.css?v=8">
-    <link rel="stylesheet" href="/static/referrer/referrer-slate.css?v=2">
+    <link rel="stylesheet" href="/static/referrer/referrer-slate.css?v=3">
 </head>
 <body class="referrer-console">
     <svg class="ref-sprite" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
@@ -1137,6 +1137,75 @@
         });
     }, {once: true});
 
+    function bindPayoutViewport(modal, mobile) {
+        const viewport = window.visualViewport;
+        let frame = 0;
+        function sync() {
+            frame = 0;
+            if (!modal.open || !mobile.matches) return;
+
+            const bounds = [viewport?.offsetTop ?? 0, viewport?.offsetLeft ?? 0,
+                viewport?.width ?? window.innerWidth, viewport?.height ?? window.innerHeight];
+            ['top', 'left', 'width', 'height'].forEach((side, i) => {
+                modal.style.setProperty('--payout-view-' + side, bounds[i] + 'px');
+            });
+            const field = document.activeElement;
+            if (!modal.contains(field) || !field.matches('input, textarea, select')) return;
+
+            const dialogRect = modal.getBoundingClientRect();
+            const fieldRect = field.getBoundingClientRect();
+            const footer = field.closest('form')?.querySelector('.modal-actions');
+            const top = dialogRect.top + 8;
+            const bottom = Math.min(dialogRect.bottom, footer?.getBoundingClientRect().top ?? dialogRect.bottom) - 8;
+            if (fieldRect.top < top) modal.scrollTop += fieldRect.top - top;
+            else if (fieldRect.bottom > bottom) modal.scrollTop += fieldRect.bottom - bottom;
+        }
+
+        function schedule() {
+            if (modal.open && !frame) frame = requestAnimationFrame(sync);
+        }
+        viewport?.addEventListener('resize', schedule);
+        viewport?.addEventListener('scroll', schedule);
+        window.addEventListener('resize', schedule);
+        modal.addEventListener('focusin', schedule);
+        modal.addEventListener('close', () => {
+            cancelAnimationFrame(frame);
+            frame = 0;
+        });
+        return schedule;
+    }
+
+    let syncPayoutViewport;
+
+    document.addEventListener('DOMContentLoaded', () => {
+        const modal = document.getElementById('payoutModal');
+        const mobile = matchMedia('(max-width: 767px), (pointer: coarse)');
+        syncPayoutViewport = bindPayoutViewport(modal, mobile);
+        const submitButtons = modal.querySelectorAll('#pmSubmit, #pmSubmitThb');
+        function setSubmitType() {
+            for (const button of submitButtons) button.type = mobile.matches ? 'button' : 'submit';
+        }
+        setSubmitType();
+        mobile.addEventListener('change', setSubmitType);
+        for (const button of submitButtons) {
+            button.addEventListener('click', () => {
+                if (button.type === 'button') button.form.requestSubmit();
+            });
+        }
+        modal.addEventListener('keydown', event => {
+            if (!mobile.matches || event.defaultPrevented || event.isComposing ||
+                event.keyCode === 229 || event.key !== 'Enter') return;
+            const field = event.target;
+            if (!field.matches('form input')) return;
+            event.preventDefault();
+            const fields = [...field.form.querySelectorAll('input:not([type="hidden"]), textarea')]
+                .filter(input => !input.disabled && input.getClientRects().length);
+            const next = fields[fields.indexOf(field) + 1];
+            if (next) next.focus();
+            else field.blur();
+        });
+    }, {once: true});
+
     let _thbQuote = null;
     let payoutQuoteGeneration = 0;
     let payoutSubmitting = false;
@@ -1204,6 +1273,7 @@
 
         _showPayoutStage('payoutMethodBox');
         modal.showModal();
+        syncPayoutViewport?.();
         document.getElementById('payoutMethodTitle').focus({preventScroll: true});
         loadThbQuote();
     }
@@ -1277,6 +1347,7 @@
         const inp = document.getElementById('pmContactValue');
         inp.placeholder = method === 'telegram' ? t('contact_ph') : '+66 81 234 56 78';
         inp.dataset.method = method;
+        inp.inputMode = method === 'whatsapp' ? 'tel' : 'text';
     }
     function setThbContactMethod(method) {
         document.querySelectorAll('#payoutThbBox .modal-radio').forEach(el => {
@@ -1287,6 +1358,7 @@
         const inp = document.getElementById('pmThbContact');
         inp.placeholder = method === 'telegram' ? t('contact_ph') : '+66 81 234 56 78';
         inp.dataset.method = method;
+        inp.inputMode = method === 'whatsapp' ? 'tel' : 'text';
     }
     function showPayoutError(msg) {
         const el = document.getElementById('payoutError');
@@ -1398,7 +1470,7 @@
                 <form onsubmit="submitPayoutRequest(event)">
                     <div class="modal-field">
                         <label class="modal-label" for="pmWallet" data-i18n="m_wallet">Кошелёк для выплаты</label>
-                        <input type="text" class="modal-input" id="pmWallet" placeholder="TXXXXXXXXXXXXXXXXXXXXXXXXX" autocomplete="off" list="pmWalletList" required>
+                        <input type="text" class="modal-input" id="pmWallet" enterkeyhint="next" autocapitalize="none" spellcheck="false" autocorrect="off" placeholder="TXXXXXXXXXXXXXXXXXXXXXXXXX" autocomplete="off" list="pmWalletList" required>
                         <datalist id="pmWalletList"></datalist>
                         <div id="pmWalletChips"></div>
                     </div>
@@ -1419,7 +1491,7 @@
 
                     <div class="modal-field">
                         <label class="modal-label" for="pmContactValue" data-i18n="m_contact">Контакт</label>
-                        <input type="text" class="modal-input" id="pmContactValue" placeholder="@username или +66..." data-i18n-ph="contact_ph" autocomplete="off" required>
+                        <input type="text" class="modal-input" id="pmContactValue" enterkeyhint="next" autocapitalize="none" spellcheck="false" autocorrect="off" placeholder="@username или +66..." data-i18n-ph="contact_ph" autocomplete="off" required>
                     </div>
 
                     <div class="modal-field">
@@ -1456,7 +1528,7 @@
                     <div class="modal-field" id="pmThbBankPicker">
                         <label class="modal-label" id="pmThbBankLabel" for="pmThbBank" data-i18n="m_bank">Банк</label>
                         <div class="bank-picker-field">
-                            <input type="text" class="modal-input" id="pmThbBank" placeholder="Выберите или впишите свой банк"
+                            <input type="text" class="modal-input" id="pmThbBank" enterkeyhint="next" placeholder="Выберите или впишите свой банк"
                                 data-i18n-ph="m_bank_ph" autocomplete="off" role="combobox" aria-autocomplete="list"
                                 aria-controls="pmThbBankList" aria-expanded="false" required>
                             <button class="ref-icon-btn bank-picker-toggle" type="button" id="pmThbBankToggle"
@@ -1482,12 +1554,12 @@
 
                     <div class="modal-field">
                         <label class="modal-label" for="pmThbAccName" data-i18n="m_acc_name">Имя получателя (как в банке)</label>
-                        <input type="text" class="modal-input" id="pmThbAccName" placeholder="LIDIA IVANOVA" autocomplete="off" required>
+                        <input type="text" class="modal-input" id="pmThbAccName" enterkeyhint="next" autocapitalize="words" placeholder="LIDIA IVANOVA" autocomplete="off" required>
                     </div>
 
                     <div class="modal-field">
                         <label class="modal-label" for="pmThbAccNum" data-i18n="m_acc_num">Номер счёта</label>
-                        <input type="text" class="modal-input" id="pmThbAccNum" placeholder="123-4-56789-0" autocomplete="off" inputmode="numeric" required>
+                        <input type="text" class="modal-input" id="pmThbAccNum" enterkeyhint="next" placeholder="123-4-56789-0" autocomplete="off" inputmode="numeric" required>
                     </div>
 
                     <div class="modal-field">
@@ -1506,7 +1578,7 @@
 
                     <div class="modal-field">
                         <label class="modal-label" for="pmThbContact" data-i18n="m_contact">Контакт</label>
-                        <input type="text" class="modal-input" id="pmThbContact" placeholder="@username или +66..." data-i18n-ph="contact_ph" autocomplete="off" required>
+                        <input type="text" class="modal-input" id="pmThbContact" enterkeyhint="done" autocapitalize="none" spellcheck="false" autocorrect="off" placeholder="@username или +66..." data-i18n-ph="contact_ph" autocomplete="off" required>
                     </div>
 
                     <div class="modal-disclaimer" data-i18n="m_disc_thb">
