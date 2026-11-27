@@ -344,10 +344,11 @@ function scenarioNeedsThbRate(scenario) {
 
 // Обновление UI сценария
 function updateScenarioUI() {
-    // Обновляем активную кнопку
+    // Свой курс использует те же кнопки направлений, что и брокер.
+    const scenarioMethod = state.method === 'custom' ? 'broker' : state.method;
     document.querySelectorAll('.scenario-btn').forEach(btn => {
-        const isActive = btn.dataset.scenario === state.scenario && 
-                        btn.dataset.method === state.method;
+        const isActive = btn.dataset.scenario === state.scenario &&
+                        btn.dataset.method === scenarioMethod;
         btn.classList.toggle('active', isActive);
     });
     
