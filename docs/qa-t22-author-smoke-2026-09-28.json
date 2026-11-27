@@ -1,0 +1,81 @@
+{
+  "login": {
+    "font": 1,
+    "external": 0
+  },
+  "/": {
+    "status": 200,
+    "external": 0,
+    "url": "http://127.0.0.1:18922/"
+  },
+  "/crm": {
+    "status": 200,
+    "external": 0,
+    "url": "http://127.0.0.1:18922/crm",
+    "graph": {
+      "chartVersion": "4.4.7",
+      "instances": [
+        "profit",
+        "deals",
+        "methods"
+      ],
+      "visible": 14703,
+      "canvasWidth": 758,
+      "font": true
+    },
+    "closing": "На стенде отключено: закрытие сделок в Bitrix недоступно. Сделки CalcCRM доступны в разделе «Сделки».",
+    "webhook": "На стенде отключено: отправка уведомлений через webhook недоступна."
+  },
+  "/ref/synthetic": {
+    "status": 200,
+    "external": 0,
+    "url": "http://127.0.0.1:18922/ref/synthetic"
+  },
+  "/partner/synthetic": {
+    "status": 200,
+    "external": 0,
+    "url": "http://127.0.0.1:18922/partner/synthetic"
+  },
+  "/kyc/": {
+    "status": 200,
+    "external": 0,
+    "url": "http://127.0.0.1:18922/kyc/",
+    "font": 1
+  },
+  "/tasks": {
+    "status": 200,
+    "external": 0,
+    "url": "http://127.0.0.1:18922/tasks"
+  },
+  "/tasks/walkthrough/leasehold-rub.html": {
+    "status": 200,
+    "external": 0,
+    "url": "http://127.0.0.1:18922/tasks/walkthrough/leasehold-rub.html#01"
+  },
+  "csp_negative": {
+    "blocked": true,
+    "external_event_after": 1,
+    "failed": [
+      [
+        "https://external-t22.invalid/should-block.png",
+        null
+      ]
+    ],
+    "console": [
+      "Loading the image 'https://external-t22.invalid/should-block.png' violates the following Content Security Policy directive: \"img-src 'self' data: blob:\". The action has been blocked."
+    ]
+  },
+  "external_requests": [
+    "https://external-t22.invalid/should-block.png"
+  ],
+  "failed_requests": [
+    [
+      "http://127.0.0.1:18922/screens-data.js?v=2609241212",
+      "net::ERR_ABORTED"
+    ],
+    [
+      "https://external-t22.invalid/should-block.png",
+      null
+    ]
+  ]
+}

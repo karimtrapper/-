@@ -1,0 +1,323 @@
+"""Board workflow rules shared by the state and action endpoints."""
+from copy import deepcopy
+from datetime import datetime
+from decimal import Decimal, InvalidOperation
+import re
+
+EXCHANGE_PAIRS = {
+    'RUB → THB': ('rub', 'thb', ('rub', 'thb')),
+    'THB → RUB': ('thb', 'rub', ('thb', 'rub')),
+    'RUB → USDT': ('rub', 'usdt', ('rub',)),
+    'THB → USDT': ('thb', 'usdt', ('thb',)),
+    'USDT → THB': ('usdt', 'thb', ('thb',)),
+}
+
+
+def exchange_pair(deal):
+    if deal.get('type') != 'Обмен валюты':
+        return None
+    default = 'USDT → THB' if deal.get('payType') == 'Крипта' else 'RUB → THB'
+    return EXCHANGE_PAIRS.get(deal.get('pair') or default)
+
+
+def is_crypto(deal):
+    pair = exchange_pair(deal)
+    return pair[0] == 'usdt' if pair else (deal.get('payType') == 'Крипта' or deal.get('curBase') == 'usdt')
+
+
+def quote_buy(deal, direction):
+    pair = exchange_pair(deal)
+    return pair[0] == direction if pair else direction == 'rub'
+
+
+def quote_dirs(deal):
+    if deal.get('type') == 'Обмен валюты':
+        default = 'USDT → THB' if deal.get('payType') == 'Крипта' else 'RUB → THB'
+        return EXCHANGE_PAIRS.get(deal.get('pair') or default, (None, None, ()))[2]
+    crypto = deal.get('payType') == 'Крипта' or deal.get('curBase') == 'usdt'
+    return ('thb',) if crypto else ('rub',) if deal.get('kind') == 'Фрихолд' else ('rub', 'thb')
+
+CASH_PARTNER_DRAFT_STEPS = {'s4', 's5', 's6', 's8', 's11'}
+CASH_PARTNER_FIELDS = {
+    'name': ('партнёр', 100),
+    'location': ('место передачи', 350),
+    'appointmentAt': ('дата и время встречи', 16),
+}
+
+
+def cash_partner_eligible(deal):
+    return (deal.get('type') == 'Оплата недвижимости'
+            and deal.get('kind') in ('Лизхолд', 'Фрихолд', 'Аренда')
+            and deal.get('payType') == 'Наличные'
+            and not deal.get('autoPayment') and not deal.get('manual')
+            and deal.get('originMode') != 'manual'
+            and not deal.get('custom') and not deal.get('cashPartnerUsdt'))
+
+
+def is_cash_partner(deal):
+    if not cash_partner_eligible(deal):
+        return False
+    pack = deal.get('docPack') or {}
+    return (isinstance(pack, dict) and pack.get('method') == 'cash'
+            or (not pack and not deal.get('docVersion')
+                and (deal.get('step') in CASH_PARTNER_DRAFT_STEPS or bool(deal.get('cashPartner')))))
+
+
+def cash_partner_engaged(deal):
+    """Drafts with only a payment-method label have no partner agreement yet."""
+    return is_cash_partner(deal) and (
+        (deal.get('docPack') or {}).get('method') == 'cash'
+        or any(deal.get(key) for key in ('cashPartner', 'cashPartnerWalletId',
+                                         'cashPartnerReceipt', 'cashPartnerRate')))
+
+
+def local_datetime(value):
+    if not isinstance(value, str) or not re.fullmatch(r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}', value):
+        return None
+    try:
+        return datetime.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+def cash_partner_errors(setup):
+    if not isinstance(setup, dict):
+        return list(CASH_PARTNER_FIELDS)
+    invalid = [field for field, (_, limit) in CASH_PARTNER_FIELDS.items()
+               if not isinstance(setup.get(field), str)
+               or not 0 < len(setup[field].strip()) <= limit
+               or any(ord(char) < 32 for char in setup[field])]
+    if 'appointmentAt' not in invalid and not local_datetime(setup['appointmentAt']):
+        invalid.append('appointmentAt')
+    return invalid
+
+
+# Forward handoffs plus the explicit return buttons in STEPS/ret().
+EDGES = {
+    's4': {'s5', 's6'}, 's5': {'s4', 's6'}, 's6': {'s5', 's8'},
+    's8': {'s5', 's11'}, 's11': {'s8', 's11b', 's12'},
+    's11b': {'s11', 's12'}, 's12': {'s11', 's14c', 's14'}, 's14c': set(),
+    's14': {'s11', 's14m', 's15', 's18', 's22'},
+    's14m': {'s14', 's15', 's18', 's22'},
+    's15': {'s18', 's22', 's26'}, 's18': {'s18w'}, 's18w': {'s22'},
+    's22': {'s23', 's26'}, 's23': {'s24', 's25', 's26', 's27'},
+    's24': {'s23', 's25', 's26', 's27'}, 's25': {'s26'},
+    's26': {'s15', 's27'}, 's27': {'done'},
+    'ready': {'pack'}, 'pack': {'s22'}, 'manual': {'done'}, 'done': set(),
+}
+
+# A new quote may be requested until the RUB handoff or an outgoing payment starts.
+# The self-priced route returns to the manager's calculation instead of the quote desk.
+RERATE_STEPS = frozenset(('s6', 's8', 's11', 's11b', 's12', 's14', 's14m', 's15', 's18'))
+for _step in RERATE_STEPS:
+    EDGES[_step].update(('s5', 's6'))
+
+
+def rerate_attempt(before, deal):
+    """The board's explicit quote reset, including self-priced s6 -> s6."""
+    start, end = before.get('step'), deal.get('step')
+    stages = RERATE_STEPS | {'s18w', 's22', 's23', 's24', 's25', 's26', 's27', 'done'}
+    return (start in stages and end in ('s5', 's6') and
+            (start != end or start == 's6' and before.get('reRequest') != deal.get('reRequest')))
+
+
+def rerate_commitment_problem(state, before):
+    """Check whether an outgoing commitment already fixes the terms."""
+    if before.get('cashPartnerReceipt'):
+        return 'Рубли уже получены партнёром — курс зафиксирован'
+    if before.get('closed') or before.get('crmDealId'):
+        return 'Закрытая сделка уже не пересчитывается'
+    conversion = next((c for c in state.get('convs') or []
+                       if (before.get('cnvId') is not None and c.get('id') == before.get('cnvId'))
+                       or any(s.get('dealId') == before.get('id') for s in c.get('sources') or [])), None)
+    if (before.get('step') == 's18w' or before.get('cnvId') is not None
+            or conversion and conversion.get('status') in ('sent', 'received', 'done')):
+        return 'Рубли уже ушли брокеру — курс зафиксирован'
+    if before.get('prepay') or before.get('ippsPayoutOrder') or before.get('outgoingOrderAt') or (
+            (before.get('transfer') or {}).get('sends') or before.get('serverTransferComplete') or
+            (before.get('pay') or {}).get('ippsSent') or (before.get('pay') or {}).get('invoicePaid')):
+        return 'Оплата наперёд или исходящий перевод уже начаты — курс зафиксирован'
+    if before.get('step') in ('s22', 's23', 's24', 's25', 's26', 's27', 'done'):
+        return 'Этап оплаты уже начат — курс зафиксирован'
+    return None
+
+
+def rerate_credit_problem(state, submitted, before, deal):
+    for key in ('payinParts', 'payinHashes', 'payinExtra', 'incomeAmount',
+                'receiptConfirmed', 'manualBankReceipt', 'pay', 'expect'):
+        if before.get(key) != deal.get(key):
+            return 'Зачтённый приход и его ожидание нельзя менять при запросе курса'
+
+    def credited_incomes(board):
+        return [{k: v for k, v in income.items() if k != 'sel'}
+                for income in board.get('incomes') or [] if income.get('dealId') == before.get('id')]
+
+    if credited_incomes(state) != credited_incomes(submitted):
+        return 'Зачтённый приход нельзя менять при запросе курса'
+    return None
+
+
+def is_rub_bank_payment(deal):
+    pair = exchange_pair(deal)
+    return (deal.get('payType') in (None, 'По реквизитам') and not is_crypto(deal)
+            and (deal.get('type') != 'Обмен валюты' or bool(pair and pair[0] == 'rub')))
+
+
+def receiving_account_change_problem(state, deal):
+    """An issued RUB bank package can change recipient only before payment starts."""
+    if not is_rub_bank_payment(deal) or not (deal.get('docPack') or deal.get('docVersion')):
+        return 'Сменить счёт можно для выпущенного пакета с оплатой в рублях по реквизитам'
+    pay = deal.get('pay') or {}
+    if (any(deal.get(key) for key in ('payinParts', 'payinHashes', 'payinExtra', 'incomeAmount',
+                                      'payinProcessed', 'receiptConfirmed', 'manualBankReceipt', 'cashPartnerUsdt'))
+            or any(pay.get(key) for key in ('hash', 'usdt', 'rub'))
+            or any(str(income.get('dealId')) == str(deal['id']) for income in state.get('incomes') or [])):
+        return 'Счёт нельзя сменить после поступления или начала сверки оплаты'
+    if (rerate_commitment_problem(state, deal)
+            or any(deal.get(key) for key in ('outgoingReview', 'transferClaim', 'serverSettled',
+                                             'payoutFact', 'mfPayout', 'commissionSends', 'sentToClient'))
+            or any(pay.get(key) for key in ('outHash', 'tx', 'coinsCredit'))
+            or any((deal.get('payout') or {}).get(key) for key in ('hash', 'hashes', 'reimbursement'))):
+        return 'Счёт нельзя сменить после начала исходящей оплаты'
+    return None
+
+
+def document_pack_stale(deal):
+    """A replacement file can increase docVersion without reissuing the pack."""
+    reset_version = deal.get('rerateDocVersion')
+    if reset_version is None:
+        return False
+    pack_version = (deal.get('docPack') or {}).get('version') or 0
+    try:
+        return int(pack_version) <= int(reset_version)
+    except (TypeError, ValueError):
+        return True
+
+
+def rerate_problem(state, submitted, before, deal, actor):
+    """Check immutable server facts, never the browser's claimed payment flags."""
+    commitment = rerate_commitment_problem(state, before)
+    if commitment:
+        return commitment
+    if before.get('step') not in RERATE_STEPS:
+        return 'На этом этапе нельзя запросить курс заново'
+    if before.get('kind') == 'Фрихолд' and before.get('payType') == 'Крипта':
+        return 'В этой сделке внешний курс не запрашивается'
+    if actor not in ('manager', 'admin'):
+        return 'Запросить курс заново может менеджер'
+    if before.get('selfRate') != deal.get('selfRate'):
+        return 'Способ расчёта курса нельзя менять при повторном запросе'
+    if deal.get('step') == 's6':
+        if (not before.get('selfRate') or not quote_dirs(before) or
+                before.get('type') == 'Обмен валюты' and before.get('pair') not in EXCHANGE_PAIRS):
+            return 'Для своего курса нужна выбранная валютная пара'
+    elif before.get('selfRate'):
+        return 'Свой курс пересчитывается у менеджера'
+    try:
+        if int(deal.get('reRequest') or 0) != int(before.get('reRequest') or 0) + 1:
+            return 'Повторный запрос курса нужно начать кнопкой в сделке'
+    except (TypeError, ValueError):
+        return 'Повторный запрос курса нужно начать кнопкой в сделке'
+    if deal.get('rates') or deal.get('quotes') or deal.get('ratePick'):
+        return 'Для нового запроса очистите прежние курсы и ответы'
+    return rerate_credit_problem(state, submitted, before, deal)
+
+
+def positive(value):
+    try:
+        number = Decimal(str(value).replace(',', '.'))
+        return number.is_finite() and number > 0
+    except (InvalidOperation, ValueError, TypeError):
+        return False
+
+
+def journal_problem(previous, submitted):
+    """Past entries are immutable, including legacy entries without an at key."""
+    old = {d['id']: d for d in previous.get('deals', [])}
+    for deal in submitted.get('deals', []):
+        stored = old.get(deal.get('id'), {}).get('log') or []
+        incoming = deal.get('log') or []
+        def canonical(entry):
+            if isinstance(entry, str):
+                return entry
+            result = dict(entry)
+            if result.get('at') is None:
+                result.pop('at', None)
+            return result
+        if (not isinstance(incoming, list) or len(incoming) < len(stored)
+                or any(not isinstance(x, (dict, str)) for x in incoming)
+                or [canonical(x) for x in incoming[:len(stored)]] != [canonical(x) for x in stored]):
+            return 'Прошлые записи журнала нельзя удалять или менять'
+    return None
+
+
+def accept_journal(previous, submitted, actor, author, stamp):
+    """Preserve history byte-for-byte; append human input with server attribution."""
+    old = {d['id']: d for d in previous.get('deals', [])}
+    for deal in submitted.get('deals', []):
+        stored = old.get(deal.get('id'), {}).get('log') or []
+        appended = (deal.get('log') or [])[len(stored):]
+        deal['log'] = deepcopy(stored)
+        for entry in appended:
+            text = str(entry if isinstance(entry, str) else entry.get('text') or '').strip()
+            if text:
+                deal['log'].append({'at': stamp, 'role': actor, 'author': author,
+                                    'kind': 'comment', 'text': f'Комментарий · {author}: {text}'})
+
+
+def accept_notes(previous, submitted, actor):
+    """Only read acknowledgements may originate in a board snapshot."""
+    proposed = {str(n.get('id')): n for n in submitted.get('notes') or [] if isinstance(n, dict)}
+    notes = deepcopy(previous.get('notes') or [])
+    for note in notes:
+        incoming = proposed.get(str(note.get('id')), {})
+        if (actor in ('admin', note.get('role')) and incoming.get('read') is True):
+            note['read'] = True
+    submitted['notes'] = notes
+
+
+def strip_browser_defaults(previous, submitted):
+    """Omit only exact, absent defaults introduced by migrate(), never edits.
+
+    The persisted shape stays intact; substantive updates still pass through
+    role checks. In particular false is not interchangeable with 0 in Python.
+    """
+    old = {d['id']: d for d in previous.get('deals', [])}
+    defaults = {
+        'compare': False, 'partial': False, 'selfRate': False, 'self': False,
+        'sentToClient': False, 'refPaid': False, 'ref2Paid': False,
+        'manual': False, 'isTask': False, 'srefOther': False, 'verified': False,
+        'invoiceTotal': None, 'partNo': '', 'amountUsdt': None, 'docFields': None,
+        'clientId': None, 'bank': None, 'dev': None, 'invNo': None,
+        'realtyPurpose': None, 'payTo': None, 'sentAt': None, 'sentThb': None,
+        'refId': None, 'paySrc': None, 'cnvId': None, 'agentsMode': None,
+        'brokerDraft': None, 'payout': None, 'notes': '', 'companyPct': None,
+        'rates': {}, 'pay': {}, 'docs': {}, 'docMeta': {}, 'conv': [], 'log': [],
+        'agents': [], 'stepNotes': {}, 'quotes': [], 'ratePick': {},
+        'mfPayout': [], 'docLinks': {}, 'payinExtra': [], 'payinParts': [],
+        'payinHashes': [], 'issued': {},
+    }
+    for deal in submitted.get('deals', []):
+        before = old.get(deal.get('id'))
+        if before is None:
+            continue
+        # Earlier clients may submit whole deal snapshots without this field.
+        if 'inquiryType' in before and 'inquiryType' not in deal:
+            deal['inquiryType'] = before['inquiryType']
+        expected = dict(defaults)
+        expected.update(refKnown=before.get('refId') is not None,
+            refSrc='вручную' if before.get('refId') else None,
+            clientPinned=before.get('clientId') is not None,
+            selfCame=bool(before.get('refKnown', before.get('refId') is not None) and before.get('refId') is None),
+            spread=.3 if before.get('type') == 'Обмен валюты' else None,
+            readyAt=None, manager='Елизавета', source='none', payType='По реквизитам',
+            curBase='rub' if before.get('amountRub') and not before.get('amountThb') else 'thb',
+            kind='Лизхолд' if before.get('type', 'Оплата недвижимости') == 'Оплата недвижимости' else '',
+            type='Оплата недвижимости',
+            pair=('USDT → THB' if before.get('payType') == 'Крипта' else 'RUB → THB') if before.get('type') == 'Обмен валюты' else None)
+        for key, value in expected.items():
+            if key not in before and key in deal and type(deal[key]) is type(value) and deal[key] == value:
+                deal.pop(key)
+        if (isinstance(before.get('payout'), dict) and 'hashes' not in before['payout']
+                and isinstance(deal.get('payout'), dict) and deal['payout'].get('hashes') == []):
+            deal['payout'].pop('hashes', None)

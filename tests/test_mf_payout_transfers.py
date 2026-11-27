@@ -173,6 +173,7 @@ def tc(monkeypatch):
 def create_payload(**over):
     p = {'client_name': 'Clover Client', 'deal_kind': 'mf_realty',
          'deal_type': 'pay_in', 'payin_method': 'crypto_direct',
+         'unverified_confirmed': True,
          'payin_amount_usdt': PAYIN, 'invoice_amount_thb': INVOICE,
          'buy_rate_thb_usdt': BUY, 'company_percent': 0.9,
          'payout_tx_hashes': CLOVER_PARTS}

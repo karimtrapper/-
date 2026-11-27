@@ -1,0 +1,201 @@
+{
+ "blueText": [],
+ "bluePlaques": [],
+ "scaleViolations": [],
+ "toast": {
+  "text": "Статусы переводов обновлены",
+  "error": false
+ },
+ "fontFaces": [
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:loaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:loaded",
+  "Inter:loaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:loaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:loaded",
+  "Inter:loaded",
+  "Inter:unloaded",
+  "Inter:loaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:loaded",
+  "Inter:loaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded"
+ ],
+ "interLoaded": true,
+ "stylesheets": [
+  "http://127.0.0.1:24558/static/stand/vendor/inter-v20/font.css",
+  "http://127.0.0.1:24558/static/nav-shell.css?v=6",
+  "http://127.0.0.1:24558/static/task-list.css?v=6"
+ ],
+ "url": "/tasks",
+ "innerWidth": 375,
+ "scrollWidth": 375,
+ "bodyScrollWidth": 375,
+ "hScroll": false,
+ "expectedWidth": 375,
+ "layoutViewportExpanded": false,
+ "visualViewportWidth": 375,
+ "docClientWidth": 375,
+ "overflowOffenders": [],
+ "fontSizes": {
+  "16px": 9,
+  "12px": 6,
+  "14px": 99,
+  "22px": 4
+ },
+ "fontWeights": {
+  "400": 75,
+  "600": 39,
+  "700": 4
+ },
+ "families": [
+  "Inter",
+  "ui-monospace"
+ ],
+ "addrNodes": [
+  {
+   "text": "TQgQCBXk…opBh8jso",
+   "title": "",
+   "mono": true,
+   "lines": 2,
+   "whiteSpace": "nowrap",
+   "wrapAnywhere": "normal",
+   "shortForm": true,
+   "full": false,
+   "cutAtEdge": false
+  },
+  {
+   "text": "TAXgSzqB…SdxfV3QC",
+   "title": "",
+   "mono": true,
+   "lines": 2,
+   "whiteSpace": "nowrap",
+   "wrapAnywhere": "normal",
+   "shortForm": true,
+   "full": false,
+   "cutAtEdge": false
+  },
+  {
+   "text": "TDsLTB3u…trMAHcgd",
+   "title": "",
+   "mono": true,
+   "lines": 2,
+   "whiteSpace": "nowrap",
+   "wrapAnywhere": "normal",
+   "shortForm": true,
+   "full": false,
+   "cutAtEdge": false
+  },
+  {
+   "text": "TUzvaUjz…tukXFYrN",
+   "title": "",
+   "mono": true,
+   "lines": 2,
+   "whiteSpace": "nowrap",
+   "wrapAnywhere": "normal",
+   "shortForm": true,
+   "full": false,
+   "cutAtEdge": false
+  },
+  {
+   "text": "TQgQCBXk…opBh8jso",
+   "title": "",
+   "mono": true,
+   "lines": 2,
+   "whiteSpace": "nowrap",
+   "wrapAnywhere": "normal",
+   "shortForm": true,
+   "full": false,
+   "cutAtEdge": false
+  },
+  {
+   "text": "6e0c7995…01505046",
+   "title": "",
+   "mono": true,
+   "lines": 2,
+   "whiteSpace": "nowrap",
+   "wrapAnywhere": "normal",
+   "shortForm": true,
+   "full": false,
+   "cutAtEdge": false
+  }
+ ],
+ "addrClipped": [],
+ "addrUnshortened": [],
+ "fullAddresses": [],
+ "mfstrAddresses": [],
+ "signerAddrsVisible": {
+  "operator": true,
+  "findir": true,
+  "teodor": true
+ },
+ "coralButtons": [],
+ "smallTargets": [
+  {
+   "tag": "BUTTON",
+   "text": "Подписал — проверить перевод",
+   "h": 44
+  }
+ ],
+ "smallSmCount": 8,
+ "emoji": [],
+ "moneyPrefixBad": [],
+ "dollarSuffixBad": [],
+ "title": "Синтетика 1621",
+ "open": {
+  "deal": 1621,
+  "role": "findir",
+  "width": "375",
+  "versionBefore": 8,
+  "versionAfter": 8,
+  "viewMutated": false,
+  "deltaPaths": [],
+  "deltaSummary": {},
+  "deltaDealIds": [],
+  "topLevelDelta": [],
+  "semanticPaths": [],
+  "semanticChange": false,
+  "noopVersionBump": false
+ },
+ "capture": {
+  "metricsViewport": [
+   375,
+   812
+  ],
+  "tallImageViewport": [
+   375,
+   3209
+  ],
+  "tallImageIsResizedViewport": true,
+  "firstScreenFile": "s24_after_confirm__findir__375__first-screen.png"
+ }
+}

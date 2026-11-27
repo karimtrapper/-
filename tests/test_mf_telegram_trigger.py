@@ -19,6 +19,7 @@ import app as A
 from app import get_session, Deal, Client, DealAgent, AdminUser
 
 MF = {'deal_kind': 'mf_realty', 'deal_type': 'pay_in', 'payin_method': 'crypto_direct',
+'unverified_confirmed': True,
       'payin_amount_usdt': 512000, 'invoice_amount_thb': 16742400,
       'buy_rate_thb_usdt': 33.20, 'company_percent': 0.9}
 
@@ -90,6 +91,7 @@ def test_ordinary_deal_turned_into_mf_notifies(tc, sent):
     """Кейс #458: завершённую обычную сделку переделали в MF — уведомления ещё не было."""
     did = tc.post('/api/deals', json={
         'client_name': 'Was Exchange', 'deal_type': 'pay_in', 'payin_method': 'crypto_direct',
+        'unverified_confirmed': True,
         'payin_amount_usdt': 1000, 'payout_method': 'transfer', 'payout_source': 'binance',
         'payout_amount_thb': 33000, 'status': 'completed'}).json['deal']['id']
     sent.clear()

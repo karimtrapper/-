@@ -1,0 +1,594 @@
+{
+ "harness_version": "wallet-roles-ui r8 (2026-10-19): r7 + full untruncated state diffs (normalised path summary), combined final assertion (nothing masked), regex endsWith fix + residual-final",
+ "source_freeze": {
+  "sha256": {
+   "app.py": "bdd3aaf335f8398e",
+   "static/stand/tasks.html": "9616565599035dec",
+   "static/crm/crm.html": "566ca94d3841f569",
+   "stand_transfers.py": "6db1df1db4e8ab87",
+   "stand_prepay.py": "4c6258a32e009eba",
+   "stand_browser.py": "aedc2973a2cff158"
+  },
+  "head": "4c0e0fcb3ebdf4b24641203d455c0a46c8ee9bcb",
+  "dirty_sources": [],
+  "clean": true
+ },
+ "results": [
+  {
+   "role": "findir",
+   "width": "375",
+   "money": [
+    {
+     "sel": "#payoutWalletPolicy",
+     "amount": "$10 000,00",
+     "lines": 1,
+     "hasNbsp": false,
+     "broken": false
+    },
+    {
+     "sel": "#payoutOwnerApprovalGroup",
+     "amount": "$10 000,00",
+     "lines": 1,
+     "hasNbsp": false,
+     "broken": false
+    },
+    {
+     "sel": "#payinWalletPolicy",
+     "amount": "$10 000,00",
+     "lines": 1,
+     "hasNbsp": false,
+     "broken": false
+    }
+   ],
+   "address_выплата": {
+    "beforeClickVisible": true,
+    "expanded": {
+     "visible": true,
+     "text": "TA6S3RBEY57jq8fXEVVsU6H9JZ18inenG4",
+     "lines": 1,
+     "whiteSpace": "nowrap",
+     "overflowX": "auto",
+     "scrollWidth": 287,
+     "clientWidth": 204,
+     "right": 237,
+     "docScrollWidth": 375,
+     "innerWidth": 375
+    }
+   },
+   "address_приход": {
+    "beforeClickVisible": true,
+    "expanded": {
+     "visible": true,
+     "text": "TA6S3RBEY57jq8fXEVVsU6H9JZ18inenG4",
+     "lines": 1,
+     "whiteSpace": "nowrap",
+     "overflowX": "auto",
+     "scrollWidth": 287,
+     "clientWidth": 178,
+     "right": 224,
+     "docScrollWidth": 375,
+     "innerWidth": 375
+    }
+   },
+   "facts": {
+    "editingDealId": 4,
+    "payoutSelectVisible": false,
+    "payoutSelected": "Груша Обменник",
+    "payoutPolicyText": "Груша Обменник · начинает операционист · подтверждает финансист или владелец · до $10 000,00, выше — с согласованием владельца",
+    "approvalCheckboxVisible": true,
+    "approvalChecked": false,
+    "payinGroupVisible": true,
+    "payinSelected": "Груша Обменник",
+    "payinPolicyText": "Груша Обменник · начинает операционист · подтверждает финансист или владелец · до $10 000,00, выше — с согласованием владельца"
+   }
+  },
+  {
+   "role": "findir",
+   "width": "1280",
+   "money": [
+    {
+     "sel": "#payoutWalletPolicy",
+     "amount": "$10 000,00",
+     "lines": 1,
+     "hasNbsp": false,
+     "broken": false
+    },
+    {
+     "sel": "#payoutOwnerApprovalGroup",
+     "amount": "$10 000,00",
+     "lines": 1,
+     "hasNbsp": false,
+     "broken": false
+    },
+    {
+     "sel": "#payinWalletPolicy",
+     "amount": "$10 000,00",
+     "lines": 1,
+     "hasNbsp": false,
+     "broken": false
+    }
+   ],
+   "address_выплата": {
+    "beforeClickVisible": true,
+    "expanded": {
+     "visible": true,
+     "text": "TA6S3RBEY57jq8fXEVVsU6H9JZ18inenG4",
+     "lines": 1,
+     "whiteSpace": "nowrap",
+     "overflowX": "auto",
+     "scrollWidth": 287,
+     "clientWidth": 281,
+     "right": 330,
+     "docScrollWidth": 1280,
+     "innerWidth": 1280
+    }
+   },
+   "address_приход": {
+    "beforeClickVisible": true,
+    "expanded": {
+     "visible": true,
+     "text": "TA6S3RBEY57jq8fXEVVsU6H9JZ18inenG4",
+     "lines": 1,
+     "whiteSpace": "nowrap",
+     "overflowX": "auto",
+     "scrollWidth": 467,
+     "clientWidth": 467,
+     "right": 529,
+     "docScrollWidth": 1280,
+     "innerWidth": 1280
+    }
+   },
+   "facts": {
+    "editingDealId": 4,
+    "payoutSelectVisible": false,
+    "payoutSelected": "Груша Обменник",
+    "payoutPolicyText": "Груша Обменник · начинает операционист · подтверждает финансист или владелец · до $10 000,00, выше — с согласованием владельца",
+    "approvalCheckboxVisible": true,
+    "approvalChecked": false,
+    "payinGroupVisible": true,
+    "payinSelected": "Груша Обменник",
+    "payinPolicyText": "Груша Обменник · начинает операционист · подтверждает финансист или владелец · до $10 000,00, выше — с согласованием владельца"
+   }
+  },
+  {
+   "role": "teodor",
+   "width": "375",
+   "money": [
+    {
+     "sel": "#payoutWalletPolicy",
+     "amount": "$10 000,00",
+     "lines": 1,
+     "hasNbsp": false,
+     "broken": false
+    },
+    {
+     "sel": "#payoutOwnerApprovalGroup",
+     "amount": "$10 000,00",
+     "lines": 1,
+     "hasNbsp": false,
+     "broken": false
+    },
+    {
+     "sel": "#payinWalletPolicy",
+     "amount": "$10 000,00",
+     "lines": 1,
+     "hasNbsp": false,
+     "broken": false
+    }
+   ],
+   "address_выплата": {
+    "beforeClickVisible": true,
+    "expanded": {
+     "visible": true,
+     "text": "TA6S3RBEY57jq8fXEVVsU6H9JZ18inenG4",
+     "lines": 1,
+     "whiteSpace": "nowrap",
+     "overflowX": "auto",
+     "scrollWidth": 287,
+     "clientWidth": 204,
+     "right": 237,
+     "docScrollWidth": 375,
+     "innerWidth": 375
+    }
+   },
+   "address_приход": {
+    "beforeClickVisible": true,
+    "expanded": {
+     "visible": true,
+     "text": "TA6S3RBEY57jq8fXEVVsU6H9JZ18inenG4",
+     "lines": 1,
+     "whiteSpace": "nowrap",
+     "overflowX": "auto",
+     "scrollWidth": 287,
+     "clientWidth": 178,
+     "right": 224,
+     "docScrollWidth": 375,
+     "innerWidth": 375
+    }
+   },
+   "facts": {
+    "editingDealId": 4,
+    "payoutSelectVisible": false,
+    "payoutSelected": "Груша Обменник",
+    "payoutPolicyText": "Груша Обменник · начинает операционист · подтверждает финансист или владелец · до $10 000,00, выше — с согласованием владельца",
+    "approvalCheckboxVisible": true,
+    "approvalChecked": false,
+    "payinGroupVisible": true,
+    "payinSelected": "Груша Обменник",
+    "payinPolicyText": "Груша Обменник · начинает операционист · подтверждает финансист или владелец · до $10 000,00, выше — с согласованием владельца"
+   }
+  },
+  {
+   "role": "teodor",
+   "width": "1280",
+   "money": [
+    {
+     "sel": "#payoutWalletPolicy",
+     "amount": "$10 000,00",
+     "lines": 1,
+     "hasNbsp": false,
+     "broken": false
+    },
+    {
+     "sel": "#payoutOwnerApprovalGroup",
+     "amount": "$10 000,00",
+     "lines": 1,
+     "hasNbsp": false,
+     "broken": false
+    },
+    {
+     "sel": "#payinWalletPolicy",
+     "amount": "$10 000,00",
+     "lines": 1,
+     "hasNbsp": false,
+     "broken": false
+    }
+   ],
+   "address_выплата": {
+    "beforeClickVisible": true,
+    "expanded": {
+     "visible": true,
+     "text": "TA6S3RBEY57jq8fXEVVsU6H9JZ18inenG4",
+     "lines": 1,
+     "whiteSpace": "nowrap",
+     "overflowX": "auto",
+     "scrollWidth": 287,
+     "clientWidth": 281,
+     "right": 330,
+     "docScrollWidth": 1280,
+     "innerWidth": 1280
+    }
+   },
+   "address_приход": {
+    "beforeClickVisible": true,
+    "expanded": {
+     "visible": true,
+     "text": "TA6S3RBEY57jq8fXEVVsU6H9JZ18inenG4",
+     "lines": 1,
+     "whiteSpace": "nowrap",
+     "overflowX": "auto",
+     "scrollWidth": 467,
+     "clientWidth": 467,
+     "right": 529,
+     "docScrollWidth": 1280,
+     "innerWidth": 1280
+    }
+   },
+   "facts": {
+    "editingDealId": 4,
+    "payoutSelectVisible": false,
+    "payoutSelected": "Груша Обменник",
+    "payoutPolicyText": "Груша Обменник · начинает операционист · подтверждает финансист или владелец · до $10 000,00, выше — с согласованием владельца",
+    "approvalCheckboxVisible": true,
+    "approvalChecked": false,
+    "payinGroupVisible": true,
+    "payinSelected": "Груша Обменник",
+    "payinPolicyText": "Груша Обменник · начинает операционист · подтверждает финансист или владелец · до $10 000,00, выше — с согласованием владельца"
+   }
+  }
+ ],
+ "actions": [
+  {
+   "note": "assert",
+   "message": "findir__375: сумма в подписи согласования найдена и измерена",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "findir__375: сумма '$10 000,00' в #payoutWalletPolicy не рвётся внутри числа (строк: 1)",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "findir__375: сумма '$10 000,00' в #payoutOwnerApprovalGroup не рвётся внутри числа (строк: 1)",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "findir__375: сумма '$10 000,00' в #payinWalletPolicy не рвётся внутри числа (строк: 1)",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "findir__375/выплата: виден короткий адрес (summary)",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "findir__375/выплата: после клика показан полный адрес ({'visible': True, 'text': 'TA6S3RBEY57jq8fXEVVsU6H9JZ18inenG4', 'lines': 1, 'whiteSpace': 'nowrap', 'overflowX': 'auto', 'scrollWidth': 287, 'clientWidth': 204, 'right': 237, 'docScrollWidth': 375, 'innerWidth': 375})",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "findir__375/выплата: развёрнутый полный адрес в ОДНУ строку (строк: 1, white-space=nowrap)",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "findir__375/выплата: страница не шире экрана после раскрытия (375 > 375)",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "findir__375/выплата: «Копировать» кладёт полный адрес в буфер (буфер='TA6S3RBEY57jq8fXEVVsU6H9JZ18inenG4')",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "findir__375/приход: виден короткий адрес (summary)",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "findir__375/приход: после клика показан полный адрес ({'visible': True, 'text': 'TA6S3RBEY57jq8fXEVVsU6H9JZ18inenG4', 'lines': 1, 'whiteSpace': 'nowrap', 'overflowX': 'auto', 'scrollWidth': 287, 'clientWidth': 178, 'right': 224, 'docScrollWidth': 375, 'innerWidth': 375})",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "findir__375/приход: развёрнутый полный адрес в ОДНУ строку (строк: 1, white-space=nowrap)",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "findir__375/приход: страница не шире экрана после раскрытия (375 > 375)",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "findir__375/приход: «Копировать» кладёт полный адрес в буфер (буфер='TA6S3RBEY57jq8fXEVVsU6H9JZ18inenG4')",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "findir__375: чекбокс согласования виден роли findir",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "findir__1280: сумма в подписи согласования найдена и измерена",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "findir__1280: сумма '$10 000,00' в #payoutWalletPolicy не рвётся внутри числа (строк: 1)",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "findir__1280: сумма '$10 000,00' в #payoutOwnerApprovalGroup не рвётся внутри числа (строк: 1)",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "findir__1280: сумма '$10 000,00' в #payinWalletPolicy не рвётся внутри числа (строк: 1)",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "findir__1280/выплата: виден короткий адрес (summary)",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "findir__1280/выплата: после клика показан полный адрес ({'visible': True, 'text': 'TA6S3RBEY57jq8fXEVVsU6H9JZ18inenG4', 'lines': 1, 'whiteSpace': 'nowrap', 'overflowX': 'auto', 'scrollWidth': 287, 'clientWidth': 281, 'right': 330, 'docScrollWidth': 1280, 'innerWidth': 1280})",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "findir__1280/выплата: развёрнутый полный адрес в ОДНУ строку (строк: 1, white-space=nowrap)",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "findir__1280/выплата: страница не шире экрана после раскрытия (1280 > 1280)",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "findir__1280/выплата: «Копировать» кладёт полный адрес в буфер (буфер='TA6S3RBEY57jq8fXEVVsU6H9JZ18inenG4')",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "findir__1280/приход: виден короткий адрес (summary)",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "findir__1280/приход: после клика показан полный адрес ({'visible': True, 'text': 'TA6S3RBEY57jq8fXEVVsU6H9JZ18inenG4', 'lines': 1, 'whiteSpace': 'nowrap', 'overflowX': 'auto', 'scrollWidth': 467, 'clientWidth': 467, 'right': 529, 'docScrollWidth': 1280, 'innerWidth': 1280})",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "findir__1280/приход: развёрнутый полный адрес в ОДНУ строку (строк: 1, white-space=nowrap)",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "findir__1280/приход: страница не шире экрана после раскрытия (1280 > 1280)",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "findir__1280/приход: «Копировать» кладёт полный адрес в буфер (буфер='TA6S3RBEY57jq8fXEVVsU6H9JZ18inenG4')",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "findir__1280: чекбокс согласования виден роли findir",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "teodor__375: сумма в подписи согласования найдена и измерена",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "teodor__375: сумма '$10 000,00' в #payoutWalletPolicy не рвётся внутри числа (строк: 1)",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "teodor__375: сумма '$10 000,00' в #payoutOwnerApprovalGroup не рвётся внутри числа (строк: 1)",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "teodor__375: сумма '$10 000,00' в #payinWalletPolicy не рвётся внутри числа (строк: 1)",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "teodor__375/выплата: виден короткий адрес (summary)",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "teodor__375/выплата: после клика показан полный адрес ({'visible': True, 'text': 'TA6S3RBEY57jq8fXEVVsU6H9JZ18inenG4', 'lines': 1, 'whiteSpace': 'nowrap', 'overflowX': 'auto', 'scrollWidth': 287, 'clientWidth': 204, 'right': 237, 'docScrollWidth': 375, 'innerWidth': 375})",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "teodor__375/выплата: развёрнутый полный адрес в ОДНУ строку (строк: 1, white-space=nowrap)",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "teodor__375/выплата: страница не шире экрана после раскрытия (375 > 375)",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "teodor__375/выплата: «Копировать» кладёт полный адрес в буфер (буфер='TA6S3RBEY57jq8fXEVVsU6H9JZ18inenG4')",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "teodor__375/приход: виден короткий адрес (summary)",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "teodor__375/приход: после клика показан полный адрес ({'visible': True, 'text': 'TA6S3RBEY57jq8fXEVVsU6H9JZ18inenG4', 'lines': 1, 'whiteSpace': 'nowrap', 'overflowX': 'auto', 'scrollWidth': 287, 'clientWidth': 178, 'right': 224, 'docScrollWidth': 375, 'innerWidth': 375})",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "teodor__375/приход: развёрнутый полный адрес в ОДНУ строку (строк: 1, white-space=nowrap)",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "teodor__375/приход: страница не шире экрана после раскрытия (375 > 375)",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "teodor__375/приход: «Копировать» кладёт полный адрес в буфер (буфер='TA6S3RBEY57jq8fXEVVsU6H9JZ18inenG4')",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "teodor__375: чекбокс согласования виден роли teodor",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "teodor__1280: сумма в подписи согласования найдена и измерена",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "teodor__1280: сумма '$10 000,00' в #payoutWalletPolicy не рвётся внутри числа (строк: 1)",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "teodor__1280: сумма '$10 000,00' в #payoutOwnerApprovalGroup не рвётся внутри числа (строк: 1)",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "teodor__1280: сумма '$10 000,00' в #payinWalletPolicy не рвётся внутри числа (строк: 1)",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "teodor__1280/выплата: виден короткий адрес (summary)",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "teodor__1280/выплата: после клика показан полный адрес ({'visible': True, 'text': 'TA6S3RBEY57jq8fXEVVsU6H9JZ18inenG4', 'lines': 1, 'whiteSpace': 'nowrap', 'overflowX': 'auto', 'scrollWidth': 287, 'clientWidth': 281, 'right': 330, 'docScrollWidth': 1280, 'innerWidth': 1280})",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "teodor__1280/выплата: развёрнутый полный адрес в ОДНУ строку (строк: 1, white-space=nowrap)",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "teodor__1280/выплата: страница не шире экрана после раскрытия (1280 > 1280)",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "teodor__1280/выплата: «Копировать» кладёт полный адрес в буфер (буфер='TA6S3RBEY57jq8fXEVVsU6H9JZ18inenG4')",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "teodor__1280/приход: виден короткий адрес (summary)",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "teodor__1280/приход: после клика показан полный адрес ({'visible': True, 'text': 'TA6S3RBEY57jq8fXEVVsU6H9JZ18inenG4', 'lines': 1, 'whiteSpace': 'nowrap', 'overflowX': 'auto', 'scrollWidth': 467, 'clientWidth': 467, 'right': 529, 'docScrollWidth': 1280, 'innerWidth': 1280})",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "teodor__1280/приход: развёрнутый полный адрес в ОДНУ строку (строк: 1, white-space=nowrap)",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "teodor__1280/приход: страница не шире экрана после раскрытия (1280 > 1280)",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "teodor__1280/приход: «Копировать» кладёт полный адрес в буфер (буфер='TA6S3RBEY57jq8fXEVVsU6H9JZ18inenG4')",
+   "ok": true
+  },
+  {
+   "note": "assert",
+   "message": "teodor__1280: чекбокс согласования виден роли teodor",
+   "ok": true
+  }
+ ],
+ "failed": [],
+ "external_requests_blocked": []
+}

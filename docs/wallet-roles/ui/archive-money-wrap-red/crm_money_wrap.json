@@ -1,0 +1,73 @@
+{
+ "harness_version": "wallet-roles-ui r8 (2026-10-19): r7 + full untruncated state diffs (normalised path summary), combined final assertion (nothing masked), regex endsWith fix + money-wrap",
+ "source_freeze": {
+  "sha256": {
+   "app.py": "bdd3aaf335f8398e",
+   "static/stand/tasks.html": "9616565599035dec",
+   "static/crm/crm.html": "e3c1372f5a3af5ad",
+   "stand_transfers.py": "6db1df1db4e8ab87",
+   "stand_prepay.py": "4c6258a32e009eba",
+   "stand_browser.py": "aedc2973a2cff158"
+  },
+  "head": "2af15174f77a946fea8ece68173b132112af9f39",
+  "dirty_sources": [],
+  "clean": true
+ },
+ "results": [
+  {
+   "width": "375",
+   "amounts": [
+    {
+     "sel": "#payoutWalletPolicy",
+     "amount": "$10 000,00",
+     "lines": 1,
+     "hasNbsp": false,
+     "broken": false
+    },
+    {
+     "sel": "#payoutOwnerApprovalGroup",
+     "amount": "$10 000,00",
+     "lines": 2,
+     "hasNbsp": false,
+     "broken": true
+    },
+    {
+     "sel": "#payinWalletPolicy",
+     "amount": "$10 000,00",
+     "lines": 1,
+     "hasNbsp": false,
+     "broken": false
+    }
+   ]
+  },
+  {
+   "width": "1280",
+   "amounts": [
+    {
+     "sel": "#payoutWalletPolicy",
+     "amount": "$10 000,00",
+     "lines": 1,
+     "hasNbsp": false,
+     "broken": false
+    },
+    {
+     "sel": "#payoutOwnerApprovalGroup",
+     "amount": "$10 000,00",
+     "lines": 1,
+     "hasNbsp": false,
+     "broken": false
+    },
+    {
+     "sel": "#payinWalletPolicy",
+     "amount": "$10 000,00",
+     "lines": 1,
+     "hasNbsp": false,
+     "broken": false
+    }
+   ]
+  }
+ ],
+ "failed": [
+  "CRM 375: сумма '$10 000,00' переносится внутри числа в #payoutOwnerApprovalGroup (nbsp в тексте: False)"
+ ]
+}

@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Лизхолд по реквизитам — кликабельный прототип</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+/* Плеер шагов: каждый шаг — настоящий задачник (tasks.html?snap=…), а не картинка.
+   Скриншоты во всю длину читались плохо, липкая шапка разрезала их пополам
+   (Карим, 27.09). Здесь текст живой, страницы листаются и кликаются. */
+:root{
+  --navy-900:#0F172A;--navy-800:#1E293B;--navy-700:#334155;--navy-600:#475569;--navy-500:#64748B;
+  --navy-400:#94A3B8;--navy-300:#CBD5E1;--navy-200:#E2E8F0;--navy-100:#F1F5F9;--navy-50:#F8FAFC;
+  --coral:#F97316;--coral-hover:#EA580C;--coral-light:#FFF7ED;--r:12px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{font-family:'Inter',system-ui,sans-serif;background:var(--navy-100);color:var(--navy-900);-webkit-font-smoothing:antialiased;
+  display:grid;grid-template-rows:auto 1fr;grid-template-columns:minmax(0,1fr);overflow:hidden}
+::selection{background:var(--coral);color:#fff}
+:focus-visible{outline:2px solid var(--coral);outline-offset:2px;border-radius:6px}
+button{font-family:inherit;cursor:pointer}
+
+.bar{background:var(--navy-900);color:var(--navy-200);display:flex;align-items:center;gap:16px;padding:12px 20px;
+  padding-top:max(12px,env(safe-area-inset-top))}
+.bar h1{font-size:15px;font-weight:700;color:#fff;letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bar .meta{font-size:12px;color:var(--navy-400);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.bar .grow{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.seg{display:flex;background:rgba(255,255,255,.08);border-radius:10px;padding:3px;flex:0 0 auto}
+.seg button{border:0;background:none;color:var(--navy-300);font-size:13px;font-weight:600;padding:7px 12px;border-radius:8px;white-space:nowrap}
+.seg button[aria-pressed="true"]{background:#fff;color:var(--navy-900)}
+.nav{display:flex;align-items:center;gap:8px;flex:0 0 auto}
+.nav .cnt{font-size:13px;color:var(--navy-300);font-variant-numeric:tabular-nums;min-width:52px;text-align:center}
+.nbtn{display:inline-flex;align-items:center;justify-content:center;width:38px;height:38px;border-radius:10px;border:1px solid rgba(255,255,255,.16);
+  background:none;color:#fff}
+.nbtn:hover{background:rgba(255,255,255,.08)}
+.nbtn:disabled{opacity:.35;cursor:default}
+.nbtn.primary{background:var(--coral);border-color:var(--coral)}
+.nbtn.primary:hover{background:var(--coral-hover)}
+
+.body{display:grid;grid-template-columns:290px minmax(0,1fr);min-height:0}
+.steps{background:#fff;border-right:1px solid var(--navy-200);overflow:auto;padding:10px}
+.steps ol{list-style:none;counter-reset:s}
+.steps li{margin:0}
+.steps a{display:grid;grid-template-columns:28px 1fr;gap:10px;align-items:start;padding:9px 10px;border-radius:10px;
+  text-decoration:none;color:var(--navy-700)}
+.steps a:hover{background:var(--navy-50)}
+.steps a[aria-current="step"]{background:var(--coral-light);color:var(--navy-900)}
+.steps .n{font-size:12px;font-weight:700;color:var(--navy-400);font-variant-numeric:tabular-nums;padding-top:2px}
+.steps a[aria-current="step"] .n{color:var(--coral-hover)}
+.steps .t{font-size:13.5px;font-weight:600;line-height:1.3}
+.steps .r{font-size:12px;color:var(--navy-500);margin-top:2px}
+
+.stage{display:grid;grid-template-rows:auto 1fr;min-width:0;min-height:0}
+.cap{padding:14px 22px 12px;background:var(--navy-50);border-bottom:1px solid var(--navy-200)}
+.cap .role{font-size:12.5px;font-weight:700;color:var(--coral-hover)}
+.cap h2{font-size:23px;font-weight:800;letter-spacing:-.02em;margin:2px 0 6px}
+.cap p{font-size:14px;color:var(--navy-600);line-height:1.55;max-width:90ch}
+.frames{display:flex;gap:22px;padding:18px 22px;min-height:0;overflow:auto;align-items:flex-start}
+.frame{display:flex;flex-direction:column;gap:8px;min-width:0}
+.frame .fh{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:12.5px;color:var(--navy-500);font-weight:600}
+.frame .fh a{color:var(--navy-600);font-weight:500}
+/* компьютер: страница 1440 px, ужатая до доступной ширины — пропорции как на мониторе */
+.desk{flex:1 1 0;min-width:0}
+.desk .win{background:#fff;border:1px solid var(--navy-200);border-radius:10px;overflow:hidden;box-shadow:0 12px 30px -18px rgba(15,23,42,.35)}
+.desk .chrome{height:26px;background:var(--navy-100);border-bottom:1px solid var(--navy-200);display:flex;align-items:center;gap:6px;padding:0 10px}
+.desk .chrome i{width:9px;height:9px;border-radius:50%;background:var(--navy-300)}
+.desk .scale{position:relative;overflow:hidden}
+.desk iframe{position:absolute;top:0;left:0;width:1440px;border:0;transform-origin:0 0;background:#fff}
+/* телефон: 390 × 844, как iPhone 14 — страница листается внутри рамки */
+.phone{flex:0 0 auto}
+.phone .dev{width:414px;padding:12px;border-radius:44px;background:var(--navy-900);box-shadow:0 18px 40px -18px rgba(15,23,42,.55)}
+.phone iframe{display:block;width:390px;height:844px;border:0;border-radius:32px;background:#fff}
+body.v-desk .phone,body.v-phone .desk{display:none}
+body.v-phone .frames{justify-content:center}
+
+/* список шагов сбоку съедает ширину — на экранах уже 1900 px он уходит в выпадающий
+   список наверху, и компьютерной странице достаётся больше места */
+.pick{display:none;max-width:260px;background:rgba(255,255,255,.08);color:#fff;border:1px solid rgba(255,255,255,.16);
+  border-radius:10px;padding:8px 10px;font:600 13px Inter,system-ui,sans-serif}
+.pick option{color:var(--navy-900)}
+@media(max-width:1900px){
+  .body{grid-template-columns:minmax(0,1fr)}
+  .steps{display:none}
+  .pick{display:block}
+}
+/* На телефоне плеер сам становится телефоном: шаг на весь экран, листалка снизу */
+@media(max-width:620px){
+  body{grid-template-rows:auto 1fr auto}
+  .stage{min-height:0}
+  .frames,.phone,.phone .dev{height:100%}
+  .bar{padding:10px 12px;gap:10px}
+  .bar .meta,.seg,.pick{display:none!important}
+  .bar .nav{display:none}
+  .body{display:contents}
+  .cap{padding:10px 14px}
+  .cap h2{font-size:16px}
+  .cap p{font-size:13px}
+  .frames{padding:0;display:block;overflow:hidden}
+  .desk{display:none!important}
+  .phone{display:block!important;height:100%}
+  .phone .dev{width:auto;padding:0;border-radius:0;background:none;box-shadow:none;height:100%}
+  .phone iframe{width:100%;height:100%;border-radius:0}
+  .phone .fh{display:none}
+  .pager{display:flex!important}
+}
+.pager{display:none;align-items:center;gap:10px;padding:10px 12px calc(10px + env(safe-area-inset-bottom));background:var(--navy-900)}
+.pager .nbtn{width:auto;flex:1;height:46px;font-size:14px;font-weight:600;gap:6px}
+.pager .cnt{color:var(--navy-300);font-size:13px;font-variant-numeric:tabular-nums;min-width:48px;text-align:center}
+</style>
+</head>
+<body class="v-both">
+<header class="bar">
+  <div class="grow"><h1 id="ttl">Кликабельный прототип</h1><div class="meta" id="meta"></div></div>
+  <select class="pick" id="pick" aria-label="Шаг"></select>
+  <div class="seg" role="group" aria-label="Что показывать">
+    <button type="button" data-v="both" aria-pressed="true">Оба экрана</button>
+    <button type="button" data-v="desk" aria-pressed="false">Компьютер</button>
+    <button type="button" data-v="phone" aria-pressed="false">Телефон</button>
+  </div>
+  <div class="nav">
+    <button class="nbtn" id="prev" type="button" aria-label="Предыдущий шаг"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg></button>
+    <span class="cnt" id="cnt">–</span>
+    <button class="nbtn primary" id="next" type="button" aria-label="Следующий шаг"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg></button>
+  </div>
+</header>
+<div class="body">
+  <nav class="steps" aria-label="Шаги сделки"><ol id="list"></ol></nav>
+  <main class="stage">
+    <div class="cap"><div class="role" id="role"></div><h2 id="step"></h2><p id="text"></p></div>
+    <div class="frames" id="frames">
+      <section class="frame desk" aria-label="Компьютер">
+        <div class="fh"><span>Компьютер · 1440 px</span><a id="deskOpen" target="_blank" rel="noopener">открыть во весь экран</a></div>
+        <div class="win"><div class="chrome"><i></i><i></i><i></i></div><div class="scale" id="deskScale"><iframe id="deskF" title="Шаг на компьютере"></iframe></div></div>
+      </section>
+      <section class="frame phone" aria-label="Телефон">
+        <div class="fh"><span>Телефон · 390 px</span><a id="phoneOpen" target="_blank" rel="noopener">открыть отдельно</a></div>
+        <div class="dev"><iframe id="phoneF" title="Шаг на телефоне"></iframe></div>
+      </section>
+    </div>
+  </main>
+</div>
+<div class="pager">
+  <button class="nbtn" id="prev2" type="button">Назад</button>
+  <span class="cnt" id="cnt2">–</span>
+  <button class="nbtn primary" id="next2" type="button">Дальше</button>
+</div>
+<script>
+const BASE='leasehold-rub/';
+let STEPS=[], i=0;
+const $=id=>document.getElementById(id);
+const src=s=>'../tasks.html?snap=walkthrough/'+BASE+s.file;
+function fitDesk(){
+  const box=$('deskScale'), w=box.clientWidth; if(!w)return;
+  const k=w/1440, h=Math.max(420,Math.min(900,(window.innerHeight-230)/k));
+  $('deskF').style.height=h+'px'; $('deskF').style.transform='scale('+k+')';
+  box.style.height=(h*k)+'px';
+  /* телефон — во всю высоту окна, но не выше самого телефона */
+  if(window.innerWidth>620) $('phoneF').style.height=Math.max(520,Math.min(844,window.innerHeight-200))+'px';
+  else $('phoneF').style.height='';
+}
+function show(n){
+  i=Math.max(0,Math.min(STEPS.length-1,n)); const s=STEPS[i];
+  $('role').textContent=s.role||''; $('step').textContent=s.n+'. '+s.title; $('text').textContent=s.text||'';
+  const u=src(s);
+  $('deskF').src=u; $('phoneF').src=u; $('deskOpen').href=u; $('phoneOpen').href=u;
+  const c=(i+1)+' / '+STEPS.length; $('cnt').textContent=c; $('cnt2').textContent=c;
+  [$('prev'),$('prev2')].forEach(b=>b.disabled=i===0); [$('next'),$('next2')].forEach(b=>b.disabled=i===STEPS.length-1);
+  document.querySelectorAll('#list a').forEach((a,k)=>{if(k===i)a.setAttribute('aria-current','step');else a.removeAttribute('aria-current');});
+  $('pick').value=String(i);
+  const cur=document.querySelector('#list a[aria-current]'); if(cur)cur.scrollIntoView({block:'nearest'});
+  history.replaceState(null,'','#'+s.n);
+}
+function view(v){
+  document.body.className='v-'+v;
+  document.querySelectorAll('.seg button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.v===v)));
+  fitDesk();
+}
+async function boot(){
+  const all=await (await fetch(BASE+'steps.json',{cache:'no-store'})).json();
+  const meta=all.find(x=>x.meta)||{}; STEPS=all.filter(x=>!x.meta);
+  $('ttl').textContent=meta.title||'Кликабельный прототип'; $('meta').textContent=meta.text||'';
+  document.title=(meta.title||'Прототип')+' — кликабельный прототип';
+  $('list').innerHTML=STEPS.map((s,k)=>`<li><a href="#${s.n}" data-k="${k}"><span class="n">${s.n}</span><span><span class="t"></span><span class="r" style="display:block"></span></span></a></li>`).join('');
+  document.querySelectorAll('#list a').forEach((a,k)=>{a.querySelector('.t').textContent=STEPS[k].title;a.querySelector('.r').textContent=STEPS[k].role||'';
+    a.addEventListener('click',e=>{e.preventDefault();show(k);});});
+  $('pick').innerHTML=STEPS.map((s,k)=>`<option value="${k}"></option>`).join('');
+  [...$('pick').options].forEach((o,k)=>o.textContent=STEPS[k].n+'. '+STEPS[k].title);
+  $('pick').onchange=e=>show(Number(e.target.value));
+  const h=location.hash.slice(1), at=STEPS.findIndex(s=>s.n===h);
+  show(at>=0?at:0); fitDesk();
+}
+$('prev').onclick=$('prev2').onclick=()=>show(i-1);
+$('next').onclick=$('next2').onclick=()=>show(i+1);
+document.querySelectorAll('.seg button').forEach(b=>b.onclick=()=>view(b.dataset.v));
+document.addEventListener('keydown',e=>{if(e.target.closest&&e.target.closest('input,textarea,select'))return;
+  if(e.key==='ArrowRight')show(i+1); if(e.key==='ArrowLeft')show(i-1);});
+window.addEventListener('resize',fitDesk);
+boot();
+</script>
+</body>
+</html>

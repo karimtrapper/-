@@ -1,0 +1,166 @@
+// Manual RUB receipt UI: request is explicit, demo remains labeled, operator
+// confirmation is role-gated in the view and records the current server version.
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const vm = require('node:vm');
+
+const html = fs.readFileSync('static/stand/tasks.html', 'utf8');
+const issuesStart = html.indexOf('function payinSum(d){');
+const issuesEnd = html.indexOf('function payinPool(d){', issuesStart);
+assert.ok(issuesStart >= 0 && issuesEnd > issuesStart);
+const linkedDeal = {id: 8, incomeAmount: 9987.5,
+  expect: {amount: 9987.5, tol: 1000, acc: 'custom', bank: 'Test Bank',
+    account: '40702810900000012345', purpose: 'Оплата по договору'},
+  manualBankReceipt: {id: 'receipt-1', status: 'confirmed', bank: 'Test Bank',
+    account: '40702810900000012345', actualAmount: 9987.5,
+    confirmedAt: '2026-10-01T10:00:00Z', confirmedBy: 4},
+  payinParts: [{incId: 5, amountRub: 9987.5}]};
+const linkedIncome = {id: 5, dealId: 8, rub: 9987.5, source: 'manual_confirmed',
+  manualReceiptId: 'receipt-1', acc: 'Test Bank · 40702810900000012345',
+  purpose: 'Оплата по договору'};
+const issueCtx = vm.createContext({expectOf: d => d.expect, incomes: () => [linkedIncome]});
+vm.runInContext(['incomeRubBasis', 'partRubBasis'].map(name =>
+  html.match(new RegExp(`^function ${name}\\([^]*?^}`, 'm'))[0]).join('\n')
+  + '\n' + html.slice(issuesStart, issuesEnd), issueCtx);
+assert.deepEqual(Array.from(vm.runInContext('payinIssues(' + JSON.stringify(linkedDeal) + ')', issueCtx)), []);
+
+const start = html.indexOf('function manualBankReceiptBlock(d){');
+const end = html.indexOf('/* Крипто-приход частями', start);
+assert.ok(start >= 0 && end > start);
+const deal = {id: 77, step: 's14', docVersion: 1,
+  docFields: {payTo: 'Старый банк · р/с 40702'},
+  manualBankReceipt: {id: 'r1', status: 'pending', bank: 'Новый банк',
+    account: '40702810900000012345', actualAmount: 1050, payer: 'Клиент',
+    statementDate: '2026-10-01', statementRef: 'оп. 8'}};
+const elements = {mbr_verify_77: {checked: false}, mbr_docs_77: {checked: true}};
+const values = {mbr_bank_77: 'Новый банк', mbr_account_77: '40702810900000012345',
+  mbr_amount_77: '1 050,00', mbr_payer_77: 'Клиент', mbr_date_77: '2026-10-01',
+  mbr_ref_77: 'операция 8'};
+const calls = [];
+const ctx = vm.createContext({S: {role: 'operator'}, deal: id => id === 77 ? deal : null,
+  sberText: String, money: n => String(n), docFields: d => d.docFields,
+  manualBankActualFields:()=>'',
+  bankEvidenceBlock: () => '<div>Выписка / подтверждение зачисления</div>',
+  rubApiAccount: () => false, filesOf: () => [{file:'statement.pdf'}],
+  val: id => values[id], document: {getElementById: id => elements[id]},
+  standAction: async (...args) => { calls.push(args); return {success: true}; },
+  standVer: 12, toast: msg => calls.push(['toast', msg]), Date});
+vm.runInContext(html.match(/^function manualBankOperatorForm\([^]*?^}/m)[0]+'\n'+html.slice(start, end), ctx);
+const run = code => vm.runInContext(code, ctx);
+
+const card = run('manualBankReceiptBlock(S.deals ? S.deals[0] : ' + JSON.stringify(deal) + ')');
+assert.match(card, /Ожидает сверки оператором/);
+assert.match(card,/Сумма прихода/);
+assert.match(card,/Ещё по приходу/);
+assert.match(card,/Пришло на другой счёт/);
+assert.doesNotMatch(card,/mbr_verify_|mbr_payer_|mbr_ref_|mbr_deviation_/);
+assert.match(card, /не подтверждение Сбер API/);
+assert.match(html, /Другой счёт/);
+assert.match(html, /Корреспондентский счёт \(20 цифр\)/);
+assert.match(html, /БИК банка \(9 цифр\)/);
+assert.match(html, /d\.manualBankReceipt\?\.status==='pending'/);
+assert.doesNotMatch(html, /Вебхук банка · DEMO/);
+
+const fieldsStart = html.indexOf('function docFields(');
+const fieldsEnd = html.indexOf('/* ФИО по паспорту', fieldsStart);
+assert.ok(fieldsStart >= 0 && fieldsEnd > fieldsStart);
+const fieldCtx = vm.createContext({fake:()=>({}), approx:()=>({pay:10000,thb:1000}),
+  parsed:()=>'', isCrypto:()=>false, payinWallet:()=>null, prevPassport:()=>({}),
+  standDocAgent:()=>({name:'MF',reg:'1',director:'X'}),
+  MF:{rubName:'MF Corp',inn:'9909726886',kpp:'770387001',bank:'Sber',acc:'4080',ks:'3010',bik:'0445'},
+  htmlText:String});
+vm.runInContext(html.match(/^function isNativeCashPartner\([^]*?^}/m)[0]+'\n'+html.slice(fieldsStart, fieldsEnd), fieldCtx);
+const customFields=vm.runInContext(`docFields({id:1,code:'X',rates:{client:10},rubReceivingAccount:{mode:'custom',bank:'Test Bank',account:'40702810900000012345',correspondent:'30101810000000000000',bik:'044525225'}})`,fieldCtx);
+assert.match(customFields.payTo,/Test Bank · р\/с 40702810900000012345 · к\/с 30101810000000000000 · БИК 044525225/);
+
+const expectStart=html.indexOf('function expectOf(d){');
+const expectEnd=html.indexOf('function expectSet(',expectStart);
+const expectCtx=vm.createContext({approx:()=>({pay:10000}),docFields:()=>({purpose:'payment'})});
+vm.runInContext(html.slice(expectStart,expectEnd),expectCtx);
+const expected=vm.runInContext(`expectOf({expect:{acc:'…0286 · Сбер',bank:'Old Bank',account:'00000000000000000000'},rubReceivingAccount:{mode:'custom',bank:'Test Bank',account:'40702810900000012345'}})`,expectCtx);
+// 20-значный счёт — ровно порог для сокращения середины (Карим, живой стенд, 17.10)
+assert.equal(expected.acc,'Test Bank · 40702810…00012345');
+assert.equal(expected.bank,'Test Bank');
+assert.equal(expected.account,'40702810900000012345');
+
+const labelStart=html.indexOf('function rubReceivingBankLabel(d){');
+const labelEnd=html.indexOf('\n}',labelStart)+2;
+assert.ok(labelStart>=0&&labelEnd>labelStart);
+const labelCtx=vm.createContext({});
+vm.runInContext(html.slice(labelStart,labelEnd),labelCtx);
+assert.equal(vm.runInContext("rubReceivingBankLabel({rubReceivingAccount:{mode:'custom',bank:'Test Bank'}})",labelCtx),'Test Bank');
+assert.equal(vm.runInContext("rubReceivingBankLabel({rubReceivingAccount:{mode:'custom',bank:''}})",labelCtx),'другой банк');
+assert.equal(vm.runInContext("rubReceivingBankLabel({rubReceivingAccount:{mode:'sber'}})",labelCtx),'Сбер');
+assert.match(html,/на счёт в \$\{rubReceivingBankLabel\(d\)\}\$\{P\.recipient/);
+assert.match(html,/рубли на счёт в \$\{htmlText\(rubReceivingBankLabel\(d\)\)\}/);
+assert.match(html,/счёт в \$\{rubReceivingBankLabel\(d\)\}/);
+assert.doesNotMatch(html,/счёт MF в Сбере/);
+assert.doesNotMatch(html,/рубли на счёт Сбера/);
+assert.match(html,/Назначение перевода — клиент впишет его в платёжное поручение/);
+
+const hostileBank='<img src=x onerror=window.__qaPwn=1> &#34; onclick=alert(1)';
+const safeCtx=vm.createContext({
+  htmlText:v=>String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))
+});
+// Match the product helper: escape the JSON string as an HTML attribute only;
+// browser entity decoding then restores a literal JS string for copyAsk.
+const jsAttrStart=html.indexOf('function jsLiteralAttr(v){'), jsAttrEnd=html.indexOf('\n',jsAttrStart);
+assert.ok(jsAttrStart>=0&&jsAttrEnd>jsAttrStart);
+vm.runInContext(html.slice(jsAttrStart,jsAttrEnd),safeCtx);
+// goalCard now renders machine strings through addressDisclosure(); load that real helper chain.
+safeCtx.dealWallet = () => null;   // goalCard читает кошелёк политики; здесь сделка без кошелька
+for (const name of ['isNativeCashPartner', 'txShort', 'addressDisclosure', 'policyRoleNames']) {
+  const start = html.indexOf(`function ${name}(`), end = html.indexOf('\n}\n', start) + 2;
+  assert.ok(start >= 0 && end > start, name);
+  vm.runInContext(html.slice(start, end), safeCtx);
+}
+const goalStart=html.indexOf('function goalCard(d){'), goalEnd=html.indexOf('\n}\n',goalStart)+2;
+assert.ok(goalStart>=0&&goalEnd>goalStart);
+safeCtx.stepGoal=()=>({t:'Goal',rows:[['Куда платит клиент',hostileBank]]});
+safeCtx.FILLS={};
+vm.runInContext(html.slice(goalStart,goalEnd),safeCtx);
+const goalMarkup=vm.runInContext("goalCard({step:'s11'})",safeCtx);
+assert.doesNotMatch(goalMarkup,/<img\b/i);
+assert.match(goalMarkup,/&lt;img src=x onerror=window\.__qaPwn=1&gt;/);
+
+const tgStart=html.indexOf('function tgPayBlock(d,step){'), tgEnd=html.indexOf('\nfunction notificationDeliveryText',tgStart);
+assert.ok(tgStart>=0&&tgEnd>tgStart);
+safeCtx.docFields=()=>({purpose:'purpose',payTo:hostileBank});
+safeCtx.approx=()=>({pay:1,sign:'₽'});
+safeCtx.money=()=> '1 ₽';
+vm.runInContext(html.slice(tgStart,tgEnd),safeCtx);
+const tgMarkup=vm.runInContext("tgPayBlock({},'s12')",safeCtx);
+assert.doesNotMatch(tgMarkup,/<img\b/i);
+assert.match(tgMarkup,/&lt;img src=x onerror=window\.__qaPwn=1&gt;/);
+assert.match(tgMarkup,/copyAsk\(&quot;/);
+
+const jsonAttr=vm.runInContext('jsLiteralAttr(' + JSON.stringify(hostileBank) + ')',safeCtx);
+const decodeOnce=s=>s.replace(/&quot;/g,'"').replace(/&#39;/g,"'").replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&amp;/g,'&');
+let copied=''; safeCtx.copyAsk=value=>{copied=value;};
+vm.runInContext('copyAsk('+decodeOnce(jsonAttr)+')',safeCtx);
+assert.equal(copied,hostileBank);
+
+run('manualBankReceiptConfirm(77)');
+assert.equal(calls.at(-1)[0], '/api/stand/manual-bank-receipt/77/confirm');
+assert.equal(calls.at(-1)[1].version, 12);
+assert.equal(calls.at(-1)[1].actualAmount, '1050.00');
+assert.equal(calls.at(-1)[1].statementVerified, undefined);
+
+(async()=>{
+  let chromium;
+  try{chromium=require('playwright').chromium;}catch(_){
+    console.log('manual bank receipt UI tests: PASS (Chromium check skipped: Playwright unavailable)');
+    return;
+  }
+  const browser=await chromium.launch({headless:true,executablePath:process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH||undefined});
+  try{
+    const page=await browser.newPage();
+    await page.setContent(`<script>window.__qaPwn=0;window.copyAsk=v=>window.__copied=v;</script>${goalMarkup}${tgMarkup}`);
+    await page.waitForTimeout(100);
+    assert.equal(await page.locator('img').count(),0,'hostile bank markup must render as text');
+    assert.equal(await page.evaluate('window.__qaPwn'),0,'event handler must not execute');
+    await page.locator('.paybox .payrow button').last().click();
+    assert.equal(await page.evaluate('window.__copied'),hostileBank,'copy action must preserve exact requisites');
+  }finally{await browser.close();}
+  console.log('manual bank receipt UI tests: PASS');
+})().catch(e=>{console.error(e);process.exitCode=1;});

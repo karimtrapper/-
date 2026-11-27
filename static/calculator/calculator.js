@@ -113,7 +113,7 @@ const PROFIT_THB_TO_USDT = 3.0;
 // СБП (Доверка): наши 2.4% уже сидят в курсе Доверки, сверху не накручиваем —
 // стандарт один на любой сумме, лестницы 5/4/3% для СБП нет
 const PROFIT_DOVERKA = 2.4;
-const PROFIT_FLOOR = 1.5;          // ниже — только с согласованием
+let PROFIT_FLOOR = 1.5;
 
 /** Сумма сделки в рублях — база для порогов лестницы, из чего бы клиент ни платил. */
 function rubBase(amount, scenario = state.scenario, direction = state.direction) {
@@ -121,7 +121,8 @@ function rubBase(amount, scenario = state.scenario, direction = state.direction)
     if (scenario === 'thb-to-rub') return amount * 2.8;
     if (scenario === 'rub-to-thb' && direction === 'target') return amount * 2.8;
     if (scenario === 'usdt-from-rub') return amount * rubUsdt;
-    if (scenario === 'rub-to-usdt' && direction === 'target') return amount * rubUsdt;
+    if (scenario === 'rub-to-usdt' && direction === 'target')
+        return amount * (state.dealCategory === 'property_auto' ? (state.customRubUsdt || rubUsdt) : rubUsdt);
     return amount;
 }
 
@@ -142,6 +143,18 @@ function effectiveProfit(amount) {
     return Math.max(state.profitMargin, PROFIT_FLOOR);
 }
 
+/** Словесная метка режима прибыли относительно лестничного стандарта. */
+function profitLabel(ladder, profit) {
+    const deltaPct = +(profit - ladder).toFixed(2);
+    const mode = Math.abs(deltaPct) < 0.001 ? 'standard' : (deltaPct < 0 ? 'discount' : 'markup');
+    return { mode, deltaPct: mode === 'standard' ? 0 : deltaPct };
+}
+
+/** Числовой пол прибыли — ниже менеджер не опускает без согласования. */
+function clampProfitFloor(value) {
+    return Math.max(+value, PROFIT_FLOOR);
+}
+
 /** Сброс скидки — при смене метода, сценария или направления процент не «липнет». */
 function resetDiscount() {
     state.applyDiscount = false;
@@ -153,6 +166,7 @@ function resetDiscount() {
     if (customWrapper) customWrapper.style.display = 'none';
     document.querySelectorAll('.commission-btn').forEach(btn => btn.classList.remove('active'));
     state.profitMargin = ladderProfit(getAmount());
+    updateProfitDisplay();
 }
 
 // Проверка авторизации — редирект на логин если не залогинен
@@ -163,6 +177,8 @@ async function checkAuth() {
             window.location.href = '/login';
             return false;
         }
+        const {user} = await resp.json();
+        if (user?.stand) PROFIT_FLOOR = 1;
         return true;
     } catch(e) {
         window.location.href = '/login';
@@ -173,18 +189,57 @@ async function checkAuth() {
 // Инициализация
 document.addEventListener('DOMContentLoaded', async () => {
     if (!await checkAuth()) return;
-    refreshRates();
-    // Фоновое обновление курсов каждые 5 минут
-    setInterval(refreshRates, 5 * 60 * 1000);
+    // Параметры ссылки применяем после загрузки режима стенда из сессии.
+    try { applyPrefill(); } catch (e) { console.warn('prefill', e); }
+    updateProfitDisplay();
+    refreshAllRates();
+    setInterval(refreshAllRates, 5 * 60 * 1000);
+    setInterval(() => { if (propInv.cur === 'thb') renderPropFx(); }, 60 * 1000);
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) refreshVisibleRates();
+    });
+    window.addEventListener('focus', refreshVisibleRates);
 });
 
+function refreshAllRates() {
+    refreshRates();
+    propLoadBankRates();
+}
+
+function refreshVisibleRates() {
+    // focus и visibilitychange часто приходят парой; один запрос достаточен.
+    if (document.hidden || Date.now() - (propInv.lastAttemptAt || 0) < 60000) return;
+    refreshAllRates();
+}
+
 // Очистка результатов при изменении ввода
-function hideResults() {
-    document.getElementById('resultsSection').style.display = 'none';
+function hideResults(recalculate = true) {
+    if (!document.body.classList.contains('calc-b2')) {
+        document.getElementById('resultsSection').style.display = 'none';
+        return;
+    }
+    state._calcVersion++;
+    state.lastResult = null;
+    document.getElementById('resultValue').textContent = '—';
+    document.getElementById('finalRate').textContent = '—';
+    document.getElementById('resultProfit').style.display = 'none';
+    document.getElementById('createDealBtn').disabled = true;
+    document.getElementById('paymentActionSection').style.display = 'none';
+    document.getElementById('paymentResult').style.display = 'none';
+    const copy = document.getElementById('b2CopyClient');
+    if (copy) copy.disabled = true;
+    updateB2ExtrasMeta();
+    // Панель результата на мобильном видна только при реальном расчёте — пока его нет,
+    // не занимает экран (Карим, 2026-10-29).
+    document.body.classList.remove('b2-result-ready');
+    const resultMain = document.querySelector('.result-main');
+    if (resultMain) resultMain.classList.toggle('is-empty', getAmount() <= 0);
+    if (recalculate) scheduleB2Calculate();
 }
 
 // Переключение метода
 function switchMethod(method) {
+    if (state.dealCategory === 'property_auto' && method !== 'custom') return;
     state.method = method;
     resetDiscount();
     
@@ -200,7 +255,7 @@ function switchMethod(method) {
     if (method === 'broker' || method === 'custom') {
         document.getElementById('customRateSection').style.display = 'block';
         document.getElementById('directionSwitcher').style.display = 'block';
-        document.getElementById('rubUsdtLabel').textContent = 'RUB-USDT (Кастомный)';
+        document.getElementById('rubUsdtLabel').textContent = 'RUB-USDT (Свой курс)';
 
         // Очищаем курсы — менеджер должен ввести сам
         const customInput = document.getElementById('customRubUsdt');
@@ -260,6 +315,7 @@ function scenarioNeedsRubRate(scenario) {
 
 // Переключение сценария
 function switchScenario(scenario) {
+    if (state.dealCategory === 'property_auto' && scenario !== 'rub-to-usdt') return;
     state.scenario = scenario;
     updateScenarioUI();
     hideResults();
@@ -406,12 +462,20 @@ function updateScenarioUI() {
             rateCurrency: '₽/฿'
         };
     }
+    if (state.dealCategory === 'property_auto') {
+        config = state.direction === 'target'
+            ? {input: 'Сумма продавцу, USD', currency: 'USD', placeholder: '79800',
+                result: 'Клиент должен внести:', rateCurrency: '₽/$'}
+            : {input: 'Бюджет клиента, ₽', currency: '₽', placeholder: '4000000',
+                result: 'Продавец получит:', rateCurrency: '₽/$'};
+    }
     
     document.getElementById('inputLabel').textContent = config.input;
     document.getElementById('inputCurrency').textContent = config.currency;
     document.getElementById('amount').placeholder = config.placeholder;
     document.getElementById('resultLabel').textContent = config.result;
     document.getElementById('rateCurrency').textContent = config.rateCurrency;
+    updateB2DirectionHint();
     
     // Очищаем поле ввода
     document.getElementById('amount').value = '';
@@ -424,53 +488,24 @@ function updateScenarioUI() {
     hidePreciseRateFallback();
 }
 
-// Переключение скидки
-function toggleDiscount() {
-    state.applyDiscount = document.getElementById('applyDiscount').checked;
-    const wrapper = document.getElementById('profitMarginWrapper');
-    
-    if (state.applyDiscount) {
-        // Без суммы лестницу не посчитать, а в блоке останется чужой процент —
-        // так 27.08.2026 клиенту уехали 4 % вместо лестничных 5 %.
-        const amount = getAmount();
-        if (amount <= 0) {
-            state.applyDiscount = false;
-            document.getElementById('applyDiscount').checked = false;
-            wrapper.style.display = 'none';
-            showToast('Сначала введите сумму сделки — процент подставится по лестнице', 'error');
-            return;
-        }
-        wrapper.style.display = 'block';
-        setProfitMargin(ladderProfit(amount));
-    } else {
-        wrapper.style.display = 'none';
-        // Скидка выключена — пересчитываем без маржи
-        const amount = getAmount();
-        if (amount > 0) {
-            calculate();
-        } else {
-            hideResults();
-        }
-    }
-}
-
 // Установка маржи (прибыли)
 function setProfitMargin(profit) {
     const value = parseFloat(profit);
     const amount = getAmount();
-    const ladder = ladderProfit(amount);
+    if (state.dealCategory === 'property_auto' && value > 5) {
+        showToast(`Для оплаты авто укажите прибыль от ${String(PROFIT_FLOOR).replace('.', ',')} до 5 %`, 'error');
+        return;
+    }
 
-    // Пол 1.5 % — ниже менеджер не опускает без согласования (решение Карима 27.08.2026)
     if (value < PROFIT_FLOOR) {
         showToast(`Ниже ${PROFIT_FLOOR}% — только с согласованием. Поставил ${PROFIT_FLOOR}%`, 'error');
-        profit = PROFIT_FLOOR;
     }
+    profit = clampProfitFloor(value);
 
     state.profitMargin = parseFloat(profit);
-    if (state.applyDiscount && state.profitMargin < ladder) {
-        const delta = (ladder - state.profitMargin).toFixed(2).replace(/\.?0+$/, '');
-        showToast(`Скидка ${delta} п.п. ниже стандарта (${ladder}%) — согласовано?`, 'info', 4000);
-    }
+    updateB2ExtrasMeta();
+    // Предупреждение «ниже стандарта — согласовано?» дублировало #marginWarning в блоке
+    // результата (Карим, 2026-10-29) — отдельного всплывающего тоста тут больше нет.
 
     // Скрываем кастом-инпут и чистим его (вызов из пресета)
     const customWrapper = document.getElementById('customProfitWrapper');
@@ -478,19 +513,49 @@ function setProfitMargin(profit) {
     if (customWrapper) customWrapper.style.display = 'none';
     if (customInput) customInput.value = '';
 
-    // Обновляем визуальное состояние кнопок
-    document.querySelectorAll('.commission-btn').forEach(btn => {
-        const btnProfit = parseFloat(btn.dataset.profit);
-        btn.classList.toggle('active', btnProfit === state.profitMargin);
-    });
-
     console.log(`🎯 Выбрана маржа: ${state.profitMargin}%`);
+    updateProfitDisplay();
 
     // СРАЗУ вызываем расчет если сумма введена
     if (amount > 0) {
-        calculate();
+        if (document.body.classList.contains('calc-b2')) hideResults();
+        else calculate();
     } else {
         hideResults();
+    }
+}
+
+// Выбор готового процента прибыли (кнопки 1.5%…5%) — всегда виден, без галочки «Сделать скидку».
+// Любое число через «Своё» выше стандарта — наценка (см. onCustomProfitInput).
+function choosePresetProfit(value) {
+    state.applyDiscount = true;
+    setProfitMargin(value);
+}
+
+// Перерисовка блока «Наша прибыль»: подпись словами, активная кнопка, подсказка про пол
+function updateProfitDisplay() {
+    const amount = getAmount();
+    const ladder = ladderProfit(amount);
+    const eff = effectiveProfit(amount);
+    const { mode, deltaPct } = profitLabel(ladder, eff);
+    const modeWord = mode === 'discount' ? 'Скидка' : mode === 'markup' ? 'Наценка' : 'Стандарт';
+    const label = document.getElementById('profitCurrentLabel');
+    if (label) label.textContent = mode === 'standard' ? `Стандарт ${ladder}%` : `${modeWord} ${Math.abs(deltaPct)}%`;
+    let matchedPreset = false;
+    document.querySelectorAll('#commissionLevelSection .commission-btn[data-profit]').forEach(btn => {
+        const btnProfit = parseFloat(btn.dataset.profit);
+        const isMatch = !isNaN(btnProfit) && Math.abs(btnProfit - eff) < 0.001;
+        if (isMatch) matchedPreset = true;
+        btn.classList.toggle('active', isMatch);
+    });
+    // «Своё» подсвечивается, когда прибыль задана вручную и не совпала ни с одним пресетом
+    // (иначе подсветка пропадала при вводе значения — найдено на QA-сравнении с макетом Карима 2026-10-29).
+    const customBtn = document.getElementById('customProfitBtn');
+    if (customBtn) customBtn.classList.toggle('active', state.applyDiscount && !matchedPreset);
+    const floorHint = document.getElementById('profitFloorHint');
+    if (floorHint) {
+        floorHint.textContent = `Ниже ${String(PROFIT_FLOOR).replace('.', ',')}% — только с согласованием менеджера`;
+        floorHint.style.display = eff <= PROFIT_FLOOR + 0.001 ? '' : 'none';
     }
 }
 
@@ -538,18 +603,23 @@ function onCustomProfitInput(el) {
         showToast(`Ниже ${PROFIT_FLOOR}% без согласования нельзя`, 'error');
         return;
     }
+    if (state.dealCategory === 'property_auto' && capped > 5) {
+        hideResults();
+        showToast(`Для оплаты авто укажите прибыль от ${String(PROFIT_FLOOR).replace('.', ',')} до 5 %`, 'error');
+        return;
+    }
 
     state.profitMargin = capped;
-    const ladderNow = ladderProfit(getAmount());
-    if (state.profitMargin < ladderNow) {
-        const d = (ladderNow - state.profitMargin).toFixed(2).replace(/\.?0+$/, '');
-        showToast(`Скидка ${d} п.п. ниже стандарта (${ladderNow}%) — согласовано?`, 'info', 4000);
-    }
+    state.applyDiscount = true;
+    // Предупреждение «ниже стандарта — согласовано?» дублировало #marginWarning в блоке
+    // результата (Карим, 2026-10-29) — отдельного всплывающего тоста тут больше нет.
     console.log(`🎯 Кастомная маржа: ${state.profitMargin}%`);
+    updateProfitDisplay();
 
     const amount = getAmount();
     if (amount > 0) {
-        calculate();
+        if (document.body.classList.contains('calc-b2')) hideResults();
+        else calculate();
     } else {
         hideResults();
     }
@@ -720,6 +790,19 @@ function updateRatesDisplay() {
     // Время обновления
     const now = new Date();
     document.getElementById('updateTime').textContent = now.toLocaleTimeString('ru-RU');
+    updateB2RateAge();
+    updateRatesSummary();
+}
+
+// Свёрнутая плашка курсов на мобильном — одна строка с уже отрисованными значениями.
+function updateRatesSummary() {
+    const summary = document.getElementById('ratesSummaryText');
+    if (!summary) return;
+    const usdtThbLabel = document.getElementById('usdtThbLabel');
+    const usdtThbVal = document.getElementById('usdtThbRate');
+    const rubUsdtVal = document.getElementById('rubUsdtRate');
+    const src = usdtThbLabel ? usdtThbLabel.textContent.replace(/^USDT-THB\s*\(([^)]+)\)$/, '$1') : '';
+    summary.textContent = `Курс: ${src ? src + ' ' : ''}${usdtThbVal ? usdtThbVal.textContent : '—'} · RUB-USDT ${rubUsdtVal ? rubUsdtVal.textContent : '—'}`;
 }
 
 // Обновление UI полей кастомных курсов (пустое / заполненное)
@@ -843,6 +926,8 @@ async function calculate() {
         return;
     }
 
+    if (isCustomPropTariff() && !readCustomPropTariff()) return;
+
     // Блокируем расчёт в режиме брокера/кастома без курса RUB-USDT (только для RUB-сценариев)
     if ((state.method === 'broker' || state.method === 'custom') && !state.customRubUsdt && scenarioNeedsRubRate(state.scenario)) {
         const customInput = document.getElementById('customRubUsdt');
@@ -897,6 +982,21 @@ async function calculate() {
     calculateBtn.disabled = true;
 
     try {
+        if (state.dealCategory === 'property_auto') {
+            const response = await fetch(`${CONFIG.API_URL}/calculate`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({deal_category: 'property_auto', scenario: 'rub-to-usdt',
+                    direction: state.direction, amount, custom_rub_usdt: state.customRubUsdt,
+                    tariff: state.propTariff,
+                    profit_margin: effectiveProfit(amount)})
+            });
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.error || 'Не удалось рассчитать оплату авто');
+            if (thisCalcVersion !== state._calcVersion) return;
+            displayResult(result);
+            resultsSection.style.display = 'block';
+            return;
+        }
         // Если курсы устарели (более 1 минуты), обновляем их принудительно перед расчетом
         // Но НЕ обновляем, если точный курс зафиксирован
         if (!state.preciseRateLocked) {
@@ -1003,6 +1103,12 @@ async function calculate() {
     } catch (error) {
         console.error('Calculation error:', error);
         if (thisCalcVersion !== state._calcVersion) return;
+        if (state.dealCategory === 'property_auto') {
+            state.lastResult = null;
+            resultsSection.style.display = 'none';
+            showToast(error.message || 'Не удалось рассчитать оплату авто', 'error');
+            return;
+        }
         // Фоллбэк на локальный расчет
         const result = calculateLocal(amount);
         displayResult(result);
@@ -1401,16 +1507,17 @@ function applyPropertyFee(result) {
     result.__prop_fee_applied = false;
     if (state.dealCategory !== 'property_freehold') return result;
 
-    const pct = parseFloat(document.getElementById('propFeePercent')?.value) || 0;
-    const fixed = parseFloat(document.getElementById('propFeeFixed')?.value) || 0;
-    if (pct <= 0 && fixed <= 0) return result;
+    const custom = isCustomPropTariff();
+    const tariff = custom ? readCustomPropTariff() : PROP_TARIFFS[state.propTariff];
+    if (!tariff) return null;
+    const {percent: pct, fixed} = tariff;
     const p = pct / 100;
 
     const s = result.scenario;
     // Расход задан в USD — для THB-сценариев переводим его через курс USDT/THB
     const outIsThb = (s === 'RUB → THB' || s === 'THB ← RUB' || s === 'USDT → THB');
     const usdtThb = result.usdt_thb_rate || state.rates.usdt_thb || 0;
-    if (outIsThb && !usdtThb) return result;   // без курса пересчитать нечем
+    if (outIsThb && !usdtThb) return custom ? null : result;
 
     // Курс USDT→THB считается как out/in, остальные — как in/out: направление,
     // в которое «ухудшение» двигает число, у них противоположное
@@ -1423,13 +1530,13 @@ function applyPropertyFee(result) {
         // Клиент хочет, чтобы застройщик получил X — отправить надо X·(1+p) + F,
         // значит клиент вносит больше в той же пропорции
         const target = getAmount();
-        if (!target) return result;
+        if (!target) return custom ? null : result;
         const targetUsdt = outIsThb ? target / usdtThb : target;
         const sendUsdt = targetUsdt * (1 + p) + fixed;
-        if (!(sendUsdt > 0)) return result;
+        if (!(sendUsdt > 0)) return custom ? null : result;
         const feeUsdt = sendUsdt - targetUsdt;
         const k = sendUsdt / targetUsdt;
-        if (!isFinite(k) || k <= 0) return result;
+        if (!Number.isFinite(k) || k <= 0) return custom ? null : result;
 
         ['rub_to_pay', 'thb_to_pay', 'usdt_to_pay', 'rub_amount'].forEach(f => {
             if (typeof result[f] === 'number') result[f] *= k;
@@ -1444,11 +1551,11 @@ function applyPropertyFee(result) {
         // Клиент вносит сумму — она и есть отправляемая, комиссия сидит внутри неё
         const outField = ['usdt_received', 'thb_received', 'usdt_amount']
             .find(f => typeof result[f] === 'number' && result[f] > 0);
-        if (!outField) return result;
+        if (!outField) return custom ? null : result;
         const out = result[outField];
         const sendUsdt = outIsThb ? out / usdtThb : out;
         const arriveUsdt = (sendUsdt - fixed) / (1 + p);
-        if (!(arriveUsdt > 0)) return result;   // расход съел всю сумму — не калечим расчёт
+        if (!(arriveUsdt > 0)) return custom ? null : result;
         const k = arriveUsdt / sendUsdt;
 
         result[outField] = out * k;
@@ -1461,6 +1568,7 @@ function applyPropertyFee(result) {
     }
 
     result.__prop_fee_applied = true;
+    result.__prop_custom_tariff = custom;
     result.__prop_fee_pct = pct;
     result.__prop_fee_fixed = fixed;
     return result;
@@ -1472,10 +1580,24 @@ function displayResult(result) {
     applyPartnerMarkup(result);
     // Расход на перевод — последним: комиссия банка снимается с суммы, которая
     // реально уходит, а она уже уменьшена на наценку партнёра
-    applyPropertyFee(result);
+    if (!applyPropertyFee(result)) {
+        hideResults(false);
+        document.getElementById('propFeeHint').textContent =
+            'Проверьте, что сумма перевода покрывает комиссию и указан курс.';
+        return;
+    }
+    if (result.__prop_custom_tariff) document.getElementById('propFeeHint').textContent = '';
 
     // Сохраняем результат в state для дальнейшего использования (например, создания платежа)
     state.lastResult = result;
+    if (document.body.classList.contains('calc-b2')) {
+        document.getElementById('createDealBtn').disabled = false;
+        const copy = document.getElementById('b2CopyClient');
+        if (copy) copy.disabled = false;
+        document.body.classList.add('b2-result-ready');
+        const resultMain = document.querySelector('.result-main');
+        if (resultMain) resultMain.classList.remove('is-empty');
+    }
     
     // Показываем/скрываем секцию создания платежа (только для Doverka)
     const paymentSection = document.getElementById('paymentActionSection');
@@ -1557,12 +1679,20 @@ function displayResult(result) {
         rateValue = result.final_rate ? result.final_rate.toFixed(4) : '0';
         rateCurrency = '';
     }
+    if (state.dealCategory === 'property_auto') {
+        resultValue = isTarget ? `${formatNumber(result.rub_to_pay)} ₽`
+            : `${formatNumber(result.invoice_usd)} USD`;
+        rateValue = result.final_rate.toFixed(6);
+        rateCurrency = '₽/$';
+    }
     
     // При фрихолде итог — это то, что дойдёт до застройщика, а не «клиент получит»:
     // разница как раз и есть предмет вопроса «а сколько реально уйдёт»
     const resLabel = document.getElementById('resultLabel');
     if (resLabel) {
-        if (result.__prop_fee_applied && result.direction !== 'target') {
+        if (state.dealCategory === 'property_auto') {
+            resLabel.textContent = isTarget ? 'Клиент должен внести:' : 'Продавец получит:';
+        } else if (result.__prop_fee_applied && result.direction !== 'target') {
             resLabel.textContent = 'Дойдёт застройщику:';
         } else if (resLabel.textContent === 'Дойдёт застройщику:') {
             resLabel.textContent = 'Клиент получит:';
@@ -1570,7 +1700,7 @@ function displayResult(result) {
     }
 
     document.getElementById('resultValue').textContent = resultValue;
-    document.getElementById('finalRate').textContent = rateValue;
+    document.getElementById('finalRate').textContent = String(rateValue).replace('.', ',');
     document.getElementById('rateCurrency').textContent = rateCurrency;
 
     // Показываем процент прибыли
@@ -1620,19 +1750,12 @@ function displayResult(result) {
     let inputCurrency = document.getElementById('inputCurrency').textContent;
     let outputAmount = resultValue;
 
-    // Форматирование без лишних .00 для копирования клиенту
-    const fmtClean = (n) => { const s = n % 1 === 0 ? n.toFixed(0) : n.toFixed(2); return s.replace(/\B(?=(\d{3})+(?!\d))/g, ' '); };
-    const cleanOutput = outputAmount.replace(/\.00(?=\s)/, '').replace(/\.00$/, '');
-
-    // Определяем текст для клиента
-    let clientMsg;
-    if (isTarget) {
-        clientMsg = `Отдаёте: ${cleanOutput}\nПолучаете: ${fmtClean(inputAmount)} ${inputCurrency}\nКурс: ${rateValue} ${rateCurrency}`;
-    } else {
-        clientMsg = result.__prop_fee_applied
-            ? `Отдаёте: ${fmtClean(inputAmount)} ${inputCurrency}\nЗастройщик получит: ${cleanOutput}\nКурс: ${rateValue} ${rateCurrency}`
-            : `Отдаёте: ${fmtClean(inputAmount)} ${inputCurrency}\nПолучаете: ${cleanOutput}\nКурс: ${rateValue} ${rateCurrency}`;
-    }
+    const clientMsg = state.dealCategory === 'property_auto'
+        ? `Клиент платит: ${formatNumber(result.rub_paid)} ₽\nПродавец получает: ${formatNumber(result.invoice_usd)} USD\nКурс: ${rateValue} ₽/$`
+        : buildClientMessage({
+        isTarget, propFeeApplied: result.__prop_fee_applied,
+        inputAmount, inputCurrency, outputAmount, rateValue, rateCurrency,
+    });
 
     copyText.textContent = clientMsg;
     copyBlock.style.display = '';
@@ -1644,6 +1767,13 @@ function displayResult(result) {
 // Отображение детальных шагов расчета
 function displayDetailedSteps(result) {
     const detailsContent = document.getElementById('detailsContent');
+    if (state.dealCategory === 'property_auto') {
+        detailsContent.innerHTML = `<div class="detail-section"><h4>Оплата авто</h4>
+            <div class="detail-row"><span class="detail-label">Продавцу:</span><span class="detail-value">${formatNumber(result.invoice_usd)} USD</span></div>
+            <div class="detail-row"><span class="detail-label">В IPPS с тарифом:</span><span class="detail-value">${formatNumber(result.ipps_send_usdt)} USDT</span></div>
+            <div class="detail-row"><span class="detail-label">Клиент платит:</span><span class="detail-value">${formatNumber(result.rub_paid)} ₽</span></div></div>`;
+        return;
+    }
     let html = '';
     
     // Индикатор уровня комиссий вверху (для Broker и Doverka)
@@ -1653,7 +1783,6 @@ function displayDetailedSteps(result) {
     if (levelName !== '-') {
         const levelClass = profitPercent >= 5 ? 'level-high' : profitPercent >= 4 ? 'level-medium' : 'level-low';
         html += `<div class="commission-indicator ${levelClass}">`;
-        html += `<span class="indicator-icon">📊</span>`;
         html += `<div class="indicator-content">`;
         html += `<div class="indicator-title">${levelName}</div>`;
         html += `<div class="indicator-subtitle">% прибыли: ${profitPercent.toFixed(2)}%</div>`;
@@ -2006,16 +2135,43 @@ async function createPayment() {
 
 // Функция для копирования ссылки в буфер обмена
 // Копирование сообщения для клиента
+// Текст для клиента — только сумма/курс/направление, никогда прибыль/скидка/наценка.
+function buildClientMessage({ isTarget, propFeeApplied, inputAmount, inputCurrency, outputAmount, rateValue, rateCurrency }) {
+    const fmtClean = (n) => { const s = n % 1 === 0 ? n.toFixed(0) : n.toFixed(2); return s.replace(/\B(?=(\d{3})+(?!\d))/g, ' '); };
+    const cleanOutput = String(outputAmount).replace(/\.00(?=\s)/, '').replace(/\.00$/, '');
+    if (isTarget) {
+        return `Отдаёте: ${cleanOutput}\nПолучаете: ${fmtClean(inputAmount)} ${inputCurrency}\nКурс: ${rateValue} ${rateCurrency}`;
+    }
+    return propFeeApplied
+        ? `Отдаёте: ${fmtClean(inputAmount)} ${inputCurrency}\nЗастройщик получит: ${cleanOutput}\nКурс: ${rateValue} ${rateCurrency}`
+        : `Отдаёте: ${fmtClean(inputAmount)} ${inputCurrency}\nПолучаете: ${cleanOutput}\nКурс: ${rateValue} ${rateCurrency}`;
+}
+
 function copyClientMessage() {
     const text = document.getElementById('clientCopyText').textContent;
     if (!text) return;
 
     navigator.clipboard.writeText(text).then(() => {
-        const btn = document.getElementById('copyClientBtn');
-        const original = btn.innerHTML;
-        btn.innerHTML = '✅ Скопировано!';
-        btn.style.background = '#059669';
-        setTimeout(() => { btn.innerHTML = original; btn.style.background = '#4F46E5'; }, 2000);
+        const b2Btn = document.getElementById('b2CopyClient');
+        if (b2Btn) {
+            const original = b2Btn.textContent;
+            b2Btn.textContent = '✅ Скопировано';
+            setTimeout(() => { b2Btn.textContent = original; }, 2000);
+        }
+        const preview = document.getElementById('b2CopyPreview');
+        if (preview) {
+            preview.textContent = text;
+            preview.style.display = '';
+            clearTimeout(preview._hideTimer);
+            preview._hideTimer = setTimeout(() => { preview.style.display = 'none'; }, 4000);
+        }
+        const legacyBtn = document.getElementById('copyClientBtn');
+        if (legacyBtn) {
+            const original = legacyBtn.innerHTML;
+            legacyBtn.innerHTML = '✅ Скопировано!';
+            legacyBtn.style.background = '#059669';
+            setTimeout(() => { legacyBtn.innerHTML = original; legacyBtn.style.background = '#4F46E5'; }, 2000);
+        }
     }).catch(() => {
         const ta = document.createElement('textarea');
         ta.value = text;
@@ -2147,11 +2303,13 @@ function createDealFromCalc() {
 
     const r = state.lastResult;
     const comment = document.getElementById('paymentComment')?.value?.trim() || '';
+    const kindAndPayin = calcDealKindAndPayin(state.dealCategory, state.method);
 
     // Маппинг данных калькулятора → поля CRM
     const dealData = {
         // Калькулятор знает оплату клиента до банковской комиссии, а CRM для
         // новой сделки просит фактически зачисленную сумму. Передаём справку.
+        payin_amount_rub: null,
         payin_gross_reference_rub: r.rub_paid || r.rub_to_pay || null,
         payin_amount_usdt: r.incoming_usdt || r.usdt_amount || null,
         payin_rate_rub_usdt: r.rub_usdt_rate || null,
@@ -2159,10 +2317,8 @@ function createDealFromCalc() {
         profit_usdt: r.profit_usdt || null,
         profit_percent: r.profit_percent_actual || r.profit_percent || null,
         exchange_rate: r.final_rate || null,
-        // Сценарий «doverka» в калькуляторе давно означает просто СБП (провайдер
-        // Доверка не используется с мая) → сделка создаётся живым методом sber_wl,
-        // иначе она падала в архивный spp_doverka и путала отчёты
-        payin_method: state.method === 'doverka' ? 'sber_wl' : 'crypto_direct',
+        deal_kind: kindAndPayin.deal_kind,
+        payin_method: kindAndPayin.payin_method,
         notes: comment,
         scenario: r.scenario || '',
         method: state.method,
@@ -2171,6 +2327,11 @@ function createDealFromCalc() {
         incoming_usdt: r.incoming_usdt || null,
         bonus_usdt: r.bonus_usdt || null
     };
+
+    if (r.__prop_custom_tariff) {
+        dealData.transfer_fee_percent = r.__prop_fee_pct;
+        dealData.transfer_fee_fixed_usd = r.__prop_fee_fixed;
+    }
 
     // Партнер
     const hasPartner = document.getElementById('hasPartner')?.checked;
@@ -2196,7 +2357,8 @@ function createDealFromCalc() {
 // ==========================================
 
 // Расширяем состояние
-state.dealCategory = 'exchange';          // exchange | property_freehold | property_leasehold | other
+state.dealCategory = 'exchange';          // exchange | property_freehold | property_leasehold | property_auto | other
+state.propTariff = 'bank';
 state.rateSource = 'bitazza';             // bitazza | binance
 state.propProfit = 2.0;                   // прибыль Grusha по недвижимости, %
 
@@ -2206,9 +2368,37 @@ state.propProfit = 2.0;                   // прибыль Grusha по недв
 //   • фрихолд — доп-расход на перевод застройщику (комиссия % + фикс $)
 //   • другое  — поле «что за сделка»
 //   • лизхолд / обмен — без доп-полей, обычный обмен
+// Хэндовер в CRM (createDealFromCalc) должен передавать то, что РЕАЛЬНО выбрал
+// пользователь, а не захардкоженный exchange — иначе гейт непроверенных флоу
+// (app.py VERIFIED_FLOWS) блокирует даже проверенные связки (фрихолд/лизхолд
+// по реквизитам). У недвижимости в калькуляторе нет отдельного выбора способа
+// оплаты клиента (method — это источник КУРСА: СБП/брокер/свой курс, не способ
+// оплаты) — по факту фрихолд/лизхолд всегда идут через банковские реквизиты
+// (IPPS/Flow Sole), поэтому для этих категорий payin_method фиксирован.
+function calcDealKindAndPayin(dealCategory, method) {
+    const DEAL_KIND_BY_CATEGORY = {
+        property_freehold: 'mf_freehold',
+        property_leasehold: 'mf_realty',
+        property_auto: 'mf_auto',
+        other: 'custom',
+        exchange: 'exchange'
+    };
+    const deal_kind = DEAL_KIND_BY_CATEGORY[dealCategory] || 'exchange';
+    if (deal_kind === 'mf_freehold' || deal_kind === 'mf_realty' || deal_kind === 'mf_auto') {
+        return { deal_kind, payin_method: 'sber_reqs' };
+    }
+    // Сценарий «doverka» в калькуляторе давно означает просто СБП (провайдер
+    // Доверка не используется с мая) → сделка создаётся живым методом sber_wl,
+    // иначе она падала в архивный spp_doverka и путала отчёты
+    return { deal_kind, payin_method: method === 'doverka' ? 'sber_wl' : 'crypto_direct' };
+}
+
 function switchDealCategory(cat) {
     state.dealCategory = cat;
     try { localStorage.setItem('grusha_deal_category', cat); } catch(e) {}
+    document.body.classList.toggle('calc-auto', cat === 'property_auto');
+    document.getElementById('calculatorSubtitle').textContent = cat === 'property_auto'
+        ? 'Рубли → USD продавцу' : 'Рубли · баты · USDT';
 
     document.querySelectorAll('.dealtype-btn').forEach(btn => {
         btn.classList.toggle('active', btn.dataset.category === cat);
@@ -2220,13 +2410,22 @@ function switchDealCategory(cat) {
     const noteWrap = document.getElementById('propertyNoteWrapper');
     const badge = document.getElementById('propertyBadge');
 
-    if (cat === 'property_freehold') {
+    if (cat === 'property_freehold' || cat === 'property_auto') {
         extra.style.display = 'block';
         feeWrap.style.display = 'block';
         noteWrap.style.display = 'none';
-        badge.textContent = '🏠 Фрихолд — доп-расход на перевод застройщику';
-        document.getElementById('propFeePercent').value = '0.8';
-        document.getElementById('propFeeFixed').value = '50';
+        badge.textContent = cat === 'property_auto' ? 'Оплата авто · перевод продавцу' : '🏠 Фрихолд — доп-расход на перевод застройщику';
+        document.getElementById('propInvoiceTitle').textContent = cat === 'property_auto' ? 'Счёт продавца' : 'Инвойс застройщика';
+        document.getElementById('propInvUsdHint').textContent = cat === 'property_auto' ? 'Сумма, которую получит продавец в USD.' : 'Сумма, которую должен получить застройщик.';
+        document.getElementById('propInvCurChips').style.display = cat === 'property_auto' ? 'none' : '';
+        document.getElementById('propTariffLabel').textContent = cat === 'property_auto' ? 'Тариф IPPS' : 'Тариф перевода';
+        // Тариф по умолчанию — банк; инвойс — в USD (обычный ввод суммы ниже)
+        setPropTariff('bank');
+        setPropInvoiceCur('usd');
+        if (cat === 'property_auto') {
+            switchMethod('custom');
+            switchScenario('rub-to-usdt');
+        }
     } else if (cat === 'other') {
         extra.style.display = 'block';
         feeWrap.style.display = 'none';
@@ -2236,6 +2435,8 @@ function switchDealCategory(cat) {
         // exchange / property_leasehold — обычный обмен, без доп-полей
         extra.style.display = 'none';
     }
+    updateScenarioUI();
+    updateProfitDisplay();
     hideResults();
 }
 
@@ -2256,6 +2457,312 @@ function setRateSource(src) {
         if (saved !== 'exchange') switchDealCategory(saved);
     });
 })();
+
+// ==========================================
+// ФРИХОЛД: ТАРИФ IPPS И ИНВОЙС В ฿
+// ==========================================
+const PROP_TARIFFS = {
+    bank: { percent: 0.8, fixed: 50 },
+    soft: { percent: 1.5, fixed: 50 }
+};
+const PROP_REFERENCE_BANKS = ['Kasikornbank', 'SCB', 'Bangkok Bank'];
+const PROP_FX_BANKS = PROP_REFERENCE_BANKS.concat(['Другой банк', 'Не знаю']);
+const PROP_FX_CUSTOM = 'custom';
+const propInv = {
+    cur: 'usd',          // usd | thb
+    bank: null,          // название банка из PROP_FX_BANKS или 'custom'
+    status: 'idle',      // idle | loading | ok | auth (401) | none (эндпоинта нет — прод)
+    rates: null, updatedAt: null, stale: false, loadedAt: 0, lastAttemptAt: 0, loading: null,
+    rateLimited: false, refreshing: false, refreshFailed: false, disabledBanks: [],
+    wantBank: null, wantRate: null, dealRate: null   // что пришло в ссылке из сделки
+};
+
+function isCustomPropTariff() {
+    return state.dealCategory === 'property_freehold' && state.propTariff === 'custom';
+}
+
+function readCustomPropTariff() {
+    const percentText = document.getElementById('propFeePercent').value.trim().replace(',', '.');
+    const fixedText = document.getElementById('propFeeFixed').value.trim().replace(',', '.');
+    if (!/^(?:\d+(?:\.\d+)?|\.\d+)$/.test(percentText) ||
+        !/^(?:\d+(?:\.\d{1,2})?|\.\d{1,2})$/.test(fixedText)) return null;
+    const percent = Number(percentText);
+    const fixed = Number(fixedText);
+    if (percent > 100 || !Number.isSafeInteger(Math.round(fixed * 100))) return null;
+    return {percent, fixed};
+}
+
+function onPropTariffInput() {
+    document.getElementById('propFeeHint').textContent = isCustomPropTariff() && !readCustomPropTariff()
+        ? 'Укажите процент от 0 до 100 и фиксированную сумму в USD.'
+        : '';
+    hideResults();
+}
+
+function setPropTariff(key) {
+    if (!Object.hasOwn(PROP_TARIFFS, key) && !(key === 'custom' && state.dealCategory === 'property_freehold')) return;
+    state.propTariff = key;
+    document.getElementById('propCustomTariff').hidden = !isCustomPropTariff();
+    document.querySelectorAll('#propTariffChips .commission-btn').forEach(btn => {
+        const active = btn.dataset.tariff === key;
+        btn.classList.toggle('active', active);
+        btn.setAttribute('aria-pressed', String(active));
+    });
+    onPropTariffInput();
+}
+
+// Разбор суммы с разделителями тысяч — как parseFlexibleAmount в задачнике:
+// «4,500,000», «4 500 000», «4.500.000» → 4500000. Разделитель, встретившийся
+// больше раза, — тысячи; один раз — десятичный, только если после него ровно
+// 2 цифры. Оба вида — десятичный тот, что последний. null, если не число или ≤ 0.
+function parseFlexibleAmount(raw) {
+    let str = String(raw == null ? '' : raw).trim();
+    if (!str) return null;
+    str = str.replace(/[\s ]/g, '');
+    if (!/^[0-9.,]+$/.test(str)) return null;
+    const commas = (str.match(/,/g) || []).length;
+    const dots = (str.match(/\./g) || []).length;
+    let decimalSep = null;
+    if (commas && dots) {
+        decimalSep = str.lastIndexOf(',') > str.lastIndexOf('.') ? ',' : '.';
+    } else if (commas === 1 || dots === 1) {
+        const sep = commas === 1 ? ',' : '.';
+        if (str.length - str.lastIndexOf(sep) - 1 === 2) decimalSep = sep;
+    }
+    let intPart = str, fracPart = '';
+    if (decimalSep) {
+        const idx = str.lastIndexOf(decimalSep);
+        intPart = str.slice(0, idx);
+        fracPart = str.slice(idx + 1);
+    }
+    intPart = intPart.replace(/[.,]/g, '');
+    if (!intPart || !/^\d+$/.test(intPart)) return null;
+    if (fracPart && !/^\d+$/.test(fracPart)) return null;
+    const v = Number(intPart + (fracPart ? '.' + fracPart : ''));
+    return Number.isFinite(v) && v > 0 ? v : null;
+}
+
+// Для «Другой банк» берём среднее, для «Не знаю» — минимум активных банков.
+function propBankRate(rates, bank) {
+    if (!rates || !bank) return null;
+    if (bank === 'Другой банк' || bank === 'Не знаю') {
+        const banks = PROP_REFERENCE_BANKS.filter(b => !propInv.disabledBanks.includes(b));
+        const vals = banks.map(b => rates[b]).filter(v => typeof v === 'number' && v > 0);
+        if (!vals.length || vals.length < banks.length) return null;
+        return bank === 'Не знаю' ? Math.min(...vals) : vals.reduce((a, b) => a + b, 0) / vals.length;
+    }
+    const v = rates[bank];
+    return (typeof v === 'number' && v > 0) ? v : null;
+}
+
+function propFxRate() {
+    if (propInv.bank === PROP_FX_CUSTOM) {
+        const v = parseFloat(String(document.getElementById('propFxCustom').value).replace(',', '.'));
+        return v > 0 ? v : null;
+    }
+    if (!propInv.bank || propInv.status !== 'ok') return null;
+    return propBankRate(propInv.rates, propInv.bank);
+}
+
+function propInvoiceUsd() {
+    const thb = parseFlexibleAmount(document.getElementById('propInvoiceThb').value);
+    const rate = propFxRate();
+    return (thb && rate) ? Math.round(thb / rate * 100) / 100 : null;
+}
+
+function setPropInvoiceCur(cur, silent) {
+    propInv.cur = cur === 'thb' ? 'thb' : 'usd';
+    document.querySelectorAll('#propInvCurChips .commission-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.cur === propInv.cur);
+    });
+    const isThb = propInv.cur === 'thb';
+    document.getElementById('propInvThbBox').style.display = isThb ? 'block' : 'none';
+    document.getElementById('propInvUsdHint').style.display = isThb ? 'none' : 'block';
+    if (isThb) {
+        propLoadBankRates();
+        renderPropFx();
+        if (!silent) onPropInvoiceInput();
+    } else {
+        hideResults();
+    }
+}
+
+function setPropFxBank(bank) {
+    propInv.bank = bank;
+    renderPropFx();
+    onPropInvoiceInput();
+}
+
+// Курсы банков — тот же эндпоинт, что у задачника. На проде его нет (404): там
+// выбор банков скрыт, остаётся «Свой курс». Без логина на стенде — 401, то же самое.
+function propLoadBankRates(force = false) {
+    if (!force && propInv.status === 'ok' && Date.now() - propInv.loadedAt < 5 * 60000) return propInv.loading;
+    if (propInv.loading) return propInv.loading;
+    propInv.lastAttemptAt = Date.now();
+    propInv.rateLimited = false;
+    propInv.refreshFailed = false;
+    propInv.refreshing = force;
+    if (propInv.status !== 'ok') propInv.status = 'loading';
+    propInv.loading = (async () => {
+        const options = { credentials: 'same-origin', cache: 'no-store' };
+        const ratesUrl = '/api/stand/thb-bank-rates';
+        let response = await fetch(ratesUrl + (force ? '?fresh=1' : '?reload=1'), options);
+        if (force && response.status === 429) {
+            propInv.rateLimited = true;
+            response = await fetch(ratesUrl + '?reload=1', options);
+        }
+        if (response.status === 401) { propInv.status = 'auth'; return; }
+        if (!response.ok) throw new Error('bank rates request failed');
+        let payload = await response.json();
+        if (force && !propInv.rateLimited) {
+            if (payload.refresh_pending && payload.request_id) {
+                await propWaitForBankRatesRefresh(payload.request_id, options);
+                response = await fetch(ratesUrl + '?reload=1', options);
+                if (!response.ok) throw new Error('bank rates reload failed');
+                payload = await response.json();
+            } else {
+                propInv.refreshFailed = true;
+            }
+        }
+        if (!payload.success || !payload.rates) throw new Error('bank rates unavailable');
+        propInv.status = 'ok';
+        propInv.rates = payload.rates;
+        propInv.updatedAt = payload.updated_at || null;
+        propInv.stale = !!payload.stale;
+        propInv.disabledBanks = payload.disabled || [];
+        propInv.loadedAt = Date.now();
+    })()
+        .catch(() => {
+            if (force) propInv.refreshFailed = true;
+            if (propInv.status !== 'ok') propInv.status = 'none';
+        })
+        .finally(() => {
+            propInv.loading = null;
+            propInv.refreshing = false;
+            propResolveWanted();
+            renderPropFx();
+            onPropInvoiceInput();
+        });
+    renderPropFx();
+    return propInv.loading;
+}
+
+async function propWaitForBankRatesRefresh(requestId, options) {
+    const statusUrl = '/api/stand/thb-bank-rates-status?request_id=' + encodeURIComponent(requestId);
+    const deadline = Date.now() + 90000;
+    while (Date.now() < deadline) {
+        await new Promise(resolve => setTimeout(resolve, 5000));
+        const response = await fetch(statusUrl, options);
+        if (response.ok && (await response.json()).done) return;
+    }
+    throw new Error('bank rates refresh timed out');
+}
+
+// Банк/курс из ссылки сделки: есть курсы — выбираем банк, нет — «Свой курс» с курсом из сделки
+function propResolveWanted() {
+    if (!propInv.wantBank && !propInv.wantRate) return;
+    if (propInv.status === 'loading' || propInv.status === 'idle') return;
+    const bank = propInv.wantBank, rate = propInv.wantRate;
+    propInv.wantBank = null; propInv.wantRate = null;
+    if (bank && bank !== PROP_FX_CUSTOM && propInv.status === 'ok' && propBankRate(propInv.rates, bank)) {
+        propInv.bank = bank;
+        return;
+    }
+    if (rate) {
+        propInv.bank = PROP_FX_CUSTOM;
+        document.getElementById('propFxCustom').value = rate;
+    }
+}
+
+function renderPropFx() {
+    const chips = document.getElementById('propFxChips');
+    if (!chips) return;
+    const banks = propInv.status === 'ok' ? PROP_FX_BANKS.filter(b => !propInv.disabledBanks.includes(b)) : [];
+    chips.innerHTML = banks.concat([PROP_FX_CUSTOM]).map(b =>
+        `<button type="button" class="commission-btn${propInv.bank === b ? ' active' : ''}" data-fxbank="${b}">${b === PROP_FX_CUSTOM ? 'Свой курс' : b}</button>`
+    ).join('');
+    chips.querySelectorAll('[data-fxbank]').forEach(btn => {
+        btn.onclick = () => setPropFxBank(btn.dataset.fxbank);
+    });
+    document.getElementById('propFxCustomBox').style.display = propInv.bank === PROP_FX_CUSTOM ? 'block' : 'none';
+
+    let hint = '';
+    if (propInv.status === 'loading') {
+        hint = 'Загружаем курсы банков…';
+    } else if (propInv.status === 'auth') {
+        hint = 'Курсы банков доступны только после входа — введите «Свой курс» вручную.';
+    } else if (propInv.status === 'none') {
+        hint = 'Курсы банков здесь недоступны — введите «Свой курс» вручную.';
+    } else if (propInv.status === 'ok') {
+        const at = propInv.updatedAt ? new Date(propInv.updatedAt).toLocaleString('ru-RU') : '—';
+        const minutes = Math.floor((Date.now() - propInv.loadedAt) / 60000);
+        const sourceAge = propInv.updatedAt ? Date.now() - new Date(propInv.updatedAt).getTime() : NaN;
+        const stale = propInv.stale || (Number.isFinite(sourceAge) && sourceAge > 26 * 60 * 60 * 1000);
+        hint = 'Курсы TT Buying на ' + at + ' · обновлено ' + (minutes < 1 ? 'только что' : minutes + ' мин назад') +
+            (stale ? ' — данные устарели, сверьте с банком.' : '.');
+        if (propInv.rateLimited) hint += ' Повторное обновление доступно через минуту.';
+        if (propInv.bank && propInv.bank !== PROP_FX_CUSTOM) {
+            const r = propFxRate();
+            hint += r ? ` ${propInv.bank}: ${r.toFixed(4)} ฿/$.` : ' Для этого банка нет курса — выберите другой или «Свой курс».';
+        }
+    }
+    if (propInv.status === 'ok' && propInv.refreshing) hint += ' Обновляем курсы…';
+    if (propInv.refreshFailed) hint += ' Не удалось обновить курсы. Попробуйте ещё раз.';
+    if (propInv.dealRate) hint += ` В сделке зафиксирован курс ${propInv.dealRate}.`;
+    document.getElementById('propFxHint').textContent = hint;
+    const refresh = document.getElementById('propFxRefresh');
+    if (refresh) refresh.disabled = !!propInv.loading;
+}
+
+// Изменилась сумма ฿ / курс / банк: пересчитываем $ и подставляем в сумму расчёта
+function onPropInvoiceInput() {
+    if (propInv.cur !== 'thb') return;
+    const result = document.getElementById('propInvResult');
+    const thbRaw = document.getElementById('propInvoiceThb').value;
+    const thb = parseFlexibleAmount(thbRaw);
+    const rate = propFxRate();
+    renderPropFx();
+    if (thbRaw.trim() && !thb) {
+        result.textContent = 'Сумма в ฿ не распознана — проверьте формат.';
+        return;
+    }
+    if (!thb) { result.textContent = ''; return; }
+    if (!rate) { result.textContent = '฿ ' + thb.toLocaleString('ru-RU') + ' — выберите курс ฿/$.'; return; }
+    const usd = Math.round(thb / rate * 100) / 100;
+    result.textContent = '฿ ' + thb.toLocaleString('ru-RU') + ' / ' + rate.toFixed(4) + ' = $' +
+        usd.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' к отправке застройщику';
+    propApplyInvoiceToAmount(usd);
+}
+
+// «Хочу получить X USDT»: для СБП это «USDT ← RUB», для брокера/кастома — RUB → USDT, цель
+function propApplyInvoiceToAmount(usd) {
+    if (state.method === 'doverka') {
+        if (state.scenario !== 'usdt-from-rub') switchScenario('usdt-from-rub');
+    } else {
+        if (state.scenario !== 'rub-to-usdt') switchScenario('rub-to-usdt');
+        if (state.direction !== 'target') setDirection('target');
+    }
+    const amountEl = document.getElementById('amount');
+    amountEl.value = usd.toFixed(2);
+    formatInput(amountEl);
+    hideResults();
+}
+
+// Префилл фрихолда из ссылки задачника: tariff, inv_cur, inv_thb, fx_bank, fx_rate
+function applyPropPrefill(q) {
+    const tariff = q.get('tariff');
+    if (tariff) setPropTariff(tariff);
+    if (q.get('inv_cur') !== 'thb') return;
+    propInv.wantBank = q.get('fx_bank') || null;
+    propInv.wantRate = q.get('fx_rate') || null;
+    propInv.dealRate = q.get('fx_rate') || null;
+    const thb = q.get('inv_thb');
+    if (thb) document.getElementById('propInvoiceThb').value = thb;
+    setPropInvoiceCur('thb', true);
+    propResolveWanted();
+    renderPropFx();
+    onPropInvoiceInput();
+}
 
 // --- Префилл из ссылки -------------------------------------------------------
 // CRM открывает калькулятор в новой вкладке с уже проставленными курсами, суммой
@@ -2289,6 +2796,17 @@ function applyPrefill() {
     const elAmt = document.getElementById('amount');
     if (amt && elAmt) elAmt.value = amt;
 
+    // Фрихолд: тариф IPPS, инвойс в ฿, банк и курс ฿/$ из сделки
+    if (cat === 'property_freehold' || cat === 'property_auto') applyPropPrefill(q);
+    if (cat === 'property_auto') {
+        const profit = Number(q.get('profit'));
+        if (Number.isFinite(profit) && profit >= PROFIT_FLOOR && profit <= 5) {
+            state.applyDiscount = true;
+            state.profitMargin = profit;
+            updateProfitDisplay();
+        }
+    }
+
     const deal = q.get('deal');
     if (deal) {
         const cap = document.getElementById('methodCaption');
@@ -2297,6 +2815,163 @@ function applyPrefill() {
     if (typeof hideResults === 'function') hideResults();
 }
 
-// Отдельный слушатель — регистрируется последним, поэтому отрабатывает после
-// восстановления типа сделки из localStorage и перекрывает его параметрами ссылки.
-document.addEventListener('DOMContentLoaded', () => { try { applyPrefill(); } catch (e) { console.warn('prefill', e); } });
+// Вариант Б2: переносим только существующие DOM-узлы. Их ID, обработчики и
+// расчётные функции остаются прежними, поэтому префилл и CRM используют тот же контракт.
+let b2Ready = false;
+let b2CalculateTimer = null;
+function scheduleB2Calculate() {
+    if (!b2Ready) return;
+    clearTimeout(b2CalculateTimer);
+    if (isCustomPropTariff() && !readCustomPropTariff()) return;
+    const amount = getAmount();
+    if (!(amount > 0)) return;
+    if ((state.method === 'broker' || state.method === 'custom') &&
+        scenarioNeedsRubRate(state.scenario) && !state.customRubUsdt) return;
+    if (state.method === 'custom' && scenarioNeedsThbRate(state.scenario) && !state.customUsdtThb) return;
+    b2CalculateTimer = setTimeout(() => { b2CalculateTimer = null; calculate(); }, 600);
+}
+
+function updateB2RateAge() {
+    if (!document.body.classList.contains('calc-b2')) return;
+    const label = document.getElementById('ratesUpdated');
+    const time = document.getElementById('updateTime');
+    if (!label || !time) return;
+    if (!state.lastUpdateTimestamp) {
+        label.firstChild.textContent = 'Курсы загружаются… ';
+        time.textContent = '';
+        return;
+    }
+    const minutes = Math.max(0, Math.floor((Date.now() - state.lastUpdateTimestamp) / 60000));
+    const clock = new Date(state.lastUpdateTimestamp).toLocaleTimeString('ru-RU', {hour:'2-digit', minute:'2-digit'});
+    label.firstChild.textContent = 'Обновлено ';
+    time.textContent = `${minutes ? `${minutes} мин назад` : 'только что'} · ${clock}`;
+}
+
+function updateB2ExtrasMeta() {
+    const meta = document.getElementById('b2ExtrasMeta');
+    if (!meta) return;
+    const partner = document.getElementById('hasPartner').checked;
+    const pct = document.getElementById('partnerPercent').value;
+    meta.textContent = partner ? `Партнёр ${pct}%` : 'Без партнёра';
+}
+
+function updateB2DirectionHint() {
+    const hint = document.getElementById('b2DirectionHint');
+    if (!hint) return;
+    if (state.dealCategory === 'property_auto') {
+        hint.textContent = state.direction === 'target'
+            ? 'Введите сумму, которую получит продавец в USD.'
+            : 'Введите бюджет клиента в рублях.';
+        return;
+    }
+    const sbpHints = {
+        'rub-to-thb': 'Считаем от рублей: вводите, сколько рублей вносит клиент.',
+        'thb-to-rub': 'Считаем от батов: вводите, сколько батов нужно клиенту, покажем рубли к внесению.',
+        'rub-to-usdt': 'Считаем от рублей: вводите, сколько рублей вносит клиент.',
+        'usdt-from-rub': 'Считаем от USDT: вводите, сколько USDT нужно клиенту, покажем рубли к внесению.'
+    };
+    hint.textContent = state.method === 'doverka'
+        ? (sbpHints[state.scenario] || sbpHints['rub-to-thb'])
+        : 'Выберите, что вводите: сумму взноса или желаемую сумму.';
+}
+
+function initB2Layout() {
+    const container = document.querySelector('.container');
+    if (!container || document.querySelector('.b2-layout')) return;
+    const layout = document.createElement('main');
+    layout.className = 'b2-layout';
+    container.querySelector('.header').after(layout);
+    const params = document.createElement('section');
+    params.className = 'b2-params';
+    params.setAttribute('aria-label', 'Параметры сделки');
+    const side = document.createElement('aside');
+    side.className = 'b2-side';
+    side.setAttribute('aria-label', 'Курс и результат');
+    side.innerHTML = '<h2 class="b2-side-title">Курс и результат</h2>';
+    layout.append(params, side);
+    function group(label, ...nodes) {
+        const wrap = document.createElement('div');
+        wrap.className = 'b2-group';
+        if (label) wrap.appendChild(label);
+        nodes.forEach(node => { if (node) wrap.appendChild(node); });
+        params.appendChild(wrap);
+    }
+    // Порядок: Тип сделки → Метод → Направление → Сумма → Наша прибыль (решение Карима 2026-10-29).
+    group(document.getElementById('dealtypeCaption'), container.querySelector('.dealtype-switcher'));
+    group(document.getElementById('methodCaption'), document.getElementById('methodSwitcher'));
+    group(document.getElementById('b2DirectionLabel'), document.getElementById('directionSwitcher'), container.querySelector('.scenarios-grid'), document.getElementById('b2DirectionHint'));
+    params.append(document.getElementById('customRateSection'), document.getElementById('propertyExtra'));
+
+    const exchange = document.getElementById('exchangeCard');
+    const settings = exchange.querySelector('.calculator-settings');
+    const extras = document.createElement('details');
+    extras.className = 'b2-extras';
+    extras.innerHTML = '<summary><span>Партнёр</span><span id="b2ExtrasMeta">Без партнёра</span><span aria-hidden="true">⌄</span></summary>';
+    extras.appendChild(settings);
+    params.appendChild(exchange);
+    params.appendChild(extras);
+
+    const rates = document.getElementById('ratesCard');
+    side.appendChild(rates);
+    const results = document.getElementById('resultsSection');
+    results.style.display = 'block';
+    const bar = document.createElement('div');
+    bar.className = 'b2-result-bar';
+    bar.appendChild(results.querySelector('.result-main'));
+    const copy = document.createElement('button');
+    copy.id = 'b2CopyClient';
+    copy.type = 'button';
+    copy.className = 'b2-copy-primary';
+    copy.textContent = 'Скопировать для клиента';
+    copy.disabled = true;
+    copy.addEventListener('click', copyClientMessage);
+    bar.appendChild(copy);
+    const preview = document.createElement('div');
+    preview.id = 'b2CopyPreview';
+    preview.className = 'b2-copy-preview';
+    preview.style.display = 'none';
+    bar.appendChild(preview);
+    results.prepend(bar);
+    const more = document.createElement('div');
+    more.className = 'b2-side-more';
+    more.appendChild(document.getElementById('createDealSection'));
+    more.appendChild(document.getElementById('paymentActionSection'));
+    more.appendChild(results.querySelector('.comment-section'));
+    more.appendChild(document.getElementById('paymentResult'));
+    more.appendChild(document.getElementById('clientCopyBlock'));
+    more.appendChild(results.querySelector('.details-section'));
+    results.appendChild(more);
+    side.appendChild(results);
+
+    // У старой формы незакрытый wrapper: footer оказался внутри exchangeCard.
+    // Возвращаем его после нового layout, чтобы он не раздувал карточку параметров.
+    const footer = exchange.querySelector('.footer');
+    if (footer) layout.after(footer);
+    document.getElementById('resultValue').textContent = '—';
+    document.getElementById('finalRate').textContent = '—';
+    document.getElementById('createDealBtn').disabled = true;
+    b2Ready = true;
+    updateB2DirectionHint();
+    updateB2ExtrasMeta();
+    updateProfitDisplay();
+    document.querySelector('.result-main')?.classList.add('is-empty');
+    updateB2RateAge();
+    setInterval(updateB2RateAge, 30000);
+    // На мобильном плашка курсов стартует свёрнутой — раскрытие по тапу, без сохранения состояния.
+    if (rates.tagName === 'DETAILS' && window.matchMedia('(max-width: 700px)').matches) rates.open = false;
+    // Существующие inline-обработчики уже меняют state и вызывают hideResults().
+    // Для полей без такого обработчика достаточно поймать input на форме.
+    params.addEventListener('input', event => {
+        if (event.target.id === 'amount' || event.target.id === 'partnerPercent' ||
+            event.target.id === 'customRubUsdt' || event.target.id === 'customUsdtThb' ||
+            event.target.id === 'propFxCustom' || event.target.id === 'propInvoiceThb') {
+            hideResults();
+        }
+        if (event.target.id === 'amount') updateProfitDisplay();
+    });
+    params.addEventListener('change', event => {
+        if (event.target.matches('input[type="checkbox"], input[name="partnerModel"]')) hideResults();
+    });
+    scheduleB2Calculate();
+}
+document.addEventListener('DOMContentLoaded', initB2Layout);

@@ -1,0 +1,320 @@
+FENCED_RUN python=3.11.17 port_pool=47090-47153
+........................................................................ [ 31%]
+...................FFFFFFFFFFFFFFFFFFFF................................. [ 63%]
+...........FF...........FFF........FF..F.F.F............................ [ 95%]
+...........                                                              [100%]
+=================================== FAILURES ===================================
+_ test_over_limit_without_flag_is_400_and_nothing_is_saved[operator-10000.01] __
+tests/test_wallet_roles_crm_qa.py:92: in test_over_limit_without_flag_is_400_and_nothing_is_saved
+    assert r.status_code == 400, r.get_json()
+E   AssertionError: {'error': 'Подтверждение владельца ставит финансист или владелец', 'success': False}
+E   assert 403 == 400
+E    +  where 403 = <WrapperTestResponse streamed [403 FORBIDDEN]>.status_code
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+__ test_over_limit_without_flag_is_400_and_nothing_is_saved[operator-10000.5] __
+tests/test_wallet_roles_crm_qa.py:92: in test_over_limit_without_flag_is_400_and_nothing_is_saved
+    assert r.status_code == 400, r.get_json()
+E   AssertionError: {'error': 'Подтверждение владельца ставит финансист или владелец', 'success': False}
+E   assert 403 == 400
+E    +  where 403 = <WrapperTestResponse streamed [403 FORBIDDEN]>.status_code
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+___ test_over_limit_without_flag_is_400_and_nothing_is_saved[operator-15000] ___
+tests/test_wallet_roles_crm_qa.py:92: in test_over_limit_without_flag_is_400_and_nothing_is_saved
+    assert r.status_code == 400, r.get_json()
+E   AssertionError: {'error': 'Подтверждение владельца ставит финансист или владелец', 'success': False}
+E   assert 403 == 400
+E    +  where 403 = <WrapperTestResponse streamed [403 FORBIDDEN]>.status_code
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+__ test_over_limit_without_flag_is_400_and_nothing_is_saved[operator-1000000] __
+tests/test_wallet_roles_crm_qa.py:92: in test_over_limit_without_flag_is_400_and_nothing_is_saved
+    assert r.status_code == 400, r.get_json()
+E   AssertionError: {'error': 'Подтверждение владельца ставит финансист или владелец', 'success': False}
+E   assert 403 == 400
+E    +  where 403 = <WrapperTestResponse streamed [403 FORBIDDEN]>.status_code
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+__ test_over_limit_without_flag_is_400_and_nothing_is_saved[manager-10000.01] __
+tests/test_wallet_roles_crm_qa.py:92: in test_over_limit_without_flag_is_400_and_nothing_is_saved
+    assert r.status_code == 400, r.get_json()
+E   AssertionError: {'error': 'Подтверждение владельца ставит финансист или владелец', 'success': False}
+E   assert 403 == 400
+E    +  where 403 = <WrapperTestResponse streamed [403 FORBIDDEN]>.status_code
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+__ test_over_limit_without_flag_is_400_and_nothing_is_saved[manager-10000.5] ___
+tests/test_wallet_roles_crm_qa.py:92: in test_over_limit_without_flag_is_400_and_nothing_is_saved
+    assert r.status_code == 400, r.get_json()
+E   AssertionError: {'error': 'Подтверждение владельца ставит финансист или владелец', 'success': False}
+E   assert 403 == 400
+E    +  where 403 = <WrapperTestResponse streamed [403 FORBIDDEN]>.status_code
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+___ test_over_limit_without_flag_is_400_and_nothing_is_saved[manager-15000] ____
+tests/test_wallet_roles_crm_qa.py:92: in test_over_limit_without_flag_is_400_and_nothing_is_saved
+    assert r.status_code == 400, r.get_json()
+E   AssertionError: {'error': 'Подтверждение владельца ставит финансист или владелец', 'success': False}
+E   assert 403 == 400
+E    +  where 403 = <WrapperTestResponse streamed [403 FORBIDDEN]>.status_code
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+__ test_over_limit_without_flag_is_400_and_nothing_is_saved[manager-1000000] ___
+tests/test_wallet_roles_crm_qa.py:92: in test_over_limit_without_flag_is_400_and_nothing_is_saved
+    assert r.status_code == 400, r.get_json()
+E   AssertionError: {'error': 'Подтверждение владельца ставит финансист или владелец', 'success': False}
+E   assert 403 == 400
+E    +  where 403 = <WrapperTestResponse streamed [403 FORBIDDEN]>.status_code
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+___ test_over_limit_without_flag_is_400_and_nothing_is_saved[admin-10000.01] ___
+tests/test_wallet_roles_crm_qa.py:92: in test_over_limit_without_flag_is_400_and_nothing_is_saved
+    assert r.status_code == 400, r.get_json()
+E   AssertionError: {'error': 'Подтверждение владельца ставит финансист или владелец', 'success': False}
+E   assert 403 == 400
+E    +  where 403 = <WrapperTestResponse streamed [403 FORBIDDEN]>.status_code
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+___ test_over_limit_without_flag_is_400_and_nothing_is_saved[admin-10000.5] ____
+tests/test_wallet_roles_crm_qa.py:92: in test_over_limit_without_flag_is_400_and_nothing_is_saved
+    assert r.status_code == 400, r.get_json()
+E   AssertionError: {'error': 'Подтверждение владельца ставит финансист или владелец', 'success': False}
+E   assert 403 == 400
+E    +  where 403 = <WrapperTestResponse streamed [403 FORBIDDEN]>.status_code
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+____ test_over_limit_without_flag_is_400_and_nothing_is_saved[admin-15000] _____
+tests/test_wallet_roles_crm_qa.py:92: in test_over_limit_without_flag_is_400_and_nothing_is_saved
+    assert r.status_code == 400, r.get_json()
+E   AssertionError: {'error': 'Подтверждение владельца ставит финансист или владелец', 'success': False}
+E   assert 403 == 400
+E    +  where 403 = <WrapperTestResponse streamed [403 FORBIDDEN]>.status_code
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+___ test_over_limit_without_flag_is_400_and_nothing_is_saved[admin-1000000] ____
+tests/test_wallet_roles_crm_qa.py:92: in test_over_limit_without_flag_is_400_and_nothing_is_saved
+    assert r.status_code == 400, r.get_json()
+E   AssertionError: {'error': 'Подтверждение владельца ставит финансист или владелец', 'success': False}
+E   assert 403 == 400
+E    +  where 403 = <WrapperTestResponse streamed [403 FORBIDDEN]>.status_code
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+__ test_over_limit_without_flag_is_400_and_nothing_is_saved[findir-10000.01] ___
+tests/test_wallet_roles_crm_qa.py:92: in test_over_limit_without_flag_is_400_and_nothing_is_saved
+    assert r.status_code == 400, r.get_json()
+E   AssertionError: {'deal': {'agents': [], 'bank_card_id': None, 'bitrix_deal_id': None, 'buy_rate_thb_usdt': None, ...}, 'success': True}
+E   assert 201 == 400
+E    +  where 201 = <WrapperTestResponse streamed [201 CREATED]>.status_code
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+___ test_over_limit_without_flag_is_400_and_nothing_is_saved[findir-10000.5] ___
+tests/test_wallet_roles_crm_qa.py:92: in test_over_limit_without_flag_is_400_and_nothing_is_saved
+    assert r.status_code == 400, r.get_json()
+E   AssertionError: {'deal': {'agents': [], 'bank_card_id': None, 'bitrix_deal_id': None, 'buy_rate_thb_usdt': None, ...}, 'success': True}
+E   assert 201 == 400
+E    +  where 201 = <WrapperTestResponse streamed [201 CREATED]>.status_code
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+____ test_over_limit_without_flag_is_400_and_nothing_is_saved[findir-15000] ____
+tests/test_wallet_roles_crm_qa.py:92: in test_over_limit_without_flag_is_400_and_nothing_is_saved
+    assert r.status_code == 400, r.get_json()
+E   AssertionError: {'deal': {'agents': [], 'bank_card_id': None, 'bitrix_deal_id': None, 'buy_rate_thb_usdt': None, ...}, 'success': True}
+E   assert 201 == 400
+E    +  where 201 = <WrapperTestResponse streamed [201 CREATED]>.status_code
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+___ test_over_limit_without_flag_is_400_and_nothing_is_saved[findir-1000000] ___
+tests/test_wallet_roles_crm_qa.py:92: in test_over_limit_without_flag_is_400_and_nothing_is_saved
+    assert r.status_code == 400, r.get_json()
+E   AssertionError: {'deal': {'agents': [], 'bank_card_id': None, 'bitrix_deal_id': None, 'buy_rate_thb_usdt': None, ...}, 'success': True}
+E   assert 201 == 400
+E    +  where 201 = <WrapperTestResponse streamed [201 CREATED]>.status_code
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+__ test_over_limit_without_flag_is_400_and_nothing_is_saved[teodor-10000.01] ___
+tests/test_wallet_roles_crm_qa.py:92: in test_over_limit_without_flag_is_400_and_nothing_is_saved
+    assert r.status_code == 400, r.get_json()
+E   AssertionError: {'deal': {'agents': [], 'bank_card_id': None, 'bitrix_deal_id': None, 'buy_rate_thb_usdt': None, ...}, 'success': True}
+E   assert 201 == 400
+E    +  where 201 = <WrapperTestResponse streamed [201 CREATED]>.status_code
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+___ test_over_limit_without_flag_is_400_and_nothing_is_saved[teodor-10000.5] ___
+tests/test_wallet_roles_crm_qa.py:92: in test_over_limit_without_flag_is_400_and_nothing_is_saved
+    assert r.status_code == 400, r.get_json()
+E   AssertionError: {'deal': {'agents': [], 'bank_card_id': None, 'bitrix_deal_id': None, 'buy_rate_thb_usdt': None, ...}, 'success': True}
+E   assert 201 == 400
+E    +  where 201 = <WrapperTestResponse streamed [201 CREATED]>.status_code
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+____ test_over_limit_without_flag_is_400_and_nothing_is_saved[teodor-15000] ____
+tests/test_wallet_roles_crm_qa.py:92: in test_over_limit_without_flag_is_400_and_nothing_is_saved
+    assert r.status_code == 400, r.get_json()
+E   AssertionError: {'deal': {'agents': [], 'bank_card_id': None, 'bitrix_deal_id': None, 'buy_rate_thb_usdt': None, ...}, 'success': True}
+E   assert 201 == 400
+E    +  where 201 = <WrapperTestResponse streamed [201 CREATED]>.status_code
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+___ test_over_limit_without_flag_is_400_and_nothing_is_saved[teodor-1000000] ___
+tests/test_wallet_roles_crm_qa.py:92: in test_over_limit_without_flag_is_400_and_nothing_is_saved
+    assert r.status_code == 400, r.get_json()
+E   AssertionError: {'deal': {'agents': [], 'bank_card_id': None, 'bitrix_deal_id': None, 'buy_rate_thb_usdt': None, ...}, 'success': True}
+E   assert 201 == 400
+E    +  where 201 = <WrapperTestResponse streamed [201 CREATED]>.status_code
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+_ test_new_exchange_deal_without_wallet_defaults_to_exchange_wallet_and_limit __
+tests/test_wallet_roles_crm_qa.py:157: in test_new_exchange_deal_without_wallet_defaults_to_exchange_wallet_and_limit
+    assert r.status_code == 400 and count(name) == 0, 'лимит применяется и к умолчанию'
+E   AssertionError: лимит применяется и к умолчанию
+E   assert (403 == 400)
+E    +  where 403 = <WrapperTestResponse streamed [403 FORBIDDEN]>.status_code
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+________ test_public_skip_sync_flag_cannot_suppress_default_wallet_gate ________
+tests/test_wallet_roles_crm_qa.py:166: in test_public_skip_sync_flag_cannot_suppress_default_wallet_gate
+    assert r.status_code == 400, (flag, r.get_json())
+E   AssertionError: (True, {'error': 'Подтверждение владельца ставит финансист или владелец', 'success': False})
+E   assert 403 == 400
+E    +  where 403 = <WrapperTestResponse streamed [403 FORBIDDEN]>.status_code
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+______ test_legacy_deal_over_limit_is_readable_and_other_fields_editable _______
+tests/test_wallet_roles_crm_qa.py:241: in test_legacy_deal_over_limit_is_readable_and_other_fields_editable
+    assert r.status_code == 400 and MSG in r.get_json()['error']
+E   assert (403 == 400)
+E    +  where 403 = <WrapperTestResponse streamed [403 FORBIDDEN]>.status_code
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+___________ test_update_cannot_raise_amount_over_limit_without_flag ____________
+tests/test_wallet_roles_crm_qa.py:257: in test_update_cannot_raise_amount_over_limit_without_flag
+    assert r.status_code == 400 and MSG in r.get_json()['error']
+E   assert (403 == 400)
+E    +  where 403 = <WrapperTestResponse streamed [403 FORBIDDEN]>.status_code
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+________ test_update_with_owner_flag_passes_then_changes_invalidate_it _________
+tests/test_wallet_roles_crm_qa.py:273: in test_update_with_owner_flag_passes_then_changes_invalidate_it
+    assert r.status_code == 400 and MSG in r.get_json()['error']
+E   assert (403 == 400)
+E    +  where 403 = <WrapperTestResponse streamed [403 FORBIDDEN]>.status_code
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+_____________________ test_explicit_false_revokes_approval _____________________
+tests/test_wallet_roles_crm_qa.py:299: in test_explicit_false_revokes_approval
+    assert r.status_code == 400, 'после отзыва сумма >10000 снова без одобрения'
+E   AssertionError: после отзыва сумма >10000 снова без одобрения
+E   assert 403 == 400
+E    +  where 403 = <WrapperTestResponse streamed [403 FORBIDDEN]>.status_code
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+_______ test_cannot_escape_limit_by_moving_deal_to_other_wallet_or_back ________
+tests/test_wallet_roles_crm_qa.py:325: in test_cannot_escape_limit_by_moving_deal_to_other_wallet_or_back
+    assert r.status_code == 400 and MSG in r.get_json()['error']
+E   assert (403 == 400)
+E    +  where 403 = <WrapperTestResponse streamed [403 FORBIDDEN]>.status_code
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+__________ test_update_with_transfer_parts_over_limit_needs_approval ___________
+tests/test_wallet_roles_crm_qa.py:363: in test_update_with_transfer_parts_over_limit_needs_approval
+    assert r.status_code == 400 and MSG in r.get_json()['error']
+E   assert (403 == 400)
+E    +  where 403 = <WrapperTestResponse streamed [403 FORBIDDEN]>.status_code
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+_ test_doverka_confirm_cannot_finalize_over_limit_policy_deal_without_approval _
+tests/test_wallet_roles_crm_qa.py:409: in test_doverka_confirm_cannot_finalize_over_limit_policy_deal_without_approval
+    assert r.status_code == 400 and MSG in r.get_json()['error']
+E   assert (403 == 400)
+E    +  where 403 = <WrapperTestResponse streamed [403 FORBIDDEN]>.status_code
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+_____ test_doverka_confirm_refuses_when_approved_amount_changed_underneath _____
+tests/test_wallet_roles_crm_qa.py:446: in test_doverka_confirm_refuses_when_approved_amount_changed_underneath
+    assert r.status_code == 400 and MSG in r.get_json()['error']
+E   assert (403 == 400)
+E    +  where 403 = <WrapperTestResponse streamed [403 FORBIDDEN]>.status_code
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+=============================== warnings summary ===============================
+../../../../../../../tmp/s27-venv311/lib/python3.11/site-packages/flask_limiter/extension.py:336
+  /private/tmp/s27-venv311/lib/python3.11/site-packages/flask_limiter/extension.py:336: UserWarning: Using the in-memory storage for tracking rate limits as no storage was explicitly specified. This is not recommended for production use. See: https://flask-limiter.readthedocs.io#configuring-a-storage-backend for documentation about configuring the storage backend.
+    warnings.warn(
+
+app.py:421
+  /private/var/folders/5r/g3kr7xg94cj3wwkh0nxdc4fc0000gn/T/calccrm-mut-72gi14vr/repo/app.py:421: MovedIn20Warning: The ``declarative_base()`` function is now available as sqlalchemy.orm.declarative_base(). (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+    Base = declarative_base()
+
+app.py:2537
+  /private/var/folders/5r/g3kr7xg94cj3wwkh0nxdc4fc0000gn/T/calccrm-mut-72gi14vr/repo/app.py:2537: SAWarning: Cannot correctly sort tables; there are unresolvable cycles between tables "clients, referrers", which is usually caused by mutually dependent foreign key constraints.  Foreign key constraints involving these tables will not be considered; this warning may raise an error in a future release.
+    tables=[table for table in Base.metadata.sorted_tables
+
+tests/test_wallet_roles_claim_qa.py: 42 warnings
+tests/test_wallet_roles_confirm_qa.py: 44 warnings
+tests/test_wallet_roles_payin_qa.py: 20 warnings
+  /private/var/folders/5r/g3kr7xg94cj3wwkh0nxdc4fc0000gn/T/calccrm-mut-72gi14vr/repo/app.py:2661: SAWarning: Cannot correctly sort tables; there are unresolvable cycles between tables "clients, referrers", which is usually caused by mutually dependent foreign key constraints.  Foreign key constraints involving these tables will not be considered; this warning may raise an error in a future release.
+    tables=[table for table in Base.metadata.sorted_tables
+
+tests/test_wallet_roles_claim_qa.py: 42 warnings
+tests/test_wallet_roles_confirm_qa.py: 44 warnings
+tests/test_wallet_roles_crm_qa.py: 120 warnings
+tests/test_wallet_roles_payin_qa.py: 20 warnings
+  /private/var/folders/5r/g3kr7xg94cj3wwkh0nxdc4fc0000gn/T/calccrm-mut-72gi14vr/repo/tests/qa_wallet_roles_helpers.py:143: SAWarning: Cannot correctly sort tables; there are unresolvable cycles between tables "clients, referrers", which is usually caused by mutually dependent foreign key constraints.  Foreign key constraints involving these tables will not be considered; this warning may raise an error in a future release.
+    for table in m.Base.metadata.sorted_tables:
+
+tests/test_wallet_roles_claim_qa.py: 90 warnings
+tests/test_wallet_roles_confirm_qa.py: 125 warnings
+tests/test_wallet_roles_payin_qa.py: 49 warnings
+  /private/var/folders/5r/g3kr7xg94cj3wwkh0nxdc4fc0000gn/T/calccrm-mut-72gi14vr/repo/app.py:257: LegacyAPIWarning: The Query.get() method is considered legacy as of the 1.x series of SQLAlchemy and becomes a legacy construct in 2.0. The method is now available as Session.get() (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+    user = db.query(AdminUser).get(uid)
+
+tests/test_wallet_roles_claim_qa.py: 42 warnings
+tests/test_wallet_roles_confirm_qa.py: 44 warnings
+tests/test_wallet_roles_crm_qa.py: 120 warnings
+tests/test_wallet_roles_payin_qa.py: 20 warnings
+  /private/var/folders/5r/g3kr7xg94cj3wwkh0nxdc4fc0000gn/T/calccrm-mut-72gi14vr/repo/tests/qa_wallet_roles_helpers.py:174: SAWarning: Cannot correctly sort tables; there are unresolvable cycles between tables "clients, referrers", which is usually caused by mutually dependent foreign key constraints.  Foreign key constraints involving these tables will not be considered; this warning may raise an error in a future release.
+    for table in reversed(m.Base.metadata.sorted_tables):
+
+tests/test_wallet_roles_crm_qa.py: 97 warnings
+  /private/var/folders/5r/g3kr7xg94cj3wwkh0nxdc4fc0000gn/T/calccrm-mut-72gi14vr/repo/app.py:17545: LegacyAPIWarning: The Query.get() method is considered legacy as of the 1.x series of SQLAlchemy and becomes a legacy construct in 2.0. The method is now available as Session.get() (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+    client_obj = session.query(Client).get(client_id)
+
+tests/test_wallet_roles_crm_qa.py: 97 warnings
+  /private/var/folders/5r/g3kr7xg94cj3wwkh0nxdc4fc0000gn/T/calccrm-mut-72gi14vr/repo/app.py:16775: LegacyAPIWarning: The Query.get() method is considered legacy as of the 1.x series of SQLAlchemy and becomes a legacy construct in 2.0. The method is now available as Session.get() (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+    w = session.query(Wallet).get(wallet_id)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/test_wallet_roles_crm_qa.py::test_over_limit_without_flag_is_400_and_nothing_is_saved[operator-10000.01]
+FAILED tests/test_wallet_roles_crm_qa.py::test_over_limit_without_flag_is_400_and_nothing_is_saved[operator-10000.5]
+FAILED tests/test_wallet_roles_crm_qa.py::test_over_limit_without_flag_is_400_and_nothing_is_saved[operator-15000]
+FAILED tests/test_wallet_roles_crm_qa.py::test_over_limit_without_flag_is_400_and_nothing_is_saved[operator-1000000]
+FAILED tests/test_wallet_roles_crm_qa.py::test_over_limit_without_flag_is_400_and_nothing_is_saved[manager-10000.01]
+FAILED tests/test_wallet_roles_crm_qa.py::test_over_limit_without_flag_is_400_and_nothing_is_saved[manager-10000.5]
+FAILED tests/test_wallet_roles_crm_qa.py::test_over_limit_without_flag_is_400_and_nothing_is_saved[manager-15000]
+FAILED tests/test_wallet_roles_crm_qa.py::test_over_limit_without_flag_is_400_and_nothing_is_saved[manager-1000000]
+FAILED tests/test_wallet_roles_crm_qa.py::test_over_limit_without_flag_is_400_and_nothing_is_saved[admin-10000.01]
+FAILED tests/test_wallet_roles_crm_qa.py::test_over_limit_without_flag_is_400_and_nothing_is_saved[admin-10000.5]
+FAILED tests/test_wallet_roles_crm_qa.py::test_over_limit_without_flag_is_400_and_nothing_is_saved[admin-15000]
+FAILED tests/test_wallet_roles_crm_qa.py::test_over_limit_without_flag_is_400_and_nothing_is_saved[admin-1000000]
+FAILED tests/test_wallet_roles_crm_qa.py::test_over_limit_without_flag_is_400_and_nothing_is_saved[findir-10000.01]
+FAILED tests/test_wallet_roles_crm_qa.py::test_over_limit_without_flag_is_400_and_nothing_is_saved[findir-10000.5]
+FAILED tests/test_wallet_roles_crm_qa.py::test_over_limit_without_flag_is_400_and_nothing_is_saved[findir-15000]
+FAILED tests/test_wallet_roles_crm_qa.py::test_over_limit_without_flag_is_400_and_nothing_is_saved[findir-1000000]
+FAILED tests/test_wallet_roles_crm_qa.py::test_over_limit_without_flag_is_400_and_nothing_is_saved[teodor-10000.01]
+FAILED tests/test_wallet_roles_crm_qa.py::test_over_limit_without_flag_is_400_and_nothing_is_saved[teodor-10000.5]
+FAILED tests/test_wallet_roles_crm_qa.py::test_over_limit_without_flag_is_400_and_nothing_is_saved[teodor-15000]
+FAILED tests/test_wallet_roles_crm_qa.py::test_over_limit_without_flag_is_400_and_nothing_is_saved[teodor-1000000]
+FAILED tests/test_wallet_roles_crm_qa.py::test_new_exchange_deal_without_wallet_defaults_to_exchange_wallet_and_limit
+FAILED tests/test_wallet_roles_crm_qa.py::test_public_skip_sync_flag_cannot_suppress_default_wallet_gate
+FAILED tests/test_wallet_roles_crm_qa.py::test_legacy_deal_over_limit_is_readable_and_other_fields_editable
+FAILED tests/test_wallet_roles_crm_qa.py::test_update_cannot_raise_amount_over_limit_without_flag
+FAILED tests/test_wallet_roles_crm_qa.py::test_update_with_owner_flag_passes_then_changes_invalidate_it
+FAILED tests/test_wallet_roles_crm_qa.py::test_explicit_false_revokes_approval
+FAILED tests/test_wallet_roles_crm_qa.py::test_cannot_escape_limit_by_moving_deal_to_other_wallet_or_back
+FAILED tests/test_wallet_roles_crm_qa.py::test_update_with_transfer_parts_over_limit_needs_approval
+FAILED tests/test_wallet_roles_crm_qa.py::test_doverka_confirm_cannot_finalize_over_limit_policy_deal_without_approval
+FAILED tests/test_wallet_roles_crm_qa.py::test_doverka_confirm_refuses_when_approved_amount_changed_underneath
+30 failed, 197 passed, 1019 warnings in 5.23s
+NETWORK_FENCE attempts=0 unexpected=0 report=/tmp/calccrm-t19-fence-reports/20261019T234036-29817.json

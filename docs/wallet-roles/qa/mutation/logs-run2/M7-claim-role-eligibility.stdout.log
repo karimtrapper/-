@@ -1,0 +1,140 @@
+FENCED_RUN python=3.11.17 port_pool=32629-32692
+...FFFFF..FF...................F.......................................F [ 31%]
+........................................................................ [ 63%]
+........................................................................ [ 95%]
+...........                                                              [100%]
+=================================== FAILURES ===================================
+_____________ test_realty_wallet_other_roles_cannot_claim[manager] _____________
+tests/test_wallet_roles_claim_qa.py:65: in test_realty_wallet_other_roles_cannot_claim
+    assert r.status_code == 403, r.get_json()
+E   AssertionError: {'claim': {'amount': '5000', 'at': 1792442419668, 'byId': 1, 'byName': 'QA manager b317', ...}, 'data': {'convs': [], ...ка', 'code': 'СД-9001', 'demoTransfers': False, ...}], 'incomes': [], 'notes': [], ...}, 'success': True, 'version': 6}
+E   assert 200 == 403
+E    +  where 200 = <WrapperTestResponse streamed [200 OK]>.status_code
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+______________ test_realty_wallet_other_roles_cannot_claim[admin] ______________
+tests/test_wallet_roles_claim_qa.py:65: in test_realty_wallet_other_roles_cannot_claim
+    assert r.status_code == 403, r.get_json()
+E   AssertionError: {'claim': {'amount': '5000', 'at': 1792442419735, 'byId': 1, 'byName': 'QA admin 0da0', ...}, 'data': {'convs': [], 'd...ка', 'code': 'СД-9001', 'demoTransfers': False, ...}], 'incomes': [], 'notes': [], ...}, 'success': True, 'version': 6}
+E   assert 200 == 403
+E    +  where 200 = <WrapperTestResponse streamed [200 OK]>.status_code
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+______________ test_realty_wallet_other_roles_cannot_claim[buyer] ______________
+tests/test_wallet_roles_claim_qa.py:65: in test_realty_wallet_other_roles_cannot_claim
+    assert r.status_code == 403, r.get_json()
+E   AssertionError: {'claim': {'amount': '5000', 'at': 1792442419753, 'byId': 1, 'byName': 'QA buyer dc29', ...}, 'data': {'convs': [], 'd...ка', 'code': 'СД-9001', 'demoTransfers': False, ...}], 'incomes': [], 'notes': [], ...}, 'success': True, 'version': 6}
+E   assert 200 == 403
+E    +  where 200 = <WrapperTestResponse streamed [200 OK]>.status_code
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+____________ test_realty_wallet_other_roles_cannot_claim[findir_x] _____________
+tests/test_wallet_roles_claim_qa.py:65: in test_realty_wallet_other_roles_cannot_claim
+    assert r.status_code == 403, r.get_json()
+E   AssertionError: {'claim': {'amount': '5000', 'at': 1792442419770, 'byId': 1, 'byName': 'QA findir_x 8656', ...}, 'data': {'convs': [],...ка', 'code': 'СД-9001', 'demoTransfers': False, ...}], 'incomes': [], 'notes': [], ...}, 'success': True, 'version': 6}
+E   assert 200 == 403
+E    +  where 200 = <WrapperTestResponse streamed [200 OK]>.status_code
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+_________________ test_exchange_wallet_only_operator_initiates _________________
+tests/test_wallet_roles_claim_qa.py:74: in test_exchange_wallet_only_operator_initiates
+    assert r.status_code == 403, (role, r.get_json())
+E   AssertionError: ('findir', {'claim': {'amount': '5000', 'at': 1792442419788, 'byId': 1, 'byName': 'QA findir a3ba', ...}, 'data': {'co...а', 'code': 'СД-9001', 'demoTransfers': False, ...}], 'incomes': [], 'notes': [], ...}, 'success': True, 'version': 6})
+E   assert 200 == 403
+E    +  where 200 = <WrapperTestResponse streamed [200 OK]>.status_code
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+_______________ test_spoofed_session_role_does_not_grant_access ________________
+tests/test_wallet_roles_claim_qa.py:119: in test_spoofed_session_role_does_not_grant_access
+    assert claim(manager, role='operator').status_code == 403
+E   AssertionError: assert 200 == 403
+E    +  where 200 = <WrapperTestResponse streamed [200 OK]>.status_code
+E    +    where <WrapperTestResponse streamed [200 OK]> = claim(<FlaskClient <Flask 'app'>>, role='operator')
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+__________________ test_role_change_in_db_applies_immediately __________________
+tests/test_wallet_roles_claim_qa.py:133: in test_role_change_in_db_applies_immediately
+    assert claim(client).status_code == 403
+E   AssertionError: assert 200 == 403
+E    +  where 200 = <WrapperTestResponse streamed [200 OK]>.status_code
+E    +    where <WrapperTestResponse streamed [200 OK]> = claim(<FlaskClient <Flask 'app'>>)
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+______________ test_prepay_wallet_with_policy_address_is_governed ______________
+tests/test_wallet_roles_claim_qa.py:380: in test_prepay_wallet_with_policy_address_is_governed
+    assert claim(client_for(make_user('findir'))).status_code == 403
+E   AssertionError: assert 400 == 403
+E    +  where 400 = <WrapperTestResponse streamed [400 BAD REQUEST]>.status_code
+E    +    where <WrapperTestResponse streamed [400 BAD REQUEST]> = claim(<FlaskClient <Flask 'app'>>)
+E    +      where <FlaskClient <Flask 'app'>> = client_for(2)
+E    +        where 2 = make_user('findir')
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+_________ test_owner_alone_never_available_for_exchange_or_other_roles _________
+tests/test_wallet_roles_confirm_qa.py:265: in test_owner_alone_never_available_for_exchange_or_other_roles
+    assert claim(teodor).status_code == 403
+E   AssertionError: assert 200 == 403
+E    +  where 200 = <WrapperTestResponse streamed [200 OK]>.status_code
+E    +    where <WrapperTestResponse streamed [200 OK]> = claim(<FlaskClient <Flask 'app'>>)
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+=============================== warnings summary ===============================
+../../../../../../../tmp/s27-venv311/lib/python3.11/site-packages/flask_limiter/extension.py:336
+  /private/tmp/s27-venv311/lib/python3.11/site-packages/flask_limiter/extension.py:336: UserWarning: Using the in-memory storage for tracking rate limits as no storage was explicitly specified. This is not recommended for production use. See: https://flask-limiter.readthedocs.io#configuring-a-storage-backend for documentation about configuring the storage backend.
+    warnings.warn(
+
+app.py:421
+  /private/var/folders/5r/g3kr7xg94cj3wwkh0nxdc4fc0000gn/T/calccrm-mut-ivdganyx/repo/app.py:421: MovedIn20Warning: The ``declarative_base()`` function is now available as sqlalchemy.orm.declarative_base(). (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+    Base = declarative_base()
+
+app.py:2537
+  /private/var/folders/5r/g3kr7xg94cj3wwkh0nxdc4fc0000gn/T/calccrm-mut-ivdganyx/repo/app.py:2537: SAWarning: Cannot correctly sort tables; there are unresolvable cycles between tables "clients, referrers", which is usually caused by mutually dependent foreign key constraints.  Foreign key constraints involving these tables will not be considered; this warning may raise an error in a future release.
+    tables=[table for table in Base.metadata.sorted_tables
+
+tests/test_wallet_roles_claim_qa.py: 42 warnings
+tests/test_wallet_roles_confirm_qa.py: 44 warnings
+tests/test_wallet_roles_payin_qa.py: 20 warnings
+  /private/var/folders/5r/g3kr7xg94cj3wwkh0nxdc4fc0000gn/T/calccrm-mut-ivdganyx/repo/app.py:2661: SAWarning: Cannot correctly sort tables; there are unresolvable cycles between tables "clients, referrers", which is usually caused by mutually dependent foreign key constraints.  Foreign key constraints involving these tables will not be considered; this warning may raise an error in a future release.
+    tables=[table for table in Base.metadata.sorted_tables
+
+tests/test_wallet_roles_claim_qa.py: 42 warnings
+tests/test_wallet_roles_confirm_qa.py: 44 warnings
+tests/test_wallet_roles_crm_qa.py: 120 warnings
+tests/test_wallet_roles_payin_qa.py: 20 warnings
+  /private/var/folders/5r/g3kr7xg94cj3wwkh0nxdc4fc0000gn/T/calccrm-mut-ivdganyx/repo/tests/qa_wallet_roles_helpers.py:143: SAWarning: Cannot correctly sort tables; there are unresolvable cycles between tables "clients, referrers", which is usually caused by mutually dependent foreign key constraints.  Foreign key constraints involving these tables will not be considered; this warning may raise an error in a future release.
+    for table in m.Base.metadata.sorted_tables:
+
+tests/test_wallet_roles_claim_qa.py: 86 warnings
+tests/test_wallet_roles_confirm_qa.py: 123 warnings
+tests/test_wallet_roles_payin_qa.py: 49 warnings
+  /private/var/folders/5r/g3kr7xg94cj3wwkh0nxdc4fc0000gn/T/calccrm-mut-ivdganyx/repo/app.py:257: LegacyAPIWarning: The Query.get() method is considered legacy as of the 1.x series of SQLAlchemy and becomes a legacy construct in 2.0. The method is now available as Session.get() (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+    user = db.query(AdminUser).get(uid)
+
+tests/test_wallet_roles_claim_qa.py: 42 warnings
+tests/test_wallet_roles_confirm_qa.py: 44 warnings
+tests/test_wallet_roles_crm_qa.py: 120 warnings
+tests/test_wallet_roles_payin_qa.py: 20 warnings
+  /private/var/folders/5r/g3kr7xg94cj3wwkh0nxdc4fc0000gn/T/calccrm-mut-ivdganyx/repo/tests/qa_wallet_roles_helpers.py:174: SAWarning: Cannot correctly sort tables; there are unresolvable cycles between tables "clients, referrers", which is usually caused by mutually dependent foreign key constraints.  Foreign key constraints involving these tables will not be considered; this warning may raise an error in a future release.
+    for table in reversed(m.Base.metadata.sorted_tables):
+
+tests/test_wallet_roles_crm_qa.py: 100 warnings
+  /private/var/folders/5r/g3kr7xg94cj3wwkh0nxdc4fc0000gn/T/calccrm-mut-ivdganyx/repo/app.py:17545: LegacyAPIWarning: The Query.get() method is considered legacy as of the 1.x series of SQLAlchemy and becomes a legacy construct in 2.0. The method is now available as Session.get() (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+    client_obj = session.query(Client).get(client_id)
+
+tests/test_wallet_roles_crm_qa.py: 100 warnings
+  /private/var/folders/5r/g3kr7xg94cj3wwkh0nxdc4fc0000gn/T/calccrm-mut-ivdganyx/repo/app.py:16775: LegacyAPIWarning: The Query.get() method is considered legacy as of the 1.x series of SQLAlchemy and becomes a legacy construct in 2.0. The method is now available as Session.get() (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+    w = session.query(Wallet).get(wallet_id)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/test_wallet_roles_claim_qa.py::test_realty_wallet_other_roles_cannot_claim[manager]
+FAILED tests/test_wallet_roles_claim_qa.py::test_realty_wallet_other_roles_cannot_claim[admin]
+FAILED tests/test_wallet_roles_claim_qa.py::test_realty_wallet_other_roles_cannot_claim[buyer]
+FAILED tests/test_wallet_roles_claim_qa.py::test_realty_wallet_other_roles_cannot_claim[findir_x]
+FAILED tests/test_wallet_roles_claim_qa.py::test_exchange_wallet_only_operator_initiates
+FAILED tests/test_wallet_roles_claim_qa.py::test_spoofed_session_role_does_not_grant_access
+FAILED tests/test_wallet_roles_claim_qa.py::test_role_change_in_db_applies_immediately
+FAILED tests/test_wallet_roles_claim_qa.py::test_prepay_wallet_with_policy_address_is_governed
+FAILED tests/test_wallet_roles_confirm_qa.py::test_owner_alone_never_available_for_exchange_or_other_roles
+9 failed, 218 passed, 1019 warnings in 5.12s
+NETWORK_FENCE attempts=0 unexpected=0 report=/tmp/calccrm-t19-fence-reports/20261019T234024-29733.json

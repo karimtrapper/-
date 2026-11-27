@@ -1,0 +1,134 @@
+{
+ "blueText": [],
+ "bluePlaques": [],
+ "scaleViolations": [],
+ "toast": null,
+ "fontFaces": [
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:loaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:loaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:loaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:loaded",
+  "Inter:unloaded",
+  "Inter:loaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:loaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded"
+ ],
+ "interLoaded": true,
+ "stylesheets": [
+  "http://127.0.0.1:24558/static/stand/vendor/inter-v20/font.css",
+  "http://127.0.0.1:24558/static/nav-shell.css?v=7",
+  "http://127.0.0.1:24558/static/design-layer.css?v=3"
+ ],
+ "url": "/crm?section=deals",
+ "innerWidth": 375,
+ "scrollWidth": 375,
+ "bodyScrollWidth": 375,
+ "hScroll": false,
+ "expectedWidth": 375,
+ "layoutViewportExpanded": false,
+ "visualViewportWidth": 375,
+ "docClientWidth": 375,
+ "overflowOffenders": [],
+ "fontSizes": {
+  "14px": 68,
+  "16px": 20,
+  "22px": 1
+ },
+ "fontWeights": {
+  "400": 44,
+  "600": 44,
+  "700": 1
+ },
+ "families": [
+  "Inter",
+  "ui-monospace"
+ ],
+ "addrNodes": [],
+ "addrClipped": [],
+ "addrUnshortened": [],
+ "fullAddresses": [
+  "TA6S3RBEY57jq8fXEVVsU6H9JZ18inenG4"
+ ],
+ "mfstrAddresses": [],
+ "signerAddrsVisible": {
+  "operator": false,
+  "findir": false,
+  "teodor": false
+ },
+ "coralButtons": [
+  "Сохранить изменения"
+ ],
+ "smallTargets": [
+  {
+   "tag": "INPUT",
+   "text": "on",
+   "h": 13
+  }
+ ],
+ "smallSmCount": 1,
+ "emoji": [],
+ "moneyPrefixBad": [],
+ "dollarSuffixBad": [],
+ "title": "Маржа за 30 дней",
+ "open": {
+  "deal": 1632,
+  "role": "teodor",
+  "width": "1280",
+  "versionBefore": 15,
+  "versionAfter": 15,
+  "viewMutated": false,
+  "deltaPaths": [],
+  "deltaSummary": {},
+  "deltaDealIds": [],
+  "topLevelDelta": [],
+  "semanticPaths": [],
+  "semanticChange": false,
+  "noopVersionBump": false
+ },
+ "capture": {
+  "metricsViewport": [
+   375,
+   812
+  ],
+  "tallImageViewport": [
+   375,
+   3984
+  ],
+  "tallImageIsResizedViewport": true,
+  "firstScreenFile": "crm_exchange_payout_big__findir__375__first-screen.png"
+ }
+}

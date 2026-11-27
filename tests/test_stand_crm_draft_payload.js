@@ -1,0 +1,175 @@
+// Synthetic contract between stand_state and the deferred CRM close payload.
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const vm = require('node:vm');
+const html = fs.readFileSync('static/stand/tasks.html', 'utf8');
+const fn = name => {
+  const hit = html.match(new RegExp(`^function ${name}\\([^]*?^}`, 'm'));
+  assert.ok(hit, `missing ${name}`);
+  return hit[0];
+};
+const constants = ['IPPS_TARIFFS','PAYIN_CRM','PAYOUT_CRM'].map(name => {
+  const hit = html.match(new RegExp(`^const ${name}\\s*=[\\s\\S]*?;`, 'm'));
+  assert.ok(hit, `missing ${name}`);
+  return hit[0];
+}).join('\n');
+const ctx = {
+  econ: d => ({payin: (d.amountUsdt||0) + (d.payinExtra||[]).reduce((s,x)=>s+(x.amount_usdt||0),0),cost:10,sentThb:100}),
+  isCrypto: d => d.payType==='Крипта',
+  num: x => x == null || x==='' ? null : Number(x),
+  mfList: d => d.mfPayout||[],
+  refById: () => null,
+  freeholdSend: (x,t) => x*(1+t.percent/100)+t.fixed,
+  brokerSend: rub => ({sent:rub,held:0,ours:0,ctrl:0}),
+  Math, JSON,
+};
+vm.createContext(ctx);
+vm.runInContext(constants+'\n'+['isNativeCashPartner','payCur','exchangeSpec','amountField','hashSum','payinParts','crmNet','crmPayload'].map(fn).join('\n'),ctx);
+const base = {
+  client:'synthetic',manager:'Елизавета',type:'Оплата недвижимости',kind:'Аренда',
+  payType:'По реквизитам',amountRub:100000,amountUsdt:1000,incomeAmount:100000,
+  amountThb:35000,rates:{broker:100,usdtThb:33,sellRate:32.5,client:32.5},
+  spread:null,companyPct:0,agents:[],object:'rental unit',
+  payinParts:[{uuid:'synthetic-sber',amountRub:100000,fee:960,net:99040,kind:'acquiring'}],
+  payinExtra:[{method:'crypto_direct',amount_usdt:200,tx_hashes:[{hash:'synthetic-in',amount_usdt:200}]}],
+  payinHashes:[],mfPayout:[{hash:'synthetic-out',net:'trc20',amount:10}],
+  docLinks:{invoice:'local-invoice',contract:'local-contract',payment:'local-payment'},
+};
+const rental = ctx.crmPayload(base);
+assert.equal(rental.deal_kind,'mf_realty');
+assert.equal(rental.payin_amount_usdt,1000,'extra must be added by server once');
+assert.equal(rental.payin_extra[0].amount_usdt,200);
+const split=ctx.crmPayload({...base,type:'Обмен валюты',kind:'',payType:'Крипта',
+  amountUsdt:100,payinParts:[],payinHashes:[{hash:'m'.repeat(64),amount:100}],
+  payinExtra:[{method:'crypto_direct',amount_usdt:20,
+    tx_hashes:[{hash:'e'.repeat(64),amount_usdt:20}]}]});
+assert.equal(split.payin_method,'crypto_direct');
+assert.equal(split.payin_amount_usdt,100,'CRM server adds extra 20 once');
+assert.equal(split.payin_extra[0].amount_usdt,20);
+assert.equal(split.payin_tx_hashes.length,1);
+assert.equal(split.payin_tx_hashes[0].hash,'m'.repeat(64));
+assert.equal(split.payin_extra[0].tx_hashes[0].hash,'e'.repeat(64));
+const flowDraft=ctx.crmPayload({...base,type:'Обмен валюты',kind:'',
+  payType:'По реквизитам',rubReceivingAccount:{mode:'flowsole'},
+  amountRub:40000,amountUsdt:400,payinParts:[],payinExtra:[],
+  payinHashes:[{hash:'f'.repeat(64),network:'trc20',amount:500}],
+  rates:{broker:100}});
+assert.equal(flowDraft.payin_method,'flow_sole_reqs');
+assert.equal(flowDraft.payin_amount_usdt,400,
+  'task CRM transfer must keep the declared draft, not the full hash amount');
+assert.equal(flowDraft.payin_tx_hashes[0].amount_usdt,500,
+  'the selected hash amount remains distinct proof data for server comparison');
+const flowFullHash=ctx.crmPayload({...base,type:'Обмен валюты',kind:'',
+  payType:'По реквизитам',rubReceivingAccount:{mode:'flowsole'},
+  amountRub:50000,amountUsdt:500,payinParts:[],payinExtra:[],
+  payinHashes:[{hash:'n'.repeat(64),network:'trc20',amount:null}],rates:{broker:100}});
+assert.equal(flowFullHash.payin_amount_usdt,500);
+assert.equal(flowFullHash.payin_tx_hashes[0].amount_usdt,null,
+  'auto-selected Flow Sole hash stays a full-network proof, not an explicit share');
+const flowPoolShare=ctx.crmPayload({...base,type:'Обмен валюты',kind:'',
+  payType:'По реквизитам',rubReceivingAccount:{mode:'flowsole'},
+  amountRub:10000,amountUsdt:100,payinParts:[],payinExtra:[],
+  payinHashes:[{hash:'p'.repeat(64),network:'trc20',amount:100}],rates:{broker:100}});
+assert.equal(flowPoolShare.payin_amount_usdt,100);
+assert.equal(flowPoolShare.payin_tx_hashes[0].amount_usdt,100,
+  'an explicitly entered Flow Sole pool share survives CRM payload serialization');
+const legacyFlow=ctx.crmPayload({...base,type:'Оплата недвижимости',kind:'Лизхолд',
+  payType:'По реквизитам',rubReceivingAccount:{mode:'flowsole'},
+  amountRub:5000000,incomeAmount:5000000,amountUsdt:null,pay:{usdt:61070},
+  payinParts:[],payinExtra:[],rates:{broker:80.9,usdtThb:33.61,client:2.57},
+  payinHashes:[{hash:'a'.repeat(64),net:'TRC20',amount:70},
+               {hash:'b'.repeat(64),net:'TRC20',amount:61000}]});
+assert.equal(legacyFlow.payin_amount_usdt,61070,
+  'legacy Flow Sole CRM preview uses allocated hash facts, not the RUB/rate plan');
+const rateOnly=ctx.crmPayload({...base,type:'Обмен валюты',kind:'',payType:'Крипта',
+  amountUsdt:100,payinParts:[],payinExtra:[{method:'sber_reqs',
+    amount_rub:2000,rate_rub_usdt:100,amount_usdt:null}]});
+assert.equal(rateOnly.payin_amount_usdt,100);
+assert.equal(rateOnly.payin_extra[0].amount_usdt,20,
+  'a RUB/rate extra must not be sent as part of the main amount or dropped');
+assert.equal(rental.payin_parts[0].amount_rub,100000);
+assert.equal(rental.payin_parts[0].net_rub,99040);
+assert.equal(rental.sell_rate_thb_usdt,32.5);
+assert.equal(rental.company_percent,0,'explicit zero is not a default');
+assert.equal(rental.doc_invoice_url,'local-invoice');
+const leasehold=ctx.crmPayload({...base,kind:'Лизхолд'});
+assert.equal(leasehold.deal_kind,'mf_realty');
+for(const [tariff,pct,sent] of [['bank',0.8,45410],['soft',1.5,45725]]){
+  const free=ctx.crmPayload({...base,kind:'Фрихолд',ippsTariff:tariff,invoiceUsd:45000,mfPayout:[]});
+  assert.equal(free.deal_kind,'mf_freehold');
+  assert.equal(free.transfer_fee_percent,pct);
+  assert.equal(free.transfer_sent_usd,sent);
+  assert.equal(free.invoice_amount_usd,45000);
+}
+const noTariff=ctx.crmPayload({...base,kind:'Фрихолд',ippsTariff:null,invoiceUsd:45000,mfPayout:[]});
+assert.equal(noTariff.transfer_fee_percent,null);
+assert.equal(noTariff.transfer_sent_usd,null);
+
+// Use the real economics to cover the confirmed order, then the verified transfer.
+ctx.refAgents = () => [];
+const oneLine = name => html.match(new RegExp(`^function ${name}\\([^\\n]+$`, 'm'))[0];
+vm.runInContext([fn('freeholdFee'), oneLine('freeholdSend'), oneLine('ippsTariff'), fn('econ')].join('\n'), ctx);
+const agreed = {...base,kind:'Фрихолд',ippsTariff:'bank',invoiceUsd:1000.005,
+  ippsPayoutOrder:{confirmedAt:'2026-11-25T12:00:00Z',amount:1012.34},mfPayout:[]};
+const planned = ctx.crmPayload(agreed);
+assert.equal(planned.invoice_amount_usd,1000.01);
+assert.equal(planned.transfer_fee_percent,0);
+assert.equal(planned.transfer_fee_fixed_usd,12.33);
+assert.equal(planned.transfer_sent_usd,1012.34);
+assert.equal(ctx.econ(agreed).cost,1012.34);
+const fulfilled = {...agreed,serverTransferComplete:true,payout:{usdt:1013.45},
+  mfPayout:[{hash:'synthetic-out',net:'trc20',amount:1013.45}]};
+const fact = ctx.crmPayload(fulfilled);
+assert.equal(fact.transfer_sent_usd,1013.45);
+assert.equal(fact.transfer_fee_fixed_usd,12.33);
+assert.equal(ctx.econ(fulfilled).cost,1013.45);
+
+const custom=ctx.crmPayload({...base,type:'Обмен валюты',kind:'',custom:true,
+  payinParts:[],payinExtra:[],agents:[{name:'Synthetic Agent',tier:1,comp:'revshare',percent:10}],
+  customData:{payinCurrency:'RUB',payinAmount:92000,payinRate:92,payinUsdt:1000,
+    payoutCurrency:'THB',payoutAmount:30000,payoutRate:31.5,payoutUsdt:952.38,
+    payinMethod:'sber_reqs',payoutMethod:'transfer',payinTxHash:'',
+    date:'',notes:'custom fixture',netProfit:42.86}});
+assert.equal(custom.is_custom,true);
+assert.equal(custom.deal_kind,undefined,'CRM custom has no new deal_kind');
+assert.equal(custom.custom_payin_rate,92);
+assert.equal(custom.custom_payout_rate,31.5);
+assert.equal(custom.payin_amount_usdt,1000);
+assert.equal(custom.payout_amount_usdt,952.38);
+assert.equal(custom.profit_usdt,47.620000000000005);
+assert.equal(custom.net_profit_usdt,42.86);
+assert.equal(custom.agents[0].percent,10);
+const customHash='c'.repeat(64);
+const customWithHash=ctx.crmPayload({...base,type:'Обмен валюты',kind:'',custom:true,
+  payinHashes:[{hash:customHash,network:'trc20',amount:1000}],
+  customData:{payinCurrency:'USDT',payinAmount:1000,
+    payinRate:null,payinUsdt:1000,payoutCurrency:'USDT',payoutAmount:952.38,
+    payoutRate:null,payoutUsdt:952.38,payinTxHash:customHash,
+    payinMethod:'crypto_direct',payoutMethod:'transfer'}});
+assert.equal(customWithHash.payin_tx_hash,customHash,
+  'CRM custom serializer uses its singular incoming hash field');
+assert.equal(customWithHash.payin_tx_hashes,undefined,
+  'do not silently invent a parallel CRM custom hash array');
+const customFlowHash='q'.repeat(64);
+const customFlowNull=ctx.crmPayload({...base,type:'Обмен валюты',kind:'',custom:true,
+  amountUsdt:500,payinHashes:[{hash:customFlowHash,network:'trc20',amount:null}],
+  customData:{payinCurrency:'RUB',payinAmount:50000,payinRate:100,payinUsdt:500,
+    payoutCurrency:'USDT',payoutAmount:450,payoutRate:null,payoutUsdt:450,
+    payinTxHash:customFlowHash,payinMethod:'flow_sole_reqs',payoutMethod:'transfer'}});
+assert.equal(customFlowNull.payin_tx_hashes[0].amount_usdt,null,
+  'new custom Flow Sole full-hash contract stays null');
+const customFlowShare=ctx.crmPayload({...base,type:'Обмен валюты',kind:'',custom:true,
+  amountUsdt:100,payinHashes:[{hash:customFlowHash,network:'trc20',amount:100}],
+  customData:{payinCurrency:'RUB',payinAmount:10000,payinRate:100,payinUsdt:100,
+    payoutCurrency:'USDT',payoutAmount:90,payoutRate:null,payoutUsdt:90,
+    payinTxHash:customFlowHash,payinMethod:'flow_sole_reqs',payoutMethod:'transfer'}});
+assert.equal(customFlowShare.payin_tx_hashes[0].amount_usdt,100,
+  'custom Flow Sole keeps a saved explicit share instead of forcing null');
+const founder=ctx.crmPayload({...base,type:'Обмен валюты',kind:'',payType:'Крипта',
+  paySrc:'founder',amountUsdt:3300,amountThb:100000,
+  payout:{thb:100000,settledByPayin:true,hashes:[{hash:'f'.repeat(64),amount:3205.13,
+    from_address:'synthetic-founder',to_address:'synthetic-client'}]}});
+assert.equal(founder.payout_source,'founder_personal');
+assert.equal(founder.needs_reimbursement,false);
+assert.equal(founder.payout_tx_hashes[0].from_address,'synthetic-founder');
+console.log('T17 rental/freehold/custom/multi-payin payload: PASS');

@@ -47,7 +47,18 @@ def cli(monkeypatch):
     monkeypatch.setattr(appmod, 'sync_deals_to_gsheet', lambda *a, **kw: None)
     monkeypatch.setattr(appmod, '_send_deal_telegram', lambda *a, **kw: None)
     monkeypatch.setattr(appmod, 'send_deal_completed_webhook', lambda *a, **kw: None)
+    db = get_session()
+    try:
+        admin = appmod.AdminUser(username='flow-gate-admin-' + uuid.uuid4().hex[:8],
+                            role='admin', password_hash='unused')
+        db.add(admin)
+        db.commit()
+        admin_id = admin.id
+    finally:
+        db.close()
     with flask_app.test_client() as c:
+        with c.session_transaction() as sess:
+            sess['user_id'] = admin_id
         yield c
 
 
@@ -80,6 +91,7 @@ def _create_deal(cli, payout_thb, tx_hash, share_usdt, *, confirm=False):
     return cli.post('/api/deals', json={
         'client_name': 'Тест выдачи', 'deal_type': 'pay_in',
         'payin_method': 'crypto_direct', 'payin_amount_usdt': 600,
+        'unverified_confirmed': True,
         'payout_method': 'transfer', 'payout_source': 'founder_personal',
         'payout_founder_name': 'Андрей', 'payout_amount_thb': payout_thb,
         'payout_tx_hashes': [{'hash': tx_hash, 'amount_usdt': share_usdt}],
@@ -237,6 +249,7 @@ class TestSettledByPayin:
         return cli.post('/api/deals', json={
             'client_name': 'Клиент', 'deal_type': 'pay_in',
             'payin_method': payin_method, 'payin_amount_usdt': 600,
+            'unverified_confirmed': True,
             'payin_tx_hashes': [{'hash': payin_hash, 'amount_usdt': 600}],
             'payout_method': 'transfer', 'payout_source': 'founder_personal',
             'payout_founder_name': 'Андрей', 'payout_amount_thb': 16600,
@@ -277,6 +290,7 @@ class TestSettledByPayin:
         r = cli.post('/api/deals', json={
             'client_name': 'Рублёвая', 'deal_type': 'pay_in',
             'payin_method': 'sber_wl', 'payin_amount_rub': 45000,
+            'unverified_confirmed': True,
             'payout_method': 'transfer', 'payout_source': 'founder_personal',
             'payout_founder_name': 'Андрей', 'payout_amount_thb': 16600,
             'payout_tx_hashes': [{'hash': tx_hash, 'amount_usdt': 509.42}],
@@ -294,6 +308,7 @@ class TestSettledByPayin:
         deal = cli.post('/api/deals', json={
             'client_name': 'Крипта с возвратом', 'deal_type': 'pay_in',
             'payin_method': 'crypto_direct', 'payin_amount_usdt': 600,
+            'unverified_confirmed': True,
             'payin_tx_hashes': [{'hash': payin_hash, 'amount_usdt': 600}],
             'payout_method': 'transfer', 'payout_source': 'founder_personal',
             'payout_founder_name': 'Андрей', 'payout_amount_thb': 16600,
@@ -314,6 +329,7 @@ class TestSettledByPayin:
         deal_id = cli.post('/api/deals', json={
             'client_name': 'Рублёвая в очереди', 'deal_type': 'pay_in',
             'payin_method': 'sber_wl', 'payin_amount_rub': 45000,
+            'unverified_confirmed': True,
             'payout_method': 'transfer', 'payout_source': 'founder_personal',
             'payout_founder_name': 'Андрей', 'payout_amount_thb': 16600,
             'payout_tx_hashes': [{'hash': tx_hash, 'amount_usdt': 509.42}],

@@ -1,0 +1,2417 @@
+"""Stand-only CRM close transaction and its retry/rollback guarantees."""
+import copy
+import json
+import os
+import secrets
+import socket
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
+
+import app as m
+import requests
+import pytest
+
+pytestmark = pytest.mark.usefixtures('stand_demo_environment')
+from werkzeug.serving import make_server
+
+
+def _board():
+    return {'deals': [{'id': 1474, 'code': 'СД-1474', 'client': 'Synthetic T24',
+                       'type': 'Обмен валюты', 'step': 's27', 'closed': False,
+                       'crmDealId': None, 'sentToClient': True, 'pay': {},
+                       'amountUsdt': 100, 'paySrc': 'cash', 'payout': {'usdt': 90, 'thb': 1},
+                       'files': {'receipt': [{'file': 'receipt.pdf',
+                           'mime': 'application/pdf',
+                           'data': 'data:application/pdf;base64,JVBERi0='}]},
+                       'log': []}], 'notes': []}
+
+
+# Хеш прихода USDT обязателен всегда: фикстура приходит подтверждённым сетевым хешем,
+# уникальным на каждую расстановку (доли PayinTx не копятся между тестами).
+PAYIN = {'hash': 'e' * 64}
+
+
+def _seeded_payin():
+    """Фикстурный сетевой приход текущей доски: (хеш-запись, payType) или None."""
+    from sqlalchemy import inspect as sa_inspect
+    # _crm() вызывают и при сборе тестов (parametrize), когда таблиц ещё нет.
+    if not sa_inspect(m.engine).has_table('stand_state'):
+        return None
+    db = m.SessionLocal()  # отдельная сессия: чужую (scoped) закрывать и откатывать нельзя
+    try:
+        row = db.query(m.StandState).filter_by(id=1).first()
+        for deal in json.loads(row.data or '{}').get('deals', []) if row else []:
+            for item in deal.get('payinHashes') or []:
+                if isinstance(item, dict) and item.get('fixtureSeed'):
+                    return item, deal.get('payType')
+    finally:
+        db.close()
+    return None
+
+
+def _payin_crm(amount=100):
+    found = _seeded_payin()
+    item, pay_type = found if found else ({'hash': PAYIN['hash']}, 'Крипта')
+    return {'payin_method': 'crypto_direct' if pay_type == 'Крипта' else 'sber_reqs',
+            'payin_amount_usdt': amount,
+            'payin_tx_hashes': [{'hash': item['hash'], 'network': 'trc20', 'amount_usdt': amount}]}
+
+
+def _crm():
+    crm = {'deal_kind': 'exchange', 'client_name': 'Synthetic T24',
+           'manager_name': 'Елизавета', 'payin_method': 'sber_reqs',
+           'payin_amount_usdt': 100, 'payout_method': 'transfer',
+           'payout_source': 'cash_batch', 'payout_amount_usdt': 90, 'payout_amount_thb': 1}
+    found = _seeded_payin()
+    if found:  # доска получила сетевой приход фикстурой: CRM повторяет те же хеши
+        seeded, pay_type = found
+        amount = seeded['amount']
+        crm.update(payin_amount_usdt=amount, payin_tx_hashes=[{
+            'hash': seeded['hash'], 'network': 'trc20', 'amount_usdt': amount}])
+        if pay_type == 'Крипта':  # рублёвая сделка остаётся sber_reqs с хешем брокера
+            crm['payin_method'] = 'crypto_direct'
+    return crm
+
+
+def _setup(monkeypatch):
+    monkeypatch.setattr(m, 'STAND_MODE', True)
+    m._stand_migrate()
+    db = m.get_session()
+    try:
+        user = m.AdminUser(username='t24-' + secrets.token_hex(6), display_name='T24 Manager',
+                           role='manager', password_hash='unused')
+        db.add(user)
+        db.flush()
+        uid = user.id
+        row = db.query(m.StandState).filter_by(id=1).first()
+        if row is None:
+            row = m.StandState(id=1)
+            db.add(row)
+        board = _board()
+        board['deals'][0]['managerUserId'] = uid
+        row.data = json.dumps(board)
+        row.notified = '[]'
+        row.version = 1
+        row.generation = secrets.token_hex(16)
+        db.commit()
+        _seed_evidence(db, row, board=board, actor_id=uid)
+        return uid
+    finally:
+        db.close()
+
+
+def s26_legacy_trail(deal):
+    """Чек принимает завершённый s26: историческая цепочка журнала реальных сделок."""
+    names = [f['file'] for f in (deal.get('files') or {}).get('receipt') or []]
+    return [{'at': 1760852000000, 'role': 'operator', 'text': 'Приложен файл: receipt · ' + n}
+            for n in names] + [
+        {'at': 1760852982000, 'role': 'operator', 'author': 'Синтетик', 'kind': 'comment',
+         'text': 'Комментарий · Синтетик: Оплачено, чек у менеджера — отправить клиенту и закрыть'},
+        {'at': 1760852982001, 'role': 'operator', 'text': 'Шаг передан дальше'}]
+
+
+def _seed_evidence(db, row, board, actor_id):
+    """Seed actual trusted facts as well as legacy signoffs for transaction tests.
+
+    S27 revalidates sources at close; an evidence row alone is no longer proof.
+    These are synthetic persisted outcomes, not a production provenance bypass.
+    """
+    deal = board['deals'][0]
+    reused = next((h['hash'] for h in deal.get('payinHashes') or []
+                   if isinstance(h, dict) and h.get('fixtureSeed')), None)
+    PAYIN['hash'] = reused or secrets.token_hex(32)  # повторный сидинг хеш не меняет
+    # Доска, унаследованная от прошлой расстановки, получает свежую сумму; если сделку
+    # переделали под другой способ, старый фикстурный хеш снимается.
+    inherited = [h for h in deal.get('payinHashes') or [] if isinstance(h, dict) and h.get('fixtureSeed')]
+    if inherited:
+        if deal.get('payType') in (None, 'Крипта') and deal.get('amountUsdt'):
+            for item in inherited:
+                item.update(hash=PAYIN['hash'], amount=deal['amountUsdt'])
+        else:
+            deal['payinHashes'] = [h for h in deal['payinHashes'] if h not in inherited]
+    if (deal.get('type') != 'Оплата недвижимости' and deal.get('payType') in (None, 'Крипта')
+            and deal.get('cnvId') is None and not deal.get('payinHashes')):
+        # Обычный приход обязан иметь сетевой хеш: сидируем подтверждённый USDT-приход.
+        # Рублёвые и парные сделки в крипту не превращаем.
+        deal.update(payType='Крипта', payinHashes=[{
+            'hash': PAYIN['hash'], 'network': 'TRC20', 'net': 'TRC20',
+            'amount': deal.get('amountUsdt') or 100, 'verified': True, 'fixtureSeed': True,
+            'verifiedAt': '2026-10-18T12:00:00Z'}])
+    if deal.get('payType') != 'Крипта' and not deal.get('payinParts'):
+        deal['payinParts'] = [{'incId': -1474, 'amountRub': 1}]
+        board.setdefault('incomes', []).append({'id': -1474, 'source': 'sber', 'rub': 1})
+    if ((deal.get('type') == 'Оплата недвижимости'
+         or deal.get('payType') not in (None, 'Крипта', 'Наличные'))
+            and not deal.get('payinHashes') and deal.get('amountUsdt')):
+        tx = {'hash': PAYIN['hash'], 'net': 'TRC20', 'amount': deal['amountUsdt'],
+              'status': 'confirmed', 'verifiedAt': '2026-10-18T12:00:00Z'}
+        deal['payinHashes'] = [dict(tx, fixtureSeed=True)] if deal.get('type') != 'Оплата недвижимости' else [dict(tx)]
+        if deal.get('payType') != 'Крипта':
+            deal['cnvId'] = 1474
+            for income in board.get('incomes') or []:
+                if income['id'] == -1474:
+                    income['dealId'] = deal['id']
+            board['convs'] = [{'id': 1474, 'status': 'received', 'txs': [tx],
+                'sources': [{'dealId': deal['id'], 'rub': 1, 'usdtFact': deal['amountUsdt']}]}]
+    if deal.get('payType') == 'Крипта':
+        for receipt in deal.get('payinHashes') or []:
+            receipt.update(verified=True, verifiedAt='2026-10-18T12:00:00Z')
+    network = deal.get('postConv') in ('coins', 'ipps_swift', 'client') or deal.get('paySrc') in ('coins', 'client')
+    if network and not (deal.get('transfer') or {}).get('sends'):
+        hashes = deal.get('mfPayout') or (deal.get('payout') or {}).get('hashes') or []
+        amount = sum(h.get('amount', 0) for h in hashes) or (deal.get('customData') or {}).get('payoutUsdt') or 90
+        if deal.get('kind') == 'Фрихолд' and not hashes:
+            amount = round(deal['invoiceUsd'] * 1.008 + 50, 2)
+        deal.setdefault('transfer', {}).update(amount=amount, sends=[{
+            'hash': 'synthetic-payout-proof', 'net': 'TRC20', 'amount': amount,
+            'verifiedAmount': amount, 'status': 'confirmed', 'verifiedAt': '2026-10-18T12:00:00Z',
+            'from': 'synthetic-sender', 'to': 'synthetic-recipient'}])
+        deal['serverTransferComplete'] = True
+    if deal.get('type') == 'Оплата недвижимости':
+        deal['log'] = (deal.get('log') or []) + s26_legacy_trail(deal)
+    row.data = json.dumps(board)
+    for kind in m._stand_close_required(deal):
+        entry = db.query(m.StandCloseEvidence).filter_by(
+            generation=row.generation, stand_deal_id=deal['id'], kind=kind).first()
+        if entry is None:
+            entry = m.StandCloseEvidence(generation=row.generation,
+                stand_deal_id=deal['id'], kind=kind)
+            db.add(entry)
+        entry.fingerprint = m._stand_close_fingerprint(deal, kind)
+        entry.actor_id = actor_id
+        entry.provenance = 'synthetic_preverified_fixture'
+    db.commit()
+
+
+def _client(uid):
+    client = m.app.test_client()
+    with client.session_transaction() as sess:
+        sess['user_id'] = uid
+    return client
+
+
+def _post(client, version=1, crm=None):
+    return client.post('/api/stand/deals/1474/crm-close',
+                       json={'version': version, 'crm': _crm() if crm is None else crm})
+
+
+def _counts():
+    db = m.get_session()
+    try:
+        return db.query(m.Deal).count(), db.query(m.StandCrmLink).count()
+    finally:
+        db.close()
+
+
+def test_manager_manual_close_rental_cash_bypasses_new_flow_gate(monkeypatch):
+    """An existing s14 rental/cash card can close through the manual path."""
+    uid = _setup(monkeypatch)
+    transfer_hash = '9' * 64
+    payin_hash = secrets.token_hex(32)  # хеш прихода обязателен всегда
+    from tests.payin_registry import ensure_payin_wallet, RECEIVER
+    ensure_payin_wallet()  # получатель прихода — наш кошелёк из реестра
+    board = {'deals': [{
+        'id': 1474, 'code': 'СД-1474', 'client': 'Synthetic rental',
+        'managerUserId': uid,
+        'type': 'Оплата недвижимости', 'kind': 'Аренда', 'step': 's14',
+        'payType': 'Наличные', 'amountRub': 1217600, 'amountThb': 455000,
+        'rates': {'client': '2,676', 'usdtThb': '33.42'},
+        'object': 'Synthetic villa', 'docs': {'inv': True, 'receipt': True},
+        'mfPayout': [], 'payinHashes': [], 'agents': [],
+        'files': {'receipt': [{'file': 'receipt.pdf', 'mime': 'application/pdf',
+                               'data': 'data:application/pdf;base64,JVBERi0='}]},
+        'closed': False, 'crmDealId': None, 'log': [],
+    }], 'notes': []}
+    db = m.get_session()
+    try:
+        row = db.query(m.StandState).filter_by(id=1).one()
+        row.data = json.dumps(board)
+        db.commit()
+    finally:
+        db.close()
+    monkeypatch.setattr(m, 'verify_transfer', lambda _hash, _network, _sender, _receiver, amount: {
+        'status': 'confirmed', 'verifiedAmount': amount,
+        'verifiedAt': '2026-10-20T00:00:00Z', 'from': 'Synthetic sender'})
+    monkeypatch.setattr(m, '_stand_deliver_notes', lambda: [])
+    monkeypatch.setattr(m, '_stand_notify_deal_closed', lambda *_args: None)
+    monkeypatch.setattr(m, '_tx_info_by_network', lambda *_args: {
+        'amount_usdt': 13800, 'total_out_usdt': 13800})
+    crm = {'deal_kind': 'mf_realty', 'client_name': 'Synthetic rental',
+           'manager_name': 'Елизавета', 'payin_method': 'partners_cash',
+           'payin_amount_rub': 1217600, 'payin_amount_usdt': 14500,
+           'payin_tx_hashes': [{'hash': payin_hash, 'network': 'trc20', 'amount_usdt': 14500}],
+           'payin_parts': [], 'payin_extra': [],
+           'realty_purpose': 'Synthetic villa', 'invoice_amount_thb': 500000,
+           'buy_rate_thb_usdt': 33.42, 'sell_rate_thb_usdt': None,
+           'company_percent': 2, 'agents': [],
+           'payout_tx_hashes': [{'hash': transfer_hash, 'network': 'trc20',
+                                 'amount_usdt': 13800}]}
+    manual_override = {'reason': 'Verified cash rental transferred manually',
+                       'payin': {'method': 'Наличные', 'amountRub': 1217600,
+                                 'amountUsdt': 14500, 'manualBankConfirmed': True,
+                                 'hashes': [{'hash': payin_hash, 'network': 'TRC20',
+                                             'sender': 'TSenderWallet11111111111111',
+                                             'receiver': RECEIVER, 'amount': 14500}]},
+                       'payout': {'amountUsdt': 13800, 'hashes': [
+                           {'hash': transfer_hash, 'network': 'TRC20', 'amount': 13800}]},
+                       'realty': {'invoiceThb': 500000, 'buyRate': 33.42,
+                                  'sellRate': None, 'companyPercent': 2},
+                       'agents': []}
+    response = _client(uid).post('/api/stand/deals/1474/crm-close', json={
+        'version': 1, 'crm': crm, 'manualOverride': manual_override})
+    assert response.status_code == 201, response.json
+    assert response.json['data']['deals'][0]['closed'] is True
+    assert response.json['deal']['deal_kind'] == 'mf_realty'
+    assert response.json['deal']['invoice_amount_thb'] == 500000
+
+
+def test_atomic_close_and_lost_response_retry(monkeypatch):
+    uid = _setup(monkeypatch)
+    base_deals, base_links = _counts()
+    client = _client(uid)
+    first = _post(client)
+    assert first.status_code == 201, first.json
+    crm_id = first.json['deal']['id']
+    assert first.json['data']['deals'][0]['closed'] is True
+    assert first.json['data']['deals'][0]['crmDealId'] == crm_id
+    assert _counts() == (base_deals + 1, base_links + 1)
+    db = m.get_session()
+    try:
+        assert db.query(m.Deal).filter_by(id=crm_id).one().payin_extra is None
+    finally:
+        db.close()
+    # Lost HTTP response, reload and retry with old version: same committed id.
+    second = _post(_client(uid), version=1)
+    assert second.status_code == 200, second.json
+    assert second.json['duplicate'] is True
+    assert second.json['deal']['id'] == crm_id
+    assert _counts() == (base_deals + 1, base_links + 1)
+    # A note/noop board save after close never creates another CRM row.
+    state = client.get('/api/stand/state').json
+    noop = client.put('/api/stand/state', json={'version': state['version'],
+                                               'data': state['data']})
+    assert noop.status_code == 200, noop.json
+    assert _post(client, version=state['version']).json['deal']['id'] == crm_id
+    assert _counts() == (base_deals + 1, base_links + 1)
+
+
+def test_invalid_crm_rolls_back_board_link_and_money(monkeypatch):
+    uid = _setup(monkeypatch)
+    baseline = _counts()
+    bad = _crm()
+    bad['deal_kind'] = 'mf_freehold'
+    response = _post(_client(uid), crm=bad)
+    assert response.status_code == 400
+    assert _counts() == baseline
+    state = _client(uid).get('/api/stand/state').json
+    assert state['data']['deals'][0]['step'] == 's27'
+    assert state['data']['deals'][0]['crmDealId'] is None
+
+
+def test_stale_version_and_forged_crm_id_rejected(monkeypatch):
+    uid = _setup(monkeypatch)
+    baseline = _counts()
+    client = _client(uid)
+    assert _post(client, version=0).status_code == 409
+    assert client.post('/api/stand/deals/999999/crm-close',
+                       json={'version': 1, 'crm': _crm()}).status_code == 404
+    state = client.get('/api/stand/state').json
+    forged = copy.deepcopy(state['data'])
+    forged['deals'][0]['crmDealId'] = 999
+    assert client.put('/api/stand/state', json={'version': state['version'],
+                                              'data': forged}).status_code == 409
+    forged_new = copy.deepcopy(state['data'])
+    fake = copy.deepcopy(forged_new['deals'][0])
+    fake.update(id=1475, code='СД-1475', crmDealId=777, closed=True,
+                step='done', closeReason='Успешно завершена')
+    forged_new['deals'].append(fake)
+    assert client.put('/api/stand/state', json={'version': state['version'],
+                                              'data': forged_new}).status_code == 409
+    assert _counts() == baseline
+
+
+def test_foreign_bitrix_origin_cannot_link_existing_crm(monkeypatch):
+    uid = _setup(monkeypatch)
+    client = _client(uid)
+    db = m.get_session()
+    try:
+        admin = m.AdminUser(username='t24-' + secrets.token_hex(6),
+                            display_name='T24 Admin (fixture)', role='admin',
+                            password_hash='unused')
+        db.add(admin)
+        db.commit()
+        admin_id = admin.id
+    finally:
+        db.close()
+    unrelated = _client(admin_id).post('/api/deals', json={**_crm(), 'bitrix_deal_id': 456789,
+                                                'status': 'completed', 'skip_sync': True,
+                                                'unverified_confirmed': True})
+    assert unrelated.status_code == 201, unrelated.json
+    foreign_id = unrelated.json['deal']['id']
+    before = _counts()
+    crm = _crm()
+    crm.update(bitrix_deal_id=456789, crmDealId=foreign_id)
+    response = _post(client, crm=crm)
+    assert response.status_code == 400
+    assert response.json['error'] == 'foreign_origin_forbidden'
+    assert _counts() == before
+    assert client.get('/api/stand/state').json['data']['deals'][0]['crmDealId'] is None
+
+
+def test_board_reset_rotates_origin_generation(monkeypatch):
+    uid = _setup(monkeypatch)
+    client = _client(uid)
+    first = _post(client)
+    assert first.status_code == 201
+    first_id = first.json['deal']['id']
+    db = m.get_session()
+    try:
+        admin = m.AdminUser(username='t24-' + secrets.token_hex(6),
+                            display_name='T24 Admin', role='admin',
+                            password_hash='unused')
+        db.add(admin)
+        db.commit()
+        admin_id = admin.id
+        prior_generation = db.query(m.StandState).filter_by(id=1).one().generation
+    finally:
+        db.close()
+    admin_client = _client(admin_id)
+    assert admin_client.post('/api/stand/reset').status_code == 200
+    db = m.get_session()
+    try:
+        reset_row = db.query(m.StandState).filter_by(id=1).one()
+        assert reset_row.generation != prior_generation
+        assert reset_row.notified == '[]'
+    finally:
+        db.close()
+    state = admin_client.get('/api/stand/state').json
+    fresh = _board()
+    fresh['deals'][0].update(step='s5', sentToClient=False, unverified_confirmed=True,
+                             managerUserId=uid)
+    put = admin_client.put('/api/stand/state',
+                           json={'version': state['version'], 'data': fresh})
+    assert put.status_code == 200, put.json
+    advanced = copy.deepcopy(put.json['data'])
+    advanced['deals'][0].update(step='s27', sentToClient=True)
+    # This test covers reset generation, not the intervening workflow.
+    with m.SessionLocal() as db:
+        row = db.get(m.StandState, 1)
+        row.data = json.dumps(advanced)
+        db.commit()
+    saved = admin_client.put('/api/stand/state',
+                             json={'version': put.json['version'], 'data': advanced})
+    assert saved.status_code == 200, saved.json
+    db = m.get_session()
+    try:
+        row = db.query(m.StandState).filter_by(id=1).one()
+        _seed_evidence(db, row, saved.json['data'], uid)
+    finally:
+        db.close()
+    second = _post(client, version=saved.json['version'])
+    assert second.status_code == 201, second.json
+    assert second.json['deal']['id'] != first_id
+
+
+def _select_bitrix_origin(uid, *, source='bitrix', manual=False, bitrix_id=None):
+    bitrix_id = str(bitrix_id or 910000000 + uid * 100)
+    db = m.get_session()
+    try:
+        row = db.query(m.StandState).filter_by(id=1).one()
+        channel = db.query(m.StandChannel).filter_by(
+            channel='bitrix', account='Grusha', chat_id=bitrix_id).first()
+        if channel is None:
+            db.add(m.StandChannel(channel='bitrix', account='Grusha', chat_id=bitrix_id,
+                                  name='Synthetic Bitrix deal', last_active=10))
+        state = json.loads(row.data)
+        deal = state['deals'][0]
+        deal.update(source=source, sourceRef=f'Grusha:{bitrix_id}', srefOther=manual)
+        deal['bitrixCloseProof'] = m._stand_bitrix_close_proof(bitrix_id)
+        row.data = json.dumps(state)
+        db.commit()
+    finally:
+        db.close()
+    return int(bitrix_id)
+
+
+def _mock_bitrix(monkeypatch, *, remote=None, update_result=(True, '')):
+    import bitrix_deals
+    calls = []
+
+    def get_deal(deal_id):
+        db = m.get_session()
+        try:
+            board = db.query(m.StandState).filter_by(id=1).one()
+            state = json.loads(board.data)
+            assert state['deals'][0]['closed'] is True, 'Bitrix read happened before DB commit'
+            assert db.query(m.Deal).filter_by(bitrix_deal_id=deal_id).count() == 1
+        finally:
+            db.close()
+        calls.append(('get', deal_id))
+        if isinstance(remote, Exception):
+            raise remote
+        result = {'ID': str(deal_id), 'CATEGORY_ID': '0', 'STAGE_ID': 'PREPARATION'}
+        if remote:
+            result.update(remote)
+        return result
+
+    def close_won(deal_id, payload):
+        calls.append(('won', deal_id, payload.copy()))
+        return update_result
+
+    def close_lose(deal_id, reason):
+        db = m.get_session()
+        try:
+            board = db.query(m.StandState).filter_by(id=1).one()
+            state = json.loads(board.data)
+            saved = db.query(m.Deal).filter_by(bitrix_deal_id=deal_id).one()
+            assert state['deals'][0]['closeReason'] == saved.lose_reason == reason
+            assert saved.status == m.DealStatus.LOSE
+        finally:
+            db.close()
+        calls.append(('lose', deal_id, reason))
+        return update_result
+
+    monkeypatch.setattr(bitrix_deals, 'get_deal_for_stand_close', get_deal)
+    monkeypatch.setattr(bitrix_deals, 'close_won_for_stand', close_won)
+    monkeypatch.setattr(bitrix_deals, 'close_lose_for_stand', close_lose)
+    return calls
+
+
+def _post_lose(client, version=1, reason='Передумал покупать'):
+    return client.post('/api/stand/deals/1474/crm-close-lose',
+                       json={'version': version, 'reason': reason})
+
+
+def test_refusal_persists_crm_and_local_reason_before_bitrix_lose(monkeypatch):
+    uid = _setup(monkeypatch)
+    baseline = _counts()
+    bitrix_id = _select_bitrix_origin(uid)
+    monkeypatch.setenv('STAND_BITRIX_CLOSE_ENABLED', '1')
+    calls = _mock_bitrix(monkeypatch)
+    response = _post_lose(_client(uid))
+    assert response.status_code == 201, response.json
+    assert response.json['deal']['status'] == 'lose'
+    assert response.json['deal']['lose_reason'] == 'Передумал покупать'
+    local = response.json['data']['deals'][0]
+    assert local['closed'] and local['closeReason'] == 'Передумал покупать'
+    assert local['bitrixSync']['kind'] == 'lose'
+    assert response.json.get('bitrix_sync') == {'status': 'success', 'error': None}, response.json.get('bitrix_sync')
+    assert [call[0] for call in calls] == ['get', 'lose']
+    assert calls[-1] == ('lose', bitrix_id, 'Передумал покупать')
+    duplicate = _post_lose(_client(uid), version=1, reason='Не наш профиль')
+    assert duplicate.status_code == 200 and duplicate.json['duplicate'] is True
+    assert duplicate.json['deal']['lose_reason'] == 'Передумал покупать'
+    assert _counts() == (baseline[0] + 1, baseline[1] + 1)
+    assert [call[0] for call in calls] == ['get', 'lose']
+
+
+@pytest.mark.parametrize('source,manual', [('tg', False), ('bitrix', True)])
+def test_refusal_from_telegram_or_manual_bitrix_source_does_not_sync(monkeypatch, source, manual):
+    uid = _setup(monkeypatch)
+    _select_bitrix_origin(uid, source=source, manual=manual)
+    monkeypatch.setenv('STAND_BITRIX_CLOSE_ENABLED', '1')
+    calls = _mock_bitrix(monkeypatch)
+    response = _post_lose(_client(uid))
+    assert response.status_code == 201, response.json
+    assert response.json['deal']['status'] == 'lose'
+    assert response.json['deal']['bitrix_deal_id'] is None
+    assert calls == []
+
+
+def test_refusal_requires_reason_and_crm_commit_before_any_bitrix_write(monkeypatch):
+    uid = _setup(monkeypatch)
+    baseline = _counts()
+    _select_bitrix_origin(uid)
+    monkeypatch.setenv('STAND_BITRIX_CLOSE_ENABLED', '1')
+    calls = _mock_bitrix(monkeypatch)
+    assert _post_lose(_client(uid), reason='invented').status_code == 400
+    assert calls == []
+    original = m._create_deal_impl
+    monkeypatch.setattr(m, '_create_deal_impl',
+                        lambda *a, **kw: (m.jsonify({'success': False, 'error': 'fake'}), 500))
+    failed = _post_lose(_client(uid))
+    assert failed.status_code == 500
+    assert calls == []
+    assert _counts() == baseline
+    monkeypatch.setattr(m, '_create_deal_impl', original)
+
+
+def test_refusal_bitrix_timeout_pending_retry_uses_saved_crm_reason_and_link(monkeypatch):
+    uid = _setup(monkeypatch)
+    baseline = _counts()
+    bitrix_id = _select_bitrix_origin(uid)
+    monkeypatch.setenv('STAND_BITRIX_CLOSE_ENABLED', '1')
+    calls = _mock_bitrix(monkeypatch, remote=TimeoutError())
+    response = _post_lose(_client(uid))
+    assert response.status_code == 201
+    assert response.json['data']['deals'][0]['bitrixSync']['status'] == 'error'
+    import bitrix_deals
+    def already_lost(deal_id):
+        calls.append(('retry_get', deal_id))
+        return {'ID': str(deal_id), 'CATEGORY_ID': '0', 'STAGE_ID': 'LOSE'}
+    monkeypatch.setattr(bitrix_deals, 'get_deal_for_stand_close', already_lost)
+    retry = _client(uid).post('/api/stand/deals/1474/bitrix-close-retry', json={
+        'bitrix_deal_id': 5, 'reason': 'forged'})
+    assert retry.status_code == 200 and retry.json['success'] is True
+    assert retry.json['data']['deals'][0]['bitrixSync']['status'] == 'success'
+    assert calls[-1] == ('retry_get', bitrix_id)
+    assert _counts() == (baseline[0] + 1, baseline[1] + 1)
+
+
+def test_s8_manager_draft_files_publish_without_losing_bytes(monkeypatch):
+    uid = _setup(monkeypatch)
+    monkeypatch.setattr(m, '_stand_deliver_notes', lambda: [])
+    db = m.SessionLocal()
+    try:
+        row = m._stand_row(db)
+        state = json.loads(row.data)
+        deal = state['deals'][0]
+        deal.update(step='s8', isOld=False, type='Оплата недвижимости', kind='Фрихолд',
+                    payType='Крипта', invoiceUsd=45000, amountUsdt=45000,
+                    ippsTariff='bank')
+        deal['freeholdLossAck'] = {
+            'fingerprint': m._stand_freehold_loss_fingerprint(deal)}
+        row.data = json.dumps(state)
+        db.commit()
+        version = row.version
+    finally:
+        db.close()
+    pdf = b'%PDF-1.4\nsynthetic stand document\n%%EOF'
+    import base64
+    def uploaded(name):
+        return {'file': name, 'size': '1 КБ', 'at': '30.09',
+                'mime': 'application/pdf', 'bytes': len(pdf),
+                'data': 'data:application/pdf;base64,' + base64.b64encode(pdf).decode(),
+                'demo': False}
+    client = _client(uid)
+    state = client.get('/api/stand/state').json
+    payload = copy.deepcopy(state['data'])
+    payload['deals'][0]['_managerDraft'] = {
+        'files': {'pass': [uploaded('passport.pdf')], 'inv': [uploaded('invoice.pdf')]},
+        'docs': {'pass': True, 'inv': True},
+        'docMeta': {'pass': {'file': 'passport.pdf', 'size': '1 КБ', 'at': '30.09'},
+                    'inv': {'file': 'invoice.pdf', 'size': '1 КБ', 'at': '30.09'}}}
+    draft_saved = client.put('/api/stand/state', json={'version': state['version'], 'data': payload})
+    assert draft_saved.status_code == 200, draft_saved.json
+    draft_deal = draft_saved.json['data']['deals'][0]
+    assert draft_deal['_managerDraft']['files']['pass'][0]['data'] == '__detached__'
+    assert client.get('/api/stand/file/1474/pass/0?draft=1').data == pdf
+
+    # Reproduce the browser publish step using its detached server snapshot.
+    transferred = copy.deepcopy(draft_saved.json['data'])
+    item = transferred['deals'][0]
+    manager_draft = item.pop('_managerDraft')
+    item['files'] = manager_draft['files']
+    item['docs'] = manager_draft['docs']
+    item['docMeta'] = manager_draft['docMeta']
+    item['step'] = 's11'
+    transferred['notes'] = [{'id': 'synthetic-s8-operator', 'role': 'operator',
+                             'dealId': 1474, 'text': 'synthetic s8 transfer',
+                             'at': 1, 'read': False}]
+    published = client.put('/api/stand/state', json={
+        'version': draft_saved.json['version'], 'data': transferred})
+    assert published.status_code == 200, published.json
+    published_deal = published.json['data']['deals'][0]
+    assert published_deal['step'] == 's11'
+    assert published_deal['docs']['pass'] and published_deal['docs']['inv']
+    assert client.get('/api/stand/file/1474/pass/0').data == pdf
+    assert client.get('/api/stand/file/1474/inv/0').data == pdf
+
+
+def test_state_put_cannot_close_bitrix_deal_locally(monkeypatch):
+    uid = _setup(monkeypatch)
+    _select_bitrix_origin(uid)
+    client = _client(uid)
+    current = client.get('/api/stand/state').json
+    changed = copy.deepcopy(current['data'])
+    deal = changed['deals'][0]
+    deal.update(closed=True, closeReason='Передумал покупать', closedAt='30.09', step='done')
+    response = client.put('/api/stand/state', json={'version': current['version'], 'data': changed})
+    assert response.status_code == 409
+    assert 'закрывайте сделку' in response.json['error'].lower()
+
+
+def test_linked_bitrix_close_writes_crm_link_and_won_after_commit(monkeypatch):
+    uid = _setup(monkeypatch)
+    bitrix_id = _select_bitrix_origin(uid)
+    monkeypatch.setenv('STAND_BITRIX_CLOSE_ENABLED', '1')
+    calls = _mock_bitrix(monkeypatch)
+    response = _post(_client(uid))
+    assert response.status_code == 201, response.json
+    assert response.json['bitrix_sync'] == {'status': 'success', 'error': None}
+    assert [call[0] for call in calls] == ['get', 'won']
+    assert calls[0][1] == calls[1][1] == bitrix_id
+    assert calls[1][2] == {
+        'payin_amount_usdt': 100.0, 'payin_amount_rub': 0,
+        'payin_method': 'crypto_direct', 'payout_amount_thb': 1,
+        'payout_method': 'transfer'}
+    saved = response.json['data']['deals'][0]['bitrixSync']
+    assert saved['status'] == 'success'
+    assert saved['bitrix_deal_id'] == bitrix_id
+    assert response.json['deal']['bitrix_deal_id'] == bitrix_id
+
+
+@pytest.mark.parametrize('source,manual', [('tg', False), ('bitrix', True)])
+def test_tg_or_manual_bitrix_source_never_syncs(monkeypatch, source, manual):
+    uid = _setup(monkeypatch)
+    _select_bitrix_origin(uid, source=source, manual=manual)
+    monkeypatch.setenv('STAND_BITRIX_CLOSE_ENABLED', '1')
+    calls = _mock_bitrix(monkeypatch)
+    response = _post(_client(uid))
+    assert response.status_code == 201, response.json
+    assert calls == []
+    assert response.json['deal']['bitrix_deal_id'] is None
+    assert 'bitrixSync' not in response.json['data']['deals'][0]
+
+
+def test_bitrix_selection_can_change_to_another_live_card_before_close(monkeypatch):
+    uid = _setup(monkeypatch)
+    id_a = _select_bitrix_origin(uid)
+    id_b = id_a + 1
+    db = m.get_session()
+    try:
+        db.add(m.StandChannel(channel='bitrix', account='Grusha', chat_id=str(id_b),
+                              name='Second synthetic deal', last_active=11))
+        db.commit()
+    finally:
+        db.close()
+    client = _client(uid)
+    state = client.get('/api/stand/state').json
+    changed = copy.deepcopy(state['data'])
+    changed['deals'][0]['sourceRef'] = f'Grusha:{id_b}'
+    changed['deals'][0]['bitrixCloseProof'] = m._stand_bitrix_close_proof(str(id_b))
+    saved = client.put('/api/stand/state', json={'version': state['version'], 'data': changed})
+    assert saved.status_code == 200, saved.json
+    assert saved.json['data']['deals'][0]['bitrixCloseProof'] == m._stand_bitrix_close_proof(str(id_b))
+    monkeypatch.setenv('STAND_BITRIX_CLOSE_ENABLED', '1')
+    calls = _mock_bitrix(monkeypatch)
+    closed = _post(client, version=saved.json['version'])
+    assert closed.status_code == 201, closed.json
+    assert calls[0] == ('get', id_b)
+    assert closed.json['deal']['bitrix_deal_id'] == id_b
+
+
+def test_bitrix_id_tampering_and_crm_failure_never_call_bitrix(monkeypatch):
+    uid = _setup(monkeypatch)
+    baseline = _counts()
+    _select_bitrix_origin(uid)
+    monkeypatch.setenv('STAND_BITRIX_CLOSE_ENABLED', '1')
+    calls = _mock_bitrix(monkeypatch)
+    forged = _crm()
+    forged['bitrix_deal_id'] = 999999
+    assert _post(_client(uid), crm=forged).json['error'] == 'foreign_origin_forbidden'
+    assert calls == []
+
+    original = m._create_deal_impl
+    monkeypatch.setattr(m, '_create_deal_impl',
+                        lambda *a, **kw: (m.jsonify({'success': False, 'error': 'fake'}), 500))
+    failed = _post(_client(uid))
+    assert failed.status_code == 500, failed.json
+    assert calls == []
+    assert _counts() == baseline
+    monkeypatch.setattr(m, '_create_deal_impl', original)
+
+
+def test_already_won_and_duplicate_close_are_idempotent(monkeypatch):
+    uid = _setup(monkeypatch)
+    baseline = _counts()
+    _select_bitrix_origin(uid)
+    monkeypatch.setenv('STAND_BITRIX_CLOSE_ENABLED', '1')
+    calls = _mock_bitrix(monkeypatch, remote={'CATEGORY_ID': '0', 'STAGE_ID': 'WON'})
+    first = _post(_client(uid))
+    crm_id = first.json['deal']['id']
+    retry = _client(uid).post('/api/stand/deals/1474/bitrix-close-retry', json={
+        'bitrix_deal_id': 7, 'payload': {'payin_amount_usdt': 999}})
+    duplicate = _post(_client(uid), version=1)
+    assert first.json['bitrix_sync']['status'] == 'success'
+    assert retry.status_code == 200 and retry.json['success'] is True
+    assert duplicate.status_code == 200 and duplicate.json['deal']['id'] == crm_id
+    assert _counts() == (baseline[0] + 1, baseline[1] + 1)
+    assert [call[0] for call in calls] == ['get']
+
+
+def test_bitrix_timeout_keeps_crm_closed_and_retry_uses_saved_link(monkeypatch):
+    uid = _setup(monkeypatch)
+    baseline = _counts()
+    _select_bitrix_origin(uid)
+    monkeypatch.setenv('STAND_BITRIX_CLOSE_ENABLED', '1')
+    calls = _mock_bitrix(monkeypatch, remote=TimeoutError())
+    response = _post(_client(uid))
+    assert response.status_code == 201 and response.json['success'] is True
+    assert response.json['bitrix_sync']['status'] == 'error'
+    assert response.json['data']['deals'][0]['bitrixSync']['status'] == 'error'
+    assert _counts() == (baseline[0] + 1, baseline[1] + 1)
+
+    import bitrix_deals
+    def now_won(deal_id):
+        calls.append(('get_retry', deal_id))
+        return {'ID': str(deal_id), 'CATEGORY_ID': '0', 'STAGE_ID': 'WON'}
+    monkeypatch.setattr(bitrix_deals, 'get_deal_for_stand_close', now_won)
+    retry = _client(uid).post('/api/stand/deals/1474/bitrix-close-retry', json={
+        'bitrix_deal_id': 999, 'payload': {'payin_amount_usdt': 1}})
+    assert retry.status_code == 200 and retry.json['success'] is True
+    assert retry.json['data']['deals'][0]['bitrixSync']['status'] == 'success'
+    assert _counts() == (baseline[0] + 1, baseline[1] + 1)
+    assert calls[-1] == ('get_retry', 910000000 + uid * 100)
+
+
+@pytest.mark.parametrize('remote,error', [
+    ({'CATEGORY_ID': '1', 'STAGE_ID': 'PREPARATION'}, 'wrong_category'),
+    ({'CATEGORY_ID': '0', 'STAGE_ID': 'LOSE'}, 'already_lost'),
+])
+def test_bitrix_wrong_pipeline_or_lost_is_never_updated(monkeypatch, remote, error):
+    uid = _setup(monkeypatch)
+    _select_bitrix_origin(uid)
+    monkeypatch.setenv('STAND_BITRIX_CLOSE_ENABLED', '1')
+    calls = _mock_bitrix(monkeypatch, remote=remote)
+    response = _post(_client(uid))
+    assert response.status_code == 201
+    assert response.json['bitrix_sync']['error'] == error
+    assert [call[0] for call in calls] == ['get']
+
+
+@pytest.mark.parametrize('remote', [
+    {'ID': 'not-a-number', 'CATEGORY_ID': '0', 'STAGE_ID': 'PREPARATION'},
+    {'ID': '999999999999', 'CATEGORY_ID': '0', 'STAGE_ID': 'PREPARATION'},
+])
+def test_bitrix_identity_mismatch_never_updates(monkeypatch, remote):
+    uid = _setup(monkeypatch)
+    bitrix_id = _select_bitrix_origin(uid)
+    monkeypatch.setenv('STAND_BITRIX_CLOSE_ENABLED', '1')
+    calls = _mock_bitrix(monkeypatch, remote=remote)
+    response = _post(_client(uid))
+    assert response.status_code == 201
+    assert response.json['bitrix_sync']['error'] == 'bitrix_identity_mismatch'
+    assert [call[0] for call in calls] == ['get']
+    assert calls[0][1] == bitrix_id
+
+
+def test_stand_sync_flag_defaults_off_without_real_bitrix_calls(monkeypatch):
+    uid = _setup(monkeypatch)
+    _select_bitrix_origin(uid)
+    monkeypatch.delenv('STAND_BITRIX_CLOSE_ENABLED', raising=False)
+    calls = _mock_bitrix(monkeypatch)
+    response = _post(_client(uid))
+    assert response.status_code == 201
+    assert response.json['bitrix_sync'] == {'status': 'error', 'error': 'sync_disabled'}
+    assert calls == []
+
+
+def test_bitrix_stand_helper_uses_existing_won_fields_and_regular_calls_stay_blocked(monkeypatch):
+    import bitrix_deals
+    monkeypatch.setenv('STAND_MODE', '1')
+    monkeypatch.setenv('STAND_BITRIX_CLOSE_ENABLED', '1')
+    monkeypatch.setattr(bitrix_deals, 'BITRIX_WEBHOOK', 'https://example.invalid/hooks')
+    posted = []
+    monkeypatch.setattr(bitrix_deals.requests, 'post',
+                        lambda url, data, timeout: (posted.append((url, data, timeout)) or
+                            type('Response', (), {'status_code': 200,
+                                'json': lambda self: {'result': True}})()))
+    ok, err = bitrix_deals.close_won_for_stand(123456, {
+        'payin_amount_usdt': 100, 'payin_amount_rub': 8200,
+        'payin_method': 'sber_reqs', 'payout_amount_thb': 3100,
+        'payout_method': 'transfer'})
+    assert ok and not err and len(posted) == 1
+    assert posted[0][0] == 'https://example.invalid/hooks/crm.deal.update'
+    payload = posted[0][1]
+    assert payload['id'] == '123456'
+    assert payload['fields[STAGE_ID]'] == 'WON'
+    assert payload['fields[OPPORTUNITY]'] == '100'
+    assert payload['fields[UF_CRM_PAYIN_NATIVE]'] == '8200|RUB'
+    assert payload['fields[UF_CRM_1761207574105]'] == '3100|THB'
+    monkeypatch.setattr(bitrix_deals, 'BITRIX_WEBHOOK', 'https://example.invalid/hooks/')
+    ok, err = bitrix_deals.close_won_for_stand(123456, {
+        'payin_amount_usdt': 100, 'payin_amount_rub': 8200,
+        'payin_method': 'sber_reqs', 'payout_amount_thb': 3100,
+        'payout_method': 'transfer'})
+    assert ok and not err and len(posted) == 2
+    assert posted[1][0] == posted[0][0]
+    with pytest.raises(bitrix_deals.BitrixError, match='stand_blocked'):
+        bitrix_deals.close_won(123456, {'payin_amount_usdt': 1})
+    with pytest.raises(bitrix_deals.BitrixError, match='stand_blocked'):
+        bitrix_deals._post('crm.deal.list', {}, stand_close_sync=True)
+    monkeypatch.setenv('STAND_BITRIX_CLOSE_ENABLED', '0')
+    with pytest.raises(bitrix_deals.BitrixError, match='stand_blocked'):
+        bitrix_deals.get_deal_for_stand_close(123456)
+
+
+def test_custom_exchange_uses_existing_crm_contract(monkeypatch):
+    uid = _setup(monkeypatch)
+    db = m.get_session()
+    try:
+        row = db.query(m.StandState).filter_by(id=1).one()
+        board = json.loads(row.data)
+        custom_hash = secrets.token_hex(32)
+        board['deals'][0].update(custom=True, paySrc='coins', payout={'thb': 343000, 'usdt': 9800},
+            amountUsdt=10000, payType='Крипта',
+            payinHashes=[{'hash': custom_hash, 'network': 'TRC20', 'net': 'TRC20', 'amount': 10000,
+                          'verified': True, 'fixtureSeed': True,
+                          'verifiedAt': '2026-10-18T12:00:00Z'}],
+            customData={'payinCurrency': 'RUB', 'payinAmount': 920000,
+                        'payinRate': 92, 'payinUsdt': 10000, 'payinTxHash': custom_hash,
+                        'payoutCurrency': 'THB', 'payoutAmount': 343000,
+                        'payoutRate': 35, 'payoutUsdt': 9800})
+        row.data = json.dumps(board)
+        db.commit()
+        _seed_evidence(db, row, board, uid)
+    finally:
+        db.close()
+    payload = {**_crm(), 'is_custom': True,
+               'payin_amount_usdt': 10000, 'payout_amount_usdt': 9800,
+               'payout_source': 'binance', 'payout_amount_thb': 343000,
+               'custom_payin_currency': 'RUB', 'custom_payin_amount': 920000,
+               'custom_payin_rate': 92,
+               'custom_payout_currency': 'THB', 'custom_payout_amount': 343000,
+               'custom_payout_rate': 35}
+    payload.pop('deal_kind')  # CRM custom create sends is_custom, no deal_kind.
+    before = _counts()
+    invalid = {**payload, 'custom_payout_rate': None}
+    assert _post(_client(uid), crm=invalid).status_code == 409
+    assert _post(_client(uid), crm={**payload, 'custom_payin_amount': 1}).status_code == 409
+    assert _post(_client(uid), crm={**payload, 'payin_amount_usdt': 1}).status_code == 409
+    assert _counts() == before
+    response = _post(_client(uid), crm=payload)
+    assert response.status_code == 201, response.json
+    deal = response.json['deal']
+    assert deal['deal_kind'] == 'exchange' and deal['is_custom'] is True
+    assert deal['custom_payin_currency'] == 'RUB'
+    assert deal['custom_payout_currency'] == 'THB'
+    assert deal['profit_usdt'] == 200
+
+
+def test_freehold_locked_board_money_cannot_be_spoofed_in_crm_payload(monkeypatch):
+    uid = _setup(monkeypatch)
+    db = m.get_session()
+    try:
+        row = db.query(m.StandState).filter_by(id=1).one()
+        state = json.loads(row.data)
+        deal = state['deals'][0]
+        deal.update(type='Оплата недвижимости', kind='Фрихолд', postConv='ipps_swift',
+                    invoiceUsd=45000, ippsTariff='bank', serverTransferComplete=True,
+                    amountUsdt=46000,
+                    payTo={'purpose': 'Synthetic property'},
+                    mfPayout=[{'hash': 'demo:fh:1', 'net': 'TRC20', 'amount': 45410}])
+        deal['pay']['invoicePaid'] = True
+        row.data = json.dumps(state)
+        db.commit()
+        _seed_evidence(db, row, state, uid)
+    finally:
+        db.close()
+    before = _counts()
+    valid = {'deal_kind': 'mf_freehold', 'client_name': 'Synthetic T24',
+             'payin_method': 'crypto_direct', 'payin_amount_usdt': 46000,
+             'payin_tx_hashes': [{'hash': deal['payinHashes'][0]['hash'], 'network': 'trc20', 'amount_usdt': 46000}],
+             'realty_purpose': 'Synthetic property',
+             'invoice_amount_usd': 45000, 'transfer_fee_percent': .8,
+             'transfer_fee_fixed_usd': 50, 'transfer_sent_usd': 45410,
+             'payout_tx_hashes': [{'hash': 'demo:fh:1', 'network': 'trc20',
+                                   'amount_usdt': 45410}]}
+    for change in ({'invoice_amount_usd': 1}, {'transfer_fee_percent': 7},
+                   {'transfer_fee_fixed_usd': 5}, {'transfer_sent_usd': 1},
+                   {'invoice_amount_thb': 1}, {'buy_rate_thb_usdt': 30},
+                   {'payout_tx_hashes': []},
+                   {'payout_tx_hashes': [{'hash': 'demo:foreign', 'network': 'trc20',
+                                          'amount_usdt': 45410}]},
+                   {'payout_tx_hashes': [{'hash': 'demo:fh:1', 'network': 'trc20',
+                                          'amount_usdt': 45410,
+                                          'to_address': 'foreign-recipient'}]},
+                   {'payin_amount_usdt': 1},
+                   {'realty_purpose': 'foreign destination'},
+                   {'payout_wallet_id': 999},
+                   {'is_custom': True}):
+        response = _post(_client(uid), crm={**valid, **change})
+        assert response.status_code == 409, (change, response.json)
+        assert _counts() == before
+    good = _post(_client(uid), crm=valid)
+    assert good.status_code == 201, good.json
+    assert _counts() == (before[0] + 1, before[1] + 1)
+
+
+def test_crypto_freehold_plan_98800_closes_with_verified_98799_50_fact(monkeypatch):
+    """Contract plan and verified Pay-In remain separate through final CRM close."""
+    uid = _setup(monkeypatch)
+    db = m.get_session()
+    try:
+        row = db.query(m.StandState).filter_by(id=1).one()
+        state = json.loads(row.data)
+        deal = state['deals'][0]
+        deal.update(type='Оплата недвижимости', kind='Фрихолд', payType='Крипта',
+                    postConv='ipps_swift', invoiceUsd=97500, ippsTariff='bank',
+                    amountUsdt=98800, serverTransferComplete=True,
+                    payerWallet='T' + '1' * 33,
+                    payinHashes=[{'hash': 'synthetic-verified-in', 'amount': 98799.5,
+                                  'net': 'TRC20', 'verified': True,
+                                  'from': 'T' + '1' * 33}],
+                    payTo={'purpose': 'Synthetic property'},
+                    mfPayout=[{'hash': 'demo:fh:98800', 'net': 'TRC20', 'amount': 98330}])
+        deal['pay']['invoicePaid'] = True
+        row.data = json.dumps(state)
+        db.commit()
+        _seed_evidence(db, row, state, uid)
+    finally:
+        db.close()
+    crm = {'deal_kind': 'mf_freehold', 'client_name': 'Synthetic T24',
+           'payin_method': 'crypto_direct', 'payin_amount_usdt': 98799.5,
+           'payin_tx_hashes': [{'hash': 'synthetic-verified-in',
+                                'network': 'trc20', 'amount_usdt': 98799.5}],
+           'realty_purpose': 'Synthetic property',
+           'invoice_amount_usd': 97500, 'transfer_fee_percent': .8,
+           'transfer_fee_fixed_usd': 50, 'transfer_sent_usd': 98330,
+           'payout_tx_hashes': [{'hash': 'demo:fh:98800',
+                                 'network': 'trc20', 'amount_usdt': 98330}]}
+    closed = _post(_client(uid), crm=crm)
+    assert closed.status_code == 201, closed.json
+    assert closed.json['deal']['payin_amount_usdt'] == 98799.5
+    assert closed.json['data']['deals'][0]['amountUsdt'] == 98800
+    assert closed.json['data']['deals'][0]['step'] == 'done'
+
+
+def test_rates_and_company_sent_match_persisted_board(monkeypatch):
+    uid = _setup(monkeypatch)
+    db = m.get_session()
+    try:
+        row = db.query(m.StandState).filter_by(id=1).one()
+        board = json.loads(row.data)
+        deal = board['deals'][0]
+        deal.update(type='Оплата недвижимости', kind='Лизхолд',
+            postConv='coins', payType='По реквизитам', amountThb=600000,
+            incomeAmount=1932000, amountRub=1932000, amountUsdt=21000, companyPct=1,
+            serverTransferComplete=True,
+            rates={'broker': 92, 'client': 30, 'usdtThb': 32},
+            transfer={'rate': 32, 'thb': 603000},
+            payTo={'purpose': 'Synthetic property'})
+        deal['pay'].update(usdt=21000, invoicePaid=True, coinsNotified=True,
+                           coinsCredit={'thb': 603000})
+        row.data = json.dumps(board)
+        db.commit()
+        _seed_evidence(db, row, board, uid)
+    finally:
+        db.close()
+    crm = {'deal_kind': 'mf_realty', 'client_name': 'Synthetic T24',
+           'payin_method': 'sber_reqs', 'payin_amount_rub': 1932000,
+           'payin_amount_usdt': 21000, 'payin_rate_rub_usdt': 92,
+           'payin_tx_hashes': [{'hash': deal['payinHashes'][0]['hash'], 'network': 'trc20', 'amount_usdt': 21000}],
+           'realty_purpose': 'Synthetic property',
+           'invoice_amount_thb': 600000, 'buy_rate_thb_usdt': 32,
+           'sell_rate_thb_usdt': 30, 'company_sent_thb': 603000}
+    baseline = _counts()
+    for change in ({'payin_rate_rub_usdt': 1}, {'buy_rate_thb_usdt': 1},
+                   {'sell_rate_thb_usdt': 1}, {'company_sent_thb': 600001},
+                   {'company_sent_thb': None, 'company_percent': 1}):
+        response = _post(_client(uid), crm={**crm, **change})
+        assert response.status_code == 409, (change, response.json)
+        assert _counts() == baseline
+    accepted = _post(_client(uid), crm=crm)
+    assert accepted.status_code == 201, accepted.json
+    assert _counts() == (baseline[0] + 1, baseline[1] + 1)
+
+
+def _board_hash_amount(ref):
+    """Сумма хеша, как её хранит текущая доска (режим наблюдения сети: сумму знает сеть)."""
+    db = m.SessionLocal()
+    try:
+        row = db.query(m.StandState).filter_by(id=1).first()
+        for deal in json.loads(row.data or '{}').get('deals', []) if row else []:
+            for item in deal.get('payinHashes') or []:
+                if isinstance(item, dict) and str(item.get('hash') or '').lower() == str(ref).lower():
+                    return item.get('amount')
+    finally:
+        db.close()
+    return 0
+
+
+def _echo_verify(ref, network, sender, receiver, amount, **kwargs):
+    seen = _board_hash_amount(ref) if amount is None else amount
+    return {'status': 'confirmed', 'verifiedAmount': float(seen or 0),
+            'verifiedAt': '2026-10-18T12:00:00Z',
+            'from': sender or 'TSenderWallet11111111111111',
+            'to': receiver or 'TReceiverWallet111111111111'}
+
+
+def _manual_payin_crm():
+    """Хеш и сумма прихода ручного черновика текущей доски — для статических crm-словарей."""
+    item = _seeded_payin()[0]
+    return {'payin_tx_hashes': [{'hash': item['hash'], 'network': 'trc20',
+                                 'amount_usdt': item['amount']}]}
+
+
+def _custom_payin(deal, amount=1000):
+    """Custom-черновик: единственный хеш доски совпадает с customData.payinTxHash и суммой."""
+    deal['payinHashes'][0]['amount'] = amount
+    deal['customData']['payinTxHash'] = deal['payinHashes'][0]['hash']
+
+
+def _manual_draft(monkeypatch, kind='exchange'):
+    """Синтетический черновик для тестов close/workflow — создаётся от имени
+    admin с unverified_confirmed=True, т.к. kind здесь (exchange/Фрихолд без
+    payType/Лизхолд/Аренда) — несущественный фон для другой бизнес-логики,
+    а не предмет проверки флоу-гейта (см. gate-unverified-flows plan Task 4)."""
+    uid = _setup(monkeypatch)
+    # Хеш прихода USDT обязателен и у ручного черновика; сеть подтверждает его автоматически.
+    monkeypatch.setattr(m, 'verify_transfer', _echo_verify)
+    from tests.payin_registry import ensure_payin_wallet
+    ensure_payin_wallet()  # получатель прихода — наш кошелёк реестра
+    db = m.get_session()
+    try:
+        row = db.query(m.StandState).filter_by(id=1).one()
+        row.data = json.dumps({'deals': [], 'notes': []})
+        row.generation = secrets.token_hex(16)
+        row.version = 1
+        db.commit()
+        admin = m.AdminUser(username='t24-' + secrets.token_hex(6),
+                            display_name='T24 Admin (fixture)', role='admin',
+                            password_hash='unused')
+        db.add(admin)
+        db.commit()
+        admin_id = admin.id
+    finally:
+        db.close()
+    deal = copy.deepcopy(_board()['deals'][0])
+    deal.update(manual=True, manualNew=False, step='manual', sentToClient=False,
+                files={}, isTask=False, unverified_confirmed=True,
+                managerUserId=uid,
+                docLinks={'invoice': 'https://docs.invalid/invoice',
+                          'contract': 'https://docs.invalid/contract',
+                          'payment': 'https://docs.invalid/payment'})
+    if kind != 'exchange':
+        deal.update(type='Оплата недвижимости', kind=kind,
+                    amountThb=622370 if kind != 'Фрихолд' else None,
+                    invoiceUsd=39010.91 if kind == 'Фрихолд' else None,
+                    amountUsdt=39533.77 if kind == 'Фрихолд' else 19929.17,
+                    rates={'usdtThb': 33.22} if kind != 'Фрихолд' else {},
+                    ippsTariff='bank' if kind == 'Фрихолд' else None)
+    deal['payinHashes'] = [{'hash': secrets.token_hex(32), 'network': 'trc20',
+                            'amount': deal['amountUsdt'], 'fixtureSeed': True}]
+    created = _client(admin_id).put('/api/stand/state', json={'version': 1,
+                         'data': {'deals': [deal], 'notes': []}})
+    assert created.status_code == 200, created.json
+    assert created.json['data']['deals'][0]['originMode'] == 'manual'
+    return uid, created.json['version']
+
+
+def test_manual_draft_then_explicit_atomic_close_and_retry(monkeypatch):
+    uid, version = _manual_draft(monkeypatch)
+    client = _client(uid)
+    before = _counts()
+    state = client.get('/api/stand/state').json
+    assert state['data']['deals'][0]['step'] == 'manual'
+    crm = {**_crm(), 'doc_invoice_url': 'https://docs.invalid/invoice',
+           'doc_contract_url': 'https://docs.invalid/contract',
+           'doc_payment_url': 'https://docs.invalid/payment',
+           'notes': 'Allowed descriptive edit'}
+    assert _post(client, version=version,
+                 crm={**crm, 'doc_invoice_url': 'https://docs.invalid/foreign'}).status_code == 409
+    assert _counts() == before
+    first = _post(client, version=version, crm=crm)
+    assert first.status_code == 201, first.json
+    assert first.json['data']['deals'][0]['step'] == 'done'
+    repeat = _post(_client(uid), version=version, crm=crm)
+    assert repeat.status_code == 200 and repeat.json['deal']['id'] == first.json['deal']['id']
+    assert _counts() == (before[0] + 1, before[1] + 1)
+    assert first.json['deal']['doc_invoice_url'] == crm['doc_invoice_url']
+    saved = client.get('/api/stand/state').json
+    noop = client.put('/api/stand/state', json={'version': saved['version'],
+                                                'data': saved['data']})
+    assert noop.status_code == 200, noop.json
+    assert _post(_client(uid), version=version, crm=crm).json['deal']['id'] == first.json['deal']['id']
+
+
+def test_manual_draft_and_final_reject_wrong_role(monkeypatch):
+    uid, version = _manual_draft(monkeypatch)
+    db = m.get_session()
+    try:
+        operator = m.AdminUser(username='t24-' + secrets.token_hex(6),
+                               display_name='T24 Operator', role='operator',
+                               password_hash='unused')
+        db.add(operator)
+        db.commit()
+        operator_id = operator.id
+    finally:
+        db.close()
+    before = _counts()
+    state = _client(uid).get('/api/stand/state').json
+    copied = copy.deepcopy(state['data']['deals'][0])
+    copied.update(id=1475, code='СД-1475', originMode=None)
+    denied = _client(operator_id).put('/api/stand/state',
+        json={'version': version, 'data': {'deals': [*state['data']['deals'], copied],
+                                          'notes': state['data']['notes']}})
+    assert denied.status_code == 409, denied.json
+    assert _post(_client(operator_id), version=version).status_code == 403
+    assert _counts() == before
+
+
+@pytest.mark.parametrize('step', ['manual', 's27', 'done'])
+def test_new_workflow_cannot_start_at_late_or_manual_stage(monkeypatch, step):
+    uid = _setup(monkeypatch)
+    client = _client(uid)
+    db = m.get_session()
+    try:
+        row = db.query(m.StandState).filter_by(id=1).one()
+        row.data = json.dumps({'deals': [], 'notes': []})
+        row.generation = secrets.token_hex(16)
+        row.version = 1
+        db.commit()
+    finally:
+        db.close()
+    fake = copy.deepcopy(_board()['deals'][0])
+    fake.update(step=step, manual=False)
+    response = client.put('/api/stand/state', json={'version': 1,
+                         'data': {'deals': [fake], 'notes': []}})
+    assert response.status_code == 409
+    assert client.get('/api/stand/state').json['data']['deals'] == []
+    assert _post(client).status_code == 404
+
+
+def test_workflow_entry_cannot_skip_to_s27_then_close(monkeypatch):
+    uid = _setup(monkeypatch)
+    db = m.get_session()
+    try:
+        row = db.query(m.StandState).filter_by(id=1).one()
+        row.data = json.dumps({'deals': [], 'notes': []})
+        row.generation = secrets.token_hex(16)
+        row.version = 1
+        db.commit()
+    finally:
+        db.close()
+    client = _client(uid)
+    db = m.get_session()
+    try:
+        admin = m.AdminUser(username='t24-' + secrets.token_hex(6),
+                            display_name='T24 Admin (fixture)', role='admin',
+                            password_hash='unused')
+        db.add(admin)
+        db.commit()
+        admin_id = admin.id
+    finally:
+        db.close()
+    deal = copy.deepcopy(_board()['deals'][0])
+    deal.update(step='s5', sentToClient=False, unverified_confirmed=True,
+                managerUserId=uid)
+    initial = _client(admin_id).put('/api/stand/state', json={'version': 1,
+                         'data': {'deals': [deal], 'notes': []}})
+    assert initial.status_code == 200, initial.json
+    advanced = copy.deepcopy(initial.json['data'])
+    advanced['deals'][0].update(step='s27', sentToClient=True)
+    saved = client.put('/api/stand/state', json={'version': initial.json['version'],
+                                                'data': advanced})
+    assert saved.status_code == 409, saved.json
+    assert 'Действие шага s5' in saved.json['error']
+    closed = _post(client, version=saved.json['version'])
+    assert closed.status_code == 409, closed.json
+    assert closed.json['error'] == 'stage_or_receipt_missing'
+
+
+@pytest.mark.parametrize('property_deal,route', [
+    (False, None), (True, 'ipps_swift'), (True, 'cash'), (True, None),
+])
+def test_staged_http_workflow_cannot_fabricate_completion(monkeypatch, property_deal, route):
+    """A real HTTP client cannot invent all completion evidence in a later PUT."""
+    uid = _setup(monkeypatch)
+    db = m.get_session()
+    try:
+        row = db.query(m.StandState).filter_by(id=1).one()
+        row.data = json.dumps({'deals': [], 'notes': []})
+        row.generation = secrets.token_hex(16)
+        row.version = 1
+        db.commit()
+    finally:
+        db.close()
+    baseline = _counts()
+    port = int(os.environ['CALCCRM_FENCE_PORT_START'])
+    server = make_server('127.0.0.1', port, m.app, threaded=True)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    cookie = m.app.session_interface.get_signing_serializer(m.app).dumps({'user_id': uid})
+    db = m.get_session()
+    try:
+        admin = m.AdminUser(username='t24-' + secrets.token_hex(6),
+                            display_name='T24 Admin (fixture)', role='admin',
+                            password_hash='unused')
+        db.add(admin)
+        db.commit()
+        admin_id = admin.id
+    finally:
+        db.close()
+    admin_cookie = m.app.session_interface.get_signing_serializer(m.app).dumps({'user_id': admin_id})
+    base = f'http://127.0.0.1:{port}/api/stand'
+    headers = {'Cookie': 'session=' + cookie}
+    admin_headers = {'Cookie': 'session=' + admin_cookie}
+    deal = copy.deepcopy(_board()['deals'][0])
+    deal.update(step='s8' if property_deal else 's5', sentToClient=False,
+                unverified_confirmed=True, managerUserId=uid)
+    if property_deal:
+        deal.update(type='Оплата недвижимости', kind='Фрихолд',
+                    postConv=route, payType='Крипта', invoiceUsd=100,
+                    amountUsdt=160)  # bank S=150.80; reach the anti-fabrication guard
+        deal['pay'].update(usdt=120, invoicePaid=False)
+        crm = {'deal_kind': 'mf_freehold', 'client_name': 'Synthetic T24',
+               'payin_method': 'crypto_direct', 'payin_amount_usdt': 120,
+               'invoice_amount_usd': 100, 'transfer_fee_percent': .8,
+               'transfer_fee_fixed_usd': 50, 'transfer_sent_usd': 150.8}
+    else:
+        crm = _crm()
+    try:
+        with requests.Session() as transport:
+            start = transport.put(base + '/state',
+                json={'version': 1, 'data': {'deals': [deal], 'notes': []}},
+                headers=admin_headers, timeout=10)
+            assert start.status_code == 200, start.json()
+            forged = start.json()['data']
+            forged_deal = forged['deals'][0]
+            forged_deal.update(step='s27', sentToClient=True)
+            if property_deal:
+                forged_deal['pay']['invoicePaid'] = True
+            advanced = transport.put(base + '/state',
+                json={'version': start.json()['version'], 'data': forged},
+                headers=headers, timeout=10)
+            assert advanced.status_code == 409, advanced.json()
+            assert _counts() == baseline
+            assert requests.get(base + '/state', headers=headers, timeout=10).json()['data']['deals'][0]['step'] == deal['step']
+    finally:
+        server.shutdown()
+        thread.join(timeout=5)
+        server.server_close()
+
+
+@pytest.mark.parametrize('kind,route,replacement', [
+    ('Фрихолд', 'ipps_swift', 'cash'),
+    ('Лизхолд', 'coins', 'cash'),
+    ('Аренда', 'coins', 'scb'),
+])
+def test_real_http_verified_property_route_cannot_be_downgraded(
+        monkeypatch, kind, route, replacement):
+    """A client cannot turn a verified network send into human payout signoff."""
+    uid = _setup(monkeypatch)
+    db = m.get_session()
+    try:
+        operator = m.AdminUser(username='t24-' + secrets.token_hex(6),
+            role='operator', password_hash='unused')
+        db.add(operator)
+        db.flush()
+        operator_id = operator.id
+        row = db.query(m.StandState).filter_by(id=1).one()
+        board = json.loads(row.data)
+        deal = board['deals'][0]
+        deal.update(type='Оплата недвижимости', kind=kind, postConv=route,
+            payType='Крипта', paySrc='coins', serverTransferComplete=True,
+            payTo={'acc': 'Synthetic recipient', 'bank': 'Synthetic bank'},
+            transfer={'amount': 100, 'sends': [{
+                'ref': 'demo:verified', 'status': 'confirmed',
+                'verifiedAmount': 100, 'from': 'Synthetic sender',
+                'to': 'Synthetic recipient'}]})
+        deal['pay']['invoicePaid'] = True
+        row.data = json.dumps(board)
+        row.generation = secrets.token_hex(16)
+        row.version = 1
+        db.commit()
+    finally:
+        db.close()
+    before = _counts()
+    port = int(os.environ['CALCCRM_FENCE_PORT_START'])
+    server = make_server('127.0.0.1', port, m.app, threaded=True)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    serializer = m.app.session_interface.get_signing_serializer(m.app)
+    manager_headers = {'Cookie': 'session=' + serializer.dumps({'user_id': uid})}
+    operator_headers = {'Cookie': 'session=' + serializer.dumps({'user_id': operator_id})}
+    base = f'http://127.0.0.1:{port}/api/stand'
+    try:
+        with requests.Session() as transport:
+            current = transport.get(base + '/state', headers=manager_headers,
+                                    timeout=10).json()
+            tampered = copy.deepcopy(current['data'])
+            target = tampered['deals'][0]
+            target.update(postConv=replacement, paySrc=replacement)
+            changed = transport.put(base + '/state', headers=manager_headers,
+                json={'version': current['version'], 'data': tampered}, timeout=10)
+            assert changed.status_code == 409, changed.json()
+            saved = transport.get(base + '/state', headers=manager_headers,
+                                  timeout=10).json()
+            assert saved['data']['deals'][0]['postConv'] == route
+            signoff = transport.post(base + '/deals/1474/close-evidence',
+                headers=operator_headers,
+                json={'version': saved['version'], 'kind': 'payout'}, timeout=10)
+            # Проверенную сетевую выплату подтверждает менеджер; оператор — инвойс.
+            assert signoff.status_code == 403, signoff.json()
+            signoff = transport.post(base + '/deals/1474/close-evidence',
+                headers=manager_headers,
+                json={'version': saved['version'], 'kind': 'payout'}, timeout=10)
+            assert signoff.status_code == 200, signoff.json()
+            assert signoff.json()['provenance'] == 'verified_network'
+            attempt = transport.post(base + '/deals/1474/crm-close',
+                headers=manager_headers,
+                json={'version': signoff.json()['version'], 'crm': _crm()}, timeout=10)
+            assert attempt.status_code == 409, attempt.json()
+            assert _counts() == before
+    finally:
+        server.shutdown()
+        thread.join(timeout=5)
+        server.server_close()
+
+
+def test_operator_evidence_has_role_origin_and_money_binding(monkeypatch):
+    uid = _setup(monkeypatch)
+    db = m.get_session()
+    try:
+        operator = m.AdminUser(username='t24-' + secrets.token_hex(6),
+            role='operator', password_hash='unused')
+        db.add(operator)
+        db.flush()
+        operator_id = operator.id
+        row = db.query(m.StandState).filter_by(id=1).one()
+        board = json.loads(row.data)
+        deal = board['deals'][0]
+        deal.pop('manualBankReceipt', None)
+        deal['payinParts'] = []
+        deal.update(payType='По реквизитам', incomeAmount=10000,
+                    paySrc='cash', amountUsdt=100,
+                    payout={'thb': 3000, 'usdt': 90})
+        row.data = json.dumps(board)
+        row.generation = secrets.token_hex(16)
+        row.version = 1
+        db.commit()
+    finally:
+        db.close()
+    manager = _client(uid)
+    worker = _client(operator_id)
+    path = '/api/stand/deals/1474/close-evidence'
+    state = manager.get('/api/stand/state').json
+    assert manager.get(path).json['missing'] == ['payin', 'payout']
+    assert worker.post(path, json={'version': 0, 'kind': 'payin'}).status_code == 409
+    # A typed Sber amount without a server-owned income/verified conversion
+    # cannot be approved as a cash receipt.
+    fake_sber = worker.post(path, json={'version': 1, 'kind': 'payin'})
+    assert fake_sber.status_code == 409
+    assert fake_sber.json['error'] == 'verified_payin_missing'
+    forged = copy.deepcopy(state['data'])
+    forged['deals'][0]['closeEvidence'] = {'payin': True}
+    assert manager.put('/api/stand/state', json={'version': 1,
+        'data': forged}).status_code == 409
+    cash = copy.deepcopy(state['data'])
+    cash['deals'][0]['payType'] = 'Наличные'
+    cash['deals'][0]['unverified_confirmed'] = True
+    db = m.get_session()
+    try:
+        admin = m.AdminUser(username='t24-' + secrets.token_hex(6),
+                            display_name='T24 Admin (fixture)', role='admin',
+                            password_hash='unused')
+        db.add(admin)
+        db.commit()
+        admin_id = admin.id
+    finally:
+        db.close()
+    saved = _client(admin_id).put('/api/stand/state', json={'version': 1, 'data': cash})
+    assert saved.status_code == 200, saved.json
+    version = saved.json['version']
+    # Приход подтверждает только сетевой хеш: ни менеджер, ни оператор подписать его не могут.
+    for who in (manager, worker):
+        refused = who.post(path, json={'version': version, 'kind': 'payin'})
+        # без сетевого хеша источника прихода нет вовсе: подписать его нельзя
+        assert refused.status_code == 409
+        assert refused.json['error'] in ('verified_payin_missing', 'payin_hash_required')
+    assert manager.get(path).json['missing'] == ['payin', 'payout']
+    # Появился подтверждённый сетью приход: дальше роль и привязка денег выплаты, как раньше.
+    db = m.get_session()
+    try:
+        row = db.query(m.StandState).filter_by(id=1).one()
+        board = json.loads(row.data)
+        board['deals'][0].update(payType='Крипта', payinHashes=[{
+            'hash': PAYIN['hash'], 'network': 'TRC20', 'net': 'TRC20', 'amount': 100,
+            'verified': True, 'fixtureSeed': True, 'verifiedAt': '2026-10-18T12:00:00Z'}])
+        row.data = json.dumps(board)
+        row.version += 1
+        db.commit()
+        version = row.version
+    finally:
+        db.close()
+    assert manager.get(path).json['missing'] == ['payout']
+    assert manager.post(path, json={'version': version,
+        'kind': 'payout'}).status_code == 403
+    second = worker.post(path, json={'version': version, 'kind': 'payout'})
+    assert second.status_code == 200, second.json
+    version = second.json['version']
+    sent = manager.post(path, json={'version': version, 'kind': 'sent'})
+    assert sent.status_code == 200, sent.json
+    assert manager.get(path).json['missing'] == []
+    note = copy.deepcopy(sent.json['data'])
+    note['notes'].append({'id': 99, 'text': 'Unrelated note'})
+    noted = manager.put('/api/stand/state', json={'version': sent.json['version'],
+                                                  'data': note})
+    assert noted.status_code == 200, noted.json
+    assert manager.get(path).json['missing'] == []
+    changed = copy.deepcopy(noted.json['data'])
+    changed['deals'][0]['payout']['usdt'] = 91
+    edited = manager.put('/api/stand/state', json={'version': noted.json['version'],
+                                                  'data': changed})
+    assert edited.status_code == 200, edited.json
+    assert manager.get(path).json['missing'] == ['payout']
+    before = _counts()
+    crm = {**_crm(), 'payout_amount_usdt': 91, 'payout_amount_thb': 3000}
+    denied = _post(manager, version=edited.json['version'], crm=crm)
+    assert denied.status_code == 409 and denied.json['error'] == 'close_evidence_missing'
+    assert _counts() == before
+    reattested = worker.post(path, json={'version': edited.json['version'],
+                                         'kind': 'payout'})
+    assert reattested.status_code == 200, reattested.json
+    close = _post(manager, version=reattested.json['version'], crm=crm)
+    assert close.status_code == 201, close.json
+    assert _counts() == (before[0] + 1, before[1] + 1)
+    retry = _post(_client(uid), version=reattested.json['version'], crm=crm)
+    assert retry.status_code == 200 and retry.json['deal']['id'] == close.json['deal']['id']
+
+
+def test_verified_network_marker_cannot_be_relabelled_or_human_attested(monkeypatch):
+    uid = _setup(monkeypatch)
+    db = m.get_session()
+    try:
+        row = db.query(m.StandState).filter_by(id=1).one()
+        board = json.loads(row.data)
+        board['deals'][0].update(payType='Крипта', paySrc='coins',
+            payinHashes=[{'hash': 'verified-hash', 'amount': 100,
+                          'network': 'TRC20', 'verified': True,
+                          'from': 'TSyntheticPayer', 'to': 'TSyntheticWallet'}])
+        row.data = json.dumps(board)
+        row.generation = secrets.token_hex(16)
+        db.commit()
+    finally:
+        db.close()
+    client = _client(uid)
+    before = _counts()
+    state = client.get('/api/stand/state').json
+    forged = copy.deepcopy(state['data'])
+    forged['deals'][0]['payinHashes'][0]['network'] = 'ERC20'
+    denied = client.put('/api/stand/state', json={'version': state['version'],
+                                                  'data': forged})
+    assert denied.status_code == 200, denied.json
+    assert denied.json['data']['deals'][0]['payinHashes'][0]['network'] == 'TRC20'
+    assert client.get('/api/stand/state').json['data']['deals'][0]['payinHashes'][0]['network'] == 'TRC20'
+    path = '/api/stand/deals/1474/close-evidence'
+    payin = client.post(path, json={'version': denied.json['version'], 'kind': 'payin'})
+    assert payin.status_code == 200, payin.json
+    payout = client.post(path, json={'version': payin.json['version'],
+                                     'kind': 'payout'})
+    assert payout.status_code == 409
+    assert payout.json['error'] == 'network_payout_proof_missing'
+    assert _counts() == before
+
+
+def test_accepted_conversion_pay_in_hash_identity_and_default_network():
+    state = {'convs': [{'id': 2, 'sources': [{'dealId': 1474,
+               'usdtFact': 120}], 'txs': [
+               {'hash': 'source-one', 'amount': 100, 'net': 'TRC20',
+                'status': 'confirmed'},
+               {'hash': 'source-two', 'amount': 20, 'net': 'TRC20',
+                'status': 'confirmed'}]}]}
+    deal = {'id': 1474, 'cnvId': 2, 'payType': 'По реквизитам',
+            'payinHashes': [{'hash': 'source-one', 'amount': 100,
+                             'network': 'TRC20'},
+                            {'hash': 'source-two', 'amount': 20,
+                             'network': 'TRC20'}]}
+    original = m._stand_close_fingerprint(deal, 'payin')
+    assert m._stand_close_fact_source(state, deal, 'payin') == (
+        'accepted_conversion', None)
+    for item in deal['payinHashes']:
+        item.pop('network')
+    assert m._stand_close_fingerprint(deal, 'payin') == original
+    assert m._stand_close_fact_source(state, deal, 'payin') == (
+        'accepted_conversion', None)
+    deal['payinHashes'][0]['hash'] = 'foreign-same-amount'
+    assert m._stand_close_fingerprint(deal, 'payin') != original
+    assert m._stand_close_fact_source(state, deal, 'payin')[1] == 'verified_payin_missing'
+    deal['payinHashes'][0]['hash'] = 'source-one'
+    deal['payinHashes'][0]['network'] = 'ERC20'
+    assert m._stand_close_fact_source(state, deal, 'payin')[1] == 'verified_payin_missing'
+
+
+def test_accepted_conversion_uses_only_this_deals_share_of_common_hash():
+    own = {'id': 1474, 'cnvId': 2, 'payType': 'По реквизитам',
+           'payinHashes': [{'hash': 'shared', 'amount': 100, 'net': 'TRC20'}]}
+    state = {'deals': [{'id': 1475, 'cnvId': 2,
+                       'payinHashes': [{'hash': 'shared', 'amount': 200, 'net': 'TRC20'}]}],
+             'convs': [{'id': 2, 'status': 'received',
+             'sources': [{'dealId': 1474, 'rub': 10000, 'usdtFact': 100},
+                         {'dealId': 1475, 'rub': 20000, 'usdtFact': 200}],
+             'txs': [{'hash': 'shared', 'net': 'TRC20', 'amount': 300,
+                      'status': 'confirmed'}]}]}
+    assert m._stand_accepted_conversion_payin(state, own) == 100
+    assert m._stand_close_fact_source(state, own, 'payin') == ('accepted_conversion', None)
+    own['payinHashes'][0]['amount'] = 110
+    state['deals'][0]['payinHashes'][0]['amount'] = 190
+    state['convs'][0]['sources'][0]['usdtFact'] = 110
+    state['convs'][0]['sources'][1]['usdtFact'] = 190
+    assert m._stand_accepted_conversion_payin(state, own) == 110  # сохранённые доли, не RUB-пропорция
+    own['payinHashes'][0]['amount'] = 100
+    state['deals'][0]['payinHashes'][0]['amount'] = 200
+    state['convs'][0]['sources'][0]['usdtFact'] = 100
+    state['convs'][0]['sources'][1]['usdtFact'] = 200
+    own['payinHashes'][0]['amount'] = 300
+    assert m._stand_accepted_conversion_payin(state, own) is None
+    own['payinHashes'][0]['amount'] = 100
+    state['convs'][0]['sources'][0]['usdtFact'] = 101
+    assert m._stand_accepted_conversion_payin(state, own) is None
+
+
+def test_legacy_single_bank_source_without_usdt_fact_needs_full_confirmed_hash():
+    deal = {'id': 1474, 'cnvId': 9, 'payType': 'СБП',
+            'payinHashes': [{'hash': 'old-full', 'amount': 120, 'net': 'TRC20'}]}
+    state = {'convs': [{'id': 9, 'status': 'received',
+             'sources': [{'dealId': 1474, 'usdt': 120}],
+             'txs': [{'hash': 'old-full', 'amount': 120, 'net': 'TRC20',
+                      'status': 'confirmed'}]}]}
+    assert m._stand_accepted_conversion_payin(state, deal) == 120
+    assert m._stand_close_fact_source(state, deal, 'payin') == ('accepted_conversion', None)
+    state['convs'][0]['sources'][0]['usdt'] = 121
+    assert m._stand_accepted_conversion_payin(state, deal) is None
+    state['convs'][0]['sources'][0]['usdt'] = 120
+    state['convs'][0]['sources'].append({'dealId': None, 'usdt': 0})
+    assert m._stand_accepted_conversion_payin(state, deal) is None
+
+
+def test_payin_extra_keeps_part_money_and_hash_provenance(monkeypatch):
+    uid = _setup(monkeypatch)
+    db = m.get_session()
+    try:
+        row = db.query(m.StandState).filter_by(id=1).one()
+        board = json.loads(row.data)
+        deal = board['deals'][0]
+        deal.update(payType='Крипта', amountUsdt=100,
+                    payinHashes=[{'hash': 'main-hash', 'amount': 100, 'net': 'TRC20'}],
+                    payinExtra=[{'label': 'наличные партнёров', 'partner': 'Synthetic',
+                                 'amountUsdt': 20, 'hashes': [
+                                     {'hash': 'extra-hash', 'amount': 20, 'net': 'TRC20'}]}])
+        row.data = json.dumps(board)
+        db.commit()
+        _seed_evidence(db, row, board, uid)
+    finally:
+        db.close()
+
+
+    crm = {**_crm(), 'payin_method': 'crypto_direct', 'payin_amount_usdt': 100,
+           'payin_tx_hashes': [{'hash': 'main-hash', 'amount_usdt': 100,
+                                'network': 'trc20'}],
+           'payin_extra': [{'method': 'partners_cash', 'amount_usdt': 20,
+                            'partner_name': 'Synthetic', 'tx_hashes': [
+                                {'hash': 'extra-hash', 'amount_usdt': 20,
+                                 'network': 'trc20'}]}]}
+    baseline = _counts()
+    for tamper in (
+            lambda c: c.update(payin_amount_usdt=120),
+            lambda c: c.update(payin_extra=[]),
+            lambda c: c['payin_extra'][0].update(amount_usdt=40),
+            lambda c: c['payin_extra'][0].update(method='sber_reqs'),
+            lambda c: c['payin_extra'][0]['tx_hashes'][0].update(hash='other'),
+            lambda c: c.update(payin_tx_hashes=c['payin_tx_hashes'] +
+                c['payin_extra'][0]['tx_hashes'], payin_extra=[{
+                    **c['payin_extra'][0], 'tx_hashes': []}])):
+        wrong = copy.deepcopy(crm)
+        tamper(wrong)
+        assert _post(_client(uid), crm=wrong).status_code == 409
+        assert _counts() == baseline
+    response = _post(_client(uid), crm=crm)
+    assert response.status_code == 201, response.json
+    db = m.get_session()
+    try:
+        saved = db.query(m.Deal).filter_by(id=response.json['deal']['id']).one()
+        assert saved.payin_amount_usdt == 120
+        assert len(json.loads(saved.payin_extra or '[]')) == 1
+        assert {h['hash'] for h in json.loads(saved.payin_tx_hashes)} == {
+            'main-hash', 'extra-hash'}
+    finally:
+        db.close()
+
+
+def test_payin_extra_rate_only_amount_is_not_dropped(monkeypatch):
+    uid = _setup(monkeypatch)
+    db = m.get_session()
+    try:
+        row = db.query(m.StandState).filter_by(id=1).one()
+        board = json.loads(row.data)
+        board['deals'][0].update(payType='Крипта', amountUsdt=100,
+            payinHashes=[{'hash': 'synthetic-main', 'amount': 100, 'net': 'TRC20'}],
+            payinExtra=[{'method': 'partners_cash', 'amountRub': 2000,
+                         'rate': 100, 'partner': 'Synthetic Cash'}])
+        row.data = json.dumps(board)
+        db.commit()
+        _seed_evidence(db, row, board, uid)
+    finally:
+        db.close()
+    crm = {**_crm(), 'payin_method': 'crypto_direct', 'payin_amount_usdt': 100,
+           'payin_tx_hashes': [{'hash': 'synthetic-main', 'amount_usdt': 100, 'network': 'trc20'}],
+           'payin_extra': [{'method': 'partners_cash', 'amount_rub': 2000,
+                            'rate_rub_usdt': 100, 'amount_usdt': 20,
+                            'partner_name': 'Synthetic Cash', 'tx_hashes': []}]}
+    before = _counts()
+    wrong = copy.deepcopy(crm)
+    wrong['payin_extra'][0]['rate_rub_usdt'] = 99
+    assert _post(_client(uid), crm=wrong).status_code == 409
+    assert _counts() == before
+    response = _post(_client(uid), crm=crm)
+    assert response.status_code == 201, response.json
+    assert response.json['deal']['payin_amount_usdt'] == 120
+
+
+def test_multiple_payin_extras_replay_keeps_aggregate_once(monkeypatch):
+    uid = _setup(monkeypatch)
+    db = m.get_session()
+    try:
+        row = db.query(m.StandState).filter_by(id=1).one()
+        board = json.loads(row.data)
+        board['deals'][0].update(payType='Крипта', amountUsdt=100,
+            payinHashes=[{'hash': 'main', 'amount': 100, 'net': 'TRC20'}],
+            payinExtra=[
+                {'method': 'crypto_direct', 'amountUsdt': 20,
+                 'hashes': [{'hash': 'extra-one', 'amount': 20, 'net': 'TRC20'}]},
+                {'method': 'partners_cash', 'amountRub': 2000, 'rate': 100,
+                 'partner': 'Cash desk'}])
+        row.data = json.dumps(board)
+        db.commit()
+        _seed_evidence(db, row, board, uid)
+    finally:
+        db.close()
+    crm = {**_crm(), 'payin_method': 'crypto_direct', 'payin_amount_usdt': 100,
+           'payin_tx_hashes': [{'hash': 'main', 'amount_usdt': 100, 'network': 'trc20'}],
+           'payin_extra': [
+               {'method': 'crypto_direct', 'amount_usdt': 20,
+                'tx_hashes': [{'hash': 'extra-one', 'amount_usdt': 20,
+                               'network': 'trc20'}]},
+               {'method': 'partners_cash', 'amount_rub': 2000,
+                'rate_rub_usdt': 100, 'amount_usdt': 20,
+                'partner_name': 'Cash desk', 'tx_hashes': []}]}
+    before = _counts()
+    first = _post(_client(uid), crm=crm)
+    assert first.status_code == 201, first.json
+    crm_id = first.json['deal']['id']
+    assert first.json['deal']['payin_amount_usdt'] == 140
+    retry = _post(_client(uid), version=1, crm=crm)
+    assert retry.status_code == 200 and retry.json['deal']['id'] == crm_id
+    assert _counts() == (before[0] + 1, before[1] + 1)
+    db = m.get_session()
+    try:
+        saved = db.query(m.Deal).filter_by(id=crm_id).one()
+        assert saved.payin_amount_usdt == 140
+        assert len(json.loads(saved.payin_extra)) == 2
+        assert {h['hash'] for h in json.loads(saved.payin_tx_hashes)} == {
+            'main', 'extra-one'}
+    finally:
+        db.close()
+
+
+def test_workflow_cannot_be_relabelled_manual_and_legacy_manual_stays_unlinked(monkeypatch):
+    uid = _setup(monkeypatch)
+    before = _counts()
+    client = _client(uid)
+    current = client.get('/api/stand/state').json
+    forged = copy.deepcopy(current['data'])
+    forged['deals'][0].update(manual=True, step='manual', originMode='manual',
+                              sentToClient=False)
+    assert client.put('/api/stand/state', json={'version': current['version'],
+                                                'data': forged}).status_code == 409
+    assert _counts() == before
+    db = m.get_session()
+    try:
+        row = db.query(m.StandState).filter_by(id=1).one()
+        legacy = json.loads(row.data)
+        legacy['deals'][0].update(manual=True, step='manual')
+        row.data = json.dumps(legacy)
+        db.commit()
+    finally:
+        db.close()
+    close = _post(client)
+    assert close.status_code == 409 and close.json['error'] == 'legacy_manual_origin'
+    assert _counts() == before
+
+
+@pytest.mark.parametrize('kind,crm', [
+    ('exchange', _crm()),
+    ('Фрихолд', {'deal_kind': 'mf_freehold', 'client_name': 'Synthetic T24',
+                  'payin_method': 'crypto_direct', 'payin_amount_usdt': 39533.77,
+                  'invoice_amount_usd': 39010.91, 'transfer_fee_percent': .8,
+                  'transfer_fee_fixed_usd': 50, 'transfer_sent_usd': 39373}),
+    ('Лизхолд', {'deal_kind': 'mf_realty', 'client_name': 'Synthetic T24',
+                  'payin_method': 'crypto_direct', 'payin_amount_usdt': 19929.17,
+                  'invoice_amount_thb': 622370, 'buy_rate_thb_usdt': 33.22,
+                  'company_percent': 1}),
+    ('Аренда', {'deal_kind': 'mf_realty', 'client_name': 'Synthetic T24',
+                 'payin_method': 'crypto_direct', 'payin_amount_usdt': 19929.17,
+                 'invoice_amount_thb': 622370, 'buy_rate_thb_usdt': 33.22,
+                 'company_percent': 1}),
+])
+def test_manual_standard_types_close_once(monkeypatch, kind, crm):
+    uid, version = _manual_draft(monkeypatch, kind)
+    crm = {**crm, **_manual_payin_crm(), 'doc_invoice_url': 'https://docs.invalid/invoice',
+           'doc_contract_url': 'https://docs.invalid/contract',
+           'doc_payment_url': 'https://docs.invalid/payment'}
+    before = _counts()
+    first = _post(_client(uid), version=version, crm=crm)
+    assert first.status_code == 201, first.json
+    assert _post(_client(uid), version=version, crm=crm).json['deal']['id'] == first.json['deal']['id']
+    assert _counts() == (before[0] + 1, before[1] + 1)
+
+
+@pytest.mark.parametrize('kind,missing,error', [
+    ('exchange', 'payin', 'payin_hash_required'),
+    ('exchange', 'payout', 'payout_basis_missing'),
+    ('Фрихолд', 'payin', 'payin_hash_required'),
+    ('Лизхолд', 'invoice', 'invoice_basis_missing'),
+    ('Аренда', 'buy_rate', 'buy_rate_board_missing'),
+])
+def test_manual_close_requires_route_money_on_saved_board(monkeypatch, kind, missing, error):
+    uid, version = _manual_draft(monkeypatch, kind)
+    client = _client(uid)
+    crm = {**_crm(), 'doc_invoice_url': 'https://docs.invalid/invoice',
+           'doc_contract_url': 'https://docs.invalid/contract',
+           'doc_payment_url': 'https://docs.invalid/payment'}
+    if kind == 'Фрихолд':
+        crm.update(deal_kind='mf_freehold', payin_method='crypto_direct',
+                   payin_amount_usdt=39533.77, invoice_amount_usd=39010.91,
+                   transfer_fee_percent=.8, transfer_fee_fixed_usd=50,
+                   transfer_sent_usd=39373)
+    elif kind in ('Лизхолд', 'Аренда'):
+        crm.update(deal_kind='mf_realty', payin_method='crypto_direct',
+                   payin_amount_usdt=19929.17, invoice_amount_thb=622370,
+                   buy_rate_thb_usdt=33.22, company_percent=1)
+    control = _post(client, version=version, crm=crm)
+    assert control.status_code == 201, control.json
+    state = client.get('/api/stand/state').json
+    board = copy.deepcopy(state['data'])
+    deal = copy.deepcopy(board['deals'][0])
+    deal.update(id=1475, code='СД-1475', originMode=None, step='manual',
+                closed=False, crmDealId=None, sentToClient=False, log=[])
+    for field in ('crmAt', 'closedAt', 'closeReason'):
+        deal.pop(field, None)
+    first_hash = deal['payinHashes'][0]
+    # Второй черновик получает свой хеш: чужой (уже закрытой сделки) занят.
+    fresh = secrets.token_hex(32)
+    deal['payinHashes'] = [dict(first_hash, hash=fresh)]
+    crm = {**crm, 'payin_tx_hashes': [{'hash': fresh, 'network': 'trc20',
+                                       'amount_usdt': first_hash['amount']}]}
+    if missing == 'payin':
+        deal['payinHashes'] = []  # без хеша прихода ручной черновик не закрывается
+    elif missing == 'payout':
+        deal['payout'] = {}
+    elif missing == 'invoice':
+        deal.pop('amountThb', None)
+    else:
+        deal['rates'] = {}
+    deal['unverified_confirmed'] = True
+    board['deals'].append(deal)
+    db = m.get_session()
+    try:
+        admin = m.AdminUser(username='t24-' + secrets.token_hex(6),
+                            display_name='T24 Admin (fixture)', role='admin',
+                            password_hash='unused')
+        db.add(admin)
+        db.commit()
+        admin_id = admin.id
+    finally:
+        db.close()
+    saved = _client(admin_id).put('/api/stand/state', json={'version': state['version'], 'data': board})
+    assert saved.status_code == 200, saved.json
+    assert saved.json['data']['deals'][1]['originMode'] == 'manual'
+    version = saved.json['version']
+    baseline = _counts()
+    response = client.post('/api/stand/deals/1475/crm-close',
+                           json={'version': version, 'crm': crm})
+    assert response.status_code == (400 if missing == 'payin' else 409) and response.json['error'] == error, response.json
+    assert _counts() == baseline
+    unchanged = client.get('/api/stand/state').json
+    assert unchanged['version'] == version and unchanged['data'] == saved.json['data']
+
+
+@pytest.mark.parametrize('missing_side', ['payin', 'payout'])
+def test_manual_custom_requires_saved_usdt_basis(monkeypatch, missing_side):
+    uid, version = _manual_draft(monkeypatch)
+    client = _client(uid)
+    board = copy.deepcopy(client.get('/api/stand/state').json['data'])
+    board['deals'][0].update(custom=True, customData={
+        'payinCurrency': 'RUB', 'payinAmount': 92000, 'payinRate': 92,
+        'payinUsdt': 1000,
+        'payoutCurrency': 'THB', 'payoutAmount': 30000,
+        'payoutRate': 31.5, 'payoutUsdt': 952.38})
+    _custom_payin(board['deals'][0])
+    saved = client.put('/api/stand/state', json={'version': version, 'data': board})
+    assert saved.status_code == 200, saved.json
+    crm = {**_crm(), 'is_custom': True, 'payin_amount_usdt': 1000,
+           'payout_amount_usdt': 952.38,
+           'custom_payin_currency': 'RUB', 'custom_payin_amount': 92000,
+           'custom_payin_rate': 92, 'custom_payout_currency': 'THB',
+           'custom_payout_amount': 30000, 'custom_payout_rate': 31.5,
+           'doc_invoice_url': 'https://docs.invalid/invoice',
+           'doc_contract_url': 'https://docs.invalid/contract',
+           'doc_payment_url': 'https://docs.invalid/payment'}
+    crm.pop('deal_kind')
+    control = _post(client, version=saved.json['version'], crm=crm)
+    assert control.status_code == 201, control.json
+    state = client.get('/api/stand/state').json
+    board = copy.deepcopy(state['data'])
+    deal = copy.deepcopy(board['deals'][0])
+    deal.update(id=1475, code='СД-1475', originMode=None, step='manual',
+                closed=False, crmDealId=None, sentToClient=False, log=[])
+    for field in ('crmAt', 'closedAt', 'closeReason'):
+        deal.pop(field, None)
+    fresh = secrets.token_hex(32)  # у второго черновика свой хеш: чужой уже закрыт
+    deal['payinHashes'][0]['hash'] = fresh
+    deal['customData']['payinTxHash'] = fresh
+    crm['payin_tx_hashes'][0]['hash'] = fresh
+    deal['customData'].pop(missing_side + 'Usdt')
+    deal['unverified_confirmed'] = True
+    board['deals'].append(deal)
+    db = m.get_session()
+    try:
+        admin = m.AdminUser(username='t24-' + secrets.token_hex(6),
+                            display_name='T24 Admin (fixture)', role='admin',
+                            password_hash='unused')
+        db.add(admin)
+        db.commit()
+        admin_id = admin.id
+    finally:
+        db.close()
+    saved = _client(admin_id).put('/api/stand/state', json={'version': state['version'], 'data': board})
+    assert saved.status_code == 200, saved.json
+    baseline = _counts()
+    response = client.post('/api/stand/deals/1475/crm-close',
+                           json={'version': saved.json['version'], 'crm': crm})
+    assert response.status_code == 409 and response.json['error'] == 'custom_facts_missing'
+    assert _counts() == baseline
+
+
+def test_manual_exchange_derived_payout_requires_saved_thb_and_buy_rate(monkeypatch):
+    uid, version = _manual_draft(monkeypatch)
+    client = _client(uid)
+    board = copy.deepcopy(client.get('/api/stand/state').json['data'])
+    board['deals'][0].update(payout={'thb': 3000}, rates={'usdtThb': 30})
+    saved = client.put('/api/stand/state', json={'version': version, 'data': board})
+    assert saved.status_code == 200, saved.json
+    version = saved.json['version']
+    crm = {**_crm(), 'payout_amount_usdt': 100, 'payout_amount_thb': 3000,
+           'doc_invoice_url': 'https://docs.invalid/invoice',
+           'doc_contract_url': 'https://docs.invalid/contract',
+           'doc_payment_url': 'https://docs.invalid/payment'}
+    baseline = _counts()
+    wrong = _post(client, version=version, crm={**crm, 'payout_amount_usdt': 999})
+    assert wrong.status_code == 409 and wrong.json['error'] == 'payout_amount_mismatch'
+    assert _counts() == baseline
+    accepted = _post(client, version=version, crm=crm)
+    assert accepted.status_code == 201, accepted.json
+    assert accepted.json['deal']['payout_amount_usdt'] == 100
+
+
+def test_manual_custom_uses_persisted_fields_and_rejects_invalid_money(monkeypatch):
+    uid, version = _manual_draft(monkeypatch)
+    client = _client(uid)
+    state = client.get('/api/stand/state').json
+    edited = copy.deepcopy(state['data'])
+    edited['deals'][0].update(custom=True,
+        customData={'payinCurrency': 'RUB', 'payinAmount': 92000,
+                    'payinRate': 92, 'payinUsdt': 1000,
+                    'payoutCurrency': 'THB', 'payoutAmount': 30000,
+                    'payoutRate': 31.5, 'payoutUsdt': 952.38})
+    _custom_payin(edited['deals'][0])
+    put = client.put('/api/stand/state', json={'version': version, 'data': edited})
+    assert put.status_code == 200, put.json
+    version = put.json['version']
+    crm = {**_crm(), 'is_custom': True, 'payin_amount_usdt': 1000,
+           'payout_amount_usdt': 952.38,
+           'custom_payin_currency': 'RUB', 'custom_payin_amount': 92000,
+           'custom_payin_rate': 92, 'custom_payout_currency': 'THB',
+           'custom_payout_amount': 30000, 'custom_payout_rate': 31.5,
+           'doc_invoice_url': 'https://docs.invalid/invoice',
+           'doc_contract_url': 'https://docs.invalid/contract',
+           'doc_payment_url': 'https://docs.invalid/payment'}
+    crm.pop('deal_kind')
+    before = _counts()
+    for wrong in ({'custom_payout_rate': 0}, {'custom_payout_amount': 1},
+                  {'payin_amount_usdt': 1}, {'is_custom': False}):
+        assert _post(client, version=version, crm={**crm, **wrong}).status_code == 409
+        assert _counts() == before
+    first = _post(client, version=version, crm=crm)
+    assert first.status_code == 201, first.json
+    assert first.json['deal']['is_custom'] is True
+    assert first.json['deal']['profit_usdt'] == 47.62
+    assert _counts() == (before[0] + 1, before[1] + 1)
+
+
+def test_manual_custom_singular_incoming_hash_matches_t17_contract(monkeypatch):
+    uid, version = _manual_draft(monkeypatch)
+    client = _client(uid)
+    current = client.get('/api/stand/state').json
+    edited = copy.deepcopy(current['data'])
+    hash_value = secrets.token_hex(32)
+    edited['deals'][0].update(custom=True,
+        customData={'payinCurrency': 'RUB', 'payinAmount': 92000,
+                    'payinRate': 92, 'payinUsdt': 1000,
+                    'payinTxHash': hash_value,
+                    'payoutCurrency': 'THB', 'payoutAmount': 30000,
+                    'payoutRate': 31.5, 'payoutUsdt': 952.38},
+        payinHashes=[{'hash': hash_value, 'network': 'trc20',
+                      'amount': 1000}])
+    saved = client.put('/api/stand/state', json={'version': version,
+                                                 'data': edited})
+    assert saved.status_code == 200, saved.json
+    version = saved.json['version']
+    crm = {**_crm(), 'is_custom': True, 'payin_amount_usdt': 1000,
+           'payout_amount_usdt': 952.38, 'payin_tx_hash': hash_value,
+           'custom_payin_currency': 'RUB', 'custom_payin_amount': 92000,
+           'custom_payin_rate': 92, 'custom_payout_currency': 'THB',
+           'custom_payout_amount': 30000, 'custom_payout_rate': 31.5,
+           'doc_invoice_url': 'https://docs.invalid/invoice',
+           'doc_contract_url': 'https://docs.invalid/contract',
+           'doc_payment_url': 'https://docs.invalid/payment'}
+    crm.pop('deal_kind')
+    baseline = _counts()
+    for change in ({'payin_tx_hash': 'b' * 64},
+                   {'payin_tx_hash': None},
+                   {'payin_amount_usdt': 999}):
+        response = _post(client, version=version, crm={**crm, **change})
+        assert response.status_code == 409, (change, response.json)
+        assert _counts() == baseline
+    first = _post(client, version=version, crm=crm)
+    assert first.status_code == 201, first.json
+    assert first.json['deal']['payin_tx_hash'] == hash_value
+    assert _post(client, version=version, crm=crm).json['deal']['id'] == first.json['deal']['id']
+    assert _counts() == (baseline[0] + 1, baseline[1] + 1)
+
+
+@pytest.mark.parametrize('mode', ['concurrent', 'lost_response'])
+def test_manual_real_http_concurrent_and_lost_response(monkeypatch, mode):
+    uid, version = _manual_draft(monkeypatch)
+    before = _counts()
+    port = int(os.environ['CALCCRM_FENCE_PORT_START'])
+    server = make_server('127.0.0.1', port, m.app, threaded=True)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    cookie = m.app.session_interface.get_signing_serializer(m.app).dumps({'user_id': uid})
+    url = f'http://127.0.0.1:{port}/api/stand/deals/1474/crm-close'
+    crm = {**_crm(), 'doc_invoice_url': 'https://docs.invalid/invoice',
+           'doc_contract_url': 'https://docs.invalid/contract',
+           'doc_payment_url': 'https://docs.invalid/payment'}
+    body = {'version': version, 'crm': crm}
+    headers = {'Cookie': 'session=' + cookie}
+    try:
+        if mode == 'concurrent':
+            barrier = threading.Barrier(2)
+            def send(_):
+                barrier.wait()
+                with requests.Session() as transport:
+                    return transport.post(url, json=body, headers=headers, timeout=10)
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                responses = list(pool.map(send, (1, 2)))
+            assert sorted(r.status_code for r in responses) == [200, 201]
+            assert len({r.json()['deal']['id'] for r in responses}) == 1
+        else:
+            encoded = json.dumps(body).encode()
+            with socket.create_connection(('127.0.0.1', port), timeout=5) as raw:
+                raw.sendall((f'POST /api/stand/deals/1474/crm-close HTTP/1.1\r\n'
+                             f'Host: 127.0.0.1:{port}\r\nCookie: session={cookie}\r\n'
+                             f'Content-Type: application/json\r\nContent-Length: {len(encoded)}\r\n'
+                             'Connection: close\r\n\r\n').encode() + encoded)
+            deadline = time.monotonic() + 5
+            while _counts()[1] != before[1] + 1:
+                assert time.monotonic() < deadline
+                time.sleep(.02)
+            with requests.Session() as transport:
+                retry = transport.post(url, json=body, headers=headers, timeout=10)
+            assert retry.status_code == 200 and retry.json()['duplicate'] is True
+        assert _counts() == (before[0] + 1, before[1] + 1)
+        board = _client(uid).get('/api/stand/state').json['data']['deals'][0]
+        assert board['closed'] and board['step'] == 'done' and board['crmDealId']
+    finally:
+        server.shutdown()
+        thread.join(timeout=5)
+        server.server_close()
+
+
+def test_two_concurrent_close_requests_share_one_id(monkeypatch):
+    uid = _setup(monkeypatch)
+    base_deals, base_links = _counts()
+    def call(_):
+        return _post(_client(uid))
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        responses = list(pool.map(call, (1, 2)))
+    assert sorted(r.status_code for r in responses) == [200, 201], [r.json for r in responses]
+    assert len({r.json['deal']['id'] for r in responses}) == 1
+    assert _counts() == (base_deals + 1, base_links + 1)
+
+
+def test_failure_after_crm_flush_rolls_back_everything(monkeypatch):
+    uid = _setup(monkeypatch)
+    baseline = _counts()
+    def fail_after_create(*args):
+        raise RuntimeError('synthetic failure between CRM and board write')
+    monkeypatch.setattr(m, '_stand_completion_notes', fail_after_create)
+    response = _post(_client(uid))
+    assert response.status_code == 500
+    assert _counts() == baseline
+    state = _client(uid).get('/api/stand/state').json
+    assert state['data']['deals'][0]['crmDealId'] is None
+    assert state['data']['deals'][0]['closed'] is False
+
+
+def test_wrong_role_and_stale_note_edit(monkeypatch):
+    uid = _setup(monkeypatch)
+    db = m.get_session()
+    try:
+        operator = m.AdminUser(username='t24-' + secrets.token_hex(6),
+                               display_name='T24 Operator', role='operator',
+                               password_hash='unused')
+        db.add(operator)
+        db.commit()
+        operator_id = operator.id
+    finally:
+        db.close()
+    assert _post(_client(operator_id)).status_code == 403
+    client = _client(uid)
+    board = client.get('/api/stand/state').json
+    changed = copy.deepcopy(board['data'])
+    changed['deals'][0]['log'].append({'text': 'Synthetic concurrent note'})
+    saved = client.put('/api/stand/state', json={'version': board['version'],
+                                                'data': changed})
+    assert saved.status_code == 200, saved.json
+    conflict = _post(client, version=board['version'])
+    assert conflict.status_code == 409
+    assert conflict.json['error'] == 'conflict'
+    assert conflict.json['data']['deals'][0]['log'][-1]['text'].endswith('Synthetic concurrent note')
+    assert _post(client, version=saved.json['version']).status_code == 201
+    assert any(isinstance(e, dict) and e['text'].endswith('Synthetic concurrent note') for e in client.get('/api/stand/state').json['data']['deals'][0]['log'])
+    assert _post(_client(operator_id), version=saved.json['version']).status_code == 403
+
+
+def test_overage_needs_confirmation_and_cancel_keeps_no_row(monkeypatch):
+    uid = _setup(monkeypatch)
+    baseline = _counts()
+    tx_hash = 'a' * 64
+    monkeypatch.setattr(m, '_tron_tx_info', lambda _: {
+        'amount_usdt': 100.0, 'from_address': 'TWyLcjJzyQmiT1nt7gEn8BVoNSN94RGcHb',
+        'to_address': 'TRgnccUBQo8yZXtra8gqBngBqeTV5aQz74'})
+    crm = _crm()
+    crm.update(payout_tx_hashes=[{'hash': tx_hash, 'network': 'trc20',
+                                      'amount_usdt': 120}], payout_amount_usdt=120)
+    db = m.get_session()
+    try:
+        row = db.query(m.StandState).filter_by(id=1).one()
+        board = json.loads(row.data)
+        board['deals'][0]['payout'] = {'usdt': 120, 'thb': 1, 'hashes': [{'hash': tx_hash, 'net': 'TRC20', 'amount': 120}]}
+        row.data = json.dumps(board)
+        db.commit()
+        _seed_evidence(db, row, board, uid)
+    finally:
+        db.close()
+    first = _post(_client(uid), crm=crm)
+    assert first.status_code == 409, first.json
+    assert first.json['requires_confirmation'] is True
+    assert _counts() == baseline
+    assert _client(uid).get('/api/stand/state').json['data']['deals'][0]['closed'] is False
+    crm['confirm_payout_tx_overage'] = True
+    accepted = _post(_client(uid), crm=crm)
+    assert accepted.status_code == 201, accepted.json
+    assert accepted.json.get('warning')
+    assert _counts() == (baseline[0] + 1, baseline[1] + 1)
+
+
+def test_two_real_http_connections_and_lost_response_retry(monkeypatch):
+    uid = _setup(monkeypatch)
+    baseline = _counts()
+    port = int(os.environ['CALCCRM_FENCE_PORT_START'])
+    server = make_server('127.0.0.1', port, m.app, threaded=True)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    cookie = m.app.session_interface.get_signing_serializer(m.app).dumps({'user_id': uid})
+    url = f'http://127.0.0.1:{port}/api/stand/deals/1474/crm-close'
+    headers = {'Cookie': 'session=' + cookie}
+    body = {'version': 1, 'crm': _crm()}
+    try:
+        barrier = threading.Barrier(2)
+        def send(_):
+            barrier.wait()
+            with requests.Session() as transport:
+                return transport.post(url, json=body, headers=headers, timeout=10)
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            responses = list(pool.map(send, (1, 2)))
+        assert sorted(r.status_code for r in responses) == [200, 201]
+        assert len({r.json()['deal']['id'] for r in responses}) == 1
+        assert _counts() == (baseline[0] + 1, baseline[1] + 1)
+
+        # The response for a committed close can disappear at the transport.
+        # A retry from a fresh HTTP connection still resolves the same origin.
+        db = m.get_session()
+        try:
+            row = db.query(m.StandState).filter_by(id=1).one()
+            renewed = _board()
+            renewed['deals'][0]['managerUserId'] = uid
+            row.data = json.dumps(renewed)
+            row.generation = secrets.token_hex(16)
+            row.version = 1
+            db.commit()
+            _seed_evidence(db, row, renewed, uid)
+        finally:
+            db.close()
+        body['crm'] = _crm()  # новая доска получила свой сетевой приход: хеш в CRM обновляем
+        with socket.create_connection(('127.0.0.1', port), timeout=5) as raw:
+            encoded = json.dumps(body).encode()
+            raw.sendall((f'POST /api/stand/deals/1474/crm-close HTTP/1.1\r\n'
+                         f'Host: 127.0.0.1:{port}\r\nCookie: session={cookie}\r\n'
+                         f'Content-Type: application/json\r\nContent-Length: {len(encoded)}\r\n'
+                         'Connection: close\r\n\r\n').encode() + encoded)
+            # No recv(): model a lost HTTP response after server processing.
+        deadline = time.monotonic() + 5
+        while _counts() != (baseline[0] + 2, baseline[1] + 2):
+            assert time.monotonic() < deadline, 'server did not commit after transport closed'
+            time.sleep(.02)
+        retry = requests.post(url, json=body, headers=headers, timeout=10)
+        assert retry.status_code == 200 and retry.json()['duplicate'] is True
+        assert retry.json()['deal']['id'] != responses[0].json()['deal']['id']
+        assert _counts() == (baseline[0] + 2, baseline[1] + 2)
+    finally:
+        server.shutdown()
+        thread.join(timeout=5)
+        server.server_close()
+
+
+@pytest.mark.parametrize('kind,crm,expected', [
+    ('Фрихолд', {'deal_kind': 'mf_freehold', 'client_name': 'Synthetic T24',
+                  'payin_method': 'crypto_direct', 'payin_amount_usdt': 39533.77,
+                  'realty_purpose': 'Synthetic property', 'invoice_amount_usd': 39010.91,
+                  'transfer_fee_percent': .8, 'transfer_fee_fixed_usd': 50,
+                  'transfer_sent_usd': 39373.00}, 160.77),
+    ('Лизхолд', {'deal_kind': 'mf_realty', 'client_name': 'Synthetic T24',
+                  'payin_method': 'crypto_direct', 'payin_amount_usdt': 19929.17,
+                  'realty_purpose': 'Synthetic property', 'invoice_amount_thb': 622370,
+                  'buy_rate_thb_usdt': 33.22, 'company_percent': 1}, 1194.37),
+    ('Аренда', {'deal_kind': 'mf_realty', 'client_name': 'Synthetic T24',
+                 'payin_method': 'crypto_direct', 'payin_amount_usdt': 19929.17,
+                 'realty_purpose': 'Synthetic rent', 'invoice_amount_thb': 622370,
+                 'buy_rate_thb_usdt': 33.22, 'company_percent': 1}, 1194.37),
+])
+def test_property_payloads_close_once_with_independent_money_check(monkeypatch, kind, crm, expected):
+    from decimal import Decimal
+    uid = _setup(monkeypatch)
+    db = m.get_session()
+    try:
+        row = db.query(m.StandState).filter_by(id=1).one()
+        board = json.loads(row.data)
+        deal = board['deals'][0]
+        deal.update(type='Оплата недвижимости', kind=kind,
+                    postConv='ipps_swift' if kind == 'Фрихолд' else 'coins',
+                    serverTransferComplete=True,
+                    amountUsdt=crm['payin_amount_usdt'])
+        if kind == 'Фрихолд':
+            deal.update(invoiceUsd=39010.91, ippsTariff='bank')
+        else:
+            deal.update(amountThb=622370, companyPct=1,
+                        rates={'usdtThb': 33.22})
+        deal['pay'].update(invoicePaid=True, coinsNotified=True,
+                           coinsCredit={'thb': 622370})
+        row.data = json.dumps(board)
+        db.commit()
+        _seed_evidence(db, row, board, uid)
+    finally:
+        db.close()
+    crm = {**crm, 'payin_tx_hashes': [{'hash': deal['payinHashes'][0]['hash'], 'network': 'trc20',
+        'amount_usdt': crm['payin_amount_usdt']}]}
+    before = _counts()
+    first = _post(_client(uid), crm=crm)
+    assert first.status_code == 201, first.json
+    actual = Decimal(str(first.json['deal']['net_profit_usdt'])).quantize(Decimal('.01'))
+    assert actual == Decimal(str(expected))
+    second = _post(_client(uid), crm=crm)
+    assert second.status_code == 200
+    assert second.json['deal']['id'] == first.json['deal']['id']
+    assert _counts() == (before[0] + 1, before[1] + 1)
+
+
+@pytest.mark.parametrize('combined_batch', [False, True])
+def test_freehold_ipps_server_settlement_receipt_sent_then_close(monkeypatch, combined_batch):
+    """The freehold network route can satisfy signoffs without seeded evidence."""
+    uid = _setup(monkeypatch)
+    db = m.get_session()
+    try:
+        operator = m.AdminUser(username='t24-' + secrets.token_hex(6),
+            role='operator', password_hash='unused')
+        db.add(operator)
+        signer = m.AdminUser(username='t24-' + secrets.token_hex(6),
+            role='teodor', password_hash='unused')
+        db.add(signer)
+        db.flush()
+        operator_id = operator.id
+        signer_id = signer.id
+        row = db.query(m.StandState).filter_by(id=1).one()
+        board = json.loads(row.data)
+        deal = board['deals'][0]
+        deal.update(type='Оплата недвижимости', kind='Фрихолд', step='s24',
+            postConv='ipps_swift', cnvId=1, walletId='synthetic',
+            demoTransfers=True, invoiceUsd=39010.91, ippsTariff='bank',
+            amountUsdt=39533.77,
+            payinParts=[{'incId': 1474, 'amountRub': 3953377}],
+            payType='Крипта',
+            payinHashes=[{'hash': 'synthetic-in', 'amount': 39533.77,
+                          'net': 'TRC20', 'verified': True}],
+            transfer={'addr': 'TQgQCBXkewuW4RoieDKFP9Ko2SopBh8jso', 'amount': 39373,
+                      'sends': [{'ref': 'demo:1474:one', 'hash': None,
+                                 'net': 'TRC20', 'amount': 39373,
+                                 'status': 'pending'}]})
+        deal['pay'].update(usdt=39533.77, invoicePaid=True)
+        deal['transfer']['net'] = 'TRC-20'
+        deal['ippsPayoutOrder'] = {'confirmedAt': '2026-10-13T12:00:00Z', 'amount': 39373,
+            'network': 'TRC-20', 'address': deal['transfer']['addr']}
+        board['wallets'] = [{'id': 'synthetic',
+                             'addr': 'TWBgeUo74DehAPgw5cKTdYUTXtJELqwwqn',
+                             'multisig': True}]
+        board['incomes'] = [{'id': 1474, 'dealId': 1474, 'rub': 3953377,
+                             'demo': True}]
+        board['convs'] = [{'id': 1, 'walletId': 'synthetic',
+                           'sources': [{'dealId': 1474, 'rub': 3953377}],
+                           'txs': [{'hash': 'synthetic-in', 'net': 'TRC20',
+                                    'status': 'confirmed', 'amount': 39533.77}]}]
+        if combined_batch:
+            # T23 owner comes from conv/sources despite a Coins side route.
+            # T25 counts both outgoing sends and isolates a malformed neighbor.
+            deal['conv'] = [1475]
+            board['deals'].append({'id': 1475, 'cnvId': 1, 'conv': [], 'step': 'pack',
+                'postConv': 'coins', 'demoTransfers': True,
+                'payinParts': [{'incId': 1475, 'amountRub': 100}],
+                'transfer': {'addr': 'TQgQCBXkewuW4RoieDKFP9Ko2SopBh8jso',
+                    'amount': 10, 'sends': [{'ref': 'demo:1475:one', 'net': 'TRC20',
+                                            'amount': 10, 'status': 'pending'}]},
+                'pay': {}, 'log': []})
+            board['incomes'].append({'id': 1475, 'dealId': 1475, 'rub': 100,
+                                     'demo': True})
+            board['convs'][0]['sources'].append({'dealId': 1475, 'rub': 100})
+            board['deals'].append({'id': 1476, 'cnvId': 2, 'step': 's24',
+                'postConv': 'coins', 'demoTransfers': True,
+                'payinParts': [{'incId': 1476, 'amountRub': 100}],
+                'transfer': {'addr': 'TQgQCBXkewuW4RoieDKFP9Ko2SopBh8jso',
+                    'amount': 10, 'sends': [{'ref': 'demo:1476:one', 'net': 'TRC20',
+                                            'amount': 10, 'status': 'pending'}]},
+                'pay': {}, 'log': []})
+            board['incomes'].append({'id': 1476, 'dealId': 1476, 'rub': 100,
+                                     'demo': True})
+            board['convs'].append({'id': 2, 'walletId': 'synthetic',
+                'sources': [{'dealId': 1476, 'rub': 0}],
+                'txs': [{'hash': 'bad-in', 'net': 'TRC20',
+                         'status': 'confirmed', 'amount': 10}]})
+        row.data = json.dumps(board)
+        row.generation = secrets.token_hex(16)
+        row.version = 1
+        db.commit()
+    finally:
+        db.close()
+    before = _counts()
+    manager = _client(uid)
+    worker = _client(operator_id)
+    if combined_batch:
+        snapshot = manager.get('/api/stand/state').json['data']
+        assert m._stand_batch_main(snapshot, 1475)['id'] == 1474
+        db = m.get_session()
+        try:
+            row = db.query(m.StandState).filter_by(id=1).one()
+            changed = json.loads(row.data)
+            changed['convs'][0]['txs'][0]['amount'] = 39382.99
+            row.data = json.dumps(changed)
+            db.commit()
+        finally:
+            db.close()
+        assert m._stand_check_transfers(1474)['httpStatus'] == 409
+        assert _post(manager).status_code == 409
+        db = m.get_session()
+        try:
+            row = db.query(m.StandState).filter_by(id=1).one()
+            changed = json.loads(row.data)
+            changed['convs'][0]['txs'][0]['amount'] = 39533.77
+            row.data = json.dumps(changed)
+            db.commit()
+        finally:
+            db.close()
+        def synthetic_verify(ref, net, sender, receiver, amount, **kwargs):
+            return {'status': 'confirmed', 'verifiedAmount': amount,
+                    'verifiedAt': '2026-09-28T12:00:00Z',
+                    'from': sender, 'to': receiver}
+        monkeypatch.setattr(m, 'verify_transfer', synthetic_verify)
+        result = m._stand_check_transfers(poll=True)
+        assert result['success'] is True
+        assert next(d for d in result['data']['deals'] if d['id'] == 1476)['step'] == 's24'
+        assert next(d for d in result['data']['deals'] if d['id'] == 1476)['transfer']['sends'][0]['status'] == 'pending'
+        proved_deal = next(d for d in result['data']['deals'] if d['id'] == 1474)
+    else:
+        verified = _client(signer_id).post('/api/stand/transfers/demo',
+            json={'dealId': 1474, 'ref': 'demo:1474:one', 'outcome': 'confirmed'})
+        assert verified.status_code == 200, verified.json
+        proved_deal = verified.json['data']['deals'][0]
+    assert proved_deal['serverTransferComplete'] is True
+    assert proved_deal['step'] == 's26'
+    assert proved_deal['transfer']['sends'][0]['from']
+    assert proved_deal['transfer']['sends'][0]['to']
+    db = m.get_session()
+    try:
+        row = db.query(m.StandState).filter_by(id=1).one()
+        advanced = json.loads(row.data)
+        advanced['deals'][0].update(step='s27', sentToClient=True)
+        advanced['deals'][0]['log'] = (advanced['deals'][0].get('log') or []) + s26_legacy_trail(advanced['deals'][0])
+        row.data = json.dumps(advanced)
+        db.commit()
+        version = row.version
+    finally:
+        db.close()
+    path = '/api/stand/deals/1474/close-evidence'
+    for kind, actor, expected in (
+            ('payin', manager, 'verified_network'),
+            ('payout', manager, 'verified_network'),
+            ('receipt', worker, 'operator_attestation'),
+            ('sent', manager, 'manager_attestation')):
+        signed = actor.post(path, json={'version': version, 'kind': kind})
+        assert signed.status_code == 200, (kind, signed.json)
+        assert signed.json['provenance'] == expected
+        version = signed.json['version']
+    assert manager.get(path).json['missing'] == []
+    crm = {'deal_kind': 'mf_freehold', 'client_name': 'Synthetic T24',
+           'payin_method': 'crypto_direct', 'payin_amount_usdt': 39533.77,
+           'payin_tx_hashes': [{'hash': 'synthetic-in', 'network': 'trc20',
+                                'amount_usdt': 39533.77}],
+           'invoice_amount_usd': 39010.91, 'transfer_fee_percent': .8,
+           'transfer_fee_fixed_usd': 50, 'transfer_sent_usd': 39373,
+           'payout_tx_hashes': [{'hash': 'demo:1474:one', 'network': 'trc20',
+                                 'amount_usdt': 39373}]}
+    if combined_batch:
+        db = m.get_session()
+        try:
+            row = db.query(m.StandState).filter_by(id=1).one()
+            changed = json.loads(row.data)
+            changed['convs'][0]['txs'][0]['amount'] = 39382.99
+            row.data = json.dumps(changed)
+            db.commit()
+        finally:
+            db.close()
+        blocked = _post(manager, version=version, crm=crm)
+        assert blocked.status_code == 409, blocked.json
+        assert 'не хватает 0.01' in blocked.json['error']
+        assert _counts() == before
+        db = m.get_session()
+        try:
+            row = db.query(m.StandState).filter_by(id=1).one()
+            changed = json.loads(row.data)
+            changed['convs'][0]['txs'][0]['amount'] = 39533.77
+            row.data = json.dumps(changed)
+            db.commit()
+        finally:
+            db.close()
+    created = _post(manager, version=version, crm=crm)
+    assert created.status_code == 201, created.json
+    assert created.json['data']['deals'][0]['closed'] is True
+    assert _counts() == (before[0] + 1, before[1] + 1)
+
+
+def test_forged_payin_hash_in_crm_payload_is_rejected_and_valid_one_closes(monkeypatch):
+    """Payload собран из честной доски, затем хеш подменён независимым значением."""
+    uid = _setup(monkeypatch)
+    honest = _crm()
+    assert honest['payin_tx_hashes'][0]['hash'] == _seeded_payin()[0]['hash']
+    forged = copy.deepcopy(honest)
+    forged['payin_tx_hashes'][0]['hash'] = secrets.token_hex(32)
+    before = _counts()
+    refused = _post(_client(uid), crm=forged)
+    assert refused.status_code == 409 and refused.json['error'] == 'payin_facts_mismatch'
+    assert _counts() == before
+    dropped = {k: v for k, v in honest.items() if k != 'payin_tx_hashes'}
+    assert _post(_client(uid), crm=dropped).status_code == 409
+    assert _counts() == before
+    assert _post(_client(uid), crm=honest).status_code == 201

@@ -6,8 +6,12 @@
 появился после того, как модель вернула «CLIENT FULL NAME» как значение поля.
 """
 import io
+import hashlib
+import json
 import os
+import re
 import sys
+import zipfile
 from datetime import datetime
 
 import pytest
@@ -177,6 +181,74 @@ class TestГенерацияДоговоров:
         xml = doc.element.xml
         assert xml.count('Signature: ') >= 1
         assert any(b == stamp for b in blobs)
+
+
+def _agreement_clauses(data):
+    from docx import Document
+    clauses = {}
+    for row in Document(io.BytesIO(data)).tables[0].rows:
+        ru, en = row.cells[-2].text, row.cells[-1].text
+        match = re.match(r'^(\d+\.\d+)\.', ru)
+        if match:
+            clauses[match.group(1)] = {'ru': ru, 'en': en}
+    return clauses
+
+
+@pytest.mark.parametrize('agent', ['mf_corp', 'flow_sole'])
+def test_future_auto_main_agreement_matches_signed_standard_in_both_languages(agent):
+    source = os.path.join(os.path.dirname(__file__), 'fixtures',
+                          'auto_standard_clauses_ru_en.json')
+    with open(source, encoding='utf-8') as fixture:
+        expected = json.load(fixture)
+    money = dict(MONEY, pair='RUB_USD', transfer_amount='USD 1000.00',
+                 agent=agent, auto_document_schema='vehicle-v1')
+    data, _ = docgen.build_agreement('payment', CLIENT, money, when=WHEN)
+    clauses = _agreement_clauses(data)
+    assert set(clauses) == set(expected)
+    profile = docgen._agent(agent)
+    for number, languages in expected.items():
+        for lang in ('ru', 'en'):
+            wanted = languages[lang]
+            if number == '5.10':
+                wanted = wanted.replace('Лаосской Народно-Демократической Республики',
+                                        profile.jurisdiction_ru)
+                wanted = wanted.replace('the Lao People’s Democratic Republic',
+                                        profile.jurisdiction_en)
+            assert ' '.join(clauses[number][lang].split()) == ' '.join(wanted.split()), (number, lang)
+            assert clauses[number][lang].startswith(number + '.')
+    assert docgen.check(data, allow_forms=True, agent=profile) == []
+
+
+@pytest.mark.parametrize('deal_type,agent,expected_sha', [
+    ('payment', 'mf_corp', 'a54a376bf1a7434fe185a06a73ece946660d2c9f69203414e1b8c0cb74da51b6'),
+    # Настоящая вертикальная подпись Flow Sole меняет только размеры рисунка в XML.
+    ('payment', 'flow_sole', 'fd12f5f33999a253ba368f16e9a7a34b4f04bb09d58fe1528fdae02b688fe7be'),
+    ('leasehold', 'mf_corp', 'e703cc28ae3360e712a5994d99c6d89fcfc641d532a4f685cc536ea8bc163616'),
+])
+def test_non_auto_agreement_document_xml_unchanged(deal_type, agent, expected_sha):
+    money = dict(MONEY, agent=agent)
+    if deal_type == 'payment':
+        money.update(pair='RUB_USD', transfer_amount='USD 1000.00')
+    data, number = docgen.build_agreement(deal_type, CLIENT, money, when=WHEN)
+    with zipfile.ZipFile(io.BytesIO(data)) as document:
+        xml = document.read('word/document.xml')
+    if agent == 'flow_sole':
+        assert number == 'FSC-242-0409-1'
+        # Allow the issuer's new prefix while checking the rest of the document against the original.
+        xml = xml.replace(number.encode(), b'MF-242-0409-1')
+    assert hashlib.sha256(xml).hexdigest() == expected_sha
+
+
+def test_auto_standard_is_main_agreement_only():
+    money = dict(MONEY, pair='RUB_USD', transfer_amount='USD 1000.00')
+    auto = dict(money, auto_document_schema='vehicle-v1')
+    plain_addendum = docgen.build_addendum('payment', CLIENT, money, 'MF-1', 'MF-0', 1, when=WHEN)
+    auto_addendum = docgen.build_addendum('payment', CLIENT, auto, 'MF-1', 'MF-0', 1, when=WHEN)
+    with zipfile.ZipFile(io.BytesIO(plain_addendum)) as plain_doc:
+        plain_xml = plain_doc.read('word/document.xml')
+    with zipfile.ZipFile(io.BytesIO(auto_addendum)) as auto_doc:
+        auto_xml = auto_doc.read('word/document.xml')
+    assert plain_xml == auto_xml
 
 
 class TestДопСоглашение:
@@ -565,22 +637,30 @@ class TestДоговорБезПриложений:
 class TestPDF:
     """Клиенту уходит PDF: его не поправишь случайно и он открывается везде."""
 
+    # LibreOffice silently returns without a PDF under the macOS network
+    # sandbox. Keep this dependency explicit; never run it outside the fence
+    # merely to make the test green.
+    _converter_blocked = os.environ.get('CALCCRM_FENCE_ACTIVE') == '1'
+
     def test_путь_к_конвертеру_ищется(self):
         # None — валидный ответ на машине без LibreOffice
         assert docgen.soffice_path() is None or isinstance(docgen.soffice_path(), str)
 
-    @pytest.mark.skipif(docgen.soffice_path() is None, reason='LibreOffice не установлен')
+    @pytest.mark.skipif(docgen.soffice_path() is None or _converter_blocked,
+                        reason='LibreOffice недоступен внутри обязательного OS network sandbox')
     def test_docx_конвертируется_в_pdf(self):
         data, _ = docgen.build_agreement('leasehold', CLIENT, MONEY, when=WHEN)
         pdf = docgen.to_pdf(data)
         assert pdf and pdf[:5] == b'%PDF-'
 
-    @pytest.mark.skipif(docgen.soffice_path() is None, reason='LibreOffice не установлен')
+    @pytest.mark.skipif(docgen.soffice_path() is None or _converter_blocked,
+                        reason='LibreOffice недоступен внутри обязательного OS network sandbox')
     def test_pdf_заметно_легче_docx(self):
         data, _ = docgen.build_agreement('leasehold', CLIENT, MONEY, when=WHEN)
         assert len(docgen.to_pdf(data)) < len(data)
 
-    @pytest.mark.skipif(docgen.soffice_path() is None, reason='LibreOffice не установлен')
+    @pytest.mark.skipif(docgen.soffice_path() is None or _converter_blocked,
+                        reason='LibreOffice недоступен внутри обязательного OS network sandbox')
     def test_as_pdf_отдаёт_pdf_с_нужным_именем(self):
         data, _ = docgen.build_agreement('leasehold', CLIENT, MONEY, when=WHEN)
         body, name, mime = docgen.as_pdf(data, 'MF_Agreement_test')
@@ -588,7 +668,8 @@ class TestPDF:
         assert mime == docgen.PDF_MIME
         assert body[:5] == b'%PDF-'
 
-    @pytest.mark.skipif(docgen.soffice_path() is None, reason='LibreOffice не установлен')
+    @pytest.mark.skipif(docgen.soffice_path() is None or _converter_blocked,
+                        reason='LibreOffice недоступен внутри обязательного OS network sandbox')
     def test_кириллица_доезжает_до_pdf(self):
         from pypdf import PdfReader
         data, _ = docgen.build_agreement('leasehold', CLIENT, MONEY, when=WHEN)

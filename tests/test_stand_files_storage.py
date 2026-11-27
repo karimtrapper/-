@@ -1,0 +1,1042 @@
+"""Отдельные объекты, настоящие роли и долговечность ссылки после нового запроса."""
+import base64
+import copy
+import io
+import json
+import random
+import struct
+import zipfile
+import zlib
+
+from PIL import Image
+import pymupdf
+import pytest
+import app as m
+import stand_file_storage as storage
+import stand_object_store as objects
+from tests.test_stand_incoming_wallet_persist import api, fake_role_api, base_api
+from tests.test_stand_prepay import seed
+from scripts.verify_stand_files import verify
+
+
+def board(step='s14'):
+    return {'deals': [{'id': 1473, 'step': step, 'files': {}, 'docs': {}, 'log': [],
+             'type': 'Оплата недвижимости', 'kind': 'Фрихолд', 'docsSent': True}]}
+
+
+def pdf(data=b'test', name='invoice.pdf'):
+    raw = b'%PDF-1.4\n' + data
+    return dict(file=name, mime='application/pdf', bytes=len(raw), size='1 КБ',
+                at='13.10', data='data:application/pdf;base64,'+base64.b64encode(raw).decode())
+
+
+def upload(api, raw, kind='inv', name='invoice.pdf', mime='application/pdf'):
+    return api[0].post('/api/stand/files', data={'dealId': '1473', 'kind': kind,
+                       'file': (io.BytesIO(raw), name, mime)})
+
+
+def workbook_xlsx():
+    out = io.BytesIO()
+    with zipfile.ZipFile(out, 'w') as archive:
+        archive.writestr('[Content_Types].xml',
+                         '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+                         '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
+                         '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
+                         '</Types>')
+        archive.writestr('_rels/.rels',
+                         '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+                         '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>'
+                         '</Relationships>')
+        archive.writestr('xl/workbook.xml',
+                         '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '
+                         'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+                         '<sheets><sheet name="Sheet1" sheetId="1" r:id="rId1"/></sheets></workbook>')
+        archive.writestr('xl/_rels/workbook.xml.rels',
+                         '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+                         '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" '
+                         'Target="worksheets/sheet1.xml"/></Relationships>')
+        archive.writestr('xl/worksheets/sheet1.xml',
+                         '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"/>')
+    return out.getvalue()
+
+
+def bof_only_ole_xls():
+    # Валидная FAT-цепочка OLE с потоком Workbook, в котором нет EOF и листа.
+    raw = bytearray(11 * 512)
+    raw[:8] = b'\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1'
+    raw[24:32] = b'\x3e\x00\x03\x00\xfe\xff\x09\x00'
+    raw[32:34] = b'\x06\x00'
+    def put32(offset, value):
+        raw[offset:offset + 4] = value.to_bytes(4, 'little')
+    put32(44, 1)           # FAT sector count
+    put32(48, 1)           # directory sector
+    put32(56, 4096)        # mini stream cutoff
+    put32(60, 0xFFFFFFFE)  # no mini FAT
+    put32(68, 0xFFFFFFFE)  # no DIFAT
+    for i in range(109):
+        put32(76 + i * 4, 0 if i == 0 else 0xFFFFFFFF)
+    for i in range(128):
+        value = (0xFFFFFFFD if i == 0 else 0xFFFFFFFE if i in (1, 9)
+                 else i + 1 if 2 <= i < 9 else 0xFFFFFFFF)
+        put32(512 + i * 4, value)
+    root, book = 1024, 1152
+    for offset, name, kind, start, size in ((root, 'Root Entry', 5, 0xFFFFFFFE, 0),
+                                            (book, 'Workbook', 2, 2, 4096)):
+        encoded = name.encode('utf-16le') + b'\x00\x00'
+        raw[offset:offset + len(encoded)] = encoded
+        raw[offset + 64:offset + 66] = len(encoded).to_bytes(2, 'little')
+        raw[offset + 66] = kind
+        put32(offset + 116, start)
+        raw[offset + 120:offset + 128] = size.to_bytes(8, 'little')
+    raw[1536:1544] = b'\x09\x08\x10\x00\x00\x06\x05\x00'
+    return bytes(raw)
+
+
+def read_db():
+    with m.SessionLocal() as db:
+        row = db.get(m.StandState, 1)
+        return row.version, json.loads(row.data)
+
+
+@pytest.fixture(autouse=True)
+def clear_file_rows():
+    m._stand_migrate()
+    with m.SessionLocal() as db:
+        db.query(m.StandFile).delete()
+        db.commit()
+
+
+def test_15mb_pdf_upload_download_metadata_only_and_dedup(api):
+    api[1][0] = 'manager'
+    seed(board())
+    raw = b'%PDF-1.4\n' + b'x' * (15*1024*1024)
+    response = upload(api, raw)
+    assert response.status_code == 200, response.json
+    version, state = read_db()
+    item = state['deals'][0]['files']['inv'][0]
+    assert version == 2 and item['data'] == '__detached__' and 'object_key' not in item
+    assert len(json.dumps(state)) < 5000
+    assert api[0].get('/api/stand/file/1473/inv/0').data == raw
+    duplicate = upload(api, raw)
+    assert duplicate.json['duplicate'] and duplicate.json['version'] == 2
+    assert len(read_db()[1]['deals'][0]['files']['inv']) == 1
+    with m.SessionLocal() as db:
+        assert db.query(m.StandFile).count() == 1
+        row = db.get(m.StandFile, item['storageId'])
+        assert row.sha256 == storage.digest(raw) and row.size == len(raw)
+        assert 'data' not in m.StandFile.__table__.columns
+        assert row.uploaded_by and row.uploaded_at
+
+
+@pytest.mark.parametrize('mime,extension', [('application/pdf', 'pdf'), ('image/png', 'png')])
+def test_sgb_upload_reduces_real_documents_and_uses_latin_filename(api, mime, extension):
+    api[1][0] = 'manager'
+    seed(board())
+    pix = pymupdf.Pixmap(pymupdf.csGRAY, 3300, 880, random.Random(4).randbytes(3300 * 880), False)
+    if extension == 'pdf':
+        with pymupdf.open() as doc:
+            page = doc.new_page(width=595, height=842)
+            page.insert_text((35, 45), 'Invoice 124')
+            page.insert_image(pymupdf.Rect(35, 80, 565, 230), pixmap=pix)
+            raw = doc.tobytes()
+    else:
+        raw = pix.tobytes('png')
+    assert len(raw) > 1_000_000
+
+    response = upload(api, raw, name=f'Счёт № 124 ({extension}).{extension.upper()}', mime=mime)
+    assert response.status_code == 200, response.json
+    item = read_db()[1]['deals'][0]['files']['inv'][0]
+    name = f'Schyot_No_124_{extension}.{extension}'
+    assert item['file'] == name and item['bytes'] < 1_000_000
+    assert response.json['sgbOversize'] is False
+
+    download = api[0].get('/api/stand/file/1473/inv/0?sgb=1')
+    assert download.status_code == 200
+    assert download.mimetype == mime and f'filename={name}' in download.headers['Content-Disposition']
+    assert len(download.data) == item['bytes']
+    assert download.headers['Cache-Control'] == 'private, no-store'
+    if extension == 'pdf':
+        with pymupdf.open(stream=download.data, filetype='pdf') as doc:
+            assert doc[0].get_text().strip() == 'Invoice 124'
+            assert tuple(doc[0].rect) == (0, 0, 595, 842)
+    else:
+        image = pymupdf.Pixmap(download.data)
+        assert image.width > 1000 and image.height > 250
+    assert upload(api, raw, name=f'Повтор.{extension}', mime=mime).json['duplicate']
+
+
+def test_sgb_compresses_transparent_png_at_original_resolution(api):
+    api[1][0] = 'manager'
+    seed(board())
+    width, height = 1050, 980
+    image = Image.frombytes('RGB', (width, height), random.Random(9).randbytes(width * height * 3))
+    alpha = Image.new('L', image.size, color=255)
+    alpha.paste(0, (0, 0, 20, height))
+    image.putalpha(alpha)
+    output = io.BytesIO()
+    image.save(output, format='PNG')
+    assert len(output.getvalue()) > 1_000_000
+
+    response = upload(api, output.getvalue(), name='Паспорт.png', mime='image/png')
+    assert response.status_code == 200 and response.json['sgbOversize'] is False
+    result = api[0].get('/api/stand/file/1473/inv/0?sgb=1')
+    with Image.open(io.BytesIO(result.data)) as compressed:
+        assert compressed.size == (width, height) and len(result.data) < 1_000_000
+        opacity = compressed.convert('RGBA').getchannel('A')
+        assert opacity.getpixel((10, 10)) == 0
+        assert opacity.getpixel((50, 10)) == 255
+
+
+def test_sgb_download_splits_pdf_into_ordered_parts_and_preserves_original(api):
+    api[1][0] = 'manager'
+    seed(board())
+    rng = random.Random(5)
+    width, height = 2304, 2432
+
+    def chunk(kind, data):
+        return struct.pack('>I', len(data)) + kind + data + struct.pack('>I', zlib.crc32(kind + data))
+
+    with pymupdf.open() as doc:
+        for i in range(3):
+            page = doc.new_page()
+            page.insert_text((40, 40), f'Page {i + 1}')
+            pixels = b''.join(b'\x00' + rng.randbytes(width // 8) for _ in range(height))
+            png = (b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('>IIBBBBB', width, height, 1, 0, 0, 0, 0))
+                   + chunk(b'IDAT', zlib.compress(pixels)) + chunk(b'IEND', b''))
+            page.insert_image(pymupdf.Rect(30, 90, 560, 650), stream=png)
+        raw = doc.tobytes(deflate=True, garbage=4, no_new_id=True)
+    assert len(raw) > 1_000_000
+    response = upload(api, raw, name='Договор о продаже.pdf')
+    assert response.json['sgbOversize'] is True
+
+    bank = api[0].get('/api/stand/file/1473/inv/0?sgb=1')
+    assert bank.status_code == 200, bank.json
+    assert bank.mimetype == 'application/zip'
+    with zipfile.ZipFile(io.BytesIO(bank.data)) as archive:
+        assert archive.namelist() == [f'Dogovor_o_prodazhe_part_{i:03d}.pdf' for i in range(1, 4)]
+        for i, name in enumerate(archive.namelist(), 1):
+            data = archive.read(name)
+            assert len(data) < 1_000_000
+            with pymupdf.open(stream=data, filetype='pdf') as doc:
+                assert len(doc) == 1 and doc[0].get_text().strip() == f'Page {i}'
+
+    original = api[0].get('/api/stand/file/1473/inv/0?download=1')
+    with pymupdf.open(stream=original.data, filetype='pdf') as doc:
+        assert [page.get_text().strip() for page in doc] == ['Page 1', 'Page 2', 'Page 3']
+
+
+def test_sgb_download_keeps_protected_pdf_unchanged(api):
+    api[1][0] = 'manager'
+    seed(board())
+    with pymupdf.open() as doc:
+        doc.new_page().insert_text((40, 40), 'Protected')
+        doc.embfile_add('data', random.Random(6).randbytes(1_000_000))
+        raw = doc.tobytes(encryption=pymupdf.PDF_ENCRYPT_AES_256, owner_pw='owner', user_pw='user')
+    assert upload(api, raw, name='Подписанный.pdf').json['sgbOversize'] is True
+    result = api[0].get('/api/stand/file/1473/inv/0?sgb=1')
+    assert result.status_code == 422 and 'защищён' in result.json['error']
+    assert api[0].get('/api/stand/file/1473/inv/0?download=1').data == raw
+
+
+def test_no_configuration_rejects_upload_no_inline_fallback(api, monkeypatch):
+    monkeypatch.delenv('STAND_FILES_LOCAL_DIR')
+    api[1][0] = 'manager'
+    seed(board())
+    response = upload(api, b'%PDF-1.4\ntest')
+    assert response.status_code == 400 and 'не настроено' in response.json['error']
+    assert read_db()[0] == 1 and read_db()[1]['deals'][0]['files'] == {}
+    with m.SessionLocal() as db:
+        assert db.query(m.StandFile).count() == 0
+
+
+@pytest.mark.parametrize('role,kind,step,pending,allowed', [
+    ('operator','pass','s14',False,False), ('manager','pass','s5',False,True),
+    ('teodor','receipt','s26',False,False), ('operator','receipt','s26',False,True),
+    ('manager','clientPayinReceipt','s14',False,True),
+    ('operator','clientPayinReceipt','s14',False,False),
+    ('operator','bankCreditEvidence','s14',True,True),
+    ('manager','bankCreditEvidence','s14',True,False),
+    ('operator','bankCreditEvidence','s18',True,False),
+])
+def test_upload_preserves_roles_and_steps(api, role, kind, step, pending, allowed):
+    api[1][0] = role
+    state = board(step)
+    if pending: state['deals'][0]['manualBankReceipt'] = {'status':'pending'}
+    seed(state)
+    response = upload(api, b'%PDF-1.4\npermissions', kind)
+    assert (response.status_code == 200) == allowed, response.json
+    if not allowed:
+        assert read_db()[0] == 1
+        with m.SessionLocal() as db: assert db.query(m.StandFile).count() == 0
+    elif step == 's5':
+        assert read_db()[1]['deals'][0]['_managerDraft']['files']['pass']
+        api[1][0] = 'operator'
+        assert api[0].get('/api/stand/file/1473/pass/0?draft=1').status_code == 403
+
+
+@pytest.mark.parametrize('role,step', [
+    ('manager', 's5'), ('operator', 's23'), ('admin', 'done'),
+])
+def test_extra_document_upload_on_any_step(api, role, step):
+    api[1][0] = role
+    state = board(step)
+    if step == 'done':
+        state['deals'][0].update(closed=True, closeReason='Успешно завершена')
+    seed(state)
+    raw = b'%PDF-1.4\nextra'
+    response = api[0].post('/api/stand/files', data={
+        'dealId': '1473', 'kind': 'additional', 'documentType': 'inv', 'extra': '1',
+        'file': (io.BytesIO(raw), 'extra.pdf', 'application/pdf')})
+    assert response.status_code == 200, response.json
+    deal = response.json['data']['deals'][0]
+    assert deal['files']['additional'][0]['file'] == 'extra.pdf'
+    assert deal['files']['additional'][0]['documentType'] == 'inv'
+    assert not deal['docs'].get('inv')
+    assert '_managerDraft' not in deal or not (deal['_managerDraft'].get('files') or {}).get('inv')
+    assert api[0].get('/api/stand/file/1473/additional/0').data == raw
+
+
+def test_other_manager_cannot_change_deal_documents(api):
+    api[1][0] = 'manager'
+    state = board('s14')
+    state['deals'][0]['manager'] = 'Другой менеджер'
+    seed(state)
+    denied = api[0].post('/api/stand/files', data={
+        'dealId': '1473', 'kind': 'additional', 'documentType': 'inv', 'extra': '1',
+        'file': (io.BytesIO(b'%PDF-1.4\nother'), 'other.pdf', 'application/pdf')})
+    assert denied.status_code == 403
+    assert 'её менеджер' in denied.json['error']
+
+
+def test_migrate_16_files_and_verify_byte_for_byte_and_idempotence(api):
+    state = board()
+    state['deals'].append(dict(id=1484, step='s23', files={}, _managerDraft={'files': {}}, docs={}))
+    original = []
+    kinds = ['pass', 'inv', 'spa', 'ipds', 'signed', 'receipt', 'clientPayinReceipt', 'bankCreditEvidence']
+    for i in range(16):
+        deal = state['deals'][i//8]
+        target = deal['_managerDraft'] if i == 10 else deal
+        item = pdf((str(i)*150000).encode())
+        target['files'].setdefault(kinds[i%8], []).append(item)
+        original.append((deal['id'], kinds[i%8], i == 10, storage.decode(item)))
+    seed(state)
+    assert m._stand_migrate_files() == 1
+    assert m._stand_migrate_files() == 0
+    assert read_db()[0] == 2
+    api[1][0] = 'manager'
+    for deal_id, kind, draft, raw in original:
+        response = api[0].get(f'/api/stand/file/{deal_id}/{kind}/0?draft={int(draft)}')
+        assert response.status_code == 200 and response.data == raw
+    with m.engine.connect() as conn:
+        result = verify(conn, state)
+    assert result['ok'] and result['references'] == result['objects_verified'] == 16
+    assert len(json.dumps(read_db()[1])) < 15000
+
+
+def test_migration_failure_rolls_back_all_json_and_rows(api, monkeypatch):
+    state = board(); state['deals'][0]['files']['pass'] = [pdf(b'a'), pdf(b'b')]
+    seed(state)
+    real = storage.read_verified
+    calls = []
+    def fail(key, size, sha):
+        calls.append(key)
+        if len(set(calls)) > 1: raise ValueError('SHA256 mismatch')
+        return real(key,size,sha)
+    monkeypatch.setattr(storage, 'read_verified', fail)
+    with pytest.raises(ValueError): m._stand_migrate_files()
+    assert read_db() == (1, state)
+    with m.SessionLocal() as db: assert db.query(m.StandFile).count() == 0
+    monkeypatch.setattr(storage, 'read_verified', real)
+    assert m._stand_migrate_files() == 1
+
+
+def test_stale_base64_and_missing_large_file_do_not_erase_references(api):
+    api[1][0] = 'manager'
+    state = board();state['deals'][0]['files']['inv'] = [pdf()]
+    seed(state);m._stand_migrate_files()
+    response = api[0].put('/api/stand/state', json={'version':2, 'data':state})
+    assert response.status_code == 200, response.json
+    item = read_db()[1]['deals'][0]['files']['inv'][0]
+    old = response.json['data'];old['deals'][0]['files']['inv'] = []
+    old['deals'][0]['docs']['inv'] = False
+    response = api[0].put('/api/stand/state', json={'version':3,'data':old})
+    assert response.status_code == 200, response.json
+    assert read_db()[1]['deals'][0]['files']['inv'][0]['storageId'] == item['storageId']
+    assert api[0].get('/api/stand/file/1473/inv/0').data == storage.decode(pdf())
+
+
+def test_delete_hard_and_wrong_reference_forbidden(api):
+    api[1][0] = 'manager';seed(board())
+    response = upload(api, b'%PDF-1.4\ndelete')
+    assert response.status_code == 200, response.json
+    state = response.json['data']; item = state['deals'][0]['files']['inv'][0]
+    forged = copy.deepcopy(state);forged['deals'][0]['files']['pass'] = [item]
+    assert api[0].put('/api/stand/state',json={'version':2,'fileStorageVersion':1,'data':forged}).status_code == 409
+    state['deals'][0]['files']['inv'] = []
+    response = api[0].put('/api/stand/state',json={'version':2,'fileStorageVersion':1,'data':state})
+    assert response.status_code == 409
+    assert response.json['error'] == 'Удаляйте документы кнопкой «Удалить»'
+    with m.SessionLocal() as db:
+        key = db.get(m.StandFile, item['storageId']).object_key
+    response = api[0].patch(f"/api/stand/files/1473/inv/{item['id']}", json={'action': 'delete'})
+    assert response.status_code == 200, response.json
+    with m.SessionLocal() as db:
+        assert db.get(m.StandFile, item['storageId']) is None
+    with pytest.raises(FileNotFoundError):
+        objects.storage().open(key)
+    assert api[0].get('/api/stand/file/1473/inv/0').status_code == 404
+
+
+def test_document_delete_removes_object_and_ignores_stale_journal(api):
+    api[1][0] = 'manager'
+    seed(board('s23'))
+    raw = b'%PDF-1.4\nremovable'
+    uploaded = upload(api, raw)
+    assert uploaded.status_code == 200, uploaded.json
+    item = uploaded.json['data']['deals'][0]['files']['inv'][0]
+    url = f"/api/stand/files/1473/inv/{item['id']}"
+    with m.SessionLocal() as db:
+        key = db.get(m.StandFile, item['storageId']).object_key
+    deleted = api[0].patch(url, json={'action': 'delete'})
+    assert deleted.status_code == 200, deleted.json
+    deal = deleted.json['data']['deals'][0]
+    assert not deal['files']['inv']
+    assert 'deletedFiles' not in deal
+    assert 'Удалён документ invoice.pdf' in deal['log'][-1]['text']
+    with pytest.raises(FileNotFoundError):
+        objects.storage().open(key)
+    assert api[0].get('/api/stand/file/1473/inv/0').status_code == 404
+    stale = api[0].get('/api/stand/state').json
+    stale['data']['deals'][0]['deletedFiles'] = {'inv': [dict(item)]}
+    saved = api[0].put('/api/stand/state', json={
+        'version': stale['version'], 'fileStorageVersion': 1, 'data': stale['data']})
+    assert saved.status_code == 200, saved.json
+    assert 'deletedFiles' not in saved.json['data']['deals'][0]
+    assert 'deletedFiles' not in read_db()[1]['deals'][0]
+    assert api[0].patch(url, json={'action': 'restore'}).status_code == 400
+
+
+def test_manager_draft_file_delete_is_hard_and_restore_route_is_gone(api):
+    api[1][0] = 'manager'
+    seed(board('s5'))
+    uploaded = upload(api, b'%PDF-1.4\ndraft', kind='pass', name='passport.pdf')
+    assert uploaded.status_code == 200, uploaded.json
+    item = uploaded.json['data']['deals'][0]['_managerDraft']['files']['pass'][0]
+    url = f"/api/stand/files/1473/pass/{item['id']}?draft=1"
+    deleted = api[0].patch(url, json={'action': 'delete'})
+    assert deleted.status_code == 200, deleted.json
+    draft = deleted.json['data']['deals'][0]['_managerDraft']
+    assert not draft['files']['pass']
+    assert 'deletedFiles' not in draft
+    assert 'Удалён документ passport.pdf' in deleted.json['data']['deals'][0]['log'][-1]['text']
+    with m.SessionLocal() as db:
+        assert db.get(m.StandFile, item['storageId']) is None
+    api[1][0] = 'admin'
+    restored = api[0].patch(url, json={'action': 'restore'})
+    assert restored.status_code == 400, restored.json
+    assert restored.json['error'] == 'Неизвестное действие'
+
+
+def test_closed_deal_rejects_non_admin_document_delete(api):
+    api[1][0] = 'manager'
+    state = board('done')
+    state['deals'][0].update(closed=True, closeReason='Успешно завершена')
+    seed(state)
+    uploaded = upload(api, b'%PDF-1.4\nclosed')
+    assert uploaded.status_code == 409  # legacy upload guard, tested separately
+    state['deals'][0]['closed'] = False
+    seed(state)
+    uploaded = upload(api, b'%PDF-1.4\nclosed')
+    assert uploaded.status_code == 200, uploaded.json
+    with m.SessionLocal() as db:
+        row = db.get(m.StandState, 1)
+        board_state = json.loads(row.data)
+        board_state['deals'][0].update(closed=True, closeReason='Успешно завершена')
+        row.data = json.dumps(board_state, ensure_ascii=False)
+        db.commit()
+    item = uploaded.json['data']['deals'][0]['files']['inv'][0]
+    url = f"/api/stand/files/1473/inv/{item['id']}"
+    denied = api[0].patch(url, json={'action': 'delete'})
+    assert denied.status_code == 403
+    assert denied.json['error'] == 'Сделка закрыта, удаление документов — только администратором'
+    api[1][0] = 'admin'
+    assert api[0].patch(url, json={'action': 'delete'}).status_code == 200
+    assert api[0].patch(url, json={'action': 'restore'}).status_code == 400
+
+
+def test_completed_crm_deal_blocks_delete_even_if_board_is_open(api):
+    api[1][0] = 'manager'
+    seed(board('s14'))
+    uploaded = upload(api, b'%PDF-1.4\ncrm-completed')
+    assert uploaded.status_code == 200, uploaded.json
+    with m.SessionLocal() as db:
+        crm = m.Deal(deal_type=m.DealType.PAY_IN, status=m.DealStatus.COMPLETED)
+        db.add(crm)
+        db.flush()
+        row = db.get(m.StandState, 1)
+        state = json.loads(row.data)
+        state['deals'][0]['crmDealId'] = crm.id
+        row.data = json.dumps(state, ensure_ascii=False)
+        db.commit()
+    item = uploaded.json['data']['deals'][0]['files']['inv'][0]
+    url = f"/api/stand/files/1473/inv/{item['id']}"
+    denied = api[0].patch(url, json={'action': 'delete'})
+    assert denied.status_code == 403
+    assert 'только администратором' in denied.json['error']
+    assert read_db()[1]['deals'][0]['files']['inv'][0]['id'] == item['id']
+    forged = api[0].get('/api/stand/state').json
+    forged['data']['deals'][0]['files']['inv'] = []
+    bypass = api[0].put('/api/stand/state', json={
+        'version': forged['version'], 'fileStorageVersion': 1, 'data': forged['data']})
+    assert bypass.status_code == 403
+    assert 'только администратором' in bypass.json['error']
+
+
+def _agreement_with_issued_doc(raw, number):
+    """Договор с выпущенным документом; возвращает (agreement_id, doc_id)."""
+    with m.SessionLocal() as db:
+        agreement = m.Agreement(client_name='Документы QA', client_key='qa-docs-' + number,
+                                route_key='legacy', deal_type='freehold', number=number)
+        db.add(agreement)
+        db.flush()
+        doc = m.AgreementDoc(agreement_id=agreement.id, kind='invoice', filename='issued.pdf',
+                             mime='application/pdf', size=len(raw), data=raw, seq=1)
+        db.add(doc)
+        db.flush()
+        agreement_id, doc_id = agreement.id, doc.id
+        db.commit()
+    return agreement_id, doc_id
+
+
+def _link_issued_doc(agreement_id, doc_id, step='s14'):
+    state = board(step)
+    state['deals'][0].update(docPack={'agreementId': agreement_id, 'version': 1},
+                             docsIssued=[{'kind':'bill', 'docId':doc_id, 'file':'issued.pdf',
+                                          'version':1}])
+    seed(state)
+
+
+def test_agreement_document_hard_delete_removes_row_and_refs(api):
+    api[1][0] = 'manager'
+    raw = b'%PDF-1.4\nissued'
+    agreement_id, doc_id = _agreement_with_issued_doc(raw, 'QA-DOC-1')
+    _link_issued_doc(agreement_id, doc_id)
+    url = f'/api/docs/file/{doc_id}'
+    whole = api[0].delete(f'/api/docs/agreements/{agreement_id}')
+    assert whole.status_code == 409
+    assert 'связан со сделкой' in whole.json['error']
+    deleted = api[0].patch(url, json={'action': 'delete'})
+    assert deleted.status_code == 200, deleted.json
+    with m.SessionLocal() as db:
+        assert db.get(m.AgreementDoc, doc_id) is None
+    deal = read_db()[1]['deals'][0]
+    assert 'Удалён документ issued.pdf' in deal['log'][-1]['text']
+    assert deal['docsIssued'] == []
+    assert api[0].get(url).status_code == 404
+    assert not api[0].get(f'/api/docs/agreements/{agreement_id}').json['agreement']['docs']
+    assert api[0].patch(url, json={'action': 'restore'}).status_code == 400
+    api[1][0] = 'admin'
+    assert api[0].patch(url, json={'action': 'restore'}).status_code == 400
+
+
+def test_agreement_document_delete_blocked_for_closed_crm_deal(api):
+    api[1][0] = 'manager'
+    raw = b'%PDF-1.4\nclosed-crm'
+    agreement_id, doc_id = _agreement_with_issued_doc(raw, 'QA-DOC-2')
+    _link_issued_doc(agreement_id, doc_id)
+    with m.SessionLocal() as db:
+        crm = m.Deal(deal_type=m.DealType.PAY_IN, status=m.DealStatus.COMPLETED)
+        db.add(crm)
+        db.flush()
+        row = db.get(m.StandState, 1)
+        state = json.loads(row.data)
+        state['deals'][0]['crmDealId'] = crm.id
+        row.data = json.dumps(state, ensure_ascii=False)
+        db.commit()
+    url = f'/api/docs/file/{doc_id}'
+    denied = api[0].patch(url, json={'action': 'delete'})
+    assert denied.status_code == 403
+    assert denied.json['error'] == 'Сделка закрыта, удаление документов — только администратором'
+    with m.SessionLocal() as db:
+        assert db.get(m.AgreementDoc, doc_id) is not None
+    api[1][0] = 'admin'
+    assert api[0].patch(url, json={'action': 'delete'}).status_code == 200
+    with m.SessionLocal() as db:
+        assert db.get(m.AgreementDoc, doc_id) is None
+
+
+def test_crm_additional_document_upload_uses_existing_kind(api):
+    api[1][0] = 'operator'
+    with m.SessionLocal() as db:
+        agreement = m.Agreement(client_name='Загрузка QA', client_key='qa-upload',
+                                route_key='legacy', deal_type='leasehold', number='QA-UP-1')
+        db.add(agreement)
+        db.commit()
+        agreement_id = agreement.id
+    raw = b'%PDF-1.4\nadditional-crm'
+    url = f'/api/docs/agreements/{agreement_id}/upload'
+    uploaded = api[0].post(url, data={'kind':'source_other',
+        'files':(io.BytesIO(raw),'other.pdf','application/pdf')})
+    assert uploaded.status_code == 200, uploaded.json
+    doc = uploaded.json['agreement']['docs'][0]
+    assert doc['kind'] == 'source_other'
+    assert api[0].get(f"/api/docs/file/{doc['id']}").data == raw
+    forbidden = api[0].post(url, data={'kind':'agreement',
+        'files':(io.BytesIO(raw),'forged.pdf','application/pdf')})
+    assert forbidden.status_code == 400
+    signed = api[0].post(url, data={'kind':'signed', 'files':(
+        io.BytesIO(b'PK\x03\x04legacy-signed-document'), 'signed.docx',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document')})
+    assert signed.status_code == 200, signed.json
+
+
+def test_crm_linked_document_rejects_another_manager(api):
+    api[1][0] = 'manager'
+    with m.SessionLocal() as db:
+        agreement = m.Agreement(client_name='Чужая сделка', client_key='qa-owner',
+                                route_key='legacy', deal_type='freehold', number='QA-OWNER-1')
+        db.add(agreement)
+        db.flush()
+        doc = m.AgreementDoc(agreement_id=agreement.id, kind='invoice', filename='owner.pdf',
+                             mime='application/pdf', size=8, data=b'%PDF-1.4', seq=1)
+        db.add(doc)
+        db.flush()
+        agreement_id, doc_id = agreement.id, doc.id
+        db.commit()
+    state = board('s14')
+    state['deals'][0].update(manager='Другой менеджер', docPack={'agreementId': agreement_id})
+    seed(state)
+    blocked = api[0].post(f'/api/docs/agreements/{agreement_id}/upload', data={
+        'kind': 'source_other', 'files': (io.BytesIO(b'%PDF-1.4'), 'extra.pdf', 'application/pdf')})
+    assert blocked.status_code == 403
+    assert api[0].patch(f'/api/docs/file/{doc_id}', json={'action': 'delete'}).status_code == 403
+
+
+def test_put_cannot_move_existing_file_to_another_document_type(api):
+    api[1][0] = 'manager'
+    seed(board())
+    uploaded = upload(api, b'%PDF-1.4\nmove-me')
+    assert uploaded.status_code == 200, uploaded.json
+    state = uploaded.json['data']
+    item = state['deals'][0]['files']['inv'].pop()
+    state['deals'][0]['files']['spa'] = [item]
+    moved = api[0].put('/api/stand/state', json={
+        'fileStorageVersion': 1, 'version': uploaded.json['version'], 'data': state})
+    assert moved.status_code == 409
+    assert moved.json['error'] in ('invalid_file_marker', 'Удаляйте документы кнопкой «Удалить»')
+    assert read_db()[1]['deals'][0]['files']['inv'][0]['id'] == item['id']
+
+
+def test_bank_evidence_delete_keeps_step_and_role_rules(api):
+    api[1][0] = 'operator'
+    state = board('s14')
+    state['deals'][0]['manualBankReceipt'] = {'status': 'pending'}
+    seed(state)
+    uploaded = upload(api, b'%PDF-1.4\ncredit', kind='bankCreditEvidence', name='credit.pdf')
+    assert uploaded.status_code == 200, uploaded.json
+    item = uploaded.json['data']['deals'][0]['files']['bankCreditEvidence'][0]
+    url = f"/api/stand/files/1473/bankCreditEvidence/{item['id']}"
+    api[1][0] = 'manager'
+    assert api[0].patch(url, json={'action': 'delete'}).status_code == 403
+    with m.SessionLocal() as db:
+        row = db.get(m.StandState, 1)
+        later = json.loads(row.data)
+        later['deals'][0]['step'] = 's18'
+        row.data = json.dumps(later, ensure_ascii=False)
+        db.commit()
+    api[1][0] = 'operator'
+    denied = api[0].patch(url, json={'action': 'delete'})
+    assert denied.status_code == 403
+    assert 'до подтверждения' in denied.json['error']
+    api[1][0] = 'admin'
+    assert api[0].patch(url, json={'action': 'delete'}).status_code == 200
+
+
+def test_bank_evidence_xlsx_upload_and_download_only_in_own_slot(api):
+    api[1][0] = 'operator'
+    state = board('s14')
+    state['deals'][0]['manualBankReceipt'] = {'status': 'pending'}
+    seed(state)
+    raw = workbook_xlsx()
+    mime = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    denied = upload(api, raw, kind='receipt', name='bank.xlsx', mime=mime)
+    assert denied.status_code == 400
+    assert read_db()[0] == 1
+    uploaded = upload(api, raw, kind='bankCreditEvidence', name='bank.xlsx', mime=mime)
+    assert uploaded.status_code == 200, uploaded.json
+    item = uploaded.json['data']['deals'][0]['files']['bankCreditEvidence'][0]
+    assert item['mime'] == mime and item['data'] == '__detached__'
+    downloaded = api[0].get('/api/stand/file/1473/bankCreditEvidence/0?download=1')
+    assert downloaded.status_code == 200 and downloaded.data == raw
+    assert 'attachment' in downloaded.headers['Content-Disposition']
+    assert read_db()[0] == 2
+
+
+def test_bank_evidence_excel_type_fallback_and_false_workbook_rejected(api):
+    api[1][0] = 'operator'
+    state = board('s14')
+    state['deals'][0]['manualBankReceipt'] = {'status': 'pending'}
+    seed(state)
+    raw = workbook_xlsx()
+    accepted = upload(api, raw, kind='bankCreditEvidence', name='bank.xlsx', mime='application/octet-stream')
+    assert accepted.status_code == 200, accepted.json
+    item = accepted.json['data']['deals'][0]['files']['bankCreditEvidence'][0]
+    assert item['mime'] == 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    fake = io.BytesIO()
+    with zipfile.ZipFile(fake, 'w') as archive:
+        archive.writestr('not-a-workbook.txt', 'irrelevant')
+    denied = upload(api, fake.getvalue(), kind='bankCreditEvidence', name='fake.xlsx',
+                    mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    assert denied.status_code == 400
+    assert read_db()[0] == 2
+
+
+def test_excel_lookalike_containers_do_not_pass_validation():
+    mime_xlsx = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    malformed = io.BytesIO()
+    with zipfile.ZipFile(malformed, 'w') as archive:
+        archive.writestr('[Content_Types].xml',
+                         '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"/>')
+        archive.writestr('xl/workbook.xml', '<workbook')
+    with pytest.raises(ValueError):
+        storage.validate(malformed.getvalue(), mime_xlsx, 'fake.xlsx', 'bankCreditEvidence')
+
+    missing_sheet = io.BytesIO()
+    with zipfile.ZipFile(missing_sheet, 'w') as archive:
+        with zipfile.ZipFile(io.BytesIO(workbook_xlsx())) as source:
+            for name in source.namelist():
+                if name != 'xl/worksheets/sheet1.xml':
+                    archive.writestr(name, source.read(name))
+    with pytest.raises(ValueError):
+        storage.validate(missing_sheet.getvalue(), mime_xlsx, 'missing-sheet.xlsx',
+                         'bankCreditEvidence')
+
+    entity_workbook = io.BytesIO()
+    with zipfile.ZipFile(entity_workbook, 'w') as archive:
+        with zipfile.ZipFile(io.BytesIO(workbook_xlsx())) as source:
+            for name in source.namelist():
+                content = source.read(name)
+                if name == 'xl/workbook.xml':
+                    content = b'<!DOCTYPE workbook [<!ENTITY fake "test">]>' + content
+                archive.writestr(name, content)
+    with pytest.raises(ValueError):
+        storage.validate(entity_workbook.getvalue(), mime_xlsx, 'entity.xlsx',
+                         'bankCreditEvidence')
+
+    corrupt_crc = bytearray(workbook_xlsx())
+    workbook_start = corrupt_crc.find(b'<workbook')
+    assert workbook_start > 0
+    corrupt_crc[workbook_start] = ord('?')
+    with pytest.raises(ValueError):
+        storage.validate(bytes(corrupt_crc), mime_xlsx, 'corrupt.xlsx',
+                         'bankCreditEvidence')
+
+    extra_member = io.BytesIO()
+    with zipfile.ZipFile(extra_member, 'w') as archive:
+        with zipfile.ZipFile(io.BytesIO(workbook_xlsx())) as source:
+            for name in source.namelist():
+                archive.writestr(name, source.read(name))
+        archive.writestr('xl/sharedStrings.xml',
+                         '<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"/>')
+    corrupt_extra = bytearray(extra_member.getvalue())
+    extra_start = corrupt_extra.find(b'<sst')
+    assert extra_start > 0
+    corrupt_extra[extra_start] = ord('?')
+    with pytest.raises(ValueError):
+        storage.validate(bytes(corrupt_extra), mime_xlsx, 'corrupt-extra.xlsx',
+                         'bankCreditEvidence')
+
+    unsupported = bytearray(workbook_xlsx())
+    central = unsupported.find(b'PK\x01\x02')
+    assert central > 0
+    unsupported[central + 10:central + 12] = (99).to_bytes(2, 'little')
+    with pytest.raises(ValueError):
+        storage.validate(bytes(unsupported), mime_xlsx, 'unsupported.xlsx',
+                         'bankCreditEvidence')
+
+    fake_ole = bytearray(1024)
+    fake_ole[:8] = b'\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1'
+    fake_ole[28:32] = b'\xfe\xff\x09\x00'
+    name = 'Workbook'.encode('utf-16le') + b'\x00\x00'
+    fake_ole[512:512 + len(name)] = name
+    fake_ole[576:578] = len(name).to_bytes(2, 'little')
+    fake_ole[578] = 2
+    with pytest.raises(ValueError):
+        storage.validate(bytes(fake_ole), 'application/vnd.ms-excel', 'fake.xls',
+                         'bankCreditEvidence')
+    with pytest.raises(ValueError):
+        storage.validate(bof_only_ole_xls(), 'application/vnd.ms-excel', 'bof-only.xls',
+                         'bankCreditEvidence')
+
+    two_sheet_ole = bytearray(bof_only_ole_xls())
+    stream = 1536
+    two_sheet_ole[stream + 20:stream + 32] = (b'\x85\x00\x08\x00'
+                                                + (64).to_bytes(4, 'little') + b'\x00\x00\x01\x00')
+    two_sheet_ole[stream + 32:stream + 44] = (b'\x85\x00\x08\x00'
+                                                + (128).to_bytes(4, 'little') + b'\x00\x00\x01\x00')
+    two_sheet_ole[stream + 44:stream + 48] = b'\x0a\x00\x00\x00'
+    two_sheet_ole[stream + 64:stream + 84] = b'\x09\x08\x10\x00\x00\x06\x10\x00' + bytes(12)
+    two_sheet_ole[stream + 84:stream + 88] = b'\x0a\x00\x00\x00'
+    with pytest.raises(ValueError):
+        storage.validate(bytes(two_sheet_ole), 'application/vnd.ms-excel',
+                         'bad-second-sheet.xls', 'bankCreditEvidence')
+
+    two_sheets = io.BytesIO()
+    with zipfile.ZipFile(two_sheets, 'w') as archive:
+        with zipfile.ZipFile(io.BytesIO(workbook_xlsx())) as source:
+            for name in source.namelist():
+                content = source.read(name)
+                if name == '[Content_Types].xml':
+                    content = content.replace(b'</Types>',
+                        b'<Override PartName="/xl/worksheets/sheet2.xml" '
+                        b'ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
+                        b'</Types>')
+                if name == 'xl/workbook.xml':
+                    content = content.replace(b'</sheets>',
+                        b'<sheet name="Sheet2" sheetId="2" r:id="rId2"/></sheets>')
+                if name == 'xl/_rels/workbook.xml.rels':
+                    content = content.replace(b'</Relationships>',
+                        b'<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" '
+                        b'Target="worksheets/sheet2.xml"/></Relationships>')
+                archive.writestr(name, content)
+        archive.writestr('xl/worksheets/sheet2.xml', b'<worksheet')
+    with pytest.raises(ValueError):
+        storage.validate(two_sheets.getvalue(), mime_xlsx, 'bad-second-sheet.xlsx',
+                         'bankCreditEvidence')
+
+    utf16_dtd = io.BytesIO()
+    with zipfile.ZipFile(utf16_dtd, 'w') as archive:
+        with zipfile.ZipFile(io.BytesIO(workbook_xlsx())) as source:
+            for name in source.namelist():
+                content = source.read(name)
+                if name == 'xl/workbook.xml':
+                    content = ('<?xml version="1.0" encoding="utf-16"?>'
+                               '<!DOCTYPE workbook [<!ENTITY fake "Injected">]>'
+                               + content.decode().replace('Sheet1', '&fake;')).encode('utf-16')
+                archive.writestr(name, content)
+    with pytest.raises(ValueError):
+        storage.validate(utf16_dtd.getvalue(), mime_xlsx, 'utf16-dtd.xlsx',
+                         'bankCreditEvidence')
+
+
+@pytest.mark.parametrize('shared_strings', [
+    b'<sst',
+    (b'<!DOCTYPE sst [<!ENTITY fake "Injected">]>'
+     b'<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+     b'<si><t>&fake;</t></si></sst>'),
+])
+def test_excel_rejects_invalid_optional_xml_part(shared_strings):
+    out = io.BytesIO()
+    with zipfile.ZipFile(out, 'w') as archive:
+        with zipfile.ZipFile(io.BytesIO(workbook_xlsx())) as source:
+            for name in source.namelist():
+                content = source.read(name)
+                if name == '[Content_Types].xml':
+                    content = content.replace(b'</Types>',
+                        b'<Override PartName="/xl/sharedStrings.xml" '
+                        b'ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml"/>'
+                        b'</Types>')
+                if name == 'xl/_rels/workbook.xml.rels':
+                    content = content.replace(b'</Relationships>',
+                        b'<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings" '
+                        b'Target="sharedStrings.xml"/></Relationships>')
+                archive.writestr(name, content)
+        archive.writestr('xl/sharedStrings.xml', shared_strings)
+    with pytest.raises(ValueError):
+        storage.validate(out.getvalue(),
+                         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                         'bad-strings.xlsx', 'bankCreditEvidence')
+
+
+def test_size_limits_and_no_total_board_limit(api, monkeypatch):
+    api[1][0] = 'manager';seed(board())
+    response = upload(api,b'%PDF-' + b'x'*(20*1024*1024))
+    assert response.status_code == 400 and '20 МБ' in response.json['error']
+    monkeypatch.setattr(storage,'DEAL_LIMIT',25)
+    response = upload(api,b'%PDF-' + b'x'*21)
+    assert response.status_code == 400 and '200 МБ' in response.json['error']
+    assert read_db()[0] == 1
+
+
+def test_new_base64_put_is_externalized(api):
+    api[1][0] = 'manager';state = board();seed(state)
+    state['deals'][0]['files']['inv'] = [pdf(b'old browser')]
+    response = api[0].put('/api/stand/state', json={'version':1,'data':state})
+    assert response.status_code == 200, response.json
+    assert read_db()[1]['deals'][0]['files']['inv'][0]['storageId']
+    assert api[0].get('/api/stand/file/1473/inv/0').data == storage.decode(pdf(b'old browser'))
+
+
+def test_s3_configuration_and_private_calls_no_secret_errors(monkeypatch):
+    from botocore.stub import Stubber
+    monkeypatch.delenv('STAND_FILES_LOCAL_DIR')
+    for key, value in {'ENDPOINT':'https://t3.storageapi.dev','BUCKET':'stand-files-test',
+                       'REGION':'auto','ACCESS_KEY_ID':'synthetic-access',
+                       'SECRET_ACCESS_KEY':'synthetic-secret','ADDRESSING':'virtual-host'}.items():
+        monkeypatch.setenv('STAND_FILES_S3_'+key, value)
+    backend = objects.storage()
+    assert backend.client.meta.config.s3['addressing_style'] == 'virtual'
+    assert backend.client.meta.config.proxies == {}
+    with Stubber(backend.client) as stub:
+        stub.add_response('put_object', {}, {'Bucket':'stand-files-test','Key':'object',
+                          'Body':b'bytes','ContentType':'application/pdf'})
+        backend.put('object',b'bytes','application/pdf')
+        stub.add_response('get_object', {'Body':io.BytesIO(b'bytes')},
+                          {'Bucket':'stand-files-test','Key':'object'})
+        assert backend.open('object').read() == b'bytes'
+        stub.add_client_error('put_object', 'Denied', 'synthetic-secret', expected_params={
+            'Bucket':'stand-files-test','Key':'object','Body':b'bytes','ContentType':'application/pdf'})
+        with pytest.raises(objects.StorageUnavailable) as exc:
+            backend.put('object',b'bytes','application/pdf')
+        assert 'synthetic-secret' not in str(exc.value)
+
+
+def test_storage_egress_opens_only_exact_host_in_scope(monkeypatch):
+    import stand_egress as guard
+    monkeypatch.setenv('STAND_FILES_S3_ENDPOINT','https://t3.storageapi.dev')
+    monkeypatch.setenv('STAND_FILES_S3_BUCKET','stand-files-test')
+    monkeypatch.setenv('STAND_FILES_S3_ADDRESSING','virtual-host')
+    host = 'stand-files-test.t3.storageapi.dev'
+    assert not guard._hostname_allowed(host,443)
+    with guard.storage_connection(host):
+        assert guard._hostname_allowed(host,443)
+        assert not guard._hostname_allowed(host,80)
+        assert not guard._hostname_allowed('other.t3.storageapi.dev',443)
+        assert not guard._hostname_allowed('grusha.up.railway.app',443)
+    assert not guard._hostname_allowed(host,443)
+    with pytest.raises(ValueError):
+        with guard.storage_connection('other.t3.storageapi.dev'): pass
+
+
+def test_browser_compresses_jpeg_and_leaves_png_and_pdf_for_server():
+    import re
+    from pathlib import Path
+    from playwright.sync_api import sync_playwright
+    source = Path('static/stand/tasks.html').read_text()
+    function = re.search(
+        r'^async function fileOptimizeImage\([\s\S]*?^}',source,re.M).group()
+    shells = list(Path('.browser-cache').glob('chromium_headless_shell-*/**/chrome-headless-shell'))
+    with sync_playwright() as pw:
+        if not shells and not Path(pw.chromium.executable_path).exists():
+            pytest.skip('Установите Chromium: PLAYWRIGHT_BROWSERS_PATH=.browser-cache uvx --from playwright playwright install chromium --only-shell')
+        browser = pw.chromium.launch(headless=True, executable_path=str(shells[0].resolve()) if shells else None)
+        page = browser.new_page(viewport={'width':1300,'height':600})
+        page.route('**/*', lambda route: route.abort())
+        page.set_content('<body style="margin:0;background:white"></body>')
+        page.add_script_tag(content=function)
+        result = page.evaluate('''async () => {
+          const c=document.createElement('canvas');c.width=3200;c.height=1300;
+          const x=c.getContext('2d'), pixels=x.createImageData(3200,1300);
+          let seed=17;
+          for(let i=0;i<pixels.data.length;i+=4){seed=(Math.imul(seed,1664525)+1013904223)>>>0;
+            pixels.data[i]=seed&255;pixels.data[i+1]=(seed>>>8)&255;pixels.data[i+2]=(seed>>>16)&255;pixels.data[i+3]=255;}
+          x.putImageData(pixels,0,0);x.fillStyle='white';x.fillRect(0,0,3200,600);
+          x.fillStyle='black';x.font='16px Arial';
+          for(let i=0;i<14;i++)x.fillText('Выписка: 13.10.2026  Поступление 123 456,78 RUB  Счёт 40702810900000123456',30,30+i*30);
+          const png=await new Promise(r=>c.toBlob(r,'image/png'));
+          const jpeg=await new Promise(r=>c.toBlob(r,'image/jpeg',0.98));
+          const pngFile=new File([png],'statement.png',{type:'image/png'});
+          const original=new File([jpeg],'statement.jpg',{type:'image/jpeg'});
+          const out=await fileOptimizeImage(original), decoded=await createImageBitmap(out);
+          const shown=document.createElement('canvas');shown.width=1200;shown.height=450;
+          shown.getContext('2d').drawImage(decoded,0,0);document.body.appendChild(shown);
+          const pdf=new File(['%PDF-1.4'],'invoice.pdf',{type:'application/pdf'});
+          return {input:original.size,output:out.size,width:decoded.width,height:decoded.height,
+                  pngUntouched:(await fileOptimizeImage(pngFile))===pngFile,
+                  mime:out.type,pdfUntouched:(await fileOptimizeImage(pdf))===pdf};
+        }''')
+        page.screenshot(path='/tmp/calccrm-files-compressed-text.png')
+        browser.close()
+    assert 1024*1024 < result['input'] < 20*1024*1024
+    assert result['output'] < result['input']
+    assert max(result['width'], result['height']) == 2400
+    assert result['mime'] == 'image/webp' and result['pdfUntouched'] and result['pngUntouched']
+    Path('/tmp/calccrm-files-compression.json').write_text(json.dumps(result))
+    print('IMAGE_COMPRESSION',result)
+
+
+def test_migration_preserves_existing_attestations_and_file_change_invalidates(api):
+    api[1][0] = 'manager'
+    state = board('s27');deal = state['deals'][0]
+    deal.update(sentToClient=True, pay={'invoicePaid':True}, docs={'receipt':True})
+    deal['files']['receipt'] = [pdf(b'old receipt')]
+    seed(state)
+    with m.SessionLocal() as db:
+        row = db.get(m.StandState,1);row.generation = 'files-evidence-test'
+        m._stand_upsert_close_evidence(db,row,deal,'sent',1,'manager_attestation')
+        m._stand_upsert_close_evidence(db,row,deal,'receipt',1,'operator_attestation')
+        db.commit()
+    m._stand_migrate_files()
+    with m.SessionLocal() as db:
+        current = json.loads(db.get(m.StandState,1).data)['deals'][0]
+        for kind in ('sent','receipt'):
+            proof = db.query(m.StandCloseEvidence).filter_by(generation='files-evidence-test',kind=kind).one()
+            assert proof.fingerprint == m._stand_close_fingerprint(current,kind)
+            changed = copy.deepcopy(current)
+            changed['files']['receipt'].append(pdf(b'new receipt'))
+            assert proof.fingerprint != m._stand_close_fingerprint(changed,kind)
+
+
+def test_migration_duplicates_share_object_and_sha_failure_detected(api):
+    state=board();state['deals'][0]['files']['pass']=[pdf(b'duplicate'),pdf(b'duplicate')]
+    seed(state);m._stand_migrate_files()
+    with m.SessionLocal() as db:
+        assert db.query(m.StandFile).count()==1
+        row=db.query(m.StandFile).one()
+        objects.storage().path(row.object_key).write_bytes(b'corrupted')
+    with m.engine.connect() as conn:
+        report=verify(conn,state)
+    assert not report['ok'] and report['errors']
+
+
+@pytest.mark.parametrize('duplicate', [False, True])
+def test_parallel_uploads_keep_both_results_or_deduplicate(api, duplicate):
+    from concurrent.futures import ThreadPoolExecutor
+    api[1][0]='manager';seed(board())
+    with api[0].session_transaction() as session:
+        uid=session['user_id']
+    def worker(index):
+        client=m.app.test_client()
+        with client.session_transaction() as session: session['user_id']=uid
+        raw=b'%PDF-1.4\\n'+str(0 if duplicate else index).encode()
+        return upload((client,None),raw)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        responses=list(pool.map(worker,[0,1]))
+    assert all(r.status_code==200 for r in responses), [r.json for r in responses]
+    version,state=read_db()
+    assert version==(2 if duplicate else 3)
+    assert len(state['deals'][0]['files']['inv'])==(1 if duplicate else 2)
+
+
+def test_bad_legacy_receipt_does_not_hide_later_valid_receipt(api):
+    state=board();bad=pdf(b'invalid');bad['data']='data:application/pdf;base64,eA=='
+    state['deals'][0]['files']['receipt']=[bad,pdf(b'valid')]
+    seed(state);m._stand_migrate_files()
+    with m.app.test_request_context('/'):
+        assert m._stand_valid_receipt(read_db()[1]['deals'][0])
+
+
+def test_legacy_upload_author_comes_from_session(api):
+    api[1][0]='manager';state=board();seed(state)
+    item=pdf(b'author');item['uploadedById']=999999
+    state['deals'][0]['files']['inv']=[item]
+    response=api[0].put('/api/stand/state',json={'version':1,'data':state})
+    assert response.status_code==200,response.json
+    with api[0].session_transaction() as session: uid=session['user_id']
+    with m.SessionLocal() as db:
+        assert db.query(m.StandFile).one().uploaded_by==str(uid)
+
+
+def test_manager_adds_file_through_board_save_on_deal_with_manager(api):
+    """Сохранение доски менеджером с новым файлом в сделке, где указан менеджер,
+    не должно падать 500 (баг 29.10: UnboundLocalError actor_id в stand_state_put)."""
+    api[1][0] = 'manager'
+    state = board('s5')
+    state['deals'][0]['manager'] = 'Другой менеджер'
+    seed(state)
+    version, current = read_db()
+    current['deals'][0]['files'] = {'pass': [dict(pdf(b'board-save', 'pass.pdf'))]}
+    response = api[0].put('/api/stand/state', json={'version': version, 'data': current})
+    assert response.status_code != 500, response.data[:300]
+    assert response.status_code == 403
+    assert 'её менеджер' in response.json['error']

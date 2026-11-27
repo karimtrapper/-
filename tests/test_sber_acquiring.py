@@ -178,12 +178,10 @@ def _option_line(select_id, value):
 
 
 @pytest.mark.parametrize('select_id', ['payinMethod', 'customPayinMethod'])
-def test_doverka_selectable_again(select_id):
-    """СБП (Доверка) возвращена в выбор Pay-In для новых сделок — не archive-only."""
+def test_doverka_selectable_alongside_sber_sbp(select_id):
+    """СБП (Доверка) доступна для новых сделок."""
     line = _option_line(select_id, 'spp_doverka')
-    assert line is not None, f'{select_id}: опция spp_doverka удалена из DOM'
-    assert 'hidden' not in line
-    assert '>СБП (Доверка)<' in line
+    assert line == '<option value="spp_doverka">СБП (Доверка)</option>'
 
 
 @pytest.mark.parametrize('select_id', ['payinMethod', 'customPayinMethod'])

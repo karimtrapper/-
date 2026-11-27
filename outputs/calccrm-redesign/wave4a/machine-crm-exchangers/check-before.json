@@ -1,0 +1,6864 @@
+{
+ "tool": "design-gate",
+ "mode": "check",
+ "url": "http://127.0.0.1:59110/crm?section=exchangers",
+ "design": "/Users/karimamirov/Desktop/untitled folder/outputs/calccrm-redesign/DESIGN.md",
+ "generated": "2026-10-14T21:21:53",
+ "widths_requested": [
+  375,
+  1280
+ ],
+ "widths_required": [
+  375,
+  768,
+  1280,
+  1920
+ ],
+ "widths_blocked": {
+  "768": "ширина не снята (не запрашивалась)",
+  "1920": "ширина не снята (не запрашивалась)"
+ },
+ "verdict": "FAIL",
+ "reasons": [
+  "FAIL в гейтах: 1. Токены, 2. Гардрейлы, 3. Контраст WCAG AA, 4. Ширины",
+  "768px: ширина не снята (не запрашивалась)",
+  "1920px: ширина не снята (не запрашивалась)",
+  "проверены не все ширины: запрошено [375, 1280], для вердикта PASS нужны [375, 768, 1280, 1920]. Проверка одной ширины не считается проверкой экрана.",
+  "375px: снимок «после» не снят",
+  "1280px: снимок «после» не снят"
+ ],
+ "role": "karim",
+ "label": "before",
+ "tokens": {
+  "sizes": [
+   12.0,
+   14.0,
+   16.0,
+   22.0
+  ],
+  "weights": [
+   400,
+   600,
+   700
+  ],
+  "families": [
+   "inter",
+   "ui-monospace"
+  ],
+  "radii": [
+   8.0,
+   12.0,
+   999.0
+  ],
+  "spacing": [
+   4.0,
+   8.0,
+   12.0,
+   16.0,
+   24.0
+  ],
+  "colors": 22,
+  "de_tolerance": 2.0,
+  "shadow_source": "/Users/karimamirov/Desktop/untitled folder/outputs/calccrm-redesign/.impeccable/design.json",
+  "problems": []
+ },
+ "gates": {
+  "1": {
+   "id": 1,
+   "name": "Токены",
+   "by_width": {
+    "375": "FAIL",
+    "768": "BLOCKED",
+    "1280": "FAIL",
+    "1920": "BLOCKED"
+   },
+   "verdict": "FAIL",
+   "findings": [
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "padding 6px",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div.site-shell.site-shell-mobile-head > span.site-shell-bell > a",
+       "t": ""
+      },
+      {
+       "sel": "div.site-shell-right > span.site-shell-bell > a",
+       "t": ""
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.site-shell.site-shell-mobile-head > span.site-shell-bell > a",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.site-shell-right > span.site-shell-bell > a",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-family",
+     "sev": "FAIL",
+     "title": "шрифт вне токенов",
+     "value": "arial",
+     "n": 10,
+     "ex": [
+      {
+       "sel": "nav.site-shell-sections > button.site-shell-scroll",
+       "t": "‹"
+      },
+      {
+       "sel": "nav.site-shell-sections > button.site-shell-scroll",
+       "t": "›"
+      },
+      {
+       "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab.active",
+       "t": "Поступления"
+      },
+      {
+       "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab",
+       "t": "Конвертация от брокеров"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 10,
+      "1280": 10
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "nav.site-shell-sections > button.site-shell-scroll",
+        "t": "‹"
+       },
+       {
+        "sel": "nav.site-shell-sections > button.site-shell-scroll",
+        "t": "›"
+       },
+       {
+        "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab.active",
+        "t": "Поступления"
+       },
+       {
+        "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab",
+        "t": "Конвертация от брокеров"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "nav.site-shell-sections > button.site-shell-scroll",
+        "t": "‹"
+       },
+       {
+        "sel": "nav.site-shell-sections > button.site-shell-scroll",
+        "t": "›"
+       },
+       {
+        "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab.active",
+        "t": "Поступления"
+       },
+       {
+        "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab",
+        "t": "Конвертация от брокеров"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "padding 120px",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div.container",
+       "t": ""
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.container",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "padding 14px",
+     "n": 13,
+     "ex": [
+      {
+       "sel": "div.container",
+       "t": ""
+      },
+      {
+       "sel": "div#rxSummary > div.rx-card",
+       "t": ""
+      },
+      {
+       "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab.active",
+       "t": "Поступления"
+      },
+      {
+       "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab",
+       "t": "Конвертация от брокеров"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 13,
+      "1280": 12
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.container",
+        "t": ""
+       },
+       {
+        "sel": "div#rxSummary > div.rx-card",
+        "t": ""
+       },
+       {
+        "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab.active",
+        "t": "Поступления"
+       },
+       {
+        "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab",
+        "t": "Конвертация от брокеров"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#rxSummary > div.rx-card",
+        "t": ""
+       },
+       {
+        "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab.active",
+        "t": "Поступления"
+       },
+       {
+        "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab",
+        "t": "Конвертация от брокеров"
+       },
+       {
+        "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab",
+        "t": "Запросы"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-shadow",
+     "sev": "FAIL",
+     "title": "тень вне словаря",
+     "value": "rgba(0, 0, 0, 0.04) 0px 1px 3px 0px",
+     "n": 5,
+     "ex": [
+      {
+       "sel": "div#rxSummary > div.rx-card",
+       "t": ""
+      },
+      {
+       "sel": "div#rx-postup > div.card",
+       "t": ""
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 5,
+      "1280": 5
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#rxSummary > div.rx-card",
+        "t": ""
+       },
+       {
+        "sel": "div#rx-postup > div.card",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#rxSummary > div.rx-card",
+        "t": ""
+       },
+       {
+        "sel": "div#rx-postup > div.card",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-size",
+     "sev": "FAIL",
+     "title": "кегль вне шкалы",
+     "value": "20px",
+     "n": 4,
+     "ex": [
+      {
+       "sel": "div#rxSummary > div.rx-card > div.val.num",
+       "t": "836 255,61"
+      },
+      {
+       "sel": "div#rxSummary > div.rx-card > div.val",
+       "t": "8"
+      },
+      {
+       "sel": "div#rxSummary > div.rx-card > div.val.num",
+       "t": "607 599,11"
+      },
+      {
+       "sel": "div#rxSummary > div.rx-card > div.val.num",
+       "t": "+ 23 506,24"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 4,
+      "1280": 4
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#rxSummary > div.rx-card > div.val.num",
+        "t": "836 255,61"
+       },
+       {
+        "sel": "div#rxSummary > div.rx-card > div.val",
+        "t": "8"
+       },
+       {
+        "sel": "div#rxSummary > div.rx-card > div.val.num",
+        "t": "607 599,11"
+       },
+       {
+        "sel": "div#rxSummary > div.rx-card > div.val.num",
+        "t": "+ 23 506,24"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#rxSummary > div.rx-card > div.val.num",
+        "t": "836 255,61"
+       },
+       {
+        "sel": "div#rxSummary > div.rx-card > div.val",
+        "t": "8"
+       },
+       {
+        "sel": "div#rxSummary > div.rx-card > div.val.num",
+        "t": "607 599,11"
+       },
+       {
+        "sel": "div#rxSummary > div.rx-card > div.val.num",
+        "t": "+ 23 506,24"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-weight",
+     "sev": "FAIL",
+     "title": "вес вне шкалы",
+     "value": "800",
+     "n": 4,
+     "ex": [
+      {
+       "sel": "div#rxSummary > div.rx-card > div.val.num",
+       "t": "836 255,61"
+      },
+      {
+       "sel": "div#rxSummary > div.rx-card > div.val",
+       "t": "8"
+      },
+      {
+       "sel": "div#rxSummary > div.rx-card > div.val.num",
+       "t": "607 599,11"
+      },
+      {
+       "sel": "div#rxSummary > div.rx-card > div.val.num",
+       "t": "+ 23 506,24"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 4,
+      "1280": 4
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#rxSummary > div.rx-card > div.val.num",
+        "t": "836 255,61"
+       },
+       {
+        "sel": "div#rxSummary > div.rx-card > div.val",
+        "t": "8"
+       },
+       {
+        "sel": "div#rxSummary > div.rx-card > div.val.num",
+        "t": "607 599,11"
+       },
+       {
+        "sel": "div#rxSummary > div.rx-card > div.val.num",
+        "t": "+ 23 506,24"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#rxSummary > div.rx-card > div.val.num",
+        "t": "836 255,61"
+       },
+       {
+        "sel": "div#rxSummary > div.rx-card > div.val",
+        "t": "8"
+       },
+       {
+        "sel": "div#rxSummary > div.rx-card > div.val.num",
+        "t": "607 599,11"
+       },
+       {
+        "sel": "div#rxSummary > div.rx-card > div.val.num",
+        "t": "+ 23 506,24"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-size",
+     "sev": "FAIL",
+     "title": "кегль вне шкалы",
+     "value": "11px",
+     "n": 229,
+     "ex": [
+      {
+       "sel": "div#rxSummary > div.rx-card > div.sub",
+       "t": "224 сделок"
+      },
+      {
+       "sel": "div#rxSummary > div.rx-card > div.sub",
+       "t": "из TRON"
+      },
+      {
+       "sel": "div#rxSummary > div.rx-card > div.sub",
+       "t": "в заявках + накоплено"
+      },
+      {
+       "sel": "div#rxSummary > div.rx-card > div.sub",
+       "t": "по известным"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 229,
+      "1280": 229
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#rxSummary > div.rx-card > div.sub",
+        "t": "224 сделок"
+       },
+       {
+        "sel": "div#rxSummary > div.rx-card > div.sub",
+        "t": "из TRON"
+       },
+       {
+        "sel": "div#rxSummary > div.rx-card > div.sub",
+        "t": "в заявках + накоплено"
+       },
+       {
+        "sel": "div#rxSummary > div.rx-card > div.sub",
+        "t": "по известным"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#rxSummary > div.rx-card > div.sub",
+        "t": "224 сделок"
+       },
+       {
+        "sel": "div#rxSummary > div.rx-card > div.sub",
+        "t": "из TRON"
+       },
+       {
+        "sel": "div#rxSummary > div.rx-card > div.sub",
+        "t": "в заявках + накоплено"
+       },
+       {
+        "sel": "div#rxSummary > div.rx-card > div.sub",
+        "t": "по известным"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "margin-вертикаль 2px",
+     "n": 4,
+     "ex": [
+      {
+       "sel": "div#rxSummary > div.rx-card > div.sub",
+       "t": "224 сделок"
+      },
+      {
+       "sel": "div#rxSummary > div.rx-card > div.sub",
+       "t": "из TRON"
+      },
+      {
+       "sel": "div#rxSummary > div.rx-card > div.sub",
+       "t": "в заявках + накоплено"
+      },
+      {
+       "sel": "div#rxSummary > div.rx-card > div.sub",
+       "t": "по известным"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 4,
+      "1280": 4
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#rxSummary > div.rx-card > div.sub",
+        "t": "224 сделок"
+       },
+       {
+        "sel": "div#rxSummary > div.rx-card > div.sub",
+        "t": "из TRON"
+       },
+       {
+        "sel": "div#rxSummary > div.rx-card > div.sub",
+        "t": "в заявках + накоплено"
+       },
+       {
+        "sel": "div#rxSummary > div.rx-card > div.sub",
+        "t": "по известным"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#rxSummary > div.rx-card > div.sub",
+        "t": "224 сделок"
+       },
+       {
+        "sel": "div#rxSummary > div.rx-card > div.sub",
+        "t": "из TRON"
+       },
+       {
+        "sel": "div#rxSummary > div.rx-card > div.sub",
+        "t": "в заявках + накоплено"
+       },
+       {
+        "sel": "div#rxSummary > div.rx-card > div.sub",
+        "t": "по известным"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-text",
+     "sev": "FAIL",
+     "title": "цвет текста вне палитры",
+     "value": "#16A34A (ближайший money-ink #065F46, ΔE 26.5)",
+     "n": 226,
+     "ex": [
+      {
+       "sel": "div#rxSummary > div.rx-card > div.val",
+       "t": "8"
+      },
+      {
+       "sel": "div#rxSummary > div.rx-card > div.val.num",
+       "t": "+ 23 506,24"
+      },
+      {
+       "sel": "tr > td.num > span",
+       "t": "$ 25,11"
+      },
+      {
+       "sel": "tr > td.num > span",
+       "t": "$ 6,37"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 226,
+      "1280": 226
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#rxSummary > div.rx-card > div.val",
+        "t": "8"
+       },
+       {
+        "sel": "div#rxSummary > div.rx-card > div.val.num",
+        "t": "+ 23 506,24"
+       },
+       {
+        "sel": "tr > td.num > span",
+        "t": "$ 25,11"
+       },
+       {
+        "sel": "tr > td.num > span",
+        "t": "$ 6,37"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#rxSummary > div.rx-card > div.val",
+        "t": "8"
+       },
+       {
+        "sel": "div#rxSummary > div.rx-card > div.val.num",
+        "t": "+ 23 506,24"
+       },
+       {
+        "sel": "tr > td.num > span",
+        "t": "$ 25,11"
+       },
+       {
+        "sel": "tr > td.num > span",
+        "t": "$ 6,37"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-text",
+     "sev": "FAIL",
+     "title": "цвет текста вне палитры",
+     "value": "#F59E0B (ближайший decision-border #FDE68A, ΔE 21.6)",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div#rxSummary > div.rx-card > div.val.num",
+       "t": "607 599,11"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#rxSummary > div.rx-card > div.val.num",
+        "t": "607 599,11"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#rxSummary > div.rx-card > div.val.num",
+        "t": "607 599,11"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "margin-вертикаль 14px",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "section#exchangers > div.rx-subtabs",
+       "t": ""
+      },
+      {
+       "sel": "div#rx-postup > div.card",
+       "t": ""
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "section#exchangers > div.rx-subtabs",
+        "t": ""
+       },
+       {
+        "sel": "div#rx-postup > div.card",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": "section#exchangers > div.rx-subtabs",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-bg",
+     "sev": "FAIL",
+     "title": "фон вне палитры",
+     "value": "#1E293B (ближайший ink-navy #0F172A, ΔE 6.1)",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab.active",
+       "t": "Поступления"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab.active",
+        "t": "Поступления"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab.active",
+        "t": "Поступления"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-size",
+     "sev": "FAIL",
+     "title": "кегль вне шкалы",
+     "value": "13px",
+     "n": 5,
+     "ex": [
+      {
+       "sel": "button#rxSyncBtn",
+       "t": "🔄 Обновить из бота"
+      },
+      {
+       "sel": "select#rxFltMer",
+       "t": "Все мерчанты"
+      },
+      {
+       "sel": "select#rxFltStt",
+       "t": "Все статусы"
+      },
+      {
+       "sel": "select#rxFltSort",
+       "t": "↓ новые"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 5,
+      "1280": 5
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "button#rxSyncBtn",
+        "t": "🔄 Обновить из бота"
+       },
+       {
+        "sel": "select#rxFltMer",
+        "t": "Все мерчанты"
+       },
+       {
+        "sel": "select#rxFltStt",
+        "t": "Все статусы"
+       },
+       {
+        "sel": "select#rxFltSort",
+        "t": "↓ новые"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "button#rxSyncBtn",
+        "t": "🔄 Обновить из бота"
+       },
+       {
+        "sel": "select#rxFltMer",
+        "t": "Все мерчанты"
+       },
+       {
+        "sel": "select#rxFltStt",
+        "t": "Все статусы"
+       },
+       {
+        "sel": "select#rxFltSort",
+        "t": "↓ новые"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "gap 6px",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "button#rxSyncBtn",
+       "t": "🔄 Обновить из бота"
+      },
+      {
+       "sel": "div.card > div > button.btn.btn-secondary",
+       "t": "Сброс"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "1280": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "button#rxSyncBtn",
+        "t": "🔄 Обновить из бота"
+       },
+       {
+        "sel": "div.card > div > button.btn.btn-secondary",
+        "t": "Сброс"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "button#rxSyncBtn",
+        "t": "🔄 Обновить из бота"
+       },
+       {
+        "sel": "div.card > div > button.btn.btn-secondary",
+        "t": "Сброс"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "padding 10px",
+     "n": 238,
+     "ex": [
+      {
+       "sel": "select#rxFltMer",
+       "t": "Все мерчанты"
+      },
+      {
+       "sel": "select#rxFltStt",
+       "t": "Все статусы"
+      },
+      {
+       "sel": "select#rxFltSort",
+       "t": "↓ новые"
+      },
+      {
+       "sel": "input#rxFltSf",
+       "t": ""
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 238,
+      "1280": 238
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "select#rxFltMer",
+        "t": "Все мерчанты"
+       },
+       {
+        "sel": "select#rxFltStt",
+        "t": "Все статусы"
+       },
+       {
+        "sel": "select#rxFltSort",
+        "t": "↓ новые"
+       },
+       {
+        "sel": "input#rxFltSf",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": "select#rxFltMer",
+        "t": "Все мерчанты"
+       },
+       {
+        "sel": "select#rxFltStt",
+        "t": "Все статусы"
+       },
+       {
+        "sel": "select#rxFltSort",
+        "t": "↓ новые"
+       },
+       {
+        "sel": "input#rxFltSf",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-text",
+     "sev": "FAIL",
+     "title": "цвет текста вне палитры",
+     "value": "#0000EE (ближайший navy-700 #334155, ΔE 19.3)",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "tr > td > a.num",
+       "t": "✅ CNV-0001"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tr > td > a.num",
+        "t": "✅ CNV-0001"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tr > td > a.num",
+        "t": "✅ CNV-0001"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-bg",
+     "sev": "FAIL",
+     "title": "фон вне палитры",
+     "value": "#D1FAE5 (ближайший money-border #BBF7D0, ΔE 6.2)",
+     "n": 139,
+     "ex": [
+      {
+       "sel": "tr > td > span.rx-pill",
+       "t": "✅ Закрыто"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 139,
+      "1280": 139
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tr > td > span.rx-pill",
+        "t": "✅ Закрыто"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tr > td > span.rx-pill",
+        "t": "✅ Закрыто"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "padding 3px",
+     "n": 224,
+     "ex": [
+      {
+       "sel": "tr > td > span.rx-pill",
+       "t": "✅ Закрыто"
+      },
+      {
+       "sel": "tr > td > span.rx-pill",
+       "t": "💰 Оплачено"
+      },
+      {
+       "sel": "tr > td > span.rx-pill",
+       "t": "⚠️ Аванс"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 224,
+      "1280": 224
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tr > td > span.rx-pill",
+        "t": "✅ Закрыто"
+       },
+       {
+        "sel": "tr > td > span.rx-pill",
+        "t": "💰 Оплачено"
+       },
+       {
+        "sel": "tr > td > span.rx-pill",
+        "t": "⚠️ Аванс"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tr > td > span.rx-pill",
+        "t": "✅ Закрыто"
+       },
+       {
+        "sel": "tr > td > span.rx-pill",
+        "t": "💰 Оплачено"
+       },
+       {
+        "sel": "tr > td > span.rx-pill",
+        "t": "⚠️ Аванс"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "padding 32px",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div.container",
+       "t": ""
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 1
+     },
+     "ex_by_width": {
+      "1280": [
+       {
+        "sel": "div.container",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "padding 60px",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div.container",
+       "t": ""
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 1
+     },
+     "ex_by_width": {
+      "1280": [
+       {
+        "sel": "div.container",
+        "t": ""
+       }
+      ]
+     }
+    }
+   ],
+   "warnings": [],
+   "scope": "авто полностью"
+  },
+  "2": {
+   "id": 2,
+   "name": "Гардрейлы",
+   "by_width": {
+    "375": "FAIL",
+    "768": "BLOCKED",
+    "1280": "FAIL",
+    "1920": "BLOCKED"
+   },
+   "verdict": "FAIL",
+   "findings": [
+    {
+     "gate": 2,
+     "rule": "G1-кеглей",
+     "sev": "FAIL",
+     "title": "кеглей на экране больше 4",
+     "value": "7: 11, 12, 13, 14, 16, 20, 22",
+     "n": 1,
+     "ex": [],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [],
+      "1280": []
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G1-весов",
+     "sev": "FAIL",
+     "title": "весов на экране больше 3",
+     "value": "4: 400, 600, 700, 800",
+     "n": 1,
+     "ex": [],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [],
+      "1280": []
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G1-fonts",
+     "sev": "FAIL",
+     "title": "больше одного текстового шрифта",
+     "value": "inter, arial",
+     "n": 1,
+     "ex": [],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [],
+      "1280": []
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G18-transition-all-computed",
+     "sev": "FAIL",
+     "title": "transition: all",
+     "value": "all",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "button#rxSyncBtn",
+       "t": "🔄 Обновить из бота"
+      },
+      {
+       "sel": "div.card > div > button.btn.btn-secondary",
+       "t": "Сброс"
+      }
+     ],
+     "gr": 18,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "1280": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "button#rxSyncBtn",
+        "t": "🔄 Обновить из бота"
+       },
+       {
+        "sel": "div.card > div > button.btn.btn-secondary",
+        "t": "Сброс"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "button#rxSyncBtn",
+        "t": "🔄 Обновить из бота"
+       },
+       {
+        "sel": "div.card > div > button.btn.btn-secondary",
+        "t": "Сброс"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "X-caps",
+     "sev": "FAIL",
+     "title": "text-transform: uppercase (капслок)",
+     "value": "uppercase",
+     "n": 9,
+     "ex": [
+      {
+       "sel": "thead > tr > th",
+       "t": "WL"
+      },
+      {
+       "sel": "thead > tr > th",
+       "t": "Дата"
+      },
+      {
+       "sel": "thead > tr > th",
+       "t": "Мерчант"
+      },
+      {
+       "sel": "thead > tr > th",
+       "t": "Сумма ₽"
+      }
+     ],
+     "gr": null,
+     "extra": "Don't: капслок",
+     "note": null,
+     "by_width": {
+      "375": 9,
+      "1280": 9
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "thead > tr > th",
+        "t": "WL"
+       },
+       {
+        "sel": "thead > tr > th",
+        "t": "Дата"
+       },
+       {
+        "sel": "thead > tr > th",
+        "t": "Мерчант"
+       },
+       {
+        "sel": "thead > tr > th",
+        "t": "Сумма ₽"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "thead > tr > th",
+        "t": "WL"
+       },
+       {
+        "sel": "thead > tr > th",
+        "t": "Дата"
+       },
+       {
+        "sel": "thead > tr > th",
+        "t": "Мерчант"
+       },
+       {
+        "sel": "thead > tr > th",
+        "t": "Сумма ₽"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G5-emoji",
+     "sev": "FAIL",
+     "title": "эмодзи в кнопке/ссылке/табе/заголовке",
+     "value": "🔄",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "button#rxSyncBtn",
+       "t": "🔄 Обновить из бота"
+      }
+     ],
+     "gr": 5,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "button#rxSyncBtn",
+        "t": "🔄 Обновить из бота"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "button#rxSyncBtn",
+        "t": "🔄 Обновить из бота"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G5-emoji",
+     "sev": "FAIL",
+     "title": "эмодзи в кнопке/ссылке/табе/заголовке",
+     "value": "✅",
+     "n": 129,
+     "ex": [
+      {
+       "sel": "tr > td > a.num",
+       "t": "✅ CNV-0001"
+      },
+      {
+       "sel": "tr > td > span.rx-pill",
+       "t": "✅ Закрыто"
+      }
+     ],
+     "gr": 5,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 129,
+      "1280": 129
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tr > td > a.num",
+        "t": "✅ CNV-0001"
+       },
+       {
+        "sel": "tr > td > span.rx-pill",
+        "t": "✅ Закрыто"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tr > td > a.num",
+        "t": "✅ CNV-0001"
+       },
+       {
+        "sel": "tr > td > span.rx-pill",
+        "t": "✅ Закрыто"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G3-hover-zoom",
+     "sev": "FAIL",
+     "title": "hover-зум",
+     "value": ".kyc-review-photo img:hover",
+     "n": 1,
+     "ex": [
+      {
+       "sel": ".kyc-review-photo img:hover",
+       "t": ""
+      }
+     ],
+     "gr": 3,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": ".kyc-review-photo img:hover",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": ".kyc-review-photo img:hover",
+        "t": ""
+       }
+      ]
+     }
+    }
+   ],
+   "warnings": [
+    {
+     "gate": 2,
+     "rule": "G5-emoji",
+     "sev": "WARN",
+     "title": "эмодзи в тексте (если это не контент пользователя — заменить иконкой)",
+     "value": "💰",
+     "n": 81,
+     "ex": [
+      {
+       "sel": "tr > td > span.rx-pill",
+       "t": "💰 Оплачено"
+      }
+     ],
+     "gr": 5,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 81,
+      "1280": 81
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tr > td > span.rx-pill",
+        "t": "💰 Оплачено"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tr > td > span.rx-pill",
+        "t": "💰 Оплачено"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G5-emoji",
+     "sev": "WARN",
+     "title": "эмодзи в тексте (если это не контент пользователя — заменить иконкой)",
+     "value": "⚠",
+     "n": 4,
+     "ex": [
+      {
+       "sel": "tr > td > span.rx-pill",
+       "t": "⚠️ Аванс"
+      }
+     ],
+     "gr": 5,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 4,
+      "1280": 4
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tr > td > span.rx-pill",
+        "t": "⚠️ Аванс"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tr > td > span.rx-pill",
+        "t": "⚠️ Аванс"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G5-emoji",
+     "sev": "WARN",
+     "title": "эмодзи в тексте (если это не контент пользователя — заменить иконкой)",
+     "value": "📥",
+     "n": 11,
+     "ex": [
+      {
+       "sel": "tr > td > span.rx-pill",
+       "t": "📥 Обеспечено"
+      }
+     ],
+     "gr": 5,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 11,
+      "1280": 11
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tr > td > span.rx-pill",
+        "t": "📥 Обеспечено"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tr > td > span.rx-pill",
+        "t": "📥 Обеспечено"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G4-icononly",
+     "sev": "WARN",
+     "title": "кнопка-иконка без видимой подписи (есть aria-label)",
+     "value": "‹",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "nav.site-shell-sections > button.site-shell-scroll",
+       "t": "Предыдущие разделы"
+      }
+     ],
+     "gr": 4,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "nav.site-shell-sections > button.site-shell-scroll",
+        "t": "Предыдущие разделы"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "nav.site-shell-sections > button.site-shell-scroll",
+        "t": "Предыдущие разделы"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G4-icononly",
+     "sev": "WARN",
+     "title": "кнопка-иконка без видимой подписи (есть aria-label)",
+     "value": "›",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "nav.site-shell-sections > button.site-shell-scroll",
+       "t": "Следующие разделы"
+      }
+     ],
+     "gr": 4,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "nav.site-shell-sections > button.site-shell-scroll",
+        "t": "Следующие разделы"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "nav.site-shell-sections > button.site-shell-scroll",
+        "t": "Следующие разделы"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G9-ph-nolabel",
+     "sev": "WARN",
+     "title": "у поля нет подписи (label/aria-label) — плейсхолдер вместо подписи?",
+     "value": "USDT от",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "input#rxFltSf",
+       "t": "USDT от"
+      }
+     ],
+     "gr": 9,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "input#rxFltSf",
+        "t": "USDT от"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "input#rxFltSf",
+        "t": "USDT от"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G9-ph-nolabel",
+     "sev": "WARN",
+     "title": "у поля нет подписи (label/aria-label) — плейсхолдер вместо подписи?",
+     "value": "USDT до",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "input#rxFltSt",
+       "t": "USDT до"
+      }
+     ],
+     "gr": 9,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "input#rxFltSt",
+        "t": "USDT до"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "input#rxFltSt",
+        "t": "USDT до"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G18-outline-none",
+     "sev": "WARN",
+     "title": "outline:none — проверь кольцо фокуса",
+     "value": ".form-control:focus",
+     "n": 1,
+     "ex": [
+      {
+       "sel": ".form-control:focus",
+       "t": ""
+      }
+     ],
+     "gr": 18,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": ".form-control:focus",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": ".form-control:focus",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G18-outline-none",
+     "sev": "WARN",
+     "title": "outline:none — проверь кольцо фокуса",
+     "value": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
+     "n": 1,
+     "ex": [
+      {
+       "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
+       "t": ""
+      }
+     ],
+     "gr": 18,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G18-outline-none",
+     "sev": "WARN",
+     "title": "outline:none — проверь кольцо фокуса",
+     "value": ".docs-amount input:focus",
+     "n": 1,
+     "ex": [
+      {
+       "sel": ".docs-amount input:focus",
+       "t": ""
+      }
+     ],
+     "gr": 18,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": ".docs-amount input:focus",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": ".docs-amount input:focus",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G18-outline-none",
+     "sev": "WARN",
+     "title": "outline:none — проверь кольцо фокуса",
+     "value": ".docs-purpose textarea:focus",
+     "n": 1,
+     "ex": [
+      {
+       "sel": ".docs-purpose textarea:focus",
+       "t": ""
+      }
+     ],
+     "gr": 18,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": ".docs-purpose textarea:focus",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": ".docs-purpose textarea:focus",
+        "t": ""
+       }
+      ]
+     }
+    }
+   ],
+   "note": "Гардрейлы 1–2, 7, 8, 11 дублируют гейты 1, 3, 4, 5 — находки смотри там.",
+   "scope": "авто для пунктов auto/partial; manual — глазами"
+  },
+  "3": {
+   "id": 3,
+   "name": "Контраст WCAG AA",
+   "by_width": {
+    "375": "FAIL",
+    "768": "BLOCKED",
+    "1280": "FAIL",
+    "1920": "BLOCKED"
+   },
+   "verdict": "FAIL",
+   "findings": [
+    {
+     "gate": 3,
+     "rule": "C-low",
+     "sev": "FAIL",
+     "title": "контраст ниже 4.5:1",
+     "value": "#94A3B8 на #FFFFFF = 2.56:1 (11px/400)",
+     "n": 4,
+     "ex": [
+      {
+       "sel": "div#rxSummary > div.rx-card > div.sub",
+       "t": "224 сделок"
+      },
+      {
+       "sel": "div#rxSummary > div.rx-card > div.sub",
+       "t": "из TRON"
+      },
+      {
+       "sel": "div#rxSummary > div.rx-card > div.sub",
+       "t": "в заявках + накоплено"
+      },
+      {
+       "sel": "div#rxSummary > div.rx-card > div.sub",
+       "t": "по известным"
+      }
+     ],
+     "gr": 11,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 4,
+      "1280": 4
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#rxSummary > div.rx-card > div.sub",
+        "t": "224 сделок"
+       },
+       {
+        "sel": "div#rxSummary > div.rx-card > div.sub",
+        "t": "из TRON"
+       },
+       {
+        "sel": "div#rxSummary > div.rx-card > div.sub",
+        "t": "в заявках + накоплено"
+       },
+       {
+        "sel": "div#rxSummary > div.rx-card > div.sub",
+        "t": "по известным"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#rxSummary > div.rx-card > div.sub",
+        "t": "224 сделок"
+       },
+       {
+        "sel": "div#rxSummary > div.rx-card > div.sub",
+        "t": "из TRON"
+       },
+       {
+        "sel": "div#rxSummary > div.rx-card > div.sub",
+        "t": "в заявках + накоплено"
+       },
+       {
+        "sel": "div#rxSummary > div.rx-card > div.sub",
+        "t": "по известным"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 3,
+     "rule": "C-low",
+     "sev": "FAIL",
+     "title": "контраст ниже 3:1",
+     "value": "#F59E0B на #FFFFFF = 2.15:1 (20px/800)",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div#rxSummary > div.rx-card > div.val.num",
+       "t": "607 599,11"
+      }
+     ],
+     "gr": 11,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#rxSummary > div.rx-card > div.val.num",
+        "t": "607 599,11"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#rxSummary > div.rx-card > div.val.num",
+        "t": "607 599,11"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 3,
+     "rule": "C-low",
+     "sev": "FAIL",
+     "title": "контраст ниже 4.5:1",
+     "value": "#16A34A на #FFFFFF = 3.30:1 (14px/400)",
+     "n": 224,
+     "ex": [
+      {
+       "sel": "tr > td.num > span",
+       "t": "$ 25,11"
+      },
+      {
+       "sel": "tr > td.num > span",
+       "t": "$ 6,37"
+      },
+      {
+       "sel": "tr > td.num > span",
+       "t": "$ 44,76"
+      },
+      {
+       "sel": "tr > td.num > span",
+       "t": "$ 3,20"
+      }
+     ],
+     "gr": 11,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 224,
+      "1280": 224
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$ 25,11"
+       },
+       {
+        "sel": "tr > td.num > span",
+        "t": "$ 6,37"
+       },
+       {
+        "sel": "tr > td.num > span",
+        "t": "$ 44,76"
+       },
+       {
+        "sel": "tr > td.num > span",
+        "t": "$ 3,20"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$ 25,11"
+       },
+       {
+        "sel": "tr > td.num > span",
+        "t": "$ 6,37"
+       },
+       {
+        "sel": "tr > td.num > span",
+        "t": "$ 44,76"
+       },
+       {
+        "sel": "tr > td.num > span",
+        "t": "$ 3,20"
+       }
+      ]
+     }
+    }
+   ],
+   "warnings": [],
+   "scope": "авто (расчёт по computed-цветам)"
+  },
+  "4": {
+   "id": 4,
+   "name": "Ширины",
+   "by_width": {
+    "375": "PASS",
+    "768": "BLOCKED",
+    "1280": "FAIL",
+    "1920": "BLOCKED"
+   },
+   "verdict": "FAIL",
+   "findings": [
+    {
+     "gate": 4,
+     "rule": "W-row-align",
+     "sev": "FAIL",
+     "title": "в ряду поля/кнопки разной высоты или смещены",
+     "value": "32px и 37px (Δверха 2px)",
+     "n": 5,
+     "ex": [
+      {
+       "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab.active",
+       "t": "Поступления"
+      },
+      {
+       "sel": "button#rxSyncBtn",
+       "t": "🔄 Обновить из бота"
+      },
+      {
+       "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab",
+       "t": "Конвертация от брокеров"
+      },
+      {
+       "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab",
+       "t": "Запросы"
+      }
+     ],
+     "gr": 10,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 5
+     },
+     "ex_by_width": {
+      "1280": [
+       {
+        "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab.active",
+        "t": "Поступления"
+       },
+       {
+        "sel": "button#rxSyncBtn",
+        "t": "🔄 Обновить из бота"
+       },
+       {
+        "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab",
+        "t": "Конвертация от брокеров"
+       },
+       {
+        "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab",
+        "t": "Запросы"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 4,
+     "rule": "W-row-align",
+     "sev": "FAIL",
+     "title": "в ряду поля/кнопки разной высоты или смещены",
+     "value": "33px и 36px (Δверха 1px)",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "input#rxFltSf",
+       "t": ""
+      },
+      {
+       "sel": "div.card > div > button.btn.btn-secondary",
+       "t": "Сброс"
+      },
+      {
+       "sel": "input#rxFltSt",
+       "t": ""
+      }
+     ],
+     "gr": 10,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 2
+     },
+     "ex_by_width": {
+      "1280": [
+       {
+        "sel": "input#rxFltSf",
+        "t": ""
+       },
+       {
+        "sel": "div.card > div > button.btn.btn-secondary",
+        "t": "Сброс"
+       },
+       {
+        "sel": "input#rxFltSt",
+        "t": ""
+       }
+      ]
+     }
+    }
+   ],
+   "warnings": [
+    {
+     "gate": 4,
+     "rule": "W-thumb",
+     "sev": "WARN",
+     "title": "нажимаемая цель ниже 44px (Thumb Rule)",
+     "value": "32px",
+     "n": 5,
+     "ex": [
+      {
+       "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab.active",
+       "t": "Поступления"
+      },
+      {
+       "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab",
+       "t": "Конвертация от брокеров"
+      },
+      {
+       "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab",
+       "t": "Запросы"
+      },
+      {
+       "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab",
+       "t": "Мерчанты"
+      }
+     ],
+     "gr": null,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 5,
+      "1280": 5
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab.active",
+        "t": "Поступления"
+       },
+       {
+        "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab",
+        "t": "Конвертация от брокеров"
+       },
+       {
+        "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab",
+        "t": "Запросы"
+       },
+       {
+        "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab",
+        "t": "Мерчанты"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab.active",
+        "t": "Поступления"
+       },
+       {
+        "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab",
+        "t": "Конвертация от брокеров"
+       },
+       {
+        "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab",
+        "t": "Запросы"
+       },
+       {
+        "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab",
+        "t": "Мерчанты"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 4,
+     "rule": "W-thumb",
+     "sev": "WARN",
+     "title": "нажимаемая цель ниже 44px (Thumb Rule)",
+     "value": "37px",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "button#rxSyncBtn",
+       "t": "🔄 Обновить из бота"
+      }
+     ],
+     "gr": null,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "button#rxSyncBtn",
+        "t": "🔄 Обновить из бота"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "button#rxSyncBtn",
+        "t": "🔄 Обновить из бота"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 4,
+     "rule": "W-thumb",
+     "sev": "WARN",
+     "title": "нажимаемая цель ниже 44px (Thumb Rule)",
+     "value": "35px",
+     "n": 3,
+     "ex": [
+      {
+       "sel": "select#rxFltMer",
+       "t": "Все мерчанты\n1000\nFiatEX\nFour exchange\nRUBLEV\ngrusha\nМихаил "
+      },
+      {
+       "sel": "select#rxFltStt",
+       "t": "Все статусы\n💰 Оплачено\n📤 В заявке\n✅ Закрыто\n⚠️ Аванс"
+      },
+      {
+       "sel": "select#rxFltSort",
+       "t": "↓ новые\n↑ старые"
+      }
+     ],
+     "gr": null,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 3,
+      "1280": 3
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "select#rxFltMer",
+        "t": "Все мерчанты\n1000\nFiatEX\nFour exchange\nRUBLEV\ngrusha\nМихаил "
+       },
+       {
+        "sel": "select#rxFltStt",
+        "t": "Все статусы\n💰 Оплачено\n📤 В заявке\n✅ Закрыто\n⚠️ Аванс"
+       },
+       {
+        "sel": "select#rxFltSort",
+        "t": "↓ новые\n↑ старые"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "select#rxFltMer",
+        "t": "Все мерчанты\n1000\nFiatEX\nFour exchange\nRUBLEV\ngrusha\nМихаил "
+       },
+       {
+        "sel": "select#rxFltStt",
+        "t": "Все статусы\n💰 Оплачено\n📤 В заявке\n✅ Закрыто\n⚠️ Аванс"
+       },
+       {
+        "sel": "select#rxFltSort",
+        "t": "↓ новые\n↑ старые"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 4,
+     "rule": "W-thumb",
+     "sev": "WARN",
+     "title": "нажимаемая цель ниже 44px (Thumb Rule)",
+     "value": "33px",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "input#rxFltSf",
+       "t": ""
+      },
+      {
+       "sel": "input#rxFltSt",
+       "t": ""
+      }
+     ],
+     "gr": null,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "1280": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "input#rxFltSf",
+        "t": ""
+       },
+       {
+        "sel": "input#rxFltSt",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": "input#rxFltSf",
+        "t": ""
+       },
+       {
+        "sel": "input#rxFltSt",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 4,
+     "rule": "W-thumb",
+     "sev": "WARN",
+     "title": "нажимаемая цель ниже 44px (Thumb Rule)",
+     "value": "36px",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div.card > div > button.btn.btn-secondary",
+       "t": "Сброс"
+      }
+     ],
+     "gr": null,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.card > div > button.btn.btn-secondary",
+        "t": "Сброс"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.card > div > button.btn.btn-secondary",
+        "t": "Сброс"
+       }
+      ]
+     }
+    }
+   ],
+   "scope": "авто"
+  },
+  "5": {
+   "id": 5,
+   "name": "Текст",
+   "by_width": {
+    "375": "PASS",
+    "768": "BLOCKED",
+    "1280": "PASS",
+    "1920": "BLOCKED"
+   },
+   "verdict": "BLOCKED",
+   "findings": [],
+   "warnings": [
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "241,89 $ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "tr > td.num > span",
+       "t": "$ 241,89"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "1280": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$ 241,89"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$ 241,89"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "241,71 $ × 3",
+     "n": 3,
+     "ex": [
+      {
+       "sel": "tr > td.num > span",
+       "t": "$ 241,71"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 3,
+      "1280": 3
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$ 241,71"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$ 241,71"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "241,56 $ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "tr > td.num > span",
+       "t": "$ 241,56"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "1280": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$ 241,56"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$ 241,56"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "240,13 $ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "tr > td.num > span",
+       "t": "$ 240,13"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "1280": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$ 240,13"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$ 240,13"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "243,94 $ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "tr > td.num > span",
+       "t": "$ 243,94"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "1280": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$ 243,94"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$ 243,94"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "0,00 $ × 7",
+     "n": 7,
+     "ex": [
+      {
+       "sel": "tr > td.num > span",
+       "t": "$ 0,00"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 7,
+      "1280": 7
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$ 0,00"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$ 0,00"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "679,81 $ × 3",
+     "n": 3,
+     "ex": [
+      {
+       "sel": "tbody#rx-deals-body > tr > td.num",
+       "t": "$ 679,81"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 3,
+      "1280": 3
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num",
+        "t": "$ 679,81"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num",
+        "t": "$ 679,81"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "412,24 $ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "tbody#rx-deals-body > tr > td.num",
+       "t": "$ 412,24"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "1280": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num",
+        "t": "$ 412,24"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num",
+        "t": "$ 412,24"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "813,08 $ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "tbody#rx-deals-body > tr > td.num",
+       "t": "$ 813,08"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "1280": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num",
+        "t": "$ 813,08"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num",
+        "t": "$ 813,08"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "677,56 $ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "tbody#rx-deals-body > tr > td.num",
+       "t": "$ 677,56"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "1280": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num",
+        "t": "$ 677,56"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num",
+        "t": "$ 677,56"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "676,64 $ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "tbody#rx-deals-body > tr > td.num",
+       "t": "$ 676,64"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "1280": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num",
+        "t": "$ 676,64"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num",
+        "t": "$ 676,64"
+       }
+      ]
+     }
+    }
+   ],
+   "scope": "авто: внутренние слова, повтор сумм; глагол/фразы из переписки — глазами"
+  },
+  "6": {
+   "id": 6,
+   "name": "Снимки",
+   "by_width": {
+    "375": "PASS",
+    "768": "BLOCKED",
+    "1280": "PASS",
+    "1920": "BLOCKED"
+   },
+   "verdict": "BLOCKED",
+   "notes": [
+    "375px: снимок «после» не снят",
+    "1280px: снимок «после» не снят"
+   ],
+   "shots": {
+    "375": {
+     "after": null,
+     "before": "/private/tmp/calccrm-wave4a/outputs/calccrm-redesign/wave4a/machine-crm-exchangers/before-karim-375.png"
+    },
+    "1280": {
+     "after": null,
+     "before": "/private/tmp/calccrm-wave4a/outputs/calccrm-redesign/wave4a/machine-crm-exchangers/before-karim-1280.png"
+    }
+   },
+   "findings": [],
+   "warnings": [],
+   "scope": "авто: наличие и непустота пар «до/после»; сравнение — глазами"
+  }
+ },
+ "guardrails": {
+  "1": {
+   "id": 1,
+   "title": "Один шрифт + моно, 4 кегля, 3 веса",
+   "coverage": "auto",
+   "verdict": "FAIL",
+   "findings": [
+    {
+     "gate": 1,
+     "rule": "T-family",
+     "sev": "FAIL",
+     "title": "шрифт вне токенов",
+     "value": "arial",
+     "n": 10,
+     "ex": [
+      {
+       "sel": "nav.site-shell-sections > button.site-shell-scroll",
+       "t": "‹"
+      },
+      {
+       "sel": "nav.site-shell-sections > button.site-shell-scroll",
+       "t": "›"
+      },
+      {
+       "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab.active",
+       "t": "Поступления"
+      },
+      {
+       "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab",
+       "t": "Конвертация от брокеров"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 10,
+      "1280": 10
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "nav.site-shell-sections > button.site-shell-scroll",
+        "t": "‹"
+       },
+       {
+        "sel": "nav.site-shell-sections > button.site-shell-scroll",
+        "t": "›"
+       },
+       {
+        "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab.active",
+        "t": "Поступления"
+       },
+       {
+        "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab",
+        "t": "Конвертация от брокеров"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "nav.site-shell-sections > button.site-shell-scroll",
+        "t": "‹"
+       },
+       {
+        "sel": "nav.site-shell-sections > button.site-shell-scroll",
+        "t": "›"
+       },
+       {
+        "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab.active",
+        "t": "Поступления"
+       },
+       {
+        "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab",
+        "t": "Конвертация от брокеров"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-size",
+     "sev": "FAIL",
+     "title": "кегль вне шкалы",
+     "value": "20px",
+     "n": 4,
+     "ex": [
+      {
+       "sel": "div#rxSummary > div.rx-card > div.val.num",
+       "t": "836 255,61"
+      },
+      {
+       "sel": "div#rxSummary > div.rx-card > div.val",
+       "t": "8"
+      },
+      {
+       "sel": "div#rxSummary > div.rx-card > div.val.num",
+       "t": "607 599,11"
+      },
+      {
+       "sel": "div#rxSummary > div.rx-card > div.val.num",
+       "t": "+ 23 506,24"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 4,
+      "1280": 4
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#rxSummary > div.rx-card > div.val.num",
+        "t": "836 255,61"
+       },
+       {
+        "sel": "div#rxSummary > div.rx-card > div.val",
+        "t": "8"
+       },
+       {
+        "sel": "div#rxSummary > div.rx-card > div.val.num",
+        "t": "607 599,11"
+       },
+       {
+        "sel": "div#rxSummary > div.rx-card > div.val.num",
+        "t": "+ 23 506,24"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#rxSummary > div.rx-card > div.val.num",
+        "t": "836 255,61"
+       },
+       {
+        "sel": "div#rxSummary > div.rx-card > div.val",
+        "t": "8"
+       },
+       {
+        "sel": "div#rxSummary > div.rx-card > div.val.num",
+        "t": "607 599,11"
+       },
+       {
+        "sel": "div#rxSummary > div.rx-card > div.val.num",
+        "t": "+ 23 506,24"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-weight",
+     "sev": "FAIL",
+     "title": "вес вне шкалы",
+     "value": "800",
+     "n": 4,
+     "ex": [
+      {
+       "sel": "div#rxSummary > div.rx-card > div.val.num",
+       "t": "836 255,61"
+      },
+      {
+       "sel": "div#rxSummary > div.rx-card > div.val",
+       "t": "8"
+      },
+      {
+       "sel": "div#rxSummary > div.rx-card > div.val.num",
+       "t": "607 599,11"
+      },
+      {
+       "sel": "div#rxSummary > div.rx-card > div.val.num",
+       "t": "+ 23 506,24"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 4,
+      "1280": 4
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#rxSummary > div.rx-card > div.val.num",
+        "t": "836 255,61"
+       },
+       {
+        "sel": "div#rxSummary > div.rx-card > div.val",
+        "t": "8"
+       },
+       {
+        "sel": "div#rxSummary > div.rx-card > div.val.num",
+        "t": "607 599,11"
+       },
+       {
+        "sel": "div#rxSummary > div.rx-card > div.val.num",
+        "t": "+ 23 506,24"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#rxSummary > div.rx-card > div.val.num",
+        "t": "836 255,61"
+       },
+       {
+        "sel": "div#rxSummary > div.rx-card > div.val",
+        "t": "8"
+       },
+       {
+        "sel": "div#rxSummary > div.rx-card > div.val.num",
+        "t": "607 599,11"
+       },
+       {
+        "sel": "div#rxSummary > div.rx-card > div.val.num",
+        "t": "+ 23 506,24"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-size",
+     "sev": "FAIL",
+     "title": "кегль вне шкалы",
+     "value": "11px",
+     "n": 229,
+     "ex": [
+      {
+       "sel": "div#rxSummary > div.rx-card > div.sub",
+       "t": "224 сделок"
+      },
+      {
+       "sel": "div#rxSummary > div.rx-card > div.sub",
+       "t": "из TRON"
+      },
+      {
+       "sel": "div#rxSummary > div.rx-card > div.sub",
+       "t": "в заявках + накоплено"
+      },
+      {
+       "sel": "div#rxSummary > div.rx-card > div.sub",
+       "t": "по известным"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 229,
+      "1280": 229
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#rxSummary > div.rx-card > div.sub",
+        "t": "224 сделок"
+       },
+       {
+        "sel": "div#rxSummary > div.rx-card > div.sub",
+        "t": "из TRON"
+       },
+       {
+        "sel": "div#rxSummary > div.rx-card > div.sub",
+        "t": "в заявках + накоплено"
+       },
+       {
+        "sel": "div#rxSummary > div.rx-card > div.sub",
+        "t": "по известным"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#rxSummary > div.rx-card > div.sub",
+        "t": "224 сделок"
+       },
+       {
+        "sel": "div#rxSummary > div.rx-card > div.sub",
+        "t": "из TRON"
+       },
+       {
+        "sel": "div#rxSummary > div.rx-card > div.sub",
+        "t": "в заявках + накоплено"
+       },
+       {
+        "sel": "div#rxSummary > div.rx-card > div.sub",
+        "t": "по известным"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-size",
+     "sev": "FAIL",
+     "title": "кегль вне шкалы",
+     "value": "13px",
+     "n": 5,
+     "ex": [
+      {
+       "sel": "button#rxSyncBtn",
+       "t": "🔄 Обновить из бота"
+      },
+      {
+       "sel": "select#rxFltMer",
+       "t": "Все мерчанты"
+      },
+      {
+       "sel": "select#rxFltStt",
+       "t": "Все статусы"
+      },
+      {
+       "sel": "select#rxFltSort",
+       "t": "↓ новые"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 5,
+      "1280": 5
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "button#rxSyncBtn",
+        "t": "🔄 Обновить из бота"
+       },
+       {
+        "sel": "select#rxFltMer",
+        "t": "Все мерчанты"
+       },
+       {
+        "sel": "select#rxFltStt",
+        "t": "Все статусы"
+       },
+       {
+        "sel": "select#rxFltSort",
+        "t": "↓ новые"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "button#rxSyncBtn",
+        "t": "🔄 Обновить из бота"
+       },
+       {
+        "sel": "select#rxFltMer",
+        "t": "Все мерчанты"
+       },
+       {
+        "sel": "select#rxFltStt",
+        "t": "Все статусы"
+       },
+       {
+        "sel": "select#rxFltSort",
+        "t": "↓ новые"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G1-кеглей",
+     "sev": "FAIL",
+     "title": "кеглей на экране больше 4",
+     "value": "7: 11, 12, 13, 14, 16, 20, 22",
+     "n": 1,
+     "ex": [],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [],
+      "1280": []
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G1-весов",
+     "sev": "FAIL",
+     "title": "весов на экране больше 3",
+     "value": "4: 400, 600, 700, 800",
+     "n": 1,
+     "ex": [],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [],
+      "1280": []
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G1-fonts",
+     "sev": "FAIL",
+     "title": "больше одного текстового шрифта",
+     "value": "inter, arial",
+     "n": 1,
+     "ex": [],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [],
+      "1280": []
+     }
+    }
+   ],
+   "warnings": []
+  },
+  "2": {
+   "id": 2,
+   "title": "Цвета/отступы/радиусы/тени только из токенов",
+   "coverage": "auto",
+   "verdict": "FAIL",
+   "findings": [
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "padding 6px",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div.site-shell.site-shell-mobile-head > span.site-shell-bell > a",
+       "t": ""
+      },
+      {
+       "sel": "div.site-shell-right > span.site-shell-bell > a",
+       "t": ""
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.site-shell.site-shell-mobile-head > span.site-shell-bell > a",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.site-shell-right > span.site-shell-bell > a",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-family",
+     "sev": "FAIL",
+     "title": "шрифт вне токенов",
+     "value": "arial",
+     "n": 10,
+     "ex": [
+      {
+       "sel": "nav.site-shell-sections > button.site-shell-scroll",
+       "t": "‹"
+      },
+      {
+       "sel": "nav.site-shell-sections > button.site-shell-scroll",
+       "t": "›"
+      },
+      {
+       "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab.active",
+       "t": "Поступления"
+      },
+      {
+       "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab",
+       "t": "Конвертация от брокеров"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 10,
+      "1280": 10
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "nav.site-shell-sections > button.site-shell-scroll",
+        "t": "‹"
+       },
+       {
+        "sel": "nav.site-shell-sections > button.site-shell-scroll",
+        "t": "›"
+       },
+       {
+        "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab.active",
+        "t": "Поступления"
+       },
+       {
+        "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab",
+        "t": "Конвертация от брокеров"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "nav.site-shell-sections > button.site-shell-scroll",
+        "t": "‹"
+       },
+       {
+        "sel": "nav.site-shell-sections > button.site-shell-scroll",
+        "t": "›"
+       },
+       {
+        "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab.active",
+        "t": "Поступления"
+       },
+       {
+        "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab",
+        "t": "Конвертация от брокеров"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "padding 120px",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div.container",
+       "t": ""
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.container",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "padding 14px",
+     "n": 13,
+     "ex": [
+      {
+       "sel": "div.container",
+       "t": ""
+      },
+      {
+       "sel": "div#rxSummary > div.rx-card",
+       "t": ""
+      },
+      {
+       "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab.active",
+       "t": "Поступления"
+      },
+      {
+       "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab",
+       "t": "Конвертация от брокеров"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 13,
+      "1280": 12
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.container",
+        "t": ""
+       },
+       {
+        "sel": "div#rxSummary > div.rx-card",
+        "t": ""
+       },
+       {
+        "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab.active",
+        "t": "Поступления"
+       },
+       {
+        "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab",
+        "t": "Конвертация от брокеров"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#rxSummary > div.rx-card",
+        "t": ""
+       },
+       {
+        "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab.active",
+        "t": "Поступления"
+       },
+       {
+        "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab",
+        "t": "Конвертация от брокеров"
+       },
+       {
+        "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab",
+        "t": "Запросы"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-shadow",
+     "sev": "FAIL",
+     "title": "тень вне словаря",
+     "value": "rgba(0, 0, 0, 0.04) 0px 1px 3px 0px",
+     "n": 5,
+     "ex": [
+      {
+       "sel": "div#rxSummary > div.rx-card",
+       "t": ""
+      },
+      {
+       "sel": "div#rx-postup > div.card",
+       "t": ""
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 5,
+      "1280": 5
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#rxSummary > div.rx-card",
+        "t": ""
+       },
+       {
+        "sel": "div#rx-postup > div.card",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#rxSummary > div.rx-card",
+        "t": ""
+       },
+       {
+        "sel": "div#rx-postup > div.card",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-size",
+     "sev": "FAIL",
+     "title": "кегль вне шкалы",
+     "value": "20px",
+     "n": 4,
+     "ex": [
+      {
+       "sel": "div#rxSummary > div.rx-card > div.val.num",
+       "t": "836 255,61"
+      },
+      {
+       "sel": "div#rxSummary > div.rx-card > div.val",
+       "t": "8"
+      },
+      {
+       "sel": "div#rxSummary > div.rx-card > div.val.num",
+       "t": "607 599,11"
+      },
+      {
+       "sel": "div#rxSummary > div.rx-card > div.val.num",
+       "t": "+ 23 506,24"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 4,
+      "1280": 4
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#rxSummary > div.rx-card > div.val.num",
+        "t": "836 255,61"
+       },
+       {
+        "sel": "div#rxSummary > div.rx-card > div.val",
+        "t": "8"
+       },
+       {
+        "sel": "div#rxSummary > div.rx-card > div.val.num",
+        "t": "607 599,11"
+       },
+       {
+        "sel": "div#rxSummary > div.rx-card > div.val.num",
+        "t": "+ 23 506,24"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#rxSummary > div.rx-card > div.val.num",
+        "t": "836 255,61"
+       },
+       {
+        "sel": "div#rxSummary > div.rx-card > div.val",
+        "t": "8"
+       },
+       {
+        "sel": "div#rxSummary > div.rx-card > div.val.num",
+        "t": "607 599,11"
+       },
+       {
+        "sel": "div#rxSummary > div.rx-card > div.val.num",
+        "t": "+ 23 506,24"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-weight",
+     "sev": "FAIL",
+     "title": "вес вне шкалы",
+     "value": "800",
+     "n": 4,
+     "ex": [
+      {
+       "sel": "div#rxSummary > div.rx-card > div.val.num",
+       "t": "836 255,61"
+      },
+      {
+       "sel": "div#rxSummary > div.rx-card > div.val",
+       "t": "8"
+      },
+      {
+       "sel": "div#rxSummary > div.rx-card > div.val.num",
+       "t": "607 599,11"
+      },
+      {
+       "sel": "div#rxSummary > div.rx-card > div.val.num",
+       "t": "+ 23 506,24"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 4,
+      "1280": 4
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#rxSummary > div.rx-card > div.val.num",
+        "t": "836 255,61"
+       },
+       {
+        "sel": "div#rxSummary > div.rx-card > div.val",
+        "t": "8"
+       },
+       {
+        "sel": "div#rxSummary > div.rx-card > div.val.num",
+        "t": "607 599,11"
+       },
+       {
+        "sel": "div#rxSummary > div.rx-card > div.val.num",
+        "t": "+ 23 506,24"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#rxSummary > div.rx-card > div.val.num",
+        "t": "836 255,61"
+       },
+       {
+        "sel": "div#rxSummary > div.rx-card > div.val",
+        "t": "8"
+       },
+       {
+        "sel": "div#rxSummary > div.rx-card > div.val.num",
+        "t": "607 599,11"
+       },
+       {
+        "sel": "div#rxSummary > div.rx-card > div.val.num",
+        "t": "+ 23 506,24"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-size",
+     "sev": "FAIL",
+     "title": "кегль вне шкалы",
+     "value": "11px",
+     "n": 229,
+     "ex": [
+      {
+       "sel": "div#rxSummary > div.rx-card > div.sub",
+       "t": "224 сделок"
+      },
+      {
+       "sel": "div#rxSummary > div.rx-card > div.sub",
+       "t": "из TRON"
+      },
+      {
+       "sel": "div#rxSummary > div.rx-card > div.sub",
+       "t": "в заявках + накоплено"
+      },
+      {
+       "sel": "div#rxSummary > div.rx-card > div.sub",
+       "t": "по известным"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 229,
+      "1280": 229
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#rxSummary > div.rx-card > div.sub",
+        "t": "224 сделок"
+       },
+       {
+        "sel": "div#rxSummary > div.rx-card > div.sub",
+        "t": "из TRON"
+       },
+       {
+        "sel": "div#rxSummary > div.rx-card > div.sub",
+        "t": "в заявках + накоплено"
+       },
+       {
+        "sel": "div#rxSummary > div.rx-card > div.sub",
+        "t": "по известным"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#rxSummary > div.rx-card > div.sub",
+        "t": "224 сделок"
+       },
+       {
+        "sel": "div#rxSummary > div.rx-card > div.sub",
+        "t": "из TRON"
+       },
+       {
+        "sel": "div#rxSummary > div.rx-card > div.sub",
+        "t": "в заявках + накоплено"
+       },
+       {
+        "sel": "div#rxSummary > div.rx-card > div.sub",
+        "t": "по известным"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "margin-вертикаль 2px",
+     "n": 4,
+     "ex": [
+      {
+       "sel": "div#rxSummary > div.rx-card > div.sub",
+       "t": "224 сделок"
+      },
+      {
+       "sel": "div#rxSummary > div.rx-card > div.sub",
+       "t": "из TRON"
+      },
+      {
+       "sel": "div#rxSummary > div.rx-card > div.sub",
+       "t": "в заявках + накоплено"
+      },
+      {
+       "sel": "div#rxSummary > div.rx-card > div.sub",
+       "t": "по известным"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 4,
+      "1280": 4
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#rxSummary > div.rx-card > div.sub",
+        "t": "224 сделок"
+       },
+       {
+        "sel": "div#rxSummary > div.rx-card > div.sub",
+        "t": "из TRON"
+       },
+       {
+        "sel": "div#rxSummary > div.rx-card > div.sub",
+        "t": "в заявках + накоплено"
+       },
+       {
+        "sel": "div#rxSummary > div.rx-card > div.sub",
+        "t": "по известным"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#rxSummary > div.rx-card > div.sub",
+        "t": "224 сделок"
+       },
+       {
+        "sel": "div#rxSummary > div.rx-card > div.sub",
+        "t": "из TRON"
+       },
+       {
+        "sel": "div#rxSummary > div.rx-card > div.sub",
+        "t": "в заявках + накоплено"
+       },
+       {
+        "sel": "div#rxSummary > div.rx-card > div.sub",
+        "t": "по известным"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-text",
+     "sev": "FAIL",
+     "title": "цвет текста вне палитры",
+     "value": "#16A34A (ближайший money-ink #065F46, ΔE 26.5)",
+     "n": 226,
+     "ex": [
+      {
+       "sel": "div#rxSummary > div.rx-card > div.val",
+       "t": "8"
+      },
+      {
+       "sel": "div#rxSummary > div.rx-card > div.val.num",
+       "t": "+ 23 506,24"
+      },
+      {
+       "sel": "tr > td.num > span",
+       "t": "$ 25,11"
+      },
+      {
+       "sel": "tr > td.num > span",
+       "t": "$ 6,37"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 226,
+      "1280": 226
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#rxSummary > div.rx-card > div.val",
+        "t": "8"
+       },
+       {
+        "sel": "div#rxSummary > div.rx-card > div.val.num",
+        "t": "+ 23 506,24"
+       },
+       {
+        "sel": "tr > td.num > span",
+        "t": "$ 25,11"
+       },
+       {
+        "sel": "tr > td.num > span",
+        "t": "$ 6,37"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#rxSummary > div.rx-card > div.val",
+        "t": "8"
+       },
+       {
+        "sel": "div#rxSummary > div.rx-card > div.val.num",
+        "t": "+ 23 506,24"
+       },
+       {
+        "sel": "tr > td.num > span",
+        "t": "$ 25,11"
+       },
+       {
+        "sel": "tr > td.num > span",
+        "t": "$ 6,37"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-text",
+     "sev": "FAIL",
+     "title": "цвет текста вне палитры",
+     "value": "#F59E0B (ближайший decision-border #FDE68A, ΔE 21.6)",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div#rxSummary > div.rx-card > div.val.num",
+       "t": "607 599,11"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#rxSummary > div.rx-card > div.val.num",
+        "t": "607 599,11"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#rxSummary > div.rx-card > div.val.num",
+        "t": "607 599,11"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "margin-вертикаль 14px",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "section#exchangers > div.rx-subtabs",
+       "t": ""
+      },
+      {
+       "sel": "div#rx-postup > div.card",
+       "t": ""
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "section#exchangers > div.rx-subtabs",
+        "t": ""
+       },
+       {
+        "sel": "div#rx-postup > div.card",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": "section#exchangers > div.rx-subtabs",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-bg",
+     "sev": "FAIL",
+     "title": "фон вне палитры",
+     "value": "#1E293B (ближайший ink-navy #0F172A, ΔE 6.1)",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab.active",
+       "t": "Поступления"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab.active",
+        "t": "Поступления"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab.active",
+        "t": "Поступления"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-size",
+     "sev": "FAIL",
+     "title": "кегль вне шкалы",
+     "value": "13px",
+     "n": 5,
+     "ex": [
+      {
+       "sel": "button#rxSyncBtn",
+       "t": "🔄 Обновить из бота"
+      },
+      {
+       "sel": "select#rxFltMer",
+       "t": "Все мерчанты"
+      },
+      {
+       "sel": "select#rxFltStt",
+       "t": "Все статусы"
+      },
+      {
+       "sel": "select#rxFltSort",
+       "t": "↓ новые"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 5,
+      "1280": 5
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "button#rxSyncBtn",
+        "t": "🔄 Обновить из бота"
+       },
+       {
+        "sel": "select#rxFltMer",
+        "t": "Все мерчанты"
+       },
+       {
+        "sel": "select#rxFltStt",
+        "t": "Все статусы"
+       },
+       {
+        "sel": "select#rxFltSort",
+        "t": "↓ новые"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "button#rxSyncBtn",
+        "t": "🔄 Обновить из бота"
+       },
+       {
+        "sel": "select#rxFltMer",
+        "t": "Все мерчанты"
+       },
+       {
+        "sel": "select#rxFltStt",
+        "t": "Все статусы"
+       },
+       {
+        "sel": "select#rxFltSort",
+        "t": "↓ новые"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "gap 6px",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "button#rxSyncBtn",
+       "t": "🔄 Обновить из бота"
+      },
+      {
+       "sel": "div.card > div > button.btn.btn-secondary",
+       "t": "Сброс"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "1280": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "button#rxSyncBtn",
+        "t": "🔄 Обновить из бота"
+       },
+       {
+        "sel": "div.card > div > button.btn.btn-secondary",
+        "t": "Сброс"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "button#rxSyncBtn",
+        "t": "🔄 Обновить из бота"
+       },
+       {
+        "sel": "div.card > div > button.btn.btn-secondary",
+        "t": "Сброс"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "padding 10px",
+     "n": 238,
+     "ex": [
+      {
+       "sel": "select#rxFltMer",
+       "t": "Все мерчанты"
+      },
+      {
+       "sel": "select#rxFltStt",
+       "t": "Все статусы"
+      },
+      {
+       "sel": "select#rxFltSort",
+       "t": "↓ новые"
+      },
+      {
+       "sel": "input#rxFltSf",
+       "t": ""
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 238,
+      "1280": 238
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "select#rxFltMer",
+        "t": "Все мерчанты"
+       },
+       {
+        "sel": "select#rxFltStt",
+        "t": "Все статусы"
+       },
+       {
+        "sel": "select#rxFltSort",
+        "t": "↓ новые"
+       },
+       {
+        "sel": "input#rxFltSf",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": "select#rxFltMer",
+        "t": "Все мерчанты"
+       },
+       {
+        "sel": "select#rxFltStt",
+        "t": "Все статусы"
+       },
+       {
+        "sel": "select#rxFltSort",
+        "t": "↓ новые"
+       },
+       {
+        "sel": "input#rxFltSf",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-text",
+     "sev": "FAIL",
+     "title": "цвет текста вне палитры",
+     "value": "#0000EE (ближайший navy-700 #334155, ΔE 19.3)",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "tr > td > a.num",
+       "t": "✅ CNV-0001"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tr > td > a.num",
+        "t": "✅ CNV-0001"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tr > td > a.num",
+        "t": "✅ CNV-0001"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-bg",
+     "sev": "FAIL",
+     "title": "фон вне палитры",
+     "value": "#D1FAE5 (ближайший money-border #BBF7D0, ΔE 6.2)",
+     "n": 139,
+     "ex": [
+      {
+       "sel": "tr > td > span.rx-pill",
+       "t": "✅ Закрыто"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 139,
+      "1280": 139
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tr > td > span.rx-pill",
+        "t": "✅ Закрыто"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tr > td > span.rx-pill",
+        "t": "✅ Закрыто"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "padding 3px",
+     "n": 224,
+     "ex": [
+      {
+       "sel": "tr > td > span.rx-pill",
+       "t": "✅ Закрыто"
+      },
+      {
+       "sel": "tr > td > span.rx-pill",
+       "t": "💰 Оплачено"
+      },
+      {
+       "sel": "tr > td > span.rx-pill",
+       "t": "⚠️ Аванс"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 224,
+      "1280": 224
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tr > td > span.rx-pill",
+        "t": "✅ Закрыто"
+       },
+       {
+        "sel": "tr > td > span.rx-pill",
+        "t": "💰 Оплачено"
+       },
+       {
+        "sel": "tr > td > span.rx-pill",
+        "t": "⚠️ Аванс"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tr > td > span.rx-pill",
+        "t": "✅ Закрыто"
+       },
+       {
+        "sel": "tr > td > span.rx-pill",
+        "t": "💰 Оплачено"
+       },
+       {
+        "sel": "tr > td > span.rx-pill",
+        "t": "⚠️ Аванс"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "padding 32px",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div.container",
+       "t": ""
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 1
+     },
+     "ex_by_width": {
+      "1280": [
+       {
+        "sel": "div.container",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "padding 60px",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div.container",
+       "t": ""
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 1
+     },
+     "ex_by_width": {
+      "1280": [
+       {
+        "sel": "div.container",
+        "t": ""
+       }
+      ]
+     }
+    }
+   ],
+   "warnings": []
+  },
+  "3": {
+   "id": 3,
+   "title": "Сосиски, градиенты, hover-зум, анимации появления",
+   "coverage": "partial",
+   "verdict": "FAIL",
+   "findings": [
+    {
+     "gate": 2,
+     "rule": "G3-hover-zoom",
+     "sev": "FAIL",
+     "title": "hover-зум",
+     "value": ".kyc-review-photo img:hover",
+     "n": 1,
+     "ex": [
+      {
+       "sel": ".kyc-review-photo img:hover",
+       "t": ""
+      }
+     ],
+     "gr": 3,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": ".kyc-review-photo img:hover",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": ".kyc-review-photo img:hover",
+        "t": ""
+       }
+      ]
+     }
+    }
+   ],
+   "warnings": []
+  },
+  "4": {
+   "id": 4,
+   "title": "Кнопки без глагола, две главные, иконка без подписи",
+   "coverage": "partial",
+   "verdict": "PASS",
+   "findings": [],
+   "warnings": [
+    {
+     "gate": 2,
+     "rule": "G4-icononly",
+     "sev": "WARN",
+     "title": "кнопка-иконка без видимой подписи (есть aria-label)",
+     "value": "‹",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "nav.site-shell-sections > button.site-shell-scroll",
+       "t": "Предыдущие разделы"
+      }
+     ],
+     "gr": 4,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "nav.site-shell-sections > button.site-shell-scroll",
+        "t": "Предыдущие разделы"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "nav.site-shell-sections > button.site-shell-scroll",
+        "t": "Предыдущие разделы"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G4-icononly",
+     "sev": "WARN",
+     "title": "кнопка-иконка без видимой подписи (есть aria-label)",
+     "value": "›",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "nav.site-shell-sections > button.site-shell-scroll",
+       "t": "Следующие разделы"
+      }
+     ],
+     "gr": 4,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "nav.site-shell-sections > button.site-shell-scroll",
+        "t": "Следующие разделы"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "nav.site-shell-sections > button.site-shell-scroll",
+        "t": "Следующие разделы"
+       }
+      ]
+     }
+    }
+   ]
+  },
+  "5": {
+   "id": 5,
+   "title": "Эмодзи вместо иконок; один размер иконок",
+   "coverage": "partial",
+   "verdict": "FAIL",
+   "findings": [
+    {
+     "gate": 2,
+     "rule": "G5-emoji",
+     "sev": "FAIL",
+     "title": "эмодзи в кнопке/ссылке/табе/заголовке",
+     "value": "🔄",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "button#rxSyncBtn",
+       "t": "🔄 Обновить из бота"
+      }
+     ],
+     "gr": 5,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "button#rxSyncBtn",
+        "t": "🔄 Обновить из бота"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "button#rxSyncBtn",
+        "t": "🔄 Обновить из бота"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G5-emoji",
+     "sev": "FAIL",
+     "title": "эмодзи в кнопке/ссылке/табе/заголовке",
+     "value": "✅",
+     "n": 129,
+     "ex": [
+      {
+       "sel": "tr > td > a.num",
+       "t": "✅ CNV-0001"
+      },
+      {
+       "sel": "tr > td > span.rx-pill",
+       "t": "✅ Закрыто"
+      }
+     ],
+     "gr": 5,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 129,
+      "1280": 129
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tr > td > a.num",
+        "t": "✅ CNV-0001"
+       },
+       {
+        "sel": "tr > td > span.rx-pill",
+        "t": "✅ Закрыто"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tr > td > a.num",
+        "t": "✅ CNV-0001"
+       },
+       {
+        "sel": "tr > td > span.rx-pill",
+        "t": "✅ Закрыто"
+       }
+      ]
+     }
+    }
+   ],
+   "warnings": [
+    {
+     "gate": 2,
+     "rule": "G5-emoji",
+     "sev": "WARN",
+     "title": "эмодзи в тексте (если это не контент пользователя — заменить иконкой)",
+     "value": "💰",
+     "n": 81,
+     "ex": [
+      {
+       "sel": "tr > td > span.rx-pill",
+       "t": "💰 Оплачено"
+      }
+     ],
+     "gr": 5,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 81,
+      "1280": 81
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tr > td > span.rx-pill",
+        "t": "💰 Оплачено"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tr > td > span.rx-pill",
+        "t": "💰 Оплачено"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G5-emoji",
+     "sev": "WARN",
+     "title": "эмодзи в тексте (если это не контент пользователя — заменить иконкой)",
+     "value": "⚠",
+     "n": 4,
+     "ex": [
+      {
+       "sel": "tr > td > span.rx-pill",
+       "t": "⚠️ Аванс"
+      }
+     ],
+     "gr": 5,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 4,
+      "1280": 4
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tr > td > span.rx-pill",
+        "t": "⚠️ Аванс"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tr > td > span.rx-pill",
+        "t": "⚠️ Аванс"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G5-emoji",
+     "sev": "WARN",
+     "title": "эмодзи в тексте (если это не контент пользователя — заменить иконкой)",
+     "value": "📥",
+     "n": 11,
+     "ex": [
+      {
+       "sel": "tr > td > span.rx-pill",
+       "t": "📥 Обеспечено"
+      }
+     ],
+     "gr": 5,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 11,
+      "1280": 11
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tr > td > span.rx-pill",
+        "t": "📥 Обеспечено"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tr > td > span.rx-pill",
+        "t": "📥 Обеспечено"
+       }
+      ]
+     }
+    }
+   ]
+  },
+  "6": {
+   "id": 6,
+   "title": "Цветные полосы слева, синие подсказки, оранжевый вне кнопки",
+   "coverage": "partial",
+   "verdict": "PASS",
+   "findings": [],
+   "warnings": []
+  },
+  "7": {
+   "id": 7,
+   "title": "Адрес/хеш в одну строку; ничего шире экрана",
+   "coverage": "auto",
+   "verdict": "PASS",
+   "findings": [],
+   "warnings": []
+  },
+  "8": {
+   "id": 8,
+   "title": "Внутренние названия и коды на экране",
+   "coverage": "partial",
+   "verdict": "PASS",
+   "findings": [],
+   "warnings": []
+  },
+  "9": {
+   "id": 9,
+   "title": "Плейсхолдер вместо подписи / обрезанный плейсхолдер",
+   "coverage": "partial",
+   "verdict": "PASS",
+   "findings": [],
+   "warnings": [
+    {
+     "gate": 2,
+     "rule": "G9-ph-nolabel",
+     "sev": "WARN",
+     "title": "у поля нет подписи (label/aria-label) — плейсхолдер вместо подписи?",
+     "value": "USDT от",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "input#rxFltSf",
+       "t": "USDT от"
+      }
+     ],
+     "gr": 9,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "input#rxFltSf",
+        "t": "USDT от"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "input#rxFltSf",
+        "t": "USDT от"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G9-ph-nolabel",
+     "sev": "WARN",
+     "title": "у поля нет подписи (label/aria-label) — плейсхолдер вместо подписи?",
+     "value": "USDT до",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "input#rxFltSt",
+       "t": "USDT до"
+      }
+     ],
+     "gr": 9,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "input#rxFltSt",
+        "t": "USDT до"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "input#rxFltSt",
+        "t": "USDT до"
+       }
+      ]
+     }
+    }
+   ]
+  },
+  "10": {
+   "id": 10,
+   "title": "Ряды «подпись — поле — кнопка» выровнены",
+   "coverage": "partial",
+   "verdict": "FAIL",
+   "findings": [
+    {
+     "gate": 4,
+     "rule": "W-row-align",
+     "sev": "FAIL",
+     "title": "в ряду поля/кнопки разной высоты или смещены",
+     "value": "32px и 37px (Δверха 2px)",
+     "n": 5,
+     "ex": [
+      {
+       "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab.active",
+       "t": "Поступления"
+      },
+      {
+       "sel": "button#rxSyncBtn",
+       "t": "🔄 Обновить из бота"
+      },
+      {
+       "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab",
+       "t": "Конвертация от брокеров"
+      },
+      {
+       "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab",
+       "t": "Запросы"
+      }
+     ],
+     "gr": 10,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 5
+     },
+     "ex_by_width": {
+      "1280": [
+       {
+        "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab.active",
+        "t": "Поступления"
+       },
+       {
+        "sel": "button#rxSyncBtn",
+        "t": "🔄 Обновить из бота"
+       },
+       {
+        "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab",
+        "t": "Конвертация от брокеров"
+       },
+       {
+        "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab",
+        "t": "Запросы"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 4,
+     "rule": "W-row-align",
+     "sev": "FAIL",
+     "title": "в ряду поля/кнопки разной высоты или смещены",
+     "value": "33px и 36px (Δверха 1px)",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "input#rxFltSf",
+       "t": ""
+      },
+      {
+       "sel": "div.card > div > button.btn.btn-secondary",
+       "t": "Сброс"
+      },
+      {
+       "sel": "input#rxFltSt",
+       "t": ""
+      }
+     ],
+     "gr": 10,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 2
+     },
+     "ex_by_width": {
+      "1280": [
+       {
+        "sel": "input#rxFltSf",
+        "t": ""
+       },
+       {
+        "sel": "div.card > div > button.btn.btn-secondary",
+        "t": "Сброс"
+       },
+       {
+        "sel": "input#rxFltSt",
+        "t": ""
+       }
+      ]
+     }
+    }
+   ],
+   "warnings": []
+  },
+  "11": {
+   "id": 11,
+   "title": "Контраст WCAG AA",
+   "coverage": "auto",
+   "verdict": "FAIL",
+   "findings": [
+    {
+     "gate": 3,
+     "rule": "C-low",
+     "sev": "FAIL",
+     "title": "контраст ниже 4.5:1",
+     "value": "#94A3B8 на #FFFFFF = 2.56:1 (11px/400)",
+     "n": 4,
+     "ex": [
+      {
+       "sel": "div#rxSummary > div.rx-card > div.sub",
+       "t": "224 сделок"
+      },
+      {
+       "sel": "div#rxSummary > div.rx-card > div.sub",
+       "t": "из TRON"
+      },
+      {
+       "sel": "div#rxSummary > div.rx-card > div.sub",
+       "t": "в заявках + накоплено"
+      },
+      {
+       "sel": "div#rxSummary > div.rx-card > div.sub",
+       "t": "по известным"
+      }
+     ],
+     "gr": 11,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 4,
+      "1280": 4
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#rxSummary > div.rx-card > div.sub",
+        "t": "224 сделок"
+       },
+       {
+        "sel": "div#rxSummary > div.rx-card > div.sub",
+        "t": "из TRON"
+       },
+       {
+        "sel": "div#rxSummary > div.rx-card > div.sub",
+        "t": "в заявках + накоплено"
+       },
+       {
+        "sel": "div#rxSummary > div.rx-card > div.sub",
+        "t": "по известным"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#rxSummary > div.rx-card > div.sub",
+        "t": "224 сделок"
+       },
+       {
+        "sel": "div#rxSummary > div.rx-card > div.sub",
+        "t": "из TRON"
+       },
+       {
+        "sel": "div#rxSummary > div.rx-card > div.sub",
+        "t": "в заявках + накоплено"
+       },
+       {
+        "sel": "div#rxSummary > div.rx-card > div.sub",
+        "t": "по известным"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 3,
+     "rule": "C-low",
+     "sev": "FAIL",
+     "title": "контраст ниже 3:1",
+     "value": "#F59E0B на #FFFFFF = 2.15:1 (20px/800)",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div#rxSummary > div.rx-card > div.val.num",
+       "t": "607 599,11"
+      }
+     ],
+     "gr": 11,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#rxSummary > div.rx-card > div.val.num",
+        "t": "607 599,11"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#rxSummary > div.rx-card > div.val.num",
+        "t": "607 599,11"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 3,
+     "rule": "C-low",
+     "sev": "FAIL",
+     "title": "контраст ниже 4.5:1",
+     "value": "#16A34A на #FFFFFF = 3.30:1 (14px/400)",
+     "n": 224,
+     "ex": [
+      {
+       "sel": "tr > td.num > span",
+       "t": "$ 25,11"
+      },
+      {
+       "sel": "tr > td.num > span",
+       "t": "$ 6,37"
+      },
+      {
+       "sel": "tr > td.num > span",
+       "t": "$ 44,76"
+      },
+      {
+       "sel": "tr > td.num > span",
+       "t": "$ 3,20"
+      }
+     ],
+     "gr": 11,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 224,
+      "1280": 224
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$ 25,11"
+       },
+       {
+        "sel": "tr > td.num > span",
+        "t": "$ 6,37"
+       },
+       {
+        "sel": "tr > td.num > span",
+        "t": "$ 44,76"
+       },
+       {
+        "sel": "tr > td.num > span",
+        "t": "$ 3,20"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$ 25,11"
+       },
+       {
+        "sel": "tr > td.num > span",
+        "t": "$ 6,37"
+       },
+       {
+        "sel": "tr > td.num > span",
+        "t": "$ 44,76"
+       },
+       {
+        "sel": "tr > td.num > span",
+        "t": "$ 3,20"
+       }
+      ]
+     }
+    }
+   ],
+   "warnings": []
+  },
+  "12": {
+   "id": 12,
+   "title": "Повтор одной цифры на экране",
+   "coverage": "partial",
+   "verdict": "PASS",
+   "findings": [],
+   "warnings": [
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "241,89 $ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "tr > td.num > span",
+       "t": "$ 241,89"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "1280": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$ 241,89"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$ 241,89"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "241,71 $ × 3",
+     "n": 3,
+     "ex": [
+      {
+       "sel": "tr > td.num > span",
+       "t": "$ 241,71"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 3,
+      "1280": 3
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$ 241,71"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$ 241,71"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "241,56 $ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "tr > td.num > span",
+       "t": "$ 241,56"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "1280": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$ 241,56"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$ 241,56"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "240,13 $ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "tr > td.num > span",
+       "t": "$ 240,13"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "1280": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$ 240,13"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$ 240,13"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "243,94 $ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "tr > td.num > span",
+       "t": "$ 243,94"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "1280": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$ 243,94"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$ 243,94"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "0,00 $ × 7",
+     "n": 7,
+     "ex": [
+      {
+       "sel": "tr > td.num > span",
+       "t": "$ 0,00"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 7,
+      "1280": 7
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$ 0,00"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$ 0,00"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "679,81 $ × 3",
+     "n": 3,
+     "ex": [
+      {
+       "sel": "tbody#rx-deals-body > tr > td.num",
+       "t": "$ 679,81"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 3,
+      "1280": 3
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num",
+        "t": "$ 679,81"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num",
+        "t": "$ 679,81"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "412,24 $ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "tbody#rx-deals-body > tr > td.num",
+       "t": "$ 412,24"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "1280": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num",
+        "t": "$ 412,24"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num",
+        "t": "$ 412,24"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "813,08 $ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "tbody#rx-deals-body > tr > td.num",
+       "t": "$ 813,08"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "1280": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num",
+        "t": "$ 813,08"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num",
+        "t": "$ 813,08"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "677,56 $ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "tbody#rx-deals-body > tr > td.num",
+       "t": "$ 677,56"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "1280": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num",
+        "t": "$ 677,56"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num",
+        "t": "$ 677,56"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "676,64 $ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "tbody#rx-deals-body > tr > td.num",
+       "t": "$ 676,64"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "1280": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num",
+        "t": "$ 676,64"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num",
+        "t": "$ 676,64"
+       }
+      ]
+     }
+    }
+   ]
+  },
+  "13": {
+   "id": 13,
+   "title": "Кликабельное vs статичное",
+   "coverage": "manual",
+   "verdict": "MANUAL",
+   "findings": [],
+   "warnings": []
+  },
+  "14": {
+   "id": 14,
+   "title": "Независимые вертикальные стеки вместо строк",
+   "coverage": "manual",
+   "verdict": "MANUAL",
+   "findings": [],
+   "warnings": []
+  },
+  "15": {
+   "id": 15,
+   "title": "Больше двух текстовых ролей в компактном контроле",
+   "coverage": "auto",
+   "verdict": "PASS",
+   "findings": [],
+   "warnings": []
+  },
+  "16": {
+   "id": 16,
+   "title": "Микротекст, который надо читать",
+   "coverage": "partial",
+   "verdict": "PASS",
+   "findings": [],
+   "warnings": []
+  },
+  "17": {
+   "id": 17,
+   "title": "Пустоты и завышенные строки",
+   "coverage": "manual",
+   "verdict": "MANUAL",
+   "findings": [],
+   "warnings": []
+  },
+  "18": {
+   "id": 18,
+   "title": "Состояния, анимации transform/opacity, ошибки консоли",
+   "coverage": "partial",
+   "verdict": "FAIL",
+   "findings": [
+    {
+     "gate": 2,
+     "rule": "G18-transition-all-computed",
+     "sev": "FAIL",
+     "title": "transition: all",
+     "value": "all",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "button#rxSyncBtn",
+       "t": "🔄 Обновить из бота"
+      },
+      {
+       "sel": "div.card > div > button.btn.btn-secondary",
+       "t": "Сброс"
+      }
+     ],
+     "gr": 18,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "1280": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "button#rxSyncBtn",
+        "t": "🔄 Обновить из бота"
+       },
+       {
+        "sel": "div.card > div > button.btn.btn-secondary",
+        "t": "Сброс"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "button#rxSyncBtn",
+        "t": "🔄 Обновить из бота"
+       },
+       {
+        "sel": "div.card > div > button.btn.btn-secondary",
+        "t": "Сброс"
+       }
+      ]
+     }
+    }
+   ],
+   "warnings": [
+    {
+     "gate": 2,
+     "rule": "G18-outline-none",
+     "sev": "WARN",
+     "title": "outline:none — проверь кольцо фокуса",
+     "value": ".form-control:focus",
+     "n": 1,
+     "ex": [
+      {
+       "sel": ".form-control:focus",
+       "t": ""
+      }
+     ],
+     "gr": 18,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": ".form-control:focus",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": ".form-control:focus",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G18-outline-none",
+     "sev": "WARN",
+     "title": "outline:none — проверь кольцо фокуса",
+     "value": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
+     "n": 1,
+     "ex": [
+      {
+       "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
+       "t": ""
+      }
+     ],
+     "gr": 18,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G18-outline-none",
+     "sev": "WARN",
+     "title": "outline:none — проверь кольцо фокуса",
+     "value": ".docs-amount input:focus",
+     "n": 1,
+     "ex": [
+      {
+       "sel": ".docs-amount input:focus",
+       "t": ""
+      }
+     ],
+     "gr": 18,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": ".docs-amount input:focus",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": ".docs-amount input:focus",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G18-outline-none",
+     "sev": "WARN",
+     "title": "outline:none — проверь кольцо фокуса",
+     "value": ".docs-purpose textarea:focus",
+     "n": 1,
+     "ex": [
+      {
+       "sel": ".docs-purpose textarea:focus",
+       "t": ""
+      }
+     ],
+     "gr": 18,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": ".docs-purpose textarea:focus",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": ".docs-purpose textarea:focus",
+        "t": ""
+       }
+      ]
+     }
+    }
+   ]
+  }
+ },
+ "extras": [
+  {
+   "gate": 2,
+   "rule": "X-caps",
+   "sev": "FAIL",
+   "title": "text-transform: uppercase (капслок)",
+   "value": "uppercase",
+   "n": 9,
+   "ex": [
+    {
+     "sel": "thead > tr > th",
+     "t": "WL"
+    },
+    {
+     "sel": "thead > tr > th",
+     "t": "Дата"
+    },
+    {
+     "sel": "thead > tr > th",
+     "t": "Мерчант"
+    },
+    {
+     "sel": "thead > tr > th",
+     "t": "Сумма ₽"
+    }
+   ],
+   "gr": null,
+   "extra": "Don't: капслок",
+   "note": null,
+   "by_width": {
+    "375": 9,
+    "1280": 9
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "thead > tr > th",
+      "t": "WL"
+     },
+     {
+      "sel": "thead > tr > th",
+      "t": "Дата"
+     },
+     {
+      "sel": "thead > tr > th",
+      "t": "Мерчант"
+     },
+     {
+      "sel": "thead > tr > th",
+      "t": "Сумма ₽"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "thead > tr > th",
+      "t": "WL"
+     },
+     {
+      "sel": "thead > tr > th",
+      "t": "Дата"
+     },
+     {
+      "sel": "thead > tr > th",
+      "t": "Мерчант"
+     },
+     {
+      "sel": "thead > tr > th",
+      "t": "Сумма ₽"
+     }
+    ]
+   }
+  }
+ ],
+ "stats": {
+  "375": {
+   "elements": 3309,
+   "groups": 69,
+   "texts": 2297,
+   "contrast_checked": 2302,
+   "contrast_unknown": 0,
+   "primaries": 0,
+   "addresses": 0,
+   "controls": 14
+  },
+  "1280": {
+   "elements": 3312,
+   "groups": 73,
+   "texts": 2297,
+   "contrast_checked": 2302,
+   "contrast_unknown": 0,
+   "primaries": 0,
+   "addresses": 0,
+   "controls": 14
+  }
+ },
+ "limits": [],
+ "human_todo": [
+  "п.3 Сосиски, градиенты, hover-зум, анимации появления",
+  "п.4 Кнопки без глагола, две главные, иконка без подписи",
+  "п.5 Эмодзи вместо иконок; один размер иконок",
+  "п.6 Цветные полосы слева, синие подсказки, оранжевый вне кнопки",
+  "п.8 Внутренние названия и коды на экране",
+  "п.9 Плейсхолдер вместо подписи / обрезанный плейсхолдер",
+  "п.10 Ряды «подпись — поле — кнопка» выровнены",
+  "п.12 Повтор одной цифры на экране",
+  "п.13 Кликабельное vs статичное",
+  "п.14 Независимые вертикальные стеки вместо строк",
+  "п.16 Микротекст, который надо читать",
+  "п.17 Пустоты и завышенные строки",
+  "п.18 Состояния, анимации transform/opacity, ошибки консоли"
+ ],
+ "all_warnings": [
+  {
+   "gate": 2,
+   "rule": "G5-emoji",
+   "sev": "WARN",
+   "title": "эмодзи в тексте (если это не контент пользователя — заменить иконкой)",
+   "value": "💰",
+   "n": 81,
+   "ex": [
+    {
+     "sel": "tr > td > span.rx-pill",
+     "t": "💰 Оплачено"
+    }
+   ],
+   "gr": 5,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 81,
+    "1280": 81
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "tr > td > span.rx-pill",
+      "t": "💰 Оплачено"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "tr > td > span.rx-pill",
+      "t": "💰 Оплачено"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 2,
+   "rule": "G5-emoji",
+   "sev": "WARN",
+   "title": "эмодзи в тексте (если это не контент пользователя — заменить иконкой)",
+   "value": "⚠",
+   "n": 4,
+   "ex": [
+    {
+     "sel": "tr > td > span.rx-pill",
+     "t": "⚠️ Аванс"
+    }
+   ],
+   "gr": 5,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 4,
+    "1280": 4
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "tr > td > span.rx-pill",
+      "t": "⚠️ Аванс"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "tr > td > span.rx-pill",
+      "t": "⚠️ Аванс"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 2,
+   "rule": "G5-emoji",
+   "sev": "WARN",
+   "title": "эмодзи в тексте (если это не контент пользователя — заменить иконкой)",
+   "value": "📥",
+   "n": 11,
+   "ex": [
+    {
+     "sel": "tr > td > span.rx-pill",
+     "t": "📥 Обеспечено"
+    }
+   ],
+   "gr": 5,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 11,
+    "1280": 11
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "tr > td > span.rx-pill",
+      "t": "📥 Обеспечено"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "tr > td > span.rx-pill",
+      "t": "📥 Обеспечено"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 2,
+   "rule": "G4-icononly",
+   "sev": "WARN",
+   "title": "кнопка-иконка без видимой подписи (есть aria-label)",
+   "value": "‹",
+   "n": 1,
+   "ex": [
+    {
+     "sel": "nav.site-shell-sections > button.site-shell-scroll",
+     "t": "Предыдущие разделы"
+    }
+   ],
+   "gr": 4,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 1,
+    "1280": 1
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "nav.site-shell-sections > button.site-shell-scroll",
+      "t": "Предыдущие разделы"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "nav.site-shell-sections > button.site-shell-scroll",
+      "t": "Предыдущие разделы"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 2,
+   "rule": "G4-icononly",
+   "sev": "WARN",
+   "title": "кнопка-иконка без видимой подписи (есть aria-label)",
+   "value": "›",
+   "n": 1,
+   "ex": [
+    {
+     "sel": "nav.site-shell-sections > button.site-shell-scroll",
+     "t": "Следующие разделы"
+    }
+   ],
+   "gr": 4,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 1,
+    "1280": 1
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "nav.site-shell-sections > button.site-shell-scroll",
+      "t": "Следующие разделы"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "nav.site-shell-sections > button.site-shell-scroll",
+      "t": "Следующие разделы"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 2,
+   "rule": "G9-ph-nolabel",
+   "sev": "WARN",
+   "title": "у поля нет подписи (label/aria-label) — плейсхолдер вместо подписи?",
+   "value": "USDT от",
+   "n": 1,
+   "ex": [
+    {
+     "sel": "input#rxFltSf",
+     "t": "USDT от"
+    }
+   ],
+   "gr": 9,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 1,
+    "1280": 1
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "input#rxFltSf",
+      "t": "USDT от"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "input#rxFltSf",
+      "t": "USDT от"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 2,
+   "rule": "G9-ph-nolabel",
+   "sev": "WARN",
+   "title": "у поля нет подписи (label/aria-label) — плейсхолдер вместо подписи?",
+   "value": "USDT до",
+   "n": 1,
+   "ex": [
+    {
+     "sel": "input#rxFltSt",
+     "t": "USDT до"
+    }
+   ],
+   "gr": 9,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 1,
+    "1280": 1
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "input#rxFltSt",
+      "t": "USDT до"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "input#rxFltSt",
+      "t": "USDT до"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 4,
+   "rule": "W-thumb",
+   "sev": "WARN",
+   "title": "нажимаемая цель ниже 44px (Thumb Rule)",
+   "value": "32px",
+   "n": 5,
+   "ex": [
+    {
+     "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab.active",
+     "t": "Поступления"
+    },
+    {
+     "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab",
+     "t": "Конвертация от брокеров"
+    },
+    {
+     "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab",
+     "t": "Запросы"
+    },
+    {
+     "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab",
+     "t": "Мерчанты"
+    }
+   ],
+   "gr": null,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 5,
+    "1280": 5
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab.active",
+      "t": "Поступления"
+     },
+     {
+      "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab",
+      "t": "Конвертация от брокеров"
+     },
+     {
+      "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab",
+      "t": "Запросы"
+     },
+     {
+      "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab",
+      "t": "Мерчанты"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab.active",
+      "t": "Поступления"
+     },
+     {
+      "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab",
+      "t": "Конвертация от брокеров"
+     },
+     {
+      "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab",
+      "t": "Запросы"
+     },
+     {
+      "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab",
+      "t": "Мерчанты"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 4,
+   "rule": "W-thumb",
+   "sev": "WARN",
+   "title": "нажимаемая цель ниже 44px (Thumb Rule)",
+   "value": "37px",
+   "n": 1,
+   "ex": [
+    {
+     "sel": "button#rxSyncBtn",
+     "t": "🔄 Обновить из бота"
+    }
+   ],
+   "gr": null,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 1,
+    "1280": 1
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "button#rxSyncBtn",
+      "t": "🔄 Обновить из бота"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "button#rxSyncBtn",
+      "t": "🔄 Обновить из бота"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 4,
+   "rule": "W-thumb",
+   "sev": "WARN",
+   "title": "нажимаемая цель ниже 44px (Thumb Rule)",
+   "value": "35px",
+   "n": 3,
+   "ex": [
+    {
+     "sel": "select#rxFltMer",
+     "t": "Все мерчанты\n1000\nFiatEX\nFour exchange\nRUBLEV\ngrusha\nМихаил "
+    },
+    {
+     "sel": "select#rxFltStt",
+     "t": "Все статусы\n💰 Оплачено\n📤 В заявке\n✅ Закрыто\n⚠️ Аванс"
+    },
+    {
+     "sel": "select#rxFltSort",
+     "t": "↓ новые\n↑ старые"
+    }
+   ],
+   "gr": null,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 3,
+    "1280": 3
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "select#rxFltMer",
+      "t": "Все мерчанты\n1000\nFiatEX\nFour exchange\nRUBLEV\ngrusha\nМихаил "
+     },
+     {
+      "sel": "select#rxFltStt",
+      "t": "Все статусы\n💰 Оплачено\n📤 В заявке\n✅ Закрыто\n⚠️ Аванс"
+     },
+     {
+      "sel": "select#rxFltSort",
+      "t": "↓ новые\n↑ старые"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "select#rxFltMer",
+      "t": "Все мерчанты\n1000\nFiatEX\nFour exchange\nRUBLEV\ngrusha\nМихаил "
+     },
+     {
+      "sel": "select#rxFltStt",
+      "t": "Все статусы\n💰 Оплачено\n📤 В заявке\n✅ Закрыто\n⚠️ Аванс"
+     },
+     {
+      "sel": "select#rxFltSort",
+      "t": "↓ новые\n↑ старые"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 4,
+   "rule": "W-thumb",
+   "sev": "WARN",
+   "title": "нажимаемая цель ниже 44px (Thumb Rule)",
+   "value": "33px",
+   "n": 2,
+   "ex": [
+    {
+     "sel": "input#rxFltSf",
+     "t": ""
+    },
+    {
+     "sel": "input#rxFltSt",
+     "t": ""
+    }
+   ],
+   "gr": null,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 2,
+    "1280": 2
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "input#rxFltSf",
+      "t": ""
+     },
+     {
+      "sel": "input#rxFltSt",
+      "t": ""
+     }
+    ],
+    "1280": [
+     {
+      "sel": "input#rxFltSf",
+      "t": ""
+     },
+     {
+      "sel": "input#rxFltSt",
+      "t": ""
+     }
+    ]
+   }
+  },
+  {
+   "gate": 4,
+   "rule": "W-thumb",
+   "sev": "WARN",
+   "title": "нажимаемая цель ниже 44px (Thumb Rule)",
+   "value": "36px",
+   "n": 1,
+   "ex": [
+    {
+     "sel": "div.card > div > button.btn.btn-secondary",
+     "t": "Сброс"
+    }
+   ],
+   "gr": null,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 1,
+    "1280": 1
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "div.card > div > button.btn.btn-secondary",
+      "t": "Сброс"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "div.card > div > button.btn.btn-secondary",
+      "t": "Сброс"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "241,89 $ × 2",
+   "n": 2,
+   "ex": [
+    {
+     "sel": "tr > td.num > span",
+     "t": "$ 241,89"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 2,
+    "1280": 2
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "tr > td.num > span",
+      "t": "$ 241,89"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "tr > td.num > span",
+      "t": "$ 241,89"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "241,71 $ × 3",
+   "n": 3,
+   "ex": [
+    {
+     "sel": "tr > td.num > span",
+     "t": "$ 241,71"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 3,
+    "1280": 3
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "tr > td.num > span",
+      "t": "$ 241,71"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "tr > td.num > span",
+      "t": "$ 241,71"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "241,56 $ × 2",
+   "n": 2,
+   "ex": [
+    {
+     "sel": "tr > td.num > span",
+     "t": "$ 241,56"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 2,
+    "1280": 2
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "tr > td.num > span",
+      "t": "$ 241,56"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "tr > td.num > span",
+      "t": "$ 241,56"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "240,13 $ × 2",
+   "n": 2,
+   "ex": [
+    {
+     "sel": "tr > td.num > span",
+     "t": "$ 240,13"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 2,
+    "1280": 2
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "tr > td.num > span",
+      "t": "$ 240,13"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "tr > td.num > span",
+      "t": "$ 240,13"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "243,94 $ × 2",
+   "n": 2,
+   "ex": [
+    {
+     "sel": "tr > td.num > span",
+     "t": "$ 243,94"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 2,
+    "1280": 2
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "tr > td.num > span",
+      "t": "$ 243,94"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "tr > td.num > span",
+      "t": "$ 243,94"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "0,00 $ × 7",
+   "n": 7,
+   "ex": [
+    {
+     "sel": "tr > td.num > span",
+     "t": "$ 0,00"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 7,
+    "1280": 7
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "tr > td.num > span",
+      "t": "$ 0,00"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "tr > td.num > span",
+      "t": "$ 0,00"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "679,81 $ × 3",
+   "n": 3,
+   "ex": [
+    {
+     "sel": "tbody#rx-deals-body > tr > td.num",
+     "t": "$ 679,81"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 3,
+    "1280": 3
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "tbody#rx-deals-body > tr > td.num",
+      "t": "$ 679,81"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "tbody#rx-deals-body > tr > td.num",
+      "t": "$ 679,81"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "412,24 $ × 2",
+   "n": 2,
+   "ex": [
+    {
+     "sel": "tbody#rx-deals-body > tr > td.num",
+     "t": "$ 412,24"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 2,
+    "1280": 2
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "tbody#rx-deals-body > tr > td.num",
+      "t": "$ 412,24"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "tbody#rx-deals-body > tr > td.num",
+      "t": "$ 412,24"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "813,08 $ × 2",
+   "n": 2,
+   "ex": [
+    {
+     "sel": "tbody#rx-deals-body > tr > td.num",
+     "t": "$ 813,08"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 2,
+    "1280": 2
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "tbody#rx-deals-body > tr > td.num",
+      "t": "$ 813,08"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "tbody#rx-deals-body > tr > td.num",
+      "t": "$ 813,08"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "677,56 $ × 2",
+   "n": 2,
+   "ex": [
+    {
+     "sel": "tbody#rx-deals-body > tr > td.num",
+     "t": "$ 677,56"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 2,
+    "1280": 2
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "tbody#rx-deals-body > tr > td.num",
+      "t": "$ 677,56"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "tbody#rx-deals-body > tr > td.num",
+      "t": "$ 677,56"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "676,64 $ × 2",
+   "n": 2,
+   "ex": [
+    {
+     "sel": "tbody#rx-deals-body > tr > td.num",
+     "t": "$ 676,64"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 2,
+    "1280": 2
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "tbody#rx-deals-body > tr > td.num",
+      "t": "$ 676,64"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "tbody#rx-deals-body > tr > td.num",
+      "t": "$ 676,64"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 2,
+   "rule": "G18-outline-none",
+   "sev": "WARN",
+   "title": "outline:none — проверь кольцо фокуса",
+   "value": ".form-control:focus",
+   "n": 1,
+   "ex": [
+    {
+     "sel": ".form-control:focus",
+     "t": ""
+    }
+   ],
+   "gr": 18,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 1,
+    "1280": 1
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": ".form-control:focus",
+      "t": ""
+     }
+    ],
+    "1280": [
+     {
+      "sel": ".form-control:focus",
+      "t": ""
+     }
+    ]
+   }
+  },
+  {
+   "gate": 2,
+   "rule": "G18-outline-none",
+   "sev": "WARN",
+   "title": "outline:none — проверь кольцо фокуса",
+   "value": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
+   "n": 1,
+   "ex": [
+    {
+     "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
+     "t": ""
+    }
+   ],
+   "gr": 18,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 1,
+    "1280": 1
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
+      "t": ""
+     }
+    ],
+    "1280": [
+     {
+      "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
+      "t": ""
+     }
+    ]
+   }
+  },
+  {
+   "gate": 2,
+   "rule": "G18-outline-none",
+   "sev": "WARN",
+   "title": "outline:none — проверь кольцо фокуса",
+   "value": ".docs-amount input:focus",
+   "n": 1,
+   "ex": [
+    {
+     "sel": ".docs-amount input:focus",
+     "t": ""
+    }
+   ],
+   "gr": 18,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 1,
+    "1280": 1
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": ".docs-amount input:focus",
+      "t": ""
+     }
+    ],
+    "1280": [
+     {
+      "sel": ".docs-amount input:focus",
+      "t": ""
+     }
+    ]
+   }
+  },
+  {
+   "gate": 2,
+   "rule": "G18-outline-none",
+   "sev": "WARN",
+   "title": "outline:none — проверь кольцо фокуса",
+   "value": ".docs-purpose textarea:focus",
+   "n": 1,
+   "ex": [
+    {
+     "sel": ".docs-purpose textarea:focus",
+     "t": ""
+    }
+   ],
+   "gr": 18,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 1,
+    "1280": 1
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": ".docs-purpose textarea:focus",
+      "t": ""
+     }
+    ],
+    "1280": [
+     {
+      "sel": ".docs-purpose textarea:focus",
+      "t": ""
+     }
+    ]
+   }
+  }
+ ]
+}

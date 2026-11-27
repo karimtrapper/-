@@ -1,0 +1,127 @@
+// Проверка реальных вложений задачника без сети и браузера.
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const vm = require('node:vm');
+
+const html = fs.readFileSync(path.join(__dirname, '../static/stand/tasks.html'), 'utf8');
+const names = ['standSaveError','docDownload', 'docOpen', 'fileValid', 'fileBlob', 'demoPdfData',
+  'filesOf', 'fileSync', 'fileAdd', 'fileAddReal', 'fileAppend', 'fileDel', 'docRow'];
+const source = names.map(name => {
+  const found = html.match(new RegExp(`^(?:async )?function ${name}\\([^]*?^}`, 'm'));
+  assert.ok(found, `нет функции ${name}`);
+  return found[0];
+}).join('\n');
+
+function fixture() {
+  const d = {id: 1, code: 'СД-1', docs: {}, docMeta: {}, files: {}, log: []};
+  const S = {deals: [d]};
+  const toasts = [], clicks = [], opened = [];
+  const input = {files: [], click: () => clicks.push('picker')};
+  const link = {style: {}, click: () => clicks.push('download'), remove: () => {}};
+  const ctx = {S, STAND: false, SCREEN: false, SNAP: false,
+    DOCT: {receipt: 'Чек'}, deal: () => d, now: () => '24.09',
+    managerDraftDocTarget: (deal, k) => deal.step === 's8' ? deal._managerDraft : null,
+    htmlText: s => String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])),
+    DOCT: {pass: 'Загранпаспорт'}, doctOf: (deal,k) => ({pass:'Загранпаспорт'}[k]||k),
+    save: () => {}, render: () => {}, log: (x, s) => x.log.push(s),
+    toast: s => toasts.push(s), document: {createElement: tag => tag === 'input' ? input : link,
+      body: {appendChild: () => {}}}, window: {open: url => {opened.push(url);return {}; }},
+    URL: {createObjectURL: () => 'blob:fixture', revokeObjectURL: () => {}},
+    FileReader: class {readAsDataURL() {this.result = ctx.readerResult;this.onload();}},
+    Blob, Uint8Array, atob, btoa, setTimeout: fn => fn(), Math, Number, String, Object};
+  vm.createContext(ctx);vm.runInContext(source, ctx);
+  return {ctx, d, S, toasts, clicks, opened, input};
+}
+
+{
+  const {ctx, d, clicks, opened} = fixture();
+  ctx.fileAdd(1, 'receipt', true);
+  assert.equal(d.docs.receipt, true);
+  assert.equal(d.files.receipt[0].demo, true);
+  assert.equal(d.files.receipt[0].file, 'DEMO_receipt.pdf');
+  assert.ok(ctx.fileValid(d.files.receipt[0]));
+  const blob = ctx.fileBlob(d.files.receipt[0]);
+  assert.equal(blob.type, 'application/pdf');
+  ctx.docDownload(1, 'receipt'); // раньше ext=undefined бросал TypeError
+  ctx.docOpen(1, 'receipt', 0);
+  assert.ok(clicks.includes('download'));
+  assert.equal(opened[0], 'blob:fixture');
+}
+{
+  const {ctx, d, toasts} = fixture();
+  ctx.docDownload(1, 'receipt');
+  assert.ok(toasts[0].includes('не загружен'));
+  assert.equal(d.docs.receipt, false);
+  const pdf = ctx.demoPdfData();
+  for (const [mime, name] of [['text/html', 'x.html'], ['image/svg+xml', 'x.svg'],
+      ['application/javascript', 'x.js']]) {
+    assert.equal(ctx.fileValid({file: name, mime, data: pdf}), false);
+  }
+  assert.equal(ctx.fileValid({file: 'x.pdf', mime: 'application/pdf',
+    data: 'data:application/pdf;base64,' + btoa('<script>')}), false);
+}
+{
+  const {ctx, d, input, toasts} = fixture();
+  ctx.fileAdd(1, 'receipt');
+  assert.equal(input.type, 'file');
+  input.files = [{name: 'evil.svg', type: 'image/svg+xml', size: 100}];
+  input.onchange();
+  assert.equal((d.files.receipt || []).length, 0);
+  assert.ok(toasts.at(-1).includes('PDF'));
+  ctx.fileAdd(1, 'receipt');
+  input.files = [{name: 'big.pdf', type: 'application/pdf', size: 20 * 1024 * 1024 + 1}];
+  input.onchange();
+  assert.equal((d.files.receipt || []).length, 0);
+  assert.ok(toasts.at(-1).includes('20 МБ'));
+  ctx.fileAdd(1, 'receipt');
+  input.files = [{name: '<receipt>.pdf', type: 'application/pdf', size: 100}];
+  ctx.readerResult = ctx.demoPdfData();
+  input.onchange();
+  assert.equal(d.files.receipt[0].file, '_receipt_.pdf');
+  assert.equal(d.docs.receipt, true);
+}
+{
+  const {ctx, d, S, input, toasts} = fixture();
+  S.deals.push({files: {receipt: [{data: 'x'.repeat(8 * 1024 * 1024)}]}});
+  ctx.fileAdd(1, 'receipt');
+  ctx.readerResult = ctx.demoPdfData();
+  input.files = [{name: 'receipt.pdf', type: 'application/pdf', size: 100}];
+  input.onchange();
+  assert.equal(d.files.receipt.length, 1); // общего лимита доски больше нет
+
+}
+{
+  const {ctx, d} = fixture();
+  d.step='s8';d.docs={};d._managerDraft={files:{pass:[{
+    file:'passport.pdf',size:'1 КБ',at:'30.09',mime:'application/pdf',bytes:12,
+    data:'data:application/pdf;base64,JVBERi0xLjQK',demo:false}]},docs:{pass:true},
+    docMeta:{pass:{file:'passport.pdf',size:'1 КБ',at:'30.09'}}};
+  const row=ctx.docRow(d,'pass','Загранпаспорт','обязательно');
+  assert.match(row,/passport\.pdf/);
+  assert.match(row,/Открыть/);
+  assert.doesNotMatch(row,/не приложен/);
+}
+(async()=>{
+  {
+    const {ctx, d, toasts} = fixture();
+    ctx.STAND=true;
+    ctx.standWaitSaved=async()=>{throw new Error('timeout');};
+    ctx.standPull=async()=>{};
+    await ctx.fileAppend(1,'receipt',{file:'timeout.pdf',size:'1 КБ',at:'30.09',
+      mime:'application/pdf',bytes:12,data:'data:application/pdf;base64,JVBERi0xLjQK'});
+    assert.match(toasts.at(-1),/не подтвердил сохранение/);
+    assert.doesNotMatch(toasts.at(-1),/Файл сохранён/);
+  }
+  {
+    const {ctx, toasts} = fixture();
+    ctx.STAND=true;
+    ctx.standWaitSaved=async()=>({ok:true});
+    ctx.standPull=async()=>{};
+    ctx.standBase={deals:[{id:1,files:{receipt:[{file:'saved.pdf',bytes:12}]}}]};
+    await ctx.fileAppend(1,'receipt',{file:'saved.pdf',size:'1 КБ',at:'30.09',
+      mime:'application/pdf',bytes:12,data:'data:application/pdf;base64,JVBERi0xLjQK'});
+    assert.equal(toasts.at(-1),'Файл сохранён');
+  }
+  console.log('stand files: 6 сценариев PASS');
+})().catch(e=>{console.error(e);process.exitCode=1;});

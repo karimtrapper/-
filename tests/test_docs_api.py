@@ -353,31 +353,31 @@ def test_document_payload_keeps_valid_multipart_and_numeric_money():
 
 
 class TestУдаление:
-    """Удалить договор было нечем — API есть, кнопки в интерфейсе не было."""
+    """Файлы договора нельзя стереть обходным удалением всей записи."""
 
-    def test_договор_удаляется_вместе_с_документами(self, client):
+    def test_договор_с_документами_нельзя_удалить_физически(self, client):
         a = create(client, 'Бурова Надежда Васильевна').get_json()['agreement']
         assert len(a['docs']) == 3
 
-        assert client.delete(f"/api/docs/agreements/{a['id']}").status_code == 200
+        removed = client.delete(f"/api/docs/agreements/{a['id']}")
+        assert removed.status_code == 409
+        assert 'Удаляйте файлы по одному' in removed.json['error']
 
         s = get_session()
         try:
-            assert s.query(Agreement).count() == 0
-            # документы уходят каскадом, иначе в базе остаётся мусор с паспортами
+            assert s.query(Agreement).count() == 1
             assert s.query(AgreementDoc).filter(
-                AgreementDoc.agreement_id == a['id']).count() == 0
+                AgreementDoc.agreement_id == a['id']).count() == 3
         finally:
             s.close()
 
     def test_удаление_несуществующего_даёт_404(self, client):
         assert client.delete('/api/docs/agreements/999999').status_code == 404
 
-    def test_после_удаления_тип_сделки_освобождается(self, client):
+    def test_договор_с_файлами_остаётся_занятым(self, client):
         a = create(client, 'Бурова Надежда Васильевна').get_json()['agreement']
-        client.delete(f"/api/docs/agreements/{a['id']}")
-        # тот же клиент и тип снова заводится — ключ больше никем не занят
-        assert create(client, 'Бурова Надежда Васильевна').status_code == 200
+        assert client.delete(f"/api/docs/agreements/{a['id']}").status_code == 409
+        assert create(client, 'Бурова Надежда Васильевна').status_code == 409
 
 
 class TestДубльНеТупик:

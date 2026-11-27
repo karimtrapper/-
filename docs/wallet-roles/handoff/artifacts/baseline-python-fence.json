@@ -1,0 +1,67 @@
+{
+  "python": "3.11.17",
+  "mode": "pytest",
+  "port_pool": [
+    44658,
+    44721
+  ],
+  "pytest_exit": 0,
+  "attempts": [
+    {
+      "pid": 83788,
+      "kind": "connect",
+      "test": "tests/test_network_fence.py::test_parent_external_probe_blocked",
+      "source": "",
+      "expected": true
+    },
+    {
+      "pid": 83788,
+      "kind": "connect",
+      "test": "tests/test_network_fence.py::test_parent_external_probe_blocked",
+      "source": "",
+      "expected": true
+    },
+    {
+      "pid": 83788,
+      "kind": "dns",
+      "test": "tests/test_network_fence.py::test_parent_external_probe_blocked",
+      "source": "",
+      "expected": true
+    },
+    {
+      "pid": 83788,
+      "kind": "dns",
+      "test": "tests/test_network_fence.py::test_parent_external_probe_blocked",
+      "source": "",
+      "expected": true
+    },
+    {
+      "pid": 83788,
+      "kind": "sendto",
+      "test": "tests/test_network_fence.py::test_parent_external_probe_blocked",
+      "source": "",
+      "expected": true
+    },
+    {
+      "pid": 83788,
+      "kind": "sendmsg",
+      "test": "tests/test_network_fence.py::test_parent_external_probe_blocked",
+      "source": "",
+      "expected": true
+    },
+    {
+      "pid": 83788,
+      "kind": "connect",
+      "test": "tests/test_network_fence.py::test_parent_external_probe_blocked",
+      "source": "",
+      "expected": true
+    },
+    {
+      "pid": 84256,
+      "kind": "connect",
+      "test": "tests/test_network_fence.py::test_python_subprocess_with_replaced_env_is_fenced",
+      "source": "",
+      "expected": true
+    }
+  ]
+}

@@ -7,6 +7,8 @@
     <link rel="icon" type="image/png" href="/static/kyc/grusha-logo.png">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="styles.css?v=16">
+    <link rel="stylesheet" href="/static/nav-shell.css?v=6">
+    <link rel="stylesheet" href="/static/design-layer.css?v=2">
     <style>
         .top-nav {
             background: #1E293B;
@@ -27,7 +29,7 @@
             border-radius: 8px;
             font-weight: 600;
             font-size: 14px;
-            transition: all 0.2s;
+            transition: color 0.2s;
         }
         .top-nav a:hover {
             background: rgba(255,255,255,0.08);
@@ -47,7 +49,7 @@
             font-weight: 600;
             font-size: 14px;
             text-decoration: none;
-            transition: all 0.2s;
+            transition: color 0.2s;
         }
         .top-nav .instruction-btn:hover {
             background: rgba(139, 92, 246, 0.35);
@@ -55,38 +57,236 @@
             border-color: #8B5CF6;
         }
     </style>
+    <style>
+        /* Hallmark · pre-emit critique: P5 H5 E4 S5 R5 V4 */
+        /* Вариант Б2: существующие элементы калькулятора, новая раскладка. */
+        body.calc-b2 {
+            --b2-ink: #0F172A; --b2-n700: #334155; --b2-n600: #475569;
+            --b2-n500: #64748B; --b2-n400: #94A3B8; --b2-n300: #CBD5E1;
+            --b2-n200: #E2E8F0; --b2-n100: #F1F5F9; --b2-white: #FFFFFF;
+            --b2-action: #C2410C; --b2-action-hover: #9A3412;
+            background: var(--b2-n200); color: var(--b2-ink);
+            font: 400 14px/1.5 Inter, system-ui, sans-serif;
+            font-feature-settings: "tnum" 1, "cv11" 1;
+            overflow-x: clip;
+        }
+        html { overflow-x: clip; }
+        body.calc-b2 *, body.calc-b2 *::before, body.calc-b2 *::after { box-sizing: border-box; }
+        body.calc-b2 * { transition: none !important; animation: none !important; }
+        body.calc-b2 button, body.calc-b2 input { font-family: inherit; }
+        body.calc-b2 :focus-visible { outline: 2px solid var(--b2-action); outline-offset: 2px; }
+        body.calc-b2 .container { max-width: 1168px; padding: 24px; }
+        body.calc-b2 .header { text-align: left; margin-bottom: 24px; }
+        body.calc-b2 .logo { justify-content: flex-start; gap: 8px; margin: 0; }
+        body.calc-b2 .logo-icon { display: none; }
+        body.calc-b2 .header h1 { color: var(--b2-ink); font-size: 24px; font-weight: 700; line-height: 1.25; }
+        body.calc-b2 .subtitle { color: var(--b2-n600); font-size: 14px; font-weight: 400; }
+        body.calc-b2 .top-nav { background: var(--b2-ink); border: 0; padding: 8px 16px; }
+        body.calc-b2 .top-nav a { color: var(--b2-n300); font-size: 14px; font-weight: 600; padding: 8px 16px; }
+        body.calc-b2 .top-nav a.active { color: var(--b2-white); background: transparent; border-bottom: 2px solid var(--b2-white); border-radius: 0; }
+        body.calc-b2 .top-nav .instruction-btn { color: var(--b2-n300); background: transparent; border: 0; padding: 8px 16px; min-height: 44px; }
+        .b2-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(360px, 440px); gap: 24px; align-items: start; }
+        .b2-params { min-width: 0; display: flex; flex-direction: column; gap: 24px; padding: 24px; background: var(--b2-white); border: 1px solid var(--b2-n300); border-radius: 12px; }
+        .b2-group { min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+        body.calc-b2 .switcher-caption, body.calc-b2 .direction-header, body.calc-b2 .b2-direction-label, body.calc-b2 .input-label { margin: 0 0 8px; color: var(--b2-n700); font-size: 16px; font-weight: 600; line-height: 1.4; letter-spacing: 0; text-transform: none; }
+        body.calc-b2 .dealtype-switcher, body.calc-b2 .method-switcher, body.calc-b2 .direction-buttons, body.calc-b2 .scenarios-grid, body.calc-b2 .commission-buttons, body.calc-b2 .prop-chips, body.calc-b2 .rate-source-toggle {
+            display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; margin: 0;
+            padding: 4px; background: var(--b2-n200); border: 1px solid var(--b2-n300); border-radius: 8px;
+        }
+        body.calc-b2 .dealtype-switcher { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+        body.calc-b2 .method-switcher { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+        body.calc-b2 .scenarios-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        body.calc-auto #ratesCard, body.calc-auto .scenarios-grid,
+        body.calc-auto #methodSwitcher, body.calc-auto #methodCaption { display: none !important; }
+        body.calc-b2 .profit-steps { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; background: transparent; border: 0; padding: 0; }
+        body.calc-b2 .profit-header { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+        body.calc-b2 .profit-header .input-label { margin: 0; }
+        body.calc-b2 .profit-current { font-size: 14px; font-weight: 600; color: var(--b2-n600); }
+        body.calc-b2 #commissionLevelSection .commission-btn { background: var(--b2-white); border: 1px solid var(--b2-n300); border-radius: 8px; }
+        body.calc-b2 .profit-custom-btn { display: block; width: 100%; margin-top: 8px; }
+        /* Оранжевый — только у кнопок прибыли (глобальный .commission-btn.active!important из styles.css)
+           и главной кнопки. У переключателей инвойса/тарифа IPPS — тот же белый «выбранный сегмент». */
+        body.calc-b2 .prop-chips .commission-btn.active, body.calc-b2 .prop-chips .commission-btn.active:hover {
+            background: var(--b2-white) !important; color: var(--b2-ink) !important;
+            border-color: var(--b2-n300) !important; box-shadow: var(--card-shadow) !important;
+        }
+        body.calc-b2 .prop-tariff-btn { height: auto; min-height: 48px; line-height: 1.3; padding: 8px 6px; }
+        body.calc-b2 .prop-tariff-price { display: block; font-size: 12px; font-weight: 500; opacity: .8; }
+        body.calc-b2:not(.calc-auto) #propTariffChips { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+        body.calc-b2 #propTariffChips .prop-tariff-btn { white-space: normal; }
+        body.calc-auto #propTariffChips [data-tariff="custom"] { display: none; }
+        #propCustomTariff { margin-top: 12px; }
+        #propFeeHint { color: #92400e; }
+        body.calc-b2 .profit-floor-hint { font-size: 13px; color: #92400E; margin-top: 8px; }
+        body.calc-b2 :is(.dealtype-btn, .method-btn, .direction-btn, .scenario-btn, .commission-btn, .src-btn) {
+            min-width: 0; min-height: 48px; padding: 8px; margin: 0; border: 1px solid transparent;
+            background: transparent; color: var(--b2-n600); border-radius: 8px;
+            box-shadow: none; font-size: 16px; font-weight: 600; line-height: 1.4; white-space: nowrap;
+        }
+        body.calc-b2 :is(.dealtype-btn, .method-btn, .direction-btn, .scenario-btn, .commission-btn, .src-btn):hover { background: var(--b2-n300); color: var(--b2-ink); }
+        body.calc-b2 :is(.dealtype-btn, .method-btn, .direction-btn, .scenario-btn, .commission-btn, .src-btn).active,
+        body.calc-b2 :is(.dealtype-btn, .method-btn, .direction-btn, .scenario-btn, .commission-btn, .src-btn).active:hover {
+            background: var(--b2-white); color: var(--b2-ink); border-color: var(--b2-n300); box-shadow: var(--card-shadow);
+        }
+        body.calc-b2 .scenario-btn { justify-content: center; }
+        body.calc-b2 .scenario-icon { display: none; }
+        body.calc-b2 .scenario-title { font-size: 16px; font-weight: 600; }
+        body.calc-b2 .b2-direction-hint { margin: 0; color: var(--b2-n600); font-size: 14px; font-weight: 400; line-height: 1.5; }
+        body.calc-b2 .direction-switcher { margin: 0 0 20px !important; padding: 0; background: transparent; border: 0; }
+        body.calc-b2 .custom-rate-top { margin: 0; }
+        body.calc-b2 .custom-rate-card, body.calc-b2 .property-extra, body.calc-b2 .calculator-card { padding: 0; margin: 0; background: transparent; border: 0; box-shadow: none; }
+        body.calc-b2 .custom-rate-card + .custom-rate-card { margin-top: 16px !important; }
+        body.calc-b2 .property-badge { display: block; padding: 0; margin-bottom: 8px; background: transparent; border: 0; border-radius: 0; color: var(--b2-n700); font-size: 16px; font-weight: 600; }
+        body.calc-b2 .input-section { margin: 0; }
+        body.calc-b2 .input-wrapper { display: flex; align-items: center; min-width: 0; height: 60px; background: var(--b2-white); border: 1px solid var(--b2-n300); border-radius: 8px; }
+        body.calc-b2 .input-wrapper:focus-within { outline: 2px solid var(--b2-action); outline-offset: 2px; }
+        body.calc-b2 .amount-input { flex: 1; width: auto; min-width: 0; height: 100%; padding: 0 12px; border: 0; box-shadow: none; font-size: 24px; font-weight: 700; color: var(--b2-ink); }
+        body.calc-b2 .amount-input:focus { border: 0; box-shadow: none; outline: 0; }
+        body.calc-b2 .amount-input::placeholder { font-size: 16px; font-weight: 400; color: var(--b2-n500); }
+        body.calc-b2 .input-currency { position: static; right: auto; top: auto; transform: none; padding: 0 12px; font-size: 24px; font-weight: 700; color: var(--b2-n600); }
+        body.calc-b2 .input-wrapper.small, body.calc-b2 .input-wrapper:has(#propFxCustom) { height: 48px; max-width: none; }
+        body.calc-b2 .input-wrapper.small .amount-input, body.calc-b2 .input-wrapper.small .input-currency, body.calc-b2 .input-wrapper:has(#propFxCustom) .amount-input { font-size: 16px; font-weight: 600; }
+        body.calc-b2 .calculate-action { margin: 0; padding: 0; }
+        body.calc-b2 #calculateBtn { display: none; }
+        body.calc-b2 .calculator-settings { margin: 0 !important; padding: 16px 0 !important; border: 0 !important; }
+        body.calc-b2 .checkbox-label, body.calc-b2 .partner-section, body.calc-b2 .discount-header { font-size: 16px; font-weight: 600; }
+        body.calc-b2 :is(.fee-hint, .custom-rate-hint, .custom-profit-hint, #propInvResult) { font-size: 14px; color: var(--b2-n600); }
+        body.calc-b2 .b2-extras { border-top: 1px solid var(--b2-n200); }
+        body.calc-b2 .b2-extras summary { display: flex; align-items: center; gap: 8px; min-height: 48px; cursor: pointer; list-style: none; font-size: 16px; font-weight: 600; }
+        body.calc-b2 .b2-extras summary::-webkit-details-marker { display: none; }
+        body.calc-b2 .b2-extras summary span:first-child { flex: 1; }
+        body.calc-b2 #b2ExtrasMeta { color: var(--b2-n600); font-size: 14px; font-weight: 400; }
+        body.calc-b2 .b2-extras[open] summary span:last-child { transform: rotate(180deg); }
+        body.calc-b2 .b2-side { position: sticky; top: 80px; min-width: 0; display: flex; flex-direction: column; gap: 24px; padding: 24px; border-radius: 12px; background: var(--b2-ink); color: var(--b2-white); }
+        body.calc-b2 .b2-side-title { font-size: 22px; font-weight: 700; line-height: 1.25; color: var(--b2-white); }
+        body.calc-b2 .rates-card { padding: 0; margin: 0; background: transparent; border: 0; box-shadow: none; }
+        body.calc-b2 .rates-header { display: grid; grid-template-columns: 1fr auto; gap: 8px; margin-bottom: 16px; }
+        body.calc-b2 .rates-title { font-size: 16px; font-weight: 600; color: var(--b2-n300); }
+        body.calc-b2 .rates-summary { display: none; }
+        body.calc-b2 .rate-source-toggle { grid-column: 1 / -1; order: 3; background: var(--b2-n700); border-color: var(--b2-n600); }
+        body.calc-b2 .src-btn { color: var(--b2-n300); }
+        body.calc-b2 .src-btn.active { color: var(--b2-ink); background: var(--b2-white); }
+        body.calc-b2 .refresh-btn { min-height: 44px; padding: 0 12px; border: 1px solid var(--b2-n500); border-radius: 8px; background: transparent; color: var(--b2-white); font-size: 16px; font-weight: 600; }
+        body.calc-b2 .rates-grid { display: grid; grid-template-columns: 1fr; gap: 8px; overflow: visible; }
+        body.calc-b2 .rate-item, body.calc-b2 .rate-item.highlight { display: grid; grid-template-columns: 1fr auto; gap: 4px 8px; padding: 12px 16px; background: var(--b2-n700); border: 0; border-radius: 8px; }
+        body.calc-b2 .rate-label { font-size: 14px; font-weight: 400; color: var(--b2-n300); }
+        body.calc-b2 .rate-value { font-size: 24px; font-weight: 700; color: var(--b2-white); white-space: nowrap; }
+        body.calc-b2 .rate-sub { grid-column: 1 / -1; margin-top: 4px; font-size: 12px; font-weight: 400; color: var(--b2-n300); }
+        body.calc-b2 .rate-item.highlight { display: none; }
+        body.calc-b2 .rates-updated { margin: 8px 0 0; font-size: 12px; color: var(--b2-n300); }
+        body.calc-b2 #resultsSection { display: block !important; margin: 0; padding: 24px 0 0; border-top: 1px solid var(--b2-n700); animation: none; }
+        body.calc-b2 .b2-result-bar { display: flex; flex-direction: column; gap: 16px; }
+        body.calc-b2 .result-main { margin: 0; padding: 0; text-align: left; background: transparent; color: var(--b2-white); }
+        body.calc-b2 .result-label { font-size: 16px; font-weight: 600; color: var(--b2-n300); opacity: 1; }
+        body.calc-b2 .result-value { font-size: 36px; font-weight: 700; line-height: 1.15; letter-spacing: -.01em; color: var(--b2-white); white-space: nowrap; }
+        body.calc-b2 .result-rate { font-size: 16px; font-weight: 600; color: var(--b2-white); opacity: 1; }
+        body.calc-b2 .result-empty-hint { display: none; font-size: 14px; font-weight: 400; color: var(--b2-n400); }
+        body.calc-b2 .result-main.is-empty #resultLabel, body.calc-b2 .result-main.is-empty #resultValue, body.calc-b2 .result-main.is-empty .result-rate { display: none; }
+        body.calc-b2 .result-main.is-empty .result-empty-hint { display: block; }
+        body.calc-b2 .result-profit { padding: 0; margin: 8px 0 0; background: transparent !important; color: var(--b2-n300) !important; font-size: 14px; font-weight: 400; }
+        body.calc-b2 #marginWarning { font-size: 14px !important; font-weight: 600 !important; }
+        body.calc-b2 #createDealSection { min-width: 0 !important; width: 100%; }
+        body.calc-b2 .b2-copy-primary { width: 100%; min-height: 50px; padding: 0 16px; border: 0; border-radius: 8px; background: var(--b2-action) !important; color: var(--b2-white); font-size: 16px; font-weight: 600; box-shadow: none; }
+        body.calc-b2 .b2-copy-primary:hover { background: var(--b2-action-hover) !important; }
+        body.calc-b2 .b2-copy-primary:disabled { background: var(--b2-n200) !important; color: var(--b2-n600); cursor: not-allowed; }
+        body.calc-b2 .b2-copy-preview { font-size: 13px; color: var(--b2-n300); white-space: pre-line; }
+        body.calc-b2 .b2-side-more { display: flex; flex-direction: column; gap: 12px; margin-top: 16px; }
+        body.calc-b2 #createDealSection, body.calc-b2 #paymentActionSection { min-width: 0 !important; width: 100%; }
+        body.calc-b2 #createDealBtn, body.calc-b2 #createPaymentBtn { width: 100%; min-height: 44px; padding: 0 16px; border: 1px solid var(--b2-n500); border-radius: 8px; background: transparent !important; color: var(--b2-white); font-size: 15px; font-weight: 600; box-shadow: none; }
+        body.calc-b2 #createDealBtn:disabled { opacity: .5; cursor: not-allowed; }
+        body.calc-b2 .comment-section { margin: 8px 0 !important; }
+        body.calc-b2 .comment-section .input-label { color: var(--b2-n300); }
+        body.calc-b2 .comment-section .amount-input { font-size: 16px !important; font-weight: 400; }
+        body.calc-b2 #clientCopyBlock { display: none !important; }
+        body.calc-b2 .details-section { border: 0; border-top: 1px solid var(--b2-n700); border-radius: 0; }
+        body.calc-b2 .details-header { padding: 12px 0; background: transparent; color: var(--b2-white); font-size: 16px; font-weight: 600; }
+        body.calc-b2 .details-content { display: none; }
+        body.calc-b2 .details-content.open { display: block; padding: 0 0 12px; }
+        body.calc-b2 .details-content, body.calc-b2 .details-content * { font-size: 14px; }
+        body.calc-b2 .info-card { display: none; }
+        body.calc-b2 .footer { padding: 24px 0; color: var(--b2-n600); font-size: 12px; }
+        body.calc-b2 .footer p, body.calc-b2 .footer-small { font-size: 12px; }
+        @media (max-width: 1100px) {
+            body.calc-b2 .dealtype-switcher { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        }
+        @media (max-width: 700px) {
+            body.calc-b2 .dealtype-switcher { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+            body.calc-b2 .container { padding: 16px; }
+            body.calc-b2 .header { margin-bottom: 16px; }
+            body.calc-b2 .top-nav { position: static; }
+            .b2-layout { display: flex; flex-direction: column; gap: 16px; }
+            body.calc-b2 .b2-params { gap: 16px; }
+            body.calc-b2 .b2-extras summary span:first-child { flex: none; }
+            body.calc-b2 .b2-layout .b2-side { display: contents; position: static; }
+            .b2-side-title { display: none; }
+            body.calc-b2 .rates-card { order: 3; width: 100%; padding: 16px; background: var(--b2-ink); border-radius: 12px; }
+            body.calc-b2 .rates-card:not([open]) { padding: 12px 16px; }
+            body.calc-b2 .rates-summary { display: flex; align-items: center; gap: 8px; cursor: pointer; list-style: none; color: var(--b2-n300); font-size: 14px; font-weight: 600; }
+            body.calc-b2 .rates-summary::-webkit-details-marker { display: none; }
+            body.calc-b2 .rates-summary-arrow { margin-left: auto; transition: transform .15s; }
+            body.calc-b2 .rates-card[open] .rates-summary-arrow { transform: rotate(180deg); }
+            body.calc-b2 .rates-card[open] .rates-summary { margin-bottom: 16px; }
+            .b2-params { order: 1; width: 100%; padding: 16px; }
+            body.calc-b2 #resultsSection { display: contents !important; }
+            body.calc-b2 .b2-result-bar { position: fixed; z-index: 50; left: 0; right: 0; bottom: 0; padding: 12px 16px max(12px, env(safe-area-inset-bottom)); background: var(--b2-ink); border-top: 1px solid var(--b2-n700); gap: 8px; display: none; }
+            body.calc-b2.b2-result-ready .b2-result-bar { display: flex; }
+            body.nav-shell-on.calc-b2 .b2-result-bar { bottom: calc(61px + env(safe-area-inset-bottom)); z-index: 221; padding-bottom: 12px; }
+            body.calc-b2 .b2-result-bar .result-main { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+            body.calc-b2 .b2-result-bar .result-value { font-size: 36px; text-align: left; max-width: 100%; overflow-x: auto; }
+            body.calc-b2 .b2-result-bar .result-rate { font-size: 14px; }
+            body.calc-b2 .b2-result-bar .result-profit, body.calc-b2 .b2-result-bar #marginWarning { display: none !important; }
+            body.calc-b2 .b2-side-more { order: 2; width: 100%; margin: 0; padding: 16px; background: var(--b2-white); border: 1px solid var(--b2-n300); border-radius: 12px; }
+            body.calc-b2 #createPaymentBtn, body.calc-b2 #createDealBtn { color: var(--b2-n700); border-color: var(--b2-n300); }
+            body.calc-b2 .comment-section .input-label { color: var(--b2-n700); }
+            body.calc-b2 .details-section { border-top-color: var(--b2-n200); }
+            body.calc-b2 .details-header { color: var(--b2-ink); }
+            body.calc-b2 .footer { padding-bottom: 24px; }
+            body.calc-b2 .container::after { display: none; content: ''; }
+            body.calc-b2.b2-result-ready .container::after { display: block; height: 160px; }
+            body.calc-b2 #b2ExtrasMeta { display: none; }
+        }
+        @media (max-width: 600px) {
+            body.calc-b2 .dealtype-btn { padding: 6px 4px; font-size: 14px; }
+            body.calc-b2 .method-switcher { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+            body.calc-b2 .rate-value { font-size: 24px; }
+            body.calc-b2 .top-nav .instruction-btn { display: none; }
+        }
+    </style>
 </head>
-<body>
+<body class="calc-b2">
     <!-- Global Navigation -->
     <nav class="top-nav">
-        <a href="/" class="active">🧮 Калькулятор</a>
-        <a href="/crm">📊 CRM</a>
-        <a href="/docs/instruction.html" class="instruction-btn" target="_blank">📋 Инструкция</a>
+        <a href="/" class="active">Калькулятор</a>
+        <a href="/crm">CRM</a>
+        <a href="/docs/instruction.html" class="instruction-btn" target="_blank">Инструкция</a>
     </nav>
 
     <div class="container">
         <header class="header">
             <div class="logo">
-                <span class="logo-icon">🧮</span>
+                <span class="logo-icon"></span>
                 <h1>Калькулятор обмена</h1>
             </div>
-            <div class="subtitle">RUB ↔ THB ↔ USDT | v5 ТОЧНЫЕ КУРСЫ</div>
+            <div class="subtitle" id="calculatorSubtitle">Рубли · баты · USDT</div>
         </header>
 
         <!-- Тип сделки -->
-        <div class="switcher-caption">Тип сделки</div>
+        <div class="switcher-caption" id="dealtypeCaption">Тип сделки</div>
         <div class="dealtype-switcher">
             <button class="dealtype-btn active" data-category="exchange" onclick="switchDealCategory('exchange')">
-                💱 Обмен
+                Обмен
             </button>
             <button class="dealtype-btn" data-category="property_freehold" onclick="switchDealCategory('property_freehold')">
-                🏠 Фрихолд
+                Фрихолд
             </button>
             <button class="dealtype-btn" data-category="property_leasehold" onclick="switchDealCategory('property_leasehold')">
-                📜 Лизхолд
+                Лизхолд
+            </button>
+            <button class="dealtype-btn" data-category="property_auto" onclick="switchDealCategory('property_auto')">
+                Оплата авто
             </button>
             <button class="dealtype-btn" data-category="other" onclick="switchDealCategory('other')">
-                ✏️ Другое
+                Другое
             </button>
         </div>
 
@@ -94,45 +294,49 @@
         <div class="switcher-caption" id="methodCaption">Метод обмена</div>
         <div class="method-switcher" id="methodSwitcher">
             <button class="method-btn active" data-method="doverka" onclick="switchMethod('doverka')">
-                🏦 СБП
+                СБП
             </button>
             <button class="method-btn" data-method="broker" onclick="switchMethod('broker')">
-                💼 Брокер
+                Брокер
             </button>
             <button class="method-btn" data-method="custom" onclick="switchMethod('custom')">
-                🎨 Кастом
+                Свой курс
             </button>
         </div>
 
         <!-- Кастомный курс (только для брокера/кастома) - ПЕРЕНЕСЕНО ВВЕРХ -->
         <div id="customRateSection" class="custom-rate-top" style="display: none;">
             <div class="custom-rate-card">
-                <label class="input-label" id="customRateLabel">💼 УСТАНОВИТЬ КУРС БРОКЕРА RUB-USDT</label>
+                <label class="input-label" id="customRateLabel">УСТАНОВИТЬ КУРС БРОКЕРА RUB-USDT</label>
                 <div class="input-wrapper">
                     <input type="text" id="customRubUsdt" class="amount-input" placeholder="Введите курс RUB/USDT" oninput="updateCustomRate(); hideResults()">
                     <span class="input-currency">₽</span>
                 </div>
-                <div id="customRateHint" class="custom-rate-hint">⚠️ Введите курс для начала расчёта</div>
+                <div id="customRateHint" class="custom-rate-hint">Введите курс для начала расчёта</div>
             </div>
             <div class="custom-rate-card" id="customUsdtThbCard" style="display: none; margin-top: 10px;">
-                <label class="input-label">🎨 УСТАНОВИТЬ КУРС THB-USDT</label>
+                <label class="input-label">УСТАНОВИТЬ КУРС THB-USDT</label>
                 <div class="input-wrapper">
                     <input type="text" id="customUsdtThb" class="amount-input" placeholder="Введите курс THB/USDT" oninput="updateCustomRate(); hideResults()">
                     <span class="input-currency">฿</span>
                 </div>
-                <div id="customUsdtThbHint" class="custom-rate-hint">⚠️ Введите курс для начала расчёта</div>
+                <div id="customUsdtThbHint" class="custom-rate-hint">Введите курс для начала расчёта</div>
             </div>
         </div>
 
         <!-- Актуальные курсы -->
-        <div class="rates-card" id="ratesCard">
+        <details class="rates-card" id="ratesCard" open>
+            <summary class="rates-summary">
+                <span id="ratesSummaryText">Курс: загрузка…</span>
+                <span class="rates-summary-arrow" aria-hidden="true">⌄</span>
+            </summary>
             <div class="rates-header">
-                <span class="rates-title">📊 Актуальные курсы</span>
+                <span class="rates-title">Курс сейчас</span>
                 <div class="rate-source-toggle" id="rateSourceToggle">
                     <button class="src-btn active" id="srcBitazza" onclick="setRateSource('bitazza')">Bitazza</button>
                     <button class="src-btn" id="srcBinance" onclick="setRateSource('binance')">Binance</button>
                 </div>
-                <button class="refresh-btn" id="refreshBtn" onclick="refreshRates()">
+                <button class="refresh-btn" id="refreshBtn" onclick="refreshAllRates()">
                     <span class="refresh-icon">↻</span> Обновить
                 </button>
             </div>
@@ -154,79 +358,115 @@
             <div class="rates-updated" id="ratesUpdated">
                 Обновлено: <span id="updateTime">загрузка...</span>
             </div>
-        </div>
+        </details>
 
         <!-- Сценарии обмена -->
+        <div class="b2-direction-label" id="b2DirectionLabel">Направление</div>
         <div class="scenarios-grid">
             <!-- Doverka сценарии -->
             <button class="scenario-btn active" data-method="doverka" data-scenario="rub-to-thb" onclick="switchScenario('rub-to-thb')">
-                <span class="scenario-icon">💰</span>
-                <div class="scenario-title">RUB → THB</div>
+                <span class="scenario-icon"></span>
+                <div class="scenario-title">Рубли → баты</div>
             </button>
             <button class="scenario-btn" data-method="doverka" data-scenario="thb-to-rub" onclick="switchScenario('thb-to-rub')">
-                <span class="scenario-icon">💸</span>
-                <div class="scenario-title">THB ← RUB</div>
+                <span class="scenario-icon"></span>
+                <div class="scenario-title">Баты → рубли</div>
             </button>
             <button class="scenario-btn" data-method="doverka" data-scenario="rub-to-usdt" onclick="switchScenario('rub-to-usdt')">
-                <span class="scenario-icon">💵</span>
-                <div class="scenario-title">RUB → USDT</div>
+                <span class="scenario-icon"></span>
+                <div class="scenario-title">Рубли → USDT</div>
             </button>
             <button class="scenario-btn" data-method="doverka" data-scenario="usdt-from-rub" onclick="switchScenario('usdt-from-rub')">
-                <span class="scenario-icon">💎</span>
-                <div class="scenario-title">USDT ← RUB</div>
+                <span class="scenario-icon"></span>
+                <div class="scenario-title">USDT → рубли</div>
             </button>
 
             <!-- Broker сценарии -->
             <button class="scenario-btn" data-method="broker" data-scenario="rub-to-thb" style="display: none;" onclick="switchScenario('rub-to-thb')">
-                <span class="scenario-icon">💰</span>
-                <div class="scenario-title">RUB → THB</div>
+                <span class="scenario-icon"></span>
+                <div class="scenario-title">Рубли → баты</div>
             </button>
             <button class="scenario-btn" data-method="broker" data-scenario="thb-to-usdt" style="display: none;" onclick="switchScenario('thb-to-usdt')">
-                <span class="scenario-icon">💎</span>
-                <div class="scenario-title">THB → USDT</div>
+                <span class="scenario-icon"></span>
+                <div class="scenario-title">Баты → USDT</div>
             </button>
             <button class="scenario-btn" data-method="broker" data-scenario="usdt-to-thb" style="display: none;" onclick="switchScenario('usdt-to-thb')">
-                <span class="scenario-icon">🔄</span>
-                <div class="scenario-title">USDT → THB</div>
+                <span class="scenario-icon"></span>
+                <div class="scenario-title">USDT → баты</div>
             </button>
             <button class="scenario-btn" data-method="broker" data-scenario="rub-to-usdt" style="display: none;" onclick="switchScenario('rub-to-usdt')">
-                <span class="scenario-icon">💵</span>
-                <div class="scenario-title">RUB → USDT</div>
+                <span class="scenario-icon"></span>
+                <div class="scenario-title">Рубли → USDT</div>
             </button>
         </div>
+        <p class="b2-direction-hint" id="b2DirectionHint">Считаем от рублей: вводите, сколько рублей вносит клиент.</p>
 
         <!-- Недвижимость / другое: оплата инвойса с доп-комиссиями -->
         <!-- Доп-поля недвижимости (надстройка над обменом, не заменяет его) -->
         <div class="property-extra" id="propertyExtra" style="display: none;">
-            <div class="property-badge" id="propertyBadge">🏠 Фрихолд — доп-расход на перевод застройщику</div>
+            <div class="pill property-badge" id="propertyBadge">Фрихолд — доп-расход на перевод застройщику</div>
 
             <!-- Только «Другое»: что за сделка -->
             <div id="propertyNoteWrapper" style="display: none; margin-bottom: 14px;">
-                <label class="input-label">✏️ Что за сделка</label>
+                <label class="input-label">Что за сделка</label>
                 <div class="input-wrapper">
                     <input type="text" id="propertyNote" class="amount-input" placeholder="Например: оплата за мебель" style="font-size: 15px; height: 44px;">
                 </div>
             </div>
 
-            <!-- Только фрихолд: комиссия за перевод (USD) -->
+            <!-- Только фрихолд: инвойс застройщика (USD или ฿) и тариф IPPS -->
             <div id="propertyFeeWrapper">
-                <div class="fee-grid">
-                    <div class="fee-cell">
-                        <label class="input-label">Комиссия за перевод</label>
-                        <div class="input-wrapper small">
-                            <input type="text" inputmode="decimal" id="propFeePercent" class="amount-input" value="0.8" oninput="hideResults()">
-                            <span class="input-currency">%</span>
-                        </div>
-                    </div>
-                    <div class="fee-cell">
-                        <label class="input-label">Фикс за перевод</label>
-                        <div class="input-wrapper small">
-                            <input type="text" inputmode="decimal" id="propFeeFixed" class="amount-input" value="50" oninput="hideResults()">
-                            <span class="input-currency">$</span>
-                        </div>
-                    </div>
+                <label class="input-label" id="propInvoiceTitle">Инвойс застройщика</label>
+                <div class="prop-chips" id="propInvCurChips">
+                    <button type="button" class="commission-btn active" data-cur="usd" onclick="setPropInvoiceCur('usd')">В USD</button>
+                    <button type="button" class="commission-btn" data-cur="thb" onclick="setPropInvoiceCur('thb')">В ฿</button>
                 </div>
-                <div class="fee-hint" id="propFeeHint">⚙️ Префилл фрихолда 0.8% + $50 — расход на перевод в USD, ляжет в расчёт ниже. Можно изменить под сделку.</div>
+
+                <!-- Инвойс в батах: сумма ฿ и курс ฿/$ → $ к отправке застройщику -->
+                <div id="propInvThbBox" style="display: none; margin-top: 12px;">
+                    <label class="input-label" for="propInvoiceThb">Сумма инвойса, ฿</label>
+                    <div class="input-wrapper">
+                        <input type="text" inputmode="decimal" id="propInvoiceThb" class="amount-input" placeholder="Например: 4,500,000" oninput="onPropInvoiceInput()">
+                        <span class="input-currency">฿</span>
+                    </div>
+                    <label class="input-label" style="margin-top: 12px;">Курс ฿/$ (TT Buying банка застройщика)</label>
+                    <div class="prop-chips" id="propFxChips"></div>
+                    <div id="propFxCustomBox" style="display: none; margin-top: 10px;">
+                        <div class="input-wrapper small">
+                            <input type="text" inputmode="decimal" id="propFxCustom" class="amount-input" placeholder="Например: 32.15" oninput="onPropInvoiceInput()">
+                            <span class="input-currency">฿/$</span>
+                        </div>
+                    </div>
+                    <div class="fee-hint"><span id="propFxHint"></span>
+                        <button type="button" class="refresh-btn" id="propFxRefresh" onclick="propLoadBankRates(true)" style="padding:4px 8px;margin-left:8px">Обновить курс</button>
+                    </div>
+                    <div class="fee-hint" id="propInvResult" style="font-weight: 600;"></div>
+                </div>
+                <div class="fee-hint" id="propInvUsdHint">Сумма, которую должен получить застройщик.</div>
+
+                <span class="input-label" id="propTariffLabel" style="margin-top: 14px;">Тариф перевода</span>
+                <div class="prop-chips" id="propTariffChips" role="group" aria-labelledby="propTariffLabel">
+                    <button type="button" class="commission-btn prop-tariff-btn active" data-tariff="bank" aria-pressed="true" onclick="setPropTariff('bank')">Банк<br><span class="prop-tariff-price">0,8% + 50$</span></button>
+                    <button type="button" class="commission-btn prop-tariff-btn" data-tariff="soft" aria-pressed="false" onclick="setPropTariff('soft')">Софт-счёт<br><span class="prop-tariff-price">1,5% + 50$</span></button>
+                    <button type="button" class="commission-btn prop-tariff-btn" data-tariff="custom" aria-pressed="false" onclick="setPropTariff('custom')">Свой тариф</button>
+                </div>
+                <div id="propCustomTariff" hidden>
+                    <div class="fee-grid">
+                        <div>
+                            <label class="input-label" for="propFeePercent">Комиссия, %</label>
+                            <div class="input-wrapper">
+                                <input type="text" inputmode="decimal" id="propFeePercent" class="amount-input" placeholder="0" aria-describedby="propFeeHint" oninput="onPropTariffInput()">
+                            </div>
+                        </div>
+                        <div>
+                            <label class="input-label" for="propFeeFixed">Фиксированная комиссия, USD</label>
+                            <div class="input-wrapper">
+                                <input type="text" inputmode="decimal" id="propFeeFixed" class="amount-input" placeholder="0" aria-describedby="propFeeHint" oninput="onPropTariffInput()">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="fee-hint" id="propFeeHint" role="status"></div>
+                </div>
             </div>
         </div>
 
@@ -235,13 +475,13 @@
             <div class="input-section">
                 <!-- Тип операции (показывается только для Брокера) -->
                 <div class="direction-switcher" id="directionSwitcher" style="display: none; margin-bottom: 20px;">
-                    <div class="direction-header">🎯 Тип операции</div>
+                    <div class="direction-header">Тип операции</div>
                     <div class="direction-buttons">
                         <button class="direction-btn active" data-direction="amount" onclick="setDirection('amount')">
-                            💰 Вношу сумму
+                            Вношу сумму
                         </button>
                         <button class="direction-btn" data-direction="target" onclick="setDirection('target')">
-                            🎯 Хочу получить
+                            Хочу получить
                         </button>
                     </div>
                 </div>
@@ -254,7 +494,7 @@
                         type="text" 
                         id="amount" 
                         class="amount-input" 
-                        placeholder="Например: 100000"
+                        placeholder="100 000"
                         oninput="formatInput(this); hideResults()"
                         onkeydown="if(event.key === 'Enter') calculate()"
                     >
@@ -262,15 +502,13 @@
                 </div>
 
                 <div class="calculate-action">
-                    <button class="calculate-btn" id="calculateBtn" onclick="calculate()">
-                        🚀 РАССЧИТАТЬ
-                    </button>
+                    <span id="calculateBtn" hidden aria-hidden="true"></span>
 
                     <!-- Индикатор автозапроса точного курса (показывается во время Playwright) -->
                     <div id="preciseRateStatus" style="display: none; margin-top: 10px; padding: 10px 14px;
                          background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 8px;
                          color: #0369a1; font-size: 0.9rem; text-align: center;">
-                        <span id="preciseRateStatusText">⏳ Получаем точный курс Binance...</span>
+                        <span id="preciseRateStatusText">Получаем точный курс Binance...</span>
                         <span id="preciseRateTime" style="font-size: 0.85em; opacity: 0.8; display: none;"></span>
                     </div>
 
@@ -279,49 +517,44 @@
                             style="display: none; margin-top: 10px; width: 100%; padding: 10px 14px;
                                    background: #fef3c7; border: 1px solid #fbbf24; border-radius: 8px;
                                    color: #92400e; font-size: 0.9rem; font-weight: 600; cursor: pointer;">
-                        ⚡ Binance-парсер недоступен — использовать быстрый курс (~0.2% погрешность)
+                        Binance-парсер недоступен — использовать быстрый курс (~0.2% погрешность)
                     </button>
                 </div>
 
-                <!-- Блок настроек (Скидки и Партнер) ПОД кнопкой РАССЧИТАТЬ -->
-                <div class="calculator-settings" style="margin-top: 25px; border-top: 1px solid #e2e8f0; padding-top: 20px;">
-                    <!-- Скидки -->
-                    <div id="commissionLevelSection" class="commission-level-section">
-                        <div class="discount-header">
-                            <label class="checkbox-label">
-                                <input type="checkbox" id="applyDiscount" onchange="toggleDiscount()">
-                                <span class="checkbox-text">🎁 Сделать скидку (изменить прибыль)</span>
-                            </label>
-                        </div>
-                        
-                        <div id="profitMarginWrapper" style="display: none; margin-top: 15px;">
-                            <label class="input-label">💰 Желаемая прибыль</label>
-                            <div class="commission-buttons profit-steps">
-                                <button class="commission-btn" data-profit="1.5" onclick="setProfitMargin(1.5)">1.5%</button>
-                                <button class="commission-btn" data-profit="2.0" onclick="setProfitMargin(2.0)">2%</button>
-                                <button class="commission-btn" data-profit="2.4" onclick="setProfitMargin(2.4)">2.4%</button>
-                                <button class="commission-btn" data-profit="3.0" onclick="setProfitMargin(3.0)">3%</button>
-                                <button class="commission-btn" data-profit="3.5" onclick="setProfitMargin(3.5)">3.5%</button>
-                                <button class="commission-btn" data-profit="4.0" onclick="setProfitMargin(4.0)">4%</button>
-                                <button class="commission-btn" data-profit="4.5" onclick="setProfitMargin(4.5)">4.5%</button>
-                                <button class="commission-btn" data-profit="5.0" onclick="setProfitMargin(5.0)">5%</button>
-                                <button class="commission-btn" id="customProfitBtn" data-profit="custom" onclick="toggleCustomProfit()">✏️ Своё</button>
-                            </div>
-                            <div id="customProfitWrapper" style="display: none; margin-top: 10px;">
-                                <div class="input-wrapper small">
-                                    <input type="text" inputmode="decimal" id="customProfitInput" class="amount-input" placeholder="Например 10" oninput="onCustomProfitInput(this)">
-                                    <span class="input-currency">%</span>
-                                </div>
-                                <div class="custom-profit-hint">Любое число от 0 до 99</div>
-                            </div>
-                        </div>
+                <!-- Скидка/наценка — всегда видна, без галочек и раскрытий -->
+                <div id="commissionLevelSection" class="commission-level-section" style="margin-top: 25px; border-top: 1px solid #e2e8f0; padding-top: 20px;">
+                    <div class="profit-header">
+                        <label class="input-label">Наша прибыль</label>
+                        <span class="profit-current" id="profitCurrentLabel">Стандарт 4%</span>
                     </div>
+                    <div class="profit-steps">
+                        <button class="commission-btn" data-profit="1.5" onclick="choosePresetProfit(1.5)">1.5%</button>
+                        <button class="commission-btn" data-profit="2.0" onclick="choosePresetProfit(2.0)">2%</button>
+                        <button class="commission-btn" data-profit="2.4" onclick="choosePresetProfit(2.4)">2.4%</button>
+                        <button class="commission-btn" data-profit="3.0" onclick="choosePresetProfit(3.0)">3%</button>
+                        <button class="commission-btn" data-profit="3.5" onclick="choosePresetProfit(3.5)">3.5%</button>
+                        <button class="commission-btn" data-profit="4.0" onclick="choosePresetProfit(4.0)">4%</button>
+                        <button class="commission-btn" data-profit="4.5" onclick="choosePresetProfit(4.5)">4.5%</button>
+                        <button class="commission-btn" data-profit="5.0" onclick="choosePresetProfit(5.0)">5%</button>
+                    </div>
+                    <button type="button" class="commission-btn profit-custom-btn" id="customProfitBtn" data-profit="custom" onclick="toggleCustomProfit()">Своё</button>
+                    <div id="customProfitWrapper" style="display: none; margin-top: 10px;">
+                        <div class="input-wrapper small">
+                            <input type="text" inputmode="decimal" id="customProfitInput" class="amount-input" placeholder="Например 10" oninput="onCustomProfitInput(this)">
+                            <span class="input-currency">%</span>
+                        </div>
+                        <div class="custom-profit-hint">Любое число от 0 до 99 — больше стандарта — наценка</div>
+                    </div>
+                    <div id="profitFloorHint" class="profit-floor-hint" style="display:none;">Ниже 1,5% — только с согласованием менеджера</div>
+                </div>
 
+                <!-- Блок настроек партнёра -->
+                <div class="calculator-settings" style="margin-top: 25px; border-top: 1px solid #e2e8f0; padding-top: 20px;">
                     <!-- Партнер -->
                     <div class="partner-section" style="margin-top: 20px;">
                         <label class="checkbox-label">
                             <input type="checkbox" id="hasPartner" onchange="togglePartner()">
-                            <span class="checkbox-text">👥 Есть партнер?</span>
+                            <span class="checkbox-text">Есть партнер?</span>
                         </label>
                         <div id="partnerPercentWrapper" style="display: none; margin-top: 15px;">
                             <label class="input-label">Модель вознаграждения</label>
@@ -333,7 +566,7 @@
                                     <input type="radio" name="partnerModel" value="markup" onchange="onPartnerModelChange()"> Markup (+% к курсу)
                                 </label>
                             </div>
-                            <label class="input-label" id="partnerPercentLabel">🤝 % партнера (от прибыли)</label>
+                            <label class="input-label" id="partnerPercentLabel">% партнера (от прибыли)</label>
                             <div class="input-wrapper small">
                                 <input type="text" id="partnerPercent" class="amount-input" value="50" oninput="hideResults()">
                                 <span class="input-currency">%</span>
@@ -348,6 +581,7 @@
             <!-- Результаты -->
             <div class="results-section" id="resultsSection" style="display: none;">
                 <div class="result-main">
+                    <div class="result-empty-hint" id="resultEmptyHint" style="display: none;">Введите сумму</div>
                     <div class="result-label" id="resultLabel">Клиент получит:</div>
                     <div class="result-value" id="resultValue">0 ฿</div>
                     <div class="result-rate">
@@ -362,16 +596,16 @@
                     <div style="background: #1E293B; border: 1px solid #334155; border-radius: 12px; padding: 16px; position: relative;">
                         <div id="clientCopyText" style="font-size: 15px; line-height: 1.6; color: #E2E8F0; white-space: pre-line;"></div>
                         <button onclick="copyClientMessage()" id="copyClientBtn" style="position: absolute; top: 12px; right: 12px; background: #4F46E5; border: none; border-radius: 8px; padding: 6px 14px; color: white; font-size: 13px; cursor: pointer; display: flex; align-items: center; gap: 4px;">
-                            📋 Копировать
+                            Копировать
                         </button>
                     </div>
                 </div>
 
                 <!-- Поле для комментария -->
                 <div class="comment-section" style="margin-bottom: 20px;">
-                    <label class="input-label">💬 Комментарий к платежу (необязательно)</label>
+                    <label class="input-label" for="paymentComment">Комментарий к платежу (необязательно)</label>
                     <div class="input-wrapper">
-                        <input type="text" id="paymentComment" class="amount-input" placeholder="Имя клиента, номер заказа и т.д." style="font-size: 16px; height: 45px;">
+                        <input type="text" id="paymentComment" class="amount-input" placeholder="Имя клиента или номер заказа" style="font-size: 16px; height: 45px;">
                     </div>
                 </div>
 
@@ -380,41 +614,41 @@
                     <!-- Кнопка создания платежа (только для Doverka) -->
                     <div id="paymentActionSection" style="display: none; flex: 1; min-width: 200px;">
                         <button class="calculate-btn" id="createPaymentBtn" onclick="createPayment()" style="background: linear-gradient(135deg, #4F46E5 0%, #3730A3 100%); width: 100%;">
-                            💳 СОЗДАТЬ ПЛАТЕЖ
+                            Создать платёж
                         </button>
                     </div>
                     <!-- Кнопка создания сделки в CRM (всегда видна после расчёта) -->
                     <div id="createDealSection" style="flex: 1; min-width: 200px;">
                         <button class="calculate-btn" id="createDealBtn" onclick="createDealFromCalc()" style="background: linear-gradient(135deg, #10B981 0%, #059669 100%); width: 100%;">
-                            📊 СОЗДАТЬ СДЕЛКУ В CRM
+                            Создать сделку в CRM
                         </button>
                     </div>
                 </div>
                 <div id="paymentResult" style="margin-bottom: 20px; display: none;">
                     <div class="info-note" style="background: #F0FDF4; border: 1px solid #BBF7D0; color: #166534; display: flex; align-items: flex-start; gap: 12px;">
                         <div style="flex: 1;">
-                            <strong>✅ Ссылка на оплату создана:</strong><br>
+                            <strong>Ссылка на оплату создана:</strong><br>
                             <a id="paymentLink" href="#" target="_blank" style="word-break: break-all; color: #4F46E5; font-weight: 600; text-decoration: underline;"></a>
                         </div>
                         <button onclick="copyPaymentLink()" class="refresh-btn" style="background: #10B981; padding: 6px 12px; font-size: 12px; margin-top: 4px;">
-                            📋 Копировать
+                            Копировать
                         </button>
                     </div>
                     <!-- Прямая ссылка СБП (НСПК) — та же, что за QR на странице оплаты -->
                     <div id="sbpLinkBox" class="info-note" style="display: none; margin-top: 10px; background: #EEF2FF; border: 1px solid #C7D2FE; color: #3730A3; align-items: flex-start; gap: 12px;">
                         <div style="flex: 1;">
-                            <strong>🏦 Прямая ссылка СБП (QR):</strong><br>
+                            <strong>Прямая ссылка СБП (QR):</strong><br>
                             <a id="sbpLink" href="#" target="_blank" style="word-break: break-all; color: #4F46E5; font-weight: 600; text-decoration: underline;"></a>
                         </div>
                         <button onclick="copySbpLink()" class="refresh-btn" style="background: #6366F1; padding: 6px 12px; font-size: 12px; margin-top: 4px;">
-                            📋 Копировать
+                            Копировать
                         </button>
                     </div>
                 </div>
 
                 <div class="details-section">
                     <div class="details-header" onclick="toggleDetails()">
-                        <span>📋 Детали расчета</span>
+                        <span>Детали расчета</span>
                         <span class="toggle-icon" id="toggleIcon">▼</span>
                     </div>
                     <div class="details-content" id="detailsContent">
@@ -427,7 +661,7 @@
         <!-- Информация -->
         <div class="info-card">
             <div class="info-header" onclick="toggleInfo()">
-                <span>ℹ️ Информация</span>
+                <span>Информация</span>
                 <span class="toggle-icon" id="infoToggleIcon">▼</span>
             </div>
             <div class="info-content" id="infoContent">
@@ -435,7 +669,7 @@
                     <strong>Режим СБП:</strong> Реальные курсы от API в реальном времени
                 </div>
                 <div class="info-note">
-                    <strong>Режим Broker:</strong> Кастомный курс RUB-USDT + выбор уровня комиссий
+                    <strong>Режим Broker:</strong> Свой курс RUB-USDT + выбор уровня комиссий
                 </div>
             </div>
         </div>
@@ -446,22 +680,24 @@
         </footer>
     </div>
 
-    <script src="calculator.js?v=28"></script>
+    <script src="calculator.js?v=33"></script>
+    <script src="/static/nav-shell.js?v=9"></script>
+    <script>NavShell.boot('calc');</script>
     <script>
         // Диагностика загрузки
-        console.log('🔍 Проверка функций:');
+        console.log('Проверка функций:');
         console.log('switchMethod:', typeof switchMethod);
         console.log('switchScenario:', typeof switchScenario);
         console.log('updateCustomRate:', typeof updateCustomRate);
         
         // Тест кнопок при загрузке
         document.addEventListener('DOMContentLoaded', () => {
-            console.log('✅ DOM загружен');
+            console.log('DOM загружен');
             console.log('Кнопки метода:', document.querySelectorAll('.method-btn').length);
             console.log('Кнопки сценариев:', document.querySelectorAll('.scenario-btn').length);
             console.log('Кнопки комиссий:', document.querySelectorAll('.commission-btn').length);
         });
     </script>
+    <script src="/static/visual-format.js?v=1"></script>
 </body>
 </html>
-

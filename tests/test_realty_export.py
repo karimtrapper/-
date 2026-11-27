@@ -237,6 +237,7 @@ class TestSync:
         resp = tc.post('/api/deals', json={
             'client_name': 'Export Client', 'deal_kind': 'mf_realty',
             'deal_type': 'pay_in', 'payin_method': 'crypto_direct',
+            'unverified_confirmed': True,
             'payin_amount_usdt': 512000, 'invoice_amount_thb': 16742400,
             'buy_rate_thb_usdt': 33.20, 'company_percent': 0.9,
         })

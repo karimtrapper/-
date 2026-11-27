@@ -1,0 +1,16 @@
+{
+  "base_head": "2876006b294bdebcdf2525ebe31cf22d5e97ee1f",
+  "stage_head": "a7ff3b35c115a3130cade85555e6c0e25e9d5ffd",
+  "sources": {
+    "app.py": "8e6b7c625697ec024188a28b66331f8900423f20467e98b4f291511b0accc9dd",
+    "stand_transfers.py": "6db1df1db4e8ab873764941e1f6832106227c64d31272986fe2d9fc6cf42c6de",
+    "static/stand/tasks.html": "f8c8fbfabae3a92ff7c14cd606e263cee33ff35a32b6c8ee4f69bb67f6cbb38c",
+    "static/crm/crm.html": "cf6bf39c7097fa70328b3856ea2d134472deb5dcfc63574a48046143a2ed14cb",
+    "tests/test_wallet_roles_manual_close.py": "994124b960e81d81b5c96bbb56f899d04d0bcac0b4e182791fde0ea0b35137d3",
+    "tests/test_wallet_roles_crm_qa.py": "e665766c1bce8ac76f2bad0e0e37d3fd1366fb47cd64830878fe87d066c11264",
+    "tests/test_wallet_roles_close_qa.py": "b086b06ea783bed498fdbb0a643213d61173e9762d20cbe24e0d9f4fb94006df",
+    "scripts/run_fenced_pytest.py": "57d859ffc10473e87d71f4f4e575c0bd02e5340c4995a2546c61ce5328e31549",
+    "scripts/run_fenced_js.py": "1d9c8249aba0936dc2054e7a623a9defe3da2af0ebb5b3f2f7c12fb221528178"
+  },
+  "app_commit": "dbafe9c8f1dd84e6f73731079a2682585017b41a"
+}

@@ -1,0 +1,385 @@
+"""Личные уведомления стенда: только локальная БД и подмена канала Telegram."""
+
+import json
+from datetime import datetime, timedelta
+from urllib.parse import parse_qs, urlparse
+
+import pytest
+from sqlalchemy import text
+
+import app as appmod
+import stand_notify as notify
+
+
+@pytest.fixture
+def dm(monkeypatch):
+    monkeypatch.setattr(appmod, 'STAND_MODE', True)
+    # При общем прогоне app импортирован без стенда, его таблицы создаём явно.
+    appmod._stand_migrate()
+    notify.init(appmod)
+    notify._bot_username = None
+    monkeypatch.setenv('STAND_NOTIFY_MODE', 'enabled')
+    monkeypatch.setenv('STAND_TG_CHAT', '-1003773734811')
+    calls = []
+
+    def telegram(method, payload):
+        calls.append((method, payload))
+        if method == 'getMe':
+            return {'ok': True, 'result': {'username': 'grusha_stand_bot'}}
+        if method == 'getWebhookInfo':
+            return {'ok': True, 'result': {'url': ''}}
+        if method == 'getUpdates':
+            return {'ok': True, 'result': []}
+        return {'ok': True}
+
+    monkeypatch.setattr(notify.stand_egress, 'tg_call', telegram)
+    db = appmod.SessionLocal()
+    db.execute(text('DELETE FROM stand_notify_log'))
+    db.execute(text('DELETE FROM stand_tg_bind'))
+    db.execute(text('UPDATE stand_tg_offset SET next_offset=0 WHERE id=1'))
+    db.query(appmod.AdminUser).filter(appmod.AdminUser.username.like('dm_test_%')).delete(synchronize_session=False)
+    original_board = appmod._stand_row(db)
+    original_data, original_version, original_notified = (
+        original_board.data, original_board.version, original_board.notified)
+    original_board.notified = '[]'
+    db.commit()
+    users = {}
+    for name, role, tg in [('karim', 'admin', 101), ('manager', 'manager', 102),
+                           ('operator', 'operator', 103), ('admin', 'admin', 104)]:
+        user = appmod.AdminUser(username='karim' if name == 'karim' else 'dm_test_' + name, display_name=name, role=role,
+                                password_hash='unused', notify_enabled=True,
+                                telegram_user_id=tg)
+        db.add(user)
+        users[name] = user
+    db.commit()
+    ids = {name: user.id for name, user in users.items()}
+    db.close()
+
+    def board(notes):
+        db = appmod.SessionLocal()
+        row = appmod._stand_row(db)
+        row.data = json.dumps({'notes': notes, 'deals': [{'id': 7, 'code': 'T7',
+            'client': 'Иван', 'managerUserId': ids['manager']}]})
+        db.commit(); db.close()
+
+    yield calls, ids, board
+    db = appmod.SessionLocal()
+    db.execute(text('DELETE FROM stand_notify_log'))
+    db.execute(text('DELETE FROM stand_tg_bind'))
+    db.query(appmod.AdminUser).filter(appmod.AdminUser.id.in_(ids.values())).delete(synchronize_session=False)
+    row = appmod._stand_row(db)
+    row.data, row.version, row.notified = original_data, original_version, original_notified
+    db.commit(); db.close()
+
+
+def note(number, role='manager'):
+    return {'id': f'dm-note-{number}', 'role': role, 'text': f'Задача {number}', 'dealId': 7}
+
+
+def sends(calls):
+    return [payload for method, payload in calls if method == 'sendMessage']
+
+
+def log_status(note_id, admin_id):
+    db = appmod.SessionLocal()
+    try:
+        return db.execute(text('SELECT status, attempts FROM stand_notify_log '
+                               'WHERE note_id=:n AND admin_id=:a'), {'n': note_id, 'a': admin_id}).first()
+    finally:
+        db.close()
+
+
+def test_shared_queue_and_operator_notifications_use_role_headings(dm, monkeypatch):
+    monkeypatch.setenv('STAND_BASE_URL', 'https://stand.example')
+    deal = {'7': {'id': 7, 'code': 'T7', 'client': 'Иван'}}
+    legacy = notify._format_note(note(90, 'operator'), deal, stand_label=True)
+    shared = notify._format_note({**note(91, 'operator'),
+        'recipientRoles': ['operator', 'findir', 'teodor']}, deal, stand_label=True)
+    assert legacy.startswith('🧪 <b>СТЕНД</b> (не прод)\n🔔 <b>Операционист</b>')
+    assert shared.startswith('🧪 <b>СТЕНД</b> (не прод)\n🔔 <b>Отправка с кошелька</b>')
+    assert 'Задача 91' in shared and 'https://stand.example/tasks?deal=7' in shared
+    assert appmod.STAND_ROLE_PEOPLE['operator'] not in shared
+
+
+@pytest.fixture
+def dm_operator_directory(dm):
+    """Keep the operator roster deterministic when earlier tests leave accounts in SQLite."""
+    _, ids, _ = dm
+    user = appmod.AdminUser
+    with appmod.SessionLocal() as db:
+        others = db.query(user).filter(user.role == 'operator', user.id != ids['operator'],
+                                       user.login_disabled.is_not(True)).all()
+        original_flags = {account.id: account.login_disabled for account in others}
+        for account in others:
+            account.login_disabled = True
+        db.commit()
+    try:
+        yield dm
+    finally:
+        with appmod.SessionLocal() as db:
+            for account_id, disabled in original_flags.items():
+                db.get(user, account_id).login_disabled = disabled
+            db.commit()
+
+
+def test_operator_headings_follow_active_account_and_assignment(dm_operator_directory):
+    calls, ids, board = dm_operator_directory
+    db = appmod.SessionLocal()
+    operator = db.get(appmod.AdminUser, ids['operator'])
+    operator.display_name = 'Ирина <сверка>'
+    second = appmod.AdminUser(username='dm_test_previous', display_name='Настя', role='operator',
+                              notify_enabled=True, login_disabled=True, telegram_user_id=106,
+                              password_hash='unused')
+    db.add(second)
+    db.commit()
+    ids['previous'] = second.id
+    db.close()
+
+    def headings(event):
+        calls.clear()
+        board([event])
+        notify.deliver()
+        return {payload['chat_id']: payload['text'].splitlines()[0] for payload in sends(calls)}
+
+    irina = '🔔 <b>Ирина &lt;сверка&gt;</b>'
+    role = '🔔 <b>Операционист</b>'
+    assert headings(note(92, 'operator')) == {101: irina, 103: irina, 104: irina}
+    assert headings({**note(93, 'operator'), 'recipientAdminId': ids['previous']}) == {101: role, 104: role}
+
+    db = appmod.SessionLocal()
+    second = db.get(appmod.AdminUser, ids['previous'])
+    second.display_name = 'Мария'
+    second.login_disabled = False
+    db.commit()
+    db.close()
+
+    maria = '🔔 <b>Мария</b>'
+    assert headings(note(94, 'operator')) == {101: role, 103: irina, 104: role, 106: maria}
+    assert headings({**note(95, 'operator'), 'recipientAdminId': ids['previous']}) == {
+        101: maria, 104: maria, 106: maria,
+    }
+
+
+def test_roles_admin_and_dedup_after_double_delivery(dm):
+    calls, ids, board = dm
+    board([note(1), note(2, 'operator')])
+    notify.deliver(); notify.deliver()
+    assert [x['chat_id'] for x in sends(calls)] == [101, 103, 104, 101, 102, 104]
+    assert all(x['chat_id'] > 0 for x in sends(calls))
+    assert log_status('dm-note-1', ids['operator'])[0] == 'suppressed'
+    assert log_status('dm-note-2', ids['manager'])[0] == 'suppressed'
+
+
+def test_karim_only_mute_role_change_unbind_and_no_backfill(dm, monkeypatch):
+    calls, ids, board = dm
+    monkeypatch.setenv('STAND_NOTIFY_MODE', 'karim_only')
+    board([note(3)])
+    notify.deliver()
+    assert [x['chat_id'] for x in sends(calls)] == [101]
+    assert log_status('dm-note-3', ids['manager'])[0] == 'suppressed'
+    board([note(4), note(3)])
+    notify.deliver()
+    assert [x['chat_id'] for x in sends(calls)] == [101, 101]
+    monkeypatch.setenv('STAND_NOTIFY_MODE', 'enabled')
+    db = appmod.SessionLocal()
+    manager = db.query(appmod.AdminUser).get(ids['manager'])
+    manager.notify_enabled = False
+    db.commit(); db.close()
+    board([note(5), note(4), note(3)])
+    notify.deliver()
+    assert log_status('dm-note-5', ids['manager'])[0] == 'suppressed'
+    db = appmod.SessionLocal()
+    manager = db.query(appmod.AdminUser).get(ids['manager'])
+    manager.notify_enabled = True
+    manager.role = 'operator'
+    manager.telegram_user_id = None
+    db.commit(); db.close()
+    board([note(6, 'operator'), note(5), note(4), note(3)])
+    notify.deliver()
+    assert log_status('dm-note-6', ids['manager'])[0] == 'suppressed'
+    assert log_status('dm-note-5', ids['manager'])[0] == 'suppressed'
+
+
+def test_delivery_result_distinguishes_sent_from_suppressed(dm, monkeypatch):
+    calls, ids, board = dm
+    board([note(31, 'operator')])
+    monkeypatch.setenv('STAND_NOTIFY_MODE', 'karim_only')
+    result = notify.deliver()
+    statuses = {item['role']: item['status'] for item in result
+                if item['note_id'] == 'dm-note-31'}
+    assert statuses['admin'] == 'sent'
+    assert statuses['operator'] == 'suppressed'
+    assert len(sends(calls)) == 1
+
+
+def test_delivery_result_aggregates_multiple_users_of_one_role(dm, monkeypatch):
+    calls, ids, board = dm
+    db = appmod.SessionLocal()
+    second = appmod.AdminUser(username='dm_test_operator2', display_name='operator2',
+        role='operator', password_hash='unused', notify_enabled=False,
+        telegram_user_id=105)
+    db.add(second); db.commit(); ids['operator2'] = second.id; db.close()
+    monkeypatch.setenv('STAND_NOTIFY_MODE', 'enabled')
+    board([note(32, 'operator')])
+    result = notify.deliver()
+    statuses = {(item['note_id'], item['role']): item['status'] for item in result}
+    assert statuses[('dm-note-32', 'operator')] == 'sent'
+    # The admin copy is aggregated under admin and cannot override operator status.
+    assert statuses[('dm-note-32', 'admin')] == 'sent'
+    assert [x['chat_id'] for x in sends(calls)].count(103) == 1
+
+    def fail_one_operator(method, payload):
+        calls.append((method, payload))
+        if method == 'getMe':
+            return {'ok': True, 'result': {'username': 'grusha_stand_bot'}}
+        if method == 'sendMessage' and payload['chat_id'] == 103:
+            return {'ok': False, 'error_code': 403}
+        return {'ok': True}
+    monkeypatch.setattr(notify.stand_egress, 'tg_call', fail_one_operator)
+    board([note(33, 'operator')])
+    result = notify.deliver()
+    statuses = {(item['note_id'], item['role']): item['status'] for item in result}
+    assert statuses[('dm-note-33', 'operator')] == 'failed'
+
+
+def test_failed_403_429_and_timeout_retry_without_group(dm, monkeypatch):
+    calls, ids, board = dm
+    board([note(7)])
+    outcomes = iter([{'ok': False, 'error_code': 403}, {'ok': False, 'error_code': 429},
+                     TimeoutError(), {'ok': True}])
+    def telegram(method, payload):
+        calls.append((method, payload))
+        if method != 'sendMessage' or payload['chat_id'] != 102:
+            return {'ok': True}
+        value = next(outcomes)
+        if isinstance(value, Exception):
+            raise value
+        return value
+    monkeypatch.setattr(notify.stand_egress, 'tg_call', telegram)
+    for attempt in range(1, 5):
+        notify.deliver()
+        assert log_status('dm-note-7', ids['manager'])[1] == attempt
+    assert log_status('dm-note-7', ids['manager'])[0] == 'sent'
+    assert all(x['chat_id'] != -1003773734811 for x in sends(calls))
+
+
+def test_bind_valid_expired_repeated_group_and_offset_restart(dm, monkeypatch):
+    calls, ids, _ = dm
+    link = notify.create_bind(ids['manager'])
+    nonce = parse_qs(urlparse(link).query)['start'][0].removeprefix('bind_')
+    group = {'update_id': 1, 'message': {'chat': {'type': 'group', 'id': -10},
+                                       'from': {'id': 777}, 'text': '/start bind_' + nonce}}
+    assert not notify.process_update(group)
+    assert not notify.process_update({'message': {'chat': {'type': 'private', 'id': 777},
+                                                  'from': {'id': 777}, 'text': '/start'}})
+    monkeypatch.setattr(notify.stand_egress, 'tg_call',
+                        lambda method, payload: {'ok': True, 'result': [group, {
+                            'update_id': 2, 'message': {'chat': {'type': 'private', 'id': 777},
+                            'from': {'id': 777}, 'text': '/start bind_' + nonce}}]} if method == 'getUpdates'
+                        else {'ok': True, 'result': {'username': 'grusha_stand_bot', 'id': 1}}
+                        if method == 'getMe' else {'ok': True})
+    assert notify.poll_once()
+    assert not notify.process_update({'message': {'chat': {'type': 'private', 'id': 777},
+                                                  'from': {'id': 777}, 'text': '/start bind_' + nonce}})
+    db = appmod.SessionLocal()
+    assert db.query(appmod.AdminUser).get(ids['manager']).telegram_user_id == 777
+    assert db.execute(text('SELECT next_offset FROM stand_tg_offset WHERE id=1')).scalar() == 3
+    db.close()
+    assert notify.poll_once()  # апдейты 1 и 2 повторились; offset не откатывается
+    expired = notify.create_bind(ids['operator']).split('bind_')[1]
+    db = appmod.SessionLocal()
+    db.execute(text('UPDATE stand_tg_bind SET expires_at=:past WHERE nonce=:nonce'),
+               {'past': datetime.utcnow() - timedelta(seconds=1), 'nonce': expired})
+    db.commit(); db.close()
+    assert not notify.consume_bind(expired, 888)
+
+
+def test_webhook_disables_poll_and_notify_test_requires_admin(dm, monkeypatch):
+    calls, ids, _ = dm
+    monkeypatch.setenv('STAND_TG_TOKEN', 'fake-token')
+    monkeypatch.setenv('STAND_TG_UPDATES_ENABLED', '1')
+    monkeypatch.setattr(notify.stand_egress, 'tg_call',
+                        lambda method, payload: {'ok': True, 'result':
+                            {'username': 'grusha_stand_bot', 'id': 1} if method == 'getMe'
+                            else {'url': 'https://example.test/hook'}})
+    assert not notify.start_updates()
+    assert notify.status() == 'webhook_set'
+    with appmod.app.test_client() as client:
+        with client.session_transaction() as sess:
+            sess['user_id'] = ids['manager']
+        assert client.post('/api/stand/notify-test/' + str(ids['manager'])).status_code == 403
+        assert client.get('/api/stand/tg-status').status_code == 403
+        with client.session_transaction() as sess:
+            sess['user_id'] = ids['admin']
+        monkeypatch.setattr(notify.stand_egress, 'tg_call', lambda method, payload: {'ok': True})
+        assert client.post('/api/stand/notify-test/' + str(ids['manager'])).json['status'] == 'sent'
+        monkeypatch.setenv('STAND_NOTIFY_MODE', 'karim_only')
+        assert client.post('/api/stand/notify-test/' + str(ids['manager'])).json['status'] == 'suppressed'
+
+
+def test_double_put_and_poll_do_not_resend(dm, monkeypatch):
+    calls, ids, board = dm
+    board([note(8)])
+    monkeypatch.setattr(appmod, 'current_role', lambda: 'admin')
+    with appmod.app.test_client() as client:
+        # После gate стенда (T2) обхода LOCAL_NO_AUTH нет — входим сессией админа.
+        with client.session_transaction() as sess:
+            sess['user_id'] = ids['admin']
+        first = client.get('/api/stand/state').json
+        state = first['data']
+        state['notes'] = [note(8)]
+        assert client.put('/api/stand/state', json={'version': first['version'], 'data': state}).status_code == 200
+        second = client.get('/api/stand/state').json
+        assert client.put('/api/stand/state', json={'version': second['version'], 'data': second['data']}).status_code == 200
+    notify.deliver(); notify.deliver()  # два фоновых прохода после PUT
+    assert [x['chat_id'] for x in sends(calls)] == [101, 102, 104]
+    assert log_status('dm-note-8', ids['manager'])[0] == 'sent'
+
+
+def test_bind_route_uses_current_account_and_policy_requires_numeric_private_id(dm, monkeypatch):
+    calls, ids, _ = dm
+    with appmod.app.test_client() as client:
+        with client.session_transaction() as sess:
+            sess['user_id'] = ids['manager']
+        result = client.post('/api/stand/tg-bind', json={'admin_id': ids['admin']})
+        assert result.status_code == 200
+        nonce = result.json['url'].split('bind_')[1]
+    db = appmod.SessionLocal()
+    assert db.execute(text('SELECT admin_id FROM stand_tg_bind WHERE nonce=:nonce'),
+                      {'nonce': nonce}).scalar() == ids['manager']
+    db.close()
+    assert not notify.can_send('telegram', '-1003773734811', 'sendMessage')
+    assert not notify.can_send('telegram', -1003773734811, 'sendMessage')
+    assert not notify.can_send('telegram', True, 'sendMessage')
+    assert not notify.process_update({'message': {'chat': {'type': 'private', 'id': 999},
+                                                  'from': {'id': '999'}, 'text': '/start bind_' + nonce}})
+    assert notify.process_update({'message': {'chat': {'type': 'private', 'id': 999},
+                                              'from': {'id': 999}, 'text': '/start bind_' + nonce}})
+    assert notify.can_send('telegram', 999, 'sendMessage')
+
+
+def test_task_archive_skips_archived_telegram_notes_and_queue(dm, monkeypatch):
+    calls, ids, board = dm
+    archived_note = note(1)
+    general_note = {**note(2), 'dealId': None}
+    outbox_note = {**note(3), 'dealId': '7'}
+    board([archived_note, general_note])
+    with appmod.SessionLocal() as db:
+        row = appmod._stand_row(db)
+        state = json.loads(row.data)
+        state['deals'][0].update(taskArchived=True, step='s23')
+        row.data = json.dumps(state)
+        row.notified = json.dumps([outbox_note])
+        db.commit()
+    inspected = []
+    monkeypatch.setattr(appmod, '_stand_batch_main', lambda *_args: inspected.append(7))
+    notify.deliver()
+    assert [message['chat_id'] for message in sends(calls)] == [101, 102, 104]
+    assert all('Задача 2' in message['text'] for message in sends(calls))
+    assert inspected == []
+    assert log_status(archived_note['id'], ids['manager']) is None
+    assert log_status(outbox_note['id'], ids['manager']) is None
+    with appmod.SessionLocal() as db:
+        row = appmod._stand_row(db)
+        assert json.loads(row.data) == state
+        assert json.loads(row.notified) == [outbox_note]

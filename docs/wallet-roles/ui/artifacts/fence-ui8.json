@@ -1,0 +1,10 @@
+{
+  "python": "3.11.17",
+  "mode": "pytest",
+  "port_pool": [
+    24558,
+    24621
+  ],
+  "pytest_exit": 1,
+  "attempts": []
+}

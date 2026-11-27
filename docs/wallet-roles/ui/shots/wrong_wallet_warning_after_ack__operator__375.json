@@ -1,0 +1,180 @@
+{
+ "blueText": [],
+ "bluePlaques": [],
+ "scaleViolations": [],
+ "toast": {
+  "text": "Расхождение адреса подтверждено. Выберите фактический кошелёк и повторите проверку.",
+  "error": false
+ },
+ "fontFaces": [
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:loaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:loaded",
+  "Inter:loaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:loaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:loaded",
+  "Inter:loaded",
+  "Inter:unloaded",
+  "Inter:loaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:loaded",
+  "Inter:loaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded"
+ ],
+ "interLoaded": true,
+ "stylesheets": [
+  "http://127.0.0.1:24558/static/stand/vendor/inter-v20/font.css",
+  "http://127.0.0.1:24558/static/nav-shell.css?v=6",
+  "http://127.0.0.1:24558/static/task-list.css?v=6"
+ ],
+ "url": "/tasks",
+ "innerWidth": 375,
+ "scrollWidth": 375,
+ "bodyScrollWidth": 375,
+ "hScroll": false,
+ "expectedWidth": 375,
+ "layoutViewportExpanded": false,
+ "visualViewportWidth": 375,
+ "docClientWidth": 375,
+ "overflowOffenders": [],
+ "fontSizes": {
+  "16px": 10,
+  "12px": 6,
+  "14px": 61,
+  "22px": 4
+ },
+ "fontWeights": {
+  "400": 34,
+  "600": 43,
+  "700": 4
+ },
+ "families": [
+  "Inter",
+  "ui-monospace"
+ ],
+ "addrNodes": [
+  {
+   "text": "TDuDeRiw…g58A6wZk",
+   "title": "",
+   "mono": true,
+   "lines": 2,
+   "whiteSpace": "nowrap",
+   "wrapAnywhere": "normal",
+   "shortForm": true,
+   "full": false,
+   "cutAtEdge": false
+  },
+  {
+   "text": "aaaaaaaa…aaaaaaaa",
+   "title": "",
+   "mono": true,
+   "lines": 2,
+   "whiteSpace": "nowrap",
+   "wrapAnywhere": "normal",
+   "shortForm": true,
+   "full": false,
+   "cutAtEdge": false
+  },
+  {
+   "text": "TDuDeRiw…g58A6wZk",
+   "title": "",
+   "mono": true,
+   "lines": 2,
+   "whiteSpace": "nowrap",
+   "wrapAnywhere": "normal",
+   "shortForm": true,
+   "full": false,
+   "cutAtEdge": false
+  },
+  {
+   "text": "TA6S3RBE…18inenG4",
+   "title": "",
+   "mono": true,
+   "lines": 2,
+   "whiteSpace": "nowrap",
+   "wrapAnywhere": "normal",
+   "shortForm": true,
+   "full": false,
+   "cutAtEdge": false
+  }
+ ],
+ "addrClipped": [],
+ "addrUnshortened": [],
+ "fullAddresses": [
+  "TKkeEVf2zySaWTLyX2qPwvi6kcdHRuPxkJ",
+  "TWBgeUo74DehAPgw5cKTdYUTXtJELqwwqn",
+  "TVmgzMQ2zwV2DVPscBf98WRRdhrcpf5x5p",
+  "TA6S3RBEY57jq8fXEVVsU6H9JZ18inenG4"
+ ],
+ "mfstrAddresses": [],
+ "signerAddrsVisible": {
+  "operator": false,
+  "findir": false,
+  "teodor": false
+ },
+ "coralButtons": [
+  "USDT получены — решить, что с ними делать"
+ ],
+ "smallTargets": [],
+ "smallSmCount": 9,
+ "emoji": [],
+ "moneyPrefixBad": [],
+ "dollarSuffixBad": [],
+ "title": "Синтетика 1609",
+ "open": {
+  "deal": 1609,
+  "role": "operator",
+  "width": "375",
+  "versionBefore": 2,
+  "versionAfter": 2,
+  "viewMutated": false,
+  "deltaPaths": [],
+  "deltaSummary": {},
+  "deltaDealIds": [],
+  "topLevelDelta": [],
+  "semanticPaths": [],
+  "semanticChange": false,
+  "noopVersionBump": false
+ },
+ "capture": {
+  "metricsViewport": [
+   375,
+   812
+  ],
+  "tallImageViewport": [
+   375,
+   3133
+  ],
+  "tallImageIsResizedViewport": true,
+  "firstScreenFile": "wrong_wallet_warning_after_ack__operator__375__first-screen.png"
+ }
+}

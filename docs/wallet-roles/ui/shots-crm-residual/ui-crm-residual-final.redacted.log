@@ -1,0 +1,38 @@
+FENCED_RUN python=3.11.17 port_pool=36844-36907
+✅ CR-05 migration applied: UNIQUE(deal_id, type) on wallet_operations
+✅ Database migration successful
+✅ Database initialized
+✅ Reestr seeded: deals=113, brokers=17, requests=37, merchants=6, wallets=8
+⚠️ Файл .env не найден
+[STAND] Реестр кошельков засеян
+.[STAND] Реестр кошельков засеян
+.
+=============================== warnings summary ===============================
+../../../../private/tmp/s27-venv311/lib/python3.11/site-packages/flask_limiter/extension.py:336
+  /private/tmp/s27-venv311/lib/python3.11/site-packages/flask_limiter/extension.py:336: UserWarning: Using the in-memory storage for tracking rate limits as no storage was explicitly specified. This is not recommended for production use. See: https://flask-limiter.readthedocs.io#configuring-a-storage-backend for documentation about configuring the storage backend.
+    warnings.warn(
+
+app.py:421
+  /Users/karimamirov/worktrees/calccrm-wallet-roles/app.py:421: MovedIn20Warning: The ``declarative_base()`` function is now available as sqlalchemy.orm.declarative_base(). (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+    Base = declarative_base()
+
+app.py:2537
+  /Users/karimamirov/worktrees/calccrm-wallet-roles/app.py:2537: SAWarning: Cannot correctly sort tables; there are unresolvable cycles between tables "clients, referrers", which is usually caused by mutually dependent foreign key constraints.  Foreign key constraints involving these tables will not be considered; this warning may raise an error in a future release.
+    tables=[table for table in Base.metadata.sorted_tables
+
+docs/wallet-roles/ui/test_capture_wallet_roles_ui.py::test_capture_crm_money_wrap_only
+docs/wallet-roles/ui/test_capture_wallet_roles_ui.py::test_capture_crm_residual_final
+  /Users/karimamirov/worktrees/calccrm-wallet-roles/app.py:2661: SAWarning: Cannot correctly sort tables; there are unresolvable cycles between tables "clients, referrers", which is usually caused by mutually dependent foreign key constraints.  Foreign key constraints involving these tables will not be considered; this warning may raise an error in a future release.
+    tables=[table for table in Base.metadata.sorted_tables
+
+docs/wallet-roles/ui/test_capture_wallet_roles_ui.py: 162 warnings
+  /Users/karimamirov/worktrees/calccrm-wallet-roles/app.py:257: LegacyAPIWarning: The Query.get() method is considered legacy as of the 1.x series of SQLAlchemy and becomes a legacy construct in 2.0. The method is now available as Session.get() (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+    user = db.query(AdminUser).get(uid)
+
+docs/wallet-roles/ui/test_capture_wallet_roles_ui.py: 12 warnings
+  /Users/karimamirov/worktrees/calccrm-wallet-roles/app.py:5294: LegacyAPIWarning: The Query.get() method is considered legacy as of the 1.x series of SQLAlchemy and becomes a legacy construct in 2.0. The method is now available as Session.get() (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+    user = db.query(AdminUser).get(flask_session['user_id'])
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+2 passed, 3 deselected, 179 warnings in 29.28s
+NETWORK_FENCE attempts=0 unexpected=0 report=/tmp/calccrm-t19-fence-reports/20261020T004707-60282.json

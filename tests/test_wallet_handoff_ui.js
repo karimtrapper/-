@@ -1,0 +1,489 @@
+// Задачник: политика кошелька («Заводит»/«Подписывает»), «Передать», перехват, блок реквизитов только у claim.
+// Реализация в tasks.html сверяется с той же таблицей, что и wallet_policy.py (tests/fixtures/wallet_policy_table.json).
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const vm = require('node:vm');
+
+const html = fs.readFileSync('static/stand/tasks.html', 'utf8');
+const source = name => {
+  const m = html.match(new RegExp('^(?:async )?function ' + name + '\\([^]*?^}', 'm'));
+  assert.ok(m, 'нет функции ' + name);
+  return m[0];
+};
+const consts = html.slice(html.indexOf('const POLICY_ROLE_ORDER'), html.indexOf('function policyInitiators'));
+const names = ['hasPolicy', 'policyInitiators', 'policyInitiateTargets', 'policyInitiateRole', 'policySignRole',
+  'policySignTargets', 'policyCanClaim', 'policyRoleNames', 'bkkTime', 'policyReleasedByMe', 'policyLastReleased',
+  'policyLocked', 'policyOwnsSend', 'policyOwnsSign', 'policyOwnsVerification', 'policyNeedsApproval', 'policyApprovalActor',
+  'dispatchRole', 'handoffTargets', 'handoffBlock', 'handoffToggle', 'takeoverWarning', 'takeoverAskView', 'takeoverCancel', 'takeoverConfirm', 'markSentBlock', 'transferMarkSent', 'policyActions', 'policyStatusLine', 'walletPolicyLine', 'transferHandoff',
+  'transferPolicyActor', 'transferClaim', 'transferPropose', 'transferConfirm', 'transferReportSent',
+  'walletSourceLine', 'walletRolesFields', 'txShort'];
+const table = JSON.parse(fs.readFileSync('tests/fixtures/wallet_policy_table.json', 'utf8'));
+
+// Массивы из vm-контекста другой realm: сравниваем через JSON.
+const eq = (actual, expected, msg) => assert.equal(JSON.stringify(actual), JSON.stringify(expected), msg);
+function makeCtx(overrides = {}) {
+  const calls = [];
+  const ctx = {calls,
+    S: {role: 'manager'}, standMeId: 7, standVer: 11, wallet: null, deals: {},
+    transferClaimPending: new Set(), standRequireSaved: async () => true,
+    htmlText: s => String(s ?? ''), usd: n => '$' + n, render: () => {}, toast: () => {},
+    val: () => '', checkSends: () => {},
+    cnvMembers: () => [], bkkLabel: null,
+    dealWallet: () => ctx.wallet,
+    standAction: async (path, body) => { calls.push({path, body}); return {success: true}; },
+    deal: id => ctx.deals[id],
+    document: {querySelectorAll: () => [], querySelector: () => null},
+    ...overrides,
+  };
+  vm.createContext(ctx);
+  vm.runInContext(consts + ['isNativeCashPartner',...names].map(source).join('\n'), ctx);
+  return ctx;
+}
+
+// Только админ передаёт серверу роль открытой маски в policy-действиях.
+{
+  (async () => {
+    const admin = makeCtx({S: {role: 'operator'}, standMe: 'admin'});
+    await admin.transferClaim(1);
+    await admin.transferPropose(1);
+    await admin.transferConfirm(1);
+    await admin.transferReportSent(1);
+    assert.equal(admin.calls.length, 4);
+    admin.calls.forEach(({body}) => assert.equal(body.actorRole, 'operator'));
+    const ordinary = makeCtx({S: {role: 'operator'}, standMe: 'manager'});
+    await ordinary.transferClaim(1);
+    assert.equal('actorRole' in ordinary.calls[0].body, false);
+    console.log('admin policy role mask payload: PASS');
+  })().catch(e => { console.error(e); process.exitCode = 1; });
+}
+const walletOf = row => ({name: row.purpose, initiator_roles: row.initiator_roles,
+  confirmer_roles: row.confirmer_roles, owner_can_alone: row.owner_can_alone});
+const run = (ctx, code) => vm.runInContext(code, ctx);
+
+// Claim ждёт подтверждённого сохранения; повторный тап не отправляет второй запрос.
+{
+  (async () => {
+    let release;
+    const saved = new Promise(resolve => { release = resolve; });
+    const button = {textContent: 'Начать работу', disabled: false,
+      dataset: {claimBlocked: 'false', claimLabel: 'Начать работу'}};
+    const ctx = makeCtx({standRequireSaved: () => saved,
+      document: {querySelector: () => button}});
+    const first = ctx.transferClaim(1), second = ctx.transferClaim(1);
+    assert.equal(ctx.calls.length, 0, 'пока save не завершён, claim не уходит');
+    assert.equal(button.disabled, true);
+    assert.equal(button.textContent, 'Начинаем…');
+    ctx.standVer = 12;
+    release(true);
+    await Promise.all([first, second]);
+    eq(ctx.calls, [{path: '/api/stand/transfer/claim', body: {dealId: 1, version: 12}}]);
+    assert.equal(button.disabled, false);
+    assert.equal(button.textContent, 'Начать работу');
+    ctx.calls.length = 0;
+    ctx.standRequireSaved = async () => false;
+    await ctx.transferClaim(1);
+    assert.equal(ctx.calls.length, 0, 'ошибка/таймаут сохранения не запускает claim');
+    assert.equal(button.disabled, false, 'после ошибки кнопку можно нажать повторно');
+    console.log('claim waits for saved board and current version: PASS');
+  })().catch(e => { console.error(e); process.exitCode = 1; });
+}
+
+// ---- 1. Те же таблицы, что у Python: «завести», «передать», «подписать» — все 6 кошельков
+for (const [address, row] of Object.entries(table)) {
+  const ctx = makeCtx();
+  const w = walletOf(row);
+  assert.equal(ctx.hasPolicy(w), true, address);
+  assert.equal(ctx.policyInitiateRole({}, w), row.initial_role, address);
+  eq(ctx.policyInitiateTargets(w, row.initial_role), row.initiate_targets_from_start, address);
+  for (const role of ['operator', 'findir', 'teodor']) {
+    eq(ctx.policyInitiateTargets(w, role), row.initiate_targets[role], address + ' ' + role);
+    assert.equal(ctx.policyCanClaim({}, w, role), row.can_claim[role], address + ' claim ' + role);
+    const d = {transferClaim: {role, byId: 1, fingerprint: 'f'}};
+    assert.equal(ctx.policySignRole(d, w), row.sign[role].default, address + ' sign ' + role);
+    eq(ctx.policySignTargets(d, w), row.sign[role].targets, address + ' sign targets ' + role);
+  }
+}
+assert.equal(makeCtx().hasPolicy({initiator_roles: ['operator'], confirmer_roles: []}), false);
+assert.equal(makeCtx().hasPolicy({initiator_roles: [], confirmer_roles: ['teodor']}), false);
+assert.equal(makeCtx().hasPolicy(null), false);
+console.log('policy table (6 wallets) matches python: PASS');
+
+// ---- 2. Видимость «Передать» и состав вариантов: роль × кошелёк × состояние
+const REALTY = table['TDuDeRiwrLLN3hnnA57G5yM6ibg58A6wZk'], EXCHANGE = table['TA6S3RBEY57jq8fXEVVsU6H9JZ18inenG4'];
+const MFSTR = table['TR68DHoj71Nz4FoTvqnBFQK2Fc6NkEK6nQ'], C99 = table['TQPv1GETKVjSWZymdMu5WbSSeS6JhL2KHt'];
+function targets(roleOfViewer, row, d) {
+  const ctx = makeCtx({S: {role: roleOfViewer}});
+  ctx.wallet = walletOf(row);
+  return ctx.handoffTargets(Object.assign({id: 1, step: 's23'}, d));
+}
+for (const viewer of ['operator', 'admin']) {
+  eq(targets(viewer, REALTY, {}), ['operator', 'findir', 'teodor'], 'Недвижимость: свободная очередь');
+  eq(targets(viewer, EXCHANGE, {}), ['operator', 'teodor'], 'Обменник: свободная очередь');
+  eq(targets(viewer, MFSTR, {}), ['findir', 'teodor'], 'Mfstr: свободная очередь');
+  eq(targets(viewer, C99, {}), ['operator', 'teodor'], '99: свободная очередь');
+  eq(targets(viewer, REALTY, {transferHandoff: {role: 'findir'}}), ['operator', 'teodor']);
+}
+// admin ходит под ролью-маской «manager», но права у него админские (реальная роль — standMe)
+{
+  const ctx = makeCtx({S: {role: 'manager'}, standMe: 'admin'});
+  ctx.wallet = walletOf(REALTY);
+  eq(ctx.handoffTargets({id: 1, step: 's23'}), ['operator', 'findir', 'teodor']);
+  const asManager = makeCtx({S: {role: 'operator'}, standMe: 'manager'});
+  asManager.wallet = walletOf(REALTY);
+  eq(asManager.handoffTargets({id: 1, step: 's23'}), ['operator', 'findir', 'teodor']);
+}
+eq(targets('manager', REALTY, {}), ['operator', 'findir', 'teodor']);
+eq(targets('findir', REALTY, {}), ['operator', 'findir', 'teodor']);
+eq(targets('teodor', REALTY, {}), []);
+// после claim — это перехват (те же варианты, кроме запрета при подтверждении/находке/тревоге)
+const claimed = {transferClaim: {role: 'operator', byId: 3, byName: 'Настя', at: 1700000000000, fingerprint: 'f'}};
+eq(targets('operator', REALTY, claimed), ['operator', 'findir', 'teodor']);
+eq(targets('admin', REALTY, claimed), ['operator', 'findir', 'teodor']);
+eq(targets('operator', REALTY, Object.assign({transferConfirmation: {ownerAlone: true}}, claimed)), []);
+eq(targets('operator', REALTY, Object.assign({transferFound: {hashes: ['a']}}, claimed)), []);
+eq(targets('operator', REALTY, Object.assign({transferAlarm: {hashes: ['a', 'b']}}, claimed)), []);
+// свой перевод (держатель claim — этот сотрудник, id 7) перехватом не передают: у него «Я отправил»
+eq(targets('operator', REALTY, {transferClaim: {role: 'operator', byId: 7, at: 1, fingerprint: 'f'}}), ['findir', 'teodor']);
+// s24: переназначение подписи, пока нет подтверждения
+eq(targets('operator', EXCHANGE, Object.assign({step: 's24'}, claimed)), ['teodor']);
+eq(targets('manager', EXCHANGE, Object.assign({step: 's24'}, claimed)), ['teodor']);
+eq(targets('operator', REALTY, Object.assign({step: 's24'}, claimed)), []);
+eq(targets('operator', EXCHANGE, {step: 's24', transferClaim: claimed.transferClaim,
+  transferConfirmation: {byId: 9}}), []);
+eq(targets('operator', EXCHANGE, {step: 's22'}), []);
+eq(targets('operator', EXCHANGE, {step: 's23', outgoingReview: {requestedAt: 'x'}}), []);
+// заводивший раунд оператор не назначает подпись на себя (кошелёк «оператор подписывает»)
+{
+  const both = {name: 'x', initiator_roles: ['operator', 'findir'], confirmer_roles: ['operator', 'teodor'], owner_can_alone: false};
+  const ctx = makeCtx({S: {role: 'operator'}, standMeId: 7});
+  ctx.wallet = both;
+  const d = {id: 1, step: 's24', transferClaim: {role: 'findir', byId: 9, fingerprint: 'f'},
+    signHandoff: {role: 'teodor', claimFingerprint: 'f'}, transferClaimHistory: [{byId: 7}]};
+  eq(ctx.handoffTargets(d), ['teodor'].filter(() => false), 'прежний исполнитель раунда: «Операционисту» нет');
+  d.transferClaimHistory = [{byId: 8}];
+  eq(ctx.handoffTargets(d), ['operator']);
+}
+console.log('handoff targets by role/wallet/state: PASS');
+
+// ---- 3. Кнопка «Передать» → выбор ролей → вызов сервера; перехват с подтверждением и claimAt
+{
+  const ctx = makeCtx({S: {role: 'operator'}});
+  ctx.wallet = walletOf(REALTY);
+  ctx.deals[1] = {id: 1, step: 's23'};
+  let block = ctx.handoffBlock(ctx.deals[1]);
+  assert.match(block, /data-handoff-open[^>]*>Передать<\/button>/);
+  assert.doesNotMatch(block, /data-handoff-to/, 'варианты скрыты до нажатия');
+  ctx.handoffToggle(1);
+  block = ctx.handoffBlock(ctx.deals[1]);
+  eq([...block.matchAll(/data-handoff-to="(\w+)"[^>]*>([^<]+)</g)].map(x => x[1] + ':' + x[2]),
+    ['operator:Операционисту', 'findir:Финансисту', 'teodor:Владельцу']);
+  (async () => {
+    await ctx.transferHandoff(1, 'findir');
+    eq(ctx.calls[0], {path: '/api/stand/transfer/handoff',
+      body: {dealId: 1, version: 11, toRole: 'findir'}});
+    // перехват: окно подтверждения с именем и временем, затем takeover + claimAt
+    ctx.deals[2] = Object.assign({id: 2, step: 's23'}, claimed);
+    ctx.calls.length = 0;
+    await ctx.transferHandoff(2, 'findir');
+    assert.equal(ctx.calls.length, 0, 'без подтверждения на сервер ничего не уходит');
+    const view = ctx.takeoverAskView();
+    assert.match(view, /data-takeover-ask/);
+    assert.match(view, /Настя начал перевод в \d\d:\d\d\. Если транзакция уже заведена в кошельке, второй раз не заводите\./);
+    assert.match(view, /Передать финансисту/);
+    await ctx.takeoverConfirm();
+    eq(ctx.calls[0].body, {dealId: 2, version: 11, toRole: 'findir', takeover: true, claimAt: 1700000000000});
+    // отмена — ничего не уходит
+    ctx.calls.length = 0;
+    await ctx.transferHandoff(2, 'teodor');
+    ctx.takeoverCancel();
+    assert.equal(ctx.calls.length, 0);
+    assert.equal(ctx.takeoverAskView(), '');
+    // окно не показывается, если claim уже другой (устаревшее подтверждение)
+    await ctx.transferHandoff(2, 'teodor');
+    ctx.deals[2].transferClaim = Object.assign({}, claimed.transferClaim, {at: 1});
+    assert.equal(ctx.takeoverAskView(), '');
+    console.log('handoff / takeover requests: PASS');
+  })().catch(e => { console.error(e); process.exitCode = 1; });
+}
+
+// ---- 3b. «Деньги отправлены»: поле хеша у операциониста/админа (не у держателя claim), подставляется найденный хеш
+{
+  const found = 'ab'.repeat(32);
+  const block = (role, d, me = 7) => {
+    const ctx = makeCtx({S: {role}, standMeId: me});
+    ctx.wallet = walletOf(REALTY);
+    ctx.val = id => 'https://tronscan.org/#/transaction/' + found;
+    return ctx.markSentBlock(Object.assign({id: 1, step: 's23'}, d));
+  };
+  assert.match(block('operator', {}), /data-mark-sent-btn[^>]*>Проверить и отметить отправку<\/button>/);
+  assert.match(block('operator', {}), /^<details[^>]*>\s*<summary>Перевод уже отправлен\?<\/summary>/,
+    'до отметки отправки ручной хеш свёрнут');
+  assert.match(block('admin', {}), /Проверить и отметить отправку/);
+  assert.match(block('operator', {step: 's24', transferClaim: {byId: 3, role: 'operator'}}), /Проверить и отметить отправку/);
+  assert.match(block('operator', {transferFound: {hashes: [found]}}), new RegExp('value="' + found + '"'), 'найденный хеш подставлен');
+  for (const role of ['manager', 'findir', 'teodor'])
+    assert.equal(block(role, {}), '', role + ' кнопки не видит');
+  assert.equal(block('operator', {transferClaim: {byId: 7, role: 'operator'}}), '', 'у держателя claim — «Я отправил»');
+  const beforeSignerReport = block('operator', {step: 's24', transferClaim: {byId: 7, role: 'operator'},
+    transferProposal: {fingerprint: 'f'}});
+  assert.match(beforeSignerReport, /^<details[^>]*>/, 'после передачи на подпись инициатору доступен свёрнутый fallback');
+  assert.match(beforeSignerReport, /Проверить и отметить отправку/, 'инициатор может проверить уже отправленный перевод');
+  const afterReport = block('operator', {step: 's24', transferClaim: {byId: 7, role: 'operator'},
+    transferSentReport: {byId: 8}});
+  assert.match(afterReport, /^<div[^>]*>/, 'после подписи ручной хеш сразу открыт');
+  assert.match(afterReport, /Проверить и отметить отправку/, 'после подписи инициатор проверяет вручную');
+  assert.equal(block('operator', {transferAlarm: {hashes: ['a', 'b']}}), '', 'при тревоге кнопки нет');
+  assert.equal(block('operator', {serverTransferComplete: true}), '');
+  assert.equal(block('operator', {step: 's22'}), '');
+  const ctx = makeCtx({S: {role: 'operator'}});
+  ctx.val = () => 'https://tronscan.org/#/transaction/' + found;
+  ctx.transferMarkSent(1).then(() => {
+    eq(ctx.calls[0], {path: '/api/stand/transfer/mark-sent', body: {dealId: 1, version: 11, hash: found}});
+    console.log('mark sent request: PASS');
+  }).catch(e => { console.error(e); process.exitCode = 1; });
+}
+
+// ---- 4. Чья это задача: «завести» / «подписать»
+function owns(kind, role, row, d) {
+  const ctx = makeCtx({S: {role}, standMeId: 7});
+  const w = walletOf(row);
+  return kind === 'send' ? ctx.policyOwnsSend(d, w, role) : ctx.policyOwnsSign(d, w, role);
+}
+assert.equal(owns('send', 'operator', REALTY, {}), true);
+assert.equal(owns('send', 'findir', REALTY, {}), true, 'свободную задачу видят обе роли');
+assert.equal(owns('send', 'findir', REALTY, {transferHandoff: {role: 'findir'}}), true);
+assert.equal(owns('send', 'operator', REALTY, {transferHandoff: {role: 'findir'}}), false);
+assert.equal(owns('send', 'teodor', REALTY, {}), true, 'владелец может сам');
+assert.equal(owns('send', 'findir', EXCHANGE, {}), false);
+assert.equal(owns('send', 'operator', MFSTR, {}), false, 'у Mfstr заводит финансист');
+assert.equal(owns('send', 'findir', MFSTR, {}), true);
+assert.equal(owns('send', 'operator', REALTY, {transferClaim: {byId: 7, role: 'operator'}}), true);
+assert.equal(owns('send', 'operator', REALTY, {transferClaim: {byId: 8, role: 'operator'}}), false);
+assert.equal(owns('send', 'operator', REALTY, {transferClaimHistory: [{byId: 7}]}), false, 'прежний исполнитель');
+assert.equal(owns('send', 'operator', REALTY, {transferFound: {hashes: ['a']}}), false);
+assert.equal(owns('send', 'operator', REALTY, {transferAlarm: {hashes: ['a']}}), false);
+const claimBy = (role, byId) => ({transferClaim: {role, byId, fingerprint: 'f'}});
+assert.equal(owns('sign', 'teodor', REALTY, claimBy('operator', 8)), true);
+assert.equal(owns('sign', 'findir', REALTY, claimBy('operator', 8)), false);
+assert.equal(owns('sign', 'findir', EXCHANGE, claimBy('operator', 8)), true);
+assert.equal(owns('sign', 'teodor', EXCHANGE, claimBy('operator', 8)), false, 'подпись назначена финансисту');
+assert.equal(owns('sign', 'teodor', EXCHANGE, Object.assign({signHandoff: {role: 'teodor', claimFingerprint: 'f'}},
+  claimBy('operator', 8))), true);
+assert.equal(owns('sign', 'findir', EXCHANGE, Object.assign({signHandoff: {role: 'teodor', claimFingerprint: 'f'}},
+  claimBy('operator', 8))), false);
+assert.equal(owns('sign', 'findir', REALTY, claimBy('findir', 7)), false, 'кто завёл — не подписывает');
+{
+  const ctx = makeCtx({S: {role: 'operator'}, standMeId: 7});
+  const d = Object.assign({transferSentReport: {byId: 8}}, claimBy('operator', 7));
+  assert.equal(ctx.policyOwnsVerification(d, walletOf(REALTY), 'operator'), true,
+    'оператор открывает карточку проверки после отчёта подписанта');
+  assert.equal(ctx.policyOwnsVerification(d, walletOf(REALTY), 'teodor'), false);
+  d.transferSentReport = null;
+  ctx.standMeId = 8;
+  const signer = ctx.policySignRole(d, walletOf(REALTY));
+  assert.equal(ctx.policyOwnsVerification(d, walletOf(REALTY), signer), true,
+    'до отчёта карточка остаётся у подписанта');
+}
+console.log('task ownership (send/sign): PASS');
+{
+  const ctx = {STEPS: {s23: {title: 'Отправить перевод'}, s24: {title: 'Одобрить перевод'}}};
+  vm.createContext(ctx);
+  vm.runInContext(source('stepTitle'), ctx);
+  for (const step of ['s23', 's24']) {
+    assert.equal(ctx.stepTitle({step, transferSentReport: {byId: 8}}), 'Проверить перевод',
+      'после отметки отправки заголовок не предлагает отправить повторно');
+  }
+  assert.equal(ctx.stepTitle({step: 's24'}), 'Одобрить перевод');
+}
+
+// ---- 5. Строка статуса и предупреждения
+{
+  const ctx = makeCtx({S: {role: 'operator'}});
+  ctx.wallet = walletOf(REALTY);
+  const at = 1700000000000;
+  let out = ctx.policyStatusLine({id: 1, step: 's23'});
+  assert.match(out, /Ожидает исполнителя: операционист \/ финансист \/ владелец/);
+  out = ctx.policyStatusLine({id: 1, step: 's23', transferHandoff: {role: 'findir', byName: 'Анна', at}});
+  assert.match(out, /Завести: финансист · Передал Анна, \d\d:\d\d/);
+  out = ctx.policyStatusLine({id: 1, step: 's23', transferClaim: {byName: 'Настя', at, role: 'operator'}});
+  assert.match(out, /В работе у Настя с \d\d:\d\d/);
+  out = ctx.policyStatusLine({id: 1, step: 's24', transferClaim: {role: 'operator', byId: 3, fingerprint: 'f'}});
+  assert.match(out, /Подписать: владелец/);
+  const released = {id: 1, step: 's23', transferHandoff: {role: 'findir', byName: 'Анна', at},
+    transferClaimHistory: [{byId: 3, byName: 'Настя', at}]};
+  out = ctx.policyStatusLine(released);
+  assert.match(out, /data-takeover-warning[^]*Настя начал перевод в \d\d:\d\d\. Если транзакция уже заведена в кошельке, второй раз не заводите\./);
+  ctx.standMeId = 3;                                           // прежний исполнитель
+  out = ctx.policyStatusLine(released);
+  assert.match(out, /Передана: финансист/);
+  assert.doesNotMatch(out, /data-takeover-warning/);
+  ctx.standMeId = 7;
+  out = ctx.policyStatusLine({id: 1, step: 's23', transferClaim: {byName: 'Настя', at, role: 'operator'},
+    transferAlarm: {hashes: ['aa', 'bb']}});
+  assert.match(out, /data-transfer-alarm[^]*Найдено два перевода:<\/b> <span[^>]*>aa, bb<\/span>\. Проверьте возврат\./);
+  assert.doesNotMatch(out, /Снять тревогу/, 'оператор тревогу не снимает');
+  ctx.S.role = 'teodor';
+  assert.match(ctx.policyStatusLine({id: 1, step: 's23', transferClaim: {byName: 'Н', at, role: 'operator'},
+    transferAlarm: {hashes: ['aa', 'bb']}}), /Снять тревогу/);
+  out = ctx.policyStatusLine({id: 1, step: 's23', transferClaim: {byName: 'Н', at, role: 'operator'},
+    transferFound: {hashes: ['f'.repeat(64)]}});
+  assert.match(out, /Перевод найден в сети/);
+  assert.equal(makeCtx().policyStatusLine({id: 1, step: 's23'}), '', 'без политики строки нет');
+  assert.match(ctx.walletPolicyLine(walletOf(REALTY)), /Заводит: <b>operator|Заводит: <b>операционист \/ финансист<\/b> · Подписывает: <b>владелец<\/b> · владелец может отправить сам/);
+  assert.match(ctx.walletPolicyLine(walletOf(MFSTR)), /Заводит: <b>финансист<\/b> · Подписывает: <b>владелец<\/b>/);
+  console.log('status line, takeover warning, alarm: PASS');
+}
+
+// ---- 6. s23: блок «завести в кошельке» рендерится только держателю claim
+{
+  const body = html.slice(html.indexOf('  s23:()=>{'), html.indexOf('  s24:()=>{'));
+  const render = 'function renderS23(d,ap){return (' + body.trim().slice('s23:'.length).replace(/,$/, '') + ')();}';
+  function s23(role, d, me = 7, configure = () => {}) {
+    const ctx = makeCtx({S: {role}, standMeId: me});
+    ctx.val = () => '';
+    ctx.wallet = Object.assign(walletOf(REALTY), {addr: 'TDuDeRiwrLLN3hnnA57G5yM6ibg58A6wZk'});
+    Object.assign(ctx, {num: () => 0, avgUsdt: () => 30, SOURCES_PAY: {coins: {cur: 'thb'}}, convOf: () => null,
+      policySignerCards: () => '', walletAddressPair: () => 'TRC-20 TDuDeRiwrLLN3hnnA57G5yM6ibg58A6wZk Копировать адрес', packTasks: () => 'PACK_BLOCK', transferModeBlock: () => '', prepayFundingText: () => 'Источник USDT',
+      outgoingReviewBlock: () => '', personalSend: () => false, isCrypto: () => true, trow: () => '',
+      money: String, moneyKop: String, hashSum: () => 0, payinHashRows: () => '', plural: () => '',
+      walletSends: () => 'по правилам кошелька', walletSigner: () => 'фин дир',
+      jsLiteralAttr: String, addressDisclosure: String, copyAsk: () => {}, ippsPayoutOrder: null,
+      transferApprove: () => {}, policyApprovalActor: () => false,
+      prepayWalletUnavailable: () => false});
+    configure(ctx);
+    vm.runInContext(render, ctx);
+    return ctx.renderS23(Object.assign({id: 1, step: 's23', rates: {}, pay: {}, transfer: {amount: 5000}}, d), {thb: 0});
+  }
+  const mine = {transferClaim: {byId: 7, byName: 'Я', role: 'operator', at: 1700000000000, fingerprint: 'f'}};
+  const theirs = {transferClaim: {byId: 8, byName: 'Настя', role: 'operator', at: 1700000000000, fingerprint: 'f'}};
+  const claimerCard = s23('operator', mine);
+  assert.match(claimerCard, /PACK_BLOCK/, 'держатель claim видит реквизиты');
+  assert.match(claimerCard, /onclick="transferPropose\(1\)">Передать на подпись<\/button>/,
+    'инициатор передаёт поручение без хеша');
+  assert.doesNotMatch(claimerCard, /Добавить хеш|Хеш или ссылка на подготовленную транзакцию/);
+  const other = s23('findir', theirs);
+  assert.doesNotMatch(other, /PACK_BLOCK/, 'остальные блок реквизитов не получают');
+  assert.match(other, /В работе у Настя с \d\d:\d\d/);
+  assert.doesNotMatch(other, /data-claim/);
+  const before = s23('operator', {});
+  assert.doesNotMatch(before, /PACK_BLOCK/, 'до claim блока нет даже у назначенной роли');
+  assert.match(before, /data-claim[^>]*>Начать работу<\/button>/);
+  assert.match(before, /TRC-20/);
+  assert.match(before, /TDuDeRiwrLLN3hnnA57G5yM6ibg58A6wZk/,
+    'полный адрес кошелька виден перед началом работы');
+  assert.match(before, /Копировать адрес/);
+  assert.doesNotMatch(before.match(/data-wallet-source[^]*?<\/div>/)?.[0]||'', /<details/,
+    'полный адрес не спрятан в details');
+  const ercAddress = '0x68aEA0F5386a57b48953F6fFF2f22D29D00D9ba9';
+  const ercCard = makeCtx({jsLiteralAttr: String}).walletSourceLine({addr: ercAddress});
+  assert.match(ercCard, /ERC-20/);
+  assert.match(ercCard, new RegExp(ercAddress));
+  assert.match(s23('operator', {}), /Проверить и отметить отправку/, 'операционист может проверить уже отправленный перевод');
+  const owner = s23('teodor', {transferClaim: {byId: 7, byName: 'Я', role: 'teodor', fingerprint: 'f'},
+    transferConfirmation: {ownerAlone: true}});
+  assert.match(owner, /onclick="transferReportSent\(1\)">Деньги отправлены<\/button>/,
+    'владелец отправляет сам и сообщает об отправке без хеша');
+  assert.match(s23('teodor', {}), /data-claim[^>]*>Отправить<\/button>/, 'владелец, отправляющий один — «Отправить»');
+  assert.match(s23('findir', {}), /data-claim/, 'финансист видит свободную задачу');
+  assert.doesNotMatch(s23('operator', {transferClaimHistory: [{byId: 7, byName: 'Я', at: 1}]}), /data-claim/,
+    'прежний исполнитель после перехвата');
+  assert.doesNotMatch(s23('operator', {transferFound: {hashes: ['a']}}), /data-claim/);
+  console.log('s23 claim-only requisites block: PASS');
+}
+
+// Снимок предоплаты хранит только адрес и владельца; политику берём из записи реестра.
+{
+  const address = 'TDuDeRiwrLLN3hnnA57G5yM6ibg58A6wZk';
+  const snapshot = {id: '25', addr: address, name: 'Источник предоплаты',
+    owner: 'компания', role: 'findir', multisig: true};
+  const mirror = {...snapshot, initiator_roles: ['operator', 'findir'],
+    confirmer_roles: ['teodor'], owner_can_alone: true, purpose: 'realty'};
+  const deal = {prepay: {wallet: snapshot, brokerStep: 's18'},
+    kind: 'Фрихолд', postConv: 'ipps_swift', walletId: null};
+  function installResolver(ctx, wallets = [mirror]) {
+    ctx.S.wallets = wallets;
+    ctx.walletById = id => ctx.S.wallets.find(w => String(w.id) === String(id)) || null;
+    ctx.convOf = () => null;
+    vm.runInContext('let CRM_WALLETS=[]; let crmWalletsLoaded=false; '+
+      'function crmWalletById(id){return CRM_WALLETS.find(w=>String(w.id)===String(id))||null}', ctx);
+    vm.runInContext(source('crmWalletToLegacy') + source('dealWallet') +
+      html.match(/^function prepayWalletUnavailable\([^\n]+/m)[0] +
+      html.match(/^function prepayWalletUnavailableCard\([^\n]+/m)[0], ctx);
+  }
+  const ctx = makeCtx({S: {role: 'findir'}});
+  installResolver(ctx);
+  const resolved = ctx.dealWallet(deal);
+  assert.equal(resolved.addr, snapshot.addr);
+  assert.equal(resolved.name, snapshot.name);
+  assert.equal(ctx.hasPolicy(resolved), true);
+  assert.equal(ctx.policyCanClaim(deal, resolved, 'findir'), true);
+  assert.equal(ctx.prepayWalletUnavailable(deal), false);
+  const free = s23('findir', deal, 7, installResolver);
+  assert.match(free, /data-claim[^>]*>Начать работу<\/button>/);
+  assert.doesNotMatch(free, /Подписал — передать Теодору/);
+  const claimed = s23('findir', {...deal, transferClaim: {byId: 7, byName: 'Финансист',
+    role: 'findir', fingerprint: 'f'}}, 7, installResolver);
+  assert.match(claimed, /onclick="transferPropose\(1\)">Передать на подпись<\/button>/);
+  assert.doesNotMatch(claimed, /Подписал — передать Теодору/);
+  const missing = makeCtx();
+  installResolver(missing, []);
+  assert.equal(missing.prepayWalletUnavailable(deal), true);
+  const blocked = s23('findir', deal, 7, ctx => installResolver(ctx, []));
+  assert.match(blocked, /Не удалось сверить кошелёк отправки с реестром/);
+  assert.doesNotMatch(blocked, /data-claim|Подписал — передать Теодору/);
+  const mismatched = makeCtx();
+  installResolver(mismatched, [{...mirror, addr: 'другой адрес'}]);
+  assert.equal(mismatched.prepayWalletUnavailable(deal), true);
+  const malformed = makeCtx();
+  installResolver(malformed, [{...mirror, initiator_roles: 'operator'}]);
+  assert.equal(malformed.prepayWalletUnavailable(deal), true);
+  const halfPolicy = makeCtx();
+  installResolver(halfPolicy, [{...mirror, confirmer_roles: []}]);
+  assert.equal(halfPolicy.prepayWalletUnavailable(deal), true);
+  const legacy = makeCtx();
+  installResolver(legacy, [{...mirror, initiator_roles: [], confirmer_roles: []}]);
+  assert.equal(legacy.prepayWalletUnavailable(deal), false);
+  assert.equal(legacy.hasPolicy(legacy.dealWallet(deal)), false);
+  const inactive = makeCtx();
+  installResolver(inactive);
+  vm.runInContext('CRM_WALLETS=[{id:25,address:' + JSON.stringify(address) +
+    ',active:false,initiator_roles:["operator","findir"],confirmer_roles:["teodor"]}]', inactive);
+  assert.equal(inactive.prepayWalletUnavailable(deal), true);
+  (async () => {
+    await ctx.transferPropose(1501);
+    eq(ctx.calls[0], {path: '/api/stand/transfer/propose',
+      body: {dealId: 1501, version: 11, check: ''}});
+    console.log('minimal prepay snapshot resolves policy and routes claim/propose: PASS');
+  })().catch(e => {console.error(e); process.exitCode = 1;});
+}
+
+// ---- 7. Форма нового кошелька: роли задаёт только админ
+{
+  const admin = makeCtx({S: {role: 'admin'}}).walletRolesFields();
+  assert.equal((admin.match(/data-nw-roles="initiator"/g) || []).length, 3);
+  assert.equal((admin.match(/data-nw-roles="confirmer"/g) || []).length, 3);
+  assert.match(admin, /Владелец может отправить сам/);
+  const operator = makeCtx({S: {role: 'operator'}}).walletRolesFields();
+  assert.doesNotMatch(operator, /data-nw-roles/);
+  assert.match(operator, /задаёт админ/);
+  console.log('new wallet form roles (admin only): PASS');
+}
+
+// ---- 8. Кошелёк по умолчанию — Недвижимость / Обменник при любой сумме; все шесть доступны вручную
+{
+  const addrs = Object.keys(table);
+  const registry = addrs.map((address, i) => Object.assign({id: i + 1, address, blockchain: 'TRON', owner: 'компания',
+    is_multisig: true, accepts_payin: true, not_for_new_deals: false, label: table[address].purpose, purpose: table[address].purpose,
+    initiator_roles: table[address].initiator_roles, confirmer_roles: table[address].confirmer_roles}));
+  const ctx = makeCtx({CRM_WALLETS: registry});
+  vm.runInContext(['uniqueWallets', 'crmWalletNet', 'crmPayinChoices', 'payinWalletView', 'walletPurpose', 'payinDefaultWallet']
+    .map(source).join('\n'), ctx);
+  assert.equal(ctx.crmPayinChoices('TRC-20').length, 6, 'все шесть доступны в ручном выборе');
+  for (const amount of [9999.99, 10000, 25000, undefined]) {
+    assert.equal(ctx.payinDefaultWallet('TRC-20', {type: 'Оплата недвижимости', amountUsdt: amount}).addr,
+      'TDuDeRiwrLLN3hnnA57G5yM6ibg58A6wZk', 'недвижимость -> Груша Недвижимость, сумма ' + amount);
+    assert.equal(ctx.payinDefaultWallet('TRC-20', {type: 'Обмен валюты', amountUsdt: amount}).addr,
+      'TA6S3RBEY57jq8fXEVVsU6H9JZ18inenG4', 'обмен -> Груша Обменник, сумма ' + amount);
+  }
+  console.log('default payin wallet (no amount rule), all six selectable: PASS');
+}

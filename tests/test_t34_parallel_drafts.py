@@ -1,0 +1,354 @@
+"""Private early manager inputs and explicit publication on the existing stand board."""
+import copy
+import json
+
+import pytest
+
+import app as appmod
+
+
+@pytest.fixture
+def board(monkeypatch):
+    monkeypatch.setattr(appmod, 'STAND_MODE', True)
+    monkeypatch.setenv('LOCAL_NO_AUTH', '1')
+    role = {'value': 'manager'}
+    monkeypatch.setattr(appmod, 'current_role', lambda: role['value'])
+    monkeypatch.setattr(appmod, '_stand_deliver_notes', lambda: None)
+    appmod._stand_migrate()
+
+    def seed(deal):
+        db = appmod.get_session()
+        try:
+            row = appmod._stand_row(db)
+            state = (deal if 'deals' in deal else
+                     {'deals': [deal], 'convs': [], 'wallets': [], 'notes': []})
+            row.data = json.dumps(state)
+            row.version = 1
+            db.commit()
+        finally:
+            db.close()
+
+    with appmod.app.test_client() as client:
+        db = appmod.get_session()
+        try:
+            user = db.query(appmod.AdminUser).filter_by(username='t34_synthetic').first()
+            if not user:
+                user = appmod.AdminUser(username='t34_synthetic', role='manager',
+                                        password_hash=appmod.AdminUser.hash_password('test'))
+                db.add(user)
+                db.commit()
+            uid = user.id
+        finally:
+            db.close()
+        with client.session_transaction() as session:
+            session['user_id'] = uid
+        yield client, role, seed
+
+
+def _deal(step):
+    return {'id': 3401, 'step': step, 'type': 'Оплата недвижимости',
+            'kind': 'Лизхолд', 'payType': 'По реквизитам', 'log': [],
+            'pay': {}, 'docs': {}, 'files': {}, 'docMeta': {}}
+
+
+def _get(client):
+    response = client.get('/api/stand/state')
+    assert response.status_code == 200
+    return response.json
+
+
+def _put(client, current, deal, *, notes=None):
+    data = copy.deepcopy(current['data'])
+    data['deals'][0] = deal
+    if notes is not None:
+        data['notes'] = notes
+    return client.put('/api/stand/state', json={'version': current['version'], 'data': data})
+
+
+def test_full_board_skips_unchanged_foreign_deal_but_rejects_real_edit(board):
+    client, role, seed = board
+    operator_deal = _deal('s5')
+    manager_deal = _deal('s6')
+    manager_deal['id'] = 3402
+    seed({'deals': [operator_deal, manager_deal], 'convs': [], 'wallets': [], 'notes': []})
+    role['value'] = 'operator'
+    before = _get(client)
+    changed = copy.deepcopy(before['data'])
+    changed['deals'][0]['notes'] = 'оператор обновил свою сделку'
+    saved = client.put('/api/stand/state', json={'version': before['version'], 'data': changed})
+    assert saved.status_code == 200, saved.json
+    assert saved.json['data']['deals'][1] == manager_deal
+
+    current = _get(client)
+    illicit = copy.deepcopy(current['data'])
+    illicit['deals'][1]['log'].append({'text': 'чужое изменение'})
+    denied = client.put('/api/stand/state', json={'version': current['version'], 'data': illicit})
+    assert denied.status_code == 409
+    assert 'роли manager' in denied.json['error']
+    assert _get(client) == current
+
+
+@pytest.mark.parametrize('mode,amount', [('usd', 45000), ('rub', 4000000)])
+def test_new_auto_task_with_rendered_empty_draft_and_notification(board, mode, amount):
+    client, role, seed = board
+    existing = _deal('s5')
+    seed(existing)
+    current = _get(client)
+    data = copy.deepcopy(current['data'])
+    data['deals'][0]['_managerDraft'] = {'files': {}, 'docs': {}, 'docMeta': {}}
+    created = _deal('s5')
+    created.update(id=3402, client='Synthetic Auto', autoPayment=True,
+                   kind='Фрихолд', autoRequestMode=mode, invoiceCurrency='usd',
+                   comment='Synthetic auto note')
+    if mode == 'usd':
+        created.update(invoiceUsd=amount, requestedUsd=amount)
+    else:
+        created.update(amountRub=amount, requestedRub=amount)
+    data['deals'].insert(0, created)
+    data['notes'].append({'id': 'browser-injected', 'role': 'operator',
+                          'text': 'Задача на вас', 'dealId': 3402, 'read': False})
+    result = client.put('/api/stand/state', json={'version': current['version'], 'data': data})
+    assert result.status_code == 200, result.json
+    persisted = _get(client)['data']
+    assert any(d['id'] == 3402 for d in persisted['deals'])
+    assert next(d for d in persisted['deals'] if d['id'] == 3402)['comment'] == 'Synthetic auto note'
+    assert all(n.get('id') != 'browser-injected' for n in persisted['notes'])
+    task_notes = [n for n in persisted['notes'] if n.get('dealId') == 3402
+                  and n.get('role') == 'operator']
+    assert len(task_notes) == 1
+    assert task_notes[0]['text'] == 'Задача на вас: шаг s5'
+    repeated = client.put('/api/stand/state', json={'version': result.json['version'],
+                                                    'data': persisted})
+    assert repeated.status_code == 200, repeated.json
+    assert len([n for n in _get(client)['data']['notes'] if n.get('dealId') == 3402]) == 1
+
+
+def test_draft_save_ignores_forged_notifications(board):
+    client, role, seed = board
+    seed(_deal('s5'))
+    current = _get(client)
+    data = copy.deepcopy(current['data'])
+    data['deals'][0]['_managerDraft'] = {'payTo': {'acc': 'PRIVATE_ACCOUNT'}}
+    data['notes'].append({'id': 'forged', 'role': 'operator',
+                          'text': 'Forged message', 'dealId': 3401, 'read': False})
+    result = client.put('/api/stand/state', json={'version': current['version'], 'data': data})
+    assert result.status_code == 200, result.json
+    persisted = _get(client)['data']
+    assert persisted['deals'][0]['_managerDraft']['payTo']['acc'] == 'PRIVATE_ACCOUNT'
+    assert all(n.get('id') != 'forged' for n in persisted['notes'])
+
+
+@pytest.mark.parametrize('step', ['s5', 's11'])
+def test_early_requisites_are_private_until_native_manager_confirmation(board, step):
+    client, role, seed = board
+    seed(_deal(step))
+    initial = _get(client)
+    deal = copy.deepcopy(initial['data']['deals'][0])
+    deal['_managerDraft'] = {'payTo': {'dev': 'PRIVATE_DEVELOPER', 'bank': 'PRIVATE_BANK',
+                                     'acc': 'PRIVATE_ACCOUNT', 'purpose': 'PRIVATE_PURPOSE'}}
+    saved = _put(client, initial, deal)
+    assert saved.status_code == 200, saved.json
+    assert saved.json['data']['deals'][0]['step'] == step
+    assert saved.json['data']['deals'][0].get('reqTask') is None
+    assert saved.json['data']['deals'][0].get('payTo') is None
+    assert saved.json['data']['notes'] == []
+
+    role['value'] = 'operator'
+    hidden = _get(client)
+    assert '_managerDraft' not in hidden['data']['deals'][0]
+    assert 'PRIVATE_ACCOUNT' not in json.dumps(hidden)
+    assert hidden['data']['notes'] == []
+    own = copy.deepcopy(hidden['data']['deals'][0])
+    own['log'].append({'text': 'оператор продолжает свой шаг'})
+    operator_save = _put(client, hidden, own)
+    assert operator_save.status_code == 200
+    assert 'PRIVATE_ACCOUNT' not in operator_save.get_data(as_text=True)
+    conflict = _put(client, hidden, own)
+    assert conflict.status_code == 409
+    assert 'PRIVATE_ACCOUNT' not in conflict.get_data(as_text=True)
+
+    role['value'] = 'manager'
+    resumed = _get(client)
+    assert resumed['data']['deals'][0]['_managerDraft']['payTo']['acc'] == 'PRIVATE_ACCOUNT'
+    spoof = copy.deepcopy(resumed['data']['deals'][0])
+    spoof['step'] = 's22'
+    denied = _put(client, resumed, spoof)
+    assert denied.status_code == 409
+    assert _get(client)['data']['deals'][0]['step'] == step
+    payto = copy.deepcopy(resumed['data']['deals'][0])
+    payto['payTo'] = payto['_managerDraft']['payTo']
+    payto['payTo']['amount'] = 100
+    assert _put(client, resumed, payto).status_code == 409
+    fake_task = copy.deepcopy(resumed['data']['deals'][0])
+    fake_task['reqTask'] = 'open'
+    assert _put(client, resumed, fake_task).status_code == 409
+
+    # The native afterPayin phase opens the existing manager task. It is a
+    # synthetic fixture here; reqSave publication below uses real versioned HTTP.
+    native = copy.deepcopy(resumed['data']['deals'][0])
+    native.update(step='s22', reqTask='open')
+    seed(native)
+    opened = _get(client)
+    leaked = copy.deepcopy(opened['data']['deals'][0])
+    leaked['dev'] = 'PRIVATE_DEVELOPER'
+    assert _put(client, opened, leaked).status_code == 409
+    published = copy.deepcopy(opened['data']['deals'][0])
+    published['payTo'] = {**published['_managerDraft']['payTo'], 'amount': 100}
+    published['reqTask'] = 'done'
+    published['_managerDraft'].pop('payTo')
+    out = _put(client, opened, published)
+    assert out.status_code == 200, out.json
+    role['value'] = 'operator'
+    visible = _get(client)
+    assert visible['data']['deals'][0]['payTo']['acc'] == 'PRIVATE_ACCOUNT'
+    assert visible['data']['deals'][0]['reqTask'] == 'done'
+    assert '_managerDraft' not in visible['data']['deals'][0]
+
+
+def test_operator_cannot_spoof_draft_and_s26_requires_confirmed_requisites(board):
+    client, role, seed = board
+    deal = _deal('s26')
+    deal['_managerDraft'] = {'payTo': {'acc': 'PRIVATE_ACCOUNT'}}
+    seed(deal)
+    role['value'] = 'operator'
+    state = _get(client)
+    spoof = copy.deepcopy(state['data']['deals'][0])
+    spoof['_managerDraft'] = {'payTo': {'acc': 'STEAL'}}
+    assert _put(client, state, spoof).status_code == 409
+    state = _get(client)
+    advance = copy.deepcopy(state['data']['deals'][0])
+    advance['step'] = 's27'
+    assert _put(client, state, advance).status_code == 409
+    assert _get(client)['data']['deals'][0]['step'] == 's26'
+
+
+def test_crypto_freehold_draft_and_client_files_stay_private(board):
+    client, role, seed = board
+    deal = _deal('s5')
+    deal.update(kind='Фрихолд', payType='Крипта', curBase='usdt',
+                invoiceUsd=97500, ippsTariff='bank', amountUsdt=98800)
+    seed(deal)
+    state = _get(client)
+    draft = copy.deepcopy(state['data']['deals'][0])
+    draft['_managerDraft'] = {
+        'payTo': {'dev': 'PRIVATE_IPPS', 'bank': 'PRIVATE_BANK',
+                  'swift': 'PRIVATE_SWIFT', 'acc': 'PRIVATE_ACCOUNT',
+                  'purpose': 'PRIVATE_PURPOSE'},
+        'files': {'pass': [{'file': 'PRIVATE_PASSPORT.pdf'}],
+                  'inv': [{'file': 'PRIVATE_INVOICE.pdf'}]},
+        'docs': {'pass': True, 'inv': True},
+        'comment': 'PRIVATE_COMMENT'}
+    assert _put(client, state, draft).status_code == 200
+    role['value'] = 'operator'
+    hidden = _get(client)
+    raw = json.dumps(hidden, ensure_ascii=False)
+    assert all(marker not in raw for marker in ('PRIVATE_IPPS', 'PRIVATE_SWIFT',
+                                                'PRIVATE_ACCOUNT', 'PRIVATE_PASSPORT',
+                                                'PRIVATE_INVOICE', 'PRIVATE_COMMENT'))
+    assert hidden['data']['deals'][0]['docs'] == {}
+    role['value'] = 'manager'
+    resumed = _get(client)
+    assert resumed['data']['deals'][0]['_managerDraft']['comment'] == 'PRIVATE_COMMENT'
+    illicit_money = copy.deepcopy(resumed['data']['deals'][0])
+    illicit_money['amountUsdt'] = 1
+    assert _put(client, resumed, illicit_money).status_code == 409
+    illicit_doc = copy.deepcopy(resumed['data']['deals'][0])
+    illicit_doc['_managerDraft']['files']['receipt'] = [{'file': 'FAKE_RECEIPT.pdf'}]
+    assert _put(client, resumed, illicit_doc).status_code == 409
+
+
+def test_ipps_application_requires_published_requisites_at_s25(board):
+    client, role, seed = board
+    deal = _deal('s25')
+    deal.update(kind='Фрихолд', payType='Крипта', curBase='usdt',
+                invoiceUsd=97500, amountUsdt=98800, ippsTariff='bank',
+                postConv='ipps_swift', serverTransferComplete=True,
+                transfer={'addr': 'TQgQCBXkewuW4RoieDKFP9Ko2SopBh8jso',
+                          'net': 'TRC-20', 'amount': 98330, 'sends': []},
+                payTo={})
+    seed(deal)
+    role['value'] = 'operator'
+    before = _get(client)
+    send = copy.deepcopy(before['data']['deals'][0])
+    send['step'] = 's26'
+    send['pay']['ippsSent'] = True
+    denied = _put(client, before, send)
+    assert denied.status_code == 409
+    assert 'отключена' in denied.json['error'].lower()
+    assert _get(client) == before
+
+    role['value'] = 'manager'
+    opened = _get(client)
+    draft = copy.deepcopy(opened['data']['deals'][0])
+    draft['reqTask'] = 'open'
+    seed(draft)  # native afterPayin fixture: the manager task is now open
+    opened = _get(client)
+    published = copy.deepcopy(opened['data']['deals'][0])
+    published['payTo'] = {'dev': 'Developer', 'bank': 'Bank', 'swift': 'TESTTHBK',
+                          'acc': '123', 'purpose': 'invoice INV-1'}
+    published['reqTask'] = 'done'
+    assert _put(client, opened, published).status_code == 200
+
+    # Реквизиты опубликованы, но ещё не подтверждены перед оплатой (T34 п.3) —
+    # заявка в IPPS без свежего подтверждения менеджера всё ещё под запретом.
+    role['value'] = 'operator'
+    unconfirmed = _get(client)
+    send = copy.deepcopy(unconfirmed['data']['deals'][0])
+    send['step'] = 's26'
+    send['pay']['ippsSent'] = True
+    still_denied = _put(client, unconfirmed, send)
+    assert still_denied.status_code == 409
+    assert 'отключена' in still_denied.json['error'].lower()
+
+    role['value'] = 'manager'
+    ready_to_confirm = _get(client)
+    confirmed = copy.deepcopy(ready_to_confirm['data']['deals'][0])
+    confirmed['payToConfirm'] = {'payTo': confirmed['payTo'], 'at': 1}
+    assert _put(client, ready_to_confirm, confirmed).status_code == 200
+
+    role['value'] = 'operator'
+    ready = _get(client)
+    send = copy.deepcopy(ready['data']['deals'][0])
+    send['step'] = 's26'
+    send['pay']['ippsSent'] = True
+    assert _put(client, ready, send).status_code == 409  # obsolete s25 application cannot be resurrected
+
+
+def test_client_documents_publish_at_s8_and_later_correction_remains_available(board):
+    client, role, seed = board
+    deal = _deal('s5')
+    deal['_managerDraft'] = {'files': {'pass': [{'file': 'PRIVATE_PASS.pdf', 'mime': 'application/pdf', 'data': 'data:application/pdf;base64,JVBERi0xLjQKc3ludGhldGlj'}],
+                                       'inv': [{'file': 'PRIVATE_INV.pdf', 'mime': 'application/pdf', 'data': 'data:application/pdf;base64,JVBERi0xLjQKc3ludGhldGlj'}]},
+                             'docs': {'pass': True, 'inv': True},
+                             'comment': 'PRIVATE_DOC_COMMENT'}
+    seed(deal)
+    early = _get(client)
+    illicit = copy.deepcopy(early['data']['deals'][0])
+    illicit['files'] = {'pass': [{'file': 'PRIVATE_PASS.pdf', 'mime': 'application/pdf', 'data': 'data:application/pdf;base64,JVBERi0xLjQKc3ludGhldGlj'}]}
+    assert _put(client, early, illicit).status_code == 409
+    role['value'] = 'operator'
+    assert 'PRIVATE_PASS' not in json.dumps(_get(client))
+    role['value'] = 'manager'
+    deal['step'] = 's8'
+    seed(deal)
+    ready = _get(client)
+    published = copy.deepcopy(ready['data']['deals'][0])
+    published['files'] = published['_managerDraft']['files']
+    published['docs'] = published['_managerDraft']['docs']
+    published['docComment'] = published['_managerDraft']['comment']
+    published['_managerDraft'] = {}
+    published['step'] = 's11'
+    assert _put(client, ready, published).status_code == 200
+    role['value'] = 'operator'
+    shown = _get(client)
+    assert shown['data']['deals'][0]['files']['pass'][0]['file'] == 'PRIVATE_PASS.pdf'
+    assert shown['data']['deals'][0]['docComment'] == 'PRIVATE_DOC_COMMENT'
+    illicit_operator = copy.deepcopy(shown['data']['deals'][0])
+    illicit_operator['files']['pass'] = [{'file': 'FORGED_PASS.pdf'}]
+    assert _put(client, shown, illicit_operator).status_code == 409
+    role['value'] = 'manager'
+    late = _get(client)
+    corrected = copy.deepcopy(late['data']['deals'][0])
+    corrected['files']['inv'].append({'file': 'REVISED_INV.pdf'})
+    corrected['log'].append({'text': 'Добавлен исправленный инвойс'})
+    assert _put(client, late, corrected).status_code == 200

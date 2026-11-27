@@ -7,6 +7,7 @@ import json
 import re
 import threading
 from datetime import datetime
+from pathlib import Path
 from urllib.parse import urlsplit
 
 import pytest
@@ -68,6 +69,7 @@ def crm_server(monkeypatch):
     """Настоящие auth/routes/БД; только границы внешних систем подменены."""
     assert 'calccrm-pytest-' in str(A.engine.url), 'Разрешена только pytest-БД'
     A.Session.remove()
+    A.Base.metadata.create_all(A.engine)
     with A.engine.begin() as conn:
         for table in reversed(A.Base.metadata.sorted_tables):
             conn.execute(table.delete())
@@ -102,14 +104,15 @@ def crm_server(monkeypatch):
 
 
 @pytest.fixture(scope='module')
-def chromium():
+def chromium(pytestconfig):
     with sync_playwright() as p:
+        executable = pytestconfig.getoption('--chromium-executable')
         try:
-            browser = p.chromium.launch()
+            browser = p.chromium.launch(executable_path=executable, headless=True)
         except PlaywrightError as exc:
-            if "Executable doesn't exist" not in str(exc):
+            if executable or "Executable doesn't exist" not in str(exc):
                 raise
-            browser = p.chromium.launch(channel='chrome')
+            browser = p.chromium.launch(channel='chrome', headless=True)
         yield browser
         browser.close()
 
@@ -154,11 +157,359 @@ def test_tab_opens_without_javascript_crash(ui, section):
     assert not errors, errors
 
 
+SHELL_SECTIONS = [
+    ('deals', 'loadDeals', '#dealsTable'),
+    ('documents', 'loadDocuments', '#docsList'),
+    ('closing', 'loadBitrixDeals', '#bitrixDealsList'),
+    ('exchangers', 'rxLoad', '#rxSummary'),
+    ('balance', 'switchBalanceSubTab', '#walletsSummaryGrid'),
+    ('incomes', 'loadIncomes', '#incomesTable'),
+    ('conversions', 'loadConversions', '#conversionsTable'),
+    ('reimbursements', 'loadReimbursements', '#reimbursementsList'),
+    ('transactions', 'loadTransactions', '#walletsInfo'),
+    ('managers', 'loadManagers', '#managersList'),
+    ('verification', 'loadVerificationSummary', '#verificationSummary'),
+    ('kyc', 'loadKYCSection', '#kycPendingList'),
+    ('partners', 'loadPartners', '#partnersList'),
+    ('referrers', 'loadReferrers', '#referrersList'),
+    ('payoutRequests', 'loadPayoutRequests', '#payoutRequestsList'),
+    ('admins', 'loadStandRoles', '#adminsList'),
+]
+
+
+@pytest.fixture
+def stand_ui(chromium, crm_server, monkeypatch):
+    """Настоящая панель стенда и реальные локальные API на SQLite."""
+    monkeypatch.setattr(A, 'STAND_MODE', True)
+    monkeypatch.setattr(A, '_tronscan_fetch_incoming', lambda *a, **k: ([], [], []))
+    monkeypatch.setattr(A.stand_notify, 'notify_profile', lambda: 'disabled')
+    monkeypatch.setattr(A.stand_notify, 'mode', lambda: 'all')
+    db = A.get_session()
+    db.add(A.Deal(client_name='QA Deal Client', deal_type=A.DealType.PAY_IN,
+                  payin_amount_usdt=100, payout_amount_usdt=97))
+    db.add(A.Wallet(address='TQA_LOCAL_WALLET', label='QA Wallet', is_balance=True))
+    db.add(A.Agreement(client_name='QA Document Client', client_key='991122',
+                       route_key='RUB_THB:bank', deal_type='leasehold',
+                       number='MF-QA-1', status='signed'))
+    db.commit()
+    db.close()
+    base, cookie = crm_server
+    context = chromium.new_context(viewport={'width': 1440, 'height': 900})
+    context.add_cookies([{'name': 'session', 'value': cookie, 'url': base,
+                         'httpOnly': True, 'sameSite': 'Lax'}])
+    context.route('**/*', lambda route: route.continue_()
+                  if urlsplit(route.request.url).hostname == '127.0.0.1'
+                  else route.abort())
+    page = context.new_page()
+    errors = []
+    page.on('pageerror', lambda error: errors.append(str(error)))
+    page.goto(base + '/crm?section=deals')
+    expect(page.locator('.site-shell-section-list')).to_be_visible()
+    yield page, errors
+    context.close()
+
+
+@pytest.mark.parametrize('custom', [False, True], ids=['standard', 'custom'])
+def test_manual_crm_deal_selects_channel_conversation(stand_ui, custom):
+    page, errors = stand_ui
+    base = page.url.split('/crm', 1)[0]
+    with A.get_session() as db:
+        client = A.Client(name='QA Existing Contact')
+        db.add(client)
+        db.flush()
+        client_id = client.id
+        state = db.get(A.StandState, 1) or A.StandState(id=1, version=1)
+        state.data = json.dumps({
+            **A._stand_initial_state(),
+            'chatClientMap': {'wa:Sales:66000000001@c.us': f'crm:{client_id}'},
+        })
+        db.add(state)
+        db.add_all([
+            A.StandChannel(channel='wa', account='Sales', chat_id='66000000001@c.us',
+                           name='QA WhatsApp', last_active=2),
+            A.StandChannel(channel='wa', account='Sales', chat_id='66000000002@c.us',
+                           name='QA WhatsApp', last_active=1),
+            A.StandChannel(channel='tg', account='Sales', chat_id='101',
+                           name='QA Telegram', last_active=1),
+            A.StandChannel(channel='bitrix', account='Grusha', chat_id='201',
+                           name='QA Bitrix', last_active=1),
+        ])
+        db.commit()
+
+    page.locator('.nav-create-btn').click()
+    channel = page.locator('#dealSourceChannel')
+    options = page.locator('#dealSourceChat')
+    client_input = page.locator('#clientSearchInput')
+    channel.select_option('telegram')
+    options.select_option(label='QA Telegram · Sales')
+    expect(client_input).to_have_value('')
+    channel.select_option('bitrix')
+    options.select_option(label='QA Bitrix · Grusha')
+    expect(client_input).to_have_value('')
+    channel.select_option('whatsapp')
+    page.locator('#dealChatSearch').fill('66000000001')
+    options.select_option(label='QA WhatsApp · Sales · 66000000001@c.us')
+    expect(client_input).to_have_value('QA Existing Contact')
+    expect(page.locator('#clientIdHidden')).to_have_value(str(client_id))
+
+    if custom:
+        channel.select_option('telegram')
+        options.select_option(label='QA Telegram · Sales')
+        page.get_by_role('button', name='Новый клиент', exact=True).click()
+        expect(client_input).to_have_value('QA Telegram')
+        client_input.fill('QA Confirmed Telegram')
+        choose(page, '#dealProductSelect', 'Кастомная — нестандартные валюты')
+        page.locator('#customPayinAmount').fill('100')
+        choose(page, '#customPayoutCurrency', 'USDT')
+        page.locator('#customPayoutAmount').fill('90')
+        submit = page.locator('#customDealSubmit')
+    else:
+        page.locator('#payinMethod').select_option('crypto_direct', force=True)
+        page.locator('#createDealForm [name="payin_amount_usdt"]').fill('100')
+        page.locator('#payoutAmountThb').fill('3000')
+        submit = page.locator('#createDealForm button[type=submit]')
+    with page.expect_response(lambda r: urlsplit(r.url).path == '/api/deals'
+                              and r.request.method == 'POST' and r.status == 201) as saved:
+        submit.click()
+        page.get_by_role('button', name='Да, продолжить').click()
+    deal_id = saved.value.json()['deal']['id']
+    deal = page.request.get(f'{base}/api/deals/{deal_id}').json()['deal']
+    if custom:
+        assert deal['client_id'] > 0 and deal['client_id'] != client_id
+        assert deal['client_name'] == 'QA Confirmed Telegram'
+        assert deal['source_channel'] == 'telegram'
+        assert deal['source_chat'] == {'channel': 'tg', 'account': 'Sales',
+                                      'id': '101', 'name': 'QA Telegram'}
+        owner = page.request.get(f'{base}/api/stand/channels/client?source=telegram&account=Sales&id=101')
+        assert owner.json()['client'] == {'id': deal['client_id'], 'name': 'QA Confirmed Telegram'}
+    else:
+        assert deal['client_id'] == client_id
+        assert deal['source_channel'] == 'whatsapp'
+        assert deal['source_chat'] == {'channel': 'wa', 'account': 'Sales',
+                                      'id': '66000000001@c.us', 'name': 'QA WhatsApp'}
+    assert not deal['bitrix_deal_id']
+    assert page.request.post(f'{base}/api/deals', data={
+        'source_channel': 'telegram', 'source_chat': '["Sales","66000000001@c.us"]',
+    }).status == 400
+    assert not errors, errors
+
+
+def test_manual_crm_deal_uses_existing_client_and_old_source(stand_ui):
+    page, errors = stand_ui
+    base = page.url.split('/crm', 1)[0]
+    db = A.get_session()
+    client = A.Client(name='QA Historical Client', phone='+66 80 123 4567')
+    db.add(client)
+    db.commit()
+    client_id = client.id
+    db.close()
+
+    page.locator('.nav-create-btn').click()
+    page.locator('#dealSourceChannel').select_option('whatsapp')
+    page.get_by_role('button', name='Указать старый источник').click()
+    source = page.get_by_label('Старый источник')
+    source.fill('Архивный чат +66 80 123 4567')
+    page.get_by_role('button', name='Найти в CRM').click()
+    client_input = page.get_by_label('Клиент', exact=True)
+    client_input.fill('66801234567')
+    match = page.get_by_role('button', name=re.compile(r'^QA Historical Client'))
+    expect(match).to_be_visible()
+    assert not page.locator('#clientDropdown .client-dropdown-create').count()
+
+    for width in (320, 375, 414, 768):
+        page.set_viewport_size({'width': width, 'height': 900})
+        box = page.locator('#dealClientModes').bounding_box()
+        assert box['x'] >= 0 and box['x'] + box['width'] <= width
+        target = client_input.bounding_box()
+        menu = page.locator('#clientDropdown').bounding_box()
+        assert abs(menu['y'] - (target['y'] + target['height'])) <= 2
+    page.set_viewport_size({'width': 1440, 'height': 900})
+
+    match.click()
+    expect(client_input).to_have_value('QA Historical Client')
+    expect(page.locator('#dealClientStatus')).to_have_text('Клиент из CRM')
+    page.locator('#payinMethod').select_option('crypto_direct', force=True)
+    page.locator('#createDealForm [name="payin_amount_usdt"]').fill('100')
+    page.locator('#payoutAmountThb').fill('3000')
+    with page.expect_response(lambda r: urlsplit(r.url).path == '/api/deals'
+                              and r.request.method == 'POST' and r.status == 201) as saved:
+        page.locator('#createDealForm button[type=submit]').click()
+        page.get_by_role('button', name='Да, продолжить').click()
+    deal_id = saved.value.json()['deal']['id']
+    deal = page.request.get(f'{base}/api/deals/{deal_id}').json()['deal']
+    assert deal['client_id'] == client_id
+    assert deal['source_chat'] == {'channel': 'wa', 'name': 'Архивный чат +66 80 123 4567', 'manual': True}
+
+    duplicate = page.request.post(f'{base}/api/deals', data={
+        'source_channel': 'whatsapp', 'source_chat_note': 'История',
+        'client_choice': 'new', 'client_name': 'qa historical client',
+    })
+    assert duplicate.status == 409, duplicate.text()
+    assert not errors, errors
+
+
+def test_freehold_calculator_custom_transfer_tariff(stand_ui):
+    page, errors = stand_ui
+    base = page.url.split('/crm', 1)[0]
+
+    def quote(route):
+        data = route.request.post_data_json
+        amount = data['amount']
+        result = dict(scenario='RUB → USDT', direction=data['direction'], rub_usdt_rate=80,
+                      final_rate=80, profit_usdt=100)
+        if data['direction'] == 'target':
+            result.update(rub_to_pay=amount * 80, usdt_target=amount)
+        else:
+            result.update(rub_paid=amount, usdt_received=amount / 80)
+        route.fulfill(json=result)
+
+    page.route('**/api/calculate', quote)
+    page.goto(f'{base}/?cat=property_freehold&method=custom&scenario=rub-to-usdt&dir=target&rub_usdt=80')
+    custom = page.get_by_role('button', name='Свой тариф', exact=True)
+    custom.click()
+    expect(custom).to_have_attribute('aria-pressed', 'true')
+    percent = page.get_by_label('Комиссия, %', exact=True)
+    fixed = page.get_by_label('Фиксированная комиссия, USD')
+    percent.fill('0,4')
+    expect(page.locator('#createDealBtn')).to_be_disabled()
+    fixed.fill('50')
+    page.locator('#amount').fill('10000')
+    expect(page.locator('#resultValue')).to_have_text(re.compile(r'807\s200(?:[,.]00)?\s₽'))
+    expect(page.locator('#detailsContent')).to_contain_text('0.40% + $50')
+
+    with page.expect_popup() as crm:
+        page.locator('#createDealBtn').click()
+    deal_form = crm.value
+    expect(deal_form.locator('#fhFeePercent')).to_have_value('0.4')
+    expect(deal_form.locator('#fhFeeFixed')).to_have_value('50')
+    deal_form.close()
+
+    page.get_by_role('button', name='Вношу сумму').click()
+    page.locator('#amount').fill('807200')
+    expect(page.locator('#resultValue')).to_have_text(re.compile(r'10\s000(?:[,.]00)?\sUSDT'))
+    fixed.fill('20000')
+    expect(page.locator('#propFeeHint')).to_contain_text('покрывает комиссию')
+    expect(page.locator('#createDealBtn')).to_be_disabled()
+    expect(page.locator('#b2CopyClient')).to_be_disabled()
+
+    page.get_by_role('button', name=re.compile('^Банк')).click()
+    expect(percent).to_be_hidden()
+    expect(page.locator('#createDealBtn')).to_be_enabled()
+    expect(page.locator('#detailsContent')).to_contain_text('0.80% + $50')
+    page.get_by_role('button', name='Оплата авто', exact=True).click()
+    expect(custom).to_be_hidden()
+    assert not errors, errors
+
+
+def test_crm_task_filter_and_backlink(stand_ui):
+    page, errors = stand_ui
+    test_case = Path(A.app.static_folder) / 'stand/walkthrough/leasehold-rub/01.json'
+    card = json.loads(test_case.read_text())['state']['deals'][0]
+    with A.get_session() as db:
+        linked = A.Deal(client_name='QA linked task', deal_type=A.DealType.PAY_IN,
+                        status=A.DealStatus.COMPLETED)
+        archived = A.Deal(client_name='QA archived task', deal_type=A.DealType.PAY_IN,
+                          status=A.DealStatus.LOSE)
+        stale = A.Deal(client_name='QA old board', deal_type=A.DealType.PAY_IN,
+                       status=A.DealStatus.COMPLETED)
+        manual = A.Deal(client_name='QA manual CRM', deal_type=A.DealType.PAY_IN,
+                        status=A.DealStatus.COMPLETED, notes='Из задачника стенда: СД-1502')
+        db.add_all([linked, archived, stale, manual])
+        db.flush()
+        linked_id, archived_id, stale_id, manual_id = linked.id, archived.id, stale.id, manual.id
+        board = db.get(A.StandState, 1) or A.StandState(id=1, version=1)
+        board.generation = '1' * 32
+        done = dict(card, id=1502, code='СД-1502', client='QA linked task', closed=True,
+                    step='done', crmDealId=linked_id)
+        archived_card = dict(done, id=1503, code='СД-1503', client='QA archived task',
+                             crmDealId=archived_id, taskArchived=True)
+        board.data = json.dumps(dict(A._stand_initial_state(), deals=[done, archived_card]))
+        db.add(board)
+        db.add_all([
+            A.StandCrmLink(origin=f'{board.generation}:1502', crm_deal_id=linked_id),
+            A.StandCrmLink(origin=f'{board.generation}:1503', crm_deal_id=archived_id),
+            A.StandCrmLink(origin=f'{"2" * 32}:1502', crm_deal_id=stale_id),
+        ])
+        db.commit()
+
+    base = page.url.split('/crm', 1)[0]
+    assert 'task_board' not in page.request.get(f'{base}/api/deals/{manual_id}').json()['deal']
+    assert page.request.get(f'{base}/api/deals/{stale_id}').json()['deal']['task_board'] == {}
+    archived_link = page.request.get(f'{base}/api/deals/{archived_id}').json()['deal']['task_board']
+    assert archived_link['url'] == f'/tasks?section=analytics&deal=1503&crm_deal={archived_id}'
+
+    choose(page, '#filterCloseSource', 'Через задачник')
+    with page.expect_response(lambda response: 'closed_via_tasks=1' in response.url) as filtered:
+        page.get_by_role('button', name='Применить', exact=True).click()
+    assert {d['id'] for d in filtered.value.json()['deals']} == {linked_id, archived_id, stale_id}
+    page.locator('#dealsTable tr').filter(has_text='QA linked task').click()
+    link = page.get_by_role('link', name='Открыть СД-1502 в задачнике')
+    expect(link).to_have_attribute('href', f'/tasks?deal=1502&crm_deal={linked_id}')
+    link.click()
+    expect(page.locator('.deal-head')).to_contain_text('QA linked task')
+
+    page.goto(f'{base}{archived_link["url"]}')
+    expect(page.locator('.deal-head')).to_contain_text('QA archived task')
+
+    page.goto(f'{base}/tasks?deal=1502&crm_deal={stale_id}')
+    expect(page.get_by_text('Сделка 1502 не найдена', exact=False)).to_be_visible()
+    expect(page.locator('.deal-head')).to_have_count(0)
+    assert not errors, errors
+
+
+@pytest.mark.parametrize('section,loader,rendered', SHELL_SECTIONS)
+def test_shared_section_click_loads_and_renders(stand_ui, section, loader, rendered):
+    page, errors = stand_ui
+    # Observe the real loader while leaving its fetch and rendering intact.
+    page.evaluate('''loader => {
+        window.__sectionLoaderCalls = 0;
+        const original = window[loader];
+        if (typeof original !== 'function') throw Error('Missing loader: ' + loader);
+        window[loader] = function(...args) {
+            window.__sectionLoaderCalls++;
+            return original.apply(this, args);
+        };
+    }''', loader)
+    responses = []
+    page.on('response', lambda response: responses.append(response)
+            if '/api/' in response.url else None)
+    page.locator(f'.site-shell-section-list [data-shell-section="{section}"]').click()
+    expect(page.locator(f'#{section}')).to_be_visible()
+    page.wait_for_load_state('networkidle')
+    assert page.evaluate('window.__sectionLoaderCalls') == 1, section
+    assert responses, f'{section}: loader made no API request'
+    assert not [r for r in responses if r.status >= 500], [
+        (r.status, r.url) for r in responses if r.status >= 500]
+    assert page.locator(rendered).inner_text().strip(), f'{section}: no rendered data or empty state'
+    assert not errors, errors
+    if section == 'documents':
+        assert any(urlsplit(r.url).path == '/api/docs/agreements' and r.status == 200
+                   for r in responses)
+        expect(page.locator('#docsList')).to_contain_text('QA Document Client')
+        assert not page.locator('#docsList').get_by_text('Загрузка…').count()
+    if section == 'deals':
+        expect(page.locator('#dealsTable')).to_contain_text('QA Deal Client')
+    if section == 'managers':
+        expect(page.locator('#managersList')).to_contain_text('QA Manager')
+    if section == 'verification':
+        expect(page.locator('#verificationSummary')).to_contain_text('Всего сделок')
+        expect(page.locator('#verificationSummary .stat-value').first).to_have_text('1')
+
+
+@pytest.mark.parametrize('section,path', [('tasks', '/tasks'),
+                                          ('analytics', '/tasks?section=analytics')])
+def test_shared_section_click_opens_task_pages(stand_ui, section, path):
+    page, errors = stand_ui
+    page.locator(f'.site-shell-section-list [data-shell-section="{section}"]').click()
+    expect(page).to_have_url(re.compile(re.escape(path) + '$'))
+    expect(page.locator(f'.site-shell-section-list [data-shell-section="{section}"]')).to_have_attribute(
+        'aria-current', 'page')
+    assert not errors, errors
+
+
 @pytest.mark.parametrize('section,path', [
     ('documents', '/api/docs/agreements'), ('conversions', '/api/conversions'),
     ('incomes', '/api/sber-incomes'), ('closing', '/api/bitrix/active-deals')])
-@pytest.mark.xfail(strict=True, raises=AssertionError,
-                   reason='UI-01: showSection при восстановлении вкладки не загружает данные')
 def test_reload_restores_tab_and_fetches_its_data(ui, section, path):
     page, _, _, _ = ui
     page.locator(f'.nav-tab[data-section="{section}"]').click()
@@ -380,8 +731,9 @@ def test_standard_manual_deal_saves_channel(ui, label, expected):
     expect(channel).to_be_focused()
     channel.select_option(label=label)
     with page.expect_response(lambda r: urlsplit(r.url).path == '/api/deals'
-                              and r.request.method == 'POST') as saved:
+                              and r.request.method == 'POST' and r.status == 201) as saved:
         submit.click()
+        page.get_by_role('button', name='Да, продолжить').click()
     assert saved.value.status == 201, saved.value.text()
     deal_id = saved.value.json()['deal']['id']
     assert page.request.get(f'{base}/api/deals/{deal_id}').json()['deal']['source_channel'] == expected
@@ -390,6 +742,7 @@ def test_standard_manual_deal_saves_channel(ui, label, expected):
 
 def test_custom_deal_create_edit_reload_preserves_money(ui):
     page, errors, _, base = ui
+    page.locator('.nav-tab[data-section="deals"]').click()
     page.locator('.nav-create-btn').click()
     expect(page.locator('#create')).to_be_visible()
     page.wait_for_load_state('networkidle')
@@ -404,8 +757,9 @@ def test_custom_deal_create_edit_reload_preserves_money(ui):
     expect(channel).to_be_focused()
     channel.select_option(label='WhatsApp')
     with page.expect_response(lambda r: urlsplit(r.url).path == '/api/deals'
-                              and r.request.method == 'POST') as saved:
+                              and r.request.method == 'POST' and r.status == 201) as saved:
         page.locator('#customDealSubmit').click()
+        page.get_by_role('button', name='Да, продолжить').click()
     result = saved.value.json()
     assert saved.value.status == 201, result
     deal = result['deal']
@@ -417,7 +771,9 @@ def test_custom_deal_create_edit_reload_preserves_money(ui):
     page.wait_for_load_state('networkidle')
     row = page.locator('#dealsTable tr').filter(has_text='QA Browser Client')
     expect(row).to_have_count(1)
-    row.get_by_role('button', name='Детали', exact=True).click()
+    # Строка — сама ссылка, отдельной кнопки «Детали» больше нет (находка
+    # №15 аудита ui-2026-10-17: DESIGN.md запрещает кнопку «Открыть» в строке).
+    row.click()
     expect(page.locator('#dealModal')).to_be_visible()
     page.locator('#dealModal').get_by_role('button', name='Редактировать', exact=True).click()
     expect(page.locator('#customPayoutAmount')).to_have_value('970')
@@ -727,7 +1083,8 @@ def test_reclassifies_old_founder_payout_through_existing_editor(ui, monkeypatch
     if width == 390:
         page.locator('#bottomNav').get_by_text('Создать', exact=True).click()
     else:
-        page.locator('.nav-create-btn').first.click()
+        page.locator('.nav-tab[data-section="deals"]').click()
+        page.locator('#deals .nav-create-btn').click()
     choose_visible(product, 'Недвижимость лизхолд')
     expect(route).to_have_value('mf_realty')
     expect(page.locator('#mfDealSection')).to_be_visible()
@@ -895,6 +1252,8 @@ def test_deal_details_show_unique_proofs_and_keep_channel_amounts(ui, width):
     show(without_hash)
     expect(content.locator('button[data-proof-hash]')).to_have_count(0)
     expect(content).not_to_contain_text('Хэш прихода')
+    assert not errors, errors
+    assert not server_errors, server_errors
 
     show(legacy_extra)
     expect(content).to_contain_text('Приход по каналам (3)')

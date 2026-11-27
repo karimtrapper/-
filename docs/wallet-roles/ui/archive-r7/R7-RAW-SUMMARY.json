@@ -1,0 +1,240 @@
+{
+ "note": "raw r7 (be849ea) summary preserved before r8 overwrite; r7 raw FAILED: 4 CRM short-address regex artifacts; 13 view-time PUT rejections (409) were masked by the first assert",
+ "harness_version": "wallet-roles-ui r7 (2026-10-19): pending-verify boundary mock, ellipsis+chevron regex, focus active-element/closed-details, semantic state diff, border-aware blue detector",
+ "source_head": "be849eaf615defd88ec06d4fe01c8663a2ce1d3f",
+ "clean": true,
+ "shots": 99,
+ "failed_required_actions": [
+  "CRM выплата, кошелёк списания 375: виден короткий адрес first8…last8 ({'shortCount': 0, 'fullShownBeforeClick': False})",
+  "CRM приход, кошелёк получения 375: виден короткий адрес first8…last8 ({'shortCount': 0, 'fullShownBeforeClick': False})",
+  "CRM выплата, кошелёк списания 1280: виден короткий адрес first8…last8 ({'shortCount': 0, 'fullShownBeforeClick': False})",
+  "CRM приход, кошелёк получения 1280: виден короткий адрес first8…last8 ({'shortCount': 0, 'fullShownBeforeClick': False})"
+ ],
+ "browser_external_requests": [],
+ "optional_static": [],
+ "stubbed_egress_ops": [
+  "tron_trc20_transfers",
+  "verify_transfer:1f26ac5d8b",
+  "verify_transfer:b8fe6642da"
+ ],
+ "view_gate": {
+  "views": 72,
+  "versionBumps": 59,
+  "semanticViews": 0,
+  "noopBumps": 45
+ },
+ "puts_total": 73,
+ "puts_non200_outside_warmup": [
+  [
+   "operator",
+   "375",
+   409,
+   "Действие шага s22 доступно роли manager"
+  ],
+  [
+   "operator",
+   "375",
+   409,
+   "Действие шага s23 доступно роли findir"
+  ],
+  [
+   "operator",
+   "375",
+   409,
+   "Действие шага s23 доступно роли findir"
+  ],
+  [
+   "operator",
+   "375",
+   409,
+   "Действие шага s23 доступно роли findir"
+  ],
+  [
+   "operator",
+   "375",
+   409,
+   "Действие шага s23 доступно роли findir"
+  ],
+  [
+   "operator",
+   "375",
+   409,
+   "Действие шага s23 доступно роли findir"
+  ],
+  [
+   "operator",
+   "375",
+   409,
+   "Действие шага s24 доступно роли teodor"
+  ],
+  [
+   "findir",
+   "375",
+   409,
+   "Действие шага s24 доступно роли teodor"
+  ],
+  [
+   "teodor",
+   "375",
+   409,
+   "Действие шага s23 доступно роли findir"
+  ],
+  [
+   "operator",
+   "1280",
+   409,
+   "Действие шага s23 доступно роли findir"
+  ],
+  [
+   "operator",
+   "1280",
+   409,
+   "Действие шага s24 доступно роли teodor"
+  ],
+  [
+   "findir",
+   "1280",
+   409,
+   "Действие шага s24 доступно роли teodor"
+  ],
+  [
+   "teodor",
+   "1280",
+   409,
+   "Действие шага s23 доступно роли findir"
+  ]
+ ],
+ "http_errors": [
+  [
+   "('operator', '375')",
+   "409",
+   "/api/stand/state"
+  ],
+  [
+   "('operator', '375')",
+   "409",
+   "/api/stand/state"
+  ],
+  [
+   "('operator', '375')",
+   "409",
+   "/api/stand/state"
+  ],
+  [
+   "('operator', '375')",
+   "409",
+   "/api/stand/state"
+  ],
+  [
+   "('operator', '375')",
+   "409",
+   "/api/stand/state"
+  ],
+  [
+   "('findir', '375')",
+   "409",
+   "/api/stand/transfer/claim"
+  ],
+  [
+   "('findir', '375')",
+   "409",
+   "/api/stand/transfer/claim"
+  ],
+  [
+   "('findir', '1280')",
+   "409",
+   "/api/stand/transfer/claim"
+  ],
+  [
+   "('findir', '1280')",
+   "409",
+   "/api/stand/transfer/claim"
+  ],
+  [
+   "('operator', '375')",
+   "409",
+   "/api/stand/state"
+  ],
+  [
+   "('operator', '375')",
+   "409",
+   "/api/stand/state"
+  ],
+  [
+   "('operator', '375')",
+   "403",
+   "/api/stand/transfer/confirm"
+  ],
+  [
+   "('manager', '375')",
+   "403",
+   "/api/stand/transfer/confirm"
+  ],
+  [
+   "('operator', '375')",
+   "403",
+   "/api/stand/transfer/confirm"
+  ],
+  [
+   "('findir', '375')",
+   "409",
+   "/api/stand/state"
+  ],
+  [
+   "('teodor', '375')",
+   "409",
+   "/api/stand/state"
+  ],
+  [
+   "('operator', '1280')",
+   "409",
+   "/api/stand/state"
+  ],
+  [
+   "('operator', '1280')",
+   "409",
+   "/api/stand/state"
+  ],
+  [
+   "('operator', '1280')",
+   "403",
+   "/api/stand/transfer/confirm"
+  ],
+  [
+   "('manager', '1280')",
+   "403",
+   "/api/stand/transfer/confirm"
+  ],
+  [
+   "('operator', '1280')",
+   "403",
+   "/api/stand/transfer/confirm"
+  ],
+  [
+   "('findir', '1280')",
+   "409",
+   "/api/stand/state"
+  ],
+  [
+   "('teodor', '1280')",
+   "409",
+   "/api/stand/state"
+  ],
+  [
+   "('operator', '1280')",
+   "400",
+   "/api/deals/2"
+  ],
+  [
+   "('operator', '1280')",
+   "403",
+   "/api/deals/2"
+  ],
+  [
+   "('manager', '1280')",
+   "403",
+   "/api/deals/2"
+  ]
+ ],
+ "fence_report": "attempts=0 unexpected=0 (r7)"
+}

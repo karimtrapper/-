@@ -1,0 +1,17 @@
+FENCED_RUN python=3.11.17 port_pool=46395-46458
+F                                                                        [100%]
+=================================== FAILURES ===================================
+__ test_manual_override_cannot_replace_coins_network_proof_with_cash_receipt ___
+tests/test_wallet_roles_manual_close.py:140: in test_manual_override_cannot_replace_coins_network_proof_with_cash_receipt
+    assert response.status_code == 409, response.json
+E   AssertionError: {'data': {'convs': [], 'deals': [{'amountUsdt': 15100.0, 'client': 'Синтетика', 'closeReason': 'Успешно завершена', 'c...nts': [], 'bank_card_id': None, 'bitrix_deal_id': None, 'buy_rate_thb_usdt': None, ...}, 'success': True, 'version': 4}
+E   assert 201 == 409
+E    +  where 201 = <WrapperTestResponse streamed [201 CREATED]>.status_code
+---------------------------- Captured stdout setup -----------------------------
+[STAND] Реестр кошельков засеян
+----------------------------- Captured stdout call -----------------------------
+[GSheet] No credentials, skipping sync
+=========================== short test summary info ============================
+FAILED tests/test_wallet_roles_manual_close.py::test_manual_override_cannot_replace_coins_network_proof_with_cash_receipt
+1 failed, 15 deselected, 9 warnings in 0.42s
+NETWORK_FENCE attempts=0 unexpected=0 report=/tmp/calccrm-t19-fence-reports/20261020T084110-9298.json

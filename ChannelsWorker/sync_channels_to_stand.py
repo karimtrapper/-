@@ -1,0 +1,635 @@
+#!/usr/bin/env python3
+"""
+Скрипт для синхронизации метаданных чатов (TG, WA, Bitrix) на тестовый стенд.
+Обычный sync не передаёт текст сообщений, только ID, Имя и Время активности.
+Исключение — одноразовый экспорт переписки Елизаветы (env TG_EXPORT_SINCE, см. ниже).
+
+Использование:
+  export STAND_BASE_URL="https://grusha.up.railway.app"
+  export STAND_CHANNEL_SYNC_KEY="..."
+
+  # Для Карима:
+  export SYNC_TG_API_ID_KARIM="..."
+  export SYNC_TG_API_HASH_KARIM="..."
+
+  # Для клиентского менеджера Елизаветы (ОБЯЗАТЕЛЬНО):
+  # Телеграм и WhatsApp Елизаветы должны быть подключены, т.к. она общается с клиентами.
+  export SYNC_TG_SESSION_FILE_ELIZAVETA="..."
+  export SYNC_TG_API_ID_ELIZAVETA="..."
+  export SYNC_TG_API_HASH_ELIZAVETA="..."
+  export SYNC_WA_DB_PATH_ELIZAVETA="..."
+
+  python3 sync_channels_to_stand.py
+"""
+
+import os
+import time
+import json
+import sqlite3
+import urllib.request
+import asyncio
+import tempfile
+import shutil
+import uuid
+from datetime import datetime, timezone
+from urllib.parse import urlsplit, urlunsplit
+
+STAND_BASE_URL = os.environ.get("STAND_BASE_URL", "https://grusha-new.up.railway.app").rstrip('/')
+STAND_CHANNEL_SYNC_KEY = os.environ.get("STAND_CHANNEL_SYNC_KEY", "")
+
+ACCOUNTS = [
+    {
+        "name": "Карим",
+        "tg_session_file": os.environ.get("SYNC_TG_SESSION_FILE_KARIM"),
+        "tg_api_id": os.environ.get("SYNC_TG_API_ID_KARIM"),
+        "tg_api_hash": os.environ.get("SYNC_TG_API_HASH_KARIM"),
+        "wa_db_path": os.environ.get("SYNC_WA_DB_PATH_KARIM"),
+        "wa_api_url": os.environ.get("SYNC_WA_API_URL_KARIM"),
+        "required": False
+    },
+    {
+        "name": "Елизавета",
+        # Менеджер Елизавета обязательно должна быть подключена.
+        # Шаг подключения: 
+        # 1. Авторизовать Telethon session для номера Елизаветы и прописать путь в SYNC_TG_SESSION_FILE_ELIZAVETA
+        # 2. Поднять WA Bridge для Елизаветы и прописать путь в SYNC_WA_DB_PATH_ELIZAVETA
+        "tg_session_file": os.environ.get("SYNC_TG_SESSION_FILE_ELIZAVETA"),
+        "tg_api_id": os.environ.get("SYNC_TG_API_ID_ELIZAVETA"),
+        "tg_api_hash": os.environ.get("SYNC_TG_API_HASH_ELIZAVETA"),
+        "wa_db_path": os.environ.get("SYNC_WA_DB_PATH_ELIZAVETA"),
+        "wa_api_url": os.environ.get("SYNC_WA_API_URL_ELIZAVETA"),
+        "required": True
+    }
+]
+
+def push_to_stand(channel, account_name, chats):
+    url = f"{STAND_BASE_URL}/api/stand/channels/sync"
+    sync_tag = uuid.uuid4().hex
+    chunk_size = 4000
+    
+    total = len(chats)
+    if total == 0:
+        # Push empty sync with is_last=True
+        _push_chunk(url, channel, account_name, [], sync_tag, True)
+        return
+
+    for i in range(0, total, chunk_size):
+        chunk = chats[i:i + chunk_size]
+        is_last = (i + chunk_size >= total)
+        _push_chunk(url, channel, account_name, chunk, sync_tag, is_last)
+        
+def _push_chunk(url, channel, account_name, chunk, sync_tag, is_last):
+    req = urllib.request.Request(url, method="POST")
+    req.add_header("Authorization", f"Bearer {STAND_CHANNEL_SYNC_KEY}")
+    req.add_header("Content-Type", "application/json")
+    
+    payload = {
+        "channel": channel,
+        "account": account_name,
+        "chats": chunk,
+        "sync_tag": sync_tag,
+        "is_last": is_last
+    }
+    
+    try:
+        with urllib.request.urlopen(req, data=json.dumps(payload).encode('utf-8')) as res:
+            resp = json.loads(res.read().decode())
+            print(f"[OK] Synced {len(chunk)} {channel} chats for {account_name} (is_last={is_last}).")
+    except Exception as e:
+        print(f"[ERROR] Failed to push {channel} to stand for {account_name}: {e}")
+        raise
+
+# ---------------------------------------------------------------------------
+# Одноразовый экспорт текста переписки (включается env TG_EXPORT_SINCE).
+# Выполняется ВНУТРИ sync_telegram тем же клиентом и тем же подключением,
+# что и обычный sync. Отдельный процесс / вторая копия сессии запрещены:
+# 25.09 так уже получили AuthKeyDuplicated и потеряли сессию.
+# В логи пишутся только счётчики: ни текстов, ни имён чатов.
+# ---------------------------------------------------------------------------
+
+EXPORT_ACCOUNT = "Елизавета"
+EXPORT_BATCH_SIZE = 500
+EXPORT_CHAT_PAUSE = 2.0
+EXPORT_MAX_FLOOD_RETRIES = 6
+# Служебные аккаунты Telegram: уведомления, Replies, Channel_Bot.
+EXPORT_SERVICE_IDS = {777000, 1271266957, 136817688}
+
+
+def parse_export_since(value):
+    """'2026-08-12' или полный ISO -> aware datetime в UTC; пусто/мусор -> None."""
+    value = (value or "").strip()
+    if not value:
+        return None
+    try:
+        dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
+def export_marker_path(session_file, since_raw):
+    """Маркер «экспорт выполнен» лежит рядом с сессией (на volume /data)."""
+    marker_dir = os.environ.get("TG_EXPORT_MARKER_DIR") or os.path.dirname(session_file)
+    safe = "".join(ch for ch in since_raw.strip() if ch.isalnum() or ch in "-_")
+    return os.path.join(marker_dir, f"tg_export_done_{safe}")
+
+
+def export_chat_kind(dialog):
+    """Тип чата для выгрузки или None, если диалог не нужен (бот, канал, служебный)."""
+    entity = dialog.entity
+    if dialog.id in EXPORT_SERVICE_IDS:
+        return None
+    if dialog.is_user:
+        if getattr(entity, "bot", False) or getattr(entity, "is_self", False) \
+                or getattr(entity, "deleted", False) or getattr(entity, "support", False):
+            return None
+        return "private"
+    if dialog.is_group:
+        return "supergroup" if getattr(entity, "megagroup", False) else "group"
+    return None  # broadcast-каналы
+
+
+def _display_name(entity):
+    if entity is None:
+        return ""
+    title = getattr(entity, "title", None)
+    if title:
+        return str(title)[:255]
+    parts = [getattr(entity, "first_name", None), getattr(entity, "last_name", None)]
+    name = " ".join(p for p in parts if p)
+    return (name or getattr(entity, "username", None) or "")[:255]
+
+
+def export_media(msg):
+    """(media_type, имя файла) без скачивания самих файлов."""
+    if getattr(msg, "action", None) is not None:
+        return "service:" + type(msg.action).__name__, None
+    if not getattr(msg, "media", None):
+        return None, None
+    name = None
+    try:
+        name = msg.file.name if msg.file else None
+    except Exception:
+        name = None
+    for attr, kind in (("photo", "photo"), ("voice", "voice"), ("video_note", "video_note"),
+                       ("sticker", "sticker"), ("gif", "gif"), ("video", "video"),
+                       ("audio", "audio"), ("document", "document"), ("contact", "contact"),
+                       ("geo", "geo"), ("poll", "poll"), ("web_preview", "webpage")):
+        if getattr(msg, attr, None):
+            return kind, (str(name)[:255] if name else None)
+    return "other", None
+
+
+def export_message_row(msg, chat_id, chat_name, chat_username, chat_kind, me_id, me_name):
+    media_type, media_name = export_media(msg)
+    if msg.out:
+        direction, sender_id, sender_name = "out", me_id, me_name
+    else:
+        direction = "in"
+        sender_id = msg.sender_id
+        sender_name = _display_name(getattr(msg, "sender", None))
+    reply_to = getattr(msg, "reply_to", None)
+    return {
+        "msg_id": msg.id,
+        "chat_id": str(chat_id),
+        "chat_name": chat_name,
+        "chat_username": chat_username,
+        "chat_type": chat_kind,
+        "direction": direction,
+        "sender_id": str(sender_id) if sender_id is not None else None,
+        "sender_name": sender_name,
+        "date": msg.date.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "text": msg.message or "",
+        "media_type": media_type,
+        "media_name": media_name,
+        "reply_to_id": getattr(reply_to, "reply_to_msg_id", None) if reply_to else None,
+    }
+
+
+def push_export_batch(account_name, messages):
+    """Одна порция сообщений на стенд; ретраи на случай рестарта стенда."""
+    url = f"{STAND_BASE_URL}/api/stand/channels/export"
+    body = json.dumps({"account": account_name, "messages": messages}).encode("utf-8")
+    last_error = None
+    for attempt in range(4):
+        req = urllib.request.Request(url, method="POST")
+        req.add_header("Authorization", f"Bearer {STAND_CHANNEL_SYNC_KEY}")
+        req.add_header("Content-Type", "application/json")
+        try:
+            with urllib.request.urlopen(req, data=body, timeout=120) as res:
+                json.loads(res.read().decode())
+            return
+        except Exception as e:
+            last_error = e
+            time.sleep(5 * (attempt + 1))
+    raise RuntimeError(f"export push failed: {type(last_error).__name__}")
+
+
+async def export_telegram_history(client, dialogs, account_name, since, sleep=asyncio.sleep):
+    """Выгружает сообщения личек и групп с даты since тем же клиентом. Возвращает счётчики."""
+    from telethon.errors import FloodWaitError
+
+    me = await client.get_me()
+    me_id = getattr(me, "id", None)
+    me_name = _display_name(me) or account_name
+    stats = {"chats": 0, "messages": 0, "in": 0, "out": 0, "skipped_chats": 0, "flood_waits": 0}
+
+    targets = [(d, export_chat_kind(d)) for d in dialogs]
+    targets = [(d, k) for d, k in targets if k]
+    stats["skipped_chats"] = len(dialogs) - len(targets)
+    print(f"[EXPORT] start since={since.date()} chats_to_scan={len(targets)} skipped={stats['skipped_chats']}")
+
+    for index, (dialog, kind) in enumerate(targets, 1):
+        entity = dialog.entity
+        chat_name = (dialog.name or str(dialog.id))[:255]
+        chat_username = getattr(entity, "username", None)
+        chat_count = {"in": 0, "out": 0}
+        flood_retries = 0
+        while True:
+            batch = []
+            chat_count = {"in": 0, "out": 0}
+            try:
+                async for msg in client.iter_messages(entity, wait_time=1):
+                    if msg.date < since:
+                        break
+                    row = export_message_row(msg, dialog.id, chat_name, chat_username,
+                                             kind, me_id, me_name)
+                    batch.append(row)
+                    chat_count[row["direction"]] += 1
+                    if len(batch) >= EXPORT_BATCH_SIZE:
+                        push_export_batch(account_name, batch)
+                        batch = []
+                if batch:
+                    push_export_batch(account_name, batch)
+                break
+            except FloodWaitError as e:
+                # Повторяем чат с начала: upsert на стенде идемпотентен.
+                flood_retries += 1
+                stats["flood_waits"] += 1
+                if flood_retries > EXPORT_MAX_FLOOD_RETRIES:
+                    raise
+                print(f"[EXPORT] flood wait {int(e.seconds)}s (retry {flood_retries})")
+                await sleep(int(e.seconds) + 1)
+        total = chat_count["in"] + chat_count["out"]
+        if total:
+            stats["chats"] += 1
+            stats["messages"] += total
+            stats["in"] += chat_count["in"]
+            stats["out"] += chat_count["out"]
+        print(f"[EXPORT] chat {index}/{len(targets)}: {total} messages")
+        await sleep(EXPORT_CHAT_PAUSE)
+    print("[EXPORT] done " + " ".join(f"{k}={v}" for k, v in stats.items()))
+    return stats
+
+
+async def maybe_export_telegram(client, dialogs, account_name, session_file):
+    """Запускает одноразовый экспорт, если задан TG_EXPORT_SINCE и маркера ещё нет."""
+    since_raw = os.environ.get("TG_EXPORT_SINCE", "")
+    if not since_raw.strip() or account_name != EXPORT_ACCOUNT:
+        return None
+    since = parse_export_since(since_raw)
+    if since is None:
+        print("[EXPORT] TG_EXPORT_SINCE is not a valid date, export skipped")
+        return None
+    marker = export_marker_path(session_file, since_raw)
+    if os.path.exists(marker):
+        return None
+    try:
+        stats = await export_telegram_history(client, dialogs, account_name, since)
+    except Exception as e:
+        # Обычный sync не должен ломаться; без маркера экспорт повторится в след. цикле.
+        print(f"[EXPORT] failed: {type(e).__name__}")
+        return None
+    with open(marker, "w") as f:
+        json.dump({"since": since_raw, "finished_at": datetime.now(timezone.utc).isoformat(),
+                   **stats}, f)
+    return stats
+
+
+async def sync_telegram(account_name, session_file, api_id, api_hash):
+    if not session_file:
+        raise ValueError(f"Telegram session file NOT CONFIGURED for {account_name}. This is a hard blocker. See script docs.")
+        
+    session_file = os.path.expanduser(session_file)
+    if not os.path.exists(session_file):
+        raise ValueError(f"Telegram session file NOT FOUND for {account_name} at {session_file}. This is a hard blocker.")
+
+    if not api_id or not api_hash:
+        raise ValueError(f"API_ID/API_HASH NOT CONFIGURED for {account_name}. This is a hard blocker.")
+
+    try:
+        from telethon import TelegramClient
+    except ImportError:
+        print("[ERROR] Telethon not installed. pip install telethon")
+        return
+
+    print(f"Fetching Telegram dialogs for {account_name}...")
+    
+    fd, tmp_path = tempfile.mkstemp(suffix=".session")
+    os.close(fd)
+    shutil.copy2(session_file, tmp_path)
+    
+    try:
+        client = TelegramClient(tmp_path, int(api_id), api_hash)
+        await client.connect()
+        if not await client.is_user_authorized():
+            print(f"[ERROR] Telegram session is not authorized for {account_name}.")
+            await client.disconnect()
+            raise ValueError(f"Telegram session is not authorized for {account_name}.")
+        
+        chats = []
+        dialogs = []
+        async for dialog in client.iter_dialogs():
+            dialogs.append(dialog)
+            chats.append({
+                "id": str(dialog.id),
+                "name": dialog.name or str(dialog.id),
+                "last_active": int(dialog.date.timestamp()) if dialog.date else 0
+            })
+        try:
+            # Сначала обычный sync метаданных, затем (однократно) экспорт тем же клиентом.
+            push_to_stand("tg", account_name, chats)
+            await maybe_export_telegram(client, dialogs, account_name, session_file)
+        finally:
+            await client.disconnect()
+    finally:
+        os.unlink(tmp_path)
+
+def sync_whatsapp(account_name, db_path, api_url=None):
+    if not db_path and not api_url:
+        raise ValueError(f"WhatsApp DB path or API URL NOT CONFIGURED for {account_name}. This is a hard blocker.")
+        
+    chats = []
+    if api_url:
+        print(f"Fetching WhatsApp chats from API for {account_name}...")
+        try:
+            req = urllib.request.Request(api_url)
+            with urllib.request.urlopen(req) as res:
+                data = json.loads(res.read().decode())
+                for c in data.get("companies", []):
+                    if c.get("channel") == "WhatsApp" or c.get("phone"):
+                        ts = int(c.get("last_message_time")) if c.get("last_message_time") else 0
+                        chats.append({
+                            "id": c.get("phone") or str(c.get("id", "")),
+                            "name": c.get("name") or c.get("phone") or str(c.get("id", "")),
+                            "last_active": ts
+                        })
+        except Exception as e:
+            print(f"[ERROR] WA API sync failed for {account_name}: {e}")
+            raise ValueError(f"WhatsApp API Sync failed for {account_name}: {e}")
+    else:
+        db_path = os.path.expanduser(db_path)
+        if not os.path.exists(db_path):
+            raise ValueError(f"WhatsApp DB not found for {account_name} at {db_path}. This is a hard blocker.")
+        
+        print(f"Fetching WhatsApp chats from local DB for {account_name}...")
+        try:
+            conn = sqlite3.connect(db_path)
+            c = conn.cursor()
+            c.execute("PRAGMA table_info(chats)")
+            cols = [r[1] for r in c.fetchall()]
+            if 'last_message_time' in cols:
+                c.execute("SELECT jid, name, last_message_time FROM chats ORDER BY last_message_time DESC")
+            else:
+                c.execute("SELECT jid, name, 0 FROM chats")
+                
+            for row in c.fetchall():
+                jid, name, last_message_time = row
+                ts = 0
+                if last_message_time:
+                    try:
+                        if isinstance(last_message_time, (int, float)):
+                            ts = int(last_message_time)
+                        elif str(last_message_time).isdigit():
+                            ts = int(last_message_time)
+                        else:
+                            ts = int(datetime.fromisoformat(str(last_message_time).replace('Z', '+00:00')).timestamp())
+                    except Exception:
+                        ts = 0
+                chats.append({
+                    "id": str(jid),
+                    "name": str(name) if name else str(jid),
+                    "last_active": ts
+                })
+            conn.close()
+        except Exception as e:
+            print(f"[ERROR] WA DB sync failed for {account_name}")
+            raise ValueError(f"WhatsApp Sync failed for {account_name}: {e}")
+            
+    push_to_stand("wa", account_name, chats)
+
+
+async def fetch_whatsapp_mcp_chats(session, page_size=200):
+    """Читаем только метаданные; неполный ответ не должен очистить стенд."""
+    chats = []
+    seen = set()
+    for page in range(100):
+        result = await session.call_tool("list_chats", {
+            "limit": page_size, "page": page, "include_last_message": False,
+        })
+        if result.isError or result.structuredContent is not None:
+            raise ValueError("WhatsApp MCP returned an incompatible result")
+        if not isinstance(result.content, list):
+            raise ValueError("WhatsApp MCP returned invalid content")
+        batch = []
+        for item in result.content:
+            if getattr(item, "type", None) != "text":
+                raise ValueError("WhatsApp MCP returned non-text content")
+            try:
+                row = json.loads(item.text)
+            except (TypeError, ValueError):
+                raise ValueError("WhatsApp MCP returned invalid JSON") from None
+            if not isinstance(row, dict) or not isinstance(row.get("jid"), str) or not row["jid"]:
+                raise ValueError("WhatsApp MCP returned invalid chat metadata")
+            if any(row.get(field) is not None for field in ("last_message", "last_sender", "last_is_from_me")):
+                raise ValueError("WhatsApp MCP returned message data")
+            jid = row["jid"]
+            if jid in seen:
+                raise ValueError("WhatsApp MCP pagination repeated a chat")
+            seen.add(jid)
+            name = row.get("name")
+            if name is not None and not isinstance(name, str):
+                raise ValueError("WhatsApp MCP returned invalid chat name")
+            timestamp = row.get("last_message_time")
+            if timestamp is not None and not isinstance(timestamp, str):
+                raise ValueError("WhatsApp MCP returned invalid activity time")
+            try:
+                last_active = int(datetime.fromisoformat(timestamp.replace('Z', '+00:00')).timestamp()) if timestamp else 0
+            except (TypeError, ValueError, OverflowError):
+                raise ValueError("WhatsApp MCP returned invalid activity time") from None
+            batch.append({"id": jid, "name": name or jid, "last_active": last_active})
+        chats.extend(batch)
+        if len(batch) < page_size:
+            if not chats:
+                raise ValueError("WhatsApp MCP returned no chats; preserving previous sync")
+            return chats
+    raise ValueError("WhatsApp MCP pagination exceeded safety limit")
+
+
+async def whatsapp_mcp_chat_count(http_client, status_url):
+    response = await http_client.get(status_url)
+    response.raise_for_status()
+    status = response.json()
+    count = status.get("chats") if isinstance(status, dict) else None
+    if type(count) is not int or count <= 0:
+        raise ValueError("WhatsApp MCP status has no valid chat count")
+    return count
+
+
+async def _sync_whatsapp_mcp(account_name, url, token):
+    import httpx
+    from mcp import ClientSession
+    from mcp.client.streamable_http import streamable_http_client
+
+    parsed_url = urlsplit(url)
+    if parsed_url.path != "/mcp" or parsed_url.query or parsed_url.fragment:
+        raise ValueError("WhatsApp MCP URL must end in /mcp")
+    status_url = urlunsplit((parsed_url.scheme, parsed_url.netloc, "/status", "", ""))
+    async with httpx.AsyncClient(
+        headers={"Authorization": f"Bearer {token}"}, timeout=httpx.Timeout(30, read=60)
+    ) as http_client:
+        before_count = await whatsapp_mcp_chat_count(http_client, status_url)
+        async with streamable_http_client(url, http_client=http_client) as (read, write, _):
+            async with ClientSession(read, write) as session:
+                await session.initialize()
+                tools = await session.list_tools()
+                if "list_chats" not in {tool.name for tool in tools.tools}:
+                    raise ValueError("WhatsApp MCP has no list_chats tool")
+                chats = await fetch_whatsapp_mcp_chats(session)
+        after_count = await whatsapp_mcp_chat_count(http_client, status_url)
+        if before_count != after_count or len(chats) != after_count:
+            raise ValueError("WhatsApp MCP chat count changed or pagination incomplete")
+    push_to_stand("wa", account_name, chats)
+
+
+def sync_whatsapp_mcp(account_name, url, token):
+    if not url or not token or not url.startswith("https://"):
+        raise ValueError("WhatsApp MCP configuration incomplete")
+    asyncio.run(_sync_whatsapp_mcp(account_name, url, token))
+
+def _parse_bitrix_date(date_str):
+    if not date_str: return 0
+    try:
+        return int(datetime.fromisoformat(date_str.replace('Z', '+00:00')).timestamp())
+    except:
+        return 0
+
+def _get_bitrix_webhook():
+    webhook = os.environ.get("SYNC_BITRIX_WEBHOOK")
+    if webhook:
+        return webhook
+    env_path = os.environ.get("SYNC_BITRIX_ENV_PATH", "~/Desktop/untitled folder/Dev/ArbOps/.env")
+    env_path = os.path.expanduser(env_path)
+    if os.path.exists(env_path):
+        with open(env_path, "r") as f:
+            for line in f:
+                if line.startswith("BITRIX_WEBHOOK_URL="):
+                    return line.strip().split("=", 1)[1].strip("'\"")
+    return None
+
+def sync_bitrix():
+    webhook = _get_bitrix_webhook()
+    if not webhook:
+        print("[SKIP] Bitrix (no SYNC_BITRIX_WEBHOOK or Dev/ArbOps/.env value)")
+        return
+    
+    print("Fetching Bitrix active deals...")
+    url = f"{webhook.rstrip('/')}/crm.deal.list"
+    deals = []
+    start = 0
+    
+    try:
+        while True:
+            payload = {
+                "select": ["ID", "TITLE", "DATE_MODIFY", "STAGE_ID", "COMPANY_ID", "CONTACT_ID"],
+                "order": {"DATE_MODIFY": "DESC"},
+                "filter": {"CATEGORY_ID": 0, "!=STAGE_ID": ["WON", "LOSE"]},
+                "start": start
+            }
+            req = urllib.request.Request(url, method="POST")
+            req.add_header("Content-Type", "application/json")
+            with urllib.request.urlopen(req, data=json.dumps(payload).encode('utf-8')) as res:
+                resp = json.loads(res.read().decode())
+                if "error" in resp or "result" not in resp:
+                    raise ValueError(f"Bitrix API error or invalid response: {resp}")
+                for d in resp.get("result", []):
+                    ts = _parse_bitrix_date(d.get("DATE_MODIFY"))
+                    deals.append({
+                        "id": str(d.get("ID")),
+                        "name": d.get("TITLE") or f"Сделка {d.get('ID')}",
+                        "last_active": ts
+                    })
+                
+                if "next" in resp and start < resp["next"]:
+                    start = resp["next"]
+                else:
+                    break
+                    
+        deals.sort(key=lambda x: x["last_active"] or -1, reverse=True)
+        push_to_stand("bitrix", "Grusha", deals)
+    except Exception as e:
+        print(f"[ERROR] Bitrix sync failed: {e}")
+
+def main():
+    if not STAND_CHANNEL_SYNC_KEY:
+        print("ERROR: STAND_CHANNEL_SYNC_KEY is not set!")
+        return
+    
+    print(f"Syncing channels to {STAND_BASE_URL}")
+    
+    
+    loop_interval = os.environ.get("SYNC_LOOP_INTERVAL")
+    wa_mcp_url = os.environ.get("SYNC_WA_MCP_URL")
+    wa_mcp_token = os.environ.get("SYNC_WA_MCP_TOKEN")
+    
+    while True:
+        all_ready = True
+        for acc in ACCOUNTS:
+            # Check TG
+            try:
+                if acc["required"] and not acc.get("tg_session_file"):
+                    print(f"[PENDING] Telegram session file NOT CONFIGURED for {acc['name']}")
+                    all_ready = False
+                elif acc.get("tg_session_file"):
+                    asyncio.run(sync_telegram(acc["name"], acc.get("tg_session_file"), acc.get("tg_api_id"), acc.get("tg_api_hash")))
+            except Exception as e:
+                print(f"[ERROR] TG sync failed for {acc['name']}: {e}")
+                if acc["required"]: all_ready = False
+            
+            # Check WA
+            try:
+                if acc["name"] == "Елизавета" and (wa_mcp_url or wa_mcp_token):
+                    sync_whatsapp_mcp("WhatsApp", wa_mcp_url, wa_mcp_token)
+                elif acc["required"] and not acc.get("wa_db_path") and not acc.get("wa_api_url"):
+                    print(f"[PENDING] WhatsApp DB/API NOT CONFIGURED for {acc['name']}")
+                    all_ready = False
+                elif acc.get("wa_db_path") or acc.get("wa_api_url"):
+                    sync_whatsapp(acc["name"], acc.get("wa_db_path"), acc.get("wa_api_url"))
+            except Exception as e:
+                if acc["name"] == "Елизавета" and (wa_mcp_url or wa_mcp_token):
+                    print(f"[ERROR] WA MCP sync failed: {type(e).__name__}")
+                else:
+                    print(f"[ERROR] WA sync failed for {acc['name']}: {e}")
+                if acc["required"]: all_ready = False
+
+        if not all_ready:
+            print("===========================================================")
+            print("БЛОКЕР СИНХРОНИЗАЦИИ:")
+            print("Один или несколько каналов не синхронизированы.")
+            print("===========================================================")
+
+        # Bitrix
+        try:
+            sync_bitrix()
+        except Exception as e:
+            print(f"[ERROR] Bitrix sync failed: {e}")
+            
+        if not loop_interval:
+            return all_ready
+            
+        print(f"Sleeping for {loop_interval} seconds...")
+        time.sleep(int(loop_interval))
+if __name__ == "__main__":
+    main()

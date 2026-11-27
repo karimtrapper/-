@@ -1,0 +1,212 @@
+{
+ "blueText": [],
+ "bluePlaques": [],
+ "scaleViolations": [],
+ "toast": {
+  "text": "Отправка взята вами",
+  "error": false
+ },
+ "fontFaces": [
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:loaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:loaded",
+  "Inter:loaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:loaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:loaded",
+  "Inter:loaded",
+  "Inter:unloaded",
+  "Inter:loaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:loaded",
+  "Inter:loaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded"
+ ],
+ "interLoaded": true,
+ "stylesheets": [
+  "http://127.0.0.1:24558/static/stand/vendor/inter-v20/font.css",
+  "http://127.0.0.1:24558/static/nav-shell.css?v=6",
+  "http://127.0.0.1:24558/static/task-list.css?v=6"
+ ],
+ "url": "/tasks",
+ "innerWidth": 375,
+ "scrollWidth": 375,
+ "bodyScrollWidth": 375,
+ "hScroll": false,
+ "expectedWidth": 375,
+ "layoutViewportExpanded": false,
+ "visualViewportWidth": 375,
+ "docClientWidth": 375,
+ "overflowOffenders": [],
+ "fontSizes": {
+  "16px": 6,
+  "12px": 5,
+  "14px": 66,
+  "22px": 4
+ },
+ "fontWeights": {
+  "400": 37,
+  "600": 40,
+  "700": 4
+ },
+ "families": [
+  "Inter",
+  "ui-monospace"
+ ],
+ "addrNodes": [
+  {
+   "text": "TQgQCBXk…opBh8jso",
+   "title": "",
+   "mono": true,
+   "lines": 2,
+   "whiteSpace": "nowrap",
+   "wrapAnywhere": "normal",
+   "shortForm": true,
+   "full": false,
+   "cutAtEdge": false
+  },
+  {
+   "text": "TDuDeRiw…g58A6wZk",
+   "title": "",
+   "mono": true,
+   "lines": 2,
+   "whiteSpace": "nowrap",
+   "wrapAnywhere": "normal",
+   "shortForm": true,
+   "full": false,
+   "cutAtEdge": false
+  },
+  {
+   "text": "TAXgSzqB…SdxfV3QC",
+   "title": "",
+   "mono": true,
+   "lines": 2,
+   "whiteSpace": "nowrap",
+   "wrapAnywhere": "normal",
+   "shortForm": true,
+   "full": false,
+   "cutAtEdge": false
+  },
+  {
+   "text": "TDsLTB3u…trMAHcgd",
+   "title": "",
+   "mono": true,
+   "lines": 2,
+   "whiteSpace": "nowrap",
+   "wrapAnywhere": "normal",
+   "shortForm": true,
+   "full": false,
+   "cutAtEdge": false
+  },
+  {
+   "text": "TUzvaUjz…tukXFYrN",
+   "title": "",
+   "mono": true,
+   "lines": 2,
+   "whiteSpace": "nowrap",
+   "wrapAnywhere": "normal",
+   "shortForm": true,
+   "full": false,
+   "cutAtEdge": false
+  },
+  {
+   "text": "TQgQCBXk…opBh8jso",
+   "title": "",
+   "mono": true,
+   "lines": 2,
+   "whiteSpace": "nowrap",
+   "wrapAnywhere": "normal",
+   "shortForm": true,
+   "full": false,
+   "cutAtEdge": false
+  },
+  {
+   "text": "TQgQCBXk…opBh8jso",
+   "title": "",
+   "mono": true,
+   "lines": 2,
+   "whiteSpace": "nowrap",
+   "wrapAnywhere": "normal",
+   "shortForm": true,
+   "full": false,
+   "cutAtEdge": false
+  }
+ ],
+ "addrClipped": [],
+ "addrUnshortened": [],
+ "fullAddresses": [],
+ "mfstrAddresses": [],
+ "signerAddrsVisible": {
+  "operator": true,
+  "findir": true,
+  "teodor": true
+ },
+ "coralButtons": [],
+ "smallTargets": [
+  {
+   "tag": "BUTTON",
+   "text": "Проверить перевод в сети",
+   "h": 44
+  }
+ ],
+ "smallSmCount": 7,
+ "emoji": [],
+ "moneyPrefixBad": [],
+ "dollarSuffixBad": [],
+ "title": "Синтетика 1622",
+ "open": {
+  "deal": 1622,
+  "role": "teodor",
+  "width": "375",
+  "versionBefore": 10,
+  "versionAfter": 10,
+  "viewMutated": false,
+  "deltaPaths": [],
+  "deltaSummary": {},
+  "deltaDealIds": [],
+  "topLevelDelta": [],
+  "semanticPaths": [],
+  "semanticChange": false,
+  "noopVersionBump": false
+ },
+ "capture": {
+  "metricsViewport": [
+   375,
+   812
+  ],
+  "tallImageViewport": [
+   375,
+   2418
+  ],
+  "tallImageIsResizedViewport": true,
+  "firstScreenFile": "owner_alone_claimed__teodor__375__first-screen.png"
+ }
+}

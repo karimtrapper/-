@@ -1,0 +1,697 @@
+{
+ "tool": "design-gate",
+ "mode": "inventory",
+ "url": "http://127.0.0.1:59104/crm",
+ "widths_requested": [
+  375,
+  1280
+ ],
+ "widths": {
+  "375": {
+   "vw": 375,
+   "vh": 812,
+   "elements": 65,
+   "hscroll": true,
+   "scroll_width": 678,
+   "fonts": [
+    [
+     "inter",
+     37
+    ],
+    [
+     "arial",
+     2
+    ]
+   ],
+   "sizes": [
+    [
+     12,
+     14
+    ],
+    [
+     14,
+     21
+    ],
+    [
+     16,
+     2
+    ],
+    [
+     22,
+     2
+    ]
+   ],
+   "weights": [
+    [
+     "400",
+     3
+    ],
+    [
+     "600",
+     33
+    ],
+    [
+     "700",
+     3
+    ]
+   ],
+   "combos": [
+    [
+     [
+      "inter",
+      14,
+      "600"
+     ],
+     20
+    ],
+    [
+     [
+      "inter",
+      12,
+      "600"
+     ],
+     13
+    ],
+    [
+     [
+      "inter",
+      16,
+      "700"
+     ],
+     2
+    ],
+    [
+     [
+      "arial",
+      22,
+      "400"
+     ],
+     2
+    ],
+    [
+     [
+      "inter",
+      12,
+      "700"
+     ],
+     1
+    ],
+    [
+     [
+      "inter",
+      14,
+      "400"
+     ],
+     1
+    ]
+   ],
+   "text_colors": [
+    [
+     "#475569",
+     20
+    ],
+    [
+     "#64748B",
+     9
+    ],
+    [
+     "#0F172A",
+     4
+    ],
+    [
+     "#FFFFFF",
+     3
+    ],
+    [
+     "#334155",
+     3
+    ]
+   ],
+   "bg_colors": [
+    [
+     "#F8FAFC",
+     9
+    ],
+    [
+     "#FFFFFF",
+     6
+    ],
+    [
+     "#334155",
+     1
+    ],
+    [
+     "#0F172A",
+     1
+    ],
+    [
+     "#F97316",
+     1
+    ]
+   ],
+   "border_colors": [
+    [
+     "#E2E8F0",
+     12
+    ],
+    [
+     "#F1F5F9",
+     5
+    ]
+   ],
+   "radii": [
+    [
+     "8px",
+     19
+    ],
+    [
+     "пилл/круг (14px)",
+     1
+    ],
+    [
+     "12px",
+     1
+    ]
+   ],
+   "shadows": [
+    [
+     "rgba(0, 0, 0, 0.04) 0px 1px 3px 0px",
+     1
+    ]
+   ],
+   "stripes": [],
+   "uppercase": [
+    {
+     "n": 9,
+     "ex": [
+      {
+       "sel": "thead > tr > th",
+       "t": "CNV",
+       "x": 31,
+       "y": 237,
+       "w": 52,
+       "h": 39
+      },
+      {
+       "sel": "thead > tr > th",
+       "t": "Дата",
+       "x": 83,
+       "y": 237,
+       "w": 59,
+       "h": 39
+      },
+      {
+       "sel": "thead > tr > th",
+       "t": "Брокер",
+       "x": 142,
+       "y": 237,
+       "w": 74,
+       "h": 39
+      }
+     ]
+    }
+   ],
+   "gradients": [],
+   "animations": [],
+   "transitions": [
+    [
+     "all",
+     1
+    ]
+   ],
+   "spacing": [
+    [
+     "4px",
+     6
+    ],
+    [
+     "6px",
+     2
+    ],
+    [
+     "8px",
+     3
+    ],
+    [
+     "10px",
+     9
+    ],
+    [
+     "12px",
+     30
+    ],
+    [
+     "14px",
+     2
+    ],
+    [
+     "16px",
+     5
+    ],
+    [
+     "20px",
+     1
+    ],
+    [
+     "120px",
+     1
+    ]
+   ],
+   "buttons": [
+    {
+     "bg": "#FFFFFF",
+     "border": "без рамки",
+     "radius": "0px",
+     "font": "22px/400",
+     "n": 2,
+     "ex": [
+      "‹",
+      "›"
+     ]
+    },
+    {
+     "bg": "#F97316",
+     "border": "без рамки",
+     "radius": "8px",
+     "font": "14px/600",
+     "n": 1,
+     "ex": [
+      "+ Новая пачка"
+     ]
+    }
+   ],
+   "primary_count": 1,
+   "primaries": [
+    {
+     "sel": "section#conversions > div.card > button.btn.btn-primary",
+     "t": "+ Новая пачка"
+    }
+   ],
+   "emoji_interactive": [],
+   "emoji_other": [],
+   "wide": [
+    {
+     "sel": "section#conversions > div.card > table.table",
+     "t": "",
+     "left": 31,
+     "right": 678,
+     "w": 647
+    },
+    {
+     "sel": "div.card > table.table > thead",
+     "t": "",
+     "left": 31,
+     "right": 678,
+     "w": 647
+    },
+    {
+     "sel": "table.table > thead > tr",
+     "t": "",
+     "left": 31,
+     "right": 678,
+     "w": 647
+    },
+    {
+     "sel": "thead > tr > th",
+     "t": "Отправлено ₽",
+     "left": 292,
+     "right": 415,
+     "w": 124
+    },
+    {
+     "sel": "thead > tr > th",
+     "t": "Курс",
+     "left": 415,
+     "right": 474,
+     "w": 59
+    },
+    {
+     "sel": "thead > tr > th",
+     "t": "Получили",
+     "left": 474,
+     "right": 571,
+     "w": 98
+    },
+    {
+     "sel": "thead > tr > th",
+     "t": "Δ",
+     "left": 571,
+     "right": 605,
+     "w": 33
+    },
+    {
+     "sel": "thead > tr > th",
+     "t": "Статус",
+     "left": 605,
+     "right": 678,
+     "w": 74
+    },
+    {
+     "sel": "tbody#conversionsTable",
+     "t": "",
+     "left": 31,
+     "right": 678,
+     "w": 647
+    },
+    {
+     "sel": "tbody#conversionsTable > tr",
+     "t": "",
+     "left": 31,
+     "right": 678,
+     "w": 647
+    },
+    {
+     "sel": "tbody#conversionsTable > tr > td",
+     "t": "Пачек пока нет",
+     "left": 31,
+     "right": 678,
+     "w": 647
+    }
+   ],
+   "addr_wrapped": [],
+   "addr_total": 0,
+   "addr_anywhere": [],
+   "icons": [
+    [
+     "20×20",
+     6
+    ]
+   ],
+   "console_errors": []
+  },
+  "1280": {
+   "vw": 1280,
+   "vh": 800,
+   "elements": 68,
+   "hscroll": false,
+   "scroll_width": 1280,
+   "fonts": [
+    [
+     "inter",
+     37
+    ],
+    [
+     "arial",
+     2
+    ]
+   ],
+   "sizes": [
+    [
+     12,
+     10
+    ],
+    [
+     14,
+     25
+    ],
+    [
+     16,
+     2
+    ],
+    [
+     22,
+     2
+    ]
+   ],
+   "weights": [
+    [
+     "400",
+     3
+    ],
+    [
+     "600",
+     33
+    ],
+    [
+     "700",
+     3
+    ]
+   ],
+   "combos": [
+    [
+     [
+      "inter",
+      14,
+      "600"
+     ],
+     24
+    ],
+    [
+     [
+      "inter",
+      12,
+      "600"
+     ],
+     9
+    ],
+    [
+     [
+      "inter",
+      16,
+      "700"
+     ],
+     2
+    ],
+    [
+     [
+      "arial",
+      22,
+      "400"
+     ],
+     2
+    ],
+    [
+     [
+      "inter",
+      12,
+      "700"
+     ],
+     1
+    ],
+    [
+     [
+      "inter",
+      14,
+      "400"
+     ],
+     1
+    ]
+   ],
+   "text_colors": [
+    [
+     "#475569",
+     17
+    ],
+    [
+     "#64748B",
+     9
+    ],
+    [
+     "#FFFFFF",
+     6
+    ],
+    [
+     "#CBD5E1",
+     3
+    ],
+    [
+     "#334155",
+     2
+    ],
+    [
+     "#0F172A",
+     2
+    ]
+   ],
+   "bg_colors": [
+    [
+     "#F8FAFC",
+     9
+    ],
+    [
+     "#FFFFFF",
+     4
+    ],
+    [
+     "#0F172A",
+     2
+    ],
+    [
+     "#475569",
+     1
+    ],
+    [
+     "#334155",
+     1
+    ],
+    [
+     "#F97316",
+     1
+    ]
+   ],
+   "border_colors": [
+    [
+     "#E2E8F0",
+     10
+    ],
+    [
+     "#F1F5F9",
+     5
+    ],
+    [
+     "#FFFFFF",
+     1
+    ]
+   ],
+   "radii": [
+    [
+     "8px",
+     20
+    ],
+    [
+     "пилл/круг (14px)",
+     1
+    ],
+    [
+     "12px",
+     1
+    ]
+   ],
+   "shadows": [
+    [
+     "rgba(0, 0, 0, 0.04) 0px 1px 3px 0px",
+     1
+    ]
+   ],
+   "stripes": [],
+   "uppercase": [
+    {
+     "n": 9,
+     "ex": [
+      {
+       "sel": "thead > tr > th",
+       "t": "CNV",
+       "x": 53,
+       "y": 253,
+       "w": 94,
+       "h": 39
+      },
+      {
+       "sel": "thead > tr > th",
+       "t": "Дата",
+       "x": 147,
+       "y": 253,
+       "w": 107,
+       "h": 39
+      },
+      {
+       "sel": "thead > tr > th",
+       "t": "Брокер",
+       "x": 254,
+       "y": 253,
+       "w": 135,
+       "h": 39
+      }
+     ]
+    }
+   ],
+   "gradients": [],
+   "animations": [],
+   "transitions": [
+    [
+     "all",
+     1
+    ]
+   ],
+   "spacing": [
+    [
+     "4px",
+     2
+    ],
+    [
+     "6px",
+     2
+    ],
+    [
+     "8px",
+     6
+    ],
+    [
+     "10px",
+     9
+    ],
+    [
+     "12px",
+     34
+    ],
+    [
+     "16px",
+     4
+    ],
+    [
+     "20px",
+     2
+    ],
+    [
+     "24px",
+     3
+    ],
+    [
+     "32px",
+     1
+    ],
+    [
+     "60px",
+     1
+    ]
+   ],
+   "buttons": [
+    {
+     "bg": "#FFFFFF",
+     "border": "без рамки",
+     "radius": "0px",
+     "font": "22px/400",
+     "n": 2,
+     "ex": [
+      "‹",
+      "›"
+     ]
+    },
+    {
+     "bg": "#F97316",
+     "border": "без рамки",
+     "radius": "8px",
+     "font": "14px/600",
+     "n": 1,
+     "ex": [
+      "+ Новая пачка"
+     ]
+    }
+   ],
+   "primary_count": 1,
+   "primaries": [
+    {
+     "sel": "section#conversions > div.card > button.btn.btn-primary",
+     "t": "+ Новая пачка"
+    }
+   ],
+   "emoji_interactive": [],
+   "emoji_other": [],
+   "wide": [],
+   "addr_wrapped": [],
+   "addr_total": 0,
+   "addr_anywhere": [],
+   "icons": [
+    [
+     "20×20",
+     6
+    ]
+   ],
+   "console_errors": []
+  }
+ },
+ "blocked": {},
+ "coverage_note": "",
+ "complete": true,
+ "generated": "2026-10-14T18:54:57"
+}

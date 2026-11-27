@@ -1,0 +1,1057 @@
+"""Оплата наперёд: две ветки, независимые источники и обязательное возмещение."""
+
+import copy
+import json
+import secrets
+
+import pytest
+
+pytestmark = pytest.mark.usefixtures('stand_demo_environment')
+
+import app as m
+from tests.test_stand_crm_close_atomic import s26_legacy_trail
+import stand_prepay
+import stand_funding
+from stand_transfers import expected_addresses
+
+COMPANY = 'TKkeEVf2zySaWTLyX2qPwvi6kcdHRuPxkJ'
+FOUNDER = 'TWBgeUo74DehAPgw5cKTdYUTXtJELqwwqn'
+TEODOR = 'TVmgzMQ2zwV2DVPscBf98WRRdhrcpf5x5p'
+IPPS = 'TQgQCBXkewuW4RoieDKFP9Ko2SopBh8jso'
+
+
+@pytest.mark.parametrize('tariff, expected', [('bank', 10130.01), ('soft', 10200.01)])
+def test_prepay_amount_rounds_final_sum_like_freehold_send(tariff, expected):
+    assert stand_prepay.amount({'invoiceUsd': 10000.005, 'ippsTariff': tariff}) == expected
+
+
+def board(step='s18w', incoming='company'):
+    d = {'id': 1484, 'code': 'СД-1484', 'client': 'Тест фрихолда', 'step': step,
+         'type': 'Оплата недвижимости', 'kind': 'Фрихолд', 'payType': 'По реквизитам',
+         'invoiceUsd': 10000, 'ippsTariff': 'bank', 'amountRub': 900000, 'incomeAmount': 900000,
+         'walletId': incoming, 'cnvId': 1, 'conv': [], 'rates': {'broker': '80'},
+         'payinParts': [{'incId': 1, 'amountRub': 900000}], 'payinHashes': [],
+         'pay': {}, 'payout': {}, 'transfer': {}, 'log': [], 'docs': {}, 'demoTransfers': True,
+         'reqTask': 'open', 'payTo': {'dev': 'Developer', 'bank': 'Bank', 'swift': 'BANKXX',
+                                   'acc': 'SYNTHETIC', 'purpose': 'Invoice', 'amount': 10000}}
+    state = {'deals': [d], 'incomes': [{'id': 1, 'dealId': 1484, 'rub': 900000, 'source': 'sber'}],
+             'notes': [], 'convs': [{'id': 1, 'walletId': incoming, 'txs': [], 'status': 'sent',
+                  'sources': [{'dealId': 1484, 'rub': 900000, 'usdt': 11000}]}],
+             'wallets': [{'id': 'company', 'addr': COMPANY, 'multisig': True, 'role': 'findir', 'owner': 'компания'},
+                         {'id': 'founder', 'addr': FOUNDER, 'multisig': False, 'role': 'teodor', 'owner': 'Андрей'},
+                         {'id': 'teodor', 'addr': TEODOR, 'multisig': False, 'role': 'teodor', 'owner': 'Теодор'}]}
+    if step == 's18':
+        d.pop('cnvId')
+        state['convs'] = []
+    return state
+
+
+@pytest.fixture
+def api(monkeypatch):
+    monkeypatch.setattr(m, 'STAND_MODE', True)
+    monkeypatch.setenv('LOCAL_NO_AUTH', '1')
+    monkeypatch.setattr(m, '_stand_deliver_notes', lambda: [])
+    role = ['operator']
+    monkeypatch.setattr(m, 'current_role', lambda: role[0])
+    m._stand_migrate()
+    db = m.get_session()
+    try:
+        user = db.query(m.AdminUser).filter_by(username='prepay_test').first()
+        if not user:
+            user = m.AdminUser(username='prepay_test', role='admin', password_hash='synthetic')
+            db.add(user)
+        manager = db.query(m.AdminUser).filter_by(username='prepay_test_manager').first()
+        if not manager:
+            manager = m.AdminUser(username='prepay_test_manager', role='manager',
+                                  display_name='Synthetic Prepay Manager', password_hash='synthetic')
+            db.add(manager)
+        db.flush()
+        uid = user.id
+        for address, owner, multi in ((COMPANY, 'компания', True), (FOUNDER, 'Андрей', False), (TEODOR, 'Теодор', False)):
+            w = db.query(m.Wallet).filter_by(address=address).first()
+            if not w:
+                w = m.Wallet(address=address)
+                db.add(w)
+            w.owner, w.is_multisig, w.active, w.blockchain = owner, multi, True, 'TRON'
+        db.commit()
+    finally:
+        db.close()
+    client = m.app.test_client()
+    with client.session_transaction() as session:
+        session['user_id'] = uid
+    return client, role
+
+
+def seed(state):
+    db = m.get_session()
+    try:
+        manager = db.query(m.AdminUser).filter_by(username='prepay_test_manager').one()
+        for deal in state.get('deals', []):
+            deal['managerUserId'] = manager.id
+        row = m._stand_row(db)
+        row.data, row.version = json.dumps(state), 1
+        db.commit()
+    finally:
+        db.close()
+
+
+def test_incoming_candidates_show_chain_free_shares_and_early_warning(api, monkeypatch):
+    from decimal import Decimal
+    import uuid
+    import stand_transfer_discovery
+
+    state = board()
+    state['convs'][0]['sentTs'] = 1700000000000
+    seed(state)
+    first, full = (uuid.uuid4().hex * 2, uuid.uuid4().hex * 2)
+    db = m.get_session()
+    try:
+        for tx_hash, used in ((first, 120), (full, 100)):
+            tx = m.PayinTx(tx_hash=tx_hash, network='trc20', amount_usdt=100,
+                           source='tronscan', to_address=COMPANY)
+            db.add(tx)
+            db.flush()
+            db.add(m.PayinTxUse(tx_id=tx.id, amount_usdt=used,
+                                stand_generation='other', stand_cnv_id='other'))
+        db.commit()
+    finally:
+        db.close()
+    # The first hash is actually 200 on chain; free balance must use the chain
+    # total and the ledger's existing 120 USDT share.
+    candidates = [
+        {'hash': first, 'network': 'trc20', 'from': FOUNDER, 'to': COMPANY,
+         'amount': Decimal(200), 'timestamp_ms': 1699999999000},
+        {'hash': full, 'network': 'trc20', 'from': FOUNDER, 'to': COMPANY,
+         'amount': Decimal(100), 'timestamp_ms': 1700000001000},
+    ]
+    def fake_discover(**kwargs):
+        assert kwargs['wallet_addr'] == COMPANY
+        assert kwargs['after_ts'] > 0
+        return {'status': 'complete', 'candidates': candidates}
+    monkeypatch.setattr(stand_transfer_discovery, 'discover_transfers', fake_discover)
+    response = api[0].get('/api/stand/incoming/candidates?dealId=1484')
+    assert response.status_code == 200, response.json
+    assert response.json['complete'] is True
+    assert len(response.json['txs']) == 1
+    assert response.json['txs'][0]['free_usdt'] == 80
+    assert response.json['txs'][0]['early'] is True
+    assert response.json['txs'][0]['from_address'] == FOUNDER
+
+
+def test_broker_draft_of_unbatched_parallel_deals_is_independent(api):
+    state = board('s18')
+    first = state['deals'][0]
+    first.update(step='s27', cnvId=None, brokerPick='Крипта-Платежи', brokerDraft='84.6')
+    first['prepay'] = {'source': 'founder', 'wallet': copy.deepcopy(state['wallets'][1]),
+                       'amount': 10130, 'brokerStep': 's18'}
+    second = copy.deepcopy(first)
+    second.update(id=1487, code='СД-1487')
+    state['deals'].append(second)
+    seed(state)
+
+    changed = copy.deepcopy(state)
+    changed['deals'][0]['brokerPick'] = 'Tradex'
+    changed['deals'][0]['brokerDraft'] = ''
+    response = api[0].put('/api/stand/state', json={'version': 1, 'data': changed,
+                                                     'fileStorageVersion': 1})
+
+    assert response.status_code == 200, response.json
+    saved = response.json['data']
+    assert saved['deals'][0]['brokerPick'] == 'Tradex'
+    assert saved['deals'][1]['brokerPick'] == 'Крипта-Платежи'
+    assert all(deal['cnvId'] is None and deal['conv'] == [] for deal in saved['deals'])
+    assert saved['convs'] == []
+
+
+def manual_handoff(sent=899000):
+    previous = board('s18')
+    state = copy.deepcopy(previous)
+    with m.get_session() as db:
+        manager = db.query(m.AdminUser).filter_by(username='prepay_test_manager').one()
+        previous['deals'][0]['managerUserId'] = manager.id
+        state['deals'][0]['managerUserId'] = manager.id
+    d = state['deals'][0]
+    d.update(step='s18w', cnvId=1, brokerSentOverride=sent)
+    state['convs'] = [{'id': 1, 'walletId': 'company', 'broker': 'Брокер',
+        'rate': '80', 'status': 'sent', 'at': '12.10, 12:00', 'requestNo': 'TEST',
+        'sentTs': 1700000000000, 'feeMode': 'manual', 'rubTotal': 900000,
+        'sent': sent, 'held': 900000-sent, 'clientRubTotal': 900000,
+        'sources': [{'dealId': 1484, 'rub': 900000, 'clientRub': 900000,
+                     'usdt': round(sent/80, 2)}], 'txs': []}]
+    return previous, state
+
+
+def test_manual_broker_send_uses_confirmed_rub_and_actual_usdt(api):
+    previous, state = manual_handoff()
+    assert m._stand_broker_handoff_problem(previous, state, previous['deals'][0], state['deals'][0]) is None
+    assert m._stand_guard_transition(previous, state, 'operator') is None
+    conv = state['convs'][0]
+    conv['sent'] += 1
+    assert 'не совпадает' in m._stand_broker_handoff_problem(previous, state, previous['deals'][0], state['deals'][0])
+    conv['sent'] -= 1
+    conv['feeCtrl'] = 940
+    assert 'расчётные удержания' in m._stand_broker_handoff_problem(previous, state, previous['deals'][0], state['deals'][0])
+
+
+@pytest.mark.parametrize('sent', [None, True, '', '1700000000000', 1700000000,
+                                  1700000000000.5, 0, -1, 9999999999999])
+def test_broker_sent_time_rejects_invalid_and_future_without_writing(api, sent):
+    previous, state = manual_handoff()
+    seed(previous)
+    state['convs'][0]['sentTs'] = sent
+    response = api[0].put('/api/stand/state', json={'version': 1, 'data': state})
+    assert response.status_code == 409, response.json
+    assert 'дату и время' in response.json['error']
+    assert api[0].get('/api/stand/state').json['data']['convs'] == []
+
+
+def test_broker_sent_time_uses_known_bank_day_not_operator_confirmation(api):
+    previous, state = manual_handoff()
+    previous['incomes'][0].update(statementDate='2023-11-14', confirmedAt='2023-11-16T12:00:00Z')
+    conv = state['convs'][0]
+    assert m._stand_broker_sent_time_problem(previous, conv) is None
+    conv['sentTs'] = 1699909199999  # 13.11 23:59:59.999 МСК
+    assert 'банковского прихода' in m._stand_broker_sent_time_problem(previous, conv)
+    conv['sentTs'] += 1  # 14.11 00:00 МСК: точность выписки — день.
+    assert m._stand_broker_sent_time_problem(previous, conv) is None
+    previous['incomes'][0] = dict(previous['incomes'][0], statementDate=None, date='15.11')
+    assert m._stand_broker_sent_time_problem(previous, conv) is None
+    conv['sentRecordedTs'] = conv['sentTs']
+    assert 'фиксирует сервер' in m._stand_broker_sent_time_problem(previous, conv)
+
+
+@pytest.mark.parametrize('prepaid', [False, True])
+def test_historical_broker_send_accepts_only_later_chain_event(api, monkeypatch, prepaid):
+    from tests.test_stand_transfers import chain, Response
+    from stand_transfers import verify_transfer
+    import uuid
+    previous, state = manual_handoff()
+    if prepaid:
+        for doc in (previous, state):
+            d = doc['deals'][0]
+            d['prepay'] = {'source': 'founder', 'wallet': copy.deepcopy(doc['wallets'][1]),
+                           'amount': 10130, 'brokerStep': d['step']}
+            d['step'] = 's27'
+    seed(previous)
+    response = api[0].put('/api/stand/state', json={'version': 1, 'data': state})
+    assert response.status_code == 200, response.json
+    saved = response.json['data']
+    conv = saved['convs'][0]
+    assert conv['sentTs'] == 1700000000000
+    assert conv['sentRecordedTs'] > conv['sentTs']
+    assert saved['deals'][0]['step'] == ('s27' if prepaid else 's18w')
+    repeated = api[0].put('/api/stand/state', json={'version': response.json['version'], 'data': saved})
+    assert repeated.status_code == 200, repeated.json
+    assert repeated.json['data']['convs'] == saved['convs']
+    event = [conv['sentTs'] - 1]
+    tx_hash = uuid.uuid4().hex * 2
+    monkeypatch.setattr(m, 'verify_transfer', lambda *a, **kw: verify_transfer(
+        *a, **kw, get=lambda *a, **kw: Response(200, dict(
+            chain(receiver=COMPANY, timestamp=event[0], amount='8000000000'), hash=tx_hash))))
+    payload = {'dealId': 1484, 'hash': tx_hash, 'network': 'TRC-20', 'amount': 2200}
+    early = api[0].post('/api/stand/incoming/check', json=payload)
+    assert early.status_code == 409, early.json
+    assert 'раньше отправки' in early.json['error']
+    preview = api[0].post('/api/stand/incoming/check', json={**payload, 'preview': True})
+    assert preview.status_code == 200 and preview.json['early'] is True
+    confirmed = api[0].post('/api/stand/incoming/check', json={**payload, 'confirmBeforeRubSend': True})
+    assert confirmed.status_code == 200, confirmed.json
+    assert confirmed.json['tx']['confirmedBeforeRubSend'] is True
+    assert 'подтверждаю, это перевод брокера' in confirmed.json['data']['deals'][0]['log'][-1]['text']
+    assert api[0].post('/api/stand/incoming/check', json={**payload, 'confirmBeforeRubSend': True}).status_code == 409
+    # Следующий перевод обычный и галочки не требует.
+    tx_hash = uuid.uuid4().hex * 2
+    payload['hash'] = tx_hash
+    event[0] = conv['sentTs'] + 1000
+    accepted = api[0].post('/api/stand/incoming/check', json=payload)
+    assert accepted.status_code == 200, accepted.json
+    again = api[0].post('/api/stand/incoming/check', json=payload)
+    assert again.status_code == 409, again.json
+    final = api[0].get('/api/stand/state').json['data']['convs'][0]
+    assert len(final['txs']) == 2 and all(t['amount'] == 2200 for t in final['txs'])
+    assert final['sentTs'] == conv['sentTs']
+    assert final['sentRecordedTs'] == conv['sentRecordedTs']
+
+
+@pytest.mark.parametrize('value', ['', 0, -1, 'NaN', 'Infinity', '1 000,001', '900000.01'])
+def test_manual_broker_send_rejects_invalid_and_over_available(api, value):
+    state = board('s18')
+    seed(state)
+    changed = copy.deepcopy(state)
+    changed['deals'][0]['brokerSentOverride'] = value
+    response = api[0].put('/api/stand/state', json={'version': 1, 'data': changed,
+                                                     'fileStorageVersion': 1})
+    assert response.status_code == 409, response.json
+
+
+def test_manual_broker_draft_accepts_russian_amount_and_blocks_manager(api):
+    state = board('s18')
+    seed(state)
+    changed = copy.deepcopy(state)
+    changed['deals'][0]['brokerSentOverride'] = '899\u202f000,25'
+    api[1][0] = 'manager'
+    denied = api[0].put('/api/stand/state', json={'version': 1, 'data': changed,
+                                                  'fileStorageVersion': 1})
+    assert denied.status_code == 409
+    api[1][0] = 'operator'
+    saved = api[0].put('/api/stand/state', json={'version': 1, 'data': changed,
+                                                 'fileStorageVersion': 1})
+    assert saved.status_code == 200, saved.json
+    assert saved.json['data']['deals'][0]['brokerSentOverride'] == '899\u202f000,25'
+    changed = saved.json['data']
+    changed['deals'][0]['brokerSentOverride'] = None
+    reset = api[0].put('/api/stand/state', json={'version': saved.json['version'], 'data': changed,
+                                                 'fileStorageVersion': 1})
+    assert reset.status_code == 200, reset.json
+
+
+def test_manual_broker_send_locked_after_handoff(api):
+    _, state = manual_handoff()
+    seed(state)
+    changed = copy.deepcopy(state)
+    changed['deals'][0]['brokerSentOverride'] = 898000
+    response = api[0].put('/api/stand/state', json={'version': 1, 'data': changed,
+                                                     'fileStorageVersion': 1})
+    assert response.status_code == 409, response.json
+
+
+@pytest.mark.parametrize('field', [
+    'sent', 'held', 'clientRubTotal', 'broker', 'rate', 'requestNo', 'at',
+    'sentTs', 'sentRecordedTs', 'rubTotal', 'feeMode', 'feeCtrl', 'source_clientRub',
+    'source_usdt', 'source_accountKey', 'source_dealId', 'extra_source',
+    'missing_clientRubTotal', 'missing_source_clientRub', 'missing_conv',
+])
+def test_sent_manual_broker_facts_cannot_change_by_full_put(api, field):
+    _, state = manual_handoff()
+    seed(state)
+    changed = copy.deepcopy(state)
+    conv = changed['convs'][0]
+    source = conv['sources'][0]
+    if field == 'extra_source':
+        conv['sources'].append(copy.deepcopy(source))
+    elif field == 'missing_clientRubTotal':
+        conv.pop('clientRubTotal')
+    elif field == 'missing_source_clientRub':
+        source.pop('clientRub')
+    elif field == 'missing_conv':
+        changed['convs'] = []
+    elif field.startswith('source_'):
+        key = field.removeprefix('source_')
+        source[key] = 1487 if key == 'dealId' else 123
+    else:
+        conv[field] = {'broker': 'Другой брокер', 'feeMode': 'auto',
+                       'requestNo': 'OTHER', 'at': '13.10', 'rate': '81'}.get(field, 123)
+    response = api[0].put('/api/stand/state', json={'version': 1, 'data': changed,
+                                                     'fileStorageVersion': 1})
+    assert response.status_code == 409, (field, response.json)
+
+
+@pytest.mark.parametrize('role', ['manager', 'operator', 'admin'])
+def test_sent_manual_broker_facts_are_locked_for_every_role(api, role):
+    _, state = manual_handoff()
+    seed(state)
+    changed = copy.deepcopy(state)
+    changed['convs'][0]['sent'] += .01
+    api[1][0] = role
+    response = api[0].put('/api/stand/state', json={'version': 1, 'data': changed,
+                                                     'fileStorageVersion': 1})
+    assert response.status_code == 409, (role, response.json)
+
+
+def test_new_auto_broker_facts_are_locked_but_legacy_auto_keeps_prior_contract(api):
+    _, manual = manual_handoff()
+    auto = copy.deepcopy(manual)
+    auto['deals'][0]['brokerSentOverride'] = None
+    auto['convs'][0].pop('feeMode')
+    assert m._stand_guard_transition(auto, copy.deepcopy(auto), 'operator') is None
+    changed = copy.deepcopy(auto)
+    changed['convs'][0]['sent'] += .01
+    assert 'нельзя менять' in m._stand_guard_transition(auto, changed, 'operator')
+    legacy = copy.deepcopy(auto)
+    legacy['convs'][0].pop('clientRubTotal')
+    legacy['convs'][0]['sources'][0].pop('clientRub')
+    changed = copy.deepcopy(legacy)
+    changed['convs'][0]['held'] += .01
+    assert m._stand_guard_transition(legacy, changed, 'operator') is None
+
+
+def test_new_auto_handoff_requires_client_amount_snapshot(api):
+    previous, state = manual_handoff()
+    deal = state['deals'][0]
+    deal['brokerSentOverride'] = None
+    conv = state['convs'][0]
+    conv.pop('feeMode')
+    conv.update(sent=897260, held=2740, feeCtrl=940, feeOurs=1800,
+                feePct=.3, feeFix=40, feeCtrlPct=.1, feeOursPct=.2)
+    conv['sources'][0]['usdt'] = 11215.75
+    assert m._stand_broker_handoff_problem(previous, state, previous['deals'][0], deal) is None
+    conv.pop('clientRubTotal')
+    assert 'сумма клиента' in m._stand_broker_handoff_problem(previous, state, previous['deals'][0], deal).lower()
+    conv['clientRubTotal'] = 900000
+    conv['sources'][0].pop('clientRub')
+    assert 'сумма клиента' in m._stand_broker_handoff_problem(previous, state, previous['deals'][0], deal).lower()
+
+
+def test_sent_manual_broker_accepts_incoming_events_and_locks_facts_after_receive(api):
+    _, state = manual_handoff()
+    received = copy.deepcopy(state)
+    conv = received['convs'][0]
+    conv['txs'] = [{'hash': 'a' * 64, 'net': 'TRC-20', 'amount': 11237.5,
+                    'status': 'confirmed'}]
+    conv['sources'][0]['usdtFact'] = 11237.5
+    conv['status'] = 'received'
+    conv['receivedAt'] = '13.10, 12:00'
+    assert m._stand_guard_transition(state, received, 'operator') is None
+    tampered = copy.deepcopy(received)
+    tampered['convs'][0]['sources'][0]['usdt'] += .01
+    assert 'нельзя менять' in m._stand_guard_transition(received, tampered, 'operator')
+
+
+def test_missing_account_key_uses_confirmed_bik_and_account_without_mixing(api):
+    state = board('s18w')
+    second = copy.deepcopy(state['deals'][0])
+    second.update(id=1487, code='СД-1487')
+    state['deals'].append(second)
+    state['convs'][0]['sources'] = [{'dealId': 1484, 'rub': 900000, 'usdt': 1},
+                                    {'dealId': 1487, 'rub': 900000, 'usdt': 1}]
+    state['incomes'] = []
+    for index, deal in enumerate(state['deals'], 1):
+        receipt_id = 'receipt-' + str(index)
+        deal['rubReceivingAccount'] = {'mode': 'custom', 'account': '40807810819000000261',
+                                        'bik': '044525094'}
+        deal['manualBankReceipt'] = {'id': receipt_id, 'status': 'confirmed',
+                                      'confirmedAt': '2026-10-13', 'confirmedBy': 12,
+                                      'actualAmount': 900000, 'account': '40807810819000000261',
+                                      'bankBik': '044525094'}
+        deal['payinParts'] = [{'incId': index, 'amountRub': 900000}]
+        state['incomes'].append({'id': index, 'dealId': deal['id'], 'rub': 900000,
+                                 'grossRub': 900000, 'source': 'manual_confirmed',
+                                 'manualReceiptId': receipt_id})
+    conv = state['convs'][0]
+    assert stand_funding.check_batch(state, conv, strict_account=True) is None
+    state['deals'][1]['manualBankReceipt']['account'] = '40807810819000000999'
+    assert 'разных счетов' in stand_funding.check_batch(state, conv, strict_account=True)
+    state['deals'][1]['manualBankReceipt']['account'] = '40807810819000000261'
+    state['incomes'][1]['accountKey'] = 'sber'
+    assert 'не совпадает' in stand_funding.check_batch(state, conv, strict_account=True)
+    state['incomes'][1].pop('accountKey')
+    state['deals'][1]['manualBankReceipt'].pop('account')
+    state['deals'][1]['rubReceivingAccount'] = {}
+    assert 'Не указан' in stand_funding.check_batch(state, conv, strict_account=True)
+    assert stand_funding.check_batch(state, conv) is None  # старый сохранённый CNV
+
+
+def test_manual_send_with_selected_crm_income_uses_full_confirmed_total(api):
+    try:
+        db = m.get_session()
+        try:
+            income = m.SberIncome(uuid='manual-broker-extra', operation_date='2026-10-16',
+                                  amount_rub=100000, account_key='sber', excluded=False)
+            db.add(income)
+            db.commit()
+            extra_id = income.id
+            assert m._stand_broker_draft_rub(board('s18'), board('s18')['deals'][0], db) == 900000
+        finally:
+            db.close()
+        previous = board('s18')
+        seed(previous)
+        selected = copy.deepcopy(previous)
+        selected['deals'][0]['brokerCrmDraftIds'] = [extra_id]
+        selection = api[0].put('/api/stand/state', json={'version': 1, 'data': selected,
+                                                         'fileStorageVersion': 1})
+        assert selection.status_code == 200, selection.json
+        selected = selection.json['data']
+        selected['deals'][0]['brokerSentOverride'] = 950000
+        saved = api[0].put('/api/stand/state', json={'version': selection.json['version'],
+                                                     'data': selected, 'fileStorageVersion': 1})
+        assert saved.status_code == 200, saved.json
+        previous = saved.json['data']
+        state = copy.deepcopy(previous)
+        d = state['deals'][0]
+        d.update(step='s18w', cnvId=1)
+        state['incomes'].append({'id': 'sber:manual-broker-extra', 'source': 'sber',
+                                 'accountKey': 'sber', 'dealId': None, 'rub': 100000,
+                                 'batchRub': 100000, 'cnvId': 1, 'excluded': False})
+        state['convs'] = [{'id': 1, 'walletId': 'company', 'broker': 'Брокер',
+            'rate': '80', 'status': 'sent', 'at': '12.10, 12:00', 'requestNo': 'TEST',
+            'sentTs': 1700000000000, 'feeMode': 'manual', 'rubTotal': 1000000,
+            'sent': 950000, 'held': 50000, 'clientRubTotal': 1000000, 'sources': [
+                {'dealId': 1484, 'rub': 900000, 'clientRub': 900000, 'usdt': 10687.5},
+                {'dealId': None, 'crmIncomeId': extra_id, 'incomeId': 'sber:manual-broker-extra',
+                 'rub': 100000, 'clientRub': 100000, 'usdt': 1187.5}], 'txs': []}]
+        assert m._stand_broker_handoff_problem(previous, state, previous['deals'][0], d) is None
+    finally:
+        db = m.get_session()
+        db.query(m.SberIncome).filter_by(uuid='manual-broker-extra').delete()
+        db.commit()
+        db.close()
+
+
+def test_manual_mixed_batch_syncs_actual_sent_and_residual_to_crm(api):
+    previous = board('s18')
+    state = copy.deepcopy(previous)
+    state['deals'][0]['payinParts'] = [{'incId': 'sber:broker-own', 'amountRub': 900000}]
+    state['deals'][0]['brokerSentOverride'] = 950000
+    state['incomes'] = [{'id': 'sber:broker-own', 'source': 'sber', 'rub': 900000,
+                         'grossRub': 900000, 'dealId': 1484, 'cnvId': 1},
+                        {'id': 'sber:broker-extra', 'source': 'sber', 'rub': 100000,
+                         'grossRub': 100000, 'dealId': None, 'cnvId': 1}]
+    state['convs'] = [{'id': 1, 'walletId': 'company', 'broker': 'Брокер',
+        'rate': '80', 'status': 'sent', 'at': '12.10, 12:00', 'requestNo': 'TEST',
+        'sentTs': 1700000000000, 'feeMode': 'manual', 'rubTotal': 1000000,
+        'sent': 950000, 'held': 50000, 'sources': [
+            {'dealId': 1484, 'rub': 900000, 'usdt': 10687.5},
+            {'dealId': None, 'crmIncomeId': 2, 'incomeId': 'sber:broker-extra',
+             'rub': 100000, 'usdt': 1187.5}], 'txs': []}]
+    db = m.get_session()
+    try:
+        db.add_all([m.SberIncome(uuid='broker-own', operation_date='2026-10-16',
+                                 amount_rub=900000, account_key='sber', excluded=False),
+                    m.SberIncome(uuid='broker-extra', operation_date='2026-10-16',
+                                 amount_rub=100000, account_key='sber', excluded=False)])
+        db.flush()
+        with m.app.test_request_context():
+            m._stand_sync_crm_conversions(db, previous, state)
+        crm = db.query(m.Conversion).filter_by(request_no='TEST').one()
+        assert crm.amount_rub_sent == 950000
+        assert crm.held_percent == 0
+        assert crm.held_fixed_rub == 50000
+        assert sum(x.amount_rub for x in crm.sources) == 1000000
+    finally:
+        db.rollback()
+        db.close()
+
+
+def start(api, source='founder', step='s18w', incoming='company'):
+    seed(board(step, incoming))
+    response = api[0].post('/api/stand/prepay', json={
+        'action': 'start', 'dealId': 1484, 'walletId': source, 'version': 1})
+    assert response.status_code == 200, response.json
+    return response.json
+
+
+def put(api, saved, role):
+    api[1][0] = role
+    response = api[0].put('/api/stand/state', json={'version': saved['version'], 'data': saved['data']})
+    assert response.status_code == 200, response.json
+    return response.json
+
+
+def order(api, saved, *, amount=10130):
+    d = saved['data']['deals'][0]
+    d['payToConfirm'] = {'payTo': copy.deepcopy(d['payTo']), 'at': 'confirmed'}
+    d['reqTask'] = 'done'
+    saved = put(api, saved, 'manager')
+    d = saved['data']['deals'][0]
+    d.update(step='s23', reqTask='done', _ippsPayoutInstruction=True,
+             transfer={'amount': amount, 'to': 'IPPS', 'addr': IPPS, 'net': 'TRC-20', 'sends': []})
+    return put(api, saved, 'operator')
+
+
+@pytest.mark.parametrize('source', ['founder', 'company'])
+@pytest.mark.parametrize('step', ['s18', 's18w'])
+def test_start_preserves_broker_and_uses_manager_gate(api, source, step):
+    saved = start(api, source, step)
+    d = saved['data']['deals'][0]
+    assert d['step'] == 's22' and d['prepay']['brokerStep'] == step
+    assert not d['payinHashes'] and not d['pay'].get('usdt')
+    assert '10130.00' in d['log'][-1]['text']
+    assert d['prepay']['wallet']['owner'] == ('Андрей' if source == 'founder' else 'компания')
+    assert expected_addresses(saved['data'], d)[0] == (FOUNDER if source == 'founder' else COMPANY)
+    forbidden = copy.deepcopy(saved['data'])
+    forbidden['deals'][0]['transfer']['sends'] = [{'ref': 'demo:1484:x', 'amount': 10130}]
+    assert m._stand_guard_transition(saved['data'], forbidden, 'teodor')
+    saved = order(api, saved)
+    d = saved['data']['deals'][0]
+    assert d['ippsPayoutOrder']['confirmedAt']
+    assert m._stand_current_step_role(saved['data'], d) == ('findir' if source == 'company' else 'teodor')
+    assert not d['pay'].get('usdt'), 'Источник предоплаты не становится приходом брокера'
+
+
+def test_rerated_thb_freehold_uses_reissued_soft_terms_in_ipps_prepay(api):
+    state = board('s18')
+    d = state['deals'][0]
+    d.update(invoiceCurrency='thb', invoiceThb=9976500, fxRate=33.86, invoiceUsd=294639.69,
+             ippsTariff='soft', rerateDocVersion=1, docVersion=1, docPack={'version': 1})
+    d['payTo']['amount'] = d['invoiceUsd']
+    d['reqTask'] = 'done'
+    seed(state)
+    request = {'action': 'start', 'dealId': d['id'], 'walletId': 'founder', 'version': 1}
+    rejected = api[0].post('/api/stand/prepay', json=request)
+    assert rejected.status_code == 409
+    assert 'перевыпустите' in rejected.json['error']
+
+    d.update(docVersion=2, docPack={'version': 2, 'transfer': '294639.69'})
+    seed(state)
+    started = api[0].post('/api/stand/prepay', json=request)
+    assert started.status_code == 200, started.json
+    saved = started.json
+    payment = saved['data']['deals'][0]
+    assert payment['step'] == 's22' and payment['reqTask'] == 'open'
+    assert payment['prepay']['amount'] == 299109.29
+
+    payment['payToConfirm'] = {'payTo': dict(payment['payTo']), 'at': 'confirmed'}
+    saved = put(api, saved, 'manager')
+
+    def instruct(saved, amount):
+        payload = copy.deepcopy(saved)
+        payload['data']['deals'][0].update(step='s23', reqTask='done', _ippsPayoutInstruction=True,
+            transfer={'amount': amount, 'to': 'IPPS', 'addr': IPPS, 'net': 'TRC-20', 'sends': []})
+        api[1][0] = 'operator'
+        return api[0].put('/api/stand/state', json={'version': payload['version'], 'data': payload['data']})
+
+    missing_pobo = instruct(saved, 299109.29)
+    assert missing_pobo.status_code == 409
+    assert 'реквизиты' in missing_pobo.json['error']
+    payment = saved['data']['deals'][0]
+    payment['payTo']['pobo'] = 'SYNTHETIC CLIENT'
+    payment['reqTask'] = 'done'
+    saved = put(api, saved, 'manager')
+    assert instruct(saved, 299109.29).status_code == 409
+    payment = saved['data']['deals'][0]
+    payment['payToConfirm'] = {'payTo': dict(payment['payTo']), 'at': 'new confirmation'}
+    saved = put(api, saved, 'manager')
+    stale_amount = instruct(saved, 300417.74)
+    assert stale_amount.status_code == 409
+    assert 'Сумма поручения' in stale_amount.json['error']
+    issued = instruct(saved, 299109.29)
+    assert issued.status_code == 200, issued.json
+    payment = issued.json['data']['deals'][0]
+    assert payment['step'] == 's23' and payment['postConv'] == 'ipps_swift'
+    order = payment['ippsPayoutOrder']
+    assert (order['amount'], order['invoiceUsd'], order['tariff']) == (299109.29, '294639.69', 'soft')
+    assert order['payTo']['pobo'] == 'SYNTHETIC CLIENT'
+    snapshot = issued.json
+    snapshot['data']['deals'][0]['ippsTariff'] = 'bank'
+    locked = api[0].put('/api/stand/state', json={'version': snapshot['version'], 'data': snapshot['data']})
+    assert locked.status_code == 409
+    assert locked.json['data']['deals'][0]['ippsPayoutOrder'] == order
+
+
+@pytest.mark.parametrize('stage', ['s14', 's27'])
+def test_no_start_outside_broker_stages(api, stage):
+    seed(board(stage))
+    r = api[0].post('/api/stand/prepay', json={'action': 'start', 'dealId': 1484, 'walletId': 'founder', 'version': 1})
+    assert r.status_code == 409
+
+
+def test_no_start_without_rub_or_after_broker_usdt(api):
+    for change in ('no_rub', 'usdt'):
+        state = board()
+        if change == 'no_rub':
+            state['deals'][0]['payinParts'] = []
+        else:
+            state['convs'][0]['txs'] = [{'hash': 'a' * 64, 'status': 'confirmed', 'amount': 11000}]
+        seed(state)
+        r = api[0].post('/api/stand/prepay', json={'action': 'start', 'dealId': 1484, 'walletId': 'founder', 'version': 1})
+        assert r.status_code == 409
+
+
+@pytest.mark.parametrize('instructed', [False, True])
+def test_cancel_restores_broker_and_no_debt(api, instructed):
+    saved = start(api)
+    if instructed:
+        saved = order(api, saved)
+    api[1][0] = 'operator'
+    r = api[0].post('/api/stand/prepay', json={'action': 'cancel', 'dealId': 1484, 'version': saved['version']})
+    assert r.status_code == 200, r.json
+    d = r.json['data']['deals'][0]
+    assert d['step'] == 's18w' and not d.get('prepay') and not d.get('ippsPayoutOrder')
+    assert not d.get('paySrc') and not d['payout']
+
+
+def test_source_amount_and_mode_cannot_be_forged_by_put(api):
+    saved = start(api)
+    for key, value in (('amount', 1), ('wallet', {}), ('source', 'multisig')):
+        forged = copy.deepcopy(saved['data'])
+        forged['deals'][0]['prepay'][key] = value
+        assert m._stand_guard_transition(saved['data'], forged, 'admin')
+    before = board()
+    assert m._stand_guard_transition(before, saved['data'], 'operator')
+
+
+def payout(api, source, incoming='company', saved=None, *, amount=10130):
+    saved = order(api, saved or start(api, source, incoming=incoming), amount=amount)
+    d = saved['data']['deals'][0]
+    role = 'findir' if source == 'company' else 'teodor'
+    if amount < d['prepay']['amount']:
+        excessive = copy.deepcopy(saved)
+        excessive['data']['deals'][0]['transfer']['sends'] = [
+            {'ref': 'demo:1484:above-order', 'amount': round(amount + .01, 2), 'net': 'TRC-20'}]
+        api[1][0] = role
+        refused = api[0].put('/api/stand/state', json={'version': excessive['version'], 'data': excessive['data']})
+        assert refused.status_code == 409, refused.json
+        assert refused.json['error'] == 'Отправки превышают сумму подтверждённого поручения IPPS'
+        assert refused.json['version'] == saved['version']
+    d['transfer']['sends'] = [{'ref': 'demo:1484:out', 'amount': amount, 'net': 'TRC-20'}]
+    saved = put(api, saved, role)
+    api[1][0] = 'operator'
+    r = api[0].post('/api/stand/prepay', json={'action': 'cancel', 'dealId': 1484, 'version': saved['version']})
+    assert r.status_code == 409
+    if source == 'company':
+        saved['data']['deals'][0]['step'] = 's24'
+        saved = put(api, saved, 'findir')
+    api[1][0] = 'teodor'
+    r = api[0].post('/api/stand/transfers/demo', json={'dealId': 1484, 'ref': 'demo:1484:out', 'outcome': 'confirmed'})
+    assert r.status_code == 200 and r.json.get('success'), r.json
+    saved = r.json
+    d = saved['data']['deals'][0]
+    assert d['step'] == 's26' and d['prepay']['brokerStep'] in ('s18', 's18w', 'done')
+    assert d['serverTransferComplete'] and d['payout']['usdt'] == amount
+    return saved
+
+
+@pytest.mark.parametrize('source', ['founder', 'company'])
+def test_payment_before_broker_then_reimbursement_and_close_gate(api, source):
+    saved = payout(api, source)
+    state = saved['data']
+    d = state['deals'][0]
+    assert stand_prepay.close_problem(state, d)
+    # Приход вводится отдельным проверенным событием, затем штатный разнос s18w.
+    state['convs'][0]['txs'] = [{'hash': 'b' * 64, 'status': 'confirmed', 'amount': 11000, 'net': 'TRC-20'}]
+    seed(state)
+    saved['version'] = 1
+    d['prepay']['brokerStep'] = 'done'
+    state['convs'][0]['sources'][0]['usdtFact'] = 11000
+    state['convs'][0]['status'] = 'received'
+    d['pay'].update(usdt=11000, hash='b' * 64)
+    d['payinHashes'] = [{'hash': 'b' * 64, 'amount': 11000, 'network': 'TRC-20'}]
+    saved = put(api, saved, 'operator')
+    d = saved['data']['deals'][0]
+    assert d['step'] == 's26', 'Приход брокера не перезапускает s22'
+    assert d['payout']['usdt'] == 10130
+    if source == 'founder':
+        assert d['paySrc'] == 'founder'
+        assert stand_prepay.close_problem(saved['data'], d)
+        api[1][0] = 'findir'
+        r = api[0].post('/api/stand/prepay/reimburse', json={'dealId': 1484, 'hash': 'demo:1484:return'})
+        assert r.status_code == 200, r.json
+        d = r.json['data']['deals'][0]
+        assert d['payout']['reimbursement']['usdt'] == 10130
+        assert d['payout']['usdt'] == 10130 and d['pay']['usdt'] == 11000
+        assert stand_prepay.close_problem(r.json['data'], d) is None
+    else:
+        assert 'кошелёк совпал' in d['payout']['reimbursement']['kind']
+        assert d['paySrc'] != 'founder'
+        assert stand_prepay.close_problem(saved['data'], d) is None
+
+
+def test_old_deal_without_prepay_keeps_existing_gates():
+    state = board()
+    assert stand_prepay.close_problem(state, state['deals'][0]) is None
+    assert m._stand_guard_transition(state, copy.deepcopy(state), 'operator') is None
+
+
+@pytest.mark.parametrize('payment_stage', ['s22', 's23', 's26'])
+def test_rubles_can_be_sent_while_manager_or_founder_has_payment_task(api, payment_stage):
+    saved = start(api, step='s18')
+    if payment_stage == 's23':
+        saved = order(api, saved)
+    elif payment_stage == 's26':
+        saved = payout(api, 'founder', saved=saved)
+    # Курс и кошелёк можно готовить у операциониста, пока задача оплаты у другой роли.
+    saved['data']['deals'][0]['brokerDraft'] = '80'
+    saved = put(api, saved, 'operator')
+    d = saved['data']['deals'][0]
+    d.update(cnvId=1, brokerDraft=None, brokerPick=None)
+    d['prepay']['brokerStep'] = 's18w'
+    saved['data']['convs'] = [{'id': 1, 'walletId': 'company', 'broker': 'Брокер',
+        'rate': '80', 'status': 'sent', 'at': '12.10, 12:00', 'requestNo': 'TEST', 'sentTs': 1700000000000,
+        'rubTotal': 900000, 'clientRubTotal': 900000,
+        'sent': 897260, 'held': 2740, 'feeCtrl': 940, 'feeOurs': 1800,
+        'feePct': .3, 'feeFix': 40, 'feeCtrlPct': .1, 'feeOursPct': .2,
+        'sources': [{'dealId': 1484, 'rub': 900000, 'clientRub': 900000,
+                     'usdt': 11215.75}], 'txs': []}]
+    saved = put(api, saved, 'operator')
+    assert saved['data']['deals'][0]['step'] == payment_stage
+    assert saved['data']['deals'][0]['prepay']['brokerStep'] == 's18w'
+
+
+def test_broker_receipt_can_arrive_before_payment_instruction(api):
+    saved = start(api)
+    saved['data']['convs'][0]['txs'] = [{'hash': 'b' * 64, 'status': 'confirmed', 'amount': 11000, 'net': 'TRC-20'}]
+    seed(saved['data'])
+    saved['version'] = 1
+    d = saved['data']['deals'][0]
+    d['prepay']['brokerStep'] = 'done'
+    d['pay'].update(usdt=11000, hash='b' * 64)
+    d['payinHashes'] = [{'hash': 'b' * 64, 'amount': 11000, 'network': 'TRC-20'}]
+    saved['data']['convs'][0]['sources'][0]['usdtFact'] = 11000
+    saved = put(api, saved, 'operator')
+    saved = order(api, saved)
+    assert saved['data']['deals'][0]['prepay']['brokerStep'] == 'done'
+
+
+def test_stale_launch_and_wrong_roles_are_rejected(api):
+    saved = start(api)
+    for actor, version, expected in [('manager', saved['version'], 403), ('operator', 1, 409)]:
+        api[1][0] = actor
+        r = api[0].post('/api/stand/prepay', json={'action': 'cancel', 'dealId': 1484, 'version': version})
+        assert r.status_code == expected
+
+
+def test_no_close_before_broker_receipt_even_with_paid_invoice(api):
+    saved = payout(api, 'company')
+    d = saved['data']['deals'][0]
+    d.update(step='s27', sentToClient=True)
+    d['pay']['invoicePaid'] = True
+    d['files'] = {'receipt': [{'file': 'receipt.pdf', 'mime': 'application/pdf',
+                             'data': 'data:application/pdf;base64,JVBERi0='}]}
+    seed(saved['data'])
+    api[1][0] = 'manager'
+    r = api[0].post('/api/stand/deals/1484/crm-close', json={'version': 1, 'crm': {}})
+    assert r.status_code == 409
+    assert 'USDT брокера' in r.json['error'], r.json
+
+
+def test_second_signature_and_payto_confirmation_are_not_bypassed(api):
+    saved = order(api, start(api, 'company'))
+    d = saved['data']['deals'][0]
+    d['transfer']['sends'] = [{'ref': 'demo:1484:out', 'amount': 10130, 'net': 'TRC-20'}]
+    saved = put(api, saved, 'findir')
+    r = api[0].post('/api/stand/transfers/demo', json={'dealId': 1484, 'ref': 'demo:1484:out', 'outcome': 'confirmed'})
+    assert r.status_code == 409 and 'вторая подпись' in r.json['error']
+    api[1][0] = 'operator'
+    saved = payout(api, 'founder')
+    saved['data']['deals'][0].pop('payToConfirm', None)
+    forged = copy.deepcopy(saved['data'])
+    forged['deals'][0]['step'] = 's27'
+    forged['deals'][0]['pay']['invoicePaid'] = True
+    forged['deals'][0].pop('payToConfirm', None)
+    assert 'подтверждения реквизитов' in m._stand_guard_transition(saved['data'], forged, 'operator')
+
+
+def receive(api, saved, amount=11000, tx_hash='b' * 64):
+    # Синтетическое подтверждение сети; переход и распределение проходят реальный PUT.
+    state = saved['data']
+    state['convs'][0]['txs'] = [{'hash': tx_hash, 'status': 'confirmed', 'amount': amount, 'net': 'TRC-20'}]
+    seed(state)
+    saved['version'] = 1
+    d = state['deals'][0]
+    d['prepay']['brokerStep'] = 'done'
+    state['convs'][0]['sources'][0]['usdtFact'] = amount
+    state['convs'][0]['status'] = 'received'
+    d['pay'].update(usdt=amount, hash=tx_hash)
+    d['payinHashes'] = [{'hash': tx_hash, 'amount': amount, 'network': 'TRC-20'}]
+    return put(api, saved, 'operator')
+
+
+@pytest.mark.parametrize('source', ['founder', 'teodor', 'company'])
+@pytest.mark.parametrize('incoming', ['founder', 'teodor', 'company'])
+@pytest.mark.parametrize('broker_first', [False, True])
+def test_wallet_matrix_and_both_completion_orders(api, source, incoming, broker_first):
+    saved = start(api, source, incoming=incoming)
+    if broker_first:
+        saved = receive(api, saved)
+        assert not saved['data']['deals'][0]['payout'].get('reimbursement')
+    saved = payout(api, source, incoming, saved)
+    if not broker_first:
+        saved = receive(api, saved)
+    d = saved['data']['deals'][0]
+    if source == incoming:
+        assert 'кошелёк совпал' in d['payout']['reimbursement']['kind']
+        assert d['payout']['reimbursement']['usdt'] == 10130
+        assert stand_prepay.close_problem(saved['data'], d) is None
+    else:
+        assert not d['payout'].get('reimbursement')
+        assert stand_prepay.close_problem(saved['data'], d)
+        api[1][0] = 'findir' if incoming == 'company' else 'teodor'
+        r = api[0].post('/api/stand/prepay/reimburse', json={'dealId': 1484, 'hash': 'demo:1484:refund'})
+        assert r.status_code == 200, r.json
+        d = r.json['data']['deals'][0]
+        assert d['payout']['reimbursement']['usdt'] == 10130
+        assert stand_prepay.close_problem(r.json['data'], d) is None
+        retry = api[0].post('/api/stand/prepay/reimburse', json={'dealId': 1484, 'hash': 'demo:1484:refund'})
+        assert retry.json['version'] == r.json['version']
+    assert d['payout']['usdt'] == 10130 and d['pay']['usdt'] == 11000
+    assert d['paySrc'] == ('ipps_swift' if source == 'company' else 'founder')
+
+
+def test_reimbursement_cannot_be_forged_or_reuse_payin_or_outgoing(api):
+    saved = receive(api, payout(api, 'founder'))
+    forged = copy.deepcopy(saved['data'])
+    forged['deals'][0]['payout']['reimbursement'] = {'hash': 'fake'}
+    assert 'только сервер' in m._stand_guard_transition(saved['data'], forged, 'admin')
+    api[1][0] = 'findir'
+    for ref in ('b' * 64, 'demo:1484:out'):
+        r = api[0].post('/api/stand/prepay/reimburse', json={'dealId': 1484, 'hash': ref})
+        assert r.status_code == 409 and 'уже учтён' in r.json['error']
+    forged = copy.deepcopy(saved['data'])
+    forged['wallets'][0]['addr'] = FOUNDER
+    assert m._stand_guard_transition(saved['data'], forged, 'admin')
+
+
+@pytest.mark.parametrize('amount', [10000, 11000])
+def test_reimbursement_does_not_hide_broker_difference(api, amount):
+    saved = receive(api, payout(api, 'founder'), amount)
+    api[1][0] = 'findir'
+    r = api[0].post('/api/stand/prepay/reimburse', json={'dealId': 1484, 'hash': 'demo:1484:refund'})
+    assert r.status_code == 200, r.json
+    d = r.json['data']['deals'][0]
+    assert d['payout']['reimbursement']['usdt'] == d['payout']['usdt'] == 10130
+    assert d['pay']['usdt'] == amount
+
+
+@pytest.mark.parametrize('result', ['confirmed', 'pending', 'wrong', 'old', 'race'])
+def test_real_reimbursement_checks_exact_wallets_and_rejects_unverified_or_stale(api, monkeypatch, result):
+    saved = receive(api, payout(api, 'company', incoming='founder'))
+    saved['data']['deals'][0]['demoTransfers'] = False
+    seed(saved['data'])
+    def verify(ref, network, sender, receiver, amount, **kwargs):
+        assert (network, sender, receiver, amount) == ('trc20', FOUNDER, COMPANY, 10130)
+        assert kwargs['demo'] is False
+        if result == 'race':
+            db = m.get_session()
+            try:
+                m._stand_row(db).version += 1
+                db.commit()
+            finally:
+                db.close()
+        return {'status': 'pending' if result == 'pending' else 'mismatch' if result == 'wrong' else 'confirmed',
+                'verifiedAmount': 10130, 'timestampMs': 1 if result == 'old' else m.time.time() * 1000}
+    monkeypatch.setattr(m, 'verify_transfer', verify)
+    api[1][0] = 'teodor'
+    r = api[0].post('/api/stand/prepay/reimburse', json={'dealId': 1484, 'hash': 'c' * 64})
+    assert r.status_code == (200 if result == 'confirmed' else 409), r.json
+    if result != 'confirmed':
+        current = api[0].get('/api/stand/state').json['data']['deals'][0]
+        assert not current['payout'].get('reimbursement')
+
+
+def test_same_address_different_legacy_wallet_ids_auto_settle(api):
+    saved = payout(api, 'founder', incoming='founder')
+    state = saved['data']
+    state['wallets'].append(dict(state['wallets'][1], id='legacy-andrey'))
+    state['convs'][0]['walletId'] = 'legacy-andrey'
+    state['deals'][0]['walletId'] = 'legacy-andrey'
+    saved = receive(api, saved)
+    assert 'кошелёк совпал' in saved['data']['deals'][0]['payout']['reimbursement']['kind']
+
+
+def test_prepayment_does_not_wait_for_another_deal_in_broker_batch(api):
+    saved = start(api)
+    state = saved['data']
+    side = copy.deepcopy(board()['deals'][0])
+    side.update(id=1485, code='СД-1485', type='Обмен валюты', kind='', step='pack', main=1484,
+                payinParts=[{'incId': 2, 'amountRub': 900000}])
+    state['deals'].append(side)
+    state['incomes'].append({'id': 2, 'dealId': 1485, 'rub': 900000, 'source': 'sber'})
+    state['convs'][0]['sources'].append({'dealId': 1485, 'rub': 900000, 'usdt': 11000})
+    seed(state)
+    saved['version'] = 1
+    saved = payout(api, 'founder', saved=saved)
+    assert saved['data']['deals'][0]['step'] == 's26'
+    assert saved['data']['deals'][1]['step'] == 'pack'
+    assert not saved['data']['convs'][0]['txs']
+    state = saved['data']
+    state['convs'][0]['txs'] = [{'hash': 'b' * 64, 'status': 'confirmed', 'amount': 22000, 'net': 'TRC-20'}]
+    seed(state)
+    saved['version'] = 1
+    state['convs'][0]['status'] = 'received'
+    for d, src in zip(state['deals'], state['convs'][0]['sources']):
+        src['usdtFact'] = 11000
+        d['pay'].update(usdt=11000, hash='b' * 64)
+        d['payinHashes'] = [{'hash': 'b' * 64, 'amount': 11000, 'network': 'TRC-20'}]
+    state['deals'][0]['prepay']['brokerStep'] = 'done'
+    state['deals'][1]['step'] = 's22'
+    saved = put(api, saved, 'operator')
+    assert saved['data']['deals'][0]['step'] == 's26'
+    assert saved['data']['deals'][1]['step'] == 's22'
+
+
+@pytest.mark.parametrize('source', ['founder', 'company'])
+@pytest.mark.parametrize('received_usdt', [10000, 11000], ids=['partial_loss', 'full_profit'])
+@pytest.mark.parametrize('amount,percent,fixed', [(10130, .8, 50), (10050.25, 0, 50.25)],
+                         ids=['tariff', 'discount'])
+def test_actual_crm_close_requires_all_results_and_preserves_profit(api, source, received_usdt, amount, percent, fixed):
+    saved = receive(api, payout(api, source, amount=amount), received_usdt, secrets.token_hex(32))
+    if source == 'founder':
+        api[1][0] = 'findir'
+        saved = api[0].post('/api/stand/prepay/reimburse', json={
+            'dealId': 1484, 'hash': 'demo:1484:refund'}).json
+    state = saved['data']
+    d = state['deals'][0]
+    # Даже при недоборе брокера возвращается весь расход IPPS, а не сумма прихода.
+    assert d['payout']['usdt'] == amount
+    assert d['payout']['reimbursement']['usdt'] == amount
+    assert d['pay']['usdt'] == received_usdt
+    # Транспорт сети подменён; закрытие проверяет реальный реестр долей прихода.
+    d['demoTransfers'] = False
+    d.update(step='s27', sentToClient=True)
+    d['pay']['invoicePaid'] = True
+    d['files'] = {'receipt': [{'file': 'receipt.pdf', 'mime': 'application/pdf',
+                             'data': 'data:application/pdf;base64,JVBERi0='}]}
+    d['log'] = (d.get('log') or []) + s26_legacy_trail(d)  # чек принят завершением s26
+    seed(state)
+    # Здесь проверяем атомарное закрытие; проверка самого MT103 имеет отдельные тесты.
+    db = m.get_session()
+    try:
+        row = m._stand_row(db)
+        row.generation = m.secrets.token_hex(16)
+        with api[0].session_transaction() as session:
+            uid = session['user_id']
+        for kind in m._stand_close_required(d):
+            db.add(m.StandCloseEvidence(generation=row.generation, stand_deal_id=1484,
+                kind=kind, fingerprint=m._stand_close_fingerprint(d, kind),
+                actor_id=uid, provenance='synthetic_preverified_fixture'))
+        db.commit()
+    finally:
+        db.close()
+    crm = {'client_name': 'Synthetic prepay', 'deal_kind': 'mf_freehold',
+           'payin_method': 'sber_reqs', 'payin_rate_rub_usdt': 80,
+           'payin_amount_rub': 900000, 'payin_amount_usdt': received_usdt,
+           'invoice_amount_usd': 10000, 'transfer_fee_percent': percent,
+           'transfer_fee_fixed_usd': fixed, 'transfer_sent_usd': amount,
+           'realty_purpose': 'Invoice',
+           'payin_tx_hashes': [{'hash': d['payinHashes'][0]['hash'], 'network': 'trc20',
+                                'amount_usdt': received_usdt}],
+           'payout_tx_hashes': [{'hash': 'demo:1484:out', 'network': 'trc20', 'amount_usdt': amount}]}
+    api[1][0] = 'manager'
+    for missing in ('receipt', 'invoice', 'sent', 'refund'):
+        broken = copy.deepcopy(state)
+        target = broken['deals'][0]
+        if missing == 'receipt':
+            target['files'] = {}
+        elif missing == 'invoice':
+            target['pay']['invoicePaid'] = False
+        elif missing == 'sent':
+            target['sentToClient'] = False
+        else:
+            target['payout'].pop('reimbursement')
+        seed(broken)
+        r = api[0].post('/api/stand/deals/1484/crm-close', json={'version': 1, 'crm': crm})
+        assert r.status_code == 409, r.json
+    seed(state)
+    r = api[0].post('/api/stand/deals/1484/crm-close', json={'version': 1, 'crm': crm})
+    assert r.status_code == 201, r.json
+    assert r.json['deal']['transfer_arrive_usd'] == 10000
+    assert r.json['deal']['profit_usdt'] == round(received_usdt - amount, 2)
+    again = api[0].post('/api/stand/deals/1484/crm-close', json={'version': 1, 'crm': crm})
+    assert again.status_code == 200 and again.json['duplicate']
+
+
+def test_mixed_broker_plan_preserves_total_cents_and_rejects_independent_rounding(api):
+    """Регрессия QA: 190000 / 84.6 = 2245.86, а не 2245.87 из двух округлений."""
+    previous, state = manual_handoff(190000)
+    deal = state['deals'][0]
+    before = previous['deals'][0]
+    for item in (before, deal):
+        item.update(amountRub=192666.30, incomeAmount=192666.31, brokerCrmDraftIds=[42])
+        item['rates']['broker'] = '84.6'
+        item['payinParts'][0]['amountRub'] = 192666.31
+    for item in (previous, state):
+        item['incomes'][0].update(rub=192666.31, grossRub=192666.31)
+    state['incomes'].append({'id': 'sber:qa-plan-extra', 'source': 'sber', 'rub': 10000,
+        'grossRub': 10000, 'batchRub': 10000, 'dealId': None, 'cnvId': 1})
+    conv = state['convs'][0]
+    conv.update(rate='84.6', rubTotal=202666.31, clientRubTotal=202666.30, held=12666.31)
+    conv['sources'] = [
+        {'dealId': 1484, 'rub': 192666.31, 'clientRub': 192666.30, 'usdt': 2135.04},
+        {'dealId': None, 'crmIncomeId': 42, 'incomeId': 'sber:qa-plan-extra',
+         'rub': 10000, 'clientRub': 10000, 'usdt': 110.82}]
+    assert m._stand_broker_handoff_problem(previous, state, before, deal) is None
+    conv['sources'][0]['usdt'] = 2135.05
+    assert 'Распределение' in m._stand_broker_handoff_problem(previous, state, before, deal)
+    # Сохранение суммы само по себе не позволяет перераспределить центы произвольно.
+    conv['sources'][1]['usdt'] = 110.81
+    assert 'Распределение' in m._stand_broker_handoff_problem(previous, state, before, deal)

@@ -1,0 +1,33 @@
+name: UI parity synthetic browser drift
+on:
+  pull_request:
+  push:
+    branches: [stage]
+jobs:
+  ui-parity-synthetic:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Prepare pinned main source
+        run: |
+          git clone --local --no-checkout . /tmp/t18-main
+          git -C /tmp/t18-main checkout --detach 2c40e910a13ae866f5be85da35fa6e61c3bf5632
+      - name: Install dependencies before the fenced test
+        run: |
+          python3 -m pip install -r requirements.txt Pillow==11.3.0 beautifulsoup4==4.14.3
+          python3 -m playwright install chromium
+      - name: Render main, stage prod, stage STAND on synthetic fixtures
+        run: |
+          python3 scripts/ui_parity/safe_run.py --synthetic-runtime \
+            --baseline /tmp/t18-main --candidate "$PWD"
+      - name: Prove rendered UI mutations fail the gate
+        run: |
+          python3 scripts/ui_parity/safe_run.py --synthetic-runtime \
+            --baseline /tmp/t18-main --candidate "$PWD" --mutation-test
+      - name: Additional source review signal
+        run: python3 scripts/ui_parity/source_review.py --review-only

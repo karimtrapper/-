@@ -1,0 +1,150 @@
+{
+ "blueText": [],
+ "bluePlaques": [],
+ "scaleViolations": [],
+ "toast": null,
+ "fontFaces": [
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:loaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:loaded",
+  "Inter:loaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:loaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:loaded",
+  "Inter:loaded",
+  "Inter:unloaded",
+  "Inter:loaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:loaded",
+  "Inter:loaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded",
+  "Inter:unloaded"
+ ],
+ "interLoaded": true,
+ "stylesheets": [
+  "http://127.0.0.1:24558/static/stand/vendor/inter-v20/font.css",
+  "http://127.0.0.1:24558/static/nav-shell.css?v=6",
+  "http://127.0.0.1:24558/static/task-list.css?v=6"
+ ],
+ "url": "/tasks",
+ "innerWidth": 1280,
+ "scrollWidth": 1280,
+ "bodyScrollWidth": 1280,
+ "hScroll": false,
+ "expectedWidth": 1280,
+ "layoutViewportExpanded": false,
+ "visualViewportWidth": 1280,
+ "docClientWidth": 1280,
+ "overflowOffenders": [],
+ "fontSizes": {
+  "16px": 8,
+  "14px": 79,
+  "12px": 7,
+  "22px": 4
+ },
+ "fontWeights": {
+  "400": 56,
+  "600": 37,
+  "700": 5
+ },
+ "families": [
+  "Inter",
+  "ui-monospace"
+ ],
+ "addrNodes": [
+  {
+   "text": "TQgQCBXk…opBh8jso",
+   "title": "",
+   "mono": true,
+   "lines": 2,
+   "whiteSpace": "nowrap",
+   "wrapAnywhere": "normal",
+   "shortForm": true,
+   "full": false,
+   "cutAtEdge": false
+  },
+  {
+   "text": "TQgQCBXk…opBh8jso",
+   "title": "",
+   "mono": true,
+   "lines": 2,
+   "whiteSpace": "nowrap",
+   "wrapAnywhere": "normal",
+   "shortForm": true,
+   "full": false,
+   "cutAtEdge": false
+  }
+ ],
+ "addrClipped": [],
+ "addrUnshortened": [],
+ "fullAddresses": [],
+ "mfstrAddresses": [],
+ "signerAddrsVisible": {
+  "operator": false,
+  "findir": false,
+  "teodor": false
+ },
+ "coralButtons": [
+  "Отправил"
+ ],
+ "smallTargets": [],
+ "smallSmCount": 3,
+ "emoji": [],
+ "moneyPrefixBad": [],
+ "dollarSuffixBad": [],
+ "title": "Синтетика 1605",
+ "open": {
+  "deal": 1605,
+  "role": "findir",
+  "width": "1280",
+  "versionBefore": 4,
+  "versionAfter": 4,
+  "viewMutated": false,
+  "deltaPaths": [],
+  "deltaSummary": {},
+  "deltaDealIds": [],
+  "topLevelDelta": [],
+  "semanticPaths": [],
+  "semanticChange": false,
+  "noopVersionBump": false
+ },
+ "capture": {
+  "metricsViewport": [
+   1280,
+   800
+  ],
+  "tallImageViewport": [
+   1280,
+   1536
+  ],
+  "tallImageIsResizedViewport": true,
+  "firstScreenFile": "deal1605_s23__findir__1280__first-screen.png"
+ }
+}

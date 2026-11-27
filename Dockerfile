@@ -53,4 +53,6 @@ COPY . .
 # --threads 8 (gthread): без него 1 sync-воркер сериализует ВСЕ запросы —
 # обход TronScan или Playwright precise фризил CRM для всех менеджеров.
 # workers строго 1: in-memory локи и кэши рассчитаны на один процесс.
-CMD gunicorn app:app --bind 0.0.0.0:${PORT:-8080} --workers 1 --threads 8 --timeout 120
+# На stand-app (STAND_MODE=1) 180s оставляет запас над потолком OCR 150s.
+# Остальные сервисы сохраняют прежние 120s; GUNICORN_TIMEOUT можно переопределить.
+CMD gunicorn app:app --bind 0.0.0.0:${PORT:-8080} --workers 1 --worker-class gthread --threads 8 --timeout ${GUNICORN_TIMEOUT:-$(if [ "${STAND_MODE:-0}" = "1" ]; then echo 180; else echo 120; fi)}

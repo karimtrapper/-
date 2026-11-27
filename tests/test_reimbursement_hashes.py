@@ -82,6 +82,7 @@ def deal(tc):
         'client_name': 'Reimb Client',
         'deal_type': 'pay_in',
         'payin_method': 'crypto_direct',
+        'unverified_confirmed': True,
         'payin_amount_usdt': 520000,
         'payout_amount_thb': 16742400,
         'payout_method': 'transfer',
@@ -137,6 +138,7 @@ def _mk_deal(tc, payout_thb, payout_usdt):
     return tc.post('/api/deals', json={
         'client_name': 'Zakharov Vyacheslav - Grusha', 'deal_type': 'pay_in',
         'payin_method': 'crypto_direct', 'payin_amount_usdt': 330.28,
+        'unverified_confirmed': True,
         'payout_amount_thb': payout_thb, 'payout_amount_usdt': payout_usdt,
         'payout_method': 'transfer', 'payout_source': 'founder_personal',
         'payout_founder_name': 'Андрей',

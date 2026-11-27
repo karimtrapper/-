@@ -1,0 +1,50 @@
+[
+  {
+    "id": "kripta",
+    "dirs": [
+      "rub"
+    ],
+    "lang": "ru",
+    "name": "Крипта-Платежи · Екатерина",
+    "chat": null,
+    "note": "наценка к курсу ЦБ, считаем спред · чат «Крипта - Платежи» — на стенде ссылка выключена"
+  },
+  {
+    "id": "asia",
+    "dirs": [
+      "rub"
+    ],
+    "lang": "ru",
+    "name": "Asia Capital",
+    "chat": null,
+    "note": "личный чат — на стенде ссылка выключена"
+  },
+  {
+    "id": "tradex",
+    "dirs": [
+      "rub"
+    ],
+    "lang": "ru",
+    "name": "Tradex",
+    "chat": null,
+    "note": "чат «Grusha (MF) | Tradex» · через него шли последние пачки — на стенде ссылка выключена"
+  },
+  {
+    "id": "coins",
+    "dirs": [
+      "thb"
+    ],
+    "name": "Coins.co.th",
+    "chat": null,
+    "note": "OTC-чат «OTC MF & coin (USD)» · выплаты только на счёт MF Corp — на стенде ссылка выключена"
+  },
+  {
+    "id": "bitazza",
+    "dirs": [
+      "thb"
+    ],
+    "name": "Bitazza",
+    "chat": null,
+    "note": "запасной, когда у Coins лимит — на стенде ссылка выключена"
+  }
+]

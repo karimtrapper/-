@@ -1,0 +1,379 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-15T10:15:00+03:00",
+  "title": "Design System: Задачник CalcCRM",
+  "extensions": {
+    "colorMeta": {
+      "action-coral": {
+        "role": "primary",
+        "displayName": "Оранжевый действия",
+        "canonical": "#C2410C",
+        "tonalRamp": [
+          "#9A3412",
+          "#C2410C",
+          "#FFF7ED"
+        ]
+      },
+      "ink-navy": {
+        "role": "neutral",
+        "displayName": "Тёмно-синие чернила",
+        "canonical": "#0F172A",
+        "tonalRamp": [
+          "#0F172A",
+          "#334155",
+          "#475569",
+          "#64748B",
+          "#94A3B8",
+          "#CBD5E1",
+          "#E2E8F0",
+          "#F1F5F9",
+          "#F8FAFC"
+        ]
+      },
+      "page-mist": {
+        "role": "neutral",
+        "displayName": "Холст страницы",
+        "canonical": "#F8FAFC",
+        "tonalRamp": [
+          "#0F172A",
+          "#334155",
+          "#475569",
+          "#64748B",
+          "#94A3B8",
+          "#CBD5E1",
+          "#E2E8F0",
+          "#F1F5F9",
+          "#F8FAFC"
+        ]
+      },
+      "money-surface": {
+        "role": "secondary",
+        "displayName": "Деньги двинулись",
+        "canonical": "#F0FDF4",
+        "tonalRamp": [
+          "#065F46",
+          "#BBF7D0",
+          "#F0FDF4"
+        ]
+      },
+      "decision-surface": {
+        "role": "secondary",
+        "displayName": "Нужно решение / зависло",
+        "canonical": "#FFFBEB",
+        "tonalRamp": [
+          "#92400E",
+          "#FDE68A",
+          "#FFFBEB"
+        ]
+      },
+      "blocker-surface": {
+        "role": "secondary",
+        "displayName": "Блокер",
+        "canonical": "#FEF2F2",
+        "tonalRamp": [
+          "#991B1B",
+          "#FECACA",
+          "#FEF2F2"
+        ]
+      },
+      "calculator-page": {
+        "role": "neutral",
+        "displayName": "Фон калькулятора Б2",
+        "canonical": "#E2E8F0",
+        "tonalRamp": [
+          "#0F172A",
+          "#334155",
+          "#E2E8F0",
+          "#FFFFFF"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display 22/700",
+        "purpose": "Заголовок-глагол блока действия и сумма в главной плитке. Одно-два места на экране."
+      },
+      "emphasis": {
+        "displayName": "Emphasis 16/600",
+        "purpose": "Имя клиента, строка списка, кнопки, текст в полях (16px против зума iOS)."
+      },
+      "body": {
+        "displayName": "Body 14/400",
+        "purpose": "Тело, секции, метки полей (600)."
+      },
+      "caption": {
+        "displayName": "Caption 12/400",
+        "purpose": "Подписи плиток, время, подсказки, пиллы (600)."
+      },
+      "mono": {
+        "displayName": "Mono 14/400",
+        "purpose": "Адрес, хеш, счёт — одна строка, сокращение посередине, «Копировать»."
+      },
+      "hero": {
+        "displayName": "Hero 36/700",
+        "purpose": "Одна главная цифра на экран — итог калькулятора."
+      },
+      "title": {
+        "displayName": "Title 24/700",
+        "purpose": "Заголовок страницы и ключевые суммы и курсы."
+      }
+    },
+    "shadows": [
+      {
+        "name": "card",
+        "value": "0 1px 3px rgba(15,23,42,.05),0 1px 2px rgba(15,23,42,.04)",
+        "purpose": "Карточки и активный сегмент."
+      },
+      {
+        "name": "step-now-ring",
+        "value": "0 0 0 3px #F1F5F9",
+        "purpose": "Точка текущего шага в «Пути сделки»."
+      },
+      {
+        "name": "frosted-bar",
+        "value": "background:rgba(255,255,255,.97);backdrop-filter:blur(10px)",
+        "purpose": "Верхняя строка и панель действия на телефоне."
+      }
+    ],
+    "motion": [
+      {
+        "name": "chevron-rotate",
+        "value": "transform .2s",
+        "purpose": "Шеврон свёрнутой секции поворачивается на 90°."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "mobile",
+        "value": "max-width:700px"
+      },
+      {
+        "name": "desktop",
+        "value": "min-width:701px"
+      }
+    ],
+    "focus": {
+      "value": "outline:2px solid #C2410C;outline-offset:2px",
+      "purpose": "Кольцо фокуса с клавиатуры — единственное оранжевое состояние вне кнопки и счётчика."
+    },
+    "radii": [
+      {
+        "name": "control",
+        "value": "8px",
+        "purpose": "Кнопки, поля, чипы, плитки, плашки."
+      },
+      {
+        "name": "card",
+        "value": "12px",
+        "purpose": "Карточки."
+      },
+      {
+        "name": "pill",
+        "value": "999px",
+        "purpose": "Только маленькие пиллы-факты и счётчики, не кнопки."
+      }
+    ],
+    "typeScale": {
+      "sizes": [
+        "36px",
+        "24px",
+        "22px",
+        "16px",
+        "14px",
+        "12px"
+      ],
+      "weights": [
+        400,
+        600,
+        700
+      ]
+    },
+    "calculatorB2": {
+      "pageBackground": "#E2E8F0",
+      "workSurface": "#FFFFFF",
+      "resultSurface": "#0F172A",
+      "segmentSurface": "#E2E8F0",
+      "segmentSelected": "#FFFFFF",
+      "primaryButton": "#C2410C",
+      "mobileResult": "fixed bottom",
+      "desktopResult": "sticky side"
+    }
+  },
+  "components": [
+    {
+      "name": "Главная кнопка",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Единственная оранжевая кнопка шага; 8px, Emphasis 16/600.",
+      "html": "<button class=\"ds-btn-primary\">Отправил</button> <button class=\"ds-btn-primary\" disabled>Отправил брокеру</button>",
+      "css": ":host{--coral:#C2410C;--coral-hover:#9A3412;--navy-900:#0F172A;--navy-700:#334155;--navy-600:#475569;--navy-300:#CBD5E1;--navy-200:#E2E8F0;--navy-100:#F1F5F9;--navy-50:#F8FAFC;font:400 14px/1.5 Inter,system-ui,sans-serif;font-feature-settings:'tnum' 1}.ds-btn-primary{display:inline-flex;align-items:center;min-height:44px;padding:0 16px;border-radius:8px;border:0;background:var(--coral);color:#fff;font:600 16px Inter,system-ui,sans-serif;cursor:pointer}.ds-btn-primary:hover{background:var(--coral-hover)}.ds-btn-primary:focus-visible{outline:2px solid var(--coral);outline-offset:2px}.ds-btn-primary[disabled]{background:var(--navy-200);color:var(--navy-600);cursor:not-allowed}"
+    },
+    {
+      "name": "Вторичное действие ссылкой",
+      "kind": "button",
+      "refersTo": "button-link",
+      "description": "«Не могу отправить», «Это не он».",
+      "html": "<button class=\"ds-btn-link\">Это не он</button>",
+      "css": ":host{--coral:#C2410C;--coral-hover:#9A3412;--navy-900:#0F172A;--navy-700:#334155;--navy-600:#475569;--navy-300:#CBD5E1;--navy-200:#E2E8F0;--navy-100:#F1F5F9;--navy-50:#F8FAFC;font:400 14px/1.5 Inter,system-ui,sans-serif;font-feature-settings:'tnum' 1}.ds-btn-link{background:none;border:0;min-height:44px;padding:0 4px;color:var(--navy-600);font:600 16px Inter,system-ui,sans-serif;text-decoration:underline;cursor:pointer}.ds-btn-link:hover{color:var(--navy-900)}.ds-btn-link:focus-visible{outline:2px solid var(--coral);outline-offset:2px}"
+    },
+    {
+      "name": "Поле",
+      "kind": "input",
+      "refersTo": "field-input",
+      "description": "Метка 14/600, контрол 44px с текстом 16px, подсказка 12px.",
+      "html": "<label class=\"ds-field\"><span>Сумма по выписке, ₽</span><input value=\"192 666,31\"><small>дата — сегодня, править в «Ещё по приходу»</small></label>",
+      "css": ":host{--coral:#C2410C;--coral-hover:#9A3412;--navy-900:#0F172A;--navy-700:#334155;--navy-600:#475569;--navy-300:#CBD5E1;--navy-200:#E2E8F0;--navy-100:#F1F5F9;--navy-50:#F8FAFC;font:400 14px/1.5 Inter,system-ui,sans-serif;font-feature-settings:'tnum' 1}.ds-field{display:flex;flex-direction:column;gap:8px;max-width:320px}.ds-field span{font:600 14px Inter,system-ui,sans-serif;color:var(--navy-700)}.ds-field input{height:44px;border:1px solid var(--navy-300);border-radius:8px;padding:0 12px;font:400 16px Inter,system-ui,sans-serif;color:var(--navy-900)}.ds-field input:focus-visible{outline:2px solid var(--coral);outline-offset:2px}.ds-field small{font-size:12px;color:var(--navy-600)}"
+    },
+    {
+      "name": "Адрес в одну строку",
+      "kind": "custom",
+      "refersTo": "address",
+      "description": "Mono 14px, сокращение посередине 8+8, полностью по нажатию, «Копировать».",
+      "html": "<div class=\"ds-addr\"><code title=\"TXFqZbXCqoq5QVxRpp9EGLSzkeLMz8iG5D\">TXFqZbXC…zkeLMz8iG5D</code><button>Копировать</button></div>",
+      "css": ":host{--coral:#C2410C;--coral-hover:#9A3412;--navy-900:#0F172A;--navy-700:#334155;--navy-600:#475569;--navy-300:#CBD5E1;--navy-200:#E2E8F0;--navy-100:#F1F5F9;--navy-50:#F8FAFC;font:400 14px/1.5 Inter,system-ui,sans-serif;font-feature-settings:'tnum' 1}.ds-addr{display:flex;align-items:center;gap:8px}.ds-addr code{font:400 14px ui-monospace,SFMono-Regular,Menlo,monospace;white-space:nowrap;color:var(--navy-900)}.ds-addr button{min-height:44px;padding:0 12px;border:1px solid var(--navy-200);border-radius:8px;background:#fff;color:var(--navy-600);font:600 12px Inter,system-ui,sans-serif;cursor:pointer}.ds-addr button:hover{background:var(--navy-50)}.ds-addr button:focus-visible{outline:2px solid var(--coral);outline-offset:2px}"
+    },
+    {
+      "name": "Общее меню",
+      "kind": "nav",
+      "refersTo": "appbar",
+      "description": "Панель · Калькулятор · Задачник · CRM, счётчик «на мне».",
+      "html": "<nav class=\"ds-appbar\"><b>Grusha</b><a>Панель</a><a>Калькулятор</a><a class=\"on\">Задачник <i>4</i></a><a>CRM</a></nav>",
+      "css": ":host{--coral:#C2410C;--coral-hover:#9A3412;--navy-900:#0F172A;--navy-700:#334155;--navy-600:#475569;--navy-300:#CBD5E1;--navy-200:#E2E8F0;--navy-100:#F1F5F9;--navy-50:#F8FAFC;font:400 14px/1.5 Inter,system-ui,sans-serif;font-feature-settings:'tnum' 1}.ds-appbar{display:flex;align-items:center;gap:4px;height:56px;padding:0 24px;background:var(--navy-900);color:#fff}.ds-appbar b{margin-right:24px;font-weight:700;font-size:16px}.ds-appbar a{display:flex;align-items:center;gap:8px;height:100%;padding:0 12px;color:var(--navy-300);font:600 14px Inter,system-ui,sans-serif;border-bottom:2px solid transparent;cursor:pointer}.ds-appbar a:hover{color:#fff}.ds-appbar a.on{color:#fff;border-bottom-color:#fff}.ds-appbar i{font-style:normal;min-width:20px;height:20px;padding:0 8px;border-radius:999px;background:var(--coral);font-size:12px;font-weight:600;display:inline-flex;align-items:center;justify-content:center}"
+    },
+    {
+      "name": "Плитка цифры",
+      "kind": "card",
+      "refersTo": "figure-tile",
+      "description": "Подпись 12 · значение 22/700 · контекст 12.",
+      "html": "<div class=\"ds-fig\"><div class=\"l\">Курс Tradex</div><div class=\"v\">85,6 ₽</div><div class=\"s\">безубыток 90,26 — запас 4,66 ₽</div></div>",
+      "css": ":host{--coral:#C2410C;--coral-hover:#9A3412;--navy-900:#0F172A;--navy-700:#334155;--navy-600:#475569;--navy-300:#CBD5E1;--navy-200:#E2E8F0;--navy-100:#F1F5F9;--navy-50:#F8FAFC;font:400 14px/1.5 Inter,system-ui,sans-serif;font-feature-settings:'tnum' 1}.ds-fig{background:var(--navy-50);border-radius:8px;padding:12px 16px;max-width:220px}.ds-fig .l,.ds-fig .s{font-size:12px;color:var(--navy-600)}.ds-fig .v{font-size:22px;font-weight:700;margin-top:4px;font-variant-numeric:tabular-nums;white-space:nowrap}"
+    },
+    {
+      "name": "Пиллы-факты",
+      "kind": "chip",
+      "refersTo": "pill",
+      "description": "Единственное место радиуса 999px: серый факт, янтарный «дольше нормы», зелёный — подтверждённые деньги.",
+      "html": "<span class=\"ds-pill\">с 13.10, 10:36</span> <span class=\"ds-pill late\">5 дн</span> <span class=\"ds-pill money\">Пришло 498 590 ₽</span>",
+      "css": ":host{--coral:#C2410C;--coral-hover:#9A3412;--navy-900:#0F172A;--navy-700:#334155;--navy-600:#475569;--navy-300:#CBD5E1;--navy-200:#E2E8F0;--navy-100:#F1F5F9;--navy-50:#F8FAFC;font:400 14px/1.5 Inter,system-ui,sans-serif;font-feature-settings:'tnum' 1}.ds-pill{display:inline-flex;font:600 12px Inter,system-ui,sans-serif;border-radius:999px;padding:4px 8px;background:var(--navy-100);color:var(--navy-600)}.ds-pill.late{background:#FFFBEB;color:#92400E}.ds-pill.money{background:#F0FDF4;color:#065F46}"
+    },
+    {
+      "name": "Плашка сигнала",
+      "kind": "custom",
+      "refersTo": "signal-decision",
+      "description": "Одна над кнопкой: блокер, решение или деньги.",
+      "html": "<div class=\"ds-signal\">В сети уже есть перевод на адрес IPPS — 12.10, 13:33, хеш <code>81f87a0c…a45960d5</code> · TronScan. Если это он, нажмите «Отправил».</div>",
+      "css": ":host{--coral:#C2410C;--coral-hover:#9A3412;--navy-900:#0F172A;--navy-700:#334155;--navy-600:#475569;--navy-300:#CBD5E1;--navy-200:#E2E8F0;--navy-100:#F1F5F9;--navy-50:#F8FAFC;font:400 14px/1.5 Inter,system-ui,sans-serif;font-feature-settings:'tnum' 1}.ds-signal{border:1px solid #FDE68A;background:#FFFBEB;color:#92400E;border-radius:8px;padding:8px 12px;font-size:14px;max-width:560px}.ds-signal code{font:400 14px ui-monospace,Menlo,monospace;white-space:nowrap}"
+    },
+    {
+      "name": "Параллельная задача",
+      "kind": "custom",
+      "refersTo": "action-block",
+      "description": "Пунктирная строка: кто ещё работает и ждать ли его.",
+      "html": "<div class=\"ds-par\">Параллельно Настя меняет рубли клиента у брокера — вашего шага это не задерживает.</div>",
+      "css": ":host{--coral:#C2410C;--coral-hover:#9A3412;--navy-900:#0F172A;--navy-700:#334155;--navy-600:#475569;--navy-300:#CBD5E1;--navy-200:#E2E8F0;--navy-100:#F1F5F9;--navy-50:#F8FAFC;font:400 14px/1.5 Inter,system-ui,sans-serif;font-feature-settings:'tnum' 1}.ds-par{border:1px dashed var(--navy-300);border-radius:8px;padding:8px 12px;font-size:14px;color:var(--navy-600);background:#fff;max-width:560px}"
+    }
+  ],
+  "narrative": {
+    "northStar": "Рабочий стол диспетчера",
+    "overview": "Задачник — рабочий инструмент, а не витрина. Экран отвечает на один вопрос: что мне делать сейчас. Поэтому система меняет не цвета, а порядок: сначала действие, потом всё остальное. Холст спокойный и почти бесцветный (тёмно-синяя шкала на светлом фоне). Цвет появляется только как сигнал, и потому его видно сразу.\n\nПлотность средняя, рассчитана на людей, которые за день проходят десятки сделок. Цифры набраны табличными, адреса и хеши моноширинным шрифтом. Всё второстепенное лежит в свёрнутых секциях, у каждой есть строка-итог. Телефон — отдельная вёрстка, а не уменьшенный компьютер: задача и кнопка видны на первом экране, кнопка под большим пальцем.",
+    "keyCharacteristics": [
+      "Тёмно-синий нейтральный холст, один оранжевый акцент действия, три сигнальных цвета.",
+      "Заголовок задачи — глагол, обращённый к человеку («Отправьте…», «Сверьте…»).",
+      "2–3 плитки цифр вместо форм и таблиц наверху.",
+      "Всё прочее свёрнуто в секции с итоговой строкой.",
+      "На телефоне главная кнопка закреплена внизу экрана."
+    ],
+    "rules": [
+      {
+        "name": "The One Orange Rule",
+        "body": "Оранжевый — это главная кнопка и счётчик «на мне», и всё. Полоса слева у карточки, подчёркивание активного пункта меню, бейдж колокольчика, точка текущего шага — тёмно-синие или белые. Единственное исключение по состоянию — кольцо фокуса с клавиатуры (2px, отступ 2px).",
+        "section": "colors"
+      },
+      {
+        "name": "The Earned Green Rule",
+        "body": "Зелёный ставится только на подтверждённое движение денег. «Чек клиента есть», «найден перевод на точную сумму», оценка прибыли, «внесено» — это повод проверить, а не факт, поэтому они серые.",
+        "section": "colors"
+      },
+      {
+        "name": "The No Blue Rule",
+        "body": "Синих информационных плашек нет. Подсказка — это серый текст у кнопки или поля, либо её нет совсем.",
+        "section": "colors"
+      },
+      {
+        "name": "The No Stripe Rule",
+        "body": "У карточек и плашек нет цветной полосы слева (border-left 3–4px). Сигнал — это фон и рамка целиком.",
+        "section": "colors"
+      },
+      {
+        "name": "The Tabular Money Rule",
+        "body": "Любая сумма набирается табличными цифрами и не переносится внутри числа. Формат — по-русски: пробел между разрядами, запятая перед копейками, знак валюты после числа (`192 666,30 ₽`, `5 507,16 USDT`), кроме долларов (`$140 242,69`).",
+        "section": "typography"
+      },
+      {
+        "name": "The Mono Means Copyable Rule",
+        "body": "Моноширинный шрифт получают только машинные строки: адрес, хеш, номер счёта. Рядом всегда есть «Копировать» (у хеша ещё и ссылка TronScan).",
+        "section": "typography"
+      },
+      {
+        "name": "The One Line Address Rule",
+        "body": "Адрес кошелька и хеш — всегда в ОДНУ строку. Помещается — целиком; не помещается (телефон, узкая плитка) — сокращение посередине `TXFqZbXC…zkeLMz8iG5D` (первые 8 и последние 8 символов), полностью — по нажатию и в «Копировать». Перенос адреса на 2+ строки запрещён (`overflow-wrap:anywhere` не использовать).",
+        "section": "typography"
+      },
+      {
+        "name": "The No Overline Rule",
+        "body": "Надзаголовков капслоком нет («ЧТО ДОЛЖНО ПОЛУЧИТЬСЯ НА ЭТОМ ШАГЕ» удалён). Строка над именем сделки — это её код и флоу, обычным регистром.",
+        "section": "typography"
+      },
+      {
+        "name": "The 390 Rule",
+        "body": "На ширине 390px у страницы нет горизонтального скролла (`scrollWidth == innerWidth`). Текст (назначение платежа, имя клиента, плашка шага) переносится по словам или обрезается многоточием. Адрес и хеш не переносятся: они стоят в одну строку и сокращаются посередине (см. The One Line Address Rule).",
+        "section": "layout"
+      },
+      {
+        "name": "The Thumb Rule",
+        "body": "Минимальная высота любой нажимаемой цели — 44px. Главная кнопка на телефоне — 50px на всю ширину, текст Emphasis 16px.",
+        "section": "layout"
+      },
+      {
+        "name": "The Flat Rule",
+        "body": "Новых теней не добавлять. Если элемент надо выделить, он получает сигнальный фон или главную кнопку, а не тень.",
+        "section": "elevation"
+      },
+      {
+        "name": "The One Button Rule",
+        "body": "На экране сделки ровно одна оранжевая кнопка. Всё остальное — ссылки или серые кнопки с рамкой.",
+        "section": "components"
+      },
+      {
+        "name": "The Minimum Fields Rule",
+        "body": "Обязательно только то, без чего шаг нельзя провести. Остальное берётся из файла или по умолчанию и правится в свёрнутой секции. Эталон — ручной приход (s14): **сумма прихода + файл выписки**, дата — сегодня по умолчанию (править в «Ещё по приходу»). Плательщика, номера строки выписки и галочки «Сверила…» нет. Редкий случай — отдельной ссылкой («Пришло на другой счёт» → выбор счёта + запись в журнал), а не обязательной галочкой на каждом шаге. Ограничение снимается и на сервере, не только в форме.",
+        "section": "components"
+      },
+      {
+        "name": "The Value-Not-Placeholder Rule",
+        "body": "Предзаполненное значение («похоже на 192 666,31») показывается как подсказка, но решение подтверждает человек. Параметры, которые задал другой человек (ждём сумму, допуск, счёт), — это плитки только для чтения, а не поля.",
+        "section": "components"
+      }
+    ],
+    "dos": [
+      "Do начинать задачу с глагола во втором лице: «Сверьте приход по выписке и подтвердите», «Отправьте деньги брокеру и зафиксируйте курс». В строке списка — инфинитив: «Сверить приход по выписке».",
+      "Do показывать каждую цифру один раз. Сумма из плитки не повторяется в заголовке, в сигнале, в итоге свёрнутой секции и в плейсхолдере поля.",
+      "Do показывать полные адреса кошельков «откуда» и «куда», а не названия: Mono 14px, в одну строку, сокращение посередине, полностью по нажатию и в «Копировать». Внутреннее название кошелька («Теда · сделки от Екатерины») — только мелкой подписью под адресом. Касается всех экранов, где фаундер или финдир отправляет или подписывает.",
+      "Do делать хеш копируемым: в одну строку, сокращение посередине по тому же правилу (8 + 8 символов), по нажатию — полностью, рядом «Копировать» и ссылка TronScan. В списке выбора — так же.",
+      "Do ставить видную метку «Оплата наперёд» в блоке действия на каждом шаге сделки с предоплатой, с фразой, что это значит для этого человека.",
+      "Do писать время с датой и часовым поясом там, где люди в разных поясах сверяют события («13.10, 12:15 МСК»).",
+      "Do ставить рядом с недоступной кнопкой причину.",
+      "Do держать формулировки экрана в отдельном словаре. `STEPS[].title` не переименовывать: из него собираются уведомления в Telegram."
+    ],
+    "donts": [
+      "Don't красить в оранжевый ничего, кроме главной кнопки и счётчика «на мне».",
+      "Don't ставить зелёный на оценки и непроверенные факты (прибыль, «чек есть», «найден перевод»).",
+      "Don't использовать синие информационные плашки и цветные полосы слева.",
+      "Don't ставить две главные кнопки на одном экране и кнопку «Открыть» в строке списка.",
+      "Don't выводить на экран задачи события журнала, номер строки доски, источник лида, сборку стенда.",
+      "Don't использовать эмодзи как иконки и надзаголовки капслоком.",
+      "Don't показывать менеджерские параметры ожидания операционисту как поля для ввода.",
+      "Don't заводить обязательную галочку «я проверил» на каждом шаге. Редкий случай — отдельная ссылка."
+    ]
+  }
+}

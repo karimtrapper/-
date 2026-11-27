@@ -15,6 +15,7 @@ def ledger(tmp_path, monkeypatch):
     crm.Base.metadata.create_all(engine)
     monkeypatch.setattr(crm, 'get_session', sessionmaker(bind=engine))
     monkeypatch.setenv('LOCAL_NO_AUTH', '1')
+    monkeypatch.setattr(crm, 'current_role', lambda: 'admin')
     monkeypatch.setattr(crm, 'sync_realty_deal_to_gsheet', lambda *_: None)
     monkeypatch.setattr(crm, 'update_deal_in_gsheet', lambda *_: None)
     monkeypatch.setattr(crm, '_notify_reimbursed', lambda *_: None)
@@ -40,7 +41,7 @@ def ledger(tmp_path, monkeypatch):
 
 @pytest.fixture
 def base():
-    return dict(deal_kind='personal_realty', payin_method='crypto_direct', skip_sync=True,
+    return dict(deal_kind='personal_realty', payin_method='crypto_direct', skip_sync=True, unverified_confirmed=True,
                 payin_amount_usdt=1100, payout_amount_thb=30000, realty_purpose='Юнит QA')
 
 

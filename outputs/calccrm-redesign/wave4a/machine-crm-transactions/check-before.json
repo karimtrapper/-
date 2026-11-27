@@ -1,0 +1,6843 @@
+{
+ "tool": "design-gate",
+ "mode": "check",
+ "url": "http://127.0.0.1:59110/crm?section=transactions",
+ "design": "/Users/karimamirov/Desktop/untitled folder/outputs/calccrm-redesign/DESIGN.md",
+ "generated": "2026-10-14T21:24:31",
+ "widths_requested": [
+  375,
+  1280
+ ],
+ "widths_required": [
+  375,
+  768,
+  1280,
+  1920
+ ],
+ "widths_blocked": {
+  "768": "ширина не снята (не запрашивалась)",
+  "1920": "ширина не снята (не запрашивалась)"
+ },
+ "verdict": "FAIL",
+ "reasons": [
+  "FAIL в гейтах: 1. Токены, 2. Гардрейлы, 3. Контраст WCAG AA, 4. Ширины",
+  "768px: ширина не снята (не запрашивалась)",
+  "1920px: ширина не снята (не запрашивалась)",
+  "проверены не все ширины: запрошено [375, 1280], для вердикта PASS нужны [375, 768, 1280, 1920]. Проверка одной ширины не считается проверкой экрана.",
+  "375px: снимок «после» не снят",
+  "1280px: снимок «после» не снят"
+ ],
+ "role": "karim",
+ "label": "before",
+ "tokens": {
+  "sizes": [
+   12.0,
+   14.0,
+   16.0,
+   22.0
+  ],
+  "weights": [
+   400,
+   600,
+   700
+  ],
+  "families": [
+   "inter",
+   "ui-monospace"
+  ],
+  "radii": [
+   8.0,
+   12.0,
+   999.0
+  ],
+  "spacing": [
+   4.0,
+   8.0,
+   12.0,
+   16.0,
+   24.0
+  ],
+  "colors": 22,
+  "de_tolerance": 2.0,
+  "shadow_source": "/Users/karimamirov/Desktop/untitled folder/outputs/calccrm-redesign/.impeccable/design.json",
+  "problems": []
+ },
+ "gates": {
+  "1": {
+   "id": 1,
+   "name": "Токены",
+   "by_width": {
+    "375": "FAIL",
+    "768": "BLOCKED",
+    "1280": "FAIL",
+    "1920": "BLOCKED"
+   },
+   "verdict": "FAIL",
+   "findings": [
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "padding 6px",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div.site-shell.site-shell-mobile-head > span.site-shell-bell > a",
+       "t": ""
+      },
+      {
+       "sel": "div.site-shell-right > span.site-shell-bell > a",
+       "t": ""
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.site-shell.site-shell-mobile-head > span.site-shell-bell > a",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.site-shell-right > span.site-shell-bell > a",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-family",
+     "sev": "FAIL",
+     "title": "шрифт вне токенов",
+     "value": "arial",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "nav.site-shell-sections > button.site-shell-scroll",
+       "t": "‹"
+      },
+      {
+       "sel": "nav.site-shell-sections > button.site-shell-scroll",
+       "t": "›"
+      },
+      {
+       "sel": "div > div > input",
+       "t": "Теодор · ERC-20"
+      },
+      {
+       "sel": "div > div > input",
+       "t": "Тед Битаза"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "1280": 10
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "nav.site-shell-sections > button.site-shell-scroll",
+        "t": "‹"
+       },
+       {
+        "sel": "nav.site-shell-sections > button.site-shell-scroll",
+        "t": "›"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "nav.site-shell-sections > button.site-shell-scroll",
+        "t": "‹"
+       },
+       {
+        "sel": "nav.site-shell-sections > button.site-shell-scroll",
+        "t": "›"
+       },
+       {
+        "sel": "div > div > input",
+        "t": "Теодор · ERC-20"
+       },
+       {
+        "sel": "div > div > input",
+        "t": "Тед Битаза"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "padding 120px",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div.container",
+       "t": ""
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.container",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "padding 14px",
+     "n": 7,
+     "ex": [
+      {
+       "sel": "div.container",
+       "t": ""
+      },
+      {
+       "sel": "div.form-row > div.form-group > input.form-control",
+       "t": ""
+      },
+      {
+       "sel": "select#walletFilter",
+       "t": "Все кошельки"
+      },
+      {
+       "sel": "input#txStartDate",
+       "t": "2025-12-01"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 7,
+      "1280": 6
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.container",
+        "t": ""
+       },
+       {
+        "sel": "div.form-row > div.form-group > input.form-control",
+        "t": ""
+       },
+       {
+        "sel": "select#walletFilter",
+        "t": "Все кошельки"
+       },
+       {
+        "sel": "input#txStartDate",
+        "t": "2025-12-01"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.form-row > div.form-group > input.form-control",
+        "t": ""
+       },
+       {
+        "sel": "select#walletFilter",
+        "t": "Все кошельки"
+       },
+       {
+        "sel": "input#txStartDate",
+        "t": "2025-12-01"
+       },
+       {
+        "sel": "input#txEndDate",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-shadow",
+     "sev": "FAIL",
+     "title": "тень вне словаря",
+     "value": "rgba(0, 0, 0, 0.04) 0px 1px 3px 0px",
+     "n": 3,
+     "ex": [
+      {
+       "sel": "section#transactions > div.card",
+       "t": ""
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 3,
+      "1280": 3
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "section#transactions > div.card",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": "section#transactions > div.card",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "margin-вертикаль 14px",
+     "n": 14,
+     "ex": [
+      {
+       "sel": "section#transactions > div.card",
+       "t": ""
+      },
+      {
+       "sel": "form#addWalletForm > div.form-row > div.form-group",
+       "t": ""
+      },
+      {
+       "sel": "div.card > div.form-row > div.form-group",
+       "t": ""
+      },
+      {
+       "sel": "form#verifyTxForm > div.form-row > div.form-group",
+       "t": ""
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 14,
+      "1280": 11
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "section#transactions > div.card",
+        "t": ""
+       },
+       {
+        "sel": "form#addWalletForm > div.form-row > div.form-group",
+        "t": ""
+       },
+       {
+        "sel": "div.card > div.form-row > div.form-group",
+        "t": ""
+       },
+       {
+        "sel": "form#verifyTxForm > div.form-row > div.form-group",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": "form#addWalletForm > div.form-row > div.form-group",
+        "t": ""
+       },
+       {
+        "sel": "div.card > div.form-row > div.form-group",
+        "t": ""
+       },
+       {
+        "sel": "form#verifyTxForm > div.form-row > div.form-group",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-size",
+     "sev": "FAIL",
+     "title": "кегль вне шкалы",
+     "value": "13px",
+     "n": 7,
+     "ex": [
+      {
+       "sel": "div.form-row > div.form-group > label.form-label",
+       "t": "Добавить кошелек TRON для мониторинга"
+      },
+      {
+       "sel": "div.form-row > div.form-group > label.form-label",
+       "t": "Владелец"
+      },
+      {
+       "sel": "div.form-row > div.form-group > label.form-label",
+       "t": "Фильтр по кошельку"
+      },
+      {
+       "sel": "div.form-row > div.form-group > label.form-label",
+       "t": "С даты"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 7,
+      "1280": 7
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Добавить кошелек TRON для мониторинга"
+       },
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Владелец"
+       },
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Фильтр по кошельку"
+       },
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "С даты"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Добавить кошелек TRON для мониторинга"
+       },
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Владелец"
+       },
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Фильтр по кошельку"
+       },
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "С даты"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-weight",
+     "sev": "FAIL",
+     "title": "вес вне шкалы",
+     "value": "500",
+     "n": 7,
+     "ex": [
+      {
+       "sel": "div.form-row > div.form-group > label.form-label",
+       "t": "Добавить кошелек TRON для мониторинга"
+      },
+      {
+       "sel": "div.form-row > div.form-group > label.form-label",
+       "t": "Владелец"
+      },
+      {
+       "sel": "div.form-row > div.form-group > label.form-label",
+       "t": "Фильтр по кошельку"
+      },
+      {
+       "sel": "div.form-row > div.form-group > label.form-label",
+       "t": "С даты"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 7,
+      "1280": 7
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Добавить кошелек TRON для мониторинга"
+       },
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Владелец"
+       },
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Фильтр по кошельку"
+       },
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "С даты"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Добавить кошелек TRON для мониторинга"
+       },
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Владелец"
+       },
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Фильтр по кошельку"
+       },
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "С даты"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "margin-вертикаль 6px",
+     "n": 5,
+     "ex": [
+      {
+       "sel": "div.form-row > div.form-group > label.form-label",
+       "t": "Добавить кошелек TRON для мониторинга"
+      },
+      {
+       "sel": "div.form-row > div.form-group > label.form-label",
+       "t": "Владелец"
+      },
+      {
+       "sel": "div.form-row > div.form-group > label.form-label",
+       "t": "Фильтр по кошельку"
+      },
+      {
+       "sel": "div.form-row > div.form-group > label.form-label",
+       "t": "С даты"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 5,
+      "1280": 5
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Добавить кошелек TRON для мониторинга"
+       },
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Владелец"
+       },
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Фильтр по кошельку"
+       },
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "С даты"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Добавить кошелек TRON для мониторинга"
+       },
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Владелец"
+       },
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Фильтр по кошельку"
+       },
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "С даты"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-bg",
+     "sev": "FAIL",
+     "title": "фон вне палитры",
+     "value": "#F97316 (ближайший action-coral #C2410C, ΔE 18.0)",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div.form-row > div.form-group > button.btn.btn-primary",
+       "t": "Добавить"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.form-row > div.form-group > button.btn.btn-primary",
+        "t": "Добавить"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.form-row > div.form-group > button.btn.btn-primary",
+        "t": "Добавить"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "padding 20px",
+     "n": 3,
+     "ex": [
+      {
+       "sel": "div.form-row > div.form-group > button.btn.btn-primary",
+       "t": "Добавить"
+      },
+      {
+       "sel": "div.form-row > div.form-group > button.btn.btn-secondary",
+       "t": "Проверить"
+      },
+      {
+       "sel": "div.form-row > div.form-group > button.btn.btn-secondary",
+       "t": "⌛ Загрузка..."
+      },
+      {
+       "sel": "section#transactions > div.card",
+       "t": ""
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 3,
+      "1280": 6
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.form-row > div.form-group > button.btn.btn-primary",
+        "t": "Добавить"
+       },
+       {
+        "sel": "div.form-row > div.form-group > button.btn.btn-secondary",
+        "t": "Проверить"
+       },
+       {
+        "sel": "div.form-row > div.form-group > button.btn.btn-secondary",
+        "t": "⌛ Загрузка..."
+       }
+      ],
+      "1280": [
+       {
+        "sel": "section#transactions > div.card",
+        "t": ""
+       },
+       {
+        "sel": "div.form-row > div.form-group > button.btn.btn-primary",
+        "t": "Добавить"
+       },
+       {
+        "sel": "div.form-row > div.form-group > button.btn.btn-secondary",
+        "t": "Проверить"
+       },
+       {
+        "sel": "div.form-row > div.form-group > button.btn.btn-secondary",
+        "t": "⌛ Загрузка..."
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "gap 6px",
+     "n": 5,
+     "ex": [
+      {
+       "sel": "div.form-row > div.form-group > button.btn.btn-primary",
+       "t": "Добавить"
+      },
+      {
+       "sel": "form#addWalletForm > div.form-row > div.form-group",
+       "t": ""
+      },
+      {
+       "sel": "div.form-row > div.form-group > button.btn.btn-secondary",
+       "t": "Проверить"
+      },
+      {
+       "sel": "div.form-row > div.form-group > button.btn.btn-secondary",
+       "t": "⌛ Загрузка..."
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 5,
+      "1280": 23
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.form-row > div.form-group > button.btn.btn-primary",
+        "t": "Добавить"
+       },
+       {
+        "sel": "form#addWalletForm > div.form-row > div.form-group",
+        "t": ""
+       },
+       {
+        "sel": "div.form-row > div.form-group > button.btn.btn-secondary",
+        "t": "Проверить"
+       },
+       {
+        "sel": "div.form-row > div.form-group > button.btn.btn-secondary",
+        "t": "⌛ Загрузка..."
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.form-row > div.form-group > button.btn.btn-primary",
+        "t": "Добавить"
+       },
+       {
+        "sel": "form#addWalletForm > div.form-row > div.form-group",
+        "t": ""
+       },
+       {
+        "sel": "div > div > div",
+        "t": ""
+       },
+       {
+        "sel": "div > div > button.btn.btn-sm",
+        "t": "×"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-text",
+     "sev": "FAIL",
+     "title": "цвет текста вне палитры",
+     "value": "#666666 (ближайший navy-500 #64748B, ΔE 12.0)",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "section#transactions > div.card > p",
+       "t": "Выберите транзакцию для создания сделки"
+      },
+      {
+       "sel": "div > div > span",
+       "t": "| 2.73 TRX"
+      },
+      {
+       "sel": "div > div > span",
+       "t": "| 0.00 TRX"
+      },
+      {
+       "sel": "div > div > span",
+       "t": "| 2.00 TRX"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 9
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "section#transactions > div.card > p",
+        "t": "Выберите транзакцию для создания сделки"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > span",
+        "t": "| 2.73 TRX"
+       },
+       {
+        "sel": "div > div > span",
+        "t": "| 0.00 TRX"
+       },
+       {
+        "sel": "div > div > span",
+        "t": "| 2.00 TRX"
+       },
+       {
+        "sel": "div > div > span",
+        "t": "| 14.58 TRX"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-size",
+     "sev": "FAIL",
+     "title": "кегль вне шкалы",
+     "value": "15px",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "select#walletFilter",
+       "t": "Все кошельки"
+      },
+      {
+       "sel": "input#txStartDate",
+       "t": "2025-12-01"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "1280": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "select#walletFilter",
+        "t": "Все кошельки"
+       },
+       {
+        "sel": "input#txStartDate",
+        "t": "2025-12-01"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "select#walletFilter",
+        "t": "Все кошельки"
+       },
+       {
+        "sel": "input#txStartDate",
+        "t": "2025-12-01"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "padding 36px",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "select#walletFilter",
+       "t": "Все кошельки"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "select#walletFilter",
+        "t": "Все кошельки"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "select#walletFilter",
+        "t": "Все кошельки"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "padding 32px",
+     "n": 10,
+     "ex": [
+      {
+       "sel": "div.container",
+       "t": ""
+      },
+      {
+       "sel": "div#walletsInfo > div > div",
+       "t": ""
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 10
+     },
+     "ex_by_width": {
+      "1280": [
+       {
+        "sel": "div.container",
+        "t": ""
+       },
+       {
+        "sel": "div#walletsInfo > div > div",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "padding 60px",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div.container",
+       "t": ""
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 1
+     },
+     "ex_by_width": {
+      "1280": [
+       {
+        "sel": "div.container",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-size",
+     "sev": "FAIL",
+     "title": "кегль вне шкалы",
+     "value": "14.4px",
+     "n": 4,
+     "ex": [
+      {
+       "sel": "div > div > input",
+       "t": "Теодор · ERC-20"
+      },
+      {
+       "sel": "div > div > input",
+       "t": "Тед Битаза"
+      },
+      {
+       "sel": "div > div > input",
+       "t": "кошелек Теда сделок от Екатерины "
+      },
+      {
+       "sel": "div > div > input",
+       "t": "кошелек виталия с мультисингом"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 4
+     },
+     "ex_by_width": {
+      "1280": [
+       {
+        "sel": "div > div > input",
+        "t": "Теодор · ERC-20"
+       },
+       {
+        "sel": "div > div > input",
+        "t": "Тед Битаза"
+       },
+       {
+        "sel": "div > div > input",
+        "t": "кошелек Теда сделок от Екатерины "
+       },
+       {
+        "sel": "div > div > input",
+        "t": "кошелек виталия с мультисингом"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-border",
+     "sev": "FAIL",
+     "title": "цвет рамки вне палитры",
+     "value": "#A7F3D0 (ближайший money-border #BBF7D0, ΔE 3.3)",
+     "n": 18,
+     "ex": [
+      {
+       "sel": "div > div > input",
+       "t": "Теодор · ERC-20"
+      },
+      {
+       "sel": "div > div > input",
+       "t": "Тед Битаза"
+      },
+      {
+       "sel": "div > div > input",
+       "t": "кошелек Теда сделок от Екатерины "
+      },
+      {
+       "sel": "div > div > input",
+       "t": "кошелек виталия с мультисингом"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 18
+     },
+     "ex_by_width": {
+      "1280": [
+       {
+        "sel": "div > div > input",
+        "t": "Теодор · ERC-20"
+       },
+       {
+        "sel": "div > div > input",
+        "t": "Тед Битаза"
+       },
+       {
+        "sel": "div > div > input",
+        "t": "кошелек Теда сделок от Екатерины "
+       },
+       {
+        "sel": "div > div > input",
+        "t": "кошелек виталия с мультисингом"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-size",
+     "sev": "FAIL",
+     "title": "кегль вне шкалы",
+     "value": "12.48px",
+     "n": 27,
+     "ex": [
+      {
+       "sel": "div > div > span",
+       "t": "0x68aEA0F5386a57b48953F6fFF2f22D29D00D9ba9"
+      },
+      {
+       "sel": "div > div > label",
+       "t": "Мультисиг (подписывает фин дир, одобряет Теодор)"
+      },
+      {
+       "sel": "div > div > label",
+       "t": "Принимаем оплату от клиентов"
+      },
+      {
+       "sel": "div > div > span",
+       "t": "TMKuEbeVfETdcgfspp2hHfBxDCzQog9UV8"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 27
+     },
+     "ex_by_width": {
+      "1280": [
+       {
+        "sel": "div > div > span",
+        "t": "0x68aEA0F5386a57b48953F6fFF2f22D29D00D9ba9"
+       },
+       {
+        "sel": "div > div > label",
+        "t": "Мультисиг (подписывает фин дир, одобряет Теодор)"
+       },
+       {
+        "sel": "div > div > label",
+        "t": "Принимаем оплату от клиентов"
+       },
+       {
+        "sel": "div > div > span",
+        "t": "TMKuEbeVfETdcgfspp2hHfBxDCzQog9UV8"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-family",
+     "sev": "FAIL",
+     "title": "шрифт вне токенов",
+     "value": "monospace",
+     "n": 9,
+     "ex": [
+      {
+       "sel": "div > div > span",
+       "t": "0x68aEA0F5386a57b48953F6fFF2f22D29D00D9ba9"
+      },
+      {
+       "sel": "div > div > span",
+       "t": "TMKuEbeVfETdcgfspp2hHfBxDCzQog9UV8"
+      },
+      {
+       "sel": "div > div > span",
+       "t": "TKTchhXduB6bxD5y7B7Ly6rZdhXx786t9K"
+      },
+      {
+       "sel": "div > div > span",
+       "t": "TVmgzMQ2zwV2DVPscBf98WRRdhrcpf5x5p"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 9
+     },
+     "ex_by_width": {
+      "1280": [
+       {
+        "sel": "div > div > span",
+        "t": "0x68aEA0F5386a57b48953F6fFF2f22D29D00D9ba9"
+       },
+       {
+        "sel": "div > div > span",
+        "t": "TMKuEbeVfETdcgfspp2hHfBxDCzQog9UV8"
+       },
+       {
+        "sel": "div > div > span",
+        "t": "TKTchhXduB6bxD5y7B7Ly6rZdhXx786t9K"
+       },
+       {
+        "sel": "div > div > span",
+        "t": "TVmgzMQ2zwV2DVPscBf98WRRdhrcpf5x5p"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-text",
+     "sev": "FAIL",
+     "title": "цвет текста вне палитры",
+     "value": "#1E40AF (ближайший navy-600 #475569, ΔE 12.9)",
+     "n": 4,
+     "ex": [
+      {
+       "sel": "div > div > span.badge",
+       "t": "приём оплаты"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 4
+     },
+     "ex_by_width": {
+      "1280": [
+       {
+        "sel": "div > div > span.badge",
+        "t": "приём оплаты"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-bg",
+     "sev": "FAIL",
+     "title": "фон вне палитры",
+     "value": "#DBEAFE (ближайший navy-200 #E2E8F0, ΔE 5.0)",
+     "n": 4,
+     "ex": [
+      {
+       "sel": "div > div > span.badge",
+       "t": "приём оплаты"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 4
+     },
+     "ex_by_width": {
+      "1280": [
+       {
+        "sel": "div > div > span.badge",
+        "t": "приём оплаты"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "padding 10px",
+     "n": 5,
+     "ex": [
+      {
+       "sel": "div > div > span.badge",
+       "t": "приём оплаты"
+      },
+      {
+       "sel": "div > div > span.badge",
+       "t": "мультисиг"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 5
+     },
+     "ex_by_width": {
+      "1280": [
+       {
+        "sel": "div > div > span.badge",
+        "t": "приём оплаты"
+       },
+       {
+        "sel": "div > div > span.badge",
+        "t": "мультисиг"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-size",
+     "sev": "FAIL",
+     "title": "кегль вне шкалы",
+     "value": "12.8px",
+     "n": 4,
+     "ex": [
+      {
+       "sel": "div > div > input",
+       "t": "Теодор"
+      },
+      {
+       "sel": "div > div > input",
+       "t": "компания"
+      },
+      {
+       "sel": "div > div > input",
+       "t": "Андрей"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 4
+     },
+     "ex_by_width": {
+      "1280": [
+       {
+        "sel": "div > div > input",
+        "t": "Теодор"
+       },
+       {
+        "sel": "div > div > input",
+        "t": "компания"
+       },
+       {
+        "sel": "div > div > input",
+        "t": "Андрей"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "margin-вертикаль 5.6px",
+     "n": 18,
+     "ex": [
+      {
+       "sel": "div > div > input",
+       "t": "Теодор"
+      },
+      {
+       "sel": "div > div > input",
+       "t": "компания"
+      },
+      {
+       "sel": "div > div > input",
+       "t": "Андрей"
+      },
+      {
+       "sel": "div > div > div",
+       "t": ""
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 18
+     },
+     "ex_by_width": {
+      "1280": [
+       {
+        "sel": "div > div > input",
+        "t": "Теодор"
+       },
+       {
+        "sel": "div > div > input",
+        "t": "компания"
+       },
+       {
+        "sel": "div > div > input",
+        "t": "Андрей"
+       },
+       {
+        "sel": "div > div > div",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "gap 10px",
+     "n": 9,
+     "ex": [
+      {
+       "sel": "div > div > div",
+       "t": ""
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 9
+     },
+     "ex_by_width": {
+      "1280": [
+       {
+        "sel": "div > div > div",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-size",
+     "sev": "FAIL",
+     "title": "кегль вне шкалы",
+     "value": "11.2px",
+     "n": 9,
+     "ex": [
+      {
+       "sel": "div > div > button.btn.btn-sm",
+       "t": "×"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 9
+     },
+     "ex_by_width": {
+      "1280": [
+       {
+        "sel": "div > div > button.btn.btn-sm",
+        "t": "×"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-bg",
+     "sev": "FAIL",
+     "title": "фон вне палитры",
+     "value": "#EF4444 (ближайший action-coral #C2410C, ΔE 14.7)",
+     "n": 9,
+     "ex": [
+      {
+       "sel": "div > div > button.btn.btn-sm",
+       "t": "×"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 9
+     },
+     "ex_by_width": {
+      "1280": [
+       {
+        "sel": "div > div > button.btn.btn-sm",
+        "t": "×"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "padding 2px",
+     "n": 9,
+     "ex": [
+      {
+       "sel": "div > div > button.btn.btn-sm",
+       "t": "×"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 9
+     },
+     "ex_by_width": {
+      "1280": [
+       {
+        "sel": "div > div > button.btn.btn-sm",
+        "t": "×"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "padding 5px",
+     "n": 9,
+     "ex": [
+      {
+       "sel": "div > div > button.btn.btn-sm",
+       "t": "×"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 9
+     },
+     "ex_by_width": {
+      "1280": [
+       {
+        "sel": "div > div > button.btn.btn-sm",
+        "t": "×"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-text",
+     "sev": "FAIL",
+     "title": "цвет текста вне палитры",
+     "value": "#10B981 (ближайший money-border #BBF7D0, ΔE 20.1)",
+     "n": 8,
+     "ex": [
+      {
+       "sel": "div > div > strong",
+       "t": "$0.00 USDT"
+      },
+      {
+       "sel": "div > div > strong",
+       "t": "$10.35 USDT"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 8
+     },
+     "ex_by_width": {
+      "1280": [
+       {
+        "sel": "div > div > strong",
+        "t": "$0.00 USDT"
+       },
+       {
+        "sel": "div > div > strong",
+        "t": "$10.35 USDT"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-size",
+     "sev": "FAIL",
+     "title": "кегль вне шкалы",
+     "value": "13.6px",
+     "n": 8,
+     "ex": [
+      {
+       "sel": "div > div > span",
+       "t": "| 2.73 TRX"
+      },
+      {
+       "sel": "div > div > span",
+       "t": "| 0.00 TRX"
+      },
+      {
+       "sel": "div > div > span",
+       "t": "| 2.00 TRX"
+      },
+      {
+       "sel": "div > div > span",
+       "t": "| 14.58 TRX"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 8
+     },
+     "ex_by_width": {
+      "1280": [
+       {
+        "sel": "div > div > span",
+        "t": "| 2.73 TRX"
+       },
+       {
+        "sel": "div > div > span",
+        "t": "| 0.00 TRX"
+       },
+       {
+        "sel": "div > div > span",
+        "t": "| 2.00 TRX"
+       },
+       {
+        "sel": "div > div > span",
+        "t": "| 14.58 TRX"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-bg",
+     "sev": "FAIL",
+     "title": "фон вне палитры",
+     "value": "#FEF3C7 (ближайший decision-surface #FFFBEB, ΔE 8.8)",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div > div > span.badge",
+       "t": "мультисиг"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 1
+     },
+     "ex_by_width": {
+      "1280": [
+       {
+        "sel": "div > div > span.badge",
+        "t": "мультисиг"
+       }
+      ]
+     }
+    }
+   ],
+   "warnings": [],
+   "scope": "авто полностью"
+  },
+  "2": {
+   "id": 2,
+   "name": "Гардрейлы",
+   "by_width": {
+    "375": "FAIL",
+    "768": "BLOCKED",
+    "1280": "FAIL",
+    "1920": "BLOCKED"
+   },
+   "verdict": "FAIL",
+   "findings": [
+    {
+     "gate": 2,
+     "rule": "G1-кеглей",
+     "sev": "FAIL",
+     "title": "кеглей на экране больше 4",
+     "value": "6: 12, 13, 14, 15, 16, 22",
+     "n": 1,
+     "ex": [],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1
+     },
+     "ex_by_width": {
+      "375": []
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G1-весов",
+     "sev": "FAIL",
+     "title": "весов на экране больше 3",
+     "value": "4: 400, 500, 600, 700",
+     "n": 1,
+     "ex": [],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [],
+      "1280": []
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G1-fonts",
+     "sev": "FAIL",
+     "title": "больше одного текстового шрифта",
+     "value": "inter, arial",
+     "n": 1,
+     "ex": [],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [],
+      "1280": []
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G18-transition-all-computed",
+     "sev": "FAIL",
+     "title": "transition: all",
+     "value": "all",
+     "n": 9,
+     "ex": [
+      {
+       "sel": "div.form-row > div.form-group > input.form-control",
+       "t": ""
+      },
+      {
+       "sel": "div.form-row > div.form-group > button.btn.btn-primary",
+       "t": "Добавить"
+      },
+      {
+       "sel": "div.form-row > div.form-group > button.btn.btn-secondary",
+       "t": "Проверить"
+      },
+      {
+       "sel": "div.form-row > div.form-group > button.btn.btn-secondary",
+       "t": "⌛ Загрузка..."
+      }
+     ],
+     "gr": 18,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 9,
+      "1280": 18
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.form-row > div.form-group > input.form-control",
+        "t": ""
+       },
+       {
+        "sel": "div.form-row > div.form-group > button.btn.btn-primary",
+        "t": "Добавить"
+       },
+       {
+        "sel": "div.form-row > div.form-group > button.btn.btn-secondary",
+        "t": "Проверить"
+       },
+       {
+        "sel": "div.form-row > div.form-group > button.btn.btn-secondary",
+        "t": "⌛ Загрузка..."
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.form-row > div.form-group > input.form-control",
+        "t": ""
+       },
+       {
+        "sel": "div.form-row > div.form-group > button.btn.btn-primary",
+        "t": "Добавить"
+       },
+       {
+        "sel": "div > div > button.btn.btn-sm",
+        "t": "×"
+       },
+       {
+        "sel": "div.form-row > div.form-group > button.btn.btn-secondary",
+        "t": "Проверить"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G5-emoji",
+     "sev": "FAIL",
+     "title": "эмодзи в кнопке/ссылке/табе/заголовке",
+     "value": "⌛",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div.form-row > div.form-group > button.btn.btn-secondary",
+       "t": "⌛ Загрузка..."
+      }
+     ],
+     "gr": 5,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.form-row > div.form-group > button.btn.btn-secondary",
+        "t": "⌛ Загрузка..."
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.form-row > div.form-group > button.btn.btn-secondary",
+        "t": "⌛ Загрузка..."
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G3-hover-zoom",
+     "sev": "FAIL",
+     "title": "hover-зум",
+     "value": ".kyc-review-photo img:hover",
+     "n": 1,
+     "ex": [
+      {
+       "sel": ".kyc-review-photo img:hover",
+       "t": ""
+      }
+     ],
+     "gr": 3,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": ".kyc-review-photo img:hover",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": ".kyc-review-photo img:hover",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G1-кеглей",
+     "sev": "FAIL",
+     "title": "кеглей на экране больше 4",
+     "value": "11: 11.2, 12, 12.48, 12.8, 13, 13.6, 14, 14.4, 15, 16, 22",
+     "n": 1,
+     "ex": [],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 1
+     },
+     "ex_by_width": {
+      "1280": []
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G6-blue",
+     "sev": "FAIL",
+     "title": "синий фон (синих плашек нет)",
+     "value": "#DBEAFE",
+     "n": 4,
+     "ex": [
+      {
+       "sel": "div > div > span.badge",
+       "t": "приём оплаты"
+      }
+     ],
+     "gr": 6,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 4
+     },
+     "ex_by_width": {
+      "1280": [
+       {
+        "sel": "div > div > span.badge",
+        "t": "приём оплаты"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G5-emoji",
+     "sev": "FAIL",
+     "title": "эмодзи в кнопке/ссылке/табе/заголовке",
+     "value": "📋",
+     "n": 9,
+     "ex": [
+      {
+       "sel": "div > div > span",
+       "t": "📋"
+      }
+     ],
+     "gr": 5,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 9
+     },
+     "ex_by_width": {
+      "1280": [
+       {
+        "sel": "div > div > span",
+        "t": "📋"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G4-icononly",
+     "sev": "FAIL",
+     "title": "кнопка-иконка без видимой подписи",
+     "value": "×",
+     "n": 9,
+     "ex": [
+      {
+       "sel": "div > div > button.btn.btn-sm",
+       "t": "×"
+      }
+     ],
+     "gr": 4,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 9
+     },
+     "ex_by_width": {
+      "1280": [
+       {
+        "sel": "div > div > button.btn.btn-sm",
+        "t": "×"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G7-anywhere",
+     "sev": "FAIL",
+     "title": "у адреса overflow-wrap:anywhere / word-break:break-all",
+     "value": "overflow-wrap:normal; word-break:break-all",
+     "n": 9,
+     "ex": [
+      {
+       "sel": "div > div > span",
+       "t": "0x68aEA0F5386a57b48953F6fFF2f22D29D00D9ba9"
+      },
+      {
+       "sel": "div > div > span",
+       "t": "TMKuEbeVfETdcgfspp2hHfBxDCzQog9UV8"
+      },
+      {
+       "sel": "div > div > span",
+       "t": "TKTchhXduB6bxD5y7B7Ly6rZdhXx786t9K"
+      },
+      {
+       "sel": "div > div > span",
+       "t": "TVmgzMQ2zwV2DVPscBf98WRRdhrcpf5x5p"
+      }
+     ],
+     "gr": 7,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 9
+     },
+     "ex_by_width": {
+      "1280": [
+       {
+        "sel": "div > div > span",
+        "t": "0x68aEA0F5386a57b48953F6fFF2f22D29D00D9ba9"
+       },
+       {
+        "sel": "div > div > span",
+        "t": "TMKuEbeVfETdcgfspp2hHfBxDCzQog9UV8"
+       },
+       {
+        "sel": "div > div > span",
+        "t": "TKTchhXduB6bxD5y7B7Ly6rZdhXx786t9K"
+       },
+       {
+        "sel": "div > div > span",
+        "t": "TVmgzMQ2zwV2DVPscBf98WRRdhrcpf5x5p"
+       }
+      ]
+     }
+    }
+   ],
+   "warnings": [
+    {
+     "gate": 2,
+     "rule": "G4-icononly",
+     "sev": "WARN",
+     "title": "кнопка-иконка без видимой подписи (есть aria-label)",
+     "value": "‹",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "nav.site-shell-sections > button.site-shell-scroll",
+       "t": "Предыдущие разделы"
+      }
+     ],
+     "gr": 4,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "nav.site-shell-sections > button.site-shell-scroll",
+        "t": "Предыдущие разделы"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "nav.site-shell-sections > button.site-shell-scroll",
+        "t": "Предыдущие разделы"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G4-icononly",
+     "sev": "WARN",
+     "title": "кнопка-иконка без видимой подписи (есть aria-label)",
+     "value": "›",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "nav.site-shell-sections > button.site-shell-scroll",
+       "t": "Следующие разделы"
+      }
+     ],
+     "gr": 4,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "nav.site-shell-sections > button.site-shell-scroll",
+        "t": "Следующие разделы"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "nav.site-shell-sections > button.site-shell-scroll",
+        "t": "Следующие разделы"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G9-ph-nolabel",
+     "sev": "WARN",
+     "title": "у поля нет подписи (label/aria-label) — плейсхолдер вместо подписи?",
+     "value": "TYourWalletAddress...",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div.form-row > div.form-group > input.form-control",
+       "t": "TYourWalletAddress..."
+      }
+     ],
+     "gr": 9,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.form-row > div.form-group > input.form-control",
+        "t": "TYourWalletAddress..."
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.form-row > div.form-group > input.form-control",
+        "t": "TYourWalletAddress..."
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G9-ph-nolabel",
+     "sev": "WARN",
+     "title": "у поля нет подписи (label/aria-label) — плейсхолдер вместо подписи?",
+     "value": "Теодор",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div.form-row > div.form-group > input.form-control",
+       "t": "Теодор"
+      }
+     ],
+     "gr": 9,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.form-row > div.form-group > input.form-control",
+        "t": "Теодор"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.form-row > div.form-group > input.form-control",
+        "t": "Теодор"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G9-ph-nolabel",
+     "sev": "WARN",
+     "title": "у поля нет подписи (label/aria-label) — плейсхолдер вместо подписи?",
+     "value": "Хэш транзакции (64 символа)",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div.form-row > div.form-group > input.form-control",
+       "t": "Хэш транзакции (64 символа)"
+      }
+     ],
+     "gr": 9,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.form-row > div.form-group > input.form-control",
+        "t": "Хэш транзакции (64 символа)"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.form-row > div.form-group > input.form-control",
+        "t": "Хэш транзакции (64 символа)"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G18-outline-none",
+     "sev": "WARN",
+     "title": "outline:none — проверь кольцо фокуса",
+     "value": ".form-control:focus",
+     "n": 1,
+     "ex": [
+      {
+       "sel": ".form-control:focus",
+       "t": ""
+      }
+     ],
+     "gr": 18,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": ".form-control:focus",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": ".form-control:focus",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G18-outline-none",
+     "sev": "WARN",
+     "title": "outline:none — проверь кольцо фокуса",
+     "value": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
+     "n": 1,
+     "ex": [
+      {
+       "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
+       "t": ""
+      }
+     ],
+     "gr": 18,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G18-outline-none",
+     "sev": "WARN",
+     "title": "outline:none — проверь кольцо фокуса",
+     "value": ".docs-amount input:focus",
+     "n": 1,
+     "ex": [
+      {
+       "sel": ".docs-amount input:focus",
+       "t": ""
+      }
+     ],
+     "gr": 18,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": ".docs-amount input:focus",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": ".docs-amount input:focus",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G18-outline-none",
+     "sev": "WARN",
+     "title": "outline:none — проверь кольцо фокуса",
+     "value": ".docs-purpose textarea:focus",
+     "n": 1,
+     "ex": [
+      {
+       "sel": ".docs-purpose textarea:focus",
+       "t": ""
+      }
+     ],
+     "gr": 18,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": ".docs-purpose textarea:focus",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": ".docs-purpose textarea:focus",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G9-ph-nolabel",
+     "sev": "WARN",
+     "title": "у поля нет подписи (label/aria-label) — плейсхолдер вместо подписи?",
+     "value": "Подпись — чей это кошелёк?",
+     "n": 9,
+     "ex": [
+      {
+       "sel": "div > div > input",
+       "t": "Подпись — чей это кошелёк?"
+      }
+     ],
+     "gr": 9,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 9
+     },
+     "ex_by_width": {
+      "1280": [
+       {
+        "sel": "div > div > input",
+        "t": "Подпись — чей это кошелёк?"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G9-ph-nolabel",
+     "sev": "WARN",
+     "title": "у поля нет подписи (label/aria-label) — плейсхолдер вместо подписи?",
+     "value": "Владелец",
+     "n": 9,
+     "ex": [
+      {
+       "sel": "div > div > input",
+       "t": "Владелец"
+      }
+     ],
+     "gr": 9,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 9
+     },
+     "ex_by_width": {
+      "1280": [
+       {
+        "sel": "div > div > input",
+        "t": "Владелец"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G7-mono-size",
+     "sev": "WARN",
+     "title": "адрес/хеш не Mono 14px",
+     "value": "12.48px",
+     "n": 9,
+     "ex": [
+      {
+       "sel": "div > div > span",
+       "t": "0x68aEA0F5386a57b48953F6fFF2f22D29D00D9ba9"
+      },
+      {
+       "sel": "div > div > span",
+       "t": "TMKuEbeVfETdcgfspp2hHfBxDCzQog9UV8"
+      },
+      {
+       "sel": "div > div > span",
+       "t": "TKTchhXduB6bxD5y7B7Ly6rZdhXx786t9K"
+      },
+      {
+       "sel": "div > div > span",
+       "t": "TVmgzMQ2zwV2DVPscBf98WRRdhrcpf5x5p"
+      }
+     ],
+     "gr": 7,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 9
+     },
+     "ex_by_width": {
+      "1280": [
+       {
+        "sel": "div > div > span",
+        "t": "0x68aEA0F5386a57b48953F6fFF2f22D29D00D9ba9"
+       },
+       {
+        "sel": "div > div > span",
+        "t": "TMKuEbeVfETdcgfspp2hHfBxDCzQog9UV8"
+       },
+       {
+        "sel": "div > div > span",
+        "t": "TKTchhXduB6bxD5y7B7Ly6rZdhXx786t9K"
+       },
+       {
+        "sel": "div > div > span",
+        "t": "TVmgzMQ2zwV2DVPscBf98WRRdhrcpf5x5p"
+       }
+      ]
+     }
+    }
+   ],
+   "note": "Гардрейлы 1–2, 7, 8, 11 дублируют гейты 1, 3, 4, 5 — находки смотри там.",
+   "scope": "авто для пунктов auto/partial; manual — глазами"
+  },
+  "3": {
+   "id": 3,
+   "name": "Контраст WCAG AA",
+   "by_width": {
+    "375": "FAIL",
+    "768": "BLOCKED",
+    "1280": "FAIL",
+    "1920": "BLOCKED"
+   },
+   "verdict": "FAIL",
+   "findings": [
+    {
+     "gate": 3,
+     "rule": "C-low",
+     "sev": "FAIL",
+     "title": "контраст ниже 4.5:1",
+     "value": "#FFFFFF на #F97316 = 2.80:1 (14px/600)",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div.form-row > div.form-group > button.btn.btn-primary",
+       "t": "Добавить"
+      }
+     ],
+     "gr": 11,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.form-row > div.form-group > button.btn.btn-primary",
+        "t": "Добавить"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.form-row > div.form-group > button.btn.btn-primary",
+        "t": "Добавить"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 3,
+     "rule": "C-unknown",
+     "sev": "BLOCKED",
+     "title": "фон под текстом — картинка/градиент, контраст не посчитать",
+     "value": "#0F172A",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "select#walletFilter",
+       "t": "Все кошельки"
+      }
+     ],
+     "gr": null,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "select#walletFilter",
+        "t": "Все кошельки"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "select#walletFilter",
+        "t": "Все кошельки"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 3,
+     "rule": "C-low",
+     "sev": "FAIL",
+     "title": "контраст ниже 4.5:1",
+     "value": "#94A3B8 на #F0FDF4 = 2.45:1 (16px/400)",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div > div > span",
+       "t": "нет данных"
+      }
+     ],
+     "gr": 11,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 1
+     },
+     "ex_by_width": {
+      "1280": [
+       {
+        "sel": "div > div > span",
+        "t": "нет данных"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 3,
+     "rule": "C-low",
+     "sev": "FAIL",
+     "title": "контраст ниже 4.5:1",
+     "value": "#FFFFFF на #EF4444 = 3.76:1 (11.2px/600)",
+     "n": 9,
+     "ex": [
+      {
+       "sel": "div > div > button.btn.btn-sm",
+       "t": "×"
+      }
+     ],
+     "gr": 11,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 9
+     },
+     "ex_by_width": {
+      "1280": [
+       {
+        "sel": "div > div > button.btn.btn-sm",
+        "t": "×"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 3,
+     "rule": "C-low",
+     "sev": "FAIL",
+     "title": "контраст ниже 3:1",
+     "value": "#10B981 на #F0FDF4 = 2.42:1 (16px/700)",
+     "n": 8,
+     "ex": [
+      {
+       "sel": "div > div > strong",
+       "t": "$0.00 USDT"
+      },
+      {
+       "sel": "div > div > strong",
+       "t": "$10.35 USDT"
+      }
+     ],
+     "gr": 11,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 8
+     },
+     "ex_by_width": {
+      "1280": [
+       {
+        "sel": "div > div > strong",
+        "t": "$0.00 USDT"
+       },
+       {
+        "sel": "div > div > strong",
+        "t": "$10.35 USDT"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 3,
+     "rule": "C-low",
+     "sev": "FAIL",
+     "title": "контраст плейсхолдера ниже 4.5:1",
+     "value": "#757575 на #F0FDF4 = 4.40:1",
+     "n": 18,
+     "ex": [
+      {
+       "sel": "div > div > input",
+       "t": "Подпись — чей это кошелёк?"
+      },
+      {
+       "sel": "div > div > input",
+       "t": "Владелец"
+      }
+     ],
+     "gr": 11,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 18
+     },
+     "ex_by_width": {
+      "1280": [
+       {
+        "sel": "div > div > input",
+        "t": "Подпись — чей это кошелёк?"
+       },
+       {
+        "sel": "div > div > input",
+        "t": "Владелец"
+       }
+      ]
+     }
+    }
+   ],
+   "warnings": [],
+   "scope": "авто (расчёт по computed-цветам)"
+  },
+  "4": {
+   "id": 4,
+   "name": "Ширины",
+   "by_width": {
+    "375": "PASS",
+    "768": "BLOCKED",
+    "1280": "FAIL",
+    "1920": "BLOCKED"
+   },
+   "verdict": "FAIL",
+   "findings": [
+    {
+     "gate": 4,
+     "rule": "G7-addr-wrap",
+     "sev": "FAIL",
+     "title": "адрес/хеш переносится на 2+ строк",
+     "value": "2 стр.",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div > div > span",
+       "t": "0x68aEA0F5386a57b48953F6fFF2f22D29D00D9ba9"
+      }
+     ],
+     "gr": 7,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 1
+     },
+     "ex_by_width": {
+      "1280": [
+       {
+        "sel": "div > div > span",
+        "t": "0x68aEA0F5386a57b48953F6fFF2f22D29D00D9ba9"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 4,
+     "rule": "W-row-align",
+     "sev": "FAIL",
+     "title": "в ряду поля/кнопки разной высоты или смещены",
+     "value": "21px и 36px (Δверха 12px)",
+     "n": 9,
+     "ex": [
+      {
+       "sel": "div > div > input",
+       "t": "Теодор · ERC-20"
+      },
+      {
+       "sel": "div > div > button.btn.btn-sm",
+       "t": "×"
+      },
+      {
+       "sel": "div > div > input",
+       "t": "Тед Битаза"
+      },
+      {
+       "sel": "div > div > input",
+       "t": ""
+      }
+     ],
+     "gr": 10,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 9
+     },
+     "ex_by_width": {
+      "1280": [
+       {
+        "sel": "div > div > input",
+        "t": "Теодор · ERC-20"
+       },
+       {
+        "sel": "div > div > button.btn.btn-sm",
+        "t": "×"
+       },
+       {
+        "sel": "div > div > input",
+        "t": "Тед Битаза"
+       },
+       {
+        "sel": "div > div > input",
+        "t": ""
+       }
+      ]
+     }
+    }
+   ],
+   "warnings": [
+    {
+     "gate": 4,
+     "rule": "W-thumb",
+     "sev": "WARN",
+     "title": "нажимаемая цель ниже 44px (Thumb Rule)",
+     "value": "21px",
+     "n": 9,
+     "ex": [
+      {
+       "sel": "div > div > input",
+       "t": "Теодор · ERC-20"
+      },
+      {
+       "sel": "div > div > input",
+       "t": "Тед Битаза"
+      },
+      {
+       "sel": "div > div > input",
+       "t": ""
+      },
+      {
+       "sel": "div > div > input",
+       "t": "кошелек Теда сделок от Екатерины"
+      }
+     ],
+     "gr": null,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 9
+     },
+     "ex_by_width": {
+      "1280": [
+       {
+        "sel": "div > div > input",
+        "t": "Теодор · ERC-20"
+       },
+       {
+        "sel": "div > div > input",
+        "t": "Тед Битаза"
+       },
+       {
+        "sel": "div > div > input",
+        "t": ""
+       },
+       {
+        "sel": "div > div > input",
+        "t": "кошелек Теда сделок от Екатерины"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 4,
+     "rule": "W-thumb",
+     "sev": "WARN",
+     "title": "нажимаемая цель ниже 44px (Thumb Rule)",
+     "value": "20px",
+     "n": 9,
+     "ex": [
+      {
+       "sel": "div > div > input",
+       "t": "Теодор"
+      },
+      {
+       "sel": "div > div > input",
+       "t": ""
+      },
+      {
+       "sel": "div > div > input",
+       "t": "компания"
+      },
+      {
+       "sel": "div > div > input",
+       "t": "Андрей"
+      }
+     ],
+     "gr": null,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 9
+     },
+     "ex_by_width": {
+      "1280": [
+       {
+        "sel": "div > div > input",
+        "t": "Теодор"
+       },
+       {
+        "sel": "div > div > input",
+        "t": ""
+       },
+       {
+        "sel": "div > div > input",
+        "t": "компания"
+       },
+       {
+        "sel": "div > div > input",
+        "t": "Андрей"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 4,
+     "rule": "W-thumb",
+     "sev": "WARN",
+     "title": "нажимаемая цель ниже 44px (Thumb Rule)",
+     "value": "36px",
+     "n": 9,
+     "ex": [
+      {
+       "sel": "div > div > button.btn.btn-sm",
+       "t": "×"
+      }
+     ],
+     "gr": null,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 9
+     },
+     "ex_by_width": {
+      "1280": [
+       {
+        "sel": "div > div > button.btn.btn-sm",
+        "t": "×"
+       }
+      ]
+     }
+    }
+   ],
+   "scope": "авто"
+  },
+  "5": {
+   "id": 5,
+   "name": "Текст",
+   "by_width": {
+    "375": "PASS",
+    "768": "BLOCKED",
+    "1280": "PASS",
+    "1920": "BLOCKED"
+   },
+   "verdict": "BLOCKED",
+   "findings": [],
+   "warnings": [
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "0,00 USDT × 6",
+     "n": 6,
+     "ex": [
+      {
+       "sel": "div > div > strong",
+       "t": "$0.00 USDT"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 6
+     },
+     "ex_by_width": {
+      "1280": [
+       {
+        "sel": "div > div > strong",
+        "t": "$0.00 USDT"
+       }
+      ]
+     }
+    }
+   ],
+   "scope": "авто: внутренние слова, повтор сумм; глагол/фразы из переписки — глазами"
+  },
+  "6": {
+   "id": 6,
+   "name": "Снимки",
+   "by_width": {
+    "375": "PASS",
+    "768": "BLOCKED",
+    "1280": "PASS",
+    "1920": "BLOCKED"
+   },
+   "verdict": "BLOCKED",
+   "notes": [
+    "375px: снимок «после» не снят",
+    "1280px: снимок «после» не снят"
+   ],
+   "shots": {
+    "375": {
+     "after": null,
+     "before": "/private/tmp/calccrm-wave4a/outputs/calccrm-redesign/wave4a/machine-crm-transactions/before-karim-375.png"
+    },
+    "1280": {
+     "after": null,
+     "before": "/private/tmp/calccrm-wave4a/outputs/calccrm-redesign/wave4a/machine-crm-transactions/before-karim-1280.png"
+    }
+   },
+   "findings": [],
+   "warnings": [],
+   "scope": "авто: наличие и непустота пар «до/после»; сравнение — глазами"
+  }
+ },
+ "guardrails": {
+  "1": {
+   "id": 1,
+   "title": "Один шрифт + моно, 4 кегля, 3 веса",
+   "coverage": "auto",
+   "verdict": "FAIL",
+   "findings": [
+    {
+     "gate": 1,
+     "rule": "T-family",
+     "sev": "FAIL",
+     "title": "шрифт вне токенов",
+     "value": "arial",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "nav.site-shell-sections > button.site-shell-scroll",
+       "t": "‹"
+      },
+      {
+       "sel": "nav.site-shell-sections > button.site-shell-scroll",
+       "t": "›"
+      },
+      {
+       "sel": "div > div > input",
+       "t": "Теодор · ERC-20"
+      },
+      {
+       "sel": "div > div > input",
+       "t": "Тед Битаза"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "1280": 10
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "nav.site-shell-sections > button.site-shell-scroll",
+        "t": "‹"
+       },
+       {
+        "sel": "nav.site-shell-sections > button.site-shell-scroll",
+        "t": "›"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "nav.site-shell-sections > button.site-shell-scroll",
+        "t": "‹"
+       },
+       {
+        "sel": "nav.site-shell-sections > button.site-shell-scroll",
+        "t": "›"
+       },
+       {
+        "sel": "div > div > input",
+        "t": "Теодор · ERC-20"
+       },
+       {
+        "sel": "div > div > input",
+        "t": "Тед Битаза"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-size",
+     "sev": "FAIL",
+     "title": "кегль вне шкалы",
+     "value": "13px",
+     "n": 7,
+     "ex": [
+      {
+       "sel": "div.form-row > div.form-group > label.form-label",
+       "t": "Добавить кошелек TRON для мониторинга"
+      },
+      {
+       "sel": "div.form-row > div.form-group > label.form-label",
+       "t": "Владелец"
+      },
+      {
+       "sel": "div.form-row > div.form-group > label.form-label",
+       "t": "Фильтр по кошельку"
+      },
+      {
+       "sel": "div.form-row > div.form-group > label.form-label",
+       "t": "С даты"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 7,
+      "1280": 7
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Добавить кошелек TRON для мониторинга"
+       },
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Владелец"
+       },
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Фильтр по кошельку"
+       },
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "С даты"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Добавить кошелек TRON для мониторинга"
+       },
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Владелец"
+       },
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Фильтр по кошельку"
+       },
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "С даты"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-weight",
+     "sev": "FAIL",
+     "title": "вес вне шкалы",
+     "value": "500",
+     "n": 7,
+     "ex": [
+      {
+       "sel": "div.form-row > div.form-group > label.form-label",
+       "t": "Добавить кошелек TRON для мониторинга"
+      },
+      {
+       "sel": "div.form-row > div.form-group > label.form-label",
+       "t": "Владелец"
+      },
+      {
+       "sel": "div.form-row > div.form-group > label.form-label",
+       "t": "Фильтр по кошельку"
+      },
+      {
+       "sel": "div.form-row > div.form-group > label.form-label",
+       "t": "С даты"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 7,
+      "1280": 7
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Добавить кошелек TRON для мониторинга"
+       },
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Владелец"
+       },
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Фильтр по кошельку"
+       },
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "С даты"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Добавить кошелек TRON для мониторинга"
+       },
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Владелец"
+       },
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Фильтр по кошельку"
+       },
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "С даты"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-size",
+     "sev": "FAIL",
+     "title": "кегль вне шкалы",
+     "value": "15px",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "select#walletFilter",
+       "t": "Все кошельки"
+      },
+      {
+       "sel": "input#txStartDate",
+       "t": "2025-12-01"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "1280": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "select#walletFilter",
+        "t": "Все кошельки"
+       },
+       {
+        "sel": "input#txStartDate",
+        "t": "2025-12-01"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "select#walletFilter",
+        "t": "Все кошельки"
+       },
+       {
+        "sel": "input#txStartDate",
+        "t": "2025-12-01"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G1-кеглей",
+     "sev": "FAIL",
+     "title": "кеглей на экране больше 4",
+     "value": "6: 12, 13, 14, 15, 16, 22",
+     "n": 1,
+     "ex": [],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1
+     },
+     "ex_by_width": {
+      "375": []
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G1-весов",
+     "sev": "FAIL",
+     "title": "весов на экране больше 3",
+     "value": "4: 400, 500, 600, 700",
+     "n": 1,
+     "ex": [],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [],
+      "1280": []
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G1-fonts",
+     "sev": "FAIL",
+     "title": "больше одного текстового шрифта",
+     "value": "inter, arial",
+     "n": 1,
+     "ex": [],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [],
+      "1280": []
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-size",
+     "sev": "FAIL",
+     "title": "кегль вне шкалы",
+     "value": "14.4px",
+     "n": 4,
+     "ex": [
+      {
+       "sel": "div > div > input",
+       "t": "Теодор · ERC-20"
+      },
+      {
+       "sel": "div > div > input",
+       "t": "Тед Битаза"
+      },
+      {
+       "sel": "div > div > input",
+       "t": "кошелек Теда сделок от Екатерины "
+      },
+      {
+       "sel": "div > div > input",
+       "t": "кошелек виталия с мультисингом"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 4
+     },
+     "ex_by_width": {
+      "1280": [
+       {
+        "sel": "div > div > input",
+        "t": "Теодор · ERC-20"
+       },
+       {
+        "sel": "div > div > input",
+        "t": "Тед Битаза"
+       },
+       {
+        "sel": "div > div > input",
+        "t": "кошелек Теда сделок от Екатерины "
+       },
+       {
+        "sel": "div > div > input",
+        "t": "кошелек виталия с мультисингом"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-size",
+     "sev": "FAIL",
+     "title": "кегль вне шкалы",
+     "value": "12.48px",
+     "n": 27,
+     "ex": [
+      {
+       "sel": "div > div > span",
+       "t": "0x68aEA0F5386a57b48953F6fFF2f22D29D00D9ba9"
+      },
+      {
+       "sel": "div > div > label",
+       "t": "Мультисиг (подписывает фин дир, одобряет Теодор)"
+      },
+      {
+       "sel": "div > div > label",
+       "t": "Принимаем оплату от клиентов"
+      },
+      {
+       "sel": "div > div > span",
+       "t": "TMKuEbeVfETdcgfspp2hHfBxDCzQog9UV8"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 27
+     },
+     "ex_by_width": {
+      "1280": [
+       {
+        "sel": "div > div > span",
+        "t": "0x68aEA0F5386a57b48953F6fFF2f22D29D00D9ba9"
+       },
+       {
+        "sel": "div > div > label",
+        "t": "Мультисиг (подписывает фин дир, одобряет Теодор)"
+       },
+       {
+        "sel": "div > div > label",
+        "t": "Принимаем оплату от клиентов"
+       },
+       {
+        "sel": "div > div > span",
+        "t": "TMKuEbeVfETdcgfspp2hHfBxDCzQog9UV8"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-family",
+     "sev": "FAIL",
+     "title": "шрифт вне токенов",
+     "value": "monospace",
+     "n": 9,
+     "ex": [
+      {
+       "sel": "div > div > span",
+       "t": "0x68aEA0F5386a57b48953F6fFF2f22D29D00D9ba9"
+      },
+      {
+       "sel": "div > div > span",
+       "t": "TMKuEbeVfETdcgfspp2hHfBxDCzQog9UV8"
+      },
+      {
+       "sel": "div > div > span",
+       "t": "TKTchhXduB6bxD5y7B7Ly6rZdhXx786t9K"
+      },
+      {
+       "sel": "div > div > span",
+       "t": "TVmgzMQ2zwV2DVPscBf98WRRdhrcpf5x5p"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 9
+     },
+     "ex_by_width": {
+      "1280": [
+       {
+        "sel": "div > div > span",
+        "t": "0x68aEA0F5386a57b48953F6fFF2f22D29D00D9ba9"
+       },
+       {
+        "sel": "div > div > span",
+        "t": "TMKuEbeVfETdcgfspp2hHfBxDCzQog9UV8"
+       },
+       {
+        "sel": "div > div > span",
+        "t": "TKTchhXduB6bxD5y7B7Ly6rZdhXx786t9K"
+       },
+       {
+        "sel": "div > div > span",
+        "t": "TVmgzMQ2zwV2DVPscBf98WRRdhrcpf5x5p"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-size",
+     "sev": "FAIL",
+     "title": "кегль вне шкалы",
+     "value": "12.8px",
+     "n": 4,
+     "ex": [
+      {
+       "sel": "div > div > input",
+       "t": "Теодор"
+      },
+      {
+       "sel": "div > div > input",
+       "t": "компания"
+      },
+      {
+       "sel": "div > div > input",
+       "t": "Андрей"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 4
+     },
+     "ex_by_width": {
+      "1280": [
+       {
+        "sel": "div > div > input",
+        "t": "Теодор"
+       },
+       {
+        "sel": "div > div > input",
+        "t": "компания"
+       },
+       {
+        "sel": "div > div > input",
+        "t": "Андрей"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-size",
+     "sev": "FAIL",
+     "title": "кегль вне шкалы",
+     "value": "11.2px",
+     "n": 9,
+     "ex": [
+      {
+       "sel": "div > div > button.btn.btn-sm",
+       "t": "×"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 9
+     },
+     "ex_by_width": {
+      "1280": [
+       {
+        "sel": "div > div > button.btn.btn-sm",
+        "t": "×"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-size",
+     "sev": "FAIL",
+     "title": "кегль вне шкалы",
+     "value": "13.6px",
+     "n": 8,
+     "ex": [
+      {
+       "sel": "div > div > span",
+       "t": "| 2.73 TRX"
+      },
+      {
+       "sel": "div > div > span",
+       "t": "| 0.00 TRX"
+      },
+      {
+       "sel": "div > div > span",
+       "t": "| 2.00 TRX"
+      },
+      {
+       "sel": "div > div > span",
+       "t": "| 14.58 TRX"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 8
+     },
+     "ex_by_width": {
+      "1280": [
+       {
+        "sel": "div > div > span",
+        "t": "| 2.73 TRX"
+       },
+       {
+        "sel": "div > div > span",
+        "t": "| 0.00 TRX"
+       },
+       {
+        "sel": "div > div > span",
+        "t": "| 2.00 TRX"
+       },
+       {
+        "sel": "div > div > span",
+        "t": "| 14.58 TRX"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G1-кеглей",
+     "sev": "FAIL",
+     "title": "кеглей на экране больше 4",
+     "value": "11: 11.2, 12, 12.48, 12.8, 13, 13.6, 14, 14.4, 15, 16, 22",
+     "n": 1,
+     "ex": [],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 1
+     },
+     "ex_by_width": {
+      "1280": []
+     }
+    }
+   ],
+   "warnings": []
+  },
+  "2": {
+   "id": 2,
+   "title": "Цвета/отступы/радиусы/тени только из токенов",
+   "coverage": "auto",
+   "verdict": "FAIL",
+   "findings": [
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "padding 6px",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div.site-shell.site-shell-mobile-head > span.site-shell-bell > a",
+       "t": ""
+      },
+      {
+       "sel": "div.site-shell-right > span.site-shell-bell > a",
+       "t": ""
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.site-shell.site-shell-mobile-head > span.site-shell-bell > a",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.site-shell-right > span.site-shell-bell > a",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-family",
+     "sev": "FAIL",
+     "title": "шрифт вне токенов",
+     "value": "arial",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "nav.site-shell-sections > button.site-shell-scroll",
+       "t": "‹"
+      },
+      {
+       "sel": "nav.site-shell-sections > button.site-shell-scroll",
+       "t": "›"
+      },
+      {
+       "sel": "div > div > input",
+       "t": "Теодор · ERC-20"
+      },
+      {
+       "sel": "div > div > input",
+       "t": "Тед Битаза"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "1280": 10
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "nav.site-shell-sections > button.site-shell-scroll",
+        "t": "‹"
+       },
+       {
+        "sel": "nav.site-shell-sections > button.site-shell-scroll",
+        "t": "›"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "nav.site-shell-sections > button.site-shell-scroll",
+        "t": "‹"
+       },
+       {
+        "sel": "nav.site-shell-sections > button.site-shell-scroll",
+        "t": "›"
+       },
+       {
+        "sel": "div > div > input",
+        "t": "Теодор · ERC-20"
+       },
+       {
+        "sel": "div > div > input",
+        "t": "Тед Битаза"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "padding 120px",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div.container",
+       "t": ""
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.container",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "padding 14px",
+     "n": 7,
+     "ex": [
+      {
+       "sel": "div.container",
+       "t": ""
+      },
+      {
+       "sel": "div.form-row > div.form-group > input.form-control",
+       "t": ""
+      },
+      {
+       "sel": "select#walletFilter",
+       "t": "Все кошельки"
+      },
+      {
+       "sel": "input#txStartDate",
+       "t": "2025-12-01"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 7,
+      "1280": 6
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.container",
+        "t": ""
+       },
+       {
+        "sel": "div.form-row > div.form-group > input.form-control",
+        "t": ""
+       },
+       {
+        "sel": "select#walletFilter",
+        "t": "Все кошельки"
+       },
+       {
+        "sel": "input#txStartDate",
+        "t": "2025-12-01"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.form-row > div.form-group > input.form-control",
+        "t": ""
+       },
+       {
+        "sel": "select#walletFilter",
+        "t": "Все кошельки"
+       },
+       {
+        "sel": "input#txStartDate",
+        "t": "2025-12-01"
+       },
+       {
+        "sel": "input#txEndDate",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-shadow",
+     "sev": "FAIL",
+     "title": "тень вне словаря",
+     "value": "rgba(0, 0, 0, 0.04) 0px 1px 3px 0px",
+     "n": 3,
+     "ex": [
+      {
+       "sel": "section#transactions > div.card",
+       "t": ""
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 3,
+      "1280": 3
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "section#transactions > div.card",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": "section#transactions > div.card",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "margin-вертикаль 14px",
+     "n": 14,
+     "ex": [
+      {
+       "sel": "section#transactions > div.card",
+       "t": ""
+      },
+      {
+       "sel": "form#addWalletForm > div.form-row > div.form-group",
+       "t": ""
+      },
+      {
+       "sel": "div.card > div.form-row > div.form-group",
+       "t": ""
+      },
+      {
+       "sel": "form#verifyTxForm > div.form-row > div.form-group",
+       "t": ""
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 14,
+      "1280": 11
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "section#transactions > div.card",
+        "t": ""
+       },
+       {
+        "sel": "form#addWalletForm > div.form-row > div.form-group",
+        "t": ""
+       },
+       {
+        "sel": "div.card > div.form-row > div.form-group",
+        "t": ""
+       },
+       {
+        "sel": "form#verifyTxForm > div.form-row > div.form-group",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": "form#addWalletForm > div.form-row > div.form-group",
+        "t": ""
+       },
+       {
+        "sel": "div.card > div.form-row > div.form-group",
+        "t": ""
+       },
+       {
+        "sel": "form#verifyTxForm > div.form-row > div.form-group",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-size",
+     "sev": "FAIL",
+     "title": "кегль вне шкалы",
+     "value": "13px",
+     "n": 7,
+     "ex": [
+      {
+       "sel": "div.form-row > div.form-group > label.form-label",
+       "t": "Добавить кошелек TRON для мониторинга"
+      },
+      {
+       "sel": "div.form-row > div.form-group > label.form-label",
+       "t": "Владелец"
+      },
+      {
+       "sel": "div.form-row > div.form-group > label.form-label",
+       "t": "Фильтр по кошельку"
+      },
+      {
+       "sel": "div.form-row > div.form-group > label.form-label",
+       "t": "С даты"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 7,
+      "1280": 7
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Добавить кошелек TRON для мониторинга"
+       },
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Владелец"
+       },
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Фильтр по кошельку"
+       },
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "С даты"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Добавить кошелек TRON для мониторинга"
+       },
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Владелец"
+       },
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Фильтр по кошельку"
+       },
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "С даты"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-weight",
+     "sev": "FAIL",
+     "title": "вес вне шкалы",
+     "value": "500",
+     "n": 7,
+     "ex": [
+      {
+       "sel": "div.form-row > div.form-group > label.form-label",
+       "t": "Добавить кошелек TRON для мониторинга"
+      },
+      {
+       "sel": "div.form-row > div.form-group > label.form-label",
+       "t": "Владелец"
+      },
+      {
+       "sel": "div.form-row > div.form-group > label.form-label",
+       "t": "Фильтр по кошельку"
+      },
+      {
+       "sel": "div.form-row > div.form-group > label.form-label",
+       "t": "С даты"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 7,
+      "1280": 7
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Добавить кошелек TRON для мониторинга"
+       },
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Владелец"
+       },
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Фильтр по кошельку"
+       },
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "С даты"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Добавить кошелек TRON для мониторинга"
+       },
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Владелец"
+       },
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Фильтр по кошельку"
+       },
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "С даты"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "margin-вертикаль 6px",
+     "n": 5,
+     "ex": [
+      {
+       "sel": "div.form-row > div.form-group > label.form-label",
+       "t": "Добавить кошелек TRON для мониторинга"
+      },
+      {
+       "sel": "div.form-row > div.form-group > label.form-label",
+       "t": "Владелец"
+      },
+      {
+       "sel": "div.form-row > div.form-group > label.form-label",
+       "t": "Фильтр по кошельку"
+      },
+      {
+       "sel": "div.form-row > div.form-group > label.form-label",
+       "t": "С даты"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 5,
+      "1280": 5
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Добавить кошелек TRON для мониторинга"
+       },
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Владелец"
+       },
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Фильтр по кошельку"
+       },
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "С даты"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Добавить кошелек TRON для мониторинга"
+       },
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Владелец"
+       },
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "Фильтр по кошельку"
+       },
+       {
+        "sel": "div.form-row > div.form-group > label.form-label",
+        "t": "С даты"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-bg",
+     "sev": "FAIL",
+     "title": "фон вне палитры",
+     "value": "#F97316 (ближайший action-coral #C2410C, ΔE 18.0)",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div.form-row > div.form-group > button.btn.btn-primary",
+       "t": "Добавить"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.form-row > div.form-group > button.btn.btn-primary",
+        "t": "Добавить"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.form-row > div.form-group > button.btn.btn-primary",
+        "t": "Добавить"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "padding 20px",
+     "n": 3,
+     "ex": [
+      {
+       "sel": "div.form-row > div.form-group > button.btn.btn-primary",
+       "t": "Добавить"
+      },
+      {
+       "sel": "div.form-row > div.form-group > button.btn.btn-secondary",
+       "t": "Проверить"
+      },
+      {
+       "sel": "div.form-row > div.form-group > button.btn.btn-secondary",
+       "t": "⌛ Загрузка..."
+      },
+      {
+       "sel": "section#transactions > div.card",
+       "t": ""
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 3,
+      "1280": 6
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.form-row > div.form-group > button.btn.btn-primary",
+        "t": "Добавить"
+       },
+       {
+        "sel": "div.form-row > div.form-group > button.btn.btn-secondary",
+        "t": "Проверить"
+       },
+       {
+        "sel": "div.form-row > div.form-group > button.btn.btn-secondary",
+        "t": "⌛ Загрузка..."
+       }
+      ],
+      "1280": [
+       {
+        "sel": "section#transactions > div.card",
+        "t": ""
+       },
+       {
+        "sel": "div.form-row > div.form-group > button.btn.btn-primary",
+        "t": "Добавить"
+       },
+       {
+        "sel": "div.form-row > div.form-group > button.btn.btn-secondary",
+        "t": "Проверить"
+       },
+       {
+        "sel": "div.form-row > div.form-group > button.btn.btn-secondary",
+        "t": "⌛ Загрузка..."
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "gap 6px",
+     "n": 5,
+     "ex": [
+      {
+       "sel": "div.form-row > div.form-group > button.btn.btn-primary",
+       "t": "Добавить"
+      },
+      {
+       "sel": "form#addWalletForm > div.form-row > div.form-group",
+       "t": ""
+      },
+      {
+       "sel": "div.form-row > div.form-group > button.btn.btn-secondary",
+       "t": "Проверить"
+      },
+      {
+       "sel": "div.form-row > div.form-group > button.btn.btn-secondary",
+       "t": "⌛ Загрузка..."
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 5,
+      "1280": 23
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.form-row > div.form-group > button.btn.btn-primary",
+        "t": "Добавить"
+       },
+       {
+        "sel": "form#addWalletForm > div.form-row > div.form-group",
+        "t": ""
+       },
+       {
+        "sel": "div.form-row > div.form-group > button.btn.btn-secondary",
+        "t": "Проверить"
+       },
+       {
+        "sel": "div.form-row > div.form-group > button.btn.btn-secondary",
+        "t": "⌛ Загрузка..."
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.form-row > div.form-group > button.btn.btn-primary",
+        "t": "Добавить"
+       },
+       {
+        "sel": "form#addWalletForm > div.form-row > div.form-group",
+        "t": ""
+       },
+       {
+        "sel": "div > div > div",
+        "t": ""
+       },
+       {
+        "sel": "div > div > button.btn.btn-sm",
+        "t": "×"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-text",
+     "sev": "FAIL",
+     "title": "цвет текста вне палитры",
+     "value": "#666666 (ближайший navy-500 #64748B, ΔE 12.0)",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "section#transactions > div.card > p",
+       "t": "Выберите транзакцию для создания сделки"
+      },
+      {
+       "sel": "div > div > span",
+       "t": "| 2.73 TRX"
+      },
+      {
+       "sel": "div > div > span",
+       "t": "| 0.00 TRX"
+      },
+      {
+       "sel": "div > div > span",
+       "t": "| 2.00 TRX"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 9
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "section#transactions > div.card > p",
+        "t": "Выберите транзакцию для создания сделки"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > span",
+        "t": "| 2.73 TRX"
+       },
+       {
+        "sel": "div > div > span",
+        "t": "| 0.00 TRX"
+       },
+       {
+        "sel": "div > div > span",
+        "t": "| 2.00 TRX"
+       },
+       {
+        "sel": "div > div > span",
+        "t": "| 14.58 TRX"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-size",
+     "sev": "FAIL",
+     "title": "кегль вне шкалы",
+     "value": "15px",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "select#walletFilter",
+       "t": "Все кошельки"
+      },
+      {
+       "sel": "input#txStartDate",
+       "t": "2025-12-01"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "1280": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "select#walletFilter",
+        "t": "Все кошельки"
+       },
+       {
+        "sel": "input#txStartDate",
+        "t": "2025-12-01"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "select#walletFilter",
+        "t": "Все кошельки"
+       },
+       {
+        "sel": "input#txStartDate",
+        "t": "2025-12-01"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "padding 36px",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "select#walletFilter",
+       "t": "Все кошельки"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "select#walletFilter",
+        "t": "Все кошельки"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "select#walletFilter",
+        "t": "Все кошельки"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "padding 32px",
+     "n": 10,
+     "ex": [
+      {
+       "sel": "div.container",
+       "t": ""
+      },
+      {
+       "sel": "div#walletsInfo > div > div",
+       "t": ""
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 10
+     },
+     "ex_by_width": {
+      "1280": [
+       {
+        "sel": "div.container",
+        "t": ""
+       },
+       {
+        "sel": "div#walletsInfo > div > div",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "padding 60px",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div.container",
+       "t": ""
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 1
+     },
+     "ex_by_width": {
+      "1280": [
+       {
+        "sel": "div.container",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-size",
+     "sev": "FAIL",
+     "title": "кегль вне шкалы",
+     "value": "14.4px",
+     "n": 4,
+     "ex": [
+      {
+       "sel": "div > div > input",
+       "t": "Теодор · ERC-20"
+      },
+      {
+       "sel": "div > div > input",
+       "t": "Тед Битаза"
+      },
+      {
+       "sel": "div > div > input",
+       "t": "кошелек Теда сделок от Екатерины "
+      },
+      {
+       "sel": "div > div > input",
+       "t": "кошелек виталия с мультисингом"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 4
+     },
+     "ex_by_width": {
+      "1280": [
+       {
+        "sel": "div > div > input",
+        "t": "Теодор · ERC-20"
+       },
+       {
+        "sel": "div > div > input",
+        "t": "Тед Битаза"
+       },
+       {
+        "sel": "div > div > input",
+        "t": "кошелек Теда сделок от Екатерины "
+       },
+       {
+        "sel": "div > div > input",
+        "t": "кошелек виталия с мультисингом"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-border",
+     "sev": "FAIL",
+     "title": "цвет рамки вне палитры",
+     "value": "#A7F3D0 (ближайший money-border #BBF7D0, ΔE 3.3)",
+     "n": 18,
+     "ex": [
+      {
+       "sel": "div > div > input",
+       "t": "Теодор · ERC-20"
+      },
+      {
+       "sel": "div > div > input",
+       "t": "Тед Битаза"
+      },
+      {
+       "sel": "div > div > input",
+       "t": "кошелек Теда сделок от Екатерины "
+      },
+      {
+       "sel": "div > div > input",
+       "t": "кошелек виталия с мультисингом"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 18
+     },
+     "ex_by_width": {
+      "1280": [
+       {
+        "sel": "div > div > input",
+        "t": "Теодор · ERC-20"
+       },
+       {
+        "sel": "div > div > input",
+        "t": "Тед Битаза"
+       },
+       {
+        "sel": "div > div > input",
+        "t": "кошелек Теда сделок от Екатерины "
+       },
+       {
+        "sel": "div > div > input",
+        "t": "кошелек виталия с мультисингом"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-size",
+     "sev": "FAIL",
+     "title": "кегль вне шкалы",
+     "value": "12.48px",
+     "n": 27,
+     "ex": [
+      {
+       "sel": "div > div > span",
+       "t": "0x68aEA0F5386a57b48953F6fFF2f22D29D00D9ba9"
+      },
+      {
+       "sel": "div > div > label",
+       "t": "Мультисиг (подписывает фин дир, одобряет Теодор)"
+      },
+      {
+       "sel": "div > div > label",
+       "t": "Принимаем оплату от клиентов"
+      },
+      {
+       "sel": "div > div > span",
+       "t": "TMKuEbeVfETdcgfspp2hHfBxDCzQog9UV8"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 27
+     },
+     "ex_by_width": {
+      "1280": [
+       {
+        "sel": "div > div > span",
+        "t": "0x68aEA0F5386a57b48953F6fFF2f22D29D00D9ba9"
+       },
+       {
+        "sel": "div > div > label",
+        "t": "Мультисиг (подписывает фин дир, одобряет Теодор)"
+       },
+       {
+        "sel": "div > div > label",
+        "t": "Принимаем оплату от клиентов"
+       },
+       {
+        "sel": "div > div > span",
+        "t": "TMKuEbeVfETdcgfspp2hHfBxDCzQog9UV8"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-family",
+     "sev": "FAIL",
+     "title": "шрифт вне токенов",
+     "value": "monospace",
+     "n": 9,
+     "ex": [
+      {
+       "sel": "div > div > span",
+       "t": "0x68aEA0F5386a57b48953F6fFF2f22D29D00D9ba9"
+      },
+      {
+       "sel": "div > div > span",
+       "t": "TMKuEbeVfETdcgfspp2hHfBxDCzQog9UV8"
+      },
+      {
+       "sel": "div > div > span",
+       "t": "TKTchhXduB6bxD5y7B7Ly6rZdhXx786t9K"
+      },
+      {
+       "sel": "div > div > span",
+       "t": "TVmgzMQ2zwV2DVPscBf98WRRdhrcpf5x5p"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 9
+     },
+     "ex_by_width": {
+      "1280": [
+       {
+        "sel": "div > div > span",
+        "t": "0x68aEA0F5386a57b48953F6fFF2f22D29D00D9ba9"
+       },
+       {
+        "sel": "div > div > span",
+        "t": "TMKuEbeVfETdcgfspp2hHfBxDCzQog9UV8"
+       },
+       {
+        "sel": "div > div > span",
+        "t": "TKTchhXduB6bxD5y7B7Ly6rZdhXx786t9K"
+       },
+       {
+        "sel": "div > div > span",
+        "t": "TVmgzMQ2zwV2DVPscBf98WRRdhrcpf5x5p"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-text",
+     "sev": "FAIL",
+     "title": "цвет текста вне палитры",
+     "value": "#1E40AF (ближайший navy-600 #475569, ΔE 12.9)",
+     "n": 4,
+     "ex": [
+      {
+       "sel": "div > div > span.badge",
+       "t": "приём оплаты"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 4
+     },
+     "ex_by_width": {
+      "1280": [
+       {
+        "sel": "div > div > span.badge",
+        "t": "приём оплаты"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-bg",
+     "sev": "FAIL",
+     "title": "фон вне палитры",
+     "value": "#DBEAFE (ближайший navy-200 #E2E8F0, ΔE 5.0)",
+     "n": 4,
+     "ex": [
+      {
+       "sel": "div > div > span.badge",
+       "t": "приём оплаты"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 4
+     },
+     "ex_by_width": {
+      "1280": [
+       {
+        "sel": "div > div > span.badge",
+        "t": "приём оплаты"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "padding 10px",
+     "n": 5,
+     "ex": [
+      {
+       "sel": "div > div > span.badge",
+       "t": "приём оплаты"
+      },
+      {
+       "sel": "div > div > span.badge",
+       "t": "мультисиг"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 5
+     },
+     "ex_by_width": {
+      "1280": [
+       {
+        "sel": "div > div > span.badge",
+        "t": "приём оплаты"
+       },
+       {
+        "sel": "div > div > span.badge",
+        "t": "мультисиг"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-size",
+     "sev": "FAIL",
+     "title": "кегль вне шкалы",
+     "value": "12.8px",
+     "n": 4,
+     "ex": [
+      {
+       "sel": "div > div > input",
+       "t": "Теодор"
+      },
+      {
+       "sel": "div > div > input",
+       "t": "компания"
+      },
+      {
+       "sel": "div > div > input",
+       "t": "Андрей"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 4
+     },
+     "ex_by_width": {
+      "1280": [
+       {
+        "sel": "div > div > input",
+        "t": "Теодор"
+       },
+       {
+        "sel": "div > div > input",
+        "t": "компания"
+       },
+       {
+        "sel": "div > div > input",
+        "t": "Андрей"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "margin-вертикаль 5.6px",
+     "n": 18,
+     "ex": [
+      {
+       "sel": "div > div > input",
+       "t": "Теодор"
+      },
+      {
+       "sel": "div > div > input",
+       "t": "компания"
+      },
+      {
+       "sel": "div > div > input",
+       "t": "Андрей"
+      },
+      {
+       "sel": "div > div > div",
+       "t": ""
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 18
+     },
+     "ex_by_width": {
+      "1280": [
+       {
+        "sel": "div > div > input",
+        "t": "Теодор"
+       },
+       {
+        "sel": "div > div > input",
+        "t": "компания"
+       },
+       {
+        "sel": "div > div > input",
+        "t": "Андрей"
+       },
+       {
+        "sel": "div > div > div",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "gap 10px",
+     "n": 9,
+     "ex": [
+      {
+       "sel": "div > div > div",
+       "t": ""
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 9
+     },
+     "ex_by_width": {
+      "1280": [
+       {
+        "sel": "div > div > div",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-size",
+     "sev": "FAIL",
+     "title": "кегль вне шкалы",
+     "value": "11.2px",
+     "n": 9,
+     "ex": [
+      {
+       "sel": "div > div > button.btn.btn-sm",
+       "t": "×"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 9
+     },
+     "ex_by_width": {
+      "1280": [
+       {
+        "sel": "div > div > button.btn.btn-sm",
+        "t": "×"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-bg",
+     "sev": "FAIL",
+     "title": "фон вне палитры",
+     "value": "#EF4444 (ближайший action-coral #C2410C, ΔE 14.7)",
+     "n": 9,
+     "ex": [
+      {
+       "sel": "div > div > button.btn.btn-sm",
+       "t": "×"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 9
+     },
+     "ex_by_width": {
+      "1280": [
+       {
+        "sel": "div > div > button.btn.btn-sm",
+        "t": "×"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "padding 2px",
+     "n": 9,
+     "ex": [
+      {
+       "sel": "div > div > button.btn.btn-sm",
+       "t": "×"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 9
+     },
+     "ex_by_width": {
+      "1280": [
+       {
+        "sel": "div > div > button.btn.btn-sm",
+        "t": "×"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "padding 5px",
+     "n": 9,
+     "ex": [
+      {
+       "sel": "div > div > button.btn.btn-sm",
+       "t": "×"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 9
+     },
+     "ex_by_width": {
+      "1280": [
+       {
+        "sel": "div > div > button.btn.btn-sm",
+        "t": "×"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-text",
+     "sev": "FAIL",
+     "title": "цвет текста вне палитры",
+     "value": "#10B981 (ближайший money-border #BBF7D0, ΔE 20.1)",
+     "n": 8,
+     "ex": [
+      {
+       "sel": "div > div > strong",
+       "t": "$0.00 USDT"
+      },
+      {
+       "sel": "div > div > strong",
+       "t": "$10.35 USDT"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 8
+     },
+     "ex_by_width": {
+      "1280": [
+       {
+        "sel": "div > div > strong",
+        "t": "$0.00 USDT"
+       },
+       {
+        "sel": "div > div > strong",
+        "t": "$10.35 USDT"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-size",
+     "sev": "FAIL",
+     "title": "кегль вне шкалы",
+     "value": "13.6px",
+     "n": 8,
+     "ex": [
+      {
+       "sel": "div > div > span",
+       "t": "| 2.73 TRX"
+      },
+      {
+       "sel": "div > div > span",
+       "t": "| 0.00 TRX"
+      },
+      {
+       "sel": "div > div > span",
+       "t": "| 2.00 TRX"
+      },
+      {
+       "sel": "div > div > span",
+       "t": "| 14.58 TRX"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 8
+     },
+     "ex_by_width": {
+      "1280": [
+       {
+        "sel": "div > div > span",
+        "t": "| 2.73 TRX"
+       },
+       {
+        "sel": "div > div > span",
+        "t": "| 0.00 TRX"
+       },
+       {
+        "sel": "div > div > span",
+        "t": "| 2.00 TRX"
+       },
+       {
+        "sel": "div > div > span",
+        "t": "| 14.58 TRX"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-bg",
+     "sev": "FAIL",
+     "title": "фон вне палитры",
+     "value": "#FEF3C7 (ближайший decision-surface #FFFBEB, ΔE 8.8)",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div > div > span.badge",
+       "t": "мультисиг"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 1
+     },
+     "ex_by_width": {
+      "1280": [
+       {
+        "sel": "div > div > span.badge",
+        "t": "мультисиг"
+       }
+      ]
+     }
+    }
+   ],
+   "warnings": []
+  },
+  "3": {
+   "id": 3,
+   "title": "Сосиски, градиенты, hover-зум, анимации появления",
+   "coverage": "partial",
+   "verdict": "FAIL",
+   "findings": [
+    {
+     "gate": 2,
+     "rule": "G3-hover-zoom",
+     "sev": "FAIL",
+     "title": "hover-зум",
+     "value": ".kyc-review-photo img:hover",
+     "n": 1,
+     "ex": [
+      {
+       "sel": ".kyc-review-photo img:hover",
+       "t": ""
+      }
+     ],
+     "gr": 3,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": ".kyc-review-photo img:hover",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": ".kyc-review-photo img:hover",
+        "t": ""
+       }
+      ]
+     }
+    }
+   ],
+   "warnings": []
+  },
+  "4": {
+   "id": 4,
+   "title": "Кнопки без глагола, две главные, иконка без подписи",
+   "coverage": "partial",
+   "verdict": "FAIL",
+   "findings": [
+    {
+     "gate": 2,
+     "rule": "G4-icononly",
+     "sev": "FAIL",
+     "title": "кнопка-иконка без видимой подписи",
+     "value": "×",
+     "n": 9,
+     "ex": [
+      {
+       "sel": "div > div > button.btn.btn-sm",
+       "t": "×"
+      }
+     ],
+     "gr": 4,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 9
+     },
+     "ex_by_width": {
+      "1280": [
+       {
+        "sel": "div > div > button.btn.btn-sm",
+        "t": "×"
+       }
+      ]
+     }
+    }
+   ],
+   "warnings": [
+    {
+     "gate": 2,
+     "rule": "G4-icononly",
+     "sev": "WARN",
+     "title": "кнопка-иконка без видимой подписи (есть aria-label)",
+     "value": "‹",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "nav.site-shell-sections > button.site-shell-scroll",
+       "t": "Предыдущие разделы"
+      }
+     ],
+     "gr": 4,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "nav.site-shell-sections > button.site-shell-scroll",
+        "t": "Предыдущие разделы"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "nav.site-shell-sections > button.site-shell-scroll",
+        "t": "Предыдущие разделы"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G4-icononly",
+     "sev": "WARN",
+     "title": "кнопка-иконка без видимой подписи (есть aria-label)",
+     "value": "›",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "nav.site-shell-sections > button.site-shell-scroll",
+       "t": "Следующие разделы"
+      }
+     ],
+     "gr": 4,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "nav.site-shell-sections > button.site-shell-scroll",
+        "t": "Следующие разделы"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "nav.site-shell-sections > button.site-shell-scroll",
+        "t": "Следующие разделы"
+       }
+      ]
+     }
+    }
+   ]
+  },
+  "5": {
+   "id": 5,
+   "title": "Эмодзи вместо иконок; один размер иконок",
+   "coverage": "partial",
+   "verdict": "FAIL",
+   "findings": [
+    {
+     "gate": 2,
+     "rule": "G5-emoji",
+     "sev": "FAIL",
+     "title": "эмодзи в кнопке/ссылке/табе/заголовке",
+     "value": "⌛",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div.form-row > div.form-group > button.btn.btn-secondary",
+       "t": "⌛ Загрузка..."
+      }
+     ],
+     "gr": 5,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.form-row > div.form-group > button.btn.btn-secondary",
+        "t": "⌛ Загрузка..."
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.form-row > div.form-group > button.btn.btn-secondary",
+        "t": "⌛ Загрузка..."
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G5-emoji",
+     "sev": "FAIL",
+     "title": "эмодзи в кнопке/ссылке/табе/заголовке",
+     "value": "📋",
+     "n": 9,
+     "ex": [
+      {
+       "sel": "div > div > span",
+       "t": "📋"
+      }
+     ],
+     "gr": 5,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 9
+     },
+     "ex_by_width": {
+      "1280": [
+       {
+        "sel": "div > div > span",
+        "t": "📋"
+       }
+      ]
+     }
+    }
+   ],
+   "warnings": []
+  },
+  "6": {
+   "id": 6,
+   "title": "Цветные полосы слева, синие подсказки, оранжевый вне кнопки",
+   "coverage": "partial",
+   "verdict": "FAIL",
+   "findings": [
+    {
+     "gate": 2,
+     "rule": "G6-blue",
+     "sev": "FAIL",
+     "title": "синий фон (синих плашек нет)",
+     "value": "#DBEAFE",
+     "n": 4,
+     "ex": [
+      {
+       "sel": "div > div > span.badge",
+       "t": "приём оплаты"
+      }
+     ],
+     "gr": 6,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 4
+     },
+     "ex_by_width": {
+      "1280": [
+       {
+        "sel": "div > div > span.badge",
+        "t": "приём оплаты"
+       }
+      ]
+     }
+    }
+   ],
+   "warnings": []
+  },
+  "7": {
+   "id": 7,
+   "title": "Адрес/хеш в одну строку; ничего шире экрана",
+   "coverage": "auto",
+   "verdict": "FAIL",
+   "findings": [
+    {
+     "gate": 4,
+     "rule": "G7-addr-wrap",
+     "sev": "FAIL",
+     "title": "адрес/хеш переносится на 2+ строк",
+     "value": "2 стр.",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div > div > span",
+       "t": "0x68aEA0F5386a57b48953F6fFF2f22D29D00D9ba9"
+      }
+     ],
+     "gr": 7,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 1
+     },
+     "ex_by_width": {
+      "1280": [
+       {
+        "sel": "div > div > span",
+        "t": "0x68aEA0F5386a57b48953F6fFF2f22D29D00D9ba9"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G7-anywhere",
+     "sev": "FAIL",
+     "title": "у адреса overflow-wrap:anywhere / word-break:break-all",
+     "value": "overflow-wrap:normal; word-break:break-all",
+     "n": 9,
+     "ex": [
+      {
+       "sel": "div > div > span",
+       "t": "0x68aEA0F5386a57b48953F6fFF2f22D29D00D9ba9"
+      },
+      {
+       "sel": "div > div > span",
+       "t": "TMKuEbeVfETdcgfspp2hHfBxDCzQog9UV8"
+      },
+      {
+       "sel": "div > div > span",
+       "t": "TKTchhXduB6bxD5y7B7Ly6rZdhXx786t9K"
+      },
+      {
+       "sel": "div > div > span",
+       "t": "TVmgzMQ2zwV2DVPscBf98WRRdhrcpf5x5p"
+      }
+     ],
+     "gr": 7,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 9
+     },
+     "ex_by_width": {
+      "1280": [
+       {
+        "sel": "div > div > span",
+        "t": "0x68aEA0F5386a57b48953F6fFF2f22D29D00D9ba9"
+       },
+       {
+        "sel": "div > div > span",
+        "t": "TMKuEbeVfETdcgfspp2hHfBxDCzQog9UV8"
+       },
+       {
+        "sel": "div > div > span",
+        "t": "TKTchhXduB6bxD5y7B7Ly6rZdhXx786t9K"
+       },
+       {
+        "sel": "div > div > span",
+        "t": "TVmgzMQ2zwV2DVPscBf98WRRdhrcpf5x5p"
+       }
+      ]
+     }
+    }
+   ],
+   "warnings": [
+    {
+     "gate": 2,
+     "rule": "G7-mono-size",
+     "sev": "WARN",
+     "title": "адрес/хеш не Mono 14px",
+     "value": "12.48px",
+     "n": 9,
+     "ex": [
+      {
+       "sel": "div > div > span",
+       "t": "0x68aEA0F5386a57b48953F6fFF2f22D29D00D9ba9"
+      },
+      {
+       "sel": "div > div > span",
+       "t": "TMKuEbeVfETdcgfspp2hHfBxDCzQog9UV8"
+      },
+      {
+       "sel": "div > div > span",
+       "t": "TKTchhXduB6bxD5y7B7Ly6rZdhXx786t9K"
+      },
+      {
+       "sel": "div > div > span",
+       "t": "TVmgzMQ2zwV2DVPscBf98WRRdhrcpf5x5p"
+      }
+     ],
+     "gr": 7,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 9
+     },
+     "ex_by_width": {
+      "1280": [
+       {
+        "sel": "div > div > span",
+        "t": "0x68aEA0F5386a57b48953F6fFF2f22D29D00D9ba9"
+       },
+       {
+        "sel": "div > div > span",
+        "t": "TMKuEbeVfETdcgfspp2hHfBxDCzQog9UV8"
+       },
+       {
+        "sel": "div > div > span",
+        "t": "TKTchhXduB6bxD5y7B7Ly6rZdhXx786t9K"
+       },
+       {
+        "sel": "div > div > span",
+        "t": "TVmgzMQ2zwV2DVPscBf98WRRdhrcpf5x5p"
+       }
+      ]
+     }
+    }
+   ]
+  },
+  "8": {
+   "id": 8,
+   "title": "Внутренние названия и коды на экране",
+   "coverage": "partial",
+   "verdict": "PASS",
+   "findings": [],
+   "warnings": []
+  },
+  "9": {
+   "id": 9,
+   "title": "Плейсхолдер вместо подписи / обрезанный плейсхолдер",
+   "coverage": "partial",
+   "verdict": "PASS",
+   "findings": [],
+   "warnings": [
+    {
+     "gate": 2,
+     "rule": "G9-ph-nolabel",
+     "sev": "WARN",
+     "title": "у поля нет подписи (label/aria-label) — плейсхолдер вместо подписи?",
+     "value": "TYourWalletAddress...",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div.form-row > div.form-group > input.form-control",
+       "t": "TYourWalletAddress..."
+      }
+     ],
+     "gr": 9,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.form-row > div.form-group > input.form-control",
+        "t": "TYourWalletAddress..."
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.form-row > div.form-group > input.form-control",
+        "t": "TYourWalletAddress..."
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G9-ph-nolabel",
+     "sev": "WARN",
+     "title": "у поля нет подписи (label/aria-label) — плейсхолдер вместо подписи?",
+     "value": "Теодор",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div.form-row > div.form-group > input.form-control",
+       "t": "Теодор"
+      }
+     ],
+     "gr": 9,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.form-row > div.form-group > input.form-control",
+        "t": "Теодор"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.form-row > div.form-group > input.form-control",
+        "t": "Теодор"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G9-ph-nolabel",
+     "sev": "WARN",
+     "title": "у поля нет подписи (label/aria-label) — плейсхолдер вместо подписи?",
+     "value": "Хэш транзакции (64 символа)",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div.form-row > div.form-group > input.form-control",
+       "t": "Хэш транзакции (64 символа)"
+      }
+     ],
+     "gr": 9,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.form-row > div.form-group > input.form-control",
+        "t": "Хэш транзакции (64 символа)"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.form-row > div.form-group > input.form-control",
+        "t": "Хэш транзакции (64 символа)"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G9-ph-nolabel",
+     "sev": "WARN",
+     "title": "у поля нет подписи (label/aria-label) — плейсхолдер вместо подписи?",
+     "value": "Подпись — чей это кошелёк?",
+     "n": 9,
+     "ex": [
+      {
+       "sel": "div > div > input",
+       "t": "Подпись — чей это кошелёк?"
+      }
+     ],
+     "gr": 9,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 9
+     },
+     "ex_by_width": {
+      "1280": [
+       {
+        "sel": "div > div > input",
+        "t": "Подпись — чей это кошелёк?"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G9-ph-nolabel",
+     "sev": "WARN",
+     "title": "у поля нет подписи (label/aria-label) — плейсхолдер вместо подписи?",
+     "value": "Владелец",
+     "n": 9,
+     "ex": [
+      {
+       "sel": "div > div > input",
+       "t": "Владелец"
+      }
+     ],
+     "gr": 9,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 9
+     },
+     "ex_by_width": {
+      "1280": [
+       {
+        "sel": "div > div > input",
+        "t": "Владелец"
+       }
+      ]
+     }
+    }
+   ]
+  },
+  "10": {
+   "id": 10,
+   "title": "Ряды «подпись — поле — кнопка» выровнены",
+   "coverage": "partial",
+   "verdict": "FAIL",
+   "findings": [
+    {
+     "gate": 4,
+     "rule": "W-row-align",
+     "sev": "FAIL",
+     "title": "в ряду поля/кнопки разной высоты или смещены",
+     "value": "21px и 36px (Δверха 12px)",
+     "n": 9,
+     "ex": [
+      {
+       "sel": "div > div > input",
+       "t": "Теодор · ERC-20"
+      },
+      {
+       "sel": "div > div > button.btn.btn-sm",
+       "t": "×"
+      },
+      {
+       "sel": "div > div > input",
+       "t": "Тед Битаза"
+      },
+      {
+       "sel": "div > div > input",
+       "t": ""
+      }
+     ],
+     "gr": 10,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 9
+     },
+     "ex_by_width": {
+      "1280": [
+       {
+        "sel": "div > div > input",
+        "t": "Теодор · ERC-20"
+       },
+       {
+        "sel": "div > div > button.btn.btn-sm",
+        "t": "×"
+       },
+       {
+        "sel": "div > div > input",
+        "t": "Тед Битаза"
+       },
+       {
+        "sel": "div > div > input",
+        "t": ""
+       }
+      ]
+     }
+    }
+   ],
+   "warnings": []
+  },
+  "11": {
+   "id": 11,
+   "title": "Контраст WCAG AA",
+   "coverage": "auto",
+   "verdict": "FAIL",
+   "findings": [
+    {
+     "gate": 3,
+     "rule": "C-low",
+     "sev": "FAIL",
+     "title": "контраст ниже 4.5:1",
+     "value": "#FFFFFF на #F97316 = 2.80:1 (14px/600)",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div.form-row > div.form-group > button.btn.btn-primary",
+       "t": "Добавить"
+      }
+     ],
+     "gr": 11,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.form-row > div.form-group > button.btn.btn-primary",
+        "t": "Добавить"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.form-row > div.form-group > button.btn.btn-primary",
+        "t": "Добавить"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 3,
+     "rule": "C-low",
+     "sev": "FAIL",
+     "title": "контраст ниже 4.5:1",
+     "value": "#94A3B8 на #F0FDF4 = 2.45:1 (16px/400)",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div > div > span",
+       "t": "нет данных"
+      }
+     ],
+     "gr": 11,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 1
+     },
+     "ex_by_width": {
+      "1280": [
+       {
+        "sel": "div > div > span",
+        "t": "нет данных"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 3,
+     "rule": "C-low",
+     "sev": "FAIL",
+     "title": "контраст ниже 4.5:1",
+     "value": "#FFFFFF на #EF4444 = 3.76:1 (11.2px/600)",
+     "n": 9,
+     "ex": [
+      {
+       "sel": "div > div > button.btn.btn-sm",
+       "t": "×"
+      }
+     ],
+     "gr": 11,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 9
+     },
+     "ex_by_width": {
+      "1280": [
+       {
+        "sel": "div > div > button.btn.btn-sm",
+        "t": "×"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 3,
+     "rule": "C-low",
+     "sev": "FAIL",
+     "title": "контраст ниже 3:1",
+     "value": "#10B981 на #F0FDF4 = 2.42:1 (16px/700)",
+     "n": 8,
+     "ex": [
+      {
+       "sel": "div > div > strong",
+       "t": "$0.00 USDT"
+      },
+      {
+       "sel": "div > div > strong",
+       "t": "$10.35 USDT"
+      }
+     ],
+     "gr": 11,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 8
+     },
+     "ex_by_width": {
+      "1280": [
+       {
+        "sel": "div > div > strong",
+        "t": "$0.00 USDT"
+       },
+       {
+        "sel": "div > div > strong",
+        "t": "$10.35 USDT"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 3,
+     "rule": "C-low",
+     "sev": "FAIL",
+     "title": "контраст плейсхолдера ниже 4.5:1",
+     "value": "#757575 на #F0FDF4 = 4.40:1",
+     "n": 18,
+     "ex": [
+      {
+       "sel": "div > div > input",
+       "t": "Подпись — чей это кошелёк?"
+      },
+      {
+       "sel": "div > div > input",
+       "t": "Владелец"
+      }
+     ],
+     "gr": 11,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 18
+     },
+     "ex_by_width": {
+      "1280": [
+       {
+        "sel": "div > div > input",
+        "t": "Подпись — чей это кошелёк?"
+       },
+       {
+        "sel": "div > div > input",
+        "t": "Владелец"
+       }
+      ]
+     }
+    }
+   ],
+   "warnings": []
+  },
+  "12": {
+   "id": 12,
+   "title": "Повтор одной цифры на экране",
+   "coverage": "partial",
+   "verdict": "PASS",
+   "findings": [],
+   "warnings": [
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "0,00 USDT × 6",
+     "n": 6,
+     "ex": [
+      {
+       "sel": "div > div > strong",
+       "t": "$0.00 USDT"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 6
+     },
+     "ex_by_width": {
+      "1280": [
+       {
+        "sel": "div > div > strong",
+        "t": "$0.00 USDT"
+       }
+      ]
+     }
+    }
+   ]
+  },
+  "13": {
+   "id": 13,
+   "title": "Кликабельное vs статичное",
+   "coverage": "manual",
+   "verdict": "MANUAL",
+   "findings": [],
+   "warnings": []
+  },
+  "14": {
+   "id": 14,
+   "title": "Независимые вертикальные стеки вместо строк",
+   "coverage": "manual",
+   "verdict": "MANUAL",
+   "findings": [],
+   "warnings": []
+  },
+  "15": {
+   "id": 15,
+   "title": "Больше двух текстовых ролей в компактном контроле",
+   "coverage": "auto",
+   "verdict": "PASS",
+   "findings": [],
+   "warnings": []
+  },
+  "16": {
+   "id": 16,
+   "title": "Микротекст, который надо читать",
+   "coverage": "partial",
+   "verdict": "PASS",
+   "findings": [],
+   "warnings": []
+  },
+  "17": {
+   "id": 17,
+   "title": "Пустоты и завышенные строки",
+   "coverage": "manual",
+   "verdict": "MANUAL",
+   "findings": [],
+   "warnings": []
+  },
+  "18": {
+   "id": 18,
+   "title": "Состояния, анимации transform/opacity, ошибки консоли",
+   "coverage": "partial",
+   "verdict": "FAIL",
+   "findings": [
+    {
+     "gate": 2,
+     "rule": "G18-transition-all-computed",
+     "sev": "FAIL",
+     "title": "transition: all",
+     "value": "all",
+     "n": 9,
+     "ex": [
+      {
+       "sel": "div.form-row > div.form-group > input.form-control",
+       "t": ""
+      },
+      {
+       "sel": "div.form-row > div.form-group > button.btn.btn-primary",
+       "t": "Добавить"
+      },
+      {
+       "sel": "div.form-row > div.form-group > button.btn.btn-secondary",
+       "t": "Проверить"
+      },
+      {
+       "sel": "div.form-row > div.form-group > button.btn.btn-secondary",
+       "t": "⌛ Загрузка..."
+      }
+     ],
+     "gr": 18,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 9,
+      "1280": 18
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.form-row > div.form-group > input.form-control",
+        "t": ""
+       },
+       {
+        "sel": "div.form-row > div.form-group > button.btn.btn-primary",
+        "t": "Добавить"
+       },
+       {
+        "sel": "div.form-row > div.form-group > button.btn.btn-secondary",
+        "t": "Проверить"
+       },
+       {
+        "sel": "div.form-row > div.form-group > button.btn.btn-secondary",
+        "t": "⌛ Загрузка..."
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.form-row > div.form-group > input.form-control",
+        "t": ""
+       },
+       {
+        "sel": "div.form-row > div.form-group > button.btn.btn-primary",
+        "t": "Добавить"
+       },
+       {
+        "sel": "div > div > button.btn.btn-sm",
+        "t": "×"
+       },
+       {
+        "sel": "div.form-row > div.form-group > button.btn.btn-secondary",
+        "t": "Проверить"
+       }
+      ]
+     }
+    }
+   ],
+   "warnings": [
+    {
+     "gate": 2,
+     "rule": "G18-outline-none",
+     "sev": "WARN",
+     "title": "outline:none — проверь кольцо фокуса",
+     "value": ".form-control:focus",
+     "n": 1,
+     "ex": [
+      {
+       "sel": ".form-control:focus",
+       "t": ""
+      }
+     ],
+     "gr": 18,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": ".form-control:focus",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": ".form-control:focus",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G18-outline-none",
+     "sev": "WARN",
+     "title": "outline:none — проверь кольцо фокуса",
+     "value": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
+     "n": 1,
+     "ex": [
+      {
+       "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
+       "t": ""
+      }
+     ],
+     "gr": 18,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G18-outline-none",
+     "sev": "WARN",
+     "title": "outline:none — проверь кольцо фокуса",
+     "value": ".docs-amount input:focus",
+     "n": 1,
+     "ex": [
+      {
+       "sel": ".docs-amount input:focus",
+       "t": ""
+      }
+     ],
+     "gr": 18,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": ".docs-amount input:focus",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": ".docs-amount input:focus",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G18-outline-none",
+     "sev": "WARN",
+     "title": "outline:none — проверь кольцо фокуса",
+     "value": ".docs-purpose textarea:focus",
+     "n": 1,
+     "ex": [
+      {
+       "sel": ".docs-purpose textarea:focus",
+       "t": ""
+      }
+     ],
+     "gr": 18,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": ".docs-purpose textarea:focus",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": ".docs-purpose textarea:focus",
+        "t": ""
+       }
+      ]
+     }
+    }
+   ]
+  }
+ },
+ "extras": [],
+ "stats": {
+  "375": {
+   "elements": 90,
+   "groups": 49,
+   "texts": 42,
+   "contrast_checked": 46,
+   "contrast_unknown": 1,
+   "primaries": 0,
+   "addresses": 0,
+   "controls": 11
+  },
+  "1280": {
+   "elements": 238,
+   "groups": 74,
+   "texts": 109,
+   "contrast_checked": 139,
+   "contrast_unknown": 1,
+   "primaries": 0,
+   "addresses": 9,
+   "controls": 38
+  }
+ },
+ "limits": [],
+ "human_todo": [
+  "п.3 Сосиски, градиенты, hover-зум, анимации появления",
+  "п.4 Кнопки без глагола, две главные, иконка без подписи",
+  "п.5 Эмодзи вместо иконок; один размер иконок",
+  "п.6 Цветные полосы слева, синие подсказки, оранжевый вне кнопки",
+  "п.8 Внутренние названия и коды на экране",
+  "п.9 Плейсхолдер вместо подписи / обрезанный плейсхолдер",
+  "п.10 Ряды «подпись — поле — кнопка» выровнены",
+  "п.12 Повтор одной цифры на экране",
+  "п.13 Кликабельное vs статичное",
+  "п.14 Независимые вертикальные стеки вместо строк",
+  "п.16 Микротекст, который надо читать",
+  "п.17 Пустоты и завышенные строки",
+  "п.18 Состояния, анимации transform/opacity, ошибки консоли"
+ ],
+ "all_warnings": [
+  {
+   "gate": 2,
+   "rule": "G4-icononly",
+   "sev": "WARN",
+   "title": "кнопка-иконка без видимой подписи (есть aria-label)",
+   "value": "‹",
+   "n": 1,
+   "ex": [
+    {
+     "sel": "nav.site-shell-sections > button.site-shell-scroll",
+     "t": "Предыдущие разделы"
+    }
+   ],
+   "gr": 4,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 1,
+    "1280": 1
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "nav.site-shell-sections > button.site-shell-scroll",
+      "t": "Предыдущие разделы"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "nav.site-shell-sections > button.site-shell-scroll",
+      "t": "Предыдущие разделы"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 2,
+   "rule": "G4-icononly",
+   "sev": "WARN",
+   "title": "кнопка-иконка без видимой подписи (есть aria-label)",
+   "value": "›",
+   "n": 1,
+   "ex": [
+    {
+     "sel": "nav.site-shell-sections > button.site-shell-scroll",
+     "t": "Следующие разделы"
+    }
+   ],
+   "gr": 4,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 1,
+    "1280": 1
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "nav.site-shell-sections > button.site-shell-scroll",
+      "t": "Следующие разделы"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "nav.site-shell-sections > button.site-shell-scroll",
+      "t": "Следующие разделы"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 2,
+   "rule": "G9-ph-nolabel",
+   "sev": "WARN",
+   "title": "у поля нет подписи (label/aria-label) — плейсхолдер вместо подписи?",
+   "value": "TYourWalletAddress...",
+   "n": 1,
+   "ex": [
+    {
+     "sel": "div.form-row > div.form-group > input.form-control",
+     "t": "TYourWalletAddress..."
+    }
+   ],
+   "gr": 9,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 1,
+    "1280": 1
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "div.form-row > div.form-group > input.form-control",
+      "t": "TYourWalletAddress..."
+     }
+    ],
+    "1280": [
+     {
+      "sel": "div.form-row > div.form-group > input.form-control",
+      "t": "TYourWalletAddress..."
+     }
+    ]
+   }
+  },
+  {
+   "gate": 2,
+   "rule": "G9-ph-nolabel",
+   "sev": "WARN",
+   "title": "у поля нет подписи (label/aria-label) — плейсхолдер вместо подписи?",
+   "value": "Теодор",
+   "n": 1,
+   "ex": [
+    {
+     "sel": "div.form-row > div.form-group > input.form-control",
+     "t": "Теодор"
+    }
+   ],
+   "gr": 9,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 1,
+    "1280": 1
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "div.form-row > div.form-group > input.form-control",
+      "t": "Теодор"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "div.form-row > div.form-group > input.form-control",
+      "t": "Теодор"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 2,
+   "rule": "G9-ph-nolabel",
+   "sev": "WARN",
+   "title": "у поля нет подписи (label/aria-label) — плейсхолдер вместо подписи?",
+   "value": "Хэш транзакции (64 символа)",
+   "n": 1,
+   "ex": [
+    {
+     "sel": "div.form-row > div.form-group > input.form-control",
+     "t": "Хэш транзакции (64 символа)"
+    }
+   ],
+   "gr": 9,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 1,
+    "1280": 1
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "div.form-row > div.form-group > input.form-control",
+      "t": "Хэш транзакции (64 символа)"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "div.form-row > div.form-group > input.form-control",
+      "t": "Хэш транзакции (64 символа)"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 2,
+   "rule": "G18-outline-none",
+   "sev": "WARN",
+   "title": "outline:none — проверь кольцо фокуса",
+   "value": ".form-control:focus",
+   "n": 1,
+   "ex": [
+    {
+     "sel": ".form-control:focus",
+     "t": ""
+    }
+   ],
+   "gr": 18,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 1,
+    "1280": 1
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": ".form-control:focus",
+      "t": ""
+     }
+    ],
+    "1280": [
+     {
+      "sel": ".form-control:focus",
+      "t": ""
+     }
+    ]
+   }
+  },
+  {
+   "gate": 2,
+   "rule": "G18-outline-none",
+   "sev": "WARN",
+   "title": "outline:none — проверь кольцо фокуса",
+   "value": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
+   "n": 1,
+   "ex": [
+    {
+     "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
+     "t": ""
+    }
+   ],
+   "gr": 18,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 1,
+    "1280": 1
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
+      "t": ""
+     }
+    ],
+    "1280": [
+     {
+      "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
+      "t": ""
+     }
+    ]
+   }
+  },
+  {
+   "gate": 2,
+   "rule": "G18-outline-none",
+   "sev": "WARN",
+   "title": "outline:none — проверь кольцо фокуса",
+   "value": ".docs-amount input:focus",
+   "n": 1,
+   "ex": [
+    {
+     "sel": ".docs-amount input:focus",
+     "t": ""
+    }
+   ],
+   "gr": 18,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 1,
+    "1280": 1
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": ".docs-amount input:focus",
+      "t": ""
+     }
+    ],
+    "1280": [
+     {
+      "sel": ".docs-amount input:focus",
+      "t": ""
+     }
+    ]
+   }
+  },
+  {
+   "gate": 2,
+   "rule": "G18-outline-none",
+   "sev": "WARN",
+   "title": "outline:none — проверь кольцо фокуса",
+   "value": ".docs-purpose textarea:focus",
+   "n": 1,
+   "ex": [
+    {
+     "sel": ".docs-purpose textarea:focus",
+     "t": ""
+    }
+   ],
+   "gr": 18,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 1,
+    "1280": 1
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": ".docs-purpose textarea:focus",
+      "t": ""
+     }
+    ],
+    "1280": [
+     {
+      "sel": ".docs-purpose textarea:focus",
+      "t": ""
+     }
+    ]
+   }
+  },
+  {
+   "gate": 2,
+   "rule": "G9-ph-nolabel",
+   "sev": "WARN",
+   "title": "у поля нет подписи (label/aria-label) — плейсхолдер вместо подписи?",
+   "value": "Подпись — чей это кошелёк?",
+   "n": 9,
+   "ex": [
+    {
+     "sel": "div > div > input",
+     "t": "Подпись — чей это кошелёк?"
+    }
+   ],
+   "gr": 9,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "1280": 9
+   },
+   "ex_by_width": {
+    "1280": [
+     {
+      "sel": "div > div > input",
+      "t": "Подпись — чей это кошелёк?"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 2,
+   "rule": "G9-ph-nolabel",
+   "sev": "WARN",
+   "title": "у поля нет подписи (label/aria-label) — плейсхолдер вместо подписи?",
+   "value": "Владелец",
+   "n": 9,
+   "ex": [
+    {
+     "sel": "div > div > input",
+     "t": "Владелец"
+    }
+   ],
+   "gr": 9,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "1280": 9
+   },
+   "ex_by_width": {
+    "1280": [
+     {
+      "sel": "div > div > input",
+      "t": "Владелец"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 2,
+   "rule": "G7-mono-size",
+   "sev": "WARN",
+   "title": "адрес/хеш не Mono 14px",
+   "value": "12.48px",
+   "n": 9,
+   "ex": [
+    {
+     "sel": "div > div > span",
+     "t": "0x68aEA0F5386a57b48953F6fFF2f22D29D00D9ba9"
+    },
+    {
+     "sel": "div > div > span",
+     "t": "TMKuEbeVfETdcgfspp2hHfBxDCzQog9UV8"
+    },
+    {
+     "sel": "div > div > span",
+     "t": "TKTchhXduB6bxD5y7B7Ly6rZdhXx786t9K"
+    },
+    {
+     "sel": "div > div > span",
+     "t": "TVmgzMQ2zwV2DVPscBf98WRRdhrcpf5x5p"
+    }
+   ],
+   "gr": 7,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "1280": 9
+   },
+   "ex_by_width": {
+    "1280": [
+     {
+      "sel": "div > div > span",
+      "t": "0x68aEA0F5386a57b48953F6fFF2f22D29D00D9ba9"
+     },
+     {
+      "sel": "div > div > span",
+      "t": "TMKuEbeVfETdcgfspp2hHfBxDCzQog9UV8"
+     },
+     {
+      "sel": "div > div > span",
+      "t": "TKTchhXduB6bxD5y7B7Ly6rZdhXx786t9K"
+     },
+     {
+      "sel": "div > div > span",
+      "t": "TVmgzMQ2zwV2DVPscBf98WRRdhrcpf5x5p"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 4,
+   "rule": "W-thumb",
+   "sev": "WARN",
+   "title": "нажимаемая цель ниже 44px (Thumb Rule)",
+   "value": "21px",
+   "n": 9,
+   "ex": [
+    {
+     "sel": "div > div > input",
+     "t": "Теодор · ERC-20"
+    },
+    {
+     "sel": "div > div > input",
+     "t": "Тед Битаза"
+    },
+    {
+     "sel": "div > div > input",
+     "t": ""
+    },
+    {
+     "sel": "div > div > input",
+     "t": "кошелек Теда сделок от Екатерины"
+    }
+   ],
+   "gr": null,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "1280": 9
+   },
+   "ex_by_width": {
+    "1280": [
+     {
+      "sel": "div > div > input",
+      "t": "Теодор · ERC-20"
+     },
+     {
+      "sel": "div > div > input",
+      "t": "Тед Битаза"
+     },
+     {
+      "sel": "div > div > input",
+      "t": ""
+     },
+     {
+      "sel": "div > div > input",
+      "t": "кошелек Теда сделок от Екатерины"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 4,
+   "rule": "W-thumb",
+   "sev": "WARN",
+   "title": "нажимаемая цель ниже 44px (Thumb Rule)",
+   "value": "20px",
+   "n": 9,
+   "ex": [
+    {
+     "sel": "div > div > input",
+     "t": "Теодор"
+    },
+    {
+     "sel": "div > div > input",
+     "t": ""
+    },
+    {
+     "sel": "div > div > input",
+     "t": "компания"
+    },
+    {
+     "sel": "div > div > input",
+     "t": "Андрей"
+    }
+   ],
+   "gr": null,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "1280": 9
+   },
+   "ex_by_width": {
+    "1280": [
+     {
+      "sel": "div > div > input",
+      "t": "Теодор"
+     },
+     {
+      "sel": "div > div > input",
+      "t": ""
+     },
+     {
+      "sel": "div > div > input",
+      "t": "компания"
+     },
+     {
+      "sel": "div > div > input",
+      "t": "Андрей"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 4,
+   "rule": "W-thumb",
+   "sev": "WARN",
+   "title": "нажимаемая цель ниже 44px (Thumb Rule)",
+   "value": "36px",
+   "n": 9,
+   "ex": [
+    {
+     "sel": "div > div > button.btn.btn-sm",
+     "t": "×"
+    }
+   ],
+   "gr": null,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "1280": 9
+   },
+   "ex_by_width": {
+    "1280": [
+     {
+      "sel": "div > div > button.btn.btn-sm",
+      "t": "×"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "0,00 USDT × 6",
+   "n": 6,
+   "ex": [
+    {
+     "sel": "div > div > strong",
+     "t": "$0.00 USDT"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "1280": 6
+   },
+   "ex_by_width": {
+    "1280": [
+     {
+      "sel": "div > div > strong",
+      "t": "$0.00 USDT"
+     }
+    ]
+   }
+  }
+ ]
+}

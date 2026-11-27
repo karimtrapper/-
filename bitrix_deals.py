@@ -54,10 +54,18 @@ class BitrixError(RuntimeError):
     """Портал ответил ошибкой — текст пробрасываем оператору как есть."""
 
 
-def _post(method: str, data: dict | None = None) -> dict:
+def _post(method: str, data: dict | None = None, *, stand_close_sync: bool = False) -> dict:
+    if os.environ.get('STAND_MODE') == '1' and (
+            not stand_close_sync
+            or method not in {'crm.deal.get', 'crm.deal.update'}
+            or os.environ.get('STAND_BITRIX_CLOSE_ENABLED') != '1'):
+        # На стенде портал Bitrix настоящий, а сделки тестовые — ни читать,
+        # ни писать в боевой CRM нельзя, даже если BITRIX_WEBHOOK где-то задан.
+        raise BitrixError('stand_blocked')
     if not BITRIX_WEBHOOK:
         raise BitrixError('BITRIX_WEBHOOK не задан — вебхук портала берётся только из env')
-    resp = requests.post(BITRIX_WEBHOOK + method, data=data or {}, timeout=20)
+    resp = requests.post(BITRIX_WEBHOOK.rstrip('/') + '/' + method.lstrip('/'),
+                         data=data or {}, timeout=20)
     try:
         return resp.json()
     except ValueError:
@@ -66,6 +74,11 @@ def _post(method: str, data: dict | None = None) -> dict:
 
 def get_deal(deal_id: int) -> dict:
     return _post('crm.deal.get', {'id': str(deal_id)}).get('result', {})
+
+
+def get_deal_for_stand_close(deal_id: int) -> dict:
+    """Scoped read used only by the guarded stand close sync route."""
+    return _post('crm.deal.get', {'id': str(deal_id)}, stand_close_sync=True).get('result', {})
 
 
 def get_active_deals(limit: int = 50) -> list[dict]:
@@ -145,7 +158,7 @@ def set_deal_utm(deal_id: int, ref_code: str) -> bool:
     return r.get('result') is True
 
 
-def close_won(deal_id: int, data: dict) -> tuple[bool, str]:
+def _close_won(deal_id: int, data: dict, *, stand_close_sync: bool = False) -> tuple[bool, str]:
     """WON с обязательными полями портала.
 
     OPPORTUNITY всегда в USD (USDT-эквивалент прихода), native-сумма и курс —
@@ -177,10 +190,19 @@ def close_won(deal_id: int, data: dict) -> tuple[bool, str]:
     payload = {'id': str(deal_id)}
     for key, val in fields.items():
         payload[f'fields[{key}]'] = val
-    result = _post('crm.deal.update', payload)
+    result = _post('crm.deal.update', payload, stand_close_sync=stand_close_sync)
     if result.get('result') is True:
         return True, ''
     return False, str(result.get('error_description') or result.get('error') or result)
+
+
+def close_won(deal_id: int, data: dict) -> tuple[bool, str]:
+    return _close_won(deal_id, data)
+
+
+def close_won_for_stand(deal_id: int, data: dict) -> tuple[bool, str]:
+    """Scoped WON write; ordinary Bitrix endpoints remain blocked in STAND_MODE."""
+    return _close_won(deal_id, data, stand_close_sync=True)
 
 
 def close_lose(deal_id: int, reason: str = '') -> tuple[bool, str]:
@@ -193,6 +215,22 @@ def close_lose(deal_id: int, reason: str = '') -> tuple[bool, str]:
     for key, val in fields.items():
         payload[f'fields[{key}]'] = val
     result = _post('crm.deal.update', payload)
+    if result.get('result') is True:
+        return True, ''
+    return False, str(result.get('error_description') or result.get('error') or result)
+
+
+def close_lose_for_stand(deal_id: int, reason: str) -> tuple[bool, str]:
+    """Scoped LOSE write; caller has already persisted the refusal in CRM/stand."""
+    if not reason:
+        return False, 'reason_required'
+    fields = dict(LOSE_FIELDS_BASE)
+    fields['STAGE_ID'] = STAGE_LOSE
+    fields['UF_CRM_1610719896135'] = reason
+    payload = {'id': str(deal_id)}
+    for key, val in fields.items():
+        payload[f'fields[{key}]'] = val
+    result = _post('crm.deal.update', payload, stand_close_sync=True)
     if result.get('result') is True:
         return True, ''
     return False, str(result.get('error_description') or result.get('error') or result)

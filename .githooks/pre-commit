@@ -1,0 +1,13 @@
+#!/bin/sh
+set -eu
+cd "$(git rev-parse --show-toplevel)"
+if ! command -v sandbox-exec >/dev/null 2>&1; then
+    echo 'Network sandbox unavailable; refusing unprotected test run.' >&2
+    exit 2
+fi
+test_python=${CALCCRM_TEST_PYTHON:-python3.11}
+if ! command -v "$test_python" >/dev/null 2>&1; then
+    echo 'Python 3.11 unavailable; refusing unprotected test run.' >&2
+    exit 2
+fi
+"$test_python" scripts/run_fenced_pytest.py -q --tb=short
