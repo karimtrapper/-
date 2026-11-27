@@ -449,7 +449,7 @@ async function crmDraftMount(id) {
     if(globalThis.workingTasks){
       const theme=document.createElement('link');
       theme.rel='stylesheet';
-      theme.href='/static/stand/crm-draft-slate.css?v=2';
+      theme.href='/static/stand/crm-draft-slate.css?v=3';
       const themeReady=new Promise(resolve=>{
         theme.addEventListener('load',resolve,{once:true});
         theme.addEventListener('error',resolve,{once:true});

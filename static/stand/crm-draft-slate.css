@@ -186,3 +186,6 @@ form hr { border-top-color: var(--border-strong) !important; }
   background: var(--surface-panel) !important;
   border-color: var(--input) !important;
 }
+#mfPayoutPickerList > label:has(> input:checked) {
+  background-color: var(--surface-info) !important;
+}
