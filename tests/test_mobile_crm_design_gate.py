@@ -16,6 +16,11 @@ SECTIONS = [
     'kyc', 'partners', 'referrers', 'payoutRequests', 'admins',
 ]
 EVIDENCE = Path('/tmp/calccrm-mobile-crm-gate')
+TABLE_READY = {
+    'incomes': '#incomesTable > tr',
+    'conversions': '#conversionsTable > tr',
+    'exchangers': '#rxSummary > .rx-card',
+}
 TABLE_SAMPLES = {
     'incomes': ('#incomesTable', ['✓', '15.10.2026', 'QA Payer', '100 000 ₽', '—',
                                 'Ожидает', 'Сбер', 'QA', '—', '—', '—']),
@@ -158,13 +163,16 @@ def test_populated_tables_and_subtabs_at_375(stand_ui):
     failures = []
     for section, (selector, values) in TABLE_SAMPLES.items():
         page.locator(f'.site-shell-section-list [data-shell-section="{section}"]').click()
-        page.wait_for_load_state('networkidle')
+        # These section links change the URL in place. Wait for the API render
+        # before inserting rows so the page cannot replace the fixture.
+        expect(page.locator(TABLE_READY[section]).first).to_be_visible()
         page.locator(selector).evaluate('''(body, values) => {
           const row = document.createElement('tr');
+          row.dataset.qaSample = '1';
           row.innerHTML = values.map(value => `<td>${value}</td>`).join('');
           body.replaceChildren(row);
         }''', values)
-        row = page.locator(f'{selector} > tr')
+        row = page.locator(f'{selector} > tr[data-qa-sample="1"]')
         expect(row).to_have_attribute('data-crm-card-ready', '1')
         expect(row.locator('[data-crm-card-role="title"]')).to_be_visible()
         expect(row.locator('[data-crm-card-role="amount"]')).to_be_visible()
@@ -178,7 +186,7 @@ def test_populated_tables_and_subtabs_at_375(stand_ui):
         if result['html'] > 376 or result['body'] > 376 or result['internalOverflow']:
             failures.append(f'{section} populated: {result}')
 
-    page.locator('.site-shell-section-list [data-shell-section="exchangers"]').click()
+    # The exchangers section is already open and rxLoad renders all its subtabs.
     for subtab, selector, values in [
         ('brokers', '#rx-brokers-body', ['#1', '15.10.2026', 'QA Broker', 'QA Wallet',
                                        'QA Hash', '1 000 USDT', '1', 'Ожидает']),
@@ -190,10 +198,11 @@ def test_populated_tables_and_subtabs_at_375(stand_ui):
         page.locator(f'.rx-subtab[data-rx="{subtab}"]').click()
         page.locator(selector).evaluate('''(body, values) => {
           const row = document.createElement('tr');
+          row.dataset.qaSample = '1';
           row.innerHTML = values.map(value => `<td>${value}</td>`).join('');
           body.replaceChildren(row);
         }''', values)
-        row = page.locator(f'{selector} > tr')
+        row = page.locator(f'{selector} > tr[data-qa-sample="1"]')
         expect(row).to_have_attribute('data-crm-card-ready', '1')
         expect(row.locator('[data-crm-card-role="title"]')).to_be_visible()
         expect(row.locator('[data-crm-card-role="amount"]')).to_be_visible()
