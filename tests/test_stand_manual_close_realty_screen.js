@@ -20,7 +20,7 @@ const SCRIPT = [
   source('isCrypto'), source('payCur'), source('exchangeSpec'), source('payinParts'),
   source('refAgents'), source('econ'),
   source('refSignal'), source('agentsBlock'),
-  source('managerDraftDocTarget'), source('fileValid'), source('filesOf'), source('receiptDocs'), source('hasReceipt'), source('fileBlock'),
+  source('managerDraftDocTarget'), source('fileValid'), source('filesOf'), source('receiptDocs'), source('hasReceipt'), source('sgbDownloadButton'), source('fileBlock'),
   source('hashShareOf'), source('hashCell'),
   source('payoutHuman'), source('clientRubPaid'), source('mfList'),
   source('txPoolInit'), source('txPool'), source('txUsed'),
@@ -37,7 +37,7 @@ const SOURCES_PAY = {
 function makeCtx(deal, preview) {
   const S = {deals: [deal], incomes: [], role: 'admin', manualCloseForm: {}};
   const ctx = {
-    S, SOURCES_PAY, atob, FILE_TAIL: {},
+    S, SOURCES_PAY, atob, FILE_TAIL: {}, STAND: true,
     crmClosePanel: () => '', standClosing: null,
     render: () => {}, toast: () => {}, fetch: () => Promise.reject(new Error('not used in render')),
     // crmPreviewFor's own correctness (the real /api/stand/crm-preview fetch +

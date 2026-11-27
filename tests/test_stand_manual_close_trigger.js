@@ -12,7 +12,7 @@ function source(name, async = false) {
 }
 
 function makeCtx(confirmResult) {
-  const S = {manualCloseDraft: {}};
+  const S = {manualCloseDraft: {}, manualCloseForm: {}};
   const renders = [];
   const confirms = [];
   const ctx = {
@@ -56,7 +56,11 @@ function main() {
   {
     const {ctx, S, renders} = makeCtx(true);
     S.manualCloseDraft[1474] = true;
+    S.manualCloseForm[1474] = {payin: [{hash: 'synthetic'}]};
+    S.manualCloseForm[1475] = {payin: []};
     ctx.manualCloseCancel(1474);
+    assert.equal(S.manualCloseForm[1474], undefined, 'cancel must discard the pending form');
+    assert.deepEqual(S.manualCloseForm[1475], {payin: []}, 'other draft stays intact');
     assert.equal(S.manualCloseDraft[1474], undefined, 'manualCloseCancel must delete the draft flag');
     assert.equal(renders.length, 1);
   }

@@ -1099,6 +1099,44 @@ def test_часть_привязанного_банковского_приход
         db.close()
 
 
+def test_частично_сконвертированный_приход_сделку_не_трогает(cli, incomes, monkeypatch):
+    """Частичная заявка из старой базы не должна закрыть всю связанную сделку."""
+    monkeypatch.setattr(appmod, '_tron_tx_amount', lambda _: None)
+    monkeypatch.setattr(appmod, '_tron_tx_to_address', lambda _: None)
+    tx_hash = _uid() + _uid()
+    with get_session() as db:
+        deal = Deal(deal_type=DealType.PAY_IN, status=DealStatus.PENDING,
+                    client_name='Legacy partial conversion', payin_method=PayInMethod.SBER_WL,
+                    payin_amount_rub=35000.0)
+        conversion = Conversion(broker='TRADEX', rate_rub_usdt=83.35)
+        db.add_all((deal, conversion))
+        db.flush()
+        income = db.get(SberIncome, incomes[1])
+        income.claimed_deal_id = deal.id
+        conversion.sources.append(ConversionSource(sber_income_id=income.id, amount_rub=15000.0))
+        db.commit()
+        deal_id, conversion_id = deal.id, conversion.id
+
+    try:
+        response = cli.post(f'/api/conversions/{conversion_id}/txs', json={
+            'tx_hash': tx_hash, 'amount_usdt': 179.96,
+        })
+        assert response.status_code == 200, response.json
+        assert response.json['deals_closed'] == []
+        with get_session() as db:
+            deal = db.get(Deal, deal_id)
+            assert deal.payin_amount_usdt is None
+            assert deal.status == DealStatus.PENDING
+            assert db.get(Conversion, conversion_id).status == ConversionStatus.RECEIVED
+    finally:
+        with get_session() as db:
+            db.delete(db.get(Conversion, conversion_id))
+            db.get(SberIncome, incomes[1]).claimed_deal_id = None
+            db.delete(db.get(Deal, deal_id))
+            db.query(PayinTx).filter_by(tx_hash=tx_hash).delete()
+            db.commit()
+
+
 @pytest.fixture
 def bank_pair():
     """Одна сделка #667 с двумя банковскими частями 14 895 и 35 000 ₽."""

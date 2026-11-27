@@ -176,16 +176,17 @@ const refHtml = fs.readFileSync(path.join(__dirname, '../static/referrer/index.h
   async function scenario(authResponse) {
     const list = {innerHTML: ''};
     const ctx = { applyStandMobileNav: () => {}, refreshPayoutWalletPolicy: () => {},
+      updateDealClientMode: () => {}, applyFlowGateOptions: () => {},
       _referrersCache: [referrer],
       STAND_ROLES: null, AUTH_STAND: null,
       API_URL: '',
-      document: {getElementById: id => (id === 'referrersList' ? list : null)},
+      document: {querySelectorAll: () => [], getElementById: id => id === 'referrersList' ? list : null},
       window: {location: {origin: 'http://127.0.0.1:1'}},
       showToast: () => {},
       fetch: async () => ({json: async () => authResponse}),
     };
     vm.createContext(ctx);
-    vm.runInContext(renderSrc + '\n' + refreshSrc + '\n' + authSrc, ctx);
+    vm.runInContext([renderSrc, refreshSrc, authSrc].join('\n'), ctx);
 
     // Вкладка отрисовалась ДО ответа /api/auth/me — сигналы ещё не разрешены.
     ctx.renderReferrers();

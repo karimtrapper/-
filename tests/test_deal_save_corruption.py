@@ -13,8 +13,8 @@ CASES = [
     ('crypto', A.PayInMethod.CRYPTO_DIRECT, None),
     ('sbp', A.PayInMethod.SBER_WL, None),
     ('requisites', A.PayInMethod.SBER_REQS, None),
-    ('flow_sole', A.PayInMethod.FLOW_SOLE_REQS, None),
-    ('custom_flow_sole', A.PayInMethod.FLOW_SOLE_REQS, None),
+    ('flow_sole', A.PayInMethod.SBER_REQS, None),
+    ('custom_flow_sole', A.PayInMethod.SBER_REQS, None),
     ('cash', A.PayInMethod.PARTNERS_CASH, A.PayOutSource.CASH_BATCH),
     ('card', A.PayInMethod.CRYPTO_DIRECT, A.PayOutSource.BANK_CARD),
     ('founder', A.PayInMethod.CRYPTO_DIRECT, A.PayOutSource.FOUNDER_PERSONAL),
@@ -28,9 +28,11 @@ CASES = [
 def seed(case):
     name, method, source = case
     db = A.get_session()
+    is_flow_sole = name in {'flow_sole', 'custom_flow_sole'}
     row = A.Deal(deal_type=A.DealType.PAY_IN, status=A.DealStatus.PENDING,
                  client_name='QA unchanged ' + name, manager_name='QA Manager',
-                 payin_method=method, payout_source=source, payout_method=None,
+                 payin_method=method, payin_account_key='flow_sole' if is_flow_sole else None,
+                 payout_source=source, payout_method=None,
                  created_at=datetime(2026, 9, 20, 13, 47, 28, 123456),
                  payin_amount_usdt=123.456789, payin_amount_rub=12345.67,
                  payout_amount_thb=3000, payout_amount_usdt=100.123456,
@@ -64,7 +66,7 @@ def seed(case):
         db.flush()
         row.bank_card_id = card.id
         db.add(A.CardAllocation(deal_id=row.id, card_id=card.id, amount_thb=3000, cost_usdt=90, card_rate=33.3333))
-    if method == A.PayInMethod.FLOW_SOLE_REQS:
+    if is_flow_sole:
         receipt_uuid = 'crm-manual:qa-' + name
         row.payin_parts = json.dumps([{'uuid': receipt_uuid, 'amount_rub': row.payin_amount_rub}])
         db.add(A.SberIncome(uuid=receipt_uuid, account_key='flow_sole',
@@ -181,6 +183,11 @@ def test_incoming_none_response_returns_structured_errors(monkeypatch, cached, c
         auth['username'] = 'qa_browser'
     monkeypatch.setattr(A, 'STAND_MODE', True)
     monkeypatch.setattr(A, '_stand_tronscan_get', lambda *a, **k: None)
+
+    def offline_fallback(*args, **kwargs):
+        raise A.requests.ConnectionError('synthetic TronGrid unavailable')
+
+    monkeypatch.setattr(A, '_trongrid_fetch_incoming', offline_fallback)
     old_tx = dict(tx_hash='qa-cached', from_address='T_sender', to_address=address,
                   amount_usdt=12, timestamp='2026-09-20T10:00:00', is_incoming=True)
     monkeypatch.setitem(A.TRONSCAN_CACHE, 'incoming', {'data': [old_tx] if cached else [], 'timestamp': 0})
@@ -248,9 +255,14 @@ def test_flow_sole_sparse_edit_keeps_receipt_and_method(ui, custom):
         page.locator('#customDealSubmit' if custom else '#createDealForm button[type=submit]').click()
     assert saved.value.status == 200, saved.value.text()
     assert saved.value.request.post_data_json == {'notes': 'Flow note'}
-    after = saved.value.json()['deal']
-    for key in ('created_at', 'payin_method', 'payin_parts', 'payin_amount_rub', 'payin_amount_usdt'):
+    assert saved.value.json()['deal']['payin_account_key'] == 'flow_sole'
+    after = page.request.get(base + f'/api/deals/{row_id}').json()['deal']
+    for key in ('created_at', 'payin_method', 'payin_account_key', 'payin_parts', 'payin_amount_rub', 'payin_amount_usdt'):
         assert after[key] == before[key], key
+    with A.get_session() as db:
+        row = db.get(A.Deal, row_id)
+        assert row.payin_method is A.PayInMethod.SBER_REQS
+        assert row.payin_account_key == 'flow_sole'
     assert snapshot()['sber_incomes'] == incomes_before
     assert receipt_posts == []
     assert not errors, errors

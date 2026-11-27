@@ -19,7 +19,10 @@ MSG = 'Для отправки свыше 10 000 USDT требуется под�
 @pytest.fixture
 def world(monkeypatch):
     from tests.qa_wallet_roles_helpers import db_snapshot, db_restore
-    monkeypatch.setattr(m, 'STAND_MODE', False)
+    monkeypatch.setattr(m, 'STAND_MODE', True)
+    monkeypatch.setattr(m, 'TASKS_ENABLED', False)
+    m.Base.metadata.create_all(m.engine)
+    monkeypatch.setattr(m, '_stand_tronscan_get', lambda *args, **kwargs: None)
     # These tests isolate wallet policy for exchange routes. Stage now admits
     # only verified flows; make these two synthetic routes verified locally,
     # without bypassing the gate or changing production VERIFIED_FLOWS.
@@ -55,6 +58,41 @@ def body(name=None, amount=5000, wallet=EXCHANGE, **extra):
         data['payout_wallet_id'] = wid(wallet)
     data.update(extra)
     return data
+
+
+@pytest.fixture
+def unified_wallet_policy(world, monkeypatch):
+    monkeypatch.setattr(m, 'STAND_MODE', False)
+    monkeypatch.setattr(m, 'TASKS_ENABLED', True)
+
+
+@pytest.mark.parametrize('role', ['manager', 'operator', 'findir', 'teodor'])
+def test_tasks_staff_cannot_bypass_policy_through_direct_crm_write(unified_wallet_policy, role):
+    response, name, _ = create(role, amount=15000, payout_owner_approved=True)
+    assert response.status_code == 403, response.json
+    assert count(name) == 0
+
+
+def test_tasks_admin_direct_crm_write_honors_configured_wallet_limit(unified_wallet_policy):
+    below, name, _ = create('admin', amount=10000)
+    assert below.status_code == 201, below.json
+    assert deal_row(name)['payout_owner_approved'] is False
+    above, name, _ = create('admin', amount=10000.01)
+    assert above.status_code == 400, above.json
+    assert MSG in above.json['error']
+    assert count(name) == 0
+
+
+def test_tasks_unconfigured_wallet_keeps_existing_crm_behavior(unified_wallet_policy):
+    with m.get_session() as db:
+        wallet = m.Wallet(address='QA stored wallet without a role policy',
+                          label='QA original wallet', active=True)
+        db.add(wallet)
+        db.commit()
+        wallet_id = wallet.id
+    response, name, _ = create('admin', wallet=None, payout_wallet_id=wallet_id, amount=15000)
+    assert response.status_code == 201, response.json
+    assert deal_row(name)['payout_wallet_id'] == wallet_id
 
 
 def deal_row(name):

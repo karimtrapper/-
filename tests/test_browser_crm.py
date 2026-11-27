@@ -118,7 +118,8 @@ def chromium(pytestconfig):
 
 
 @pytest.fixture
-def ui(chromium, crm_server, tmp_path):
+def ui(chromium, crm_server, tmp_path, monkeypatch):
+    monkeypatch.setattr(A, '_tronscan_fetch_incoming', lambda *a, **k: ([], [], []))
     base, cookie = crm_server
     context = chromium.new_context(viewport={'width': 1440, 'height': 900})
     context.add_cookies([{'name': 'session', 'value': cookie, 'url': base,
@@ -500,10 +501,13 @@ def test_shared_section_click_loads_and_renders(stand_ui, section, loader, rende
                                           ('analytics', '/tasks?section=analytics')])
 def test_shared_section_click_opens_task_pages(stand_ui, section, path):
     page, errors = stand_ui
-    page.locator(f'.site-shell-section-list [data-shell-section="{section}"]').click()
+    selector = ('.site-shell-top [data-shell-link="tasks"]' if section == 'tasks'
+                else '.site-shell-section-list [data-shell-section="analytics"]')
+    link = page.locator(selector)
+    expect(link).to_have_attribute('href', path)
+    link.click()
     expect(page).to_have_url(re.compile(re.escape(path) + '$'))
-    expect(page.locator(f'.site-shell-section-list [data-shell-section="{section}"]')).to_have_attribute(
-        'aria-current', 'page')
+    expect(page.locator(selector)).to_have_attribute('aria-current', 'page')
     assert not errors, errors
 
 
@@ -560,9 +564,14 @@ def choose(page, selector, label):
         select.select_option(label=label)
 
 
+def open_standard_deal_form(page):
+    page.locator('.nav-tab[data-section="deals"]').click()
+    page.locator('#deals .nav-create-btn').click()
+
+
 def test_calculator_prefill_requires_credited_rub(ui):
     page, errors, _, _ = ui
-    page.locator('.nav-create-btn').click()
+    open_standard_deal_form(page)
     expect(page.locator('#create')).to_be_visible()
     page.wait_for_load_state('networkidle')
     page.evaluate('''() => prefillDealForm({
@@ -587,7 +596,7 @@ def test_calculator_prefill_requires_credited_rub(ui):
 
 def test_custom_select_respects_disabled_and_doverka_option(ui):
     page, errors, _, _ = ui
-    page.locator('.nav-create-btn').click()
+    open_standard_deal_form(page)
     expect(page.locator('#create')).to_be_visible()
     page.wait_for_timeout(100)
     select = page.locator('#payinMethod')
@@ -618,7 +627,7 @@ def test_flow_sole_custom_keeps_incoming_picker_and_manual_hash(ui):
         'success': True, 'available': [{
             'amount_usdt': 500, 'tx_hash': 'synthetic-flow-sole-hash',
             'from_address': 'synthetic', 'timestamp': '2026-10-20T12:00:00Z'}]}))
-    page.locator('.nav-create-btn').click()
+    open_standard_deal_form(page)
     expect(page.locator('#create')).to_be_visible()
     page.wait_for_load_state('networkidle')
     page.set_viewport_size({'width': 375, 'height': 812})
@@ -653,7 +662,8 @@ def test_flow_sole_custom_keeps_incoming_picker_and_manual_hash(ui):
     tx_select.locator('..').locator('.custom-select-opt').filter(has_text='synthetic').click()
     expect(page.locator('#customPayinAmount')).to_have_value('99300')
     expect(page.locator('#customPayinUsdt')).to_have_value('1000')
-    expect(page.locator('#customPayinPickerInfo')).to_contain_text('Введено $1000.00, в сети $500.00')
+    expect(page.locator('#customPayinPickerInfo')).to_contain_text(
+        re.compile(r'Введено \$1\s?000[.,]00,? в сети \$500[.,]00'))
     expect(page.locator('#customPayinTxHash')).to_have_value('synthetic-flow-sole-hash')
     page.locator('#customPayinTxHash').fill('manual-flow-sole-hash')
     expect(page.locator('#customPayinTxHash')).to_have_value('manual-flow-sole-hash')
@@ -684,7 +694,7 @@ def test_flow_sole_custom_reopens_draft_usdt_and_profit(ui):
 
 def test_selected_acquiring_keeps_client_paid_hint_in_main_and_extra(ui):
     page, errors, _, _ = ui
-    page.locator('.nav-create-btn').click()
+    open_standard_deal_form(page)
     expect(page.locator('#create')).to_be_visible()
     page.wait_for_load_state('networkidle')
     page.evaluate('''() => {
@@ -717,7 +727,7 @@ def test_selected_acquiring_keeps_client_paid_hint_in_main_and_extra(ui):
 @pytest.mark.parametrize('label, expected', [('Telegram', 'telegram'), ('Битрикс', 'bitrix')])
 def test_standard_manual_deal_saves_channel(ui, label, expected):
     page, errors, _, base = ui
-    page.locator('.nav-create-btn').click()
+    open_standard_deal_form(page)
     expect(page.locator('#create')).to_be_visible()
     page.wait_for_load_state('networkidle')
     page.locator('#clientSearchInput').fill('QA Manual Client')
@@ -731,9 +741,8 @@ def test_standard_manual_deal_saves_channel(ui, label, expected):
     expect(channel).to_be_focused()
     channel.select_option(label=label)
     with page.expect_response(lambda r: urlsplit(r.url).path == '/api/deals'
-                              and r.request.method == 'POST' and r.status == 201) as saved:
+                              and r.request.method == 'POST') as saved:
         submit.click()
-        page.get_by_role('button', name='Да, продолжить').click()
     assert saved.value.status == 201, saved.value.text()
     deal_id = saved.value.json()['deal']['id']
     assert page.request.get(f'{base}/api/deals/{deal_id}').json()['deal']['source_channel'] == expected
@@ -757,9 +766,8 @@ def test_custom_deal_create_edit_reload_preserves_money(ui):
     expect(channel).to_be_focused()
     channel.select_option(label='WhatsApp')
     with page.expect_response(lambda r: urlsplit(r.url).path == '/api/deals'
-                              and r.request.method == 'POST' and r.status == 201) as saved:
+                              and r.request.method == 'POST') as saved:
         page.locator('#customDealSubmit').click()
-        page.get_by_role('button', name='Да, продолжить').click()
     result = saved.value.json()
     assert saved.value.status == 201, result
     deal = result['deal']
@@ -909,10 +917,10 @@ def test_manual_payin_hashes_autofill_and_sum(ui):
     field = page.locator('#payinManualHash')
     field.fill('a' * 64)
     field.dispatch_event('change')
-    expect(page.locator('#payinTxPoolBox')).to_contain_text('125.00')
+    expect(page.locator('#payinTxPoolBox')).to_contain_text(re.compile(r'125[.,]00'))
     field.fill('b' * 64)
     field.dispatch_event('change')
-    expect(page.locator('#payinTxPoolBox')).to_contain_text('200.00')
+    expect(page.locator('#payinTxPoolBox')).to_contain_text(re.compile(r'200[.,]00'))
     expect(page.locator('[name=payin_amount_usdt]')).to_have_value('200.00')
     assert not errors
 
@@ -1257,9 +1265,9 @@ def test_deal_details_show_unique_proofs_and_keep_channel_amounts(ui, width):
 
     show(legacy_extra)
     expect(content).to_contain_text('Приход по каналам (3)')
-    expect(content.locator(f'a[href="{tron + legacy_extra_hash}"]').locator('..')).to_contain_text('+$15.00')
+    expect(content.locator(f'a[href="{tron + legacy_extra_hash}"]').locator('..')).to_contain_text(re.compile(r'\+\$15[.,]00'))
     expect(content.locator(f'a[href="{eth + extra_hash}"]')).to_have_count(1)
-    expect(content.locator(f'a[href="{eth + extra_hash}"]').locator('..')).to_contain_text('+$25.00')
+    expect(content.locator(f'a[href="{eth + extra_hash}"]').locator('..')).to_contain_text(re.compile(r'\+\$25[.,]00'))
     modal.get_by_role('button', name='Редактировать', exact=True).click()
     expect(page.locator('#pe-1-usdt')).to_have_value('25')
     payload = page.evaluate("serializeStandardDeal(document.getElementById('createDealForm'))")
@@ -1337,7 +1345,7 @@ def test_exchange_deal_details_and_editor_use_all_transfers(ui, width, tmp_path)
     eth = 'https://etherscan.io/tx/'
 
     def show(name):
-        page.locator('#dealsTable tr').filter(has_text=name).get_by_role('button', name='Детали').click()
+        page.locator('#dealsTable tr').filter(has_text=name).click()
         expect(modal).to_be_visible()
 
     def proof_link(transfer):
@@ -1363,15 +1371,16 @@ def test_exchange_deal_details_and_editor_use_all_transfers(ui, width, tmp_path)
     show('QA Multiple Transfers')
     expect(content).to_contain_text('Приход по каналам (2)')
     expect(content).to_contain_text('Хэши выплаты (7)')
-    expect(content).to_contain_text('Стоимость USDT: $801.06')
+    expect(content).to_contain_text(re.compile(r'Стоимость USDT:\s*\$801[.,]06'))
     expect(content.locator('button[data-proof-hash]')).to_have_count(9)
     for transfer in incoming:
         expect(proof_link(transfer)).to_have_count(1)
-        expect(proof_link(transfer).locator('..')).to_contain_text(f'+${transfer["amount_usdt"]:.2f}')
+        amount = format(transfer["amount_usdt"], '.2f').replace('.', '[.,]')
+        expect(proof_link(transfer).locator('..')).to_contain_text(re.compile(r'\+\$' + amount))
     for transfer, amount in zip(outgoing, payout_amounts):
         link = proof_link(transfer)
         expect(link).to_have_count(1)
-        expect(link.locator('xpath=../..')).to_contain_text(f'−${amount} USDT')
+        expect(link.locator('xpath=../..')).to_contain_text(re.compile(r'−\$?' + amount.replace('.', '[.,]') + ' USDT'))
     assert content.evaluate("""el => el.scrollWidth <= el.clientWidth + 1 &&
         [...el.querySelectorAll('.outgoing-proof-link')].every(group => {
             const link = group.querySelector('a').getBoundingClientRect();
@@ -1403,7 +1412,9 @@ def test_exchange_deal_details_and_editor_use_all_transfers(ui, width, tmp_path)
     page.locator('#payinExtraList button[onclick="payinExtraRemove(0)"]').click()
     expect(page.locator('#payinExtraSummary')).to_be_empty()
     expect(profit).to_have_value('-2.07')
-    payouts.get_by_role('button', name='✕').last.click()
+    remove_transfer = payouts.get_by_role('button', name='✕').last
+    remove_transfer.evaluate("button => button.scrollIntoView({block: 'center', inline: 'nearest'})")
+    remove_transfer.click(timeout=7000)
     expect(cost).to_have_value('$796.74')
     expect(profit).to_have_value('3.26')
     assert not errors, errors

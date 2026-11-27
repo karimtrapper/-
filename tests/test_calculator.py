@@ -45,6 +45,14 @@ class TestExcelRound:
         assert excel_round(-2.345, 2) == -2.35
 
 
+@pytest.fixture
+def rapira_ladder(monkeypatch):
+    import calculator
+    monkeypatch.setattr(calculator, 'RUB_USDT_SOURCE', 'rapira')
+    monkeypatch.setattr(calculator, 'ACTIVE_BONUS', 0.0)
+    monkeypatch.setattr(CommissionCalculator, 'LEVELS', CommissionCalculator._build_levels())
+
+
 # ── CommissionCalculator.get_level ─────────────────────────────────────────
 
 class TestGetLevel:
@@ -105,6 +113,24 @@ class TestGetLevel:
         for name, p in [('до_500к', 0.05), ('500к_1млн', 0.04), ('от_1млн', 0.03)]:
             assert levels[name]['profit_percent'] == p
             assert abs(levels[name]['usdt_thb_commission'] - p / (1 + p)) < 1e-6
+
+    def test_bonus_removed(self, rapira_ladder):
+        """У альтернативной базы Рапиры отсутствует бонус Доверки."""
+        for amount in [100_000, 500_000, 700_000, 1_000_000, 5_000_000]:
+            _, params = CommissionCalculator.get_level(amount)
+            assert params['bonus_percent'] == 0.0
+
+    def test_commission_decreases_with_amount(self, rapira_ladder):
+        _, p1 = CommissionCalculator.get_level(100_000)
+        _, p2 = CommissionCalculator.get_level(700_000)
+        _, p3 = CommissionCalculator.get_level(2_000_000)
+        assert p1['usdt_thb_commission'] > p2['usdt_thb_commission'] > p3['usdt_thb_commission']
+
+    def test_profit_percent_decreases_with_amount(self, rapira_ladder):
+        _, p1 = CommissionCalculator.get_level(100_000)
+        _, p2 = CommissionCalculator.get_level(700_000)
+        _, p3 = CommissionCalculator.get_level(2_000_000)
+        assert p1['profit_percent'] > p2['profit_percent'] > p3['profit_percent']
 
 
 # ── Doverka: ExchangeCalculator ────────────────────────────────────────────
@@ -370,6 +396,36 @@ class TestProfitHitsTargetWithBonus:
         from calculator import usdt_thb_commission_for_profit, rub_usdt_commission_for_profit
         assert abs(usdt_thb_commission_for_profit(0.05, 0.0) - 0.05 / 1.05) < 1e-12
         assert abs(rub_usdt_commission_for_profit(0.05, 0.0) - 0.05) < 1e-12
+
+
+class TestProfitHitsTargetWithoutBonus:
+    """Комиссия c = p/(1+p): фактический профит RUB→THB равен целевому.
+
+    Раньше мэппинг (5% → 2.72%) был откалиброван под бонус Доверки 2.4% —
+    без бонуса он давал заниженный профит (5% → фактических 2.8%).
+    """
+
+    @pytest.fixture
+    def calc(self, rapira_ladder):
+        return ExchangeCalculator(usdt_thb_rate=32.87, rub_usdt_rate=89.97)
+
+    @pytest.mark.parametrize('rub,target', [
+        (100_000, 5.0),      # тир до 500к
+        (700_000, 4.0),      # тир 500к-1млн
+        (1_500_000, 3.0),    # тир от 1млн
+    ])
+    def test_standard_tiers(self, calc, rub, target):
+        r = calc.rub_to_thb(rub)
+        assert abs(r['profit_percent_actual'] - target) < 0.05
+
+    @pytest.mark.parametrize('target', [1.5, 2.0, 2.4, 3.5, 4.5, 5.0])
+    def test_custom_margin(self, calc, target):
+        r = calc.rub_to_thb(300_000, custom_profit_margin=target)
+        assert abs(r['profit_percent_actual'] - target) < 0.05
+
+    def test_bonus_is_zero_in_result(self, calc):
+        r = calc.rub_to_thb(100_000)
+        assert r['bonus_usdt'] == 0
 
 
 # -- Источник курса RUB-USDT --

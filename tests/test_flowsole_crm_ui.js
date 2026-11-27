@@ -16,11 +16,13 @@ const el = id => {
     replaceChildren() {}, append() {}});
   return elements.get(id);
 };
-el('createDealForm').payin_rate_rub_usdt = {readOnly: false};
+el('createDealForm').payin_rate_rub_usdt = el('inputPayinRate');
+el('payinRubGroup').querySelector = selector => selector === '[name="payin_amount_rub"]' ? el('inputPayinRub') : null;
 const calls = [];
-const ctx = {document: {getElementById: el, createElement: () => ({style: {}, append() {}, setAttribute() {}}),
+const ctx = {document: {getElementById: el,
+    querySelector: selector => selector === '[name="payin_rate_rub_usdt"]' ? el('inputPayinRate') : null, createElement: () => ({style: {}, append() {}, setAttribute() {}}),
     createTextNode: text => ({text})}, Date,
-  editingDealId: null, flowExistingReceipt: false, flowExistingParts: [],
+  flowSoleProofVerified: false, flowSoleMismatch: null, editingDealId: null, flowExistingReceipt: false, flowExistingParts: [],
   payinMode: 'rate', customUsdtMode: {payin: 'rate', payout: 'rate'},
   payoutRegistryWallets: [],
   sberSetKindFilter: (...args) => calls.push(['kind', ...args]),
@@ -31,16 +33,18 @@ const ctx = {document: {getElementById: el, createElement: () => ({style: {}, ap
   calcCustomProfit: () => calls.push(['custom-calc']),
   escapeHtml: x => String(x)};
 vm.createContext(ctx);
-vm.runInContext(['methodUsesSberPool', 'flowShow',
+vm.runInContext(['methodUsesSberPool', 'flowShow', 'updateFlowSoleStatus',
   'crmWalletLimitText', 'walletPolicyText', 'renderCrmWalletPolicy', 'renderCrmWalletAddress',
   'refreshPayinWalletPolicy', 'applyPayinMethodFields', 'onCustomPayinMethodChange',
-  'selectCustomPayinTx'].map(fn).join('\n'), ctx);
+  'selectCustomPayinTx', 'markFlowSoleProofDirty'].map(fn).join('\n'), ctx);
 
 el('payinMethod').value = 'flow_sole_reqs';
 vm.runInContext('applyPayinMethodFields()', ctx);
 assert.equal(el('flowManualGroup').style.display, 'none');
-assert.equal(el('flowAccountHint').style.display, 'block');
-assert.equal(el('flowPayinProof').textContent, 'Не подтверждено в сети');
+assert.equal(el('flowSoleReqsStandard').style.display, 'block');
+assert.match(el('flowSolePayinStatus').textContent, /не подтверждено в сети/);
+assert.equal(el('flowSolePayinStatus').style.display, 'block');
+assert.match(html, /id="flowSoleReqsStandard"[^>]*>СГБ · р\/с …0261/);
 assert.equal(el('sberReqsGroup').style.display, 'none');
 assert.equal(el('createDealForm').payin_rate_rub_usdt.readOnly, true);
 assert.equal(ctx.payinMode, 'usdt');
@@ -49,7 +53,9 @@ assert.deepEqual(calls, [['calc']]);
 el('customPayinMethod').value = 'flow_sole_reqs';
 vm.runInContext('onCustomPayinMethodChange()', ctx).then(() => {
   assert.equal(el('flowManualGroupC').style.display, 'none');
-  assert.equal(el('flowAccountHintC').style.display, 'block');
+  assert.equal(el('flowSoleReqsCustom').style.display, 'block');
+  assert.match(el('flowSoleCustomStatus').textContent, /не подтверждено в сети/);
+  assert.equal(el('flowSoleCustomStatus').style.display, 'block');
   assert.equal(el('sberReqsGroupC').style.display, 'none');
   assert.equal(el('customPayinPicker').style.display, 'flex');
   assert.equal(el('customPayinCurrency').value, 'RUB');
@@ -79,5 +85,9 @@ vm.runInContext('onCustomPayinMethodChange()', ctx).then(() => {
   assert.equal(el('flowManualGroup').style.display, 'none');
   assert.equal(el('createDealForm').payin_rate_rub_usdt.readOnly, false);
   assert.deepEqual(calls.slice(-2), [['kind', 'transfer'], ['load']]);
+  vm.runInContext("flowSoleMismatch = {declared_usdt: 700, network_usdt: 250}; flowShow('C', true)", ctx);
+  assert.equal(el('flowSoleCustomStatus').textContent, 'Расхождение: введено $700.00, в сети $250.00');
+  vm.runInContext('markFlowSoleProofDirty()', ctx);
+  assert.match(el('flowSoleCustomStatus').textContent, /не подтверждено в сети/);
   console.log('Flow Sole CRM UI: PASS');
 }).catch(error => { console.error(error); process.exitCode = 1; });

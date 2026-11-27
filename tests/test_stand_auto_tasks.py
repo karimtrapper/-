@@ -290,6 +290,7 @@ def test_auto_atomic_crm_close_on_synthetic_conversion(monkeypatch, mode):
     import json
     import secrets
     from tests import test_stand_crm_close_atomic as h
+    from tests.test_flow_sole_draft_proof import _tron_proof
 
     uid = h._setup(monkeypatch)
     db = m.get_session()
@@ -335,10 +336,13 @@ def test_auto_atomic_crm_close_on_synthetic_conversion(monkeypatch, mode):
            'payout_tx_hashes': [{'hash': 'demo:auto:1', 'network': 'trc20',
                                  'amount_usdt': 45410}]}
     if mode == 'flowsole':
-        monkeypatch.setattr(m, '_flow_sole_payin_confirmation',
-                            lambda *args, **kwargs: {'status': 'confirmed',
-                                'declared_usdt': 47000, 'network_usdt': 47000,
-                                'allocated_usdt': 47000})
+        # Flow Sole does not claim a Sber receipt. Close verifies its
+        # conversion hash against the network before allocating the USDT.
+        crm['payin_parts'] = []
+        provider = _tron_proof(monkeypatch, {receipt['hash']: 47000})
     result = h._post(h._client(uid), crm=crm)
     assert result.status_code == 201, result.json
     assert result.json['deal']['deal_kind'] == 'mf_auto'
+    if mode == 'flowsole':
+        assert result.json['deal']['payin_tx_verified'] is True
+        assert provider and all(hash_value == receipt['hash'] for _, hash_value in provider)

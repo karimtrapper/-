@@ -207,6 +207,9 @@ assert.match(card, /оценка по котировке · котировка T
 assert.match(html, /view==='task'&&branch!=='conversion'&&\['s23','s24'\]\.includes\(d\.step\)&&\['teodor','findir','admin'\]\.includes\(S\.role\)\)\{/);
 assert.match(html, /<details class="card fold-card"><summary>Деньги по сделке<span class="fold-total">\$\{expected\|\|'Сводка'\}<\/span><\/summary>\$\{ownerSummary\(d\)\}<\/details>/);
 assert.match(html, /view==='deal'&&\['teodor','findir','admin'\]\.includes\(S\.role\)\?ownerSummary\(d\)/);
+const switchSource = html.match(/^function canSwitchRole\([^\n]*/m);
+assert.ok(switchSource, 'role availability function');
+vm.runInContext(switchSource[0], ctx);
 const bootSource = html.match(/^async function standBoot\([^]*?^}/m);
 assert.ok(bootSource, 'загрузка задачника найдена');
 vm.runInContext(bootSource[0], ctx);
@@ -215,12 +218,13 @@ const owner1487 = {...deal1487, manualBankReceipt: {...deal1487.manualBankReceip
 async function checkOwnerRole(role) {
   const calls = [];
   let rendered = '';
-  ctx.STAND_EMPLOYEES = [];
+  Object.assign(ctx, {STAND: true, SCREEN: false, SNAP: false, standSandbox: false,
+    STAND_EMPLOYEES: [], standMe: null, standMeId: null, standMeNames: []});
   ctx.S.role = 'admin';
   ctx.fetch = async url => {
     calls.push(url);
     if (url === '/api/auth/me') return {json: async () => ({success: true,
-      user: {id: role === 'teodor' ? 15 : 16, role, display_name: role}})};
+      user: {id: role === 'teodor' ? 15 : 16, role, display_name: role, tasks_enabled: true, stand: true}})};
     if (url === '/api/stand/employees') return {json: async () => ({success: true,
       employees: [{id: 12, display_name: 'Настя', role: 'operator'},
         {id: 10, display_name: 'Другой сотрудник', role: 'operator'}]})};

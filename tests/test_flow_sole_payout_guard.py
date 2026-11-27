@@ -63,7 +63,13 @@ def test_pending_flow_draft_does_not_debit_wallet_or_card(monkeypatch):
             'payin_tx_hashes': [{'hash': h, 'network': 'trc20', 'amount_usdt': None}],
             'payin_amount_usdt': 100})
         assert verified.status_code == 200, verified.json
-        assert verified.json['deal']['payin_tx_verified'] is True
+        assert verified.json['deal']['payin_tx_verified'] is False
+        with m.get_session() as db:
+            assert db.query(m.WalletOperation).filter_by(deal_id=ids[0], type='expense').count() == 0
+        proof = client.post(f'/api/deals/{ids[0]}/verify-payin')
+        assert proof.status_code == 200 and proof.json['deal']['payin_tx_verified'] is True, proof.json
+        saved = client.put(f'/api/deals/{ids[0]}', json={'status': 'completed'})
+        assert saved.status_code == 200, saved.json
         db = m.get_session()
         expense = db.query(m.WalletOperation).filter_by(deal_id=ids[0], type='expense').one()
         assert expense.amount == 85
@@ -73,7 +79,14 @@ def test_pending_flow_draft_does_not_debit_wallet_or_card(monkeypatch):
             'payin_tx_hashes': [{'hash': card_hash, 'network': 'trc20', 'amount_usdt': None}],
             'payin_amount_usdt': 100})
         assert verified_card.status_code == 200, verified_card.json
-        assert verified_card.json['deal']['payin_tx_verified'] is True
+        assert verified_card.json['deal']['payin_tx_verified'] is False
+        with m.get_session() as db:
+            assert db.get(m.BankCard, card_id).balance_thb == 33000
+            assert db.query(m.CardAllocation).filter_by(deal_id=ids[1]).count() == 0
+        proof = client.post(f'/api/deals/{ids[1]}/verify-payin')
+        assert proof.status_code == 200 and proof.json['deal']['payin_tx_verified'] is True, proof.json
+        saved = client.put(f'/api/deals/{ids[1]}', json={'status': 'completed'})
+        assert saved.status_code == 200, saved.json
         db = m.get_session()
         assert db.query(m.CardAllocation).filter_by(deal_id=ids[1]).count() == 1
         assert db.get(m.BankCard, card_id).balance_thb == 30000
@@ -105,7 +118,7 @@ def test_reimbursement_requires_server_proof_for_flow(monkeypatch):
     db = m.get_session()
     deal = m.Deal(client_name='flow-reimbursement-' + h[:8],
                   deal_type=m.DealType.PAY_IN, status=m.DealStatus.PENDING,
-                  payin_method=m.PayInMethod.FLOW_SOLE_REQS,
+                  payin_method=m.PayInMethod.SBER_REQS, payin_account_key='flow_sole',
                   payin_amount_usdt=100, payout_amount_thb=3000,
                   payout_source=m.PayOutSource.FOUNDER_PERSONAL,
                   payout_founder_name='Андрей', payout_amount_usdt=90)

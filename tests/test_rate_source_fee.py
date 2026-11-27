@@ -52,6 +52,20 @@ class TestWithdrawalFeeByVenue:
         assert b['withdrawal_fixed'] == a['withdrawal_fixed'] == 20
         assert b['thb_received'] == a['thb_received']
 
+    def test_bitazza_fee_lower_than_binance(self):
+        binance = ExchangeCalculator(RATE_USDT_THB, RATE_RUB_USDT)
+        bitazza = ExchangeCalculator(RATE_USDT_THB, RATE_RUB_USDT,
+                                     withdrawal_percent=0.0015)
+        a = binance.rub_to_thb(100_000, custom_profit_margin=5.0)
+        b = bitazza.rub_to_thb(100_000, custom_profit_margin=5.0)
+
+        assert b['withdrawal_percent'] < a['withdrawal_percent']
+        # 0.15% от той же базы = ровно 3/5 от 0.25%
+        assert b['withdrawal_percent'] == pytest.approx(a['withdrawal_percent'] * 0.6, rel=1e-3)
+        # клиент получает больше ровно на сэкономленную комиссию
+        assert b['thb_received'] - a['thb_received'] == pytest.approx(
+            a['withdrawal_percent'] - b['withdrawal_percent'], abs=0.02)
+
     def test_bitazza_real_case_both_directions(self):
         calc = ExchangeCalculator(33.68, RATE_RUB_USDT,
                                   withdrawal_percent=WITHDRAWAL_PCT_BITAZZA)
@@ -149,6 +163,22 @@ class TestCalculateEndpoint:
         assert body['withdrawal_fixed'] == 20
         assert body['thb_received'] == pytest.approx(
             body['thb_to_exchange'] - body['withdrawal_percent'] - 20, abs=0.02)
+
+    def test_bitazza_source_uses_book_and_015(self, pub, monkeypatch):
+        monkeypatch.setattr(appmod, 'WITHDRAWAL_PCT_BITAZZA', 0.0015)
+        monkeypatch.setattr(appmod.ExchangeRateProvider, 'get_all_rates', _mock_rates())
+        monkeypatch.setattr(appmod, '_bitazza_calc_quote',
+                            lambda *a, **kw: {'raw_vwap': 34.0, 'effective': 33.949})
+        resp = pub.post('/api/calculate', json={
+            'scenario': 'rub-to-thb', 'direction': 'amount', 'amount': 100_000,
+            'profit_margin': 5.0, 'rate_source': 'bitazza',
+        })
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body['rate_source'] == 'bitazza'
+        assert body['withdrawal_percent_rate'] == 0.15
+        # курс взят из стакана Bitazza, а не из общих rates
+        assert body['usdt_thb_rate'] == pytest.approx(34.0)
 
     def test_rates_card_has_single_bitazza_percentage(self, pub, monkeypatch):
         monkeypatch.setattr(appmod.ExchangeRateProvider, 'get_all_rates', _mock_rates())

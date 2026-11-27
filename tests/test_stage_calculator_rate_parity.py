@@ -80,25 +80,25 @@ def test_rates_same_bitazza_card_from_same_book(market):
               'bitazza_fee_percent', 'bitazza_fee_fixed_thb', 'success', 'errors')
     assert {key: stand[key] for key in shared} == {key: prod[key] for key in shared}
     assert stand['bitazza_raw'] == 32.5  # 500 @ 33 plus 500 @ 32
-    assert stand['bitazza_usdt_thb'] == round(32.5 * (1 - 0.0015), 4)
-    assert stand['bitazza_fee_percent'] == 0.15
+    assert stand['bitazza_usdt_thb'] == round(32.5 * (1 - 0.0025), 4)
+    assert stand['bitazza_fee_percent'] == 0.25
     assert stand['bitazza_fee_fixed_thb'] == 20
     assert state['calls'][1] == ('stand', 'market_bitazza',
                                   {'OMSId': 1, 'InstrumentId': 5, 'Depth': 400}, None)
 
 
 @pytest.mark.parametrize('payload,expected_source,expected_rate,expected_pct', [
-    ({'scenario': 'rub-to-thb', 'amount': 80_000}, 'bitazza', 32.5, 0.15),
-    ({'scenario': 'rub-to-thb', 'amount': 160_000}, 'bitazza', 32.0, 0.15),
-    ({'scenario': 'rub-to-thb', 'direction': 'target', 'amount': 32_500}, 'bitazza', 32.5, 0.15),
-    ({'scenario': 'usdt-to-thb', 'amount': 1_000}, 'bitazza', 32.5, 0.15),
-    ({'scenario': 'thb-to-usdt', 'amount': 32_500}, 'bitazza', 32.5, 0.15),
-    ({'scenario': 'rub-to-usdt', 'amount': 80_000}, 'bitazza', None, 0.15),
+    ({'scenario': 'rub-to-thb', 'amount': 80_000}, 'bitazza', 32.5, 0.25),
+    ({'scenario': 'rub-to-thb', 'amount': 160_000}, 'bitazza', 32.0, 0.25),
+    ({'scenario': 'rub-to-thb', 'direction': 'target', 'amount': 32_500}, 'bitazza', 32.5, 0.25),
+    ({'scenario': 'usdt-to-thb', 'amount': 1_000}, 'bitazza', 32.5, 0.25),
+    ({'scenario': 'thb-to-usdt', 'amount': 32_500}, 'bitazza', 32.5, 0.25),
+    ({'scenario': 'rub-to-usdt', 'amount': 80_000}, 'bitazza', None, 0.25),
     ({'scenario': 'usdt-to-thb', 'amount': 3_000}, 'binance', 32.5, 0.25),
     ({'scenario': 'usdt-to-thb', 'amount': 1_000, 'rate_source': 'binance'}, 'binance', 32.5, 0.25),
     ({'scenario': 'usdt-to-thb', 'amount': 1_000, 'rate_source': 'custom',
       'custom_usdt_thb': 34.2}, 'custom', 34.2, 0.25),
-    ({'scenario': 'rub-to-thb', 'amount': 80_000, 'method': 'broker'}, 'bitazza', 32.5, 0.15),
+    ({'scenario': 'rub-to-thb', 'amount': 80_000, 'method': 'broker'}, 'bitazza', 32.5, 0.25),
 ])
 def test_calculate_same_money_fee_and_source(market, payload, expected_source, expected_rate, expected_pct):
     _, call = market
@@ -169,9 +169,9 @@ def test_bitazza_only_keeps_main_partial_success_contract(market):
         status, rates = call(mode, '/api/rates')
         assert status == 200
         assert rates['success'] is False  # main requires both base rates
-        assert rates['bitazza_usdt_thb'] == round(32.5 * (1 - 0.0015), 4)
+        assert rates['bitazza_usdt_thb'] == round(32.5 * (1 - 0.0025), 4)
         status, result = call(mode, '/api/calculate', {
             'scenario': 'usdt-to-thb', 'amount': 1_000, 'rate_source': 'bitazza'})
         assert status == 200
         assert result['rate_source'] == 'bitazza'
-        assert result['withdrawal_percent_rate'] == 0.15
+        assert result['withdrawal_percent_rate'] == 0.25

@@ -28,7 +28,7 @@ async function main() {
   let browser;
   try {
     browser = await chromium.launch({ headless:true, executablePath:process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH || undefined });
-    const context = await browser.newContext({ ...devices['iPhone 15'], viewport:{ width:375, height:812 } });
+    const context = await browser.newContext({ ...devices['iPhone 13'], viewport:{ width:375, height:812 }, isMobile:true, hasTouch:true });
     const page = await context.newPage();
     await page.goto(`${base}/crm`);
     await page.goto(`${base}/tasks?snap=walkthrough/leasehold-rub/01.json`);

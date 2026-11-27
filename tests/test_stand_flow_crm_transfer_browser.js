@@ -49,12 +49,16 @@ const server = http.createServer((req,res) => {
     executablePath:process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH||undefined});
   try {
     const page=await browser.newPage();
-    const requests=[],errors=[];
+    const requests=[],checks=[],errors=[];
     page.on('pageerror',error=>errors.push(error.message));
     await page.route('**/*',route=>new URL(route.request().url()).origin===origin
       ?route.continue():route.abort());
     await page.route('**/api/**',route=>{
       const url=new URL(route.request().url());
+      if(url.pathname==='/api/stand/deals/9041/crm-close/check'){
+        checks.push(route.request().postDataJSON());
+        return route.fulfill({json:{success:true,ready:true,generation:'synthetic'}});
+      }
       if(url.pathname==='/api/stand/deals/9041/crm-close'){
         requests.push(route.request().postDataJSON());
         route.fulfill({status:409,contentType:'application/json',
@@ -96,10 +100,11 @@ const server = http.createServer((req,res) => {
     assert.equal(draft.method,'flow_sole_reqs');
     const saved=await page.evaluate(()=>crmDraftCommit(9041));
     assert.notEqual(saved,false,'draft form must save');
-    await page.evaluate(()=>{S.edit=null;window.crmGaps=()=>[];
-      window.standRequireSaved=async()=>true;render();});
-    await page.evaluate(()=>crmPushClose(9041,1));
+    await page.evaluate(()=>{S.edit=null;window.standWaitSaved=async()=>({ok:true});render();});
+    await page.evaluate(()=>crmPushClose(9041,standVer));
+    assert.equal(checks.length,1,JSON.stringify(await page.evaluate(()=>CRM_CLOSE_UI.get(9041))));
     assert.equal(requests.length,1,errors.join('\n'));
+    assert.deepEqual(requests[0],checks[0],'close uses the amounts passed to preflight');
     assert.equal(requests[0].crm.payin_amount_usdt,400);
     assert.equal(requests[0].crm.payin_tx_hashes[0].amount_usdt,500);
     assert.equal(await page.evaluate(()=>deal(9041).closed),false);

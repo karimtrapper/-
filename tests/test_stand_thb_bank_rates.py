@@ -36,13 +36,12 @@ def _login(client, user_id):
 
 
 def test_requires_stand_mode(monkeypatch):
-    # На проде (STAND_MODE=False) путь закрыт общим guard'ом раньше, чем роут
-    # успевает ответить 404 — любой /api/* без сессии/ключа получает 401.
-    # Сути это не меняет: без STAND_MODE этот эндпоинт недостижим в принципе.
     monkeypatch.setattr(appmod, 'STAND_MODE', False)
+    monkeypatch.setattr(appmod, 'TASKS_ENABLED', False)
     with appmod.app.test_client() as client:
         res = client.get('/api/stand/thb-bank-rates')
-    assert res.status_code == 401
+    assert res.status_code == 404
+    assert res.json['error'] == 'stand_only'
 
 
 def test_requires_login(client_with_user):

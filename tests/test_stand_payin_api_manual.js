@@ -5,7 +5,7 @@ const vm = require('node:vm');
 
 const html = fs.readFileSync('static/stand/tasks.html', 'utf8');
 const names = ['rubApiAccount', 'bankEvidenceCanEdit', 'bankEvidenceBlock',
-  'manualBankReceiptBlock', 'docAdditionalRows', 'docListRows'];
+  'manualBankReceiptBlock', 'sgbDownloadButton', 'docAdditionalRows', 'docListRows'];
 const source = names.map(name => {
   const match = html.match(new RegExp(`^function ${name}\\([^]*?^}`, 'm'));
   assert.ok(match, name);
@@ -14,7 +14,7 @@ const source = names.map(name => {
 const file = {file: 'bank-statement.pdf', size: '1 КБ', at: '12.10', uploadedBy: 'Настя'};
 const deal = {id: 1485, step: 's14', docs: {}, files: {bankCreditEvidence: [file]},
   manualBankReceipt: {status: 'pending', handoff: true}, rubReceivingAccount: {mode: 'flowsole'}};
-const ctx = {S: {role: 'manager'}, standMe: 'manager',
+const ctx = {S: {role: 'manager'}, STAND: true, standMe: 'manager',
   filesOf: (d, k) => d.files[k] || [], htmlText: String, sberText: String,
   money: String, manualBankOperatorForm: () => '<input id="mbr_amount_1485">',
   docFileOf: () => null, doctOf: () => 'Документ', docIssuedTitle: () => '',

@@ -10,11 +10,16 @@ const standardFallback = crm.match(/: \(data\.payin_tx_hash \? \[\{([\s\S]*?)\}\
 assert.ok(standardFallback, 'standard CRM manual hash fallback');
 const standardExpr = standardFallback[1].match(/amount_usdt:\s*([\s\S]*?),\s*$/m);
 assert.ok(standardExpr, 'standard CRM manual share');
-const standardShare = new Function('data', `return (${standardExpr[1]});`);
-assert.equal(standardShare({payin_method: 'crypto_direct', payin_amount_usdt: 700}), 700);
-assert.equal(standardShare({payin_method: 'sber_reqs', payin_amount_usdt: 700}), 700);
-assert.equal(standardShare({payin_method: 'crypto_direct'}), null);
-assert.equal(standardShare({payin_method: 'flow_sole_reqs', payin_amount_usdt: 700}), null);
+const standardShare = new Function('data', 'document', `return (${standardExpr[1]});`);
+const fromStandardForm = (data, checked = false) => standardShare(data, {
+  getElementById: id => id === 'payinManualShareExplicit' ? {checked} : null,
+});
+assert.equal(fromStandardForm({payin_method: 'crypto_direct', payin_amount_usdt: 700}), 700);
+assert.equal(fromStandardForm({payin_method: 'sber_reqs', payin_amount_usdt: 700}), 700);
+assert.equal(fromStandardForm({payin_method: 'crypto_direct'}), null);
+const flowData = {payin_method:'sber_reqs', payin_account_key:'flow_sole', payin_amount_usdt:700};
+assert.equal(fromStandardForm(flowData), null, 'unchecked Flow Sole uses the entire on-chain transfer');
+assert.equal(fromStandardForm(flowData, true), 700, 'checked Flow Sole serializes the explicit share');
 
 const adapterFallback = adapter.match(/d\.payinHashes\.push\(\{([\s\S]*?)\}\);/);
 assert.ok(adapterFallback, 'task CRM manual hash fallback');
@@ -25,14 +30,17 @@ const adapterShare = new Function('method', 'amount',
 assert.equal(adapterShare('crypto_direct', 700), 700);
 assert.equal(adapterShare('sber_reqs', 700), 700);
 assert.equal(adapterShare('flow_sole_reqs', 700), null);
-const poolMapping = adapter.match(/amount:d\.payType==='По реквизитам'&&d\.rubReceivingAccount\?\.mode==='flowsole'&&x\._auto\s*\?\s*null\s*:\s*crmDraftNum\(x\.amount_usdt\)/);
-assert.ok(poolMapping, 'task adapter distinguishes auto full-hash lookup from explicit pool share');
-const mappedShare = new Function('d', 'x', 'crmDraftNum', `return (${poolMapping[0].slice('amount:'.length)});`);
-const flow = {payType:'По реквизитам',rubReceivingAccount:{mode:'flowsole'}};
-assert.equal(mappedShare(flow,{amount_usdt:500,_auto:true},Number),null,
+const poolMapping = adapter.match(/(const flowSole=crmDraftRead\(r,'payinMethod'\)[^;]+;)[\s\S]*?d\.payinHashes=a\.core\.payinTxPool\.map\(x=>\(\{[\s\S]*?amount:([^,]+),/);
+assert.ok(poolMapping, 'task adapter maps the actual form method and pool share');
+const mappedShare = new Function('r', 'x', 'crmDraftRead', 'crmDraftNum',
+  `${poolMapping[1]} return (${poolMapping[2]});`);
+const read = (form, name) => form[name];
+const flow = {payinMethod: 'flow_sole_reqs'};
+assert.equal(mappedShare(flow, {amount_usdt:500,_auto:true}, read, Number), null,
   'a pool selection alone stays full-hash/null');
-assert.equal(mappedShare(flow,{amount_usdt:100,_auto:false},Number),100,
+assert.equal(mappedShare(flow, {amount_usdt:100,_auto:false}, read, Number), 100,
   'a manually set pool share stays numeric through task adapter serialization');
+assert.equal(mappedShare({payinMethod:'sber_reqs'}, {amount_usdt:500,_auto:true}, read, Number), 500);
 const savedShareSource = adapter.match(/^function crmDraftSavedFlowShare\([^]*?^}/m);
 assert.ok(savedShareSource, 'custom editor preserves the saved Flow Sole hash share on reopen/save');
 const savedFlowShare = new Function(`${savedShareSource[0]}; return crmDraftSavedFlowShare;`)();

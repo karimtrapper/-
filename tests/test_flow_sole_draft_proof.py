@@ -32,6 +32,15 @@ def _tron_proof(monkeypatch, amounts, states=None):
     monkeypatch.setattr(m, 'verify_transfer', lambda ref, network, sender, receiver, amount, **kw:
         stand_transfers.verify_transfer(ref, network, sender, receiver, amount,
                                         get=fake_get, **kw))
+    strict_parser = m._tron_confirmed_payin_amount
+
+    def confirmed_amount(ref):
+        with monkeypatch.context() as proof:
+            proof.delenv('PYTEST_CURRENT_TEST', raising=False)
+            proof.setattr(m.requests, 'get', fake_get)
+            return strict_parser(ref)
+
+    monkeypatch.setattr(m, '_tron_confirmed_payin_amount', confirmed_amount)
     return calls
 
 
@@ -69,13 +78,20 @@ def test_flow_sole_draft_mismatch_and_confirmed_close(monkeypatch):
         row = mismatch.json['deal']
         assert row['status'] == 'pending'
         assert row['payin_amount_usdt'] == 700
-        assert row['payin_confirmation']['status'] == 'mismatch'
-        assert row['payin_confirmation']['network_usdt'] == 250
+        assert row['payin_confirmation']['status'] == 'unconfirmed'
+        assert row['payin_tx_verified'] is False
+        assert provider_calls == []
+        refused = client.post(f'/api/deals/{deal_id}/verify-payin')
+        assert refused.status_code == 409, refused.json
+        assert refused.json['entered_usdt'] == 700
+        assert refused.json['chain_usdt'] == 250
+        assert refused.json['differences'] == [
+            {'tx_hash': h, 'entered_usdt': 700, 'chain_usdt': 250},
+        ]
         db = m.get_session()
         try:
-            tx = db.query(m.PayinTx).filter_by(tx_hash=h).one()
-            assert tx.amount_usdt == 250 and tx.source == 'tronscan'
-            assert db.query(m.PayinTxUse).filter_by(tx_id=tx.id, deal_id=deal_id).count() == 0
+            assert db.query(m.PayinTxUse).filter_by(deal_id=deal_id).count() == 0
+            assert not db.query(m.PayinTx).filter_by(tx_hash=h).first()
         finally:
             db.close()
         assert client.put(f'/api/deals/{deal_id}', json={'status': 'completed'}).status_code == 409
@@ -86,11 +102,21 @@ def test_flow_sole_draft_mismatch_and_confirmed_close(monkeypatch):
             'payin_tx_hashes': [{'hash': h, 'network': 'trc20', 'amount_usdt': 250}],
         })
         assert matched.status_code == 200, matched.json
-        row = matched.json['deal']
-        assert row['payin_confirmation']['status'] == 'confirmed'
+        assert matched.json['deal']['payin_tx_verified'] is False
+        assert matched.json['deal']['status'] == 'pending'
+        verified = client.post(f'/api/deals/{deal_id}/verify-payin')
+        assert verified.status_code == 200, verified.json
+        assert verified.json['deal']['payin_confirmation']['status'] == 'confirmed'
+        closed = client.put(f'/api/deals/{deal_id}', json={'status': 'completed'})
+        assert closed.status_code == 200, closed.json
+        row = closed.json['deal']
         assert row['payin_tx_verified'] is True
         assert row['status'] == 'completed'
         assert row['payin_amount_usdt'] == 250
+        with m.get_session() as db:
+            tx = db.query(m.PayinTx).filter_by(tx_hash=h).one()
+            assert tx.amount_usdt == 250 and tx.source == 'tronscan'
+            assert db.query(m.PayinTxUse).filter_by(tx_id=tx.id, deal_id=deal_id).one().amount_usdt == 250
         assert provider_calls and all('/api/transaction-info' in url for url, _ in provider_calls)
     finally:
         if deal_id:
@@ -106,7 +132,7 @@ def test_historical_completed_flow_sole_unrelated_edit_stays_completed(monkeypat
     db = m.get_session()
     deal = m.Deal(client_name='old-flow-' + uuid.uuid4().hex,
         deal_type=m.DealType.PAY_IN, status=m.DealStatus.COMPLETED,
-        payin_method=m.PayInMethod.FLOW_SOLE_REQS,
+        payin_method=m.PayInMethod.SBER_REQS, payin_account_key='flow_sole',
         payin_amount_usdt=700, payout_amount_usdt=600,
         payin_rub_is_net=None, payin_tx_verified=False)
     db.add(deal); db.commit(); deal_id = deal.id; db.close()
@@ -157,20 +183,27 @@ def test_explicit_hash_share_uses_other_deals_remaining(monkeypatch):
             'payin_tx_hashes': [{'hash': h, 'network': 'trc20', 'amount_usdt': 1000}]})
         assert explicit.status_code == 201, explicit.json
         ids.append(explicit.json['deal']['id'])
-        assert explicit.json['deal']['payin_confirmation']['status'] == 'confirmed'
+        assert explicit.json['deal']['payin_confirmation']['status'] == 'unconfirmed'
+        verified = client.post(f'/api/deals/{ids[-1]}/verify-payin')
+        assert verified.status_code == 200, verified.json
+        assert verified.json['deal']['payin_confirmation']['status'] == 'confirmed'
+        assert verified.json['claimed_usdt'] == 1000
         db = m.get_session()
         db.query(m.PayinTxUse).filter_by(tx_id=tx_id, deal_id=owner_id).one().amount_usdt = 1200
         db.commit(); db.close()
         insufficient = client.put(f'/api/deals/{ids[0]}', json={'status': 'completed'})
         assert insufficient.status_code == 409
-        assert insufficient.json['payin_confirmation']['status'] == 'mismatch'
+        assert client.get(f'/api/deals/{ids[0]}').json['deal']['payin_confirmation']['status'] == 'mismatch'
 
         full = client.post('/api/deals', json={**base,
             'payin_tx_hashes': [{'hash': full_h, 'network': 'trc20', 'amount_usdt': None}]})
         assert full.status_code == 201, full.json
         ids.append(full.json['deal']['id'])
-        assert full.json['deal']['payin_confirmation']['status'] == 'mismatch'
-        assert full.json['deal']['payin_confirmation']['network_usdt'] == 2000
+        assert full.json['deal']['payin_confirmation']['status'] == 'unconfirmed'
+        mismatch = client.post(f'/api/deals/{ids[-1]}/verify-payin')
+        assert mismatch.status_code == 409, mismatch.json
+        assert mismatch.json['entered_usdt'] == 1000
+        assert mismatch.json['claimed_usdt'] == mismatch.json['chain_usdt'] == 2000
     finally:
         db = m.get_session()
         db.query(m.PayinTxUse).filter(m.PayinTxUse.deal_id.in_([owner_id] + ids)).delete(synchronize_session=False)
@@ -184,7 +217,7 @@ def test_erc_hash_cannot_use_tron_proof_on_stage(monkeypatch):
     db = m.get_session()
     deal = m.Deal(client_name='erc-proof-' + h[:8],
         deal_type=m.DealType.PAY_IN, status=m.DealStatus.PENDING,
-        payin_method=m.PayInMethod.FLOW_SOLE_REQS, payin_amount_usdt=250,
+        payin_method=m.PayInMethod.SBER_REQS, payin_account_key='flow_sole', payin_amount_usdt=250,
         payin_tx_hashes=m.json.dumps([{'hash': h, 'network': 'erc20', 'amount_usdt': 250}]))
     tx = m.PayinTx(tx_hash=h, network='trc20', amount_usdt=250, source='tronscan')
     db.add_all([deal, tx]); db.flush()
@@ -220,6 +253,9 @@ def test_failed_and_pending_tron_transfer_info_never_proves_payin(monkeypatch):
             ids.append(response.json['deal']['id'])
             assert response.json['deal']['payin_confirmation']['status'] == 'unconfirmed'
             assert response.json['deal']['payin_tx_verified'] is False
+            proof = client.post(f'/api/deals/{ids[-1]}/verify-payin')
+            assert proof.status_code == 409, proof.json
+            assert proof.json['tx_hash'] == h
             assert client.put(f'/api/deals/{ids[-1]}', json={'status': 'completed'}).status_code == 409
     finally:
         db = m.get_session()

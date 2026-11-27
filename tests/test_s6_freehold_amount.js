@@ -22,6 +22,7 @@ console.log('s6 freehold amount OK');
 d.step='s6'; d.kind='Фрихолд';
 Object.assign(ctx,{isCrypto:()=>false,toast(){},go:(d,step)=>d.step=step,
   ippsTariff:()=>({label:'bank'}),freeholdSend:()=>98330,usd:String,moneyKop:String});
+vm.runInContext(html.match(/^function recipientTitle\([^\n]*/m)[0],ctx);
 const start=html.indexOf("  if(step==='s6'){");
 const end=html.indexOf("    if(d.type==='Обмен валюты'){",start);
 vm.runInContext('function consent(d){const step="s6";'+html.slice(start,end)+'}}',ctx);
@@ -30,12 +31,14 @@ assert.equal(d.step,'s8');assert.equal(d.amountRub,8123456.78);assert.equal(d.ra
 vm.runInContext(html.match(/^function freeholdApprox\([^]*?^}/m)[0],ctx);
 assert.equal(ctx.freeholdApprox(d).pay,8123456.78);
 // Render the real s6 card: six-digit storage, four-digit display, editable principal.
-const cardStart=html.indexOf('      const X=d.invoiceUsd||0;\n      const k=num(d.rates.client);');
+const layoutStart=html.indexOf('    const cash=isNativeCashPartner(d), rubLabel=',html.indexOf('  s6:()=>{'));
+const cardStart=html.indexOf('      const X=d.invoiceUsd||0;\n      const k=num(d.rates.client);',layoutStart);
+const layout=html.slice(layoutStart,html.indexOf('\n',layoutStart));
 const cardEnd=html.indexOf('\n    }\n    return `<div class="card">',cardStart);
-assert.ok(cardStart>0&&cardEnd>cardStart);
-Object.assign(ctx,{ago:()=>'',freeholdInvoiceInputs6:()=>'',freeholdSummary6:()=>'',calcBtn:()=>'',quotesSummary:()=>''});
+assert.ok(layoutStart>0&&cardStart>layoutStart&&cardEnd>cardStart);
+Object.assign(ctx,{isNativeCashPartner:()=>false,ago:()=>'',freeholdInvoiceInputs6:()=>'',freeholdSummary6:()=>'',calcBtn:()=>'',quotesSummary:()=>''});
 vm.runInContext(html.match(/^function fmtAmount\([^]*?^}/m)[0],ctx);
-vm.runInContext('function card(d){'+html.slice(cardStart,cardEnd)+'}',ctx);
+vm.runInContext('function card(d){'+layout+html.slice(cardStart,cardEnd)+'}',ctx);
 const stored=JSON.stringify(d),card=ctx.card(d);
 assert.match(card,/id="r3" value="83,3175"/);
 // Разделители разрядов в поле суммы клиенту — неразрывный пробел, как у money() (Карим, 20.10)

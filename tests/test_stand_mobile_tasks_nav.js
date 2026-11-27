@@ -33,7 +33,7 @@ async function main() {
   let apiMode = 'prod';
   const writes = [];
   try {
-    const context = await browser.newContext({ ...devices['iPhone 15'] });
+    const context = await browser.newContext({ ...devices['iPhone 13'], isMobile:true, hasTouch:true });
     const page = await context.newPage();
     await page.route('**/*', route => new URL(route.request().url()).origin === base ? route.continue() : route.abort());
     await page.setViewportSize({ width: 375, height: 812 });
@@ -90,11 +90,16 @@ async function main() {
       viewportMeta: 'width=device-width, initial-scale=1.0, shrink-to-fit=no' });
     await page.locator('.site-shell-sections [data-shell-section="documents"]').click();
     assert.equal(await page.locator('.site-shell-sections [data-shell-section="documents"]').getAttribute('aria-current'), 'page');
-    await page.locator('.site-shell-bottom [data-shell-link="tasks"]').click();
-    await page.waitForURL('**/tasks');
+    await Promise.all([
+      page.waitForURL(url => url.origin === base && url.pathname === '/tasks', {timeout: 10000}),
+      page.locator('.site-shell-bottom [data-shell-link="tasks"]').tap(),
+    ]);
+    assert.equal(new URL(page.url()).search, '');
     // Synthetic mode keeps actual role switching local: save() is disabled and
     // every server request remains read-only while exercising the real handlers.
     await page.goto(`${base}/tasks?snap=walkthrough/leasehold-rub/01.json`);
+    await page.locator('#app .deal-head').waitFor({timeout: 10000});
+    assert.equal(await page.getByText('Снимок шага не загрузился.').count(), 0);
     await page.evaluate(() => { standMe = 'admin'; render(); });
     await page.waitForFunction(() => document.querySelector('#roles .rolebtn'));
 
@@ -103,6 +108,7 @@ async function main() {
     for (const width of [375, 390, 430]) {
       await page.setViewportSize({ width, height: 844 });
       const sweep = await page.evaluate(async () => {
+        const snapshotState = snapshot => migrate({...load(), ...snapshot.state});
         const failures = [];
         const viewportMeta = document.querySelector('meta[name="viewport"]')?.content || '';
         const roles = document.querySelector('#roles');
@@ -118,7 +124,7 @@ async function main() {
         for (let i = 1; i <= 21; i++) {
           const n = String(i).padStart(2, '0');
           const snap = await (await fetch(`/static/stand/walkthrough/leasehold-rub/${n}.json`)).json();
-          S = migrate(Object.assign(load(), snap.state || {}));
+          S = snapshotState(snap);
           S.role = snap.role; S.open = snap.open; S.view = snap.view; S.tab = 'tasks'; S.modal = null; S.doc = null;
           render();
           const html = document.documentElement, body = document.body, app = document.querySelector('#app').getBoundingClientRect();
@@ -126,12 +132,12 @@ async function main() {
             failures.push({ frame: i, role: snap.role, html: html.scrollWidth, body: body.scrollWidth, appRight: app.right });
         }
         const docs = await (await fetch('/static/stand/walkthrough/leasehold-rub/20.json')).json();
-        S = migrate(Object.assign(load(), docs.state || {})); S.role = docs.role; S.open = docs.open; S.view = docs.view; S.tab = 'tasks'; render();
+        S = snapshotState(docs); S.role = docs.role; S.open = docs.open; S.view = docs.view; S.tab = 'tasks'; render();
         const dealWithDocs = S.deals.find(x => x.id === S.open);
         S.doc = { id: dealWithDocs.id, k: 'inv' }; render();
         const documentWidth = document.querySelector('.pa')?.getBoundingClientRect().width || 0;
         const modalSnap = await (await fetch('/static/stand/walkthrough/leasehold-rub/01.json')).json();
-        S = migrate(Object.assign(load(), modalSnap.state || {})); S.role = modalSnap.role; S.open = modalSnap.open; S.view = modalSnap.view;
+        S = snapshotState(modalSnap); S.role = modalSnap.role; S.open = modalSnap.open; S.view = modalSnap.view;
         const d = S.deals.find(x => x.id === S.open);
         S.modal = { id: d.id, step: d.step, to: 'operator', delivery: 'pending' }; render();
         const modalWidth = document.querySelector('.modal')?.getBoundingClientRect().width || 0;

@@ -59,7 +59,8 @@ const refHtml = fs.readFileSync(path.join(__dirname, '../static/referrer/index.h
     + '\n' + extractIndented(crmHtml, 'refreshStandDependentLinks');
   (async () => {
     const ctx = { applyStandMobileNav: () => {}, refreshPayoutWalletPolicy: () => {},
-      API_URL: '', AUTH_STAND: null,
+      API_URL: '', AUTH_STAND: null, document: {querySelectorAll: () => []},
+      updateDealClientMode: () => {}, applyFlowGateOptions: () => {},
       fetch: async () => ({json: async () => ({success: true, user: {id: 1}})}), // поля stand нет
     };
     vm.createContext(ctx);

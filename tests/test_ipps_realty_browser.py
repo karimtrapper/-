@@ -71,6 +71,9 @@ def test_manual_ipps_form_save_reload_close_and_open_crm(width, chromium, crm_se
             shadow.get_by_role('button', name='Добавить хеш').click()
         assert lookup.value.ok, lookup.value.json()
         expect(shadow.locator('#ippsProfitSummary')).to_have_text('Валовая прибыль 100.00 USDT')
+        inquiry_type = page.locator('#crmDraftInquiryType')
+        inquiry_type.select_option(label='Клиент')
+        expect(inquiry_type).to_have_value('client')
         with page.expect_response(lambda response: response.url.endswith('/api/stand/state')
                                   and response.request.method == 'PUT') as save:
             page.locator('.edit-page button[onclick^="editSave("]').first.click()

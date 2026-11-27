@@ -9,11 +9,14 @@ os.environ.setdefault('SECRET_KEY', 'test-secret-key-for-pytest')
 
 import pytest
 
+import app as crm
 from app import app, get_session, AdminUser, Deal, Client, Referrer, DealAgent, PayoutTx, PayoutTxUse
 
 
 @pytest.fixture(autouse=True)
-def clean_db():
+def clean_db(monkeypatch):
+    monkeypatch.setattr(crm, 'STAND_MODE', True)
+    crm.Base.metadata.create_all(crm.engine, tables=[crm.StandState.__table__])
     s = get_session()
     try:
         s.query(PayoutTxUse).delete()

@@ -11,9 +11,12 @@
 
 Запуск: cd Dev/CalcCRM && python -m pytest tests/test_docs_api.py -v
 """
+import hashlib
 import json
 import os
 import sys
+from datetime import datetime, timezone
+from uuid import uuid4
 
 import pytest
 
@@ -21,6 +24,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 os.environ.setdefault('SECRET_KEY', 'test-secret-key-for-pytest')
 os.environ['REESTR_SYNC_ENABLED'] = '0'
 
+import app as crm
 from app import (app, get_session, Agreement, AgreementDoc,  # noqa: E402
                  _docs_client_key, _backfill_agreement_keys)
 
@@ -352,10 +356,65 @@ def test_document_payload_keeps_valid_multipart_and_numeric_money():
             s.close()
 
 
-class TestУдаление:
-    """Файлы договора нельзя стереть обходным удалением всей записи."""
+@pytest.fixture
+def docs_admin(client):
+    with get_session() as db:
+        user = crm.AdminUser(username=f'docs-admin-{uuid4().hex}', role='admin', password_hash='unused')
+        db.add(user)
+        db.commit()
+        user_id = user.id
+    with client.session_transaction() as session:
+        session['user_id'] = user_id
+    try:
+        yield client
+    finally:
+        with get_session() as db:
+            db.delete(db.get(crm.AdminUser, user_id))
+            db.commit()
 
-    def test_договор_с_документами_нельзя_удалить_физически(self, client):
+
+@pytest.fixture
+def docs_board_schema():
+    crm.Base.metadata.create_all(crm.engine, tables=[crm.StandState.__table__])
+
+
+@pytest.fixture
+def legacy_stand_docs(docs_admin, monkeypatch, docs_board_schema):
+    monkeypatch.setattr(crm, 'STAND_MODE', True)
+    return docs_admin
+
+
+class TestУдаление:
+    """Удаление обычного договора и защита файлов, связанных с задачником."""
+
+    @pytest.mark.parametrize('tasks_enabled', [False, True])
+    def test_договор_удаляется_вместе_с_документами(self, docs_admin, docs_board_schema,
+                                                        monkeypatch, tasks_enabled):
+        monkeypatch.setattr(crm, 'TASKS_ENABLED', tasks_enabled)
+        client = docs_admin
+        a = create(client, 'Бурова Надежда Васильевна').get_json()['agreement']
+        assert len(a['docs']) == 3
+
+        assert client.delete(f"/api/docs/agreements/{a['id']}").status_code == 200
+
+        s = get_session()
+        try:
+            assert s.query(Agreement).count() == 0
+            # документы уходят каскадом, иначе в базе остаётся мусор с паспортами
+            assert s.query(AgreementDoc).filter(
+                AgreementDoc.agreement_id == a['id']).count() == 0
+        finally:
+            s.close()
+
+    def test_после_удаления_тип_сделки_освобождается(self, docs_admin):
+        client = docs_admin
+        a = create(client, 'Бурова Надежда Васильевна').get_json()['agreement']
+        assert client.delete(f"/api/docs/agreements/{a['id']}").status_code == 200
+        # тот же клиент и тип снова заводится — ключ больше никем не занят
+        assert create(client, 'Бурова Надежда Васильевна').status_code == 200
+
+    def test_договор_с_документами_нельзя_удалить_физически(self, legacy_stand_docs):
+        client = legacy_stand_docs
         a = create(client, 'Бурова Надежда Васильевна').get_json()['agreement']
         assert len(a['docs']) == 3
 
@@ -374,10 +433,99 @@ class TestУдаление:
     def test_удаление_несуществующего_даёт_404(self, client):
         assert client.delete('/api/docs/agreements/999999').status_code == 404
 
-    def test_договор_с_файлами_остаётся_занятым(self, client):
+    def test_договор_с_файлами_остаётся_занятым(self, legacy_stand_docs):
+        client = legacy_stand_docs
         a = create(client, 'Бурова Надежда Васильевна').get_json()['agreement']
         assert client.delete(f"/api/docs/agreements/{a['id']}").status_code == 409
         assert create(client, 'Бурова Надежда Васильевна').status_code == 409
+
+
+    @pytest.mark.parametrize('linked_to', ['task_card', 'closed_crm_deal'])
+    def test_даже_админ_не_удаляет_договор_со_связью(self, docs_admin, docs_board_schema,
+                                                         monkeypatch, linked_to):
+        created = create(docs_admin, 'Бурова Надежда Васильевна')
+        assert created.status_code == 200, created.json
+        agreement = created.json['agreement']
+        agreement_id = agreement['id']
+        monkeypatch.setattr(crm, 'TASKS_ENABLED', True)
+        deal_id = client_id = None
+        with get_session() as db:
+            board = crm._stand_row(db)
+            old_data = board.data
+            if linked_to == 'task_card':
+                state = json.loads(old_data)
+                state.setdefault('deals', []).append({'id': 9901, 'docPack': {'agreementId': agreement_id}})
+                board.data = json.dumps(state)
+            else:
+                person = crm.Client(name='QA linked agreement')
+                db.add(person)
+                db.flush()
+                deal = crm.Deal(client_id=person.id, deal_type=crm.DealType.PAY_IN,
+                                status=crm.DealStatus.COMPLETED)
+                db.add(deal)
+                db.flush()
+                deal_id, client_id = deal.id, person.id
+                db.get(Agreement, agreement_id).client_id = client_id
+            db.commit()
+
+        try:
+            response = docs_admin.delete(f'/api/docs/agreements/{agreement_id}')
+            assert response.status_code == 409, response.json
+            assert 'связан со сделкой' in response.json['error']
+            with get_session() as db:
+                saved = db.get(Agreement, agreement_id)
+                assert saved and {doc.id for doc in saved.docs} == {doc['id'] for doc in agreement['docs']}
+        finally:
+            with get_session() as db:
+                crm._stand_row(db).data = old_data
+                if deal_id is not None:
+                    db.get(Agreement, agreement_id).client_id = None
+                    db.delete(db.get(crm.Deal, deal_id))
+                    db.flush()
+                    db.delete(db.get(crm.Client, client_id))
+                db.commit()
+
+
+    def test_импортированные_документы_доступны_только_для_чтения(self, docs_admin, monkeypatch):
+        monkeypatch.setattr(crm, 'TASKS_ENABLED', True)
+        tables = crm.Base.metadata.tables
+        imports = tables['stand_task_imports']
+        records = tables['stand_task_history_records']
+        crm.Base.metadata.create_all(crm.engine, tables=[imports, records, tables['stand_task_history']])
+        content = b'%PDF-1.4 synthetic archived attachment'
+        agreement_id, doc_id = 99003, 99004
+        with get_session() as db:
+            db.execute(imports.insert().values(id=1, bundle_sha256='a' * 64,
+                       generation='b' * 32, source_version=1,
+                       applied_at=datetime.now(timezone.utc), reconciliation={}))
+            db.execute(records.insert(), [
+                {'source_table':'agreements', 'source_key':str(agreement_id), 'import_id':1,
+                 'payload':{'id':agreement_id, 'client_name':'Synthetic archive', 'number':'QA-ARCHIVE'},
+                 'content':None, 'content_sha256':None},
+                {'source_table':'agreement_docs', 'source_key':str(doc_id), 'import_id':1,
+                 'payload':{'id':doc_id, 'agreement_id':agreement_id,
+                            'filename':'archive.pdf', 'mime':'application/pdf', 'deleted_at':None},
+                 'content':content, 'content_sha256':hashlib.sha256(content).hexdigest()},
+            ])
+            db.commit()
+        try:
+            catalog = docs_admin.get('/api/stand/task-history/agreements')
+            assert catalog.status_code == 200, catalog.json
+            agreement, = [row for row in catalog.json['agreements'] if row['id'] == agreement_id]
+            document, = agreement['documents']
+            link = document['url']
+            initial = docs_admin.get(link)
+            assert initial.status_code == 200 and initial.data == content
+            assert initial.headers['Cache-Control'] == 'private, no-store'
+            assert docs_admin.delete(link).status_code == 405
+            assert docs_admin.patch(link, json={'action': 'delete'}).status_code == 405
+            assert docs_admin.delete(f'/api/docs/agreements/{agreement_id}').status_code == 404
+            assert docs_admin.get(link).data == content
+        finally:
+            with get_session() as db:
+                db.execute(records.delete().where(records.c.import_id == 1))
+                db.execute(imports.delete().where(imports.c.id == 1))
+                db.commit()
 
 
 class TestДубльНеТупик:

@@ -95,7 +95,10 @@ def test_status_unknown_request_id(client_with_user):
     assert res.status_code == 404
 
 
-def test_status_requires_login():
+@pytest.mark.parametrize('legacy_stand', [False, True])
+def test_status_requires_login(monkeypatch, legacy_stand):
+    monkeypatch.setattr(appmod, 'STAND_MODE', legacy_stand)
+    monkeypatch.setattr(appmod, 'TASKS_ENABLED', not legacy_stand)
     with appmod.app.test_client() as client:
         res = client.get('/api/stand/thb-bank-rates-status?request_id=1')
     assert res.status_code == 401

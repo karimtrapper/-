@@ -23,10 +23,24 @@ function adapter(fetch) {
 // sections, toggling checkboxes) doesn't crash on ids this test doesn't care about.
 function elementRegistry(seed) {
   const byId = new Map(Object.entries(seed));
+  for (const key of ['ipps_realty', 'personal_realty']) {
+    const selector = `option[value="${key}"]`;
+    const typeOption = {disabled: false};
+    const routeOption = {disabled: false};
+    const kind = byId.get('dealKindSelect') || {value: '', options: new Map()};
+    const route = byId.get('leaseholdPayoutRoute') || {value: '', options: new Map()};
+    kind.options.set(selector, typeOption);
+    route.options.set(selector, routeOption);
+    byId.set('dealKindSelect', kind);
+    byId.set('leaseholdPayoutRoute', route);
+  }
   return key => {
     if (!byId.has(key)) byId.set(key, {value: '', style: {}, checked: false,
-      textContent: '', disabled: false, parentElement: null, appendChild: () => {}});
-    return byId.get(key);
+      textContent: '', disabled: false, parentElement: null, appendChild: () => {},
+      querySelector: () => null, closest: () => ({}), options: [], dataset: {}});
+    const field = byId.get(key);
+    if (field.options instanceof Map) field.querySelector = selector => field.options.get(selector) || null;
+    return field;
   };
 }
 
