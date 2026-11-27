@@ -14,6 +14,12 @@ INTER_CSS = VENDOR_PREFIX + 'inter-v20/font.css'
 JAKARTA_CSS = VENDOR_PREFIX + 'plus-jakarta-sans-v12/font.css'
 CHART_JS = VENDOR_PREFIX + 'chartjs-4.4.7/chart.umd.min.js'
 STATUS_JS = '/static/stand/browser-status.js'
+REFERRER_STYLESHEETS = (
+    '/static/fonts/slate/fonts.css',
+    '/static/slate-shell.css',
+    '/static/slate-surfaces.css',
+    '/static/referrer/referrer-slate.css',
+)
 PAGE_SOURCES = {
     'calculator': 'static/calculator/index.html',
     'crm': 'static/crm/crm.html',
@@ -55,6 +61,8 @@ STAND_CSP = (
 
 _FONT_LINK = re.compile(r'<link\b[^>]*\bhref="https://fonts\.googleapis\.com/css2\?family=([^"&]+)[^"]*"[^>]*>', re.I)
 _PRECONNECT = re.compile(r'<link\b[^>]*\brel="preconnect"[^>]*\bhref="https://fonts\.(?:googleapis|gstatic)\.com"[^>]*>\s*', re.I)
+_STYLESHEET = re.compile(
+    r"""<link\b(?=[^>]*\srel\s*=\s*["']stylesheet["'])[^>]*\shref\s*=\s*(["'])([^"']+)\1[^>]*>""", re.I)
 _LOGIN_WIDGET_CONDITION = 'if (!(window.Telegram && window.Telegram.Login)) {'
 
 
@@ -136,7 +144,11 @@ def transform_html(kind, html):
     if kind == 'tasks':
         local_link = f'<link href="{INTER_CSS}" rel="stylesheet">'
         font_count = html.count(local_link)
-    if font_count != 1:
+    if kind == 'referrer':
+        stylesheets = tuple(url.split('?', 1)[0] for _, url in _STYLESHEET.findall(html))
+        if stylesheets != REFERRER_STYLESHEETS:
+            raise ValueError('referrer: expected only the registered Slate font and stylesheets')
+    elif font_count != 1:
         raise ValueError(f'{kind}: expected one registered font link, got {font_count}')
     if kind == 'crm':
         if html.count('<script src="' + CHART_JS + '"></script>') != 1:

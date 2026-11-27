@@ -10,7 +10,8 @@ import sys
 
 import pytest
 
-from stand_browser import page_kind, transform_html, STAND_CSP, PUBLIC_VENDOR_PATHS
+from stand_browser import (page_kind, transform_html, STAND_CSP, PUBLIC_VENDOR_PATHS,
+                           REFERRER_STYLESHEETS)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -61,6 +62,20 @@ def test_registered_pages_use_only_local_static_resources(kind, source):
         assert 'chartjs-4.4.7/chart.umd.min.js' in result
     if kind == 'login':
         assert 'if (cfg.bot_id && !(window.Telegram && window.Telegram.Login))' in result
+    if kind == 'referrer':
+        assert tuple(url.split('?', 1)[0] for url in urls if url and '.css' in url) == REFERRER_STYLESHEETS
+        assert not re.search(r"""fetch\(\s*['"]/api/(?:auth/me|stand/roles)""", result)
+
+
+def test_referrer_slate_stylesheets_and_fonts_are_local():
+    for url in REFERRER_STYLESHEETS:
+        path = ROOT / url.removeprefix('/')
+        css = path.read_text()
+        assert not re.search(r'(?:url\(\s*|@import\s+)["\']?(?:https?:)?//', css)
+    fonts = ROOT / 'static/fonts/slate/fonts.css'
+    names = re.findall(r'url\((\./[^)]+)\)', fonts.read_text())
+    assert names
+    assert all(name.endswith('.woff2') and (fonts.parent / name).is_file() for name in names)
 
 
 @pytest.mark.parametrize('family', ['inter-v20', 'plus-jakarta-sans-v12'])
@@ -106,6 +121,14 @@ def test_changed_font_source_fails_with_explicit_registry_error():
         transform_html('partner', changed)
 
 
+def test_referrer_missing_local_style_fails_with_explicit_registry_error():
+    source = (ROOT / PAGES['referrer']).read_text()
+    changed = source.replace(REFERRER_STYLESHEETS[0], '/static/fonts/unknown.css', 1)
+    assert changed != source
+    with pytest.raises(ValueError, match='referrer: expected only the registered Slate font and stylesheets'):
+        transform_html('referrer', changed)
+
+
 @pytest.mark.parametrize('mode', ['0', '1'])
 def test_app_response_matches_source_only_outside_stage(tmp_path, mode):
     # A fresh interpreter is required: STAND_MODE is fixed at app import.
@@ -119,14 +142,37 @@ def test_app_response_matches_source_only_outside_stage(tmp_path, mode):
     code = '''
 import app
 from pathlib import Path
-from stand_browser import page_kind, transform_html
+from stand_browser import page_kind, transform_html, REFERRER_STYLESHEETS
 client = app.app.test_client()
+assets = [*REFERRER_STYLESHEETS, '/static/fonts/slate/geist-cyrillic-wght-normal.woff2',
+          '/static/fonts/slate/geist-mono-latin-wght-normal.woff2',
+          '/static/kyc/grusha-logo.png']
+db = app.SessionLocal()
+db.add(app.Referrer(name='Synthetic Partner', code='SYNTHETIC-DIRECT',
+                    token='synthetic', auth_mode='telegram', telegram_user_id=1234))
 if not app.STAND_MODE:
-    db = app.SessionLocal()
     db.add(app.AdminUser(username='synthetic', display_name='Synthetic',
                          password_hash=app.AdminUser.hash_password('synthetic-pass')))
-    db.commit()
-    db.close()
+db.commit()
+referrer_id = db.query(app.Referrer.id).filter_by(token='synthetic').scalar()
+db.close()
+if app.STAND_MODE:
+    assert client.get('/ref/synthetic').status_code == 302
+    for asset in assets[:-1]:
+        assert client.get(asset).status_code != 200, asset
+else:
+    old_tasks_mode = app.TASKS_ENABLED
+    app.TASKS_ENABLED = True
+    assert client.get('/ref/synthetic').status_code == 200
+    for asset in assets:
+        response = client.get(asset)
+        assert response.status_code == 200, (asset, response.status_code)
+        if '.css' in asset:
+            assert response.mimetype == 'text/css', asset
+    assert client.get('/api/auth/me').status_code == 401
+    response = client.get('/api/ref/synthetic/stats')
+    assert response.status_code == 401 and response.json['auth_required']
+    app.TASKS_ENABLED = old_tasks_mode
 paths = {'/login': 'static/auth/login.html', '/': 'static/calculator/index.html',
          '/crm': 'static/crm/crm.html',
          '/kyc/': 'static/kyc/index.html', '/partner/synthetic': 'static/partner/index.html',
@@ -179,6 +225,19 @@ for path, source in paths.items():
         asset = client.get('/static/stand/vendor/inter-v20/font.css')
         assert asset.status_code == 200
 if app.STAND_MODE:
+    stats = '/api/ref/synthetic/stats'
+    assert client.get(stats).status_code == 401
+    preview = client.get(f'/api/stand/ref-preview/{referrer_id}', follow_redirects=True)
+    assert preview.status_code == 200 and 'Content-Security-Policy' in preview.headers
+    for asset in assets:
+        response = client.get(asset)
+        assert response.status_code == 200, (asset, response.status_code)
+        if '.css' in asset:
+            assert response.mimetype == 'text/css', asset
+    assert client.get(stats).json['success']
+    for action, method in [('tg-start', 'POST'), ('tg-poll', 'GET'), ('tg-login', 'POST')]:
+        response = client.open(f'/api/ref/synthetic/{action}', method=method)
+        assert response.status_code == 403 and response.json['error'] == 'stand_blocked'
     conditional = client.get('/crm', headers={'If-Modified-Since': 'Wed, 21 Oct 2037 07:28:00 GMT'})
     assert conditional.status_code == 200
     assert conditional.data == transform_html('crm', Path('static/crm/crm.html').read_text()).encode()
