@@ -95,7 +95,9 @@
             theme_light: 'Светлый режим',
             theme_dark: 'Тёмный режим',
             theme_preset: 'Цветовая схема',
-            website: 'Сайт',
+            website: 'Сайт Grusha',
+            referral_bot: 'Telegram-бот Grusha',
+            referral_whatsapp: 'Чат Grusha в WhatsApp',
             link_unavailable: 'Ссылка недоступна',
             retry: 'Повторить',
             payouts: 'Выплаты',
@@ -157,7 +159,8 @@
             st_leads: 'Обращений',
             st_conversion: 'Конверсия',
             st_earned: 'Заработано',
-            sec_links: 'Ваши ссылки',
+            sec_links: 'Реферальная ссылка',
+            referral_links_help: 'Приглашайте друзей и клиентов в Grusha. Отправьте им любую из трёх ссылок и получайте вознаграждение за их сделки.',
             copy: 'Копировать',
             copied: 'Скопировано!',
             sec_paylink: 'Ссылка на оплату',
@@ -246,7 +249,9 @@
             theme_light: 'Light mode',
             theme_dark: 'Dark mode',
             theme_preset: 'Color theme',
-            website: 'Website',
+            website: 'Grusha website',
+            referral_bot: 'Grusha Telegram bot',
+            referral_whatsapp: 'Grusha WhatsApp chat',
             link_unavailable: 'Link unavailable',
             retry: 'Try again',
             payouts: 'Payouts',
@@ -308,7 +313,8 @@
             st_leads: 'Referrals',
             st_conversion: 'Conversion',
             st_earned: 'Earned',
-            sec_links: 'Your links',
+            sec_links: 'Referral link',
+            referral_links_help: 'Invite friends and clients to Grusha. Share any of the three links and earn rewards on their deals.',
             copy: 'Copy',
             copied: 'Copied!',
             sec_paylink: 'Payment link',
@@ -783,10 +789,11 @@
                 <div class="ref-content-grid">
                     <section class="ref-panel ref-card" id="ref-links" aria-labelledby="refLinksTitle">
                         <h2 id="refLinksTitle" tabindex="-1">${t('sec_links')}</h2>
+                        <p class="ref-quote-note">${t('referral_links_help')}</p>
                         <div class="ref-links-list">
                             ${refLinkRow('site', t('website'), refLinkText(d.referral_link), d.referral_link)}
-                            ${refLinkRow('bot', 'Telegram', refLinkText(d.bot_link), d.bot_link)}
-                            ${refLinkRow('wa', 'WhatsApp', refLinkText(d.wa_link), d.wa_link)}
+                            ${refLinkRow('bot', t('referral_bot'), refLinkText(d.bot_link), d.bot_link)}
+                            ${refLinkRow('wa', t('referral_whatsapp'), refLinkText(d.wa_link), d.wa_link)}
                         </div>
                     </section>
                     ${hasPaymentQuote(d) ? `
