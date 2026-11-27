@@ -15051,7 +15051,7 @@ const ANALYTICS_LEGACY_CLOCK=new Intl.DateTimeFormat('ru-RU',{
 const ANALYTICS_WINDOWS={last7:'7 дней',last30:'30 дней',month:'Этот месяц',all:'Всё время',custom:'Свой период'};
 const ANALYTICS_RATE_REASON='Не устроил курс';
 const ANALYTICS_WON='Успешно завершена';
-const ANALYTICS_UNKNOWN_OUTCOME=Symbol('unknown outcome');
+const ANALYTICS_OUTCOME_FILTERS={won:Symbol('won'),unknown:Symbol('unknown')};
 const analyticsFilters={period:'last30',basis:'created',inquiry:'all',source:'all',from:'',to:'',reason:null,limit:25};
 const ANALYTICS_TYPES={...INQUIRY_TYPES,unknown:'Не указано'};
 let analyticsChannels=new Map();
@@ -15161,6 +15161,11 @@ function analyticsReason(d){
   const value=typeof d.closeReason==='string'?d.closeReason.trim().replace(/\s+/g,' '):'';
   return CLOSE_REASONS.find(reason=>reason.toLocaleLowerCase('ru-RU')===value.toLocaleLowerCase('ru-RU'))||value;
 }
+function analyticsHasRecordedTransfer(transfers){
+  return Array.isArray(transfers)&&transfers.some(t=>
+    typeof t?.hash==='string'&&t.hash.trim()&&Number.isFinite(Number(t.amount))&&Number(t.amount)>0
+  );
+}
 function analyticsOutcome(d){
   // Before manual/originMode were stored, only manual entry used this step.
   const manual=d.manual===true||d.originMode==='manual'||(d.step==='manual'&&!d.isTask);
@@ -15170,7 +15175,11 @@ function analyticsOutcome(d){
   }
   const reason=analyticsReason(d);
   if(reason.toLocaleLowerCase('ru-RU')===ANALYTICS_WON.toLocaleLowerCase('ru-RU'))return 'won';
-  return CLOSE_REASONS.includes(reason)?'lost':'unknown';
+  if(CLOSE_REASONS.includes(reason))return 'lost';
+  // A manually recorded trade can carry both transfers before the CRM status is set.
+  if(!reason&&analyticsHasRecordedTransfer(d.payinHashes)&&
+     (analyticsHasRecordedTransfer(d.payout?.hashes)||analyticsHasRecordedTransfer(d.mfPayout)))return 'won';
+  return 'unknown';
 }
 function analyticsSummary(rows){
   const totals={all:rows.length,open:0,won:0,lost:0,unknown:0,rateLost:0,turnover:0};
@@ -15238,7 +15247,8 @@ function standConversationAction(d,chat=standDealConversation(d)){
     htmlText(chat.href)+'" title="'+htmlText(description)+'">'+label+' ↗</a>';
 }
 function analyticsPickReason(button){
-  analyticsFilters.reason=button.dataset.outcome==='unknown'?ANALYTICS_UNKNOWN_OUTCOME:button.dataset.reason;
+  const {outcome,reason}=button.dataset;
+  analyticsFilters.reason=Object.hasOwn(ANALYTICS_OUTCOME_FILTERS,outcome)?ANALYTICS_OUTCOME_FILTERS[outcome]:reason;
   analyticsFilters.limit=25;
   render();
   document.getElementById('analyticsReasonResults')?.focus();
@@ -15303,8 +15313,10 @@ function analyticsDealFacts(d){
 }
 function analyticsReasonDeals(reasons,reason,filteredRows=[]){
   if(reason===null)return '';
-  const unknownOutcome=reason===ANALYTICS_UNKNOWN_OUTCOME;
-  const selected=unknownOutcome?filteredRows.filter(row=>row.outcome==='unknown'):(reasons.get(reason)||[]);
+  const outcome=Object.keys(ANALYTICS_OUTCOME_FILTERS).find(key=>ANALYTICS_OUTCOME_FILTERS[key]===reason);
+  const title=outcome==='won'?'Успешно закрытые сделки':outcome==='unknown'?'Сделки без указанного итога':
+    reason||'Причина не указана';
+  const selected=outcome?filteredRows.filter(row=>row.outcome===outcome):(reasons.get(reason)||[]);
   const rows=selected.map(({d})=>({d,date:analyticsDealDate(d,'closed')}))
     .sort((a,b)=>b.date.localeCompare(a.date)||Number(b.d.id)-Number(a.d.id));
   const cards=rows.slice(0,analyticsFilters.limit).map(({d,date})=>{
@@ -15326,7 +15338,7 @@ function analyticsReasonDeals(reasons,reason,filteredRows=[]){
       '</div></div><div><div class="analytics-muted">'+htmlText(source)+'</div>'+standConversationAction(d,chat)+'</div></li>';
   }).join('');
   return '<section class="card analytics-results" id="analyticsReasonResults" tabindex="-1"><h2 class="card-title">'+
-    htmlText(unknownOutcome?'Сделки без указанного итога':reason||'Причина не указана')+
+    htmlText(title)+
     ' <span class="sub">'+rows.length+' '+plural(rows.length,'сделка','сделки','сделок')+'</span></h2>'+
     (rows.length?'<ul class="analytics-deals">'+cards+'</ul>':'<p class="empty">В выбранном периоде таких сделок нет.</p>')+
     (rows.length>analyticsFilters.limit?'<button type="button" class="btn btn-outline btn-sm" onclick="analyticsMore()">Показать ещё сделки</button>':'')+'</section>';
@@ -15339,8 +15351,10 @@ function viewAnalytics(){
   const {rows,reasons,unknownDates,firstDate,lastDate}=analyticsData(S.deals,f,p);
   const m=analyticsSummary(rows),known=m.won+m.lost,closed=known+m.unknown;
   const conversionDetails=m.won+' из '+known+' закрытых'+(m.unknown?' с известным итогом':'');
-  const unknownDetails=m.unknown?'<button type="button" class="analytics-stat-link analytics-link" data-outcome="unknown" '+
-    'aria-pressed="'+(f.reason===ANALYTICS_UNKNOWN_OUTCOME)+'" onclick="analyticsPickReason(this)">Итог не указан · '+m.unknown+'</button>':'';
+  const outcomeLink=(outcome,label)=>'<button type="button" class="analytics-stat-link analytics-link" data-outcome="'+outcome+'" '+
+    'aria-pressed="'+(f.reason===ANALYTICS_OUTCOME_FILTERS[outcome])+'" onclick="analyticsPickReason(this)">'+label+'</button>';
+  const unknownDetails=m.unknown?outcomeLink('unknown','Итог не указан · '+m.unknown):'';
+  const wonDetails=m.won?outcomeLink('won','Показать успешные сделки'):'';
   const dateRange=(from,to)=>analyticsDateLabel(from)+' — '+analyticsDateLabel(to)+' · время Таиланда';
   const periodLabel=p.invalid?'Укажите корректный диапазон дат.':p.from?dateRange(p.from,p.to):
     firstDate?'Всё время · '+dateRange(firstDate,lastDate):'Всё время · время Таиланда';
@@ -15378,7 +15392,7 @@ function viewAnalytics(){
       ' без точной даты '+(f.basis==='closed'?'закрытия':'создания')+'.</p>':'')+
     (p.invalid?'':'<div class="stats-grid analytics-stats">'+stat('Сделок в задачнике',m.all)+
       (f.basis==='created'?stat('Открыто сейчас',m.open):'')+
-      stat('Закрыто всего',closed,unknownDetails)+stat('Успешно закрыто',m.won,'','success')+
+      stat('Закрыто всего',closed,unknownDetails)+stat('Успешно закрыто',m.won,wonDetails,'success')+
       stat('Закрыто отказом',m.lost,'','danger')+stat('Конверсия закрытых',analyticsPercent(m.won,known),conversionDetails)+
       stat('Отказы из-за курса',analyticsPercent(m.rateLost,m.lost),m.rateLost+' из '+m.lost+' отказов')+
       stat('Оборот успешных',moneyKop(m.turnover,'₽'),'','info')+'</div>'+

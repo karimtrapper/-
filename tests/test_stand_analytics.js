@@ -167,6 +167,20 @@ assert.equal(manualData.reasons.get('')[0].d.id, 16, 'previous behavior for ordi
 assert.equal(manualData.reasons.has('Комментарий менеджера'), false);
 assert.equal(stand.analyticsDealDate(manualDeals[0], 'closed'), '', 'creation date is not a closing date');
 assert.equal(stand.analyticsDealDate(manualDeals[2], 'closed'), '2026-11-22');
+const recordedExchange = {
+  id:1556, manual:true, originMode:'manual', step:'manual', closed:false,
+  createdAt:'2026-11-26', amountRub:56749.48, amountUsdt:631,
+  payinHashes:[{hash:'incoming',amount:631}], payout:{usdt:619.24,hashes:[{hash:'outgoing',amount:619.24}]},
+};
+assert.equal(stand.analyticsOutcome(recordedExchange), 'won');
+assert.equal(stand.analyticsOutcome({...recordedExchange,closeReason:'Ушёл к конкуренту'}), 'lost');
+assert.equal(stand.analyticsOutcome({...recordedExchange,payout:{usdt:619.24}}), 'unknown');
+assert.equal(stand.analyticsOutcome({...recordedExchange,payinHashes:[{hash:'incoming',amount:null}]}), 'unknown');
+assert.equal(stand.analyticsOutcome({...recordedExchange,manual:false,originMode:null,step:'s4'}), 'open');
+assert.equal(stand.analyticsDealDate(recordedExchange, 'closed'), '');
+const recordedRows = stand.analyticsData([recordedExchange,{...recordedExchange,manualNew:true}], filters, {from:'',to:''});
+assert.deepEqual({...stand.analyticsSummary(recordedRows.rows)},
+  {all:1,open:0,won:1,lost:0,unknown:0,rateLost:0,turnover:56749.48});
 assert.deepEqual({...stand.analyticsSummary(
   stand.analyticsData(manualDeals, {...filters,source:'tg',inquiry:'client'}, period).rows)},
   {all:3,open:1,won:0,lost:0,unknown:2,rateLost:0,turnover:0});
@@ -187,10 +201,16 @@ assert.match(renderedManual, /Закрыто всего<\/div><div class="stat-v
 assert.match(renderedManual, /data-outcome="unknown"[^>]+>Итог не указан · 2<\/button>/);
 assert.match(renderedManual, /1 из 3 закрытых с известным итогом/);
 assert.match(renderedManual, /Итог не указан">2<\/td>/);
-vm.runInContext("analyticsFilters.reason=ANALYTICS_UNKNOWN_OUTCOME", stand);
+vm.runInContext("analyticsFilters.reason=ANALYTICS_OUTCOME_FILTERS.unknown", stand);
 const unknownResults = stand.viewAnalytics();
 assert.match(unknownResults, /Сделки без указанного итога/);
 assert.deepEqual([...unknownResults.matchAll(/data-deal="(\d+)"/g)].map(match => match[1]), ['14', '10']);
+stand.S.deals = [...manualDeals,recordedExchange];
+vm.runInContext("analyticsFilters.reason=ANALYTICS_OUTCOME_FILTERS.won", stand);
+const wonResults = stand.viewAnalytics();
+assert.match(wonResults, /Успешно закрытые сделки/);
+assert.deepEqual([...wonResults.matchAll(/data-deal="(\d+)"/g)].map(match => match[1]), ['12', '1556']);
+stand.S.deals = manualDeals;
 vm.runInContext("Object.assign(analyticsFilters,{period:'custom',basis:'closed',from:'2026-11-20',to:'2026-11-22'})", stand);
 assert.match(stand.viewAnalytics(), /Исключено из периода: 1 сделка без точной даты закрытия/);
 vm.runInContext("analyticsFilters.period='all'", stand);
