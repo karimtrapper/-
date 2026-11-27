@@ -20481,13 +20481,15 @@ def _can_copy_deal_cabinet_links(deal, role):
 
 def _deal_cabinet_referrers(session, deal):
     ids = {deal.referrer_id, *(agent.referrer_id for agent in deal.agents)}
-    return session.query(Referrer.id, Referrer.telegram_user_id, Referrer.telegram).filter(
+    return session.query(Referrer.id, Referrer.auth_mode, Referrer.telegram_user_id, Referrer.telegram).filter(
         Referrer.id.in_(ids - {None}), Referrer.active.is_(True),
-        Referrer.is_test.isnot(True), Referrer.auth_mode == 'telegram',
-        Referrer.token != '')
+        Referrer.is_test.isnot(True), Referrer.token != '')
 
 
-def _has_cabinet_telegram_identity(referrer):
+def _cabinet_link_can_be_shared(referrer):
+    auth_mode = referrer.auth_mode or 'link'
+    if auth_mode != 'telegram':
+        return auth_mode == 'link'
     # Match the normalization in apply_referrer_tg_binding. An invalid stored
     # ID cannot fall back to a username because Telegram login uses the ID first.
     if referrer.telegram_user_id:
@@ -20509,7 +20511,7 @@ def get_deal_referrer_cabinet_link(deal_id, referrer_id):
             return jsonify(success=False, error='not_found'), 404
         referrer = _deal_cabinet_referrers(session, deal).add_columns(Referrer.token).filter(
             Referrer.id == referrer_id).first()
-        if not referrer or not _has_cabinet_telegram_identity(referrer):
+        if not referrer or not _cabinet_link_can_be_shared(referrer):
             return jsonify(success=False, error='not_found'), 404
         response = jsonify(success=True, url=url_for('referrer_page', token=referrer.token))
         response.headers['Cache-Control'] = 'private, no-store'
@@ -20546,7 +20548,7 @@ def get_deal(deal_id):
         if _can_copy_deal_cabinet_links(deal, role):
             row['cabinet_link_referrer_ids'] = sorted(
                 referrer.id for referrer in _deal_cabinet_referrers(session, deal)
-                if _has_cabinet_telegram_identity(referrer))
+                if _cabinet_link_can_be_shared(referrer))
             response = jsonify(success=True, deal=row)
             response.headers['Cache-Control'] = 'private, no-store'
             return response
