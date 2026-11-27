@@ -6461,8 +6461,10 @@ def _task_payout_plan_problem(db, previous, incoming):
     old = {deal.get('id'): deal for deal in previous.get('deals', [])}
     plan_ids = set()
     for deal in incoming.get('deals', []):
-        if old.get(deal.get('id'), {}).get('step') == 's22' and deal.get('step') in ('s23', 's26'):
-            plan_ids.update(member.get('id') for member in _stand_members(incoming, deal.get('id')))
+        deal_id = deal.get('id')
+        if old.get(deal_id, {}).get('step') == 's22' and deal.get('step') in ('s23', 's26'):
+            plan_ids.add(deal_id)
+            plan_ids.update(member.get('id') for member in _stand_members(previous, deal_id))
     if not plan_ids:
         return None
     sources = _task_balance_sources(db)
@@ -6529,6 +6531,9 @@ def _task_record_invoice_payment(db, previous, incoming):
         if old_paid or before.get('step') != 's26' or deal.get('step') != 's27':
             return 'Оплату инвойса фиксируют с чеком при передаче задачи менеджеру.'
         pay_to = before.get('payTo') or {}
+        if (not _stand_payto_confirmed(before) or deal.get('payTo') != pay_to or
+                (deal.get('pay') or {}).get('invoicePaid') is not True):
+            return 'Для отметки об оплате нужны подтверждённые реквизиты инвойса.'
         amount = _amount(pay_to.get('amount'))
         if not amount or amount <= 0:
             return 'Укажите подтверждённую сумму оплаты инвойса.'
